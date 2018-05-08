@@ -4,8 +4,8 @@ import (
 	"sync"
 	"testing"
 
-	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 )
 
 // mockSubscriber receives and holds changes to the consensus set, remembering
@@ -199,7 +199,7 @@ func TestModuleDesync(t *testing.T) {
 	// Get all the updates from the consensusSet.
 	updates := make([]modules.ConsensusChange, 0)
 	cst.cs.mu.Lock()
-	err = cst.cs.db.View(func(tx *bolt.Tx) error {
+	err = cst.cs.db.View(func(tx database.Tx) error {
 		entry := cst.cs.genesisEntry()
 		exists := true
 		for ; exists; entry, exists = entry.NextEntry(tx) {

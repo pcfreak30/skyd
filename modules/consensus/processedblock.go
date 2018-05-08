@@ -3,13 +3,13 @@ package consensus
 import (
 	"math/big"
 
+	"github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 // SurpassThreshold is a percentage that dictates how much heavier a competing
@@ -121,7 +121,7 @@ func (cs *ConsensusSet) setChildTarget(blockMap *bolt.Bucket, pb *processedBlock
 
 // newChild creates a blockNode from a block and adds it to the parent's set of
 // children. The new node is also returned. It necessarily modifies the database
-func (cs *ConsensusSet) newChild(tx *bolt.Tx, pb *processedBlock, b types.Block) *processedBlock {
+func (cs *ConsensusSet) newChild(tx database.Tx, pb *processedBlock, b types.Block) *processedBlock {
 	// Create the child node.
 	childID := b.ID()
 	child := &processedBlock{

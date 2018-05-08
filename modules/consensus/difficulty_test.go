@@ -5,9 +5,8 @@ import (
 	"math/big"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/coreos/bbolt"
 )
 
 // TestChildTargetOak checks the childTargetOak function, especially for edge
@@ -282,7 +281,7 @@ func TestStoreBlockTotals(t *testing.T) {
 	// Check that as totals get stored over and over, the values getting
 	// returned follow a decay. While storing repeatedly, check that the
 	// getBlockTotals values match the values that were stored.
-	err = cs.db.Update(func(tx *bolt.Tx) error {
+	err = cs.db.Update(func(tx database.Tx) error {
 		var totalTime int64
 		var id types.BlockID
 		var parentTimestamp, currentTimestamp types.Timestamp
