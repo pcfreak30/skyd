@@ -7,10 +7,10 @@ package consensus
 // ignored otherwise, which is suboptimal.
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -84,24 +84,6 @@ var (
 
 // createConsensusObjects initialzes the consensus portions of the database.
 func (cs *ConsensusSet) createConsensusDB(tx database.Tx) error {
-	// Enumerate and create the database buckets.
-	buckets := [][]byte{
-		BlockHeight,
-		BlockMap,
-		BlockPath,
-		Consistency,
-		SiacoinOutputs,
-		FileContracts,
-		SiafundOutputs,
-		SiafundPool,
-	}
-	for _, bucket := range buckets {
-		_, err := tx.CreateBucket(bucket)
-		if err != nil {
-			return err
-		}
-	}
-
 	// Set the block height to -1, so the genesis block is at height 0.
 	blockHeight := tx.Bucket(BlockHeight)
 	underflow := types.BlockHeight(0)
