@@ -248,7 +248,7 @@ func generateAndApplyDiff(tx database.Tx, pb *processedBlock) error {
 	// adding and removing blocks. Must happen after the block is added to the
 	// path.
 	if build.DEBUG {
-		pb.ConsensusChecksum = consensusChecksum(tx)
+		pb.ConsensusChecksum = tx.ConsensusChecksum()
 	}
 
 	return blockMap.Put(bid[:], encoding.Marshal(*pb))

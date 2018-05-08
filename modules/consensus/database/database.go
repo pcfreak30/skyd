@@ -1,8 +1,9 @@
 package database
 
 import (
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
 var (
@@ -99,6 +100,16 @@ func Open(filename string) (DB, error) {
 				return err
 			}
 		}
+
+		// If consistency flag is not set, initialize it to false (no
+		// inconsistencies).
+		if tx.Bucket(consistency).Get(consistency) == nil {
+			err = tx.Bucket(consistency).Put(consistency, encoding.Marshal(false))
+			if err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 	if err != nil {
