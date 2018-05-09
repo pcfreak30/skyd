@@ -4,11 +4,11 @@ import (
 	"errors"
 	"math/big"
 
-	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -74,13 +74,11 @@ func storageProofSegment(tx database.Tx, fcid types.FileContractID) (uint64, err
 	}
 
 	// Get the trigger block id.
-	blockPath := tx.Bucket(BlockPath)
 	triggerHeight := fc.WindowStart - 1
 	if triggerHeight > blockHeight(tx) {
 		return 0, errUnfinishedFileContract
 	}
-	var triggerID types.BlockID
-	copy(triggerID[:], blockPath.Get(encoding.EncUint64(uint64(triggerHeight))))
+	triggerID := tx.BlockID(triggerHeight)
 
 	// Get the index by appending the file contract ID to the trigger block and
 	// taking the hash, then converting the hash to a numerical value and
