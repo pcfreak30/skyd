@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -45,6 +46,14 @@ type Tx interface {
 	// BlockID returns the ID of the block at the specified height in the
 	// current path.
 	BlockID(height types.BlockHeight) types.BlockID
+
+	// ChangeEntry returns the ChangeEntry with the specified id.
+	ChangeEntry(id modules.ConsensusChangeID) (ChangeEntry, bool)
+	// AppendChangeEntry appends ce to the list of change entries.
+	AppendChangeEntry(ce ChangeEntry)
+	// ChangeLogTailID returns the ID of the most recently-appended
+	// ChangeEntry.
+	ChangeLogTailID() modules.ConsensusChangeID
 }
 
 type txWrapper struct {
@@ -178,6 +187,58 @@ func (tx txWrapper) PopPath() {
 	tx.SetBlockHeight(oldHeight - 1)
 
 	err := tx.Bucket(blockPath).Delete(encoding.Marshal(oldHeight))
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+}
+
+// ChangeEntry implements the Tx interface.
+func (tx txWrapper) ChangeEntry(id modules.ConsensusChangeID) (ChangeEntry, bool) {
+	var cn changeNode
+	changeNodeBytes := tx.Bucket(changeLog).Get(id[:])
+	if changeNodeBytes == nil {
+		return ChangeEntry{}, false
+	}
+	err := encoding.Unmarshal(changeNodeBytes, &cn)
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+	return cn.Entry, true
+}
+
+// ChangeLogTailID implements the Tx interface.
+func (tx txWrapper) ChangeLogTailID() (id modules.ConsensusChangeID) {
+	tailID := tx.Bucket(changeLog).Get(changeLogTailID)
+	copy(id[:], tailID)
+	return
+}
+
+// AppendChangeEntry implements the Tx interface.
+func (tx txWrapper) AppendChangeEntry(ce ChangeEntry) {
+	ceid := ce.ID()
+	b := tx.Bucket(changeLog)
+	err := b.Put(ceid[:], encoding.Marshal(changeNode{Entry: ce}))
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+
+	// If this is not the first change entry, update the previous entry to
+	// point to this one.
+	if tailID := b.Get(changeLogTailID); tailID != nil {
+		var tailCN changeNode
+		err = encoding.Unmarshal(b.Get(tailID), &tailCN)
+		if build.DEBUG && err != nil {
+			panic(err)
+		}
+		tailCN.Next = ceid
+		err = b.Put(tailID, encoding.Marshal(tailCN))
+		if build.DEBUG && err != nil {
+			panic(err)
+		}
+	}
+
+	// Update the tail ID.
+	err = b.Put(changeLogTailID, ceid[:])
 	if build.DEBUG && err != nil {
 		panic(err)
 	}

@@ -1,7 +1,6 @@
 package consensus
 
 import (
-	"errors"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -12,7 +11,7 @@ import (
 
 // computeConsensusChange computes the consensus change from the change entry
 // at index 'i' in the change log. If i is out of bounds, an error is returned.
-func (cs *ConsensusSet) computeConsensusChange(tx database.Tx, ce changeEntry) (modules.ConsensusChange, error) {
+func (cs *ConsensusSet) computeConsensusChange(tx database.Tx, ce database.ChangeEntry) (modules.ConsensusChange, error) {
 	cc := modules.ConsensusChange{
 		ID: ce.ID(),
 	}
@@ -100,7 +99,7 @@ func (cs *ConsensusSet) computeConsensusChange(tx database.Tx, ce changeEntry) (
 // updateSubscribers will inform all subscribers of a new update to the
 // consensus set. updateSubscribers does not alter the changelog, the changelog
 // must be updated beforehand.
-func (cs *ConsensusSet) updateSubscribers(ce changeEntry) {
+func (cs *ConsensusSet) updateSubscribers(ce database.ChangeEntry) {
 	if len(cs.subscribers) == 0 {
 		return
 	}
@@ -138,7 +137,8 @@ func (cs *ConsensusSet) managedInitializeSubscribe(subscriber modules.ConsensusS
 	// 'exists' and 'entry' are going to be pointed to the first entry that
 	// has not yet been seen by subscriber.
 	var exists bool
-	var entry changeEntry
+	var entry database.ChangeEntry
+
 	cs.mu.RLock()
 	err := cs.db.View(func(tx database.Tx) error {
 		if start == modules.ConsensusChangeBeginning {
@@ -211,12 +211,7 @@ func (cs *ConsensusSet) managedInitializeSubscribe(subscriber modules.ConsensusS
 // change.
 func (cs *ConsensusSet) recentConsensusChangeID() (cid modules.ConsensusChangeID, err error) {
 	err = cs.db.View(func(tx database.Tx) error {
-		cl := tx.Bucket(ChangeLog)
-		d := cl.Get(ChangeLogTailID)
-		if d == nil {
-			return errors.New("failed to retrieve recentConsensusChangeID")
-		}
-		copy(cid[:], d[:])
+		cid = tx.ChangeLogTailID()
 		return nil
 	})
 	return
