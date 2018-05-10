@@ -43,7 +43,7 @@ type ConsensusSet struct {
 	gateway modules.Gateway
 
 	// The block root contains the genesis block.
-	blockRoot processedBlock
+	blockRoot database.Block
 
 	// Subscribers to the consensus set will receive a changelog every time
 	// there is an update to the consensus set. At initialization, they receive
@@ -114,7 +114,7 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 	cs := &ConsensusSet{
 		gateway: gateway,
 
-		blockRoot: processedBlock{
+		blockRoot: database.Block{
 			Block:       types.GenesisBlock,
 			ChildTarget: types.RootTarget,
 			Depth:       types.RootDepth,
