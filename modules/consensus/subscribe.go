@@ -153,7 +153,7 @@ func (cs *ConsensusSet) managedInitializeSubscribe(subscriber modules.ConsensusS
 			// Because the subscriber already has this consensus change,
 			// 'entry' and 'exists' need to be pointed at the next consensus
 			// change.
-			entry, exists = getEntry(tx, start)
+			entry, exists = tx.ChangeEntry(start)
 			if !exists {
 				// modules.ErrInvalidConsensusChangeID is a named error that
 				// signals a break in synchronization between the consensus set
@@ -162,7 +162,7 @@ func (cs *ConsensusSet) managedInitializeSubscribe(subscriber modules.ConsensusS
 				// perform a rescan of the consensus set.
 				return modules.ErrInvalidConsensusChangeID
 			}
-			entry, exists = getEntry(tx, entry.Next)
+			entry, exists = tx.ChangeEntry(entry.Next)
 		}
 		return nil
 	})
@@ -195,7 +195,8 @@ func (cs *ConsensusSet) managedInitializeSubscribe(subscriber modules.ConsensusS
 					return err
 				}
 				subscriber.ProcessConsensusChange(cc)
-				entry, exists = getEntry(tx, entry.Next)
+
+				entry, exists = tx.ChangeEntry(entry.Next)
 			}
 			return nil
 		})

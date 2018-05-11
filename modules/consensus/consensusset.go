@@ -264,6 +264,13 @@ func (cs *ConsensusSet) managedCurrentBlock() (block types.Block) {
 	return block
 }
 
+// genesisEntry returns the id of the genesis block log entry.
+func (cs *ConsensusSet) genesisEntry() database.ChangeEntry {
+	return database.ChangeEntry{
+		AppliedBlocks: []types.BlockID{cs.blockRoot.Block.ID()},
+	}
+}
+
 // CurrentBlock returns the latest block in the heaviest known blockchain.
 func (cs *ConsensusSet) CurrentBlock() (block types.Block) {
 	// A call to a closed database can cause undefined behavior.
@@ -309,7 +316,7 @@ func (cs *ConsensusSet) Height() (height types.BlockHeight) {
 	defer cs.mu.Unlock()
 
 	_ = cs.db.View(func(tx database.Tx) error {
-		height = blockHeight(tx)
+		height = tx.BlockHeight()
 		return nil
 	})
 	return height

@@ -60,14 +60,11 @@ func (cs *ConsensusSet) initDB(tx database.Tx) error {
 		return nil
 	}
 
-	// Create the compononents of the database.
+	// Create the components of the database.
 	err := cs.createConsensusDB(tx)
 	if err != nil {
 		return err
 	}
-	err = cs.createChangeLog(tx)
-	if err != nil {
-		return err
-	}
+	tx.AppendChangeEntry(cs.genesisEntry())
 	return nil
 }

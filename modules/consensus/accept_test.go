@@ -1125,7 +1125,7 @@ func TestChainedAcceptBlock(t *testing.T) {
 	// consensus set.
 	for _, change := range bcs.changes {
 		err := cst2.cs.db.Update(func(tx database.Tx) error {
-			_, exists := getEntry(tx, change)
+			_, exists := tx.ChangeEntry(change)
 			if !exists {
 				t.Error("an entry was provided that doesn't exist")
 			}

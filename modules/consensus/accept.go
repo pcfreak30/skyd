@@ -156,10 +156,8 @@ func (cs *ConsensusSet) addBlockToTree(tx database.Tx, b types.Block, parent *da
 	for _, an := range appliedBlocks {
 		ce.AppliedBlocks = append(ce.AppliedBlocks, an.Block.ID())
 	}
-	err = appendChangeLog(tx, ce)
-	if err != nil {
-		return database.ChangeEntry{}, err
-	}
+
+	tx.AppendChangeEntry(ce)
 	return ce, nil
 }
 
