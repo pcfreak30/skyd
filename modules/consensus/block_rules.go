@@ -3,8 +3,6 @@ package consensus
 import (
 	"sort"
 
-	"github.com/coreos/bbolt"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -12,7 +10,7 @@ import (
 // blockRuleHelper assists with block validity checks by calculating values
 // on blocks that are relevant to validity rules.
 type blockRuleHelper interface {
-	minimumValidChildTimestamp(*bolt.Bucket, *database.Block) types.Timestamp
+	minimumValidChildTimestamp(database.Tx, *database.Block) types.Timestamp
 }
 
 // stdBlockRuleHelper is the standard implementation of blockRuleHelper.
@@ -24,7 +22,7 @@ type stdBlockRuleHelper struct{}
 //
 // To boost performance, minimumValidChildTimestamp is passed a bucket that it
 // can use from inside of a boltdb transaction.
-func (rh stdBlockRuleHelper) minimumValidChildTimestamp(blockMap *bolt.Bucket, b *database.Block) types.Timestamp {
+func (rh stdBlockRuleHelper) minimumValidChildTimestamp(tx database.Tx, b *database.Block) types.Timestamp {
 	// Get the previous MedianTimestampWindow timestamps.
 	windowTimes := make(types.TimestampSlice, types.MedianTimestampWindow)
 	windowTimes[0] = b.Timestamp
@@ -37,14 +35,10 @@ func (rh stdBlockRuleHelper) minimumValidChildTimestamp(blockMap *bolt.Bucket, b
 			continue
 		}
 
-		// Get the next parent's bytes. Because the ordering is specific, the
-		// parent does not need to be decoded entirely to get the desired
-		// information. This provides a performance boost. The id of the next
-		// parent lies at the first 32 bytes, and the timestamp of the block
-		// lies at bytes 40-48.
-		parentBytes := blockMap.Get(parent[:])
-		copy(parent[:], parentBytes[:32])
-		windowTimes[i] = types.Timestamp(encoding.DecUint64(parentBytes[40:48]))
+		// Get the next parent ID and timestamp
+		parentBlock, _ := tx.Block(parent)
+		parent = parentBlock.ParentID
+		windowTimes[i] = parentBlock.Timestamp
 	}
 	sort.Sort(windowTimes)
 
