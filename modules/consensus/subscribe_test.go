@@ -202,7 +202,7 @@ func TestModuleDesync(t *testing.T) {
 	err = cst.cs.db.View(func(tx database.Tx) error {
 		entry := cst.cs.genesisEntry()
 		exists := true
-		for ; exists; entry, exists = entry.NextEntry(tx) {
+		for ; exists; entry, exists = getEntry(tx, entry.Next) {
 			cc, err := cst.cs.computeConsensusChange(tx, entry)
 			if err != nil {
 				return err
