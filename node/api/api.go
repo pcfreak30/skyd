@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // Error is a type that is encoded as JSON and returned in an API response in
@@ -88,16 +90,18 @@ func HttpPOSTAuthenticated(url string, data string, password string) (resp *http
 // API encapsulates a collection of modules and implements a http.Handler
 // to access their methods.
 type API struct {
-	cs       modules.ConsensusSet
-	explorer modules.Explorer
-	gateway  modules.Gateway
-	host     modules.Host
-	miner    modules.Miner
-	renter   modules.Renter
-	tpool    modules.TransactionPool
-	wallet   modules.Wallet
-
-	router http.Handler
+	cs              modules.ConsensusSet
+	explorer        modules.Explorer
+	gateway         modules.Gateway
+	host            modules.Host
+	miner           modules.Miner
+	renter          modules.Renter
+	tpool           modules.TransactionPool
+	wallet          modules.Wallet
+	router          http.Handler
+	unconfirmedSets map[modules.TransactionSetID][]types.TransactionID
+	mu              sync.RWMutex
+	hub             *WebsocketHub
 }
 
 // api.ServeHTTP implements the http.Handler interface.
@@ -108,7 +112,7 @@ func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // New creates a new Sia API from the provided modules.  The API will require
 // authentication using HTTP basic auth for certain endpoints of the supplied
 // password is not the empty string.  Usernames are ignored for authentication.
-func New(requiredUserAgent string, requiredPassword string, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) *API {
+func New(requiredUserAgent string, requiredPassword string, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) (*API, error) {
 	api := &API{
 		cs:       cs,
 		explorer: e,
@@ -121,9 +125,8 @@ func New(requiredUserAgent string, requiredPassword string, cs modules.Consensus
 	}
 
 	// Register API handlers
-	api.buildHTTPRoutes(requiredUserAgent, requiredPassword)
-
-	return api
+	err := api.buildHttpRoutes(requiredUserAgent, requiredPassword)
+	return api, err
 }
 
 // UnrecognizedCallHandler handles calls to unknown pages (404).

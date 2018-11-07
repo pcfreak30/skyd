@@ -1,13 +1,22 @@
 package modules
 
 import (
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// ExplorerDir is the name of the directory that is typically used for the
+// explorer.
+const ExplorerDir = "explorer"
+
+// HashTypes for various entries in the explorer.
 const (
-	// ExplorerDir is the name of the directory that is typically used for the
-	// explorer.
-	ExplorerDir = "explorer"
+	BlockHashType           = "Blk"
+	TransactionHashType     = "Tx"
+	SiacoinOutputIdHashType = "Scoid"
+	FileContractIdHashType  = "Fcid"
+	SiafundOutputIdHashType = "Sfoid"
+	UnlockHashType          = "Uh"
 )
 
 type (
@@ -78,6 +87,14 @@ type (
 		// SiacoinOutputID returns all of the transaction ids associated with
 		// the provided siacoin output id.
 		SiacoinOutputID(types.SiacoinOutputID) []types.TransactionID
+
+		// PendingTransactions gets the list of transactions currently in the mempool
+		// These are pruned as transactions are confirmed or reverted, so this should
+		// only be used as a snapshot
+		PendingTransactions() []types.Transaction
+
+		//HashType returns the type of a hash as a string representation.
+		HashType(crypto.Hash) (string, error)
 
 		// FileContractHistory returns the history associated with a file
 		// contract, which includes the file contract itself and all of the

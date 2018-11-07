@@ -4,12 +4,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+)
 
-	"github.com/coreos/bbolt"
+const (
+	explorerPersist = modules.ExplorerDir + ".json"
 )
 
 var explorerMetadata = persist.Metadata{
@@ -37,17 +40,17 @@ func (e *Explorer) initPersist() error {
 		buckets := [][]byte{
 			bucketBlockFacts,
 			bucketBlockIDs,
-			bucketBlocksDifficulty,
 			bucketBlockTargets,
 			bucketFileContractHistories,
 			bucketFileContractIDs,
-			bucketInternal,
 			bucketSiacoinOutputIDs,
 			bucketSiacoinOutputs,
 			bucketSiafundOutputIDs,
 			bucketSiafundOutputs,
 			bucketTransactionIDs,
 			bucketUnlockHashes,
+			bucketHashType,
+			bucketInternal,
 		}
 		for _, b := range buckets {
 			_, err := tx.CreateBucketIfNotExists(b)
@@ -73,12 +76,11 @@ func (e *Explorer) initPersist() error {
 				return err
 			}
 		}
-
 		return nil
 	})
+
 	if err != nil {
 		return err
 	}
-
 	return nil
 }

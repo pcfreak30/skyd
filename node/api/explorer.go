@@ -2,25 +2,62 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/julienschmidt/httprouter"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-
-	"github.com/julienschmidt/httprouter"
 )
+
+const (
+	// MaxBlocksRequest is the maximum number of blocks a client can request.  10 is chosen
+	MaxBlocksRequest = 10
+)
+
+// explorerBlockSubscribe handles the upgrade from HTTP -> WS, creates a new subscriber and starts the socket writer
+func (api *API) explorerBlockSubscribe(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	conn, err := Upgrader.Upgrade(w, req, nil)
+	if err != nil && build.DEBUG {
+		log.Printf("Unable to upgrade request. Error: %s", err)
+		return
+	}
+	subscriber := &Subscriber{hub: api.hub, conn: conn, send: make(chan []byte, 256)}
+	subscriber.hub.registerBlock <- subscriber
+	go subscriber.SocketWriter()
+}
+
+// explorerTxSubscribe handles the upgrade from HTTP -> WS, creates a new subscriber and starts the socket writer
+func (api *API) explorerTxSubscribe(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	conn, err := Upgrader.Upgrade(w, req, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	subscriber := &Subscriber{hub: api.hub, conn: conn, send: make(chan []byte, 256)}
+	subscriber.hub.registerTx <- subscriber
+	go subscriber.SocketWriter()
+}
 
 type (
 	// ExplorerBlock is a block with some extra information such as the id and
 	// height. This information is provided for programs that may not be
 	// complex enough to compute the ID on their own.
 	ExplorerBlock struct {
-		MinerPayoutIDs []types.SiacoinOutputID `json:"minerpayoutids"`
+		MinerPayoutIDs []types.SiacoinOutputID `json:"minerpayoutids,omitempty"`
 		Transactions   []ExplorerTransaction   `json:"transactions"`
-		RawBlock       types.Block             `json:"rawblock"`
+		RawBlock       types.Block             `json:"rawblock,omitempty"`
+		modules.BlockFacts
+	}
 
+	// PendingExplorerBlock is a block with the current facts and list of
+	// transactions. It doesn't have an ID yet since it's still in progress
+	PendingExplorerBlock struct {
+		Transactions []ExplorerTransaction `json:"transactions"`
 		modules.BlockFacts
 	}
 
@@ -28,11 +65,10 @@ type (
 	// the parent block. This information is provided for programs that may not
 	// be complex enough to compute the extra information on their own.
 	ExplorerTransaction struct {
-		ID             types.TransactionID `json:"id"`
-		Height         types.BlockHeight   `json:"height"`
-		Parent         types.BlockID       `json:"parent"`
-		RawTransaction types.Transaction   `json:"rawtransaction"`
-
+		ID                                       types.TransactionID       `json:"id"`
+		Height                                   types.BlockHeight         `json:"height"`
+		Parent                                   types.BlockID             `json:"parent"`
+		RawTransaction                           types.Transaction         `json:"rawtransaction"`
 		SiacoinInputOutputs                      []types.SiacoinOutput     `json:"siacoininputoutputs"` // the outputs being spent
 		SiacoinOutputIDs                         []types.SiacoinOutputID   `json:"siacoinoutputids"`
 		FileContractIDs                          []types.FileContractID    `json:"filecontractids"`
@@ -47,16 +83,30 @@ type (
 		SiafundClaimOutputIDs                    []types.SiacoinOutputID   `json:"siafundclaimoutputids"`
 	}
 
-	// ExplorerGET is the object returned as a response to a GET request to
-	// /explorer.
-	ExplorerGET struct {
-		modules.BlockFacts
+	// ExplorerBlockGET is the object returned by a GET request to
+	// /explorer/pending.
+	ExplorerBlockGET struct {
+		Blocks []ExplorerBlock `json:"blocks"`
 	}
 
-	// ExplorerBlockGET is the object returned by a GET request to
-	// /explorer/block.
-	ExplorerBlockGET struct {
-		Block ExplorerBlock `json:"block"`
+	// ExplorerPendingBlockGET is the object returned by a GET request to
+	// /explorer/pending.
+	ExplorerPendingBlockGET struct {
+		PendingBlock PendingExplorerBlock `json:"block"`
+	}
+
+	// ExplorerConsensusChange is pushed to the websocket when a consensus change event occurs
+	// This allows subscribers to listen and react without having to poll the API
+	ExplorerConsensusChange struct {
+		AppliedBlocks  []ExplorerBlock `json:"applied_blocks"`
+		RevertedBlocks []types.BlockID `json:"reverted_blocks"`
+	}
+
+	// ExplorerUnconfirmedTransactionChange is pushed to the websocket when a transaction set update occurs
+	// This allows subscribers to listen and react without having to poll the API
+	ExplorerUnconfirmedTransactionChange struct {
+		AppliedTransactions  []ExplorerTransaction `json:"applied_txs"`
+		RevertedTransactions []types.TransactionID `json:"reverted_txs"`
 	}
 
 	// ExplorerHashGET is the object returned as a response to a GET request to
@@ -69,9 +119,9 @@ type (
 	// 'Blocks' will/may be filled out and everything else will be blank.
 	ExplorerHashGET struct {
 		HashType     string                `json:"hashtype"`
-		Block        ExplorerBlock         `json:"block"`
+		Block        *ExplorerBlock        `json:"block"`
 		Blocks       []ExplorerBlock       `json:"blocks"`
-		Transaction  ExplorerTransaction   `json:"transaction"`
+		Transaction  *ExplorerTransaction  `json:"transaction"`
 		Transactions []ExplorerTransaction `json:"transactions"`
 	}
 )
@@ -89,7 +139,7 @@ func (api *API) buildExplorerTransaction(height types.BlockHeight, parent types.
 	for _, sci := range txn.SiacoinInputs {
 		sco, exists := api.explorer.SiacoinOutput(sci.ParentID)
 		if build.DEBUG && !exists {
-			panic("could not find corresponding siacoin output")
+			log.Println("could not find corresponding siacoin output")
 		}
 		et.SiacoinInputOutputs = append(et.SiacoinInputOutputs, sco)
 	}
@@ -135,7 +185,7 @@ func (api *API) buildExplorerTransaction(height types.BlockHeight, parent types.
 	for _, sp := range txn.StorageProofs {
 		fileContract, fileContractRevisions, fileContractExists, _ := api.explorer.FileContractHistory(sp.ParentID)
 		if !fileContractExists && build.DEBUG {
-			panic("could not find a file contract connected with a storage proof")
+			log.Println("could not find a file contract connected with a storage proof")
 		}
 		var storageProofOutputs []types.SiacoinOutput
 		if len(fileContractRevisions) > 0 {
@@ -155,7 +205,7 @@ func (api *API) buildExplorerTransaction(height types.BlockHeight, parent types.
 	for _, sci := range txn.SiafundInputs {
 		sco, exists := api.explorer.SiafundOutput(sci.ParentID)
 		if build.DEBUG && !exists {
-			panic("could not find corresponding siafund output")
+			log.Println("could not find corresponding siafund output")
 		}
 		et.SiafundInputOutputs = append(et.SiafundInputOutputs, sco)
 	}
@@ -186,6 +236,9 @@ func (api *API) buildExplorerBlock(height types.BlockHeight, block types.Block) 
 	facts, exists := api.explorer.BlockFacts(height)
 	if build.DEBUG && !exists {
 		panic("incorrect request to buildExplorerBlock - block does not exist")
+	} else if !exists {
+		log.Printf("incorrect request to buildExplorerBlock - block does not exist")
+		return ExplorerBlock{}
 	}
 
 	return ExplorerBlock{
@@ -197,13 +250,69 @@ func (api *API) buildExplorerBlock(height types.BlockHeight, block types.Block) 
 	}
 }
 
-// explorerHandler handles API calls to /explorer/blocks/:height.
+// explorerBlocksHandler handles API calls to /explorer/blocks/:height.
 func (api *API) explorerBlocksHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse the height that's being requested.
 	var height types.BlockHeight
 	_, err := fmt.Sscan(ps.ByName("height"), &height)
+	// if the height is not found in the params, looks for to/from.
 	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		queryValues := req.URL.Query()
+		fromStr := queryValues.Get("from")
+		//if the "height" is not found in the params and "from" is not found in the params, throw an error
+		if fromStr == "" {
+			WriteError(w, Error{fmt.Sprintf("Must provide a 'from' parameter when not specifiying 'height' ")}, http.StatusBadRequest)
+			return
+		}
+		fromInt, err := strconv.Atoi(fromStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'from' parameter: %s.  Error: %s", fromStr, err)}, http.StatusBadRequest)
+			return
+		}
+		from := types.BlockHeight(fromInt)
+
+		toStr := queryValues.Get("to")
+		var to types.BlockHeight
+		// if "to" isn't found, set "to" equal to the Height
+		if toStr == "" {
+			to = api.cs.Height()
+		} else {
+			toInt, err := strconv.Atoi(toStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("Invalid 'to' parameter: %s.  Error: %s", fromStr, err)}, http.StatusBadRequest)
+				return
+			}
+			to = types.BlockHeight(toInt)
+		}
+
+		// if from > to, throw an exception, because that's impossible query condition
+		if from > to {
+			WriteError(w, Error{"from paramter must be less than the to parameter"}, http.StatusBadRequest)
+			return
+		}
+
+		// if "to" is greater than the current consensus Height, that's an impossible query condition
+		if to > api.cs.Height() {
+			WriteError(w, Error{fmt.Sprintf("to paramater must be less than the current block height of: %d", api.cs.Height())}, http.StatusBadRequest)
+			return
+		}
+
+		if to-from > MaxBlocksRequest {
+			WriteError(w, Error{fmt.Sprintf("to paramater must be less than the current block height of: %d", api.cs.Height())}, http.StatusBadRequest)
+			return
+		}
+
+		var blockGet ExplorerBlockGET
+		for blockHeight := from; blockHeight <= to; blockHeight++ {
+			block, exists := api.cs.BlockAtHeight(blockHeight)
+			if !exists {
+				WriteError(w, Error{fmt.Sprintf("no block found at height %d in call to /explorer/block.  This is a server error, please contact the operator of this explorer", blockHeight)}, http.StatusInternalServerError)
+				return
+			}
+			blockGet.Blocks = append(blockGet.Blocks, api.buildExplorerBlock(blockHeight, block))
+		}
+		// Fetch and return the explorer blocks.
+		WriteJSON(w, blockGet)
 		return
 	}
 
@@ -214,7 +323,7 @@ func (api *API) explorerBlocksHandler(w http.ResponseWriter, req *http.Request, 
 		return
 	}
 	WriteJSON(w, ExplorerBlockGET{
-		Block: api.buildExplorerBlock(height, block),
+		Blocks: []ExplorerBlock{api.buildExplorerBlock(height, block)},
 	})
 }
 
@@ -266,95 +375,138 @@ func (api *API) explorerHashHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 
-	// Try the hash as a block id.
-	block, height, exists := api.explorer.Block(types.BlockID(hash))
-	if exists {
-		WriteJSON(w, ExplorerHashGET{
-			HashType: "blockid",
-			Block:    api.buildExplorerBlock(height, block),
-		})
+	hashType, err := api.explorer.HashType(hash)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("hash not found in hashtype db.  %s", err)}, http.StatusBadRequest)
 		return
 	}
 
-	// Try the hash as a transaction id.
-	block, height, exists = api.explorer.Transaction(types.TransactionID(hash))
-	if exists {
+	var hg ExplorerHashGET
+	switch hashType {
+	case modules.BlockHashType:
+		block, height, exists := api.explorer.Block(types.BlockID(hash))
+		if !exists {
+			WriteError(w, Error{"hash found to be a Block HashType, but not found in database"}, http.StatusInternalServerError)
+			return
+		}
+		b := api.buildExplorerBlock(height, block)
+		hg = ExplorerHashGET{
+			HashType: "blockid",
+			Block:    &b,
+		}
+
+	case modules.TransactionHashType:
+		block, height, exists := api.explorer.Transaction(types.TransactionID(hash))
+		if !exists {
+			WriteError(w, Error{"hash found to be a Transaction HashType, but not found in database"}, http.StatusInternalServerError)
+			return
+		}
 		var txn types.Transaction
 		for _, t := range block.Transactions {
 			if t.ID() == types.TransactionID(hash) {
 				txn = t
 			}
 		}
-		WriteJSON(w, ExplorerHashGET{
+		tx := api.buildExplorerTransaction(height, block.ID(), txn)
+		hg = ExplorerHashGET{
 			HashType:    "transactionid",
-			Transaction: api.buildExplorerTransaction(height, block.ID(), txn),
-		})
-		return
-	}
+			Transaction: &tx,
+		}
 
-	// Try the hash as a siacoin output id.
-	txids := api.explorer.SiacoinOutputID(types.SiacoinOutputID(hash))
-	if len(txids) != 0 {
+	case modules.SiacoinOutputIdHashType:
+		txids := api.explorer.SiacoinOutputID(types.SiacoinOutputID(hash))
+		if len(txids) == 0 {
+			WriteError(w, Error{"hash found to be a SiacoinOutputId HashType, but not found in database"}, http.StatusInternalServerError)
+			return
+		}
 		txns, blocks := api.buildTransactionSet(txids)
-		WriteJSON(w, ExplorerHashGET{
+		hg = ExplorerHashGET{
 			HashType:     "siacoinoutputid",
 			Blocks:       blocks,
 			Transactions: txns,
-		})
-		return
-	}
+		}
 
-	// Try the hash as a file contract id.
-	txids = api.explorer.FileContractID(types.FileContractID(hash))
-	if len(txids) != 0 {
+	case modules.FileContractIdHashType:
+		txids := api.explorer.FileContractID(types.FileContractID(hash))
+		if len(txids) == 0 {
+			WriteError(w, Error{"hash found to be a FileContractId HashType, but not found in database"}, http.StatusInternalServerError)
+			return
+		}
 		txns, blocks := api.buildTransactionSet(txids)
-		WriteJSON(w, ExplorerHashGET{
+		hg = ExplorerHashGET{
 			HashType:     "filecontractid",
 			Blocks:       blocks,
 			Transactions: txns,
-		})
-		return
-	}
+		}
 
-	// Try the hash as a siafund output id.
-	txids = api.explorer.SiafundOutputID(types.SiafundOutputID(hash))
-	if len(txids) != 0 {
+	case modules.SiafundOutputIdHashType:
+		txids := api.explorer.SiafundOutputID(types.SiafundOutputID(hash))
+		if len(txids) == 0 {
+			WriteError(w, Error{"hash found to be a SiafundOutputId HashType, but not found in database"}, http.StatusInternalServerError)
+			return
+		}
 		txns, blocks := api.buildTransactionSet(txids)
-		WriteJSON(w, ExplorerHashGET{
+		hg = ExplorerHashGET{
 			HashType:     "siafundoutputid",
 			Blocks:       blocks,
 			Transactions: txns,
-		})
-		return
-	}
+		}
 
-	// Try the hash as an unlock hash. Unlock hash is checked last because
-	// unlock hashes do not have collision-free guarantees. Someone can create
-	// an unlock hash that collides with another object id. They will not be
-	// able to use the unlock hash, but they can disrupt the explorer. This is
-	// handled by checking the unlock hash last. Anyone intentionally creating
-	// a colliding unlock hash (such a collision can only happen if done
-	// intentionally) will be unable to find their unlock hash in the
-	// blockchain through the explorer hash lookup.
-	txids = api.explorer.UnlockHash(types.UnlockHash(hash))
-	if len(txids) != 0 {
+	default:
+		// Try the hash as an unlock hash. Unlock hash is checked last because
+		// unlock hashes do not have collision-free guarantees. Someone can create
+		// an unlock hash that collides with another object id. They will not be
+		// able to use the unlock hash, but they can disrupt the explorer. This is
+		// handled by checking the unlock hash last. Anyone intentionally creating
+		// a colliding unlock hash (such a collision can only happen if done
+		// intentionally) will be unable to find their unlock hash in the
+		// blockchain through the explorer hash lookup.
+		txids := api.explorer.UnlockHash(types.UnlockHash(hash))
+		if len(txids) == 0 {
+			// Hash not found, return an error.
+			WriteError(w, Error{"unrecognized hash used as input to /explorer/hash"}, http.StatusBadRequest)
+			return
+		}
 		txns, blocks := api.buildTransactionSet(txids)
-		WriteJSON(w, ExplorerHashGET{
+		hg = ExplorerHashGET{
 			HashType:     "unlockhash",
 			Blocks:       blocks,
 			Transactions: txns,
-		})
+		}
+	}
+	WriteJSON(w, hg)
+}
+
+// explorerHandler handles API calls to /explorer which returns the current block
+func (api *API) explorerHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	facts := api.explorer.LatestBlockFacts()
+	// Fetch and return the explorer block.
+	block, exists := api.cs.BlockAtHeight(facts.Height)
+	if !exists {
+		WriteError(w, Error{"no block found at input height in call to /explorer/block"}, http.StatusBadRequest)
 		return
 	}
 
-	// Hash not found, return an error.
-	WriteError(w, Error{"unrecognized hash used as input to /explorer/hash"}, http.StatusBadRequest)
+	WriteJSON(w, ExplorerBlockGET{
+		Blocks: []ExplorerBlock{api.buildExplorerBlock(facts.Height, block)},
+	})
 }
 
-// explorerHandler handles API calls to /explorer
-func (api *API) explorerHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// pendingBlockHandler handles API calls to /explorer/pending which returns the pending block
+func (api *API) pendingBlockHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	cb := api.cs.CurrentBlock()
+
+	pendingTxs := api.explorer.PendingTransactions()
+	var explorerReps []ExplorerTransaction
+	for _, ptx := range pendingTxs {
+		explorerReps = append(explorerReps, api.buildExplorerTransaction(api.cs.Height()+1, cb.ParentID, ptx))
+	}
+
 	facts := api.explorer.LatestBlockFacts()
-	WriteJSON(w, ExplorerGET{
-		BlockFacts: facts,
+	WriteJSON(w, ExplorerBlockGET{
+		Blocks: []ExplorerBlock{{
+			BlockFacts:   facts,
+			Transactions: explorerReps,
+		}},
 	})
 }
