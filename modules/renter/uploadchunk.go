@@ -1,8 +1,6 @@
 package renter
 
 import (
-	"io"
-	"os"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -119,65 +117,6 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	}
 }
 
-// managedDownloadLogicalChunkData will fetch the logical chunk data by sending a
-// download to the renter's downloader, and then using the data that gets
-// returned.
-func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) error {
-	//  Determine what the download length should be. Normally it is just the
-	//  chunk size, but if this is the last chunk we need to download less
-	//  because the file is not that large.
-	//
-	// TODO: There is a disparity in the way that the upload and download code
-	// handle the last chunk, which may not be full sized.
-	downloadLength := chunk.length
-	if chunk.index == chunk.fileEntry.NumChunks()-1 && chunk.fileEntry.Size()%chunk.length != 0 {
-		downloadLength = chunk.fileEntry.Size() % chunk.length
-	}
-
-	// Create the download.
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-	d, err := r.managedNewDownload(downloadParams{
-		destination:     buf,
-		destinationType: "buffer",
-		file:            chunk.fileEntry.SiaFile.Snapshot(),
-
-		latencyTarget: 200e3, // No need to rush latency on repair downloads.
-		length:        downloadLength,
-		needsMemory:   false, // We already requested memory, the download memory fits inside of that.
-		offset:        uint64(chunk.offset),
-		overdrive:     0, // No need to rush the latency on repair downloads.
-		priority:      0, // Repair downloads are completely de-prioritized.
-	})
-	if err != nil {
-		return err
-	}
-
-	// Register some cleanup for when the download is done.
-	d.OnComplete(func(_ error) error {
-		// Update the access time when the download is done.
-		return chunk.fileEntry.SiaFile.UpdateAccessTime()
-	})
-
-	// Set the in-memory buffer to nil just to be safe in case of a memory
-	// leak.
-	defer func() {
-		d.destination = nil
-	}()
-
-	// Wait for the download to complete.
-	select {
-	case <-d.completeChan:
-	case <-r.tg.StopChan():
-		return errors.New("repair download interrupted by stop call")
-	}
-	if d.Err() != nil {
-		buf.buf = nil
-		return d.Err()
-	}
-	chunk.logicalChunkData = [][]byte(buf.buf)
-	return nil
-}
-
 // managedFetchAndRepairChunk will fetch the logical data for a chunk, create
 // the physical pieces for the chunk, and then distribute them.
 func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
@@ -278,48 +217,30 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 // chunk.data should be passed as 'nil' to the download, to keep memory usage as
 // light as possible.
 func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
-	// Only download this file if more than 25% of the redundancy is missing.
+	// Decide which type of source to use for the chunk.
+	var source logicalChunkDataSource
 	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
 	minMissingPiecesToDownload := int(numParityPieces * RemoteRepairDownloadThreshold)
 	download := chunk.piecesCompleted+minMissingPiecesToDownload < chunk.piecesNeeded
 
-	// Download the chunk if it's not on disk.
-	if chunk.fileEntry.LocalPath() == "" && download {
-		return r.managedDownloadLogicalChunkData(chunk)
-	} else if chunk.fileEntry.LocalPath() == "" {
-		return errors.New("file not available locally")
-	}
-
-	// Try to read the data from disk. If that fails at any point, prefer to
-	// download the chunk.
-	//
-	// TODO: Might want to remove the file from the renter tracking if the disk
-	// loading fails. Should do this after we swap the file format, the tracking
-	// data for the file should reside in the file metadata and not in a
-	// separate struct.
-	osFile, err := os.Open(chunk.fileEntry.LocalPath())
+	// Try reading the file from disk.
+	ds, err := dataSourceFromFile(chunk.fileEntry.LocalPath(), chunk.offset, int64(chunk.length))
 	if err != nil && download {
-		return r.managedDownloadLogicalChunkData(chunk)
+		// Try downloading the file.
+		source = dataSourceFromSia(r, chunk.fileEntry.SiaPath(), chunk.offset, int64(chunk.length))
 	} else if err != nil {
-		return errors.Extend(err, errors.New("failed to open file locally"))
+		return errors.New("Not fetching logical data remotely due to high redundancy")
+	} else if err == nil {
+		source = ds
 	}
-	defer osFile.Close()
 	// TODO: Once we have enabled support for small chunks, we should stop
 	// needing to ignore the EOF errors, because the chunk size should always
 	// match the tail end of the file. Until then, we ignore io.EOF.
 	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
-	_, err = buf.ReadFrom(sr)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF && download {
-		r.log.Debugln("failed to read file, downloading instead:", err)
-		return r.managedDownloadLogicalChunkData(chunk)
-	} else if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		r.log.Debugln("failed to read file locally:", err)
-		return errors.Extend(err, errors.New("failed to read file locally"))
+	if _, err := buf.ReadFrom(source); err != nil {
+		return errors.AddContext(err, "failed to fetch data for repairing chunk")
 	}
 	chunk.logicalChunkData = buf.buf
-
-	// Data successfully read from disk.
 	return nil
 }
 

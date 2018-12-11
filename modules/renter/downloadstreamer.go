@@ -15,9 +15,13 @@ type (
 	// streamer is a modules.Streamer that can be used to stream downloads from
 	// the sia network.
 	streamer struct {
+		latency         time.Duration
+		needsMemory     bool
 		staticFile      *siafile.Snapshot
 		staticFileEntry *siafile.SiaFileSetEntry
 		offset          int64
+		overdrive       int
+		priority        uint64
 		r               *Renter
 	}
 )
@@ -36,6 +40,12 @@ func min(values ...uint64) uint64 {
 // Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
 func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
+	return r.managedStreamer(siaPath, true, 1000, 5, 50*time.Millisecond)
+}
+
+// managedStreamer creates a modules.Streamer that can be used to stream downloads from
+// the sia network.
+func (r *Renter) managedStreamer(siaPath string, needsMemory bool, priority uint64, overdrive int, latency time.Duration) (string, modules.Streamer, error) {
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
@@ -43,6 +53,10 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 	}
 	// Create the streamer
 	s := &streamer{
+		latency:         latency,
+		needsMemory:     needsMemory,
+		overdrive:       overdrive,
+		priority:        priority,
 		staticFile:      entry.Snapshot(),
 		staticFileEntry: entry,
 		r:               r,
@@ -90,12 +104,12 @@ func (s *streamer) Read(p []byte) (n int, err error) {
 		destinationString: "httpresponse",
 		file:              s.staticFile,
 
-		latencyTarget: 50 * time.Millisecond, // TODO low default until full latency suport is added.
+		latencyTarget: s.latency,
 		length:        length,
-		needsMemory:   true,
+		needsMemory:   s.needsMemory,
 		offset:        uint64(s.offset),
-		overdrive:     5,    // TODO: high default until full overdrive support is added.
-		priority:      1000, // TODO: high default until full priority support is added.
+		overdrive:     s.overdrive,
+		priority:      s.priority,
 	})
 	if err != nil {
 		err = errors.Compose(err, ddw.Close())
