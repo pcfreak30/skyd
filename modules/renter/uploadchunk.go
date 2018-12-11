@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"io"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -237,7 +238,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// needing to ignore the EOF errors, because the chunk size should always
 	// match the tail end of the file. Until then, we ignore io.EOF.
 	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-	if _, err := buf.ReadFrom(source); err != nil {
+	if _, err := buf.ReadFrom(source); err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
 		return errors.AddContext(err, "failed to fetch data for repairing chunk")
 	}
 	chunk.logicalChunkData = buf.buf
