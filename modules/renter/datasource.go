@@ -62,7 +62,10 @@ func (dsf *dataSourceFile) Read(d []byte) (int, error) {
 	}
 	defer f.Close()
 	sr := io.NewSectionReader(f, dsf.chunkOffset, dsf.chunkLength)
-	return sr.Read(d)
+	n, err := sr.Read(d)
+	dsf.chunkOffset += int64(n)
+	dsf.chunkLength -= int64(n)
+	return n, err
 }
 
 // Read implements the logicalDataSource interface.
@@ -77,5 +80,7 @@ func (dss *dataSourceSia) Read(d []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return s.Read(d)
+	n, err := s.Read(d)
+	dss.chunkOffset += int64(n)
+	return n, err
 }
