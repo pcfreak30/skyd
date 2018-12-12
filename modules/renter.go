@@ -571,8 +571,13 @@ type Renter interface {
 // Streamer is the interface implemented by the Renter's streamer type which
 // allows for streaming files uploaded to the Sia network.
 type Streamer interface {
+	io.ReaderAt
 	io.ReadSeeker
 	io.Closer
+
+	// ReadToDestination reads length bytes starting at offset to a download
+	// destination.
+	ReadToDestination(dd DownloadDestination, chunkOffset, chunkLength int64) (int64, error)
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's
@@ -584,4 +589,16 @@ type RenterDownloadParameters struct {
 	Offset      uint64
 	SiaPath     string
 	Destination string
+}
+
+// DownloadDestination is a wrapper for the different types of writing that we
+// can do when recovering and writing the logical data of a file. The wrapper
+// needs to convert the various write-at calls into writes that make sense to
+// the underlying file, buffer, or stream.
+//
+// For example, if the underlying object is a file, the WriteAt call is just a
+// passthrough function. But if the underlying object is a stream, WriteAt may
+// block while it waits for previous data to be written.
+type DownloadDestination interface {
+	WriteAt(data []byte, offset int64) (int, error)
 }

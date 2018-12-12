@@ -2,7 +2,9 @@ package renter
 
 import (
 	"io"
+	"os"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -219,29 +221,69 @@ func (r *Renter) managedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 // light as possible.
 func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
 	// Decide which type of source to use for the chunk.
-	var source logicalChunkDataSource
 	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
 	minMissingPiecesToDownload := int(numParityPieces * RemoteRepairDownloadThreshold)
 	download := chunk.piecesCompleted+minMissingPiecesToDownload < chunk.piecesNeeded
 
+	// Prepare a buffer to store the fetched data.
+	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
+
 	// Try reading the file from disk.
-	ds, err := dataSourceFromFile(chunk.fileEntry.LocalPath(), chunk.offset, int64(chunk.length))
+	err := managedFetchLogicalChunkDataFromFile(buf, chunk)
 	if err != nil && download {
-		// Try downloading the file.
-		source = dataSourceFromSia(r, chunk.fileEntry.SiaPath(), chunk.offset, int64(chunk.length))
+		// Try downloading the file if it's not available on disk.
+		err = r.managedFetchLogicalChunkDataFromSia(buf, chunk)
 	} else if err != nil {
-		return errors.New("Not fetching logical data remotely due to high redundancy")
-	} else if err == nil {
-		source = ds
+		// Not fetching logical data remotely since the redundancy is still
+		// high enough.
+		return errors.New("not fetching logical data remotely due to high enough redundancy")
 	}
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch logical data for chunk")
+	}
+	chunk.logicalChunkData = buf.buf
+	return nil
+}
+
+// managedFetchLogicalChunkDataFromFile reads the logical data of a chunk from
+// file into a downloadDestination.
+func managedFetchLogicalChunkDataFromFile(buf downloadDestinationBuffer, chunk *unfinishedUploadChunk) error {
+	// Try to open the file.
+	f, err := os.Open(chunk.fileEntry.LocalPath())
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	// Create a section reader to guarantee that we only read the correct section.
+	sr := io.NewSectionReader(f, chunk.offset, int64(chunk.length))
+	// Read the chunk data into the destination.
+	_, err = buf.ReadFrom(sr)
+	// Ignore EOF errors.
 	// TODO: Once we have enabled support for small chunks, we should stop
 	// needing to ignore the EOF errors, because the chunk size should always
 	// match the tail end of the file. Until then, we ignore io.EOF.
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-	if _, err := buf.ReadFrom(source); err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
-		return errors.AddContext(err, "failed to fetch data for repairing chunk")
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return err
 	}
-	chunk.logicalChunkData = buf.buf
+	return nil
+}
+
+// managedFetchLogicalChunkDataFromSia reads the logical data of a chunk from
+// the Sia network, directly into a downloadDestination.
+func (r *Renter) managedFetchLogicalChunkDataFromSia(buf downloadDestinationBuffer, chunk *unfinishedUploadChunk) error {
+	_, s, err := r.managedStreamer(chunk.fileEntry.SiaPath(), false, 0, 0, 200*time.Millisecond)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	_, err = s.ReadToDestination(buf, chunk.offset, int64(chunk.length))
+	// Ignore EOF errors.
+	// TODO: Once we have enabled support for small chunks, we should stop
+	// needing to ignore the EOF errors, because the chunk size should always
+	// match the tail end of the file. Until then, we ignore io.EOF.
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return err
+	}
 	return nil
 }
 

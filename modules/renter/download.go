@@ -163,7 +163,7 @@ type (
 		staticStartTime time.Time // Set immediately when the download object is created.
 
 		// Basic information about the file.
-		destination           downloadDestination
+		destination           modules.DownloadDestination
 		destinationString     string // The string reported to the user to indicate the download's destination.
 		staticDestinationType string // "memory buffer", "http stream", "file", etc.
 		staticLength          uint64 // Length to download starting from the offset.
@@ -183,10 +183,10 @@ type (
 
 	// downloadParams is the set of parameters to use when downloading a file.
 	downloadParams struct {
-		destination       downloadDestination // The place to write the downloaded data.
-		destinationType   string              // "file", "buffer", "http stream", etc.
-		destinationString string              // The string to report to the user for the destination.
-		file              *siafile.Snapshot   // The file to download.
+		destination       modules.DownloadDestination // The place to write the downloaded data.
+		destinationType   string                      // "file", "buffer", "http stream", etc.
+		destinationString string                      // The string to report to the user for the destination.
+		file              *siafile.Snapshot           // The file to download.
 
 		latencyTarget time.Duration // Workers above this latency will be automatically put on standby initially.
 		length        uint64        // Length of download. Cannot be 0.
@@ -359,7 +359,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	}
 
 	// Instantiate the correct downloadWriter implementation.
-	var dw downloadDestination
+	var dw modules.DownloadDestination
 	var destinationType string
 	if isHTTPResp {
 		dw = newDownloadDestinationWriter(p.Httpwriter)

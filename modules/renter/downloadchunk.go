@@ -37,7 +37,7 @@ type downloadPieceInfo struct {
 // stuck and always rejecting all the standby workers.
 type unfinishedDownloadChunk struct {
 	// Fetch + Write instructions - read only or otherwise thread safe.
-	destination downloadDestination // Where to write the recovered logical chunk.
+	destination modules.DownloadDestination // Where to write the recovered logical chunk.
 	erasureCode modules.ErasureCoder
 	masterKey   crypto.CipherKey
 

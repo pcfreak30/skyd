@@ -20,25 +20,37 @@ import (
 	"errors"
 	"io"
 	"sync"
-)
 
-// downloadDestination is a wrapper for the different types of writing that we
-// can do when recovering and writing the logical data of a file. The wrapper
-// needs to convert the various write-at calls into writes that make sense to
-// the underlying file, buffer, or stream.
-//
-// For example, if the underlying object is a file, the WriteAt call is just a
-// passthrough function. But if the underlying object is a stream, WriteAt may
-// block while it waits for previous data to be written.
-type downloadDestination interface {
-	WriteAt(data []byte, offset int64) (int, error)
-}
+	"gitlab.com/NebulousLabs/Sia/modules"
+)
 
 // downloadDestinationBuffer writes logical chunk data to an in-memory buffer.
 // This buffer is primarily used when performing repairs on uploads.
 type downloadDestinationBuffer struct {
 	buf       [][]byte
 	pieceSize uint64
+}
+
+// downloadDestinationSlice is an implementation of downloadDestination which
+// implements the interface for a simple byte slice.
+type downloadDestinationSlice []byte
+
+// NewDownloadDestinationSlice creates a new downloadDestinationSlice from a
+// byte slice.
+func NewDownloadDestinationSlice(b []byte) modules.DownloadDestination {
+	return downloadDestinationSlice(b)
+}
+
+// WriteAt implements the downloadDestination interface.
+func (dds downloadDestinationSlice) WriteAt(b []byte, off int64) (n int, err error) {
+	if off > int64(len(dds)) {
+		return 0, errors.New("offset out of bounds")
+	}
+	n = copy(dds[off:], b)
+	if n < len(b) {
+		return n, io.EOF
+	}
+	return n, nil
 }
 
 // NewDownloadDestinationBuffer allocates the necessary number of shards for
@@ -129,7 +141,7 @@ var (
 
 // newDownloadDestinationWriter takes an io.Writer and converts it
 // into a downloadDestination.
-func newDownloadDestinationWriter(w io.Writer) *downloadDestinationWriter {
+func newDownloadDestinationWriter(w io.Writer) modules.DownloadDestination {
 	return &downloadDestinationWriter{Writer: w}
 }
 

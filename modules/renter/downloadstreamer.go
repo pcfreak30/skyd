@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"bytes"
 	"io"
 	"math"
 	"time"
@@ -76,74 +75,22 @@ func (s *streamer) Close() error {
 // data from the sia network and block until the download is complete.  To
 // prevent http.ServeContent from requesting too much data at once, Read can
 // only request a single chunk at once.
-func (s *streamer) Read(p []byte) (n int, err error) {
-	// Get the file's size
-	fileSize := int64(s.staticFile.Size())
-
-	// Make sure we haven't reached the EOF yet.
-	if s.offset >= fileSize {
-		return 0, io.EOF
-	}
-
-	// Calculate how much we can download. We never download more than a single chunk.
-	chunkIndex, chunkOffset := s.staticFile.ChunkIndexByOffset(uint64(s.offset))
-	if chunkIndex == s.staticFile.NumChunks() {
-		return 0, io.EOF
-	}
-	remainingData := uint64(fileSize - s.offset)
-	requestedData := uint64(len(p))
-	remainingChunk := s.staticFile.ChunkSize() - chunkOffset
-	length := min(remainingData, requestedData, remainingChunk)
-
-	// Download data.
-	buffer := bytes.NewBuffer([]byte{})
-	ddw := newDownloadDestinationWriter(buffer)
-	d, err := s.r.managedNewDownload(downloadParams{
-		destination:       ddw,
-		destinationType:   destinationTypeSeekStream,
-		destinationString: "httpresponse",
-		file:              s.staticFile,
-
-		latencyTarget: s.latency,
-		length:        length,
-		needsMemory:   s.needsMemory,
-		offset:        uint64(s.offset),
-		overdrive:     s.overdrive,
-		priority:      s.priority,
-	})
-	if err != nil {
-		err = errors.Compose(err, ddw.Close())
-		return 0, errors.AddContext(err, "failed to create new download")
-	}
-
-	// Register some cleanup for when the download is done.
-	d.OnComplete(func(_ error) error {
-		// close the destination buffer to avoid deadlocks.
-		return ddw.Close()
-	})
-
-	// Set the in-memory buffer to nil just to be safe in case of a memory
-	// leak.
-	defer func() {
-		d.destination = nil
-	}()
-
-	// Block until the download has completed.
-	select {
-	case <-d.completeChan:
-		if d.Err() != nil {
-			return 0, errors.AddContext(d.Err(), "download failed")
-		}
-	case <-s.r.tg.StopChan():
-		return 0, errors.New("download interrupted by shutdown")
-	}
-
-	// Copy downloaded data into buffer.
-	copy(p, buffer.Bytes())
-
+func (s *streamer) Read(p []byte) (int, error) {
+	n, err := s.read(NewDownloadDestinationSlice(p), s.offset, int64(len(p)))
 	// Adjust offset
-	s.offset += int64(length)
-	return int(length), nil
+	s.offset += int64(n)
+	return n, err
+}
+
+// ReadAt implements the ReaderAt interface.
+func (s *streamer) ReadAt(p []byte, off int64) (int, error) {
+	return s.read(NewDownloadDestinationSlice(p), off, int64(len(p)))
+}
+
+// ReadToDestination reads l bytes to the downloadDestination dd.
+func (s *streamer) ReadToDestination(dd modules.DownloadDestination, off, len int64) (int64, error) {
+	n, err := s.read(dd, off, len)
+	return int64(n), err
 }
 
 // Seek sets the offset for the next Read to offset, interpreted
@@ -168,4 +115,63 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 	}
 	s.offset = newOffset
 	return s.offset, nil
+}
+
+// read is a custom read method which reads l bytes to a downloadDestination
+// instead of a byte slice. Apart from that it behaves exactly like the
+// standard Read method.
+func (s *streamer) read(dd modules.DownloadDestination, off, l int64) (n int, err error) {
+	// Get the file's size
+	fileSize := int64(s.staticFile.Size())
+
+	// Make sure we haven't reached the EOF yet.
+	if off >= fileSize {
+		return 0, io.EOF
+	}
+
+	// Calculate how much we can download. We never download more than a single chunk.
+	chunkIndex, chunkOffset := s.staticFile.ChunkIndexByOffset(uint64(off))
+	if chunkIndex == s.staticFile.NumChunks() {
+		return 0, io.EOF
+	}
+	remainingData := uint64(fileSize - s.offset)
+	requestedData := uint64(l)
+	remainingChunk := s.staticFile.ChunkSize() - chunkOffset
+	length := min(remainingData, requestedData, remainingChunk)
+
+	// Download data
+	d, err := s.r.managedNewDownload(downloadParams{
+		destination:       dd,
+		destinationType:   destinationTypeSeekStream,
+		destinationString: "httpresponse",
+		file:              s.staticFile,
+
+		latencyTarget: s.latency,
+		length:        length,
+		needsMemory:   s.needsMemory,
+		offset:        uint64(s.offset),
+		overdrive:     s.overdrive,
+		priority:      s.priority,
+	})
+	if err != nil {
+		return 0, errors.AddContext(err, "failed to create new download")
+	}
+
+	// Set the in-memory buffer to nil just to be safe in case of a memory
+	// leak.
+	defer func() {
+		d.destination = nil
+	}()
+
+	// Block until the download has completed.
+	select {
+	case <-d.completeChan:
+		if d.Err() != nil {
+			return 0, errors.AddContext(d.Err(), "download failed")
+		}
+	case <-s.r.tg.StopChan():
+		return 0, errors.New("download interrupted by shutdown")
+	}
+
+	return int(length), nil
 }
