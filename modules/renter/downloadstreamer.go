@@ -39,7 +39,11 @@ func min(values ...uint64) uint64 {
 // Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
 func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
-	return r.managedStreamer(siaPath, true, 1000, 5, 50*time.Millisecond)
+	needsMemory := true                    // Streamer created by other package always needs memory.
+	priority := uint64(1000)               // high priority for user initiated stream.
+	overdrive := 5                         // high overdrive for streaming.
+	latencyTarget := 50 * time.Millisecond // streaming requires low latency.
+	return r.managedStreamer(siaPath, needsMemory, priority, overdrive, latencyTarget)
 }
 
 // managedStreamer creates a modules.Streamer that can be used to stream downloads from
