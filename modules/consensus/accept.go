@@ -30,7 +30,7 @@ func (cs *ConsensusSet) managedBroadcastBlock(b types.Block) {
 // validateHeaderAndBlock does some early, low computation verification on the
 // block. Callers should not assume that validation will happen in a particular
 // order.
-func (cs *ConsensusSet) validateHeaderAndBlock(tx database.Tx, b types.Block, id types.BlockID) (parent *database.Block, err error) {
+func (cs *ConsensusSet) validateHeaderAndBlock(tx database.Tx, b types.Block, id types.BlockID, currentTime types.Timestamp) (parent *database.Block, err error) {
 	// Check if the block is a DoS block - a known invalid block that is expensive
 	// to validate.
 	_, exists := cs.dosBlocks[id]
@@ -49,9 +49,9 @@ func (cs *ConsensusSet) validateHeaderAndBlock(tx database.Tx, b types.Block, id
 		return nil, errOrphan
 	}
 	// Check that the timestamp is not too far in the past to be acceptable.
-	minTimestamp := cs.blockRuleHelper.minimumValidChildTimestamp(tx, parent)
+	minTimestamp := minimumValidChildTimestamp(tx, parent)
 
-	err = cs.blockValidator.ValidateBlock(b, id, minTimestamp, parent.ChildTarget, parent.Height+1, cs.log)
+	err = validateBlock(b, id, minTimestamp, parent.ChildTarget, parent.Height+1, currentTime)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func (cs *ConsensusSet) validateHeader(tx database.Tx, h types.BlockHeader) erro
 	// downloads are implemented.
 
 	// Check that the timestamp is not too far in the past to be acceptable.
-	minTimestamp := cs.blockRuleHelper.minimumValidChildTimestamp(tx, parent)
+	minTimestamp := minimumValidChildTimestamp(tx, parent)
 	if minTimestamp > h.Timestamp {
 		return errEarlyTimestamp
 	}
@@ -225,7 +225,7 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 	setErr := cs.db.Update(func(tx database.Tx) error {
 		for i := 0; i < len(blocks); i++ {
 			// Start by checking the header of the block.
-			parent, err := cs.validateHeaderAndBlock(tx, blocks[i], blockIDs[i])
+			parent, err := cs.validateHeaderAndBlock(tx, blocks[i], blockIDs[i], types.CurrentTimestamp())
 			if err == modules.ErrBlockKnown {
 				// Skip over known blocks.
 				continue

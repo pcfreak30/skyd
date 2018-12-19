@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"sort"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -18,26 +19,6 @@ var (
 	errFutureTimestamp        = errors.New("block timestamp too far in future, but saved for later use")
 	errLargeBlock             = errors.New("block is too large to be accepted")
 )
-
-// blockValidator validates a Block against a set of block validity rules.
-type blockValidator interface {
-	// ValidateBlock validates a block against a minimum timestamp, a block
-	// target, and a block height.
-	ValidateBlock(types.Block, types.BlockID, types.Timestamp, types.Target, types.BlockHeight, *persist.Logger) error
-}
-
-// stdBlockValidator is the standard implementation of blockValidator.
-type stdBlockValidator struct {
-	// clock is a Clock interface that indicates the current system time.
-	clock types.Clock
-}
-
-// NewBlockValidator creates a new stdBlockValidator with default settings.
-func NewBlockValidator() stdBlockValidator {
-	return stdBlockValidator{
-		clock: types.StdClock{},
-	}
-}
 
 // checkMinerPayouts compares a block's miner payouts to the block's subsidy and
 // returns true if they are equal.
@@ -58,10 +39,37 @@ func checkTarget(b types.Block, id types.BlockID, target types.Target) bool {
 	return bytes.Compare(target[:], id[:]) >= 0
 }
 
+// minimumValidChildTimestamp returns the earliest timestamp that a child node
+// can have while still being valid. See section 'Block Timestamps' in
+// Consensus.md.
+func minimumValidChildTimestamp(tx database.Tx, b *database.Block) types.Timestamp {
+	// Get the previous MedianTimestampWindow timestamps.
+	windowTimes := make(types.TimestampSlice, types.MedianTimestampWindow)
+	windowTimes[0] = b.Timestamp
+	parent := b.ParentID
+	for i := uint64(1); i < types.MedianTimestampWindow; i++ {
+		// If the genesis block is 'parent', use the genesis block timestamp
+		// for all remaining times.
+		if parent == (types.BlockID{}) {
+			windowTimes[i] = windowTimes[i-1]
+			continue
+		}
+
+		// Get the next parent ID and timestamp
+		parentBlock, _ := tx.Block(parent)
+		parent = parentBlock.ParentID
+		windowTimes[i] = parentBlock.Timestamp
+	}
+	sort.Sort(windowTimes)
+
+	// Return the median of the sorted timestamps.
+	return windowTimes[len(windowTimes)/2]
+}
+
 // ValidateBlock validates a block against a minimum timestamp, a block target,
 // and a block height. Returns nil if the block is valid and an appropriate
 // error otherwise.
-func (bv stdBlockValidator) ValidateBlock(b types.Block, id types.BlockID, minTimestamp types.Timestamp, target types.Target, height types.BlockHeight, log *persist.Logger) error {
+func validateBlock(b types.Block, id types.BlockID, minTimestamp types.Timestamp, target types.Target, height types.BlockHeight, currentTime types.Timestamp) error {
 	// Check that the timestamp is not too far in the past to be acceptable.
 	if minTimestamp > b.Timestamp {
 		return errEarlyTimestamp
@@ -86,7 +94,7 @@ func (bv stdBlockValidator) ValidateBlock(b types.Block, id types.BlockID, minTi
 	// future and extreme future because there is an assumption that by the time
 	// the extreme future arrives, this block will no longer be a part of the
 	// longest fork because it will have been ignored by all of the miners.
-	if b.Timestamp > bv.clock.Now()+types.ExtremeFutureThreshold {
+	if b.Timestamp > currentTime+types.ExtremeFutureThreshold {
 		return errExtremeFutureTimestamp
 	}
 
@@ -98,12 +106,8 @@ func (bv stdBlockValidator) ValidateBlock(b types.Block, id types.BlockID, minTi
 	// Check if the block is in the near future, but too far to be acceptable.
 	// This is the last check because it's an expensive check, and not worth
 	// performing if the payouts are incorrect.
-	if b.Timestamp > bv.clock.Now()+types.FutureThreshold {
+	if b.Timestamp > currentTime+types.FutureThreshold {
 		return errFutureTimestamp
-	}
-
-	if log != nil {
-		log.Debugf("validated block at height %v, block size: %vB", height, blockSize)
 	}
 	return nil
 }

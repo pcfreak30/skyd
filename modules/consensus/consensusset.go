@@ -68,10 +68,6 @@ type ConsensusSet struct {
 	// whether the consensus set is synced with the network.
 	synced bool
 
-	// Interfaces to abstract the dependencies of the ConsensusSet.
-	blockRuleHelper blockRuleHelper
-	blockValidator  blockValidator
-
 	// Utilities
 	db         database.DB
 	staticDeps modules.Dependencies
@@ -110,9 +106,6 @@ func NewCustomConsensusSet(gateway modules.Gateway, bootstrap bool, persistDir s
 		},
 
 		dosBlocks: make(map[types.BlockID]struct{}),
-
-		blockRuleHelper: stdBlockRuleHelper{},
-		blockValidator:  NewBlockValidator(),
 
 		staticDeps: deps,
 		persistDir: persistDir,
@@ -351,7 +344,7 @@ func (cs *ConsensusSet) MinimumValidChildTimestamp(id types.BlockID) (timestamp 
 		if err != nil {
 			return err
 		}
-		timestamp = cs.blockRuleHelper.minimumValidChildTimestamp(tx, b)
+		timestamp = minimumValidChildTimestamp(tx, b)
 		exists = true
 		return nil
 	})

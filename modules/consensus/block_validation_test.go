@@ -6,17 +6,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// mockClock is a mock implementation of the types.Clock interface that allows
-// the client to pre-define a return value for Now().
-type mockClock struct {
-	now types.Timestamp
-}
-
-// Now returns mockClock's pre-defined Timestamp.
-func (c mockClock) Now() types.Timestamp {
-	return c.now
-}
-
 // TestUnitValidateBlock runs a series of unit tests for ValidateBlock.
 func TestUnitValidateBlock(t *testing.T) {
 	tests := []struct {
@@ -53,12 +42,7 @@ func TestUnitValidateBlock(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		blockValidator := stdBlockValidator{
-			clock: mockClock{
-				now: tt.now,
-			},
-		}
-		err := blockValidator.ValidateBlock(tt.block, tt.block.ID(), tt.minTimestamp, types.RootDepth, 0, nil)
+		err := validateBlock(tt.block, tt.block.ID(), tt.minTimestamp, types.RootDepth, 0, tt.now)
 		if err != tt.errWant {
 			t.Errorf("%s: got %v, want %v", tt.msg, err, tt.errWant)
 		}
