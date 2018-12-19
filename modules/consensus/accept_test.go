@@ -174,7 +174,6 @@ func TestUnitValidateHeaderAndBlock(t *testing.T) {
 	for _, tt := range tests {
 		cs := ConsensusSet{
 			dosBlocks: tt.dosBlocks,
-			marshaler: stdMarshaler{},
 			blockRuleHelper: mockBlockRuleHelper{
 				minTimestamp: tt.earliestValidTimestamp,
 			},
@@ -307,7 +306,6 @@ func TestUnitValidateHeader(t *testing.T) {
 	for _, tt := range tests {
 		cs := ConsensusSet{
 			dosBlocks: tt.dosBlocks,
-			marshaler: stdMarshaler{},
 			blockRuleHelper: mockBlockRuleHelper{
 				minTimestamp: tt.earliestValidTimestamp,
 			},

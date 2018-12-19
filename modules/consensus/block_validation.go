@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -29,16 +30,12 @@ type blockValidator interface {
 type stdBlockValidator struct {
 	// clock is a Clock interface that indicates the current system time.
 	clock types.Clock
-
-	// marshaler encodes and decodes between objects and byte slices.
-	marshaler marshaler
 }
 
 // NewBlockValidator creates a new stdBlockValidator with default settings.
 func NewBlockValidator() stdBlockValidator {
 	return stdBlockValidator{
-		clock:     types.StdClock{},
-		marshaler: stdMarshaler{},
+		clock: types.StdClock{},
 	}
 }
 
@@ -80,7 +77,7 @@ func (bv stdBlockValidator) ValidateBlock(b types.Block, id types.BlockID, minTi
 	}
 
 	// Check that the block is below the size limit.
-	blockSize := len(bv.marshaler.Marshal(b))
+	blockSize := len(encoding.Marshal(b))
 	if uint64(blockSize) > types.BlockSizeLimit {
 		return errLargeBlock
 	}
