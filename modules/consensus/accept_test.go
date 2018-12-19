@@ -1,146 +1,95 @@
 package consensus
 
 import (
-	"bytes"
 	"testing"
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-var (
-	mockValidBlock = types.Block{
-		Timestamp: 100,
-		ParentID:  mockParentID(),
-	}
-	mockInvalidBlock = types.Block{
-		Timestamp: 500,
-		ParentID:  mockParentID(),
-	}
-
-	serializedInvalidBlockMap = []blockMapPair{
-		{mockValidBlock.ParentID[:], []byte{1, 2, 3}},
-	}
-
-	serializedParentBlockMap = []blockMapPair{
-		{mockValidBlock.ParentID[:], encoding.Marshal(mockParent())},
-	}
-
-	serializedHighTargetParentBlockMap = []blockMapPair{
-		{mockValidBlock.ParentID[:], encoding.Marshal(mockParentHighTarget())},
-	}
-
-	serializedLowTargetParentBlockMap = []blockMapPair{
-		{mockValidBlock.ParentID[:], encoding.Marshal(mockParentLowTarget())},
-	}
-)
-
-type (
-	// blockMapPair represents a key-value pair in the mock block map.
-	blockMapPair struct {
-		key []byte
-		val []byte
-	}
-)
-
-type mockBlockMapTx struct {
-	pairs []blockMapPair
+// genesisBlockTx fakes the Block method of database.Tx for a single block:
+// the genesis block, with a custom ChildTarget. Other methods will panic.
+type genesisBlockTx struct {
+	target types.Target
 	database.Tx
 }
 
-func (tx mockBlockMapTx) Block(id types.BlockID) (*database.Block, bool) {
-	for _, p := range tx.pairs {
-		if bytes.Equal(p.key, id[:]) {
-			b := new(database.Block)
-			encoding.Unmarshal(p.val, b)
-			return b, true
-		}
+func (tx genesisBlockTx) Block(id types.BlockID) (*database.Block, bool) {
+	if id != types.GenesisID {
+		return nil, false
 	}
-	return nil, false
+	return &database.Block{
+		Block:       types.GenesisBlock,
+		ChildTarget: tx.target,
+	}, true
 }
 
-// mockParentID returns a mock BlockID value.
-func mockParentID() (parentID types.BlockID) {
-	parentID[0] = 42
-	return parentID
-}
-
-// mockParent returns a mock database.Block with its ChildTarget member
-// initialized to a dummy value.
-func mockParent() (parent database.Block) {
-	var mockTarget types.Target
-	mockTarget[0] = 56
-	parent.ChildTarget = mockTarget
-	return parent
-}
-
-// mockParent returns a mock database.Block with its ChildTarget member
-// initialized to a the maximum value.
-func mockParentHighTarget() (parent database.Block) {
-	parent.ChildTarget = types.RootDepth
-	return parent
-}
-
-// mockParent returns a mock database.Block with its ChildTarget member
-// initialized to the minimum value.
-func mockParentLowTarget() (parent database.Block) {
-	return parent
+func mockGenesisBlockTx(initialTarget types.Target) genesisBlockTx {
+	return genesisBlockTx{
+		target: initialTarget,
+	}
 }
 
 // TestUnitValidateHeaderAndBlock runs a series of unit tests for validateHeaderAndBlock.
 func TestUnitValidateHeaderAndBlock(t *testing.T) {
-	t.Skip("BROKEN -- need to actually calculate minimum timestamp from real blocks")
+	validBlock := types.Block{
+		ParentID:     types.GenesisID,
+		Timestamp:    types.GenesisTimestamp + 100,
+		MinerPayouts: []types.SiacoinOutput{{Value: types.CalculateCoinbase(1)}},
+	}
+	orphanBlock := types.Block{
+		ParentID: types.BlockID{42},
+	}
+	invalidBlock := types.Block{
+		ParentID:  types.GenesisID,
+		Timestamp: types.GenesisTimestamp + 100,
+		// missing miner payouts
+	}
+
 	var tests = []struct {
-		block         types.Block
-		dosBlocks     map[types.BlockID]struct{}
-		blockMapPairs []blockMapPair
-		currentTime   types.Timestamp
-		errWant       error
-		msg           string
+		block       types.Block
+		dosBlocks   map[types.BlockID]struct{}
+		currentTime types.Timestamp
+		errWant     error
+		msg         string
 	}{
 		{
-			block: mockValidBlock,
-			// Create a dosBlocks map where mockValidBlock is marked as a bad block.
-			dosBlocks: map[types.BlockID]struct{}{
-				mockValidBlock.ID(): {},
-			},
-			currentTime: mockValidBlock.Timestamp,
+			block:       validBlock,
+			dosBlocks:   make(map[types.BlockID]struct{}),
+			currentTime: validBlock.Timestamp,
+			errWant:     nil,
+			msg:         "validateHeaderAndBlock should accept a valid block",
+		},
+		{
+			block:       validBlock,
+			dosBlocks:   map[types.BlockID]struct{}{validBlock.ID(): {}},
+			currentTime: validBlock.Timestamp,
 			errWant:     errDoSBlock,
 			msg:         "validateHeaderAndBlock should reject known bad blocks",
 		},
 		{
-			block:       mockValidBlock,
+			block:       orphanBlock,
 			dosBlocks:   make(map[types.BlockID]struct{}),
-			currentTime: mockValidBlock.Timestamp,
+			currentTime: orphanBlock.Timestamp,
 			errWant:     errOrphan,
 			msg:         "validateHeaderAndBlock should reject a block if its parent block does not appear in the block database",
 		},
 		{
-			block:         mockInvalidBlock,
-			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: serializedInvalidBlockMap,
-			currentTime:   0,
-			errWant:       errBadMinerPayouts,
-			msg:           "validateHeaderAndBlock should reject a block if ValidateBlock returns an error for the block",
-		},
-		{
-			block:         mockValidBlock,
-			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: serializedHighTargetParentBlockMap,
-			currentTime:   mockValidBlock.Timestamp,
-			errWant:       nil,
-			msg:           "validateHeaderAndBlock should accept a valid block",
+			block:       invalidBlock,
+			dosBlocks:   make(map[types.BlockID]struct{}),
+			currentTime: invalidBlock.Timestamp,
+			errWant:     errBadMinerPayouts,
+			msg:         "validateHeaderAndBlock should reject a block if ValidateBlock returns an error for the block",
 		},
 	}
 	for _, tt := range tests {
 		cs := ConsensusSet{
 			dosBlocks: tt.dosBlocks,
 		}
-		tx := mockBlockMapTx{pairs: tt.blockMapPairs}
+		tx := mockGenesisBlockTx(types.RootDepth)
 		_, err := cs.validateHeaderAndBlock(tx, tt.block, tt.block.ID(), tt.currentTime)
 		if err != tt.errWant {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
@@ -175,94 +124,103 @@ func TestCheckHeaderTarget(t *testing.T) {
 
 // TestUnitValidateHeader runs a series of unit tests for validateHeader.
 func TestUnitValidateHeader(t *testing.T) {
-	t.Skip("BROKEN -- need to actually calculate minimum timestamp from real blocks")
-	mockValidBlockID := mockValidBlock.ID()
+	validBlock := types.BlockHeader{
+		ParentID:  types.GenesisID,
+		Timestamp: types.GenesisTimestamp + 100,
+	}
+	orphanBlock := types.BlockHeader{
+		ParentID: types.BlockID{42},
+	}
+	earlyBlock := types.BlockHeader{
+		ParentID:  types.GenesisID,
+		Timestamp: 0,
+	}
+	futureBlock := types.BlockHeader{
+		ParentID:  types.GenesisID,
+		Timestamp: types.CurrentTimestamp() + types.ExtremeFutureThreshold + 2,
+	}
+	nearBlock := types.BlockHeader{
+		ParentID:  types.GenesisID,
+		Timestamp: types.CurrentTimestamp() + types.FutureThreshold + 2,
+	}
 
 	var tests = []struct {
-		header        types.BlockHeader
-		dosBlocks     map[types.BlockID]struct{}
-		blockMapPairs []blockMapPair
-		errWant       error
-		msg           string
+		header    types.BlockHeader
+		dosBlocks map[types.BlockID]struct{}
+		target    types.Target
+		errWant   error
+		msg       string
 	}{
+		// Test that valid blocks are accepted.
+		{
+			header:    validBlock,
+			dosBlocks: make(map[types.BlockID]struct{}),
+			target:    types.RootDepth,
+			errWant:   nil,
+			msg:       "validateHeader should accept a valid block",
+		},
 		// Test that known dos blocks are rejected.
 		{
-			header: mockValidBlock.Header(),
-			// Create a dosBlocks map where mockValidBlock is marked as a bad block.
-			dosBlocks: map[types.BlockID]struct{}{
-				mockValidBlock.ID(): {},
-			},
-			blockMapPairs: serializedParentBlockMap,
-			errWant:       errDoSBlock,
-			msg:           "validateHeader should reject known bad blocks",
+			header:    validBlock,
+			dosBlocks: map[types.BlockID]struct{}{validBlock.ID(): {}},
+			target:    types.RootDepth,
+			errWant:   errDoSBlock,
+			msg:       "validateHeader should reject known bad blocks",
 		},
 		// Test that known blocks are rejected.
 		{
-			header:        mockValidBlock.Header(),
-			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: []blockMapPair{{mockValidBlockID[:], []byte{}}},
-			errWant:       modules.ErrBlockKnown,
-			msg:           "validateHeader should fail when the block has been seen before",
+			header:    types.GenesisBlock.Header(),
+			dosBlocks: make(map[types.BlockID]struct{}),
+			target:    types.RootDepth,
+			errWant:   modules.ErrBlockKnown,
+			msg:       "validateHeader should fail when the block has been seen before",
 		},
 		// Test that blocks with unknown parents (orphans) are rejected.
 		{
-			header:    mockValidBlock.Header(),
+			header:    orphanBlock,
 			dosBlocks: make(map[types.BlockID]struct{}),
+			target:    types.RootDepth,
 			errWant:   errOrphan,
 			msg:       "validateHeader should reject a block if its parent block does not appear in the block database",
 		},
 		// Test that blocks with too early of a timestamp are rejected.
 		{
-			header:        mockValidBlock.Header(),
-			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: serializedHighTargetParentBlockMap,
-			errWant:       errEarlyTimestamp,
-			msg:           "validateHeader should fail when the header's timestamp is too early",
+			header:    earlyBlock,
+			dosBlocks: make(map[types.BlockID]struct{}),
+			target:    types.RootDepth,
+			errWant:   errEarlyTimestamp,
+			msg:       "validateHeader should fail when the header's timestamp is too early",
 		},
 		// Test that headers in the extreme future are rejected.
 		{
-			header: types.BlockHeader{
-				Timestamp: types.CurrentTimestamp() + types.ExtremeFutureThreshold + 2,
-				ParentID:  mockParentID(),
-			},
-			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: serializedHighTargetParentBlockMap,
-			errWant:       errExtremeFutureTimestamp,
-			msg:           "validateHeader should fail when the header's timestamp is in the extreme future",
+			header:    futureBlock,
+			dosBlocks: make(map[types.BlockID]struct{}),
+			target:    types.RootDepth,
+			errWant:   errExtremeFutureTimestamp,
+			msg:       "validateHeader should fail when the header's timestamp is in the extreme future",
 		},
 		// Test that headers in the near future are not rejected.
 		{
-			header: types.BlockHeader{
-				Timestamp: types.CurrentTimestamp() + types.FutureThreshold + 2,
-				ParentID:  mockParentID(),
-			},
-			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: serializedHighTargetParentBlockMap,
-			errWant:       nil,
-			msg:           "validateHeader should not reject headers whose timestamps are in the near future",
+			header:    nearBlock,
+			dosBlocks: make(map[types.BlockID]struct{}),
+			target:    types.RootDepth,
+			errWant:   nil,
+			msg:       "validateHeader should not reject headers whose timestamps are in the near future",
 		},
 		// Test that blocks with too large of a target are rejected.
 		{
-			header:        mockValidBlock.Header(),
-			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: serializedLowTargetParentBlockMap,
-			errWant:       modules.ErrBlockUnsolved,
-			msg:           "validateHeader should reject blocks with an insufficiently low target",
-		},
-		// Test that valid blocks are accepted.
-		{
-			header:        mockValidBlock.Header(),
-			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: serializedHighTargetParentBlockMap,
-			errWant:       nil,
-			msg:           "validateHeader should accept a valid block",
+			header:    validBlock,
+			dosBlocks: make(map[types.BlockID]struct{}),
+			target:    types.Target{},
+			errWant:   modules.ErrBlockUnsolved,
+			msg:       "validateHeader should reject blocks with an insufficiently low target",
 		},
 	}
 	for _, tt := range tests {
 		cs := ConsensusSet{
 			dosBlocks: tt.dosBlocks,
 		}
-		tx := mockBlockMapTx{pairs: tt.blockMapPairs}
+		tx := mockGenesisBlockTx(tt.target)
 		err := cs.validateHeader(tx, tt.header)
 		if err != tt.errWant {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
