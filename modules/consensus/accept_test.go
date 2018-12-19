@@ -2,12 +2,11 @@ package consensus
 
 import (
 	"bytes"
-	"errors"
 	"testing"
 	"time"
 	"unsafe"
 
-	"github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus/database"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -15,10 +14,6 @@ import (
 )
 
 var (
-	// validateBlockParamsGot stores the parameters passed to the most recent call
-	// to mockBlockValidator.ValidateBlock.
-	validateBlockParamsGot validateBlockParams
-
 	mockValidBlock = types.Block{
 		Timestamp: 100,
 		ParentID:  mockParentID(),
@@ -27,58 +22,25 @@ var (
 		Timestamp: 500,
 		ParentID:  mockParentID(),
 	}
-	// parentBlockSerialized is a mock serialized form of a database.Block.
-	parentBlockSerialized = []byte{3, 2, 1}
 
-	parentBlockUnmarshaler = mockBlockMarshaler{
-		[]predefinedBlockUnmarshal{
-			{parentBlockSerialized, mockParent(), nil},
-		},
-	}
-
-	parentBlockHighTargetUnmarshaler = mockBlockMarshaler{
-		[]predefinedBlockUnmarshal{
-			{parentBlockSerialized, mockParentHighTarget(), nil},
-		},
-	}
-
-	parentBlockLowTargetUnmarshaler = mockBlockMarshaler{
-		[]predefinedBlockUnmarshal{
-			{parentBlockSerialized, mockParentLowTarget(), nil},
-		},
-	}
-
-	unmarshalFailedErr = errors.New("mock unmarshal failed")
-
-	failingBlockUnmarshaler = mockBlockMarshaler{
-		[]predefinedBlockUnmarshal{
-			{parentBlockSerialized, database.Block{}, unmarshalFailedErr},
-		},
+	serializedInvalidBlockMap = []blockMapPair{
+		{mockValidBlock.ParentID[:], []byte{1, 2, 3}},
 	}
 
 	serializedParentBlockMap = []blockMapPair{
-		{mockValidBlock.ParentID[:], parentBlockSerialized},
+		{mockValidBlock.ParentID[:], encoding.Marshal(mockParent())},
+	}
+
+	serializedHighTargetParentBlockMap = []blockMapPair{
+		{mockValidBlock.ParentID[:], encoding.Marshal(mockParentHighTarget())},
+	}
+
+	serializedLowTargetParentBlockMap = []blockMapPair{
+		{mockValidBlock.ParentID[:], encoding.Marshal(mockParentLowTarget())},
 	}
 )
 
 type (
-	// predefinedBlockUnmarshal is a predefined response from mockBlockMarshaler.
-	// It defines the unmarshaled database.Block and error code that
-	// mockBlockMarshaler should return in response to an input serialized byte
-	// slice.
-	predefinedBlockUnmarshal struct {
-		serialized  []byte
-		unmarshaled database.Block
-		err         error
-	}
-
-	// mockBlockMarshaler is an implementation of the encoding.GenericMarshaler
-	// interface for unit testing. It allows clients to specify mappings of
-	// serialized bytes into unmarshaled blocks.
-	mockBlockMarshaler struct {
-		p []predefinedBlockUnmarshal
-	}
-
 	// mockBlockRuleHelper is an implementation of the blockRuleHelper interface
 	// for unit testing.
 	mockBlockRuleHelper struct {
@@ -107,42 +69,31 @@ type (
 	}
 )
 
-// Marshal is not implemented and panics if called.
-func (m mockBlockMarshaler) Marshal(interface{}) []byte {
-	panic("not implemented")
+type mockBlockMapTx struct {
+	pairs []blockMapPair
+	database.Tx
 }
 
-// Unmarshal unmarshals a byte slice into an object based on a pre-defined map
-// of deserialized objects.
-func (m mockBlockMarshaler) Unmarshal(b []byte, v interface{}) error {
-	for _, pu := range m.p {
-		if bytes.Equal(b[:], pu.serialized[:]) {
-			pv, ok := v.(*database.Block)
-			if !ok {
-				panic("mockBlockMarshaler.Unmarshal expected v to be of type database.Block")
-			}
-			*pv = pu.unmarshaled
-			return pu.err
+func (tx mockBlockMapTx) Block(id types.BlockID) (*database.Block, bool) {
+	for _, p := range tx.pairs {
+		if bytes.Equal(p.key, id[:]) {
+			b := new(database.Block)
+			encoding.Unmarshal(p.val, b)
+			return b, true
 		}
 	}
-	panic("unmarshal failed: predefined unmarshal not found")
-}
-
-// AddPredefinedUnmarshal adds a predefinedBlockUnmarshal to mockBlockMarshaler.
-func (m *mockBlockMarshaler) AddPredefinedUnmarshal(u predefinedBlockUnmarshal) {
-	m.p = append(m.p, u)
+	return nil, false
 }
 
 // minimumValidChildTimestamp returns the minimum timestamp of b that can be
 // considered a valid block.
-func (brh mockBlockRuleHelper) minimumValidChildTimestamp(blockMap *bolt.Bucket, b *database.Block) types.Timestamp {
+func (brh mockBlockRuleHelper) minimumValidChildTimestamp(tx database.Tx, b *database.Block) types.Timestamp {
 	return brh.minTimestamp
 }
 
 // ValidateBlock stores the parameters it receives and returns the mock error
 // defined by mockBlockValidator.err.
 func (bv mockBlockValidator) ValidateBlock(b types.Block, id types.BlockID, minTimestamp types.Timestamp, target types.Target, height types.BlockHeight, log *persist.Logger) error {
-	validateBlockParamsGot = validateBlockParams{true, b, minTimestamp, target, height}
 	return bv.err
 }
 
@@ -176,27 +127,15 @@ func mockParentLowTarget() (parent database.Block) {
 
 // TestUnitValidateHeaderAndBlock runs a series of unit tests for validateHeaderAndBlock.
 func TestUnitValidateHeaderAndBlock(t *testing.T) {
-	t.Skip("BROKEN")
 	var tests = []struct {
 		block                  types.Block
 		dosBlocks              map[types.BlockID]struct{}
 		blockMapPairs          []blockMapPair
 		earliestValidTimestamp types.Timestamp
-		marshaler              mockBlockMarshaler
-		useNilBlockMap         bool
 		validateBlockErr       error
 		errWant                error
 		msg                    string
 	}{
-		{
-			block:                  mockValidBlock,
-			dosBlocks:              make(map[types.BlockID]struct{}),
-			useNilBlockMap:         true,
-			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockUnmarshaler,
-			errWant:                errNoBlockMap,
-			msg:                    "validateHeaderAndBlock should fail when no block map is found in the database",
-		},
 		{
 			block: mockValidBlock,
 			// Create a dosBlocks map where mockValidBlock is marked as a bad block.
@@ -204,7 +143,6 @@ func TestUnitValidateHeaderAndBlock(t *testing.T) {
 				mockValidBlock.ID(): {},
 			},
 			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockUnmarshaler,
 			errWant:                errDoSBlock,
 			msg:                    "validateHeaderAndBlock should reject known bad blocks",
 		},
@@ -212,27 +150,14 @@ func TestUnitValidateHeaderAndBlock(t *testing.T) {
 			block:                  mockValidBlock,
 			dosBlocks:              make(map[types.BlockID]struct{}),
 			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockUnmarshaler,
 			errWant:                errOrphan,
 			msg:                    "validateHeaderAndBlock should reject a block if its parent block does not appear in the block database",
 		},
 		{
-			block:                  mockValidBlock,
+			block:                  mockInvalidBlock,
 			dosBlocks:              make(map[types.BlockID]struct{}),
-			blockMapPairs:          serializedParentBlockMap,
-			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              failingBlockUnmarshaler,
-			errWant:                unmarshalFailedErr,
-			msg:                    "validateHeaderAndBlock should fail when unmarshaling the parent block fails",
-		},
-		{
-			block:     mockInvalidBlock,
-			dosBlocks: make(map[types.BlockID]struct{}),
-			blockMapPairs: []blockMapPair{
-				{mockInvalidBlock.ParentID[:], parentBlockSerialized},
-			},
+			blockMapPairs:          serializedInvalidBlockMap,
 			earliestValidTimestamp: mockInvalidBlock.Timestamp,
-			marshaler:              parentBlockUnmarshaler,
 			validateBlockErr:       errBadMinerPayouts,
 			errWant:                errBadMinerPayouts,
 			msg:                    "validateHeaderAndBlock should reject a block if ValidateBlock returns an error for the block",
@@ -242,39 +167,23 @@ func TestUnitValidateHeaderAndBlock(t *testing.T) {
 			dosBlocks:              make(map[types.BlockID]struct{}),
 			blockMapPairs:          serializedParentBlockMap,
 			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockUnmarshaler,
 			errWant:                nil,
 			msg:                    "validateHeaderAndBlock should accept a valid block",
 		},
 	}
 	for _, tt := range tests {
-		tx := database.Tx(nil)
-
-		mockParent := mockParent()
 		cs := ConsensusSet{
 			dosBlocks: tt.dosBlocks,
-			marshaler: tt.marshaler,
-			// blockRuleHelper: mockBlockRuleHelper{
-			// 	minTimestamp: tt.earliestValidTimestamp,
-			// },
+			marshaler: stdMarshaler{},
+			blockRuleHelper: mockBlockRuleHelper{
+				minTimestamp: tt.earliestValidTimestamp,
+			},
 			blockValidator: mockBlockValidator{tt.validateBlockErr},
 		}
-		// Reset the stored parameters to ValidateBlock.
-		validateBlockParamsGot = validateBlockParams{}
+		tx := mockBlockMapTx{pairs: tt.blockMapPairs}
 		_, err := cs.validateHeaderAndBlock(tx, tt.block, tt.block.ID())
 		if err != tt.errWant {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
-		}
-		if err == nil || validateBlockParamsGot.called {
-			if validateBlockParamsGot.b.ID() != tt.block.ID() {
-				t.Errorf("%s: incorrect parameter passed to ValidateBlock - got: %v, want: %v", tt.msg, validateBlockParamsGot.b, tt.block)
-			}
-			if validateBlockParamsGot.minTimestamp != tt.earliestValidTimestamp {
-				t.Errorf("%s: incorrect parameter passed to ValidateBlock - got: %v, want: %v", tt.msg, validateBlockParamsGot.minTimestamp, tt.earliestValidTimestamp)
-			}
-			if validateBlockParamsGot.target != mockParent.ChildTarget {
-				t.Errorf("%s: incorrect parameter passed to ValidateBlock - got: %v, want: %v", tt.msg, validateBlockParamsGot.target, mockParent.ChildTarget)
-			}
 		}
 	}
 }
@@ -306,7 +215,6 @@ func TestCheckHeaderTarget(t *testing.T) {
 
 // TestUnitValidateHeader runs a series of unit tests for validateHeader.
 func TestUnitValidateHeader(t *testing.T) {
-	t.Skip("BROKEN")
 	mockValidBlockID := mockValidBlock.ID()
 
 	var tests = []struct {
@@ -314,8 +222,6 @@ func TestUnitValidateHeader(t *testing.T) {
 		dosBlocks              map[types.BlockID]struct{}
 		blockMapPairs          []blockMapPair
 		earliestValidTimestamp types.Timestamp
-		marshaler              mockBlockMarshaler
-		useNilBlockMap         bool
 		errWant                error
 		msg                    string
 	}{
@@ -328,20 +234,8 @@ func TestUnitValidateHeader(t *testing.T) {
 			},
 			blockMapPairs:          serializedParentBlockMap,
 			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockUnmarshaler,
 			errWant:                errDoSBlock,
 			msg:                    "validateHeader should reject known bad blocks",
-		},
-		// Test that blocks are rejected if a block map doesn't exist.
-		{
-			header:                 mockValidBlock.Header(),
-			dosBlocks:              make(map[types.BlockID]struct{}),
-			blockMapPairs:          serializedParentBlockMap,
-			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockUnmarshaler,
-			useNilBlockMap:         true,
-			errWant:                errNoBlockMap,
-			msg:                    "validateHeader should fail when no block map is found in the database",
 		},
 		// Test that known blocks are rejected.
 		{
@@ -349,7 +243,6 @@ func TestUnitValidateHeader(t *testing.T) {
 			dosBlocks:              make(map[types.BlockID]struct{}),
 			blockMapPairs:          []blockMapPair{{mockValidBlockID[:], []byte{}}},
 			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockUnmarshaler,
 			errWant:                modules.ErrBlockKnown,
 			msg:                    "validateHeader should fail when the block has been seen before",
 		},
@@ -358,27 +251,15 @@ func TestUnitValidateHeader(t *testing.T) {
 			header:                 mockValidBlock.Header(),
 			dosBlocks:              make(map[types.BlockID]struct{}),
 			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockUnmarshaler,
 			errWant:                errOrphan,
 			msg:                    "validateHeader should reject a block if its parent block does not appear in the block database",
-		},
-		// Test that blocks whose parents don't unmarshal are rejected.
-		{
-			header:                 mockValidBlock.Header(),
-			dosBlocks:              make(map[types.BlockID]struct{}),
-			blockMapPairs:          serializedParentBlockMap,
-			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              failingBlockUnmarshaler,
-			errWant:                unmarshalFailedErr,
-			msg:                    "validateHeader should fail when unmarshaling the parent block fails",
 		},
 		// Test that blocks with too early of a timestamp are rejected.
 		{
 			header:                 mockValidBlock.Header(),
 			dosBlocks:              make(map[types.BlockID]struct{}),
-			blockMapPairs:          serializedParentBlockMap,
+			blockMapPairs:          serializedHighTargetParentBlockMap,
 			earliestValidTimestamp: mockValidBlock.Timestamp + 1,
-			marshaler:              parentBlockHighTargetUnmarshaler,
 			errWant:                errEarlyTimestamp,
 			msg:                    "validateHeader should fail when the header's timestamp is too early",
 		},
@@ -389,8 +270,7 @@ func TestUnitValidateHeader(t *testing.T) {
 				ParentID:  mockParentID(),
 			},
 			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: serializedParentBlockMap,
-			marshaler:     parentBlockHighTargetUnmarshaler,
+			blockMapPairs: serializedHighTargetParentBlockMap,
 			errWant:       errExtremeFutureTimestamp,
 			msg:           "validateHeader should fail when the header's timestamp is in the extreme future",
 		},
@@ -401,8 +281,7 @@ func TestUnitValidateHeader(t *testing.T) {
 				ParentID:  mockParentID(),
 			},
 			dosBlocks:     make(map[types.BlockID]struct{}),
-			blockMapPairs: serializedParentBlockMap,
-			marshaler:     parentBlockHighTargetUnmarshaler,
+			blockMapPairs: serializedHighTargetParentBlockMap,
 			errWant:       nil,
 			msg:           "validateHeader should not reject headers whose timestamps are in the near future",
 		},
@@ -410,9 +289,8 @@ func TestUnitValidateHeader(t *testing.T) {
 		{
 			header:                 mockValidBlock.Header(),
 			dosBlocks:              make(map[types.BlockID]struct{}),
-			blockMapPairs:          serializedParentBlockMap,
+			blockMapPairs:          serializedLowTargetParentBlockMap,
 			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockLowTargetUnmarshaler,
 			errWant:                modules.ErrBlockUnsolved,
 			msg:                    "validateHeader should reject blocks with an insufficiently low target",
 		},
@@ -420,23 +298,21 @@ func TestUnitValidateHeader(t *testing.T) {
 		{
 			header:                 mockValidBlock.Header(),
 			dosBlocks:              make(map[types.BlockID]struct{}),
-			blockMapPairs:          serializedParentBlockMap,
+			blockMapPairs:          serializedHighTargetParentBlockMap,
 			earliestValidTimestamp: mockValidBlock.Timestamp,
-			marshaler:              parentBlockHighTargetUnmarshaler,
 			errWant:                nil,
 			msg:                    "validateHeader should accept a valid block",
 		},
 	}
 	for _, tt := range tests {
-		tx := database.Tx(nil)
-
 		cs := ConsensusSet{
 			dosBlocks: tt.dosBlocks,
-			marshaler: tt.marshaler,
-			// blockRuleHelper: mockBlockRuleHelper{
-			// 	minTimestamp: tt.earliestValidTimestamp,
-			// },
+			marshaler: stdMarshaler{},
+			blockRuleHelper: mockBlockRuleHelper{
+				minTimestamp: tt.earliestValidTimestamp,
+			},
 		}
+		tx := mockBlockMapTx{pairs: tt.blockMapPairs}
 		err := cs.validateHeader(tx, tt.header)
 		if err != tt.errWant {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
@@ -643,7 +519,7 @@ func TestMinerPayoutHandling(t *testing.T) {
 // TestEarlyTimestampHandling checks that blocks too far in the past are
 // rejected.
 func TestEarlyTimestampHandling(t *testing.T) {
-	t.Skip("BROKEN")
+	//t.Skip("BROKEN")
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -654,9 +530,9 @@ func TestEarlyTimestampHandling(t *testing.T) {
 	}
 	defer cst.Close()
 	minTimestamp := types.CurrentTimestamp()
-	// cst.cs.blockRuleHelper = mockBlockRuleHelper{
-	// 	minTimestamp: minTimestamp,
-	// }
+	cst.cs.blockRuleHelper = mockBlockRuleHelper{
+		minTimestamp: minTimestamp,
+	}
 
 	// Submit a block with a timestamp in the past, before minTimestamp.
 	block, target, err := cst.miner.BlockForWork()
