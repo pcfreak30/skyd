@@ -200,8 +200,7 @@ func TestModuleDesync(t *testing.T) {
 	updates := make([]modules.ConsensusChange, 0)
 	cst.cs.mu.Lock()
 	err = cst.cs.db.View(func(tx database.Tx) error {
-		entry := cst.cs.genesisEntry()
-		exists := true
+		entry, exists := tx.ChangeEntry(cst.cs.genesisEntry().ID())
 		for ; exists; entry, exists = tx.ChangeEntry(entry.Next) {
 			cc, err := cst.cs.computeConsensusChange(tx, entry)
 			if err != nil {

@@ -146,8 +146,7 @@ func (cs *ConsensusSet) managedInitializeSubscribe(subscriber modules.ConsensusS
 			// initial node pointing to the genesis block. The subscriber will
 			// receive the diffs for all blocks in the consensus set, including
 			// the genesis block.
-			entry = cs.genesisEntry()
-			exists = true
+			entry, exists = tx.ChangeEntry(cs.genesisEntry().ID())
 		} else {
 			// The subscriber has provided an existing consensus change.
 			// Because the subscriber already has this consensus change,
