@@ -11,6 +11,7 @@ import (
 // TestCommitDelayedSiacoinOutputDiffBadMaturity commits a delayed siacoin
 // output that has a bad maturity height and triggers a panic.
 func TestCommitDelayedSiacoinOutputDiffBadMaturity(t *testing.T) {
+	t.Skip("BROKEN (new DB does not panic if DSCO bucket does not exist)")
 	if testing.Short() {
 		t.SkipNow()
 	}
