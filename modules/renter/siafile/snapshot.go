@@ -128,7 +128,9 @@ func (s *Snapshot) Size() uint64 {
 }
 
 // Snapshot creates a snapshot of the SiaFile.
-func (sf *SiaFile) Snapshot() *Snapshot {
+func (entry *SiaFileSetEntry) Snapshot() *Snapshot {
+	siaPath := entry.SiaPath()
+	sf := entry.SiaFile
 	mk := sf.MasterKey()
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
@@ -178,6 +180,6 @@ func (sf *SiaFile) Snapshot() *Snapshot {
 		staticMasterKey:   mk,
 		staticMode:        sf.staticMetadata.Mode,
 		staticPubKeyTable: pkt,
-		staticSiaPath:     sf.staticMetadata.SiaPath,
+		staticSiaPath:     siaPath,
 	}
 }

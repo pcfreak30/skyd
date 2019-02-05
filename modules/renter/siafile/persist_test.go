@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,6 +107,25 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 	}
 }
 
+// addRandomPiecesToFile is a testing function that adds a random number of
+// pieces to a siafile.
+func addRandomPiecesToFile(sf *SiaFile) {
+	// Add pieces to each chunk.
+	for chunkIndex := range sf.staticChunks {
+		for pieceIndex := 0; pieceIndex < sf.ErasureCode().NumPieces(); pieceIndex++ {
+			numPieces := fastrand.Intn(3) // up to 2 hosts for each piece
+			for i := 0; i < numPieces; i++ {
+				pk := types.SiaPublicKey{Key: fastrand.Bytes(crypto.EntropySize)}
+				mr := crypto.Hash{}
+				fastrand.Read(mr[:])
+				if err := sf.AddPiece(pk, uint64(chunkIndex), uint64(pieceIndex), mr); err != nil {
+					panic(err)
+				}
+			}
+		}
+	}
+}
+
 // newBlankTestFileAndWAL creates an empty SiaFile for testing and also returns
 // the WAL used in the creation and the path of the WAL.
 func newBlankTestFileAndWAL() (*SiaFile, *writeaheadlog.WAL, string) {
@@ -141,20 +161,7 @@ func newBlankTestFile() *SiaFile {
 // number of pieces.
 func newTestFile() *SiaFile {
 	sf := newBlankTestFile()
-	// Add pieces to each chunk.
-	for chunkIndex := range sf.staticChunks {
-		for pieceIndex := 0; pieceIndex < sf.ErasureCode().NumPieces(); pieceIndex++ {
-			numPieces := fastrand.Intn(3) // up to 2 hosts for each piece
-			for i := 0; i < numPieces; i++ {
-				pk := types.SiaPublicKey{Key: fastrand.Bytes(crypto.EntropySize)}
-				mr := crypto.Hash{}
-				fastrand.Read(mr[:])
-				if err := sf.AddPiece(pk, uint64(chunkIndex), uint64(pieceIndex), mr); err != nil {
-					panic(err)
-				}
-			}
-		}
-	}
+	addRandomPiecesToFile(sf)
 	return sf
 }
 
@@ -368,12 +375,12 @@ func TestRename(t *testing.T) {
 	entry, _, _ := newTestSiaFileSetWithFile()
 
 	// Create new paths for the file.
-	newSiaPath := entry.staticMetadata.SiaPath + "1"
-	newSiaFilePath := entry.siaFilePath + "1"
+	newSiaPath := entry.SiaPath() + "1"
 	oldSiaFilePath := entry.siaFilePath
+	newSiaFilePath := strings.TrimSuffix(oldSiaFilePath, ShareExtension) + "1" + ShareExtension
 
 	// Rename file
-	if err := entry.Rename(newSiaPath, newSiaFilePath); err != nil {
+	if err := entry.Rename(newSiaFilePath); err != nil {
 		t.Fatal("Failed to rename file", err)
 	}
 
@@ -392,8 +399,8 @@ func TestRename(t *testing.T) {
 	if entry.siaFilePath != newSiaFilePath {
 		t.Fatal("SiaFilePath wasn't updated correctly")
 	}
-	if entry.staticMetadata.SiaPath != newSiaPath {
-		t.Fatal("SiaPath wasn't updated correctly")
+	if entry.SiaPath() != newSiaPath {
+		t.Fatal("SiaPath wasn't updated correctly", entry.SiaPath(), newSiaPath)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -36,8 +37,8 @@ func equalFiles(f1, f2 *siafile.SiaFile) error {
 	if f1 == nil || f2 == nil {
 		return fmt.Errorf("one or both files are nil")
 	}
-	if f1.SiaPath() != f2.SiaPath() {
-		return fmt.Errorf("names do not match: %v %v", f1.SiaPath(), f2.SiaPath())
+	if f1.SiaFilePath() != f2.SiaFilePath() {
+		return fmt.Errorf("names do not match: %v %v", f1.SiaFilePath(), f2.SiaFilePath())
 	}
 	if f1.Size() != f2.Size() {
 		return fmt.Errorf("sizes do not match: %v %v", f1.Size(), f2.Size())
@@ -166,17 +167,17 @@ func TestRenterPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f1.Rename(siaPath1, filepath.Join(rt.renter.staticFilesDir, siaPath1+siafile.ShareExtension))
+	f1.Rename(filepath.Join(rt.renter.staticFilesDir, siaPath1+siafile.ShareExtension))
 	f2, err := newTestingFile()
 	if err != nil {
 		t.Fatal(err)
 	}
-	f2.Rename(siaPath2, filepath.Join(rt.renter.staticFilesDir, siaPath2+siafile.ShareExtension))
+	f2.Rename(filepath.Join(rt.renter.staticFilesDir, siaPath2+siafile.ShareExtension))
 	f3, err := newTestingFile()
 	if err != nil {
 		t.Fatal(err)
 	}
-	f3.Rename(siaPath3, filepath.Join(rt.renter.staticFilesDir, siaPath3+siafile.ShareExtension))
+	f3.Rename(filepath.Join(rt.renter.staticFilesDir, siaPath3+siafile.ShareExtension))
 
 	// Restart the renter to re-do the init cycle.
 	err = rt.renter.Close()
@@ -225,7 +226,16 @@ func TestRenterPaths(t *testing.T) {
 		return nil
 	})
 	// walk will descend into foo/bar/, reading baz, bar, and finally foo
-	expWalkStr := (f3.SiaPath() + ".sia") + (f2.SiaPath() + ".sia") + (f1.SiaPath() + ".sia")
+	sp3 := strings.TrimPrefix(f3.SiaFilePath(), rt.renter.staticFilesDir)
+	sp2 := strings.TrimPrefix(f2.SiaFilePath(), rt.renter.staticFilesDir)
+	sp1 := strings.TrimPrefix(f1.SiaFilePath(), rt.renter.staticFilesDir)
+	sp3 = strings.TrimSuffix(sp3, siafile.ShareExtension)
+	sp2 = strings.TrimSuffix(sp2, siafile.ShareExtension)
+	sp1 = strings.TrimSuffix(sp1, siafile.ShareExtension)
+	sp3 = strings.TrimPrefix(sp3, "/")
+	sp2 = strings.TrimPrefix(sp2, "/")
+	sp1 = strings.TrimPrefix(sp1, "/")
+	expWalkStr := (sp3 + ".sia") + (sp2 + ".sia") + (sp1 + ".sia")
 	if filepath.ToSlash(walkStr) != expWalkStr {
 		t.Fatalf("Bad walk string: expected %v, got %v", expWalkStr, walkStr)
 	}

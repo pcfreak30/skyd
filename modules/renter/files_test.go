@@ -592,7 +592,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename("1", filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension)) // set name to "1"
+	err = entry2.Rename(filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension)) // set name to "1"
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -708,7 +708,7 @@ func TestRenterRenameFile(t *testing.T) {
 
 	// Rename a file that does exist.
 	entry, _ := rt.renter.newRenterTestFile()
-	err = entry.Rename("1", filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension))
+	err = entry.Rename(filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -742,7 +742,7 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = entry2.Rename("1", filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension))
+	err = entry2.Rename(filepath.Join(rt.renter.staticFilesDir, "1"+siafile.ShareExtension))
 	if err != nil {
 		t.Fatal(err)
 	}

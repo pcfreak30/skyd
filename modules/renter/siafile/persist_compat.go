@@ -67,11 +67,10 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
 			StaticPieceSize:         fd.PieceSize,
-			SiaPath:                 fd.Name,
 		},
 		deleted:        fd.Deleted,
 		deps:           modules.ProdDependencies,
-		siaFilePath:    filepath.Join(sfs.siaFileDir, fd.Name+ShareExtension),
+		siaFilePath:    filepath.Join(sfs.staticSiaFileDir, fd.Name+ShareExtension),
 		staticUniqueID: fd.UID,
 		wal:            sfs.wal,
 	}

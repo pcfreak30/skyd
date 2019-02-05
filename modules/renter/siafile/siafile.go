@@ -112,6 +112,13 @@ func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	return e.Err()
 }
 
+// SiaFilePath returns the siafile's path on disk.
+func (sf *SiaFile) SiaFilePath() string {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.siaFilePath
+}
+
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface.
 func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
@@ -151,7 +158,6 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
-			SiaPath:                 siaPath,
 		},
 		deps:           modules.ProdDependencies,
 		siaFilePath:    siaFilePath,
