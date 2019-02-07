@@ -355,7 +355,7 @@ func TestBuildVerifyMultiRangeProof(t *testing.T) {
 		if fastrand.Intn(2) == 0 {
 			sh = NewReaderSubtreeHasher(bytes.NewReader(leafData), leafSize, blake)
 		} else {
-			sh = NewCachedSubtreeHasher(leafHashes, blake)
+			sh = NewCachedSubtreeHasher(leafHashes, blake, nil)
 		}
 		proof, err := BuildMultiRangeProof(ranges, sh)
 		if err != nil {
@@ -458,7 +458,7 @@ func TestBuildVerifyMultiRangeProof(t *testing.T) {
 		if fastrand.Intn(2) == 0 {
 			sh = NewReaderSubtreeHasher(bytes.NewReader(leafData[:leafSize*nLeaves]), leafSize, blake)
 		} else {
-			sh = NewCachedSubtreeHasher(leafHashes[:nLeaves], blake)
+			sh = NewCachedSubtreeHasher(leafHashes[:nLeaves], blake, nil)
 		}
 		proof, err := BuildMultiRangeProof(ranges, sh)
 		if err != nil {
@@ -540,7 +540,7 @@ func TestBuildVerifyRangeProof(t *testing.T) {
 		if fastrand.Intn(2) == 0 {
 			sh = NewReaderSubtreeHasher(bytes.NewReader(leafData), leafSize, blake)
 		} else {
-			sh = NewCachedSubtreeHasher(leafHashes, blake)
+			sh = NewCachedSubtreeHasher(leafHashes, blake, nil)
 		}
 		proof, err := BuildRangeProof(start, end, sh)
 		if err != nil {
@@ -631,7 +631,7 @@ func TestBuildVerifyRangeProof(t *testing.T) {
 		if fastrand.Intn(2) == 0 {
 			sh = NewReaderSubtreeHasher(bytes.NewReader(leafData[:leafSize*nLeaves]), leafSize, blake)
 		} else {
-			sh = NewCachedSubtreeHasher(leafHashes[:nLeaves], blake)
+			sh = NewCachedSubtreeHasher(leafHashes[:nLeaves], blake, nil)
 		}
 		proof, err := BuildRangeProof(start, end, sh)
 		if err != nil {
@@ -763,7 +763,7 @@ func TestBuildProofRangeEOF(t *testing.T) {
 	// test with both ReaderSubtreeHasher and CachedSubtreeHasher
 	shs := []SubtreeHasher{
 		NewReaderSubtreeHasher(bytes.NewReader(leafData[:len(leafData)/2]), leafSize, blake),
-		NewCachedSubtreeHasher(leafHashes[:len(leafHashes)/2], blake),
+		NewCachedSubtreeHasher(leafHashes[:len(leafHashes)/2], blake, nil),
 	}
 	for _, sh := range shs {
 		if _, err := BuildRangeProof(midl, midr, sh); err != io.ErrUnexpectedEOF {

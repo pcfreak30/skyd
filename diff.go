@@ -21,6 +21,10 @@ func BuildDiffProof(ranges []LeafRange, h SubtreeHasher, numLeaves uint64) (proo
 	consumeUntil := func(end uint64) error {
 		for leafIndex != end {
 			subtreeSize := nextSubtreeSize(leafIndex, end)
+			if slp := h.SubLeafProof(leafIndex); subtreeSize == 1 && slp != nil {
+				proof = append(proof, slp...)
+				continue
+			}
 			root, err := h.NextSubtreeRoot(subtreeSize)
 			if err != nil {
 				return err

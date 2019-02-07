@@ -39,6 +39,10 @@ func validRangeSet(ranges []LeafRange) bool {
 	return true
 }
 
+// SubLeafProof is a precomputed proof which proofs that a segment is part of a
+// leaf.
+type SubLeafProof [][]byte
+
 // A SubtreeHasher calculates subtree roots in sequential order, for use with
 // BuildRangeProof.
 type SubtreeHasher interface {
@@ -46,6 +50,8 @@ type SubtreeHasher interface {
 	// leaves are left in the tree, NextSubtreeRoot returns the root of those
 	// leaves and nil. If no leaves are left, NextSubtreeRoot returns io.EOF.
 	NextSubtreeRoot(n int) ([]byte, error)
+	// SubLeafProof returns a potentially cached multirange proof for a leaf.
+	SubLeafProof(leafIndex uint64) SubLeafProof
 	// Skip skips the next n leaves. If fewer than n leaves are left in the
 	// tree, Skip returns io.ErrUnexpectedEOF. If exactly n leaves are left,
 	// Skip returns nil (not io.EOF).
@@ -96,6 +102,11 @@ func (rsh *ReaderSubtreeHasher) Skip(n int) (err error) {
 	return err
 }
 
+// SubLeafProof implements SubtreeHasher.
+func (rsh *ReaderSubtreeHasher) SubLeafProof(_ uint64) SubLeafProof {
+	return nil
+}
+
 // NewReaderSubtreeHasher returns a new ReaderSubtreeHasher that reads leaf data from r.
 func NewReaderSubtreeHasher(r io.Reader, leafSize int, h hash.Hash) *ReaderSubtreeHasher {
 	return &ReaderSubtreeHasher{
@@ -110,6 +121,7 @@ func NewReaderSubtreeHasher(r io.Reader, leafSize int, h hash.Hash) *ReaderSubtr
 type CachedSubtreeHasher struct {
 	leafHashes [][]byte
 	h          hash.Hash
+	slps       map[uint64]SubLeafProof
 }
 
 // NextSubtreeRoot implements SubtreeHasher.
@@ -136,12 +148,18 @@ func (csh *CachedSubtreeHasher) Skip(n int) error {
 	return nil
 }
 
+// SubLeafProof implements SubtreeHasher.
+func (csh *CachedSubtreeHasher) SubLeafProof(leafIndex uint64) SubLeafProof {
+	return csh.slps[leafIndex]
+}
+
 // NewCachedSubtreeHasher creates a CachedSubtreeHasher using the specified
 // leaf hashes and hash function.
-func NewCachedSubtreeHasher(leafHashes [][]byte, h hash.Hash) *CachedSubtreeHasher {
+func NewCachedSubtreeHasher(leafHashes [][]byte, h hash.Hash, slps map[uint64]SubLeafProof) *CachedSubtreeHasher {
 	return &CachedSubtreeHasher{
 		leafHashes: leafHashes,
 		h:          h,
+		slps:       slps,
 	}
 }
 
