@@ -312,10 +312,13 @@ func (r *Renter) managedFileMetadata(siaPath string) (siafile.BubbledMetadata, e
 		return siafile.BubbledMetadata{}, err
 	}
 	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
+<<<<<<< 6fefc8f09386ea3baf1c61355b3b4a44582a2933
 	// Check if local file is missing and redundancy is less than one
 	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
 	}
+=======
+>>>>>>> renter: add additional fields to directory metadata to be calculated during bubble
 	metadata := siafile.CachedHealthMetadata{
 		Health:      health,
 		Redundancy:  redundancy,
