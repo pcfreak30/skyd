@@ -244,8 +244,8 @@ func (sds *SiaDirSet) Open(siaPath string) (*SiaDirSetEntry, error) {
 	return sds.open(siaPath)
 }
 
-// UpdateHealth will update the health of the SiaDir in memory and on disk
-func (sds *SiaDirSet) UpdateHealth(siaPath string, health SiaDirHealth) error {
+// UpdateMetadata will update the metadata of the SiaDir in memory and on disk
+func (sds *SiaDirSet) UpdateMetadata(siaPath string, metadata BubbledMetadata) error {
 	sds.mu.Lock()
 	defer sds.mu.Unlock()
 	siaPath = strings.Trim(siaPath, "/")
@@ -261,5 +261,5 @@ func (sds *SiaDirSet) UpdateHealth(siaPath string, health SiaDirHealth) error {
 		return err
 	}
 	defer entry.close()
-	return entry.UpdateHealth(health)
+	return entry.UpdateMetadata(metadata)
 }

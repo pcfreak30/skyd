@@ -199,7 +199,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// Once the chunk is repaired we will want to call bubble on that directory
 	// to ensure the directory metadata is updated.
 	defer func() {
-		go r.threadedBubbleHealth(chunk.fileEntry.DirSiaPath())
+		go r.threadedBubbleMetadata(chunk.fileEntry.DirSiaPath())
 	}()
 
 	// Calculate the amount of memory needed for erasure coding. This will need

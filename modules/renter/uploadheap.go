@@ -485,7 +485,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 			if err != nil {
 				r.log.Println("WARN: unable to set chunk as stuck:", err)
 			}
-			go r.threadedBubbleHealth(nextChunk.fileEntry.DirSiaPath())
+			go r.threadedBubbleMetadata(nextChunk.fileEntry.DirSiaPath())
 			continue
 		}
 
@@ -577,6 +577,6 @@ func (r *Renter) threadedUploadLoop() {
 
 		// Once we have worked through the heap, call bubble to update the
 		// directory metadata
-		r.threadedBubbleHealth(dirSiaPath)
+		r.threadedBubbleMetadata(dirSiaPath)
 	}
 }
