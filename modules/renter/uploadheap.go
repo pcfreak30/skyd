@@ -460,11 +460,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) {
 		}
 
 		// Check if file is reasonably healthy
-		//
-		// TODO - update to only read cached value once health is stored in the
-		// siafile metadata
-		hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{nextChunk.fileEntry})
-		health, _, _ := nextChunk.fileEntry.Health(hostOfflineMap, hostGoodForRenewMap)
+		health, _, _ := nextChunk.fileEntry.CachedHealth()
 		if health < 0.8 {
 			// File is reasonably healthy so update the recent repair time for
 			// the file

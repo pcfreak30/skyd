@@ -127,6 +127,22 @@ func (sf *SiaFile) AccessTime() time.Time {
 	return sf.staticMetadata.AccessTime
 }
 
+// CachedHealth returns the cached values of the siafile's health from the last
+// time it was calculated
+func (sf *SiaFile) CachedHealth() (float64, float64, uint64) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.staticMetadata.Health, sf.staticMetadata.StuckHealth, sf.staticMetadata.NumStuckChunks
+}
+
+// CachedRedundancy returns the cached value of the siafile's redundancy from
+// the last time it was calculated
+func (sf *SiaFile) CachedRedundancy() float64 {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.staticMetadata.Redundancy
+}
+
 // ChangeTime returns the ChangeTime timestamp of the file.
 func (sf *SiaFile) ChangeTime() time.Time {
 	sf.mu.RLock()

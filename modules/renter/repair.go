@@ -151,7 +151,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 		}
 
 		var health, stuckHealth, redundancy float64
-		var numStuckChunks uint64
 		var lastHealthCheckTime, modTime time.Time
 		ext := filepath.Ext(fi.Name())
 		// Check for SiaFiles and Directories
@@ -169,12 +168,13 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 			}
 			lastHealthCheckTime = fileMetadata.LastHealthCheckTime
 			modTime = fileMetadata.ModTime
-			numStuckChunks = fileMetadata.NumStuckChunks
 			redundancy = fileMetadata.Redundancy
 			stuckHealth = fileMetadata.StuckHealth
 			// Update NumFiles and AggregateNumFiles
-			metadata.NumFiles++
 			metadata.AggregateNumFiles++
+			metadata.NumFiles++
+			// Update number of stuck chunks
+			metadata.NumStuckChunks += fileMetadata.NumStuckChunks
 			// Update Size
 			metadata.AggregateSize += fileMetadata.Size
 		} else if fi.IsDir() {
@@ -186,11 +186,12 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 			health = dirMetadata.Health
 			lastHealthCheckTime = dirMetadata.LastHealthCheckTime
 			modTime = dirMetadata.ModTime
-			numStuckChunks = dirMetadata.NumStuckChunks
 			redundancy = dirMetadata.MinRedundancy
 			stuckHealth = dirMetadata.StuckHealth
 			// Update AggregateNumFiles
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
+			// Update number of stuck chunks
+			metadata.NumStuckChunks += dirMetadata.NumStuckChunks
 			// Update NumSubDirs
 			metadata.NumSubDirs++
 			// Update Size
@@ -206,12 +207,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 		if stuckHealth > metadata.StuckHealth {
 			metadata.StuckHealth = stuckHealth
 		}
-		// Update ModTime
-		if modTime.After(metadata.ModTime) {
-			metadata.ModTime = modTime
-		}
-		// Increment NumStuckChunks
-		metadata.NumStuckChunks += numStuckChunks
 		// Update MinRedundancy
 		if redundancy < metadata.MinRedundancy {
 			metadata.MinRedundancy = redundancy
@@ -219,6 +214,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 		// Update LastHealthCheckTime
 		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
 			metadata.LastHealthCheckTime = lastHealthCheckTime
+		}
+		// Update ModTime
+		if modTime.After(metadata.ModTime) {
+			metadata.ModTime = modTime
 		}
 	}
 
@@ -311,13 +310,10 @@ func (r *Renter) managedFileMetadata(siaPath string) (siafile.BubbledMetadata, e
 		return siafile.BubbledMetadata{}, err
 	}
 	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
-<<<<<<< 6fefc8f09386ea3baf1c61355b3b4a44582a2933
 	// Check if local file is missing and redundancy is less than one
 	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
 	}
-=======
->>>>>>> renter: add additional fields to directory metadata to be calculated during bubble
 	metadata := siafile.CachedHealthMetadata{
 		Health:      health,
 		Redundancy:  redundancy,
