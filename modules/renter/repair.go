@@ -220,7 +220,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 		if lastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
 			metadata.LastHealthCheckTime = lastHealthCheckTime
 		}
-		metadata.NumStuckChunks += numStuckChunks
 	}
 
 	return metadata, nil
