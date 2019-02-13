@@ -715,6 +715,12 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 		foundGoodForRenew := false
 		foundOnline := false
 		for _, piece := range pieceSet {
+			pktLen := len(sf.pubKeyTable)
+			hto := int(piece.HostTableOffset)
+			if hto >= pktLen {
+				build.Critical("Requesting a host that is outside the pubKeyTable", pktLen, hto)
+				continue
+			}
 			offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
 			goodForRenew, exists2 := goodForRenewMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
 			if exists1 != exists2 {
