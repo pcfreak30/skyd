@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
@@ -174,12 +175,13 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
 
 	// Sanity check - as we open the file, check that the pubKeyTable is
 	// consistent with the lookups in the pieces.
-	if build.Debug {
-		for i := 0; i < len(entry.staticChunks); i++ {
-			for j := 0; j < len(entry.staticChunks[i].Pieces); j++ {
-				for k := 0; k < len(entry.staticChunks[i].Pieces[j]); k++ {
-					if entry.staticChunks[i].Pieces[j][k] >= len(entry.pubKeyTable) {
-						build.Critical("Piece mismatch:", entry.staticChunks[i].Pieces[j][k], len(entry.pubKeyTable))
+	if build.DEBUG {
+		for _, chunk := range entry.staticChunks {
+			for _, pieceSet := range chunk.Pieces {
+				for _, piece := range pieceSet {
+					if int(piece.HostTableOffset) >= len(entry.pubKeyTable) {
+						build.Critical("Piece mismatch:", piece.HostTableOffset, len(entry.pubKeyTable))
+					}
 				}
 			}
 		}
