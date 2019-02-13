@@ -176,6 +176,7 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
 	// Sanity check - as we open the file, check that the pubKeyTable is
 	// consistent with the lookups in the pieces.
 	if build.DEBUG {
+		entry.mu.Lock()
 		for _, chunk := range entry.staticChunks {
 			for _, pieceSet := range chunk.Pieces {
 				for _, piece := range pieceSet {
@@ -185,6 +186,7 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
 				}
 			}
 		}
+		entry.mu.Unlock()
 	}
 
 	threadUID := randomThreadUID()
