@@ -416,31 +416,39 @@ func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 // harddrive. This means that using saveMetadataUpdate instead of saveHeader is
 // potentially faster for SiaFiles with a header that can not be marshaled
 // within a single page.
+//
+// TODO: This is a heavy handed fix for a bug resulting from incongruence
+// between the header and the metadata, we need to either get rid of this
+// function entirely or figure out where the incongruence is and fix it, and
+// then revive the code that is currently commented out.
 func (sf *SiaFile) saveMetadataUpdate() ([]writeaheadlog.Update, error) {
-	// Marshal the pubKeyTable.
-	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
-	if err != nil {
-		return nil, err
-	}
-	// Sanity check the length of the pubKeyTable to find out if the length of
-	// the table changed. We should never just save the metadata if the table
-	// changed as well as it might lead to corruptions.
-	if sf.staticMetadata.PubKeyTableOffset+int64(len(pubKeyTable)) != sf.staticMetadata.ChunkOffset {
-		build.Critical("never call saveMetadata if the pubKeyTable changed, call saveHeader instead")
-		return sf.saveHeaderUpdates()
-	}
-	// Marshal the metadata.
-	metadata, err := marshalMetadata(sf.staticMetadata)
-	if err != nil {
-		return nil, err
-	}
-	// If the header doesn't fit in the space between the beginning of the file
-	// and the pubKeyTable, we need to call saveHeader since the pubKeyTable
-	// needs to be moved as well and saveHeader is already handling that
-	// edgecase.
-	if int64(len(metadata)) > sf.staticMetadata.PubKeyTableOffset {
-		return sf.saveHeaderUpdates()
-	}
-	// Otherwise we can create and return the updates.
-	return []writeaheadlog.Update{sf.createInsertUpdate(0, metadata)}, nil
+	/*
+		// Marshal the pubKeyTable.
+		pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
+		if err != nil {
+			return nil, err
+		}
+		// Sanity check the length of the pubKeyTable to find out if the length of
+		// the table changed. We should never just save the metadata if the table
+		// changed as well as it might lead to corruptions.
+		if sf.staticMetadata.PubKeyTableOffset+int64(len(pubKeyTable)) != sf.staticMetadata.ChunkOffset {
+			build.Critical("never call saveMetadata if the pubKeyTable changed, call saveHeader instead")
+			return sf.saveHeaderUpdates()
+		}
+		// Marshal the metadata.
+		metadata, err := marshalMetadata(sf.staticMetadata)
+		if err != nil {
+			return nil, err
+		}
+		// If the header doesn't fit in the space between the beginning of the file
+		// and the pubKeyTable, we need to call saveHeader since the pubKeyTable
+		// needs to be moved as well and saveHeader is already handling that
+		// edgecase.
+		if int64(len(metadata)) > sf.staticMetadata.PubKeyTableOffset {
+			return sf.saveHeaderUpdates()
+		}
+		// Otherwise we can create and return the updates.
+		return []writeaheadlog.Update{sf.createInsertUpdate(0, metadata)}, nil
+	*/
+	return sf.saveHeaderUpdates()
 }
