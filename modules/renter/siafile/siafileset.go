@@ -171,6 +171,20 @@ func (sfs *SiaFileSet) open(siaPath string) (*SiaFileSetEntry, error) {
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
 	}
+
+	// Sanity check - as we open the file, check that the pubKeyTable is
+	// consistent with the lookups in the pieces.
+	if build.Debug {
+		for i := 0; i < len(entry.staticChunks); i++ {
+			for j := 0; j < len(entry.staticChunks[i].Pieces); j++ {
+				for k := 0; k < len(entry.staticChunks[i].Pieces[j]); k++ {
+					if entry.staticChunks[i].Pieces[j][k] >= len(entry.pubKeyTable) {
+						build.Critical("Piece mismatch:", entry.staticChunks[i].Pieces[j][k], len(entry.pubKeyTable))
+				}
+			}
+		}
+	}
+
 	threadUID := randomThreadUID()
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()

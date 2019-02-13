@@ -718,7 +718,7 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 			pktLen := len(sf.pubKeyTable)
 			hto := int(piece.HostTableOffset)
 			if hto >= pktLen {
-				build.Critical("Requesting a host that is outside the pubKeyTable", pktLen, hto)
+				build.Critical("Requesting a host that is outside the pubKeyTable", pktLen, hto, sf.Deleted)
 				continue
 			}
 			offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
