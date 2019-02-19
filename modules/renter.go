@@ -240,7 +240,7 @@ type FileInfo struct {
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
 	ModTime          time.Time         `json:"modtime"`
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
-	OnDisk           bool              `json:"ondisk"`
+	RecentlyOnDisk   bool              `json:"recenltyondisk"`
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`

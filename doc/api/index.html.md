@@ -1844,7 +1844,7 @@ lists the status of all files.
       "bytesuploaded":  209715200,            // total bytes uploaded
       "uploadprogress": 100,                  // percent
       "expiration":     60000,                // block height
-      "ondisk":         true,                 // boolean
+      "recentlyondisk": true,                 // boolean
       "recoverable":    true,                 // boolean
     }
   ]
@@ -1878,8 +1878,8 @@ Percentage of the file uploaded, including redundancy. Uploading has completed w
 **expiration** | block height
 Block height at which the file ceases availability.  
 
-**ondisk** | boolean
-indicates if the source file is found on disk
+**recentlyondisk** | boolean
+indicates if the source file was found on disk during the last check
 
 **recoverable** | boolean
 indicates if the siafile is recoverable

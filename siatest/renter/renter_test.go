@@ -3815,8 +3815,8 @@ func TestSiafileCompatCode(t *testing.T) {
 	if sf.UploadedBytes != 40960 {
 		t.Fatal("Redundancy should be 10/20 so 10x the Filesize = 40960 bytes should be uploaded")
 	}
-	if sf.OnDisk {
-		t.Fatal("OnDisk should be false but was true")
+	if sf.RecentlyOnDisk {
+		t.Fatal("RecentlyOnDisk should be false but was true")
 	}
 	if sf.Recoverable {
 		t.Fatal("Recoverable should be false but was true")
@@ -4230,7 +4230,7 @@ func testFileAvailableAndRecoverable(t *testing.T, tg *siatest.TestGroup) {
 	if fi.Redundancy < 1 {
 		t.Fatal("redundancy of file is less than 1:", fi.Redundancy)
 	}
-	if !fi.OnDisk {
+	if !fi.RecentlyOnDisk {
 		t.Fatal("file is not on disk")
 	}
 	if !fi.Available {
@@ -4260,7 +4260,7 @@ func testFileAvailableAndRecoverable(t *testing.T, tg *siatest.TestGroup) {
 	if fi.Redundancy >= 1 {
 		t.Fatal("redundancy of file should be less than 1:", fi.Redundancy)
 	}
-	if !fi.OnDisk {
+	if !fi.RecentlyOnDisk {
 		t.Fatal("file is not on disk")
 	}
 	if fi.Available {
@@ -4283,7 +4283,7 @@ func testFileAvailableAndRecoverable(t *testing.T, tg *siatest.TestGroup) {
 	if fi.Redundancy >= 1 {
 		t.Fatal("redundancy of file should be less than 1:", fi.Redundancy)
 	}
-	if fi.OnDisk {
+	if fi.RecentlyOnDisk {
 		t.Fatal("file is still on disk")
 	}
 	if fi.Available {

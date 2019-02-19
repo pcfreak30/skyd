@@ -14,12 +14,13 @@ import (
 type (
 	// metadata is the metadata of a SiaFile and is JSON encoded.
 	metadata struct {
-		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
-		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
-		StaticFileSize      int64    `json:"filesize"`      // total size of the file
-		StaticPieceSize     uint64   `json:"piecesize"`     // size of a single piece of the file
-		LocalPath           string   `json:"localpath"`     // file to the local copy of the file used for repairing
-		SiaPath             string   `json:"siapath"`       // the path of the file on the Sia network
+		StaticPagesPerChunk uint8    `json:"pagesperchunk"`  // number of pages reserved for storing a chunk.
+		StaticVersion       [16]byte `json:"version"`        // version of the sia file format used
+		StaticFileSize      int64    `json:"filesize"`       // total size of the file
+		StaticPieceSize     uint64   `json:"piecesize"`      // size of a single piece of the file
+		LocalPath           string   `json:"localpath"`      // file to the local copy of the file used for repairing
+		RecentlyOnDisk      bool     `json:"recentlyondisk"` // cached value of if the localfile was found on disk the last time it was checked
+		SiaPath             string   `json:"siapath"`        // the path of the file on the Sia network
 
 		// fields for encryption
 		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
@@ -111,12 +112,13 @@ type (
 		StuckHealth         float64
 	}
 
-	// CachedHealthMetadata is a healper struct that contains the siafile health
-	// metadata fields that are cached
-	CachedHealthMetadata struct {
-		Health      float64
-		Redundancy  float64
-		StuckHealth float64
+	// CachedCalculatedMetadata is a helper struct that contains the metadata
+	// fields that are cached due to the expensive nature of their calculation
+	CachedCalculatedMetadata struct {
+		Health         float64
+		RecentlyOnDisk bool
+		Redundancy     float64
+		StuckHealth    float64
 	}
 )
 
@@ -226,6 +228,13 @@ func (sf *SiaFile) PieceSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize
 }
 
+// RecentlyOnDisk returns the RecentlyOnDisk value of the file's metadate
+func (sf *SiaFile) RecentlyOnDisk() bool {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.staticMetadata.RecentlyOnDisk
+}
+
 // RecentRepairTime returns  the RecentRepairTime timestamp of the file
 func (sf *SiaFile) RecentRepairTime() time.Time {
 	sf.mu.Lock()
@@ -324,23 +333,9 @@ func (sf *SiaFile) UpdateAccessTime() error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
-// UpdateLastHealthCheckTime updates the LastHealthCheckTime timestamp to the
-// current time.
-func (sf *SiaFile) UpdateLastHealthCheckTime() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	sf.staticMetadata.LastHealthCheckTime = time.Now()
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// UpdateCachedHealthMetadata updates the siafile metadata fields that are the
-// cached health values
-func (sf *SiaFile) UpdateCachedHealthMetadata(metadata CachedHealthMetadata) error {
+// UpdateCachedCalculatedMetadata updates the siafile metadata fields that are
+// the cached calculated values
+func (sf *SiaFile) UpdateCachedCalculatedMetadata(metadata CachedCalculatedMetadata) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// Update the number of stuck chunks
@@ -354,6 +349,20 @@ func (sf *SiaFile) UpdateCachedHealthMetadata(metadata CachedHealthMetadata) err
 	sf.staticMetadata.NumStuckChunks = numStuckChunks
 	sf.staticMetadata.Redundancy = metadata.Redundancy
 	sf.staticMetadata.StuckHealth = metadata.StuckHealth
+	// Save changes to metadata to disk.
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// UpdateLastHealthCheckTime updates the LastHealthCheckTime timestamp to the
+// current time.
+func (sf *SiaFile) UpdateLastHealthCheckTime() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.LastHealthCheckTime = time.Now()
 	// Save changes to metadata to disk.
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {

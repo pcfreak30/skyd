@@ -127,14 +127,9 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, contracts map
 	defer entry.Close()
 
 	// Build the FileInfo
-	var onDisk bool
-	localPath := entry.LocalPath()
-	if localPath != "" {
-		_, err = os.Stat(localPath)
-		onDisk = err == nil
-	}
 	redundancy := entry.CachedRedundancy()
 	health, stuckHealth, numStuckChunks := entry.CachedHealth()
+	recentlyOnDisk := entry.RecentlyOnDisk()
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
 		Available:        redundancy >= 1,
@@ -144,13 +139,13 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, contracts map
 		Expiration:       entry.Expiration(contracts),
 		Filesize:         entry.Size(),
 		Health:           health,
-		LocalPath:        localPath,
+		LocalPath:        entry.LocalPath(),
 		MaxHealth:        math.Max(health, stuckHealth),
 		MaxHealthPercent: entry.HealthPercentage(math.Max(health, stuckHealth)),
 		ModTime:          entry.ModTime(),
 		NumStuckChunks:   numStuckChunks,
-		OnDisk:           onDisk,
-		Recoverable:      onDisk || redundancy >= 1,
+		RecentlyOnDisk:   recentlyOnDisk,
+		Recoverable:      recentlyOnDisk || redundancy >= 1,
 		Redundancy:       redundancy,
 		Renewing:         true,
 		SiaPath:          entry.SiaPath(),

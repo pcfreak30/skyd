@@ -473,7 +473,7 @@ func (r *Renter) managedUpdateFileMetadata(siaPath string) (siafile.BubbledMetad
 	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
 	}
-	metadata := siafile.CachedHealthMetadata{
+	metadata := siafile.CachedCalculatedMetadata{
 		Health:      health,
 		Redundancy:  redundancy,
 		StuckHealth: stuckHealth,
@@ -485,7 +485,7 @@ func (r *Renter) managedUpdateFileMetadata(siaPath string) (siafile.BubbledMetad
 		Redundancy:     redundancy,
 		Size:           sf.Size(),
 		StuckHealth:    stuckHealth,
-	}, sf.UpdateCachedHealthMetadata(metadata)
+	}, sf.UpdateCachedCalculatedMetadata(metadata)
 }
 
 // managedWorstHealthDirectory follows the path of worst health to the lowest

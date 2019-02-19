@@ -938,7 +938,7 @@ func renterfileslistcmd() {
 	fmt.Printf(" %9s\n", filesizeUnits(int64(totalStored)))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if renterListVerbose {
-		fmt.Fprintln(w, "  File size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tOn Disk\tRecoverable\tSia path")
+		fmt.Fprintln(w, "  File size\tAvailable\tUploaded\tProgress\tRedundancy\tHealth\tStuck\tRenewing\tRecently On Disk\tRecoverable\tSia path")
 	}
 	sort.Sort(bySiaPath(rf.Files))
 	for _, file := range rf.Files {
@@ -955,7 +955,7 @@ func renterfileslistcmd() {
 			if file.UploadProgress == -1 {
 				uploadProgressStr = "-"
 			}
-			onDiskStr := yesNo(file.OnDisk)
+			onDiskStr := yesNo(file.RecentlyOnDisk)
 			recoverableStr := yesNo(file.Recoverable)
 			stuckStr := yesNo(file.Stuck)
 			fmt.Fprintf(w, "\t%s\t%9s\t%8s\t%10s\t%6s\t%s\t%s\t%s\t%s", availableStr, filesizeUnits(int64(file.UploadedBytes)), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
