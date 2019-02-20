@@ -116,9 +116,9 @@ func (r *Renter) managedBubbleNeeded(siaPath string) (bool, error) {
 	return false, err
 }
 
-// managedCalculateDirectoryMetadata calculates the new values for the
-// directory's metadata and tracks the value, either worst or best, for each to
-// be bubbled up
+// managedCalculateDirectoryMetadata calculates and returns the new values for
+// the directory's metadata and tracks the value, either worst or best, for each
+// to be bubbled up
 func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.BubbledMetadata, error) {
 	// Set default metadata values to start
 	metadata := siadir.BubbledMetadata{
@@ -157,7 +157,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 		if ext == siafile.ShareExtension {
 			// SiaFile found, calculate the needed metadata information of the siafile
 			fName := strings.TrimSuffix(fi.Name(), siafile.ShareExtension)
-			fileMetadata, err := r.managedCalculateFileMetadata(filepath.Join(siaPath, fName))
+			fileMetadata, err := r.managedUpdateFileMetadata(filepath.Join(siaPath, fName))
 			if err != nil {
 				return siadir.BubbledMetadata{}, err
 			}
@@ -222,42 +222,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 	}
 
 	return metadata, nil
-}
-
-// managedCalculateFileMetadata returns the necessary metadata information of a siafile
-// that needs to be bubbled
-func (r *Renter) managedCalculateFileMetadata(siaPath string) (siafile.BubbledMetadata, error) {
-	// Load the Siafile.
-	sf, err := r.staticFileSet.Open(siaPath)
-	if err != nil {
-		return siafile.BubbledMetadata{}, err
-	}
-	defer sf.Close()
-
-	// Calculate file health
-	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
-	if err := sf.UpdateLastHealthCheckTime(); err != nil {
-		return siafile.BubbledMetadata{}, err
-	}
-	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
-	// Check if local file is missing and redundancy is less than one
-	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
-		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
-	}
-	metadata := siafile.CachedHealthMetadata{
-		Health:      health,
-		Redundancy:  redundancy,
-		StuckHealth: stuckHealth,
-	}
-	return siafile.BubbledMetadata{
-		Health:         health,
-		ModTime:        sf.ModTime(),
-		NumStuckChunks: numStuckChunks,
-		Redundancy:     redundancy,
-		Size:           sf.Size(),
-		StuckHealth:    stuckHealth,
-	}, sf.UpdateCachedHealthMetadata(metadata)
 }
 
 // managedCompleteBubbleUpdate completes the bubble update and updates and/or
@@ -486,6 +450,42 @@ func (r *Renter) managedSubDirectories(siaPath string) ([]string, error) {
 		}
 	}
 	return folders, nil
+}
+
+// managedUpdateFileMetadata calculates, updates on disk, and returns the
+// necessary metadata information of a siafile that needs to be bubbled
+func (r *Renter) managedUpdateFileMetadata(siaPath string) (siafile.BubbledMetadata, error) {
+	// Load the Siafile.
+	sf, err := r.staticFileSet.Open(siaPath)
+	if err != nil {
+		return siafile.BubbledMetadata{}, err
+	}
+	defer sf.Close()
+
+	// Calculate file health
+	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	if err := sf.UpdateLastHealthCheckTime(); err != nil {
+		return siafile.BubbledMetadata{}, err
+	}
+	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
+	// Check if local file is missing and redundancy is less than one
+	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
+		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
+	}
+	metadata := siafile.CachedHealthMetadata{
+		Health:      health,
+		Redundancy:  redundancy,
+		StuckHealth: stuckHealth,
+	}
+	return siafile.BubbledMetadata{
+		Health:         health,
+		ModTime:        sf.ModTime(),
+		NumStuckChunks: numStuckChunks,
+		Redundancy:     redundancy,
+		Size:           sf.Size(),
+		StuckHealth:    stuckHealth,
+	}, sf.UpdateCachedHealthMetadata(metadata)
 }
 
 // managedWorstHealthDirectory follows the path of worst health to the lowest
