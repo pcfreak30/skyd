@@ -628,8 +628,8 @@ func TestDirectorySize(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if dirInfo.Size != 3*fileSize {
-			return fmt.Errorf("Size incorrect, got %v expected %v", dirInfo.Size, 3*fileSize)
+		if dirInfo.AggregateSize != 3*fileSize {
+			return fmt.Errorf("AggregateSize incorrect, got %v expected %v", dirInfo.AggregateSize, 3*fileSize)
 		}
 		return nil
 	})

@@ -130,7 +130,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 		NumFiles:            uint64(0),
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
-		Size:                uint64(0),
+		AggregateSize:       uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
 	}
 	// Read directory
@@ -176,7 +176,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 			metadata.NumFiles++
 			metadata.AggregateNumFiles++
 			// Update Size
-			metadata.Size += fileMetadata.Size
+			metadata.AggregateSize += fileMetadata.Size
 		} else if fi.IsDir() {
 			// Directory is found, read the directory metadata file
 			dirMetadata, err := r.managedDirectoryMetadata(filepath.Join(siaPath, fi.Name()))
@@ -194,7 +194,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath string) (siadir.Bubbl
 			// Update NumSubDirs
 			metadata.NumSubDirs++
 			// Update Size
-			metadata.Size += dirMetadata.Size
+			metadata.AggregateSize += dirMetadata.AggregateSize
 		} else {
 			// Ignore everthing that is not a SiaFile or a directory
 			continue
@@ -292,7 +292,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath string) (siadir.BubbledMetadat
 	}
 	defer siaDir.Close()
 
-	return siaDir.BubbleMetadata(), nil
+	return siaDir.BubbledMetadata(), nil
 }
 
 // managedFileMetadata returns the necessary metadata information of a siafile
@@ -309,7 +309,7 @@ func (r *Renter) managedFileMetadata(siaPath string) (siafile.BubbledMetadata, e
 	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 	if err := sf.UpdateLastHealthCheckTime(); err != nil {
-		return fileHealth{}, err
+		return siafile.BubbledMetadata{}, err
 	}
 	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
 	// Check if local file is missing and redundancy is less than one

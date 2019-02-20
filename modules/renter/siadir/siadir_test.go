@@ -47,7 +47,7 @@ func TestNewSiaDir(t *testing.T) {
 	// Check Sub Dir
 	//
 	// Check that the Health was initialized properly
-	health := siaDir.BubbleMetadata()
+	health := siaDir.BubbledMetadata()
 	if err = checkHealthInit(health); err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestNewSiaDir(t *testing.T) {
 	// Get SiaDir
 	subDir, err := LoadSiaDir(rootDir, siaPathDir, modules.ProdDependencies, wal)
 	// Check that the Health was initialized properly
-	health = subDir.BubbleMetadata()
+	health = subDir.BubbledMetadata()
 	if err = checkHealthInit(health); err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestNewSiaDir(t *testing.T) {
 	// Get SiaDir
 	rootSiaDir, err := LoadSiaDir(rootDir, "", modules.ProdDependencies, wal)
 	// Check that the Health was initialized properly
-	health = rootSiaDir.BubbleMetadata()
+	health = rootSiaDir.BubbledMetadata()
 	if err = checkHealthInit(health); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestUpdateBubbledMetadata(t *testing.T) {
 	}
 
 	// Check Health was initialized properly in memory and on disk
-	health := siaDir.BubbleMetadata()
+	health := siaDir.BubbledMetadata()
 	if err = checkHealthInit(health); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestUpdateBubbledMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	health = siaDir.BubbleMetadata()
+	health = siaDir.BubbledMetadata()
 	if err = checkHealthInit(health); err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestUpdateBubbledMetadata(t *testing.T) {
 	}
 
 	// Check Health was updated properly in memory and on disk
-	health = siaDir.BubbleMetadata()
+	health = siaDir.BubbledMetadata()
 	if !reflect.DeepEqual(health, healthUpdate) {
 		t.Log("Health", health)
 		t.Log("Health Update", healthUpdate)
@@ -187,7 +187,7 @@ func TestUpdateBubbledMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	health = siaDir.BubbleMetadata()
+	health = siaDir.BubbledMetadata()
 	// Check Time separately due to how the time is persisted
 	if !health.LastHealthCheckTime.Equal(healthUpdate.LastHealthCheckTime) {
 		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", health.LastHealthCheckTime, healthUpdate.LastHealthCheckTime)

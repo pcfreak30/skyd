@@ -153,6 +153,13 @@ type (
 	}
 )
 
+// AggregateDirectoryInfo provides aggregate information about a siadir. These
+// values are the totals of the siadir and any sub siadirs
+type AggregateDirectoryInfo struct {
+	AggregateNumFiles uint64 `json:"aggregatenumfiles"`
+	AggregateSize     uint64 `json:"aggregatesize"`
+}
+
 // An Allowance dictates how much the Renter is allowed to spend in a given
 // period. Note that funds are spent on both storage and bandwidth.
 type Allowance struct {
@@ -184,20 +191,11 @@ type ContractUtility struct {
 	Locked        bool // Locked utilities can only be set to false.
 }
 
-// DirectoryInfo provides information about a siadir
+// DirectoryInfo provides information about a siadir that includes the top level
+// directory information as well as the aggregate information
 type DirectoryInfo struct {
-	AggregateNumFiles   uint64    `json:"aggregatenumfiles"`
-	Health              float64   `json:"health"`
-	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
-	MaxHealth           float64   `json:"maxhealth"`
-	MinRedundancy       float64   `json:"minredundancy"`
-	ModTime             time.Time `json:"modtime"`
-	NumFiles            uint64    `json:"numfiles"`
-	NumStuckChunks      uint64    `json:"numstuckchunks"`
-	NumSubDirs          uint64    `json:"numsubdirs"`
-	SiaPath             string    `json:"siapath"`
-	Size                uint64    `json:"size"`
-	StuckHealth         float64   `json:"stuckhealth"`
+	AggregateDirectoryInfo
+	TopLevelDirectoryInfo
 }
 
 // DownloadInfo provides information about a file that has been requested for
@@ -340,6 +338,21 @@ type RenterSettings struct {
 	MaxUploadSpeed    int64     `json:"maxuploadspeed"`
 	MaxDownloadSpeed  int64     `json:"maxdownloadspeed"`
 	StreamCacheSize   uint64    `json:"streamcachesize"`
+}
+
+// TopLevelDirectoryInfo contains the information about a siadir that is not an
+// aggregate of the entire sub directory tree
+type TopLevelDirectoryInfo struct {
+	Health              float64   `json:"health"`
+	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
+	MaxHealth           float64   `json:"maxhealth"`
+	MinRedundancy       float64   `json:"minredundancy"`
+	ModTime             time.Time `json:"modtime"`
+	NumFiles            uint64    `json:"numfiles"`
+	NumStuckChunks      uint64    `json:"numstuckchunks"`
+	NumSubDirs          uint64    `json:"numsubdirs"`
+	SiaPath             string    `json:"siapath"`
+	StuckHealth         float64   `json:"stuckhealth"`
 }
 
 // HostDBScans represents a sortable slice of scans.

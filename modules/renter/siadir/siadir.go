@@ -48,23 +48,13 @@ type (
 	// BubbledMetadata is all the metadata that is calculated and bubbled up
 	// during threadedBubbleMetadata
 	BubbledMetadata struct {
-		AggregateNumFiles   uint64
-		Health              float64
-		LastHealthCheckTime time.Time
-		MinRedundancy       float64
-		ModTime             time.Time
-		NumFiles            uint64
-		NumStuckChunks      uint64
-		NumSubDirs          uint64
-		Size                uint64
-		StuckHealth         float64
-	}
-
-	// siaDirMetadata is the metadata that is saved to disk as a .siadir file
-	siaDirMetadata struct {
 		// AggregateNumFiles is the total number of files in a directory and any
 		// sub directory
 		AggregateNumFiles uint64 `json:"aggregatenumfiles"`
+
+		// AggregateSize is the total amount of data in the files and sub
+		// directories
+		AggregateSize uint64 `json:"aggregatesize"`
 
 		// Health is the health of the most in need file in the directory or any
 		// of the sub directories that are not stuck
@@ -92,19 +82,20 @@ type (
 		// NumSubDirs is the number of subdirectories in a directory
 		NumSubDirs uint64 `json:"numsubdirs"`
 
+		// StuckHealth is the health of the most in need file in the directory
+		// or any of the sub directories, stuck or not stuck
+		StuckHealth float64 `json:"stuckhealth"`
+	}
+
+	// siaDirMetadata is the metadata that is saved to disk as a .siadir file
+	siaDirMetadata struct {
+		BubbledMetadata
+
 		// RootDir is the path to the root directory on disk
 		RootDir string `json:"rootdir"`
 
 		// SiaPath is the path to the siadir on the sia network
 		SiaPath string `json:"siapath"`
-
-		// Size is the total amount of data in the files and sub
-		// directories
-		Size uint64 `json:"size"`
-
-		// StuckHealth is the health of the most in need file in the directory
-		// or any of the sub directories, stuck or not stuck
-		StuckHealth float64 `json:"stuckhealth"`
 	}
 )
 
@@ -148,12 +139,14 @@ func createDirMetadata(siaPath, rootDir string) (siaDirMetadata, writeaheadlog.U
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
 	// empty directories won't be viewed as being the most in need
 	md := siaDirMetadata{
-		Health:              DefaultDirHealth,
-		LastHealthCheckTime: time.Now(),
-		ModTime:             time.Now(),
-		RootDir:             rootDir,
-		SiaPath:             siaPath,
-		StuckHealth:         DefaultDirHealth,
+		BubbledMetadata: BubbledMetadata{
+			Health:              DefaultDirHealth,
+			LastHealthCheckTime: time.Now(),
+			ModTime:             time.Now(),
+			StuckHealth:         DefaultDirHealth,
+		},
+		RootDir: rootDir,
+		SiaPath: siaPath,
 	}
 	update, err := createMetadataUpdate(md)
 	return md, update, err
@@ -185,6 +178,13 @@ func LoadSiaDir(rootDir, siaPath string, deps modules.Dependencies, wal *writeah
 	return sd, err
 }
 
+// BubbledMetadata returns the metadata of the SiaDir that gets bubbled
+func (sd *SiaDir) BubbledMetadata() BubbledMetadata {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	return sd.staticMetadata.BubbledMetadata
+}
+
 // Delete removes the directory from disk and marks it as deleted. Once the directory is
 // deleted, attempting to access the directory will return an error.
 func (sd *SiaDir) Delete() error {
@@ -201,24 +201,6 @@ func (sd *SiaDir) Deleted() bool {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 	return sd.deleted
-}
-
-// BubbleMetadata returns the metadata of the SiaDir that gets bubbled
-func (sd *SiaDir) BubbleMetadata() BubbledMetadata {
-	sd.mu.Lock()
-	defer sd.mu.Unlock()
-	return BubbledMetadata{
-		AggregateNumFiles:   sd.staticMetadata.AggregateNumFiles,
-		Health:              sd.staticMetadata.Health,
-		LastHealthCheckTime: sd.staticMetadata.LastHealthCheckTime,
-		MinRedundancy:       sd.staticMetadata.MinRedundancy,
-		ModTime:             sd.staticMetadata.ModTime,
-		NumFiles:            sd.staticMetadata.NumFiles,
-		NumStuckChunks:      sd.staticMetadata.NumStuckChunks,
-		NumSubDirs:          sd.staticMetadata.NumSubDirs,
-		Size:                sd.staticMetadata.Size,
-		StuckHealth:         sd.staticMetadata.StuckHealth,
-	}
 }
 
 // SiaPath returns the SiaPath of the SiaDir
@@ -241,6 +223,6 @@ func (sd *SiaDir) UpdateMetadata(metadata BubbledMetadata) error {
 	sd.staticMetadata.NumFiles = metadata.NumFiles
 	sd.staticMetadata.NumStuckChunks = metadata.NumStuckChunks
 	sd.staticMetadata.NumSubDirs = metadata.NumSubDirs
-	sd.staticMetadata.Size = metadata.Size
+	sd.staticMetadata.AggregateSize = metadata.AggregateSize
 	return sd.saveDir()
 }

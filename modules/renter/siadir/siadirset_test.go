@@ -224,7 +224,7 @@ func TestUpdateSiaDirSetHealth(t *testing.T) {
 	}
 
 	// Confirm Health is set properly
-	health := entry.BubbleMetadata()
+	health := entry.BubbledMetadata()
 	if err = checkHealthInit(health); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestUpdateSiaDirSetHealth(t *testing.T) {
 	}
 
 	// Check Health was updated properly in memory and on disk
-	health = entry.BubbleMetadata()
+	health = entry.BubbledMetadata()
 	if !reflect.DeepEqual(health, healthUpdate) {
 		t.Log("Health", health)
 		t.Log("Health Update", healthUpdate)

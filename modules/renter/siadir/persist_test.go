@@ -50,8 +50,8 @@ func equalMetadatas(md, md2 siaDirMetadata) error {
 		return fmt.Errorf("siapaths not equal, %v and %v", md.SiaPath, md2.SiaPath)
 	}
 	// Check Size
-	if md.Size != md2.Size {
-		return fmt.Errorf("sizes not equal, %v and %v", md.Size, md2.Size)
+	if md.AggregateSize != md2.AggregateSize {
+		return fmt.Errorf("aggregate sizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
 	}
 	// Check StuckHealth
 	if md.StuckHealth != md2.StuckHealth {
