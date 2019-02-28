@@ -69,7 +69,7 @@ func (r *Renter) DeleteFile(nickname string) error {
 
 // FileList returns all of the files that the renter has.
 func (r *Renter) FileList() ([]modules.FileInfo, error) {
-	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+	_, _, contractsMap := r.managedContractUtilityMaps()
 	fileList := []modules.FileInfo{}
 	err := filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
@@ -85,7 +85,7 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 
 		// Load the Siafile.
 		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), siafile.ShareExtension)
-		file, err := r.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+		file, err := r.fileInfo(siaPath, contractsMap)
 		if err != nil {
 			return err
 		}
@@ -99,8 +99,8 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 // File returns file from siaPath queried by user.
 // Update based on FileList
 func (r *Renter) File(siaPath string) (modules.FileInfo, error) {
-	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
-	return r.fileInfo(siaPath, offline, goodForRenew, contracts)
+	_, _, contractsMap := r.managedContractUtilityMaps()
+	return r.fileInfo(siaPath, contractsMap)
 }
 
 // RenameFile takes an existing file and changes the nickname. The original
@@ -118,7 +118,7 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 // fileInfo takes the maps returned by renter.managedContractUtilityMaps as
 // input, preventing the need to build those maps many times when asking for
 // many files at once.
-func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (r *Renter) fileInfo(siaPath string, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Get the file and its contracts
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
@@ -133,8 +133,8 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew 
 		_, err = os.Stat(localPath)
 		onDisk = err == nil
 	}
-	redundancy := entry.Redundancy(offline, goodForRenew)
-	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
+	redundancy := entry.CachedRedundancy()
+	health, stuckHealth, numStuckChunks := entry.CachedHealth()
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
 		Available:        redundancy >= 1,

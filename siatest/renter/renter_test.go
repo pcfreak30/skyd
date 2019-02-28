@@ -3392,7 +3392,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			if !valid {
 				t.Fatal("identifier is invalid")
 			}
-			// Check that the host's key is a valid key from the hostb.
+			// Check that the host's key is a valid key from the hostdb.
 			_, err := r.HostDbHostsGet(spk)
 			if err != nil {
 				t.Fatal("hostKey is invalid", err)
