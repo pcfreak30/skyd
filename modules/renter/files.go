@@ -1,6 +1,8 @@
 package renter
 
 import (
+	"fmt"
+	"time"
 	"math"
 	"os"
 	"path/filepath"
@@ -77,6 +79,9 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 		return []modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
+
+	var total time.Duration
+	start := time.Now()
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 	fileList := []modules.FileInfo{}
 	err := filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
@@ -93,13 +98,17 @@ func (r *Renter) FileList() ([]modules.FileInfo, error) {
 
 		// Load the Siafile.
 		siaPath := strings.TrimSuffix(strings.TrimPrefix(path, r.staticFilesDir), siafile.ShareExtension)
+		s1 := time.Now()
 		file, err := r.fileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+		total += time.Since(s1)
 		if err != nil {
 			return err
 		}
 		fileList = append(fileList, file)
 		return nil
 	})
+	fmt.Println("Walk time:", time.Since(start))
+	fmt.Println("fileInfo time:", total)
 
 	return fileList, err
 }
@@ -135,22 +144,41 @@ func (r *Renter) RenameFile(currentName, newName string) error {
 // input, preventing the need to build those maps many times when asking for
 // many files at once.
 func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	fmt.Println()
+	var deferTime time.Time
+	wholeCall := time.Now()
+	defer func() {
+		fmt.Println("whole call time:   ", time.Since(wholeCall).Nanoseconds())
+	}()
+	defer func() {
+		fmt.Println("defer time:        ", time.Since(deferTime).Nanoseconds())
+	}()
 	// Get the file and its contracts
+
+	openCall := time.Now()
 	entry, err := r.staticFileSet.Open(siaPath)
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
 	defer entry.Close()
+	fmt.Println("open call time:    ", time.Since(openCall).Nanoseconds())
 
 	// Build the FileInfo
+	diskCheck := time.Now()
 	var onDisk bool
 	localPath := entry.LocalPath()
 	if localPath != "" {
 		_, err = os.Stat(localPath)
 		onDisk = err == nil
 	}
+	fmt.Println("disk check time:   ", time.Since(diskCheck).Nanoseconds())
+	redCheck := time.Now()
 	redundancy := entry.Redundancy(offline, goodForRenew)
+	fmt.Println("redu check time:   ", time.Since(redCheck).Nanoseconds())
+	healthCheck := time.Now()
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
+	fmt.Println("health check time: ", time.Since(healthCheck).Nanoseconds())
+	infoBuild := time.Now()
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
 		Available:        redundancy >= 1,
@@ -175,6 +203,9 @@ func (r *Renter) fileInfo(siaPath string, offline map[string]bool, goodForRenew 
 		UploadedBytes:    entry.UploadedBytes(),
 		UploadProgress:   entry.UploadProgress(),
 	}
+	fmt.Println("info build time:   ", time.Since(infoBuild).Nanoseconds())
+
+	deferTime = time.Now()
 
 	return fileInfo, nil
 }
