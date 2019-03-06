@@ -270,7 +270,7 @@ func TestChunkHealth(t *testing.T) {
 	// Since we are using a pre set offlineMap, all the chunks should have the
 	// same health as the file
 	for i := range sf.staticChunks {
-		chunkHealth := sf.chunkHealth(i, offlineMap, goodForRenewMap)
+		chunkHealth := sf.ChunkHealth(i, offlineMap, goodForRenewMap)
 		if chunkHealth != fileHealth {
 			t.Log("ChunkHealth:", chunkHealth)
 			t.Log("FileHealth:", fileHealth)
@@ -290,13 +290,13 @@ func TestChunkHealth(t *testing.T) {
 
 	// Chunk at index 0 should now have a health of 1 higher than before
 	newHealth := float64(1) - (float64(1-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
-	if sf.chunkHealth(0, offlineMap, goodForRenewMap) != newHealth {
-		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, sf.chunkHealth(0, offlineMap, goodForRenewMap))
+	if sf.ChunkHealth(0, offlineMap, goodForRenewMap) != newHealth {
+		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, sf.ChunkHealth(0, offlineMap, goodForRenewMap))
 	}
 
 	// Chunk at index 1 should still have lower health
-	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != fileHealth {
-		t.Fatalf("Expected chunk health to be %v, got %v", fileHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
+	if sf.ChunkHealth(1, offlineMap, goodForRenewMap) != fileHealth {
+		t.Fatalf("Expected chunk health to be %v, got %v", fileHealth, sf.ChunkHealth(1, offlineMap, goodForRenewMap))
 	}
 
 	// Add good piece to second chunk
@@ -310,15 +310,15 @@ func TestChunkHealth(t *testing.T) {
 	}
 
 	// Chunk at index 1 should now have a health of 1 higher than before
-	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
-		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
+	if sf.ChunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
+		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, sf.ChunkHealth(1, offlineMap, goodForRenewMap))
 	}
 
 	// Mark Chunk at index 1 as stuck and confirm that doesn't impact the result
 	// of chunkHealth
 	sf.staticChunks[1].Stuck = true
-	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
-		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
+	if sf.ChunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
+		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.ChunkHealth(1, offlineMap, goodForRenewMap))
 	}
 }
 

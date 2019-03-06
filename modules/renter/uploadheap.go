@@ -375,8 +375,8 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target, offline, goodForRenew)
 		r.mu.Unlock(id)
 		if len(unfinishedUploadChunks) == 0 {
-			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
-			continue
+			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap from", file.SiaPath())
+			return
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			if !r.uploadHeap.managedPush(unfinishedUploadChunks[i]) {
