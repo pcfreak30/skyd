@@ -254,6 +254,39 @@ func (tn *TestNode) UploadDirectory(ld *LocalDir) (*RemoteDir, error) {
 	return rd, nil
 }
 
+// UploadNewFileToDirectoryBlocking uses the node to upload a file to a directory
+func (tn *TestNode) UploadNewFileToDirectoryBlocking(rd *RemoteDir, filesize int, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
+	// Create file for upload
+	lf, err := tn.filesDir.NewFile(filesize)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to create file")
+	}
+	// Create siapath so that it is in the remote directory
+	siapath := filepath.Join(rd.siapath, lf.FileName())
+	// upload file
+	err = tn.RenterUploadForcePost(lf.path, siapath, dataPieces, parityPieces, force)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to upload from "+lf.path+" to "+siapath)
+	}
+	// Create remote file object
+	rf := &RemoteFile{
+		siaPath:  siapath,
+		checksum: lf.checksum,
+	}
+	// Make sure renter tracks file
+	_, err = tn.File(rf)
+	if err != nil {
+		return rf, errors.AddContext(err, "uploaded file is not tracked by the renter")
+	}
+	// Wait until upload reached the specified progress
+	if err = tn.WaitForUploadProgress(rf, 1); err != nil {
+		return nil, err
+	}
+	// Wait until upload reaches a certain redundancy
+	err = tn.WaitForUploadRedundancy(rf, float64((dataPieces+parityPieces))/float64(dataPieces))
+	return rf, err
+}
+
 // UploadNewDirectory uses the node to create and upload a directory with a
 // random name
 func (tn *TestNode) UploadNewDirectory() (*RemoteDir, error) {
@@ -492,4 +525,9 @@ func (tn *TestNode) KnowsHost(host *TestNode) error {
 		}
 	}
 	return errors.New("host ist unknown")
+}
+
+// NewLocalFile creates a new LocalFile
+func (tn *TestNode) NewLocalFile(filename string, filesize int) (*LocalFile, error) {
+	return tn.filesDir.NewFileSetName(filename, filesize)
 }

@@ -76,7 +76,6 @@ func TestRenter(t *testing.T) {
 	// Specify subtests to run
 	subTests := []test{
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
-		{"TestLocalRepair", testLocalRepair},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
 		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
@@ -107,7 +106,6 @@ func TestRenterTwo(t *testing.T) {
 	// Specify subtests to run
 	subTests := []test{
 		{"TestReceivedFieldEqualsFileSize", testReceivedFieldEqualsFileSize},
-		{"TestRemoteRepair", testRemoteRepair},
 		{"TestSingleFileGet", testSingleFileGet},
 		{"TestSiaFileTimestamps", testSiafileTimestamps},
 		{"TestZeroByteFile", testZeroByteFile},
@@ -673,153 +671,6 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 		}()
 	}
 	wg.Wait()
-}
-
-// testLocalRepair tests if a renter correctly repairs a file from disk
-// after a host goes offline.
-func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the first of the group's renters
-	renter := tg.Renters()[0]
-
-	// Check that we have enough hosts for this test.
-	if len(tg.Hosts()) < 2 {
-		t.Fatal("This test requires at least 2 hosts")
-	}
-
-	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
-	dataPieces := uint64(1)
-	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-
-	// Upload file
-	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Get the file info of the fully uploaded file. Tha way we can compare the
-	// redundancies later.
-	fi, err := renter.File(remoteFile)
-	if err != nil {
-		t.Fatal("failed to get file info", err)
-	}
-
-	// Take down one of the hosts and check if redundancy decreases.
-	if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
-		t.Fatal("Failed to shutdown host", err)
-	}
-	expectedRedundancy := float64(dataPieces+parityPieces-1) / float64(dataPieces)
-	if err := renter.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
-		t.Fatal("Redundancy isn't decreasing", err)
-	}
-	// Mine a block to trigger the repair loop so the chunk is marked as stuck
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-	// Check to see if a chunk got marked as stuck
-	err = renter.WaitForStuckChunksToBubble()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// We should still be able to download
-	if _, err := renter.DownloadByStream(remoteFile); err != nil {
-		t.Fatal("Failed to download file", err)
-	}
-	// Bring up a new host and check if redundancy increments again.
-	_, err = tg.AddNodes(node.HostTemplate)
-	if err != nil {
-		t.Fatal("Failed to create a new host", err)
-	}
-	if err := renter.WaitForUploadRedundancy(remoteFile, fi.Redundancy); err != nil {
-		t.Fatal("File wasn't repaired", err)
-	}
-	// Check to see if a chunk got repaired and marked as unstuck
-	err = renter.WaitForStuckChunksToRepair()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// We should be able to download
-	if _, err := renter.DownloadByStream(remoteFile); err != nil {
-		t.Fatal("Failed to download file", err)
-	}
-}
-
-// testRemoteRepair tests if a renter correctly repairs a file by
-// downloading it after a host goes offline.
-func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the first of the group's renters
-	r := tg.Renters()[0]
-
-	// Check that we have enough hosts for this test.
-	if len(tg.Hosts()) < 2 {
-		t.Fatal("This test requires at least 2 hosts")
-	}
-
-	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
-	dataPieces := uint64(1)
-	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-
-	// Upload file
-	localFile, remoteFile, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Get the file info of the fully uploaded file. Tha way we can compare the
-	// redundancieslater.
-	fi, err := r.File(remoteFile)
-	if err != nil {
-		t.Fatal("failed to get file info", err)
-	}
-
-	// Delete the file locally.
-	if err := localFile.Delete(); err != nil {
-		t.Fatal("failed to delete local file", err)
-	}
-
-	// Take down all of the parity hosts and check if redundancy decreases.
-	for i := uint64(0); i < parityPieces; i++ {
-		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
-			t.Fatal("Failed to shutdown host", err)
-		}
-	}
-	expectedRedundancy := float64(dataPieces+parityPieces-1) / float64(dataPieces)
-	if err := r.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
-		t.Fatal("Redundancy isn't decreasing", err)
-	}
-	// Mine a block to trigger the repair loop so the chunk is marked as stuck
-	m := tg.Miners()[0]
-	if err := m.MineBlock(); err != nil {
-		t.Fatal(err)
-	}
-	// Check to see if a chunk got marked as stuck
-	err = r.WaitForStuckChunksToBubble()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// We should still be able to download
-	if _, err := r.DownloadByStream(remoteFile); err != nil {
-		t.Error("Failed to download file", err)
-	}
-	// Bring up new parity hosts and check if redundancy increments again.
-	_, err = tg.AddNodeN(node.HostTemplate, int(parityPieces))
-	if err != nil {
-		t.Fatal("Failed to create a new host", err)
-	}
-	// When doing remote repair the redundancy might not reach 100%.
-	expectedRedundancy = (1.0 - siafile.RemoteRepairDownloadThreshold) * fi.Redundancy
-	if err := r.WaitForUploadRedundancy(remoteFile, expectedRedundancy); err != nil {
-		t.Fatal("File wasn't repaired", err)
-	}
-	// Check to see if a chunk got repaired and marked as unstuck
-	err = r.WaitForStuckChunksToRepair()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// We should be able to download
-	if _, err := r.DownloadByStream(remoteFile); err != nil {
-		t.Fatal("Failed to download file", err)
-	}
 }
 
 // testSingleFileGet is a subtest that uses an existing TestGroup to test if

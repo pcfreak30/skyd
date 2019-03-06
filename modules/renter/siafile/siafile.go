@@ -256,7 +256,8 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 }
 
 // chunkHealth returns the health of the chunk which is defined as the percent
-// of parity pieces remaining.
+// of parity pieces remaining. This means that a health of 1 should equal a
+// redundancy of 1
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk or repair by upload streaming
@@ -267,7 +268,7 @@ func (sf *SiaFile) chunkHealth(chunkIndex int, offlineMap map[string]bool, goodF
 	targetPieces := float64(numPieces - minPieces)
 	// Find the good pieces that are good for renew
 	goodPieces, _ := sf.goodPieces(chunkIndex, offlineMap, goodForRenewMap)
-	// Sanity Check, if something went wrong, default to minimum health
+	// Sanity Check, if something went wrong, default to minimum good pieces
 	if int(goodPieces) > numPieces || goodPieces < 0 {
 		build.Critical("unexpected number of goodPieces for chunkHealth")
 		goodPieces = 0
@@ -343,8 +344,9 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 
 // Health calculates the health of the file to be used in determining repair
 // priority. Health of the file is the lowest health of any of the chunks and is
-// defined as the percent of parity pieces remaining.  Additionally the
-// NumStuckChunks will be updated for the SiaFile and returned
+// defined as the percent of parity pieces remaining. This means that a health
+// of 1 should equal a redundancy of 1. Additionally the NumStuckChunks will be
+// and returned.
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
@@ -380,7 +382,9 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 			if chunkHealth > stuckHealth {
 				stuckHealth = chunkHealth
 			}
-		} else if chunkHealth > health {
+			continue
+		}
+		if chunkHealth > health {
 			health = chunkHealth
 		}
 	}

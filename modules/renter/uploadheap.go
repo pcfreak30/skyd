@@ -5,6 +5,7 @@ package renter
 
 import (
 	"container/heap"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -285,8 +286,8 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		incomplete := chunk.piecesCompleted < chunk.piecesNeeded
 		// Check if chunk is downloadable
 		chunkHealth := chunk.fileEntry.ChunkHealth(int(chunk.index), offline, goodForRenew)
-		_, err := os.Stat(chunk.fileEntry.LocalPath())
-		downloadable := chunkHealth <= 1 || err == nil
+		_, osErr := os.Stat(chunk.fileEntry.LocalPath())
+		downloadable := chunkHealth <= 1 || osErr == nil
 		// Check if chunk seems stuck
 		stuck := !incomplete && chunkHealth != 0
 
@@ -299,15 +300,19 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 
 		// If a chunk is not downloadable mark it as stuck
 		if !downloadable {
+			fmt.Println("chunk not downloadable")
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being downloadable")
-			err = chunk.fileEntry.SetStuck(chunk.index, true)
+			// if osErr != nil {
+			// 	fmt.Println("os err for downloadable")
+			// }
+			err := chunk.fileEntry.SetStuck(chunk.index, true)
 			if err != nil {
 				r.log.Println("WARN: unable to mark chunk as stuck:", err)
 			}
 			continue
 		} else if stuck {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to being complete but having a health of", chunkHealth)
-			err = chunk.fileEntry.SetStuck(chunk.index, true)
+			err := chunk.fileEntry.SetStuck(chunk.index, true)
 			if err != nil {
 				r.log.Println("WARN: unable to mark chunk as stuck:", err)
 			}
@@ -315,7 +320,7 @@ func (r *Renter) buildUnfinishedChunks(entrys []*siafile.SiaFileSetEntry, hosts 
 		}
 
 		// Close entry of completed chunk
-		err = r.managedSetStuckAndClose(chunk, false)
+		err := r.managedSetStuckAndClose(chunk, false)
 		if err != nil {
 			r.log.Debugln("WARN: unable to mark chunk as stuck and close:", err)
 		}
@@ -375,8 +380,8 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target, offline, goodForRenew)
 		r.mu.Unlock(id)
 		if len(unfinishedUploadChunks) == 0 {
-			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
-			continue
+			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap from", file.SiaPath())
+			return
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			if !r.uploadHeap.managedPush(unfinishedUploadChunks[i]) {

@@ -61,10 +61,16 @@ func (ld *LocalDir) Name() string {
 	return filepath.Base(ld.path)
 }
 
-// NewFile creates a new LocalFile in the current LocalDir
+// NewFile creates a new LocalFile in the current LocalDir with a random name
 func (ld *LocalDir) NewFile(size int) (*LocalFile, error) {
 	fileName := fmt.Sprintf("%dbytes - %s", size, hex.EncodeToString(fastrand.Bytes(4)))
-	path := filepath.Join(ld.path, fileName)
+	return ld.NewFileSetName(fileName, size)
+}
+
+// NewFileSetName creates a new LocalFile in the current LocalDir with a
+// specified name
+func (ld *LocalDir) NewFileSetName(name string, size int) (*LocalFile, error) {
+	path := filepath.Join(ld.path, name)
 	bytes := fastrand.Bytes(size)
 	err := ioutil.WriteFile(path, bytes, 0600)
 	return &LocalFile{

@@ -413,6 +413,24 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	// If required, remove the chunk from the set of repairing chunks.
 	if chunkComplete && !released {
+		// uc.mu.Lock()
+		// fmt.Println("=== Condition Met")
+		// fmt.Println("     file:", uc.fileEntry.SiaPath())
+		// fmt.Println("     id:", uc.id)
+		// fmt.Println("     index:", uc.index)
+		// fmt.Println("     mem needed:", uc.memoryNeeded)
+		// fmt.Println("     mem released:", uc.memoryReleased)
+		// fmt.Println("     min pieces:", uc.minimumPieces)
+		// fmt.Println("     offset:", uc.offset)
+		// fmt.Println("     piece Usage:", uc.pieceUsage)
+		// fmt.Println("     pieces Complete:", uc.piecesCompleted)
+		// fmt.Println("     pieces Needed:", uc.piecesNeeded)
+		// fmt.Println("     pieces Registered:", uc.piecesRegistered)
+		// fmt.Println("     released:", uc.released)
+		// fmt.Println("     stuck:", uc.stuck)
+		// fmt.Println("     stuck repair:", uc.stuckRepair)
+		// fmt.Println("     workers Remaining:", uc.workersRemaining)
+		// uc.mu.Unlock()
 		r.managedUpdateUploadChunkStuckStatus(uc)
 		// Close the file entry unless disrupted.
 		if !r.deps.Disrupt("disableCloseUploadEntry") {
@@ -424,6 +442,25 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		r.uploadHeap.mu.Lock()
 		delete(r.uploadHeap.repairingChunks, uc.id)
 		r.uploadHeap.mu.Unlock()
+	} else {
+		// uc.mu.Lock()
+		// fmt.Println("=== Condition Not Met")
+		// fmt.Println("     file:", uc.fileEntry.SiaPath())
+		// fmt.Println("     id:", uc.id)
+		// fmt.Println("     index:", uc.index)
+		// fmt.Println("     mem needed:", uc.memoryNeeded)
+		// fmt.Println("     mem released:", uc.memoryReleased)
+		// fmt.Println("     min pieces:", uc.minimumPieces)
+		// fmt.Println("     offset:", uc.offset)
+		// fmt.Println("     piece Usage:", uc.pieceUsage)
+		// fmt.Println("     pieces Complete:", uc.piecesCompleted)
+		// fmt.Println("     pieces Needed:", uc.piecesNeeded)
+		// fmt.Println("     pieces Registered:", uc.piecesRegistered)
+		// fmt.Println("     released:", uc.released)
+		// fmt.Println("     stuck:", uc.stuck)
+		// fmt.Println("     stuck repair:", uc.stuckRepair)
+		// fmt.Println("     workers Remaining:", uc.workersRemaining)
+		// uc.mu.Unlock()
 	}
 	// Sanity check - all memory should be released if the chunk is complete.
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
