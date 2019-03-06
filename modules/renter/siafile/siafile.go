@@ -256,23 +256,30 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 }
 
 // chunkHealth returns the health of the chunk which is defined as the percent
-// of parity pieces remaining.
+// of parity pieces remaining. This means that a health of 1 should equal a
+// redundancy of 1
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk or repair by upload streaming
-func (sf *SiaFile) chunkHealth(chunkIndex int, offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
+func (sf *SiaFile) chunkHealth(chunkIndex int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (float64, float64) {
 	// The max number of good pieces that a chunk can have is NumPieces()
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
 	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
 	targetPieces := float64(numPieces - minPieces)
 	// Find the good pieces that are good for renew
-	goodPieces, _ := sf.goodPieces(chunkIndex, offlineMap, goodForRenewMap)
-	// Sanity Check, if something went wrong, default to minimum health
-	if int(goodPieces) > numPieces || goodPieces < 0 {
-		build.Critical("unexpected number of goodPieces for chunkHealth")
-		goodPieces = 0
+	goodPiecesRenew, goodPiecesNoRenew := sf.goodPieces(chunkIndex, offlineMap, goodForRenewMap)
+	// Sanity Check, if something went wrong, default to minimum good pieces
+	if int(goodPiecesRenew) > numPieces || goodPiecesRenew < 0 {
+		build.Critical("unexpected number of goodPiecesRenew for chunkHealth")
+		goodPiecesRenew = 0
 	}
-	return 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
+	if int(goodPiecesNoRenew) > numPieces || goodPiecesNoRenew < 0 {
+		build.Critical("unexpected number of goodPiecesNoRenew for chunkHealth")
+		goodPiecesNoRenew = 0
+	}
+	chunkHealthRenew := 1 - (float64(int(goodPiecesRenew)-minPieces) / targetPieces)
+	chunkHealthNoRenew := 1 - (float64(int(goodPiecesNoRenew)-minPieces) / targetPieces)
+	return chunkHealthRenew, chunkHealthNoRenew
 }
 
 // ChunkHealth returns the health of the chunk which is defined as the percent
@@ -280,7 +287,13 @@ func (sf *SiaFile) chunkHealth(chunkIndex int, offlineMap map[string]bool, goodF
 func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) float64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.chunkHealth(index, offlineMap, goodForRenewMap)
+	chunkHealthRenew, chunkHealthNoRenew := sf.chunkHealth(index, offlineMap, goodForRenewMap)
+	if chunkHealthRenew > 1 && chunkHealthNoRenew <= 1 {
+		return 1
+	} else if chunkHealthRenew > 1 {
+		return chunkHealthNoRenew
+	}
+	return chunkHealthRenew
 }
 
 // ChunkIndexByOffset will return the chunkIndex that contains the provided
@@ -343,8 +356,9 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 
 // Health calculates the health of the file to be used in determining repair
 // priority. Health of the file is the lowest health of any of the chunks and is
-// defined as the percent of parity pieces remaining.  Additionally the
-// NumStuckChunks will be updated for the SiaFile and returned
+// defined as the percent of parity pieces remaining. This means that a health
+// of 1 should equal a redundancy of 1. Additionally the NumStuckChunks will be
+// and returned.
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
@@ -367,41 +381,78 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		// misrepresenting the health information of a directory
 		return 0, 0, 0
 	}
-	var health, stuckHealth float64
+	var healthRenew, stuckHealthRenew float64
+	var healthNoRenew, stuckHealthNoRenew float64
 	var numStuckChunks uint64
 	for chunkIndex, chunk := range sf.staticChunks {
-		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
+		chunkHealthRenew, chunkHealthNoRenew := sf.chunkHealth(chunkIndex, offline, goodForRenew)
 
 		// Update the health or stuckHealth of the file according to the health
 		// of the chunk. The health of the file is the worst health (highest
 		// number) of all the chunks in the file.
 		if chunk.Stuck {
 			numStuckChunks++
-			if chunkHealth > stuckHealth {
-				stuckHealth = chunkHealth
+			if chunkHealthRenew > stuckHealthRenew {
+				stuckHealthRenew = chunkHealthRenew
 			}
-		} else if chunkHealth > health {
-			health = chunkHealth
+			if chunkHealthNoRenew > stuckHealthNoRenew {
+				stuckHealthNoRenew = chunkHealthNoRenew
+			}
+			continue
+		}
+		if chunkHealthRenew > healthRenew {
+			healthRenew = chunkHealthRenew
+		}
+		if chunkHealthNoRenew > healthNoRenew {
+			healthNoRenew = chunkHealthNoRenew
 		}
 	}
 
 	// Check if all chunks are stuck, if so then set health to max health to
 	// avoid file being targetted for repair
 	if int(numStuckChunks) == len(sf.staticChunks) {
-		health = float64(0)
+		healthRenew = float64(0)
+		healthNoRenew = float64(0)
 	}
 	// Sanity check, verify that the calculated health is not worse (greater)
 	// than the worst health.
-	if health > worstHealth {
-		build.Critical("WARN: health out of bounds. Max value, Min value, health found", worstHealth, 0, health)
-		health = worstHealth
+	if healthRenew > worstHealth {
+		build.Critical("WARN: healthRenew out of bounds. Max value, Min value, healthRenew found", worstHealth, 0, healthRenew)
+		healthRenew = worstHealth
+	}
+	if healthNoRenew > worstHealth {
+		build.Critical("WARN: healthNoRenew out of bounds. Max value, Min value, healthNoRenew found", worstHealth, 0, healthNoRenew)
+		healthNoRenew = worstHealth
 	}
 	// Sanity check, verify that the calculated stuck health is not worse
 	// (greater) than the worst health.
-	if stuckHealth > worstHealth {
-		build.Critical("WARN: stuckHealth out of bounds. Max value, Min value, stuckHealth found", worstHealth, 0, stuckHealth)
-		stuckHealth = worstHealth
+	if stuckHealthRenew > worstHealth {
+		build.Critical("WARN: stuckHealthRenew out of bounds. Max value, Min value, stuckHealthRenew found", worstHealth, 0, stuckHealthRenew)
+		stuckHealthRenew = worstHealth
 	}
+	if stuckHealthNoRenew > worstHealth {
+		build.Critical("WARN: stuckHealthNoRenew out of bounds. Max value, Min value, stuckHealthNoRenew found", worstHealth, 0, stuckHealthNoRenew)
+		stuckHealthNoRenew = worstHealth
+	}
+
+	// Determine which health values to return to the user. This is the same UX
+	// logic that is used in Redundancy
+	var health, stuckHealth float64
+	if healthRenew > 1 && healthNoRenew <= 1 {
+		health = 1
+	} else if healthRenew > 1 {
+		health = healthNoRenew
+	} else {
+		health = healthRenew
+	}
+	if stuckHealthRenew > 1 && stuckHealthNoRenew <= 1 {
+		stuckHealth = 1
+	} else if stuckHealthRenew > 1 {
+		stuckHealth = stuckHealthNoRenew
+	} else {
+		stuckHealth = stuckHealthRenew
+	}
+
 	return health, stuckHealth, numStuckChunks
 }
 
