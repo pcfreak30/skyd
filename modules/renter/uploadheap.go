@@ -341,8 +341,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		unfinishedUploadChunks := r.buildUnfinishedChunks(file.CopyEntry(int(file.NumChunks())), hosts, target, offline, goodForRenew)
 		r.mu.Unlock(id)
 		if len(unfinishedUploadChunks) == 0 {
-			r.log.Println("No unfinishedUploadChunks returned from buildUnfinishedChunks, so no chunks will be added to the heap")
-			return
+			continue
 		}
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			r.uploadHeap.managedPush(unfinishedUploadChunks[i])
@@ -363,6 +362,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		// skip sub directories and non siafiles
 		ext := filepath.Ext(fi.Name())
 		if fi.IsDir() || ext != siafile.ShareExtension {
+			r.log.Debugln("WARN: Found a file that is not a siafile:", fi.Name())
 			continue
 		}
 
@@ -370,7 +370,8 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 		siaPath := filepath.Join(dirSiaPath, strings.TrimSuffix(fi.Name(), ext))
 		file, err := r.staticFileSet.Open(siaPath)
 		if err != nil {
-			return
+			r.log.Debugln("WARN: Could not open siafile:", fi.Name(), err)
+			continue
 		}
 
 		// For stuck chunk repairs, check to see if file has stuck chunks
@@ -378,7 +379,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			// Close unneeded files
 			err := file.Close()
 			if err != nil {
-				r.log.Println("WARN: Could not close file:", err)
+				r.log.Println("WARN: Could not close file:", fi.Name(), err)
 			}
 			continue
 		}
@@ -388,7 +389,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath string, hosts map[string]struc
 			// Close unneeded files
 			err := file.Close()
 			if err != nil {
-				r.log.Println("WARN: Could not close file:", err)
+				r.log.Println("WARN: Could not close file:", fi.Name(), err)
 			}
 			continue
 		}
