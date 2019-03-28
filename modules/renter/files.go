@@ -238,6 +238,57 @@ func (r *Renter) fileToSiaFile(f *file, repairPath string, oldContracts []module
 	return r.staticFileSet.NewFromLegacyData(fileData)
 }
 
+// managedCalculateFileInfo returns information on a siafile. As a performance
+// optimization, the fileInfo takes the maps returned by
+// renter.managedContractUtilityMaps as input, preventing the need to build
+// those maps many times when asking for many files at once.
+func (r *Renter) managedCalculateFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+	// Get the file and its contracts
+	entry, err := r.staticFileSet.Open(siaPath)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	defer entry.Close()
+
+	// Build the FileInfo
+	var onDisk bool
+	localPath := entry.LocalPath()
+	if localPath != "" {
+		_, err = os.Stat(localPath)
+		onDisk = err == nil
+	}
+	redundancy := entry.Redundancy(offline, goodForRenew)
+	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
+	fileInfo := modules.FileInfo{
+		AccessTime:       entry.AccessTime(),
+		Available:        redundancy >= 1,
+		ChangeTime:       entry.ChangeTime(),
+		CipherType:       entry.MasterKey().Type().String(),
+		CreateTime:       entry.CreateTime(),
+		Expiration:       entry.Expiration(contracts),
+		Filesize:         entry.Size(),
+		Health:           health,
+		LocalPath:        localPath,
+		MaxHealth:        math.Max(health, stuckHealth),
+		MaxHealthPercent: entry.HealthPercentage(math.Max(health, stuckHealth)),
+		ModTime:          entry.ModTime(),
+		NumStuckChunks:   numStuckChunks,
+		OnDisk:           onDisk,
+		Recoverable:      onDisk || redundancy >= 1,
+		Redundancy:       redundancy,
+		Renewing:         true,
+		SiaPath:          entry.SiaPath().String(),
+		Stuck:            numStuckChunks > 0,
+		StuckHealth:      stuckHealth,
+		UploadedBytes:    entry.UploadedBytes(),
+		UploadProgress:   entry.UploadProgress(),
+	}
+
+	return fileInfo, nil
+}
+
 // numChunks returns the number of chunks that f was split into.
 func (f *file) numChunks() uint64 {
 	// empty files still need at least one chunk

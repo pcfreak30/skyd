@@ -109,7 +109,21 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 	defer entry.Close()
 
-	// Get the FileInfo for the file and add it to the dir's metadata.
+	// Get the FileInfo for the file.
+	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
+	fi, err := r.managedCalculateFileInfo(up.SiaPath, offline, goodForRenew, contracts)
+	if err != nil {
+		return err
+	}
+	// Update the metadata of the dir.
+	md := siaDirEntry.Metadata()
+	if _, exists := md.FileInfos[md.SiaPath]; exists {
+		build.Critical(fmt.Sprintf("Cached FileInfo for %v already exists", up.SiaPath.String()))
+	}
+	md.FileInfos[md.SiaPath] = fi
+	if err := siaDirEntry.UpdateMetadata(md); err != nil {
+		return err
+	}
 
 	// No need to upload zero-byte files.
 	if fileInfo.Size() == 0 {
