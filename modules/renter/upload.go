@@ -97,7 +97,10 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 	// Try to create the directory. If ErrPathOverload is returned it already exists.
 	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
-	if err != siadir.ErrPathOverload && err != nil {
+	if err == siadir.ErrPathOverload {
+		siaDirEntry, err = r.staticDirSet.Open(dirSiaPath)
+	}
+	if err != nil {
 		return err
 	}
 	defer siaDirEntry.Close()
