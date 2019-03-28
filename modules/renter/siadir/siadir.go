@@ -54,6 +54,11 @@ type (
 		// directories
 		AggregateSize uint64 `json:"aggregatesize"`
 
+		// FileInfos is a cache of the files within a SiaDir. It needs to be
+		// modified every time a file is added, removed or any of the fields of
+		// the FileInfo for a specific file changed.
+		FileInfos map[modules.SiaPath]modules.FileInfo `json:"fileinfos"`
+
 		// Health is the health of the most in need file in the directory or any
 		// of the sub directories that are not stuck
 		Health float64 `json:"health"`
@@ -132,6 +137,7 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
 	// empty directories won't be viewed as being the most in need
 	md := Metadata{
+		FileInfos:   make(map[modules.SiaPath]modules.FileInfo),
 		Health:      DefaultDirHealth,
 		ModTime:     time.Now(),
 		StuckHealth: DefaultDirHealth,

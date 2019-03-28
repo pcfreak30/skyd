@@ -105,6 +105,18 @@ func (sp *SiaPath) UnmarshalJSON(b []byte) error {
 	return sp.validate(true)
 }
 
+// MarshalText implements the TextMarshaler interface for SiaPath to allow for
+// it to be used as a json map key.
+func (sp SiaPath) MarshalText() (text []byte, err error) {
+	return []byte(sp.String()), nil
+}
+
+// UnmarshalText implements the TextMarshaler interface for SiaPath to allow for
+// it to be used as a json map key.
+func (sp *SiaPath) UnmarshalText(text []byte) error {
+	return sp.LoadString(string(text))
+}
+
 // SiaDirSysPath returns the system path needed to read a directory on disk, the
 // input dir is the root siadir directory on disk
 func (sp SiaPath) SiaDirSysPath(dir string) string {

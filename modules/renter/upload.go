@@ -99,9 +99,8 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
 	if err != siadir.ErrPathOverload && err != nil {
 		return err
-	} else if err == nil {
-		siaDirEntry.Close()
 	}
+	defer siaDirEntry.Close()
 
 	// Create the Siafile and add to renter
 	entry, err := r.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fileInfo.Size()), fileInfo.Mode())
@@ -109,6 +108,8 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return err
 	}
 	defer entry.Close()
+
+	// Get the FileInfo for the file and add it to the dir's metadata.
 
 	// No need to upload zero-byte files.
 	if fileInfo.Size() == 0 {
