@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -61,6 +62,28 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+	// Get the siapath of the parent directory.
+	siaPathDir, err := siaPath.Dir()
+	if err != nil {
+		return err
+	}
+	// Open the parent directory.
+	siaDirEntry, err := r.staticDirSet.Open(siaPathDir)
+	if err != nil {
+		return err
+	}
+	defer siaDirEntry.Close()
+	// Remove the file from the metadata.
+	md := siaDirEntry.Metadata()
+	if _, exists := md.FileInfos[siaPath]; !exists {
+		build.Critical("Deleted file doesn't exist in .siadir")
+	}
+	delete(md.FileInfos, siaPath)
+	// Update metadata on disk.
+	if err := siaDirEntry.UpdateMetadata(md); err != nil {
+		return err
+	}
+	// Delete file from set.
 	return r.staticFileSet.Delete(siaPath)
 }
 
