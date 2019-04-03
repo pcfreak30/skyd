@@ -74,8 +74,11 @@ func (ec *entryCache) Add(entry *siaFileSetEntry) {
 	defer ec.mu.Unlock()
 	// Make sure we aren't adding a duplicate.
 	sp := entry.SiaPath()
-	if _, exists := ec.em[sp]; exists {
-		build.Critical("entry for path", sp.String(), "already cached")
+	if entry, exists := ec.em[sp]; exists {
+		// File is already cached.
+		if entry.cacheIndex == -1 {
+			build.Critical("entry is supposed to be cached but index is -1")
+		}
 		return
 	}
 	// Add the entry to the map and heap and prune the heap afterwards.
@@ -120,6 +123,7 @@ func (ec *entryCache) TryCache(siaPath modules.SiaPath) (*siaFileSetEntry, bool)
 	// Remove the entry from the map and the heap.
 	delete(ec.em, siaPath)
 	heap.Remove(&ec.eh, entry.cacheIndex)
+	entry.cacheIndex = -1
 	// Sanity check length.
 	if len(ec.em) != ec.eh.Len() {
 		build.Critical("cache map and heap are not the same length", len(ec.em), ec.eh.Len())
@@ -132,6 +136,7 @@ func (ec *entryCache) prune(size int) {
 	for ec.eh.Len() > size {
 		// Remove from heap
 		entry := ec.eh.Pop().(*siaFileSetEntry)
+		entry.cacheIndex = -1
 		sp := entry.SiaPath()
 		// Remove from map
 		if _, ok := ec.em[sp]; !ok {
