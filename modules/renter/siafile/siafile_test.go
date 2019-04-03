@@ -579,7 +579,7 @@ func TestStuckChunks(t *testing.T) {
 	if err = sf.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(sfs.siaFileMap) != 0 {
+	if len(sfs.staticSiaFileMap) != 0 {
 		t.Fatal("File not removed from memory")
 	}
 

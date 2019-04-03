@@ -77,7 +77,7 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The set should be empty.
-		if len(sfs.siaFileMap) != 0 {
+		if len(sfs.staticSiaFileMap) != 0 {
 			t.Fatal("SiaFileMap should be empty")
 		}
 		// Append the entry to make sure we can close it later.
@@ -119,8 +119,8 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 	}
 
 	// Confirm file is in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatalf("Expected SiaFileSet map to be of length 1, instead is length %v", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatalf("Expected SiaFileSet map to be of length 1, instead is length %v", len(sfs.staticSiaFileMap))
 	}
 
 	// Confirm threadCount is incremented properly
@@ -137,8 +137,8 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 	}
 
 	// Confirm file was removed from memory
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatalf("Expected SiaFileSet map to be empty, instead is length %v", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 0 {
+		t.Fatalf("Expected SiaFileSet map to be empty, instead is length %v", len(sfs.staticSiaFileMap))
 	}
 
 	// Open siafile again and confirm threadCount was incremented
@@ -173,8 +173,8 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm there is 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.staticSiaFileMap))
 	}
 	// Close File
 	err = entry.Close()
@@ -182,8 +182,8 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm therte are no files in memory
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.staticSiaFileMap))
 	}
 
 	// Test accessing the same file from two separate threads
@@ -194,8 +194,8 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm there is 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.staticSiaFileMap))
 	}
 	// Access the file again
 	entry2, err := sfs.Open(siaPath)
@@ -203,8 +203,8 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm there is still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.staticSiaFileMap))
 	}
 	// Close one of the file instances
 	err = entry1.Close()
@@ -212,8 +212,8 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm there is still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.staticSiaFileMap))
 	}
 
 	// Confirm closing out remaining files removes all files from memory
@@ -224,8 +224,8 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm there are no files in memory
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.staticSiaFileMap))
 	}
 }
 
@@ -252,8 +252,8 @@ func TestRenameFileInMemory(t *testing.T) {
 	}
 
 	// Confirm there is 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.staticSiaFileMap))
 	}
 
 	// Test renaming an instance of a file
@@ -264,8 +264,8 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm that renter still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.staticSiaFileMap))
 	}
 	// Rename second instance
 	newSiaPath := newRandSiaPath()
@@ -275,8 +275,8 @@ func TestRenameFileInMemory(t *testing.T) {
 	}
 	// Confirm there is still only has 1 file in memory as renaming doesn't
 	// add the new name to memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 files in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 files in memory, got:", len(sfs.staticSiaFileMap))
 	}
 	// Close instance of renamed file
 	err = entry2.Close()
@@ -284,8 +284,8 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm there is still has 1 file1 in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 files in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 files in memory, got:", len(sfs.staticSiaFileMap))
 	}
 	// Close other instance of second file
 	err = entry.Close()
@@ -293,8 +293,8 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm there are no files in memory
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.staticSiaFileMap))
 	}
 }
 
@@ -321,8 +321,8 @@ func TestDeleteFileInMemory(t *testing.T) {
 	}
 
 	// Confirm there is 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.staticSiaFileMap))
 	}
 
 	// Test deleting an instance of a file
@@ -333,8 +333,8 @@ func TestDeleteFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm there is still only has 1 file in memory
-	if len(sfs.siaFileMap) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.staticSiaFileMap))
 	}
 	// delete and close instance of file
 	if err := sfs.Delete(siaPath); err != nil {
@@ -345,8 +345,8 @@ func TestDeleteFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// There should be no more file in the set after deleting it.
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.staticSiaFileMap))
 	}
 	// confirm other instance is still in memory by calling methods on it
 	if !entry.Deleted() {
@@ -361,7 +361,7 @@ func TestDeleteFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm renter has no files in memory
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
+	if len(sfs.staticSiaFileMap) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.staticSiaFileMap))
 	}
 }

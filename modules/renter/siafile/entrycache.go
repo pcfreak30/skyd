@@ -2,8 +2,11 @@ package siafile
 
 import (
 	"container/heap"
+	"fmt"
+	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -12,9 +15,11 @@ type (
 	// been removed from the siaFileSet to prevent them from being removed from
 	// memory.
 	entryCache struct {
-		maxSize int
-		em      map[modules.SiaPath]*siaFileSetEntry
-		eh      entryHeap
+		filesDir string
+		maxSize  int
+		em       map[modules.SiaPath]*siaFileSetEntry
+		eh       entryHeap
+		mu       sync.Mutex
 	}
 
 	// entryHeap is a min heap that returns the least recently opened entry.
@@ -25,42 +30,38 @@ type (
 func (eh entryHeap) Len() int { return len(eh) }
 
 // Less implements the heap interface for entryHeap.
-func (eh entryHeap) Less(i, j int) bool { return eh[i].lastOpened.Before(eh[j].lastOpened) }
+func (eh entryHeap) Less(i, j int) bool { return eh[i].cacheTime.Before(eh[j].cacheTime) }
 
 // Swap implements the heap interface for entryHeap.
 func (eh entryHeap) Swap(i, j int) {
 	eh[i], eh[j] = eh[j], eh[i]
-	eh[i].heapIndex = i
-	eh[j].heapIndex = j
+	eh[i].cacheIndex = i
+	eh[j].cacheIndex = j
 }
 
 // Push implements the heap interface for entryHeap.
 func (eh *entryHeap) Push(x interface{}) {
 	entry := x.(*siaFileSetEntry)
-	entry.heapIndex = len(*eh)
+	entry.cacheTime = time.Now()
+	entry.cacheIndex = len(*eh)
 	*eh = append(*eh, entry)
 }
 
 // Pop implements the heap interface for entryHeap.
 func (eh *entryHeap) Pop() interface{} {
 	entry := (*eh)[len(*eh)-1]
-	entry.heapIndex = -1 // for safety
+	entry.cacheIndex = -1 // for safety
 	*eh = (*eh)[:len(*eh)-1]
 	return entry
 }
 
-// updateTimestamp updates the timestamp of the given entry to the current time.
-func (eh *entryHeap) updateTimestamp(entry *siaFileSetEntry) {
-	entry.lastOpened = time.Now()
-	heap.Fix(eh, entry.heapIndex)
-}
-
 // newEntryCache creates a new cache from a given cache size.
-func newEntryCache(cacheSize int) *entryCache {
+func newEntryCache(filesDir string, cacheSize int) *entryCache {
 	ec := &entryCache{
-		maxSize: cacheSize,
-		em:      make(map[modules.SiaPath]*siaFileSetEntry),
-		eh:      make(entryHeap, 0, cacheSize),
+		filesDir: filesDir,
+		maxSize:  cacheSize,
+		em:       make(map[modules.SiaPath]*siaFileSetEntry),
+		eh:       make(entryHeap, 0, cacheSize),
 	}
 	heap.Init(&ec.eh)
 	return ec
@@ -68,23 +69,78 @@ func newEntryCache(cacheSize int) *entryCache {
 
 // Add adds an entry to the cache. If the cache has reached its maximum size,
 // old entries will be pruned.
-func (*entryCache) Add(entry *siaFileSetEntry) {
-	panic("not implemented yet")
+func (ec *entryCache) Add(entry *siaFileSetEntry) {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	// Make sure we aren't adding a duplicate.
+	sp := entry.SiaPath()
+	if _, exists := ec.em[sp]; exists {
+		build.Critical("entry for path", sp.String(), "already cached")
+		return
+	}
+	// Add the entry to the map and heap and prune the heap afterwards.
+	ec.em[sp] = entry
+	ec.eh.Push(entry)
+	ec.prune(ec.maxSize)
 }
 
 // ChangeMaxSize changes the maximum size of the cache. If the cache has already
 // exceeded its new size, the oldest entries will be removed.
-func (*entryCache) ChangeMaxSize(size int) {
-	panic("not implemented yet")
+func (ec *entryCache) ChangeMaxSize(size int) error {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	// Check for invalid size.
+	if size < 0 {
+		return fmt.Errorf("cache size can't be negative value %v", size)
+	}
+	// Set size and prune heap.
+	ec.maxSize = size
+	ec.prune(ec.maxSize)
+	return nil
 }
 
 // Exists checks if an entry with the provided siaPath exists within the cache.
-func (*entryCache) Exists(siaPath modules.SiaPath) bool {
-	panic("not implemented yet")
+func (ec *entryCache) Exists(siaPath modules.SiaPath) bool {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	_, exists := ec.em[siaPath]
+	return exists
 }
 
 // TryCache tries to grab an entry from the cache by its siaPath. If no entry
 // was found 'false' is returned.
-func (*entryCache) TryCache(siaPath modules.SiaPath) (*siaFileSetEntry, bool) {
-	panic("not implemented yet")
+func (ec *entryCache) TryCache(siaPath modules.SiaPath) (*siaFileSetEntry, bool) {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	// Get the entry from the cache if possible.
+	entry, exists := ec.em[siaPath]
+	if !exists {
+		return nil, false
+	}
+	// Remove the entry from the map and the heap.
+	delete(ec.em, siaPath)
+	heap.Remove(&ec.eh, entry.cacheIndex)
+	// Sanity check length.
+	if len(ec.em) != ec.eh.Len() {
+		build.Critical("cache map and heap are not the same length", len(ec.em), ec.eh.Len())
+	}
+	return entry, true
+}
+
+// prune pops elements off the heap until the heap has at most size 'size'.
+func (ec *entryCache) prune(size int) {
+	for ec.eh.Len() > size {
+		// Remove from heap
+		entry := ec.eh.Pop().(*siaFileSetEntry)
+		sp := entry.SiaPath()
+		// Remove from map
+		if _, ok := ec.em[sp]; !ok {
+			build.Critical("Entry not found in cache map", sp)
+		}
+		delete(ec.em, sp)
+	}
+	// Sanity check length.
+	if len(ec.em) != ec.eh.Len() {
+		build.Critical("cache map and heap are not the same length", len(ec.em), ec.eh.Len())
+	}
 }

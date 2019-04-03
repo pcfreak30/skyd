@@ -74,7 +74,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		},
 		deleted:        fd.Deleted,
 		deps:           modules.ProdDependencies,
-		siaFilePath:    siaPath.SiaFileSysPath(sfs.siaFileDir),
+		siaFilePath:    siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
 		staticUniqueID: fd.UID,
 		wal:            sfs.wal,
 	}
@@ -109,7 +109,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	entry := sfs.newSiaFileSetEntry(file)
 	threadUID := randomThreadUID()
 	entry.threadMap[threadUID] = newThreadInfo()
-	sfs.siaFileMap[siaPath] = entry
+	sfs.staticSiaFileMap[siaPath] = entry
 	sfse := &SiaFileSetEntry{
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
