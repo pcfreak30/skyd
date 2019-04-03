@@ -151,12 +151,11 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	// this entry from the siaFileMap.
 	if len(currentEntry.threadMap) == 0 {
 		delete(sfs.staticSiaFileMap, entry.staticMetadata.SiaPath)
-	}
-
-	// Add the entry to the cache in case we need it again soon. If the entry was
-	// deleted skip this step.
-	if !entry.Deleted() {
-		sfs.cache.Add(entry.siaFileSetEntry)
+		// Add the entry to the cache in case we need it again soon. If the entry was
+		// deleted skip this step.
+		if !entry.Deleted() {
+			sfs.cache.Add(entry.siaFileSetEntry)
+		}
 	}
 }
 

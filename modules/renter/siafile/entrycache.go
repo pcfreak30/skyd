@@ -74,7 +74,7 @@ func (ec *entryCache) Add(entry *siaFileSetEntry) {
 	defer ec.mu.Unlock()
 	// Make sure we aren't adding a duplicate.
 	sp := entry.SiaPath()
-	if entry, exists := ec.em[sp]; exists {
+	if _, exists := ec.em[sp]; exists {
 		// File is already cached.
 		if entry.cacheIndex == -1 {
 			build.Critical("entry is supposed to be cached but index is -1")
