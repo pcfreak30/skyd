@@ -57,6 +57,14 @@ var (
 		Standard: 0.25,
 		Testing:  0.25,
 	}).(float64)
+
+	// siaFileSetCacheSize is the number of siaFileSetEntries the cache in the
+	// siaFileSet will hold.
+	siaFileSetCacheSize = build.Select(build.Var{
+		Dev:      100,
+		Standard: 1000,
+		Testing:  1,
+	}).(int)
 )
 
 // marshaledChunkSize is a helper method that returns the size of a chunk on

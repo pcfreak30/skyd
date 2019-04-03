@@ -25,6 +25,8 @@ type (
 		siaFileDir string
 		siaFileMap map[modules.SiaPath]*siaFileSetEntry
 
+		cache *entryCache
+
 		// utilities
 		mu  sync.Mutex
 		wal *writeaheadlog.WAL
@@ -35,6 +37,9 @@ type (
 	siaFileSetEntry struct {
 		*SiaFile
 		siaFileSet *SiaFileSet
+
+		heapIndex  int
+		lastOpened time.Time
 
 		threadMap   map[uint64]threadInfo
 		threadMapMu sync.Mutex
@@ -59,6 +64,7 @@ type (
 // NewSiaFileSet initializes and returns a SiaFileSet
 func NewSiaFileSet(filesDir string, wal *writeaheadlog.WAL) *SiaFileSet {
 	return &SiaFileSet{
+		cache:      newEntryCache(siaFileSetCacheSize),
 		siaFileDir: filesDir,
 		siaFileMap: make(map[modules.SiaPath]*siaFileSetEntry),
 		wal:        wal,
@@ -141,9 +147,15 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	}
 
 	// If there are no more threads that have the current entry open, delete
-	// this entry from the set cache.
+	// this entry from the siaFileMap.
 	if len(currentEntry.threadMap) == 0 {
 		delete(sfs.siaFileMap, entry.staticMetadata.SiaPath)
+	}
+
+	// Add the entry to the cache in case we need it again soon. If the entry was
+	// deleted skip this step.
+	if !entry.Deleted() {
+		sfs.cache.Add(entry.siaFileSetEntry)
 	}
 }
 
@@ -153,7 +165,11 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
 	_, exists := sfs.siaFileMap[siaPath]
 	if exists {
-		return exists
+		return true
+	}
+	// Check for file in cache
+	if sfs.cache.Exists(siaPath) {
+		return true
 	}
 	// Check for file on disk
 	_, err := os.Stat(siaPath.SiaFileSysPath(sfs.siaFileDir))
@@ -167,6 +183,7 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) *siaFileSetEntry {
 		SiaFile:    sf,
 		siaFileSet: sfs,
 		threadMap:  threads,
+		heapIndex:  -1,
 	}
 }
 
@@ -174,6 +191,9 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) *siaFileSetEntry {
 func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	var entry *siaFileSetEntry
 	entry, exists := sfs.siaFileMap[siaPath]
+	if !exists {
+		entry, exists = sfs.cache.TryCache(siaPath)
+	}
 	if !exists {
 		// Try and Load File from disk
 		sf, err := LoadSiaFile(siaPath.SiaFileSysPath(sfs.siaFileDir), sfs.wal)
