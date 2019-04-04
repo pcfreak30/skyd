@@ -181,7 +181,7 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm therte are no files in memory
+	// Confirm there are no files in memory
 	if len(sfs.staticSiaFileMap) != 0 {
 		t.Fatal("Expected 0 files in memory, got:", len(sfs.staticSiaFileMap))
 	}
