@@ -193,7 +193,9 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	entry, exists := sfs.staticSiaFileMap[siaPath]
 	if !exists {
 		entry, exists = sfs.cache.TryCache(siaPath)
-		sfs.staticSiaFileMap[siaPath] = entry
+		if exists {
+			sfs.staticSiaFileMap[siaPath] = entry
+		}
 	}
 	if !exists {
 		// Try and Load File from disk
