@@ -3636,13 +3636,13 @@ func TestSiafileCompatCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Copy the legacy settings file to the test directory.
-	source2 := "../../compatibility/renter_v137.json"
+	source2 := filepath.Join("..", "..", "compatibility", "renter_v137.json")
 	destination2 := filepath.Join(renterDir, "renter.json")
 	if err := copyFile(source2, destination2); err != nil {
 		t.Fatal(err)
 	}
 	// Copy the legacy contracts into the test directory.
-	contractsSource := "../../compatibility/contracts_v137"
+	contractsSource := filepath.Join("..", "..", "compatibility", "contracts_v137")
 	contracts, err := ioutil.ReadDir(contractsSource)
 	if err != nil {
 		t.Fatal(err)

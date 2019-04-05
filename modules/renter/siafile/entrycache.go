@@ -83,7 +83,7 @@ func (ec *entryCache) Add(entry *siaFileSetEntry) {
 	}
 	// Add the entry to the map and heap and prune the heap afterwards.
 	ec.em[sp] = entry
-	ec.eh.Push(entry)
+	heap.Push(&ec.eh, entry)
 	ec.prune(ec.maxSize)
 }
 
@@ -135,7 +135,7 @@ func (ec *entryCache) TryCache(siaPath modules.SiaPath) (*siaFileSetEntry, bool)
 func (ec *entryCache) prune(size int) {
 	for ec.eh.Len() > size {
 		// Remove from heap
-		entry := ec.eh.Pop().(*siaFileSetEntry)
+		entry := heap.Pop(&ec.eh).(*siaFileSetEntry)
 		entry.cacheIndex = -1
 		sp := entry.SiaPath()
 		// Remove from map
