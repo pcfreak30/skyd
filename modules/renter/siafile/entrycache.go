@@ -14,6 +14,9 @@ type (
 	// entryCache is a data structure which stores siaFileSetEntries which have
 	// been removed from the siaFileSet to prevent them from being removed from
 	// memory.
+	// The cache only contains objects of type siaFileSetEntry instead of
+	// SiaFileSetEntry which means there is no threadMap while files are in the
+	// cache.
 	entryCache struct {
 		filesDir string
 		maxSize  int
