@@ -14,6 +14,20 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// dummyEntry wraps a SiaFile into a siaFileSetEntry.
+func dummyEntry(s *SiaFile) *siaFileSetEntry {
+	return &siaFileSetEntry{
+		SiaFile: s,
+		siaFileSet: &SiaFileSet{
+			siaFileDir:   filepath.Dir(s.SiaFilePath()),
+			siaFileMap:   make(map[SiafileUID]*siaFileSetEntry),
+			siapathToUID: make(map[modules.SiaPath]SiafileUID),
+			wal:          nil,
+		},
+		threadMap: make(map[uint64]threadInfo),
+	}
+}
+
 // randomChunk is a helper method for testing that creates a random chunk.
 func randomChunk() chunk {
 	numPieces := 30
@@ -247,7 +261,7 @@ func TestChunkHealth(t *testing.T) {
 	}
 	// Create the file.
 	wal, _ := newTestWAL()
-	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +356,7 @@ func TestMarkHealthyChunksAsUnstuck(t *testing.T) {
 	}
 	// Create the file.
 	wal, _ := newTestWAL()
-	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +460,7 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	}
 	// Create the file.
 	wal, _ := newTestWAL()
-	sf, err := New(siaFilePath, siaPath, source, wal, rc, sk, fileSize, fileMode)
+	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,12 +589,15 @@ func TestStuckChunks(t *testing.T) {
 	}
 
 	// Close file and confirm it is out of memory
-	siaPath := sf.SiaPath()
+	siaPath := sfs.SiaPath(sf)
 	if err = sf.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if len(sfs.siaFileMap) != 0 {
 		t.Fatal("File not removed from memory")
+	}
+	if len(sfs.siapathToUID) != 0 {
+		t.Fatal("File not removed from uid map")
 	}
 
 	// Load siafile from disk
@@ -605,5 +622,27 @@ func TestStuckChunks(t *testing.T) {
 		if !chunk.Stuck {
 			t.Fatal("Found un-stuck chunk when stuck chunk was expected")
 		}
+	}
+}
+
+// TestUploadedBytes tests that uploadedBytes() returns the expected values for
+// total and unique uploaded bytes.
+func TestUploadedBytes(t *testing.T) {
+	// Create a new blank test file
+	f := newBlankTestFile()
+	// Add multiple pieces to the first pieceSet of the first piece of the first
+	// chunk
+	for i := 0; i < 4; i++ {
+		err := f.AddPiece(types.SiaPublicKey{}, uint64(0), 0, crypto.Hash{})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	totalBytes, uniqueBytes := f.uploadedBytes()
+	if totalBytes != 4*modules.SectorSize {
+		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, f.UploadedBytes())
+	}
+	if uniqueBytes != modules.SectorSize {
+		t.Errorf("expected uploadedBytes to be %v, got %v", modules.SectorSize, f.UploadedBytes())
 	}
 }

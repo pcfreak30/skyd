@@ -18,8 +18,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -121,6 +121,9 @@ func TestRenterTwo(t *testing.T) {
 // testSiafileTimestamps tests if timestamps are set correctly when creating,
 // uploading, downloading and modifying a file.
 func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
 	// Grab the renter.
 	r := tg.Renters()[0]
 
@@ -676,6 +679,9 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 // testSingleFileGet is a subtest that uses an existing TestGroup to test if
 // using the single file API endpoint works
 func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 	// Upload file, creating a piece for each host in the group
@@ -784,6 +790,9 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 // testUploadWithAndWithoutForceParameter is a subtest that uses an existing TestGroup to test if
 // uploading an existing file is successful when setting 'force' to 'true' and 'force' set to 'false'
 func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 
@@ -1810,7 +1819,7 @@ func TestRenterContracts(t *testing.T) {
 	endHeight := rc.ActiveContracts[0].EndHeight
 
 	// Renew contracts by running out of funds
-	startingUploadSpend, err := renewContractsBySpending(r, tg)
+	startingUploadSpend, err := drainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -2412,10 +2421,6 @@ func TestRenterPersistData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rg.Settings.StreamCacheSize != renter.DefaultStreamCacheSize {
-		t.Fatalf("StreamCacheSize not set to default of %v, set to %v",
-			renter.DefaultStreamCacheSize, rg.Settings.StreamCacheSize)
-	}
 	if rg.Settings.MaxDownloadSpeed != renter.DefaultMaxDownloadSpeed {
 		t.Fatalf("MaxDownloadSpeed not set to default of %v, set to %v",
 			renter.DefaultMaxDownloadSpeed, rg.Settings.MaxDownloadSpeed)
@@ -2441,9 +2446,6 @@ func TestRenterPersistData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rg.Settings.StreamCacheSize != cacheSize {
-		t.Fatalf("StreamCacheSize not set to %v, set to %v", cacheSize, rg.Settings.StreamCacheSize)
-	}
 	if rg.Settings.MaxDownloadSpeed != ds {
 		t.Fatalf("MaxDownloadSpeed not set to %v, set to %v", ds, rg.Settings.MaxDownloadSpeed)
 	}
@@ -2461,9 +2463,6 @@ func TestRenterPersistData(t *testing.T) {
 	rg, err = r.RenterGet()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if rg.Settings.StreamCacheSize != cacheSize {
-		t.Fatalf("StreamCacheSize not persisted as %v, set to %v", cacheSize, rg.Settings.StreamCacheSize)
 	}
 	if rg.Settings.MaxDownloadSpeed != ds {
 		t.Fatalf("MaxDownloadSpeed not persisted as %v, set to %v", ds, rg.Settings.MaxDownloadSpeed)
@@ -2754,7 +2753,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 
 	// Renew contracts by running out of funds
-	_, err = renewContractsBySpending(r, tg)
+	_, err = drainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -2886,6 +2885,9 @@ func TestRenterSpendingReporting(t *testing.T) {
 
 // testZeroByteFile tests uploading and downloading a 0 and 1 byte file
 func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
 	// Grab renter
 	r := tg.Renters()[0]
 
@@ -3366,13 +3368,13 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 
 	// Copy the siafile to the new location.
-	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+siafile.ShareExtension)
+	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+modules.SiaFileExtension)
 	siaFile, err := ioutil.ReadFile(oldPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newRenterDir := filepath.Join(testDir, "renter")
-	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+siafile.ShareExtension)
+	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+modules.SiaFileExtension)
 	if err := os.MkdirAll(filepath.Dir(newPath), 0777); err != nil {
 		t.Fatal(err)
 	}
@@ -4043,5 +4045,83 @@ func testFileAvailableAndRecoverable(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if fi.Recoverable {
 		t.Fatal("file should not be recoverable")
+	}
+}
+
+// TestRenterDownloadWithDrainedContract tests if draining a contract below
+// MinContractFundUploadThreshold correctly sets a contract to !GoodForUpload
+// while still being able to download the file.
+func TestRenterDownloadWithDrainedContract(t *testing.T) {
+	if testing.Short() || !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Add a renter with a dependency that prevents contract renewals due to
+	// low funds.
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencyDisableRenewal{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+	miner := tg.Miners()[0]
+	// Drain the contracts until they are supposed to no longer be good for
+	// uploading.
+	_, err = drainContractsByUploading(renter, tg, contractor.MinContractFundUploadThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numRetries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// The 2 contracts should no longer be good for upload.
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		if len(rc.Contracts) != len(tg.Hosts()) {
+			return fmt.Errorf("There should be %v contracts but was %v", len(tg.Hosts()), len(rc.Contracts))
+		}
+		for _, c := range rc.Contracts {
+			if c.GoodForUpload || !c.GoodForRenew {
+				return fmt.Errorf("Contract shouldn't be good for uploads but it should be good for renew: %v %v",
+					c.GoodForUpload, c.GoodForRenew)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Choose a random file and download it.
+	files, err := renter.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -6,7 +6,6 @@ package types
 import (
 	"bytes"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 )
@@ -72,12 +71,23 @@ func CalculateNumSiacoins(height BlockHeight) Currency {
 	avgDeflationSiacoins := CalculateCoinbase(0).Add(CalculateCoinbase(height)).Div(NewCurrency64(2))
 	if height <= deflationBlocks {
 		deflationSiacoins := avgDeflationSiacoins.Mul(NewCurrency64(uint64(height + 1)))
-		return deflationSiacoins
+		return numGenesisSiacoins.Add(deflationSiacoins)
 	}
 	deflationSiacoins := avgDeflationSiacoins.Mul(NewCurrency64(uint64(deflationBlocks + 1)))
 	trailingSiacoins := NewCurrency64(uint64(height - deflationBlocks)).Mul(CalculateCoinbase(height))
-	return deflationSiacoins.Add(trailingSiacoins)
+	return numGenesisSiacoins.Add(deflationSiacoins).Add(trailingSiacoins)
 }
+
+var numGenesisSiacoins = func() Currency {
+	// Sum all the values for the genesis siacoin outputs.
+	numGenesisSiacoins := NewCurrency64(0)
+	for _, transaction := range GenesisBlock.Transactions {
+		for _, siacoinOutput := range transaction.SiacoinOutputs {
+			numGenesisSiacoins = numGenesisSiacoins.Add(siacoinOutput.Value)
+		}
+	}
+	return numGenesisSiacoins
+}()
 
 // ID returns the ID of a Block, which is calculated by hashing the header.
 func (h BlockHeader) ID() BlockID {
@@ -130,22 +140,6 @@ func (b Block) MerkleRoot() crypto.Hash {
 		tree.Push(buf.Bytes())
 		buf.Reset()
 	}
-
-	// Sanity check - verify that this root is the same as the root provided in
-	// the old implementation.
-	if build.DEBUG {
-		verifyTree := crypto.NewTree()
-		for _, payout := range b.MinerPayouts {
-			verifyTree.PushObject(payout)
-		}
-		for _, txn := range b.Transactions {
-			verifyTree.PushObject(txn)
-		}
-		if tree.Root() != verifyTree.Root() {
-			panic("Block MerkleRoot implementation is broken")
-		}
-	}
-
 	return tree.Root()
 }
 

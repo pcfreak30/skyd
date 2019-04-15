@@ -231,7 +231,7 @@ type DownloadInfo struct {
 // file.
 type FileUploadParams struct {
 	Source      string
-	SiaPath     string
+	SiaPath     SiaPath
 	ErasureCode ErasureCoder
 	Force       bool
 }
@@ -348,7 +348,6 @@ type RenterSettings struct {
 	IPViolationsCheck bool      `json:"ipviolationcheck"`
 	MaxUploadSpeed    int64     `json:"maxuploadspeed"`
 	MaxDownloadSpeed  int64     `json:"maxdownloadspeed"`
-	StreamCacheSize   uint64    `json:"streamcachesize"`
 }
 
 // HostDBScans represents a sortable slice of scans.
@@ -554,7 +553,7 @@ type Renter interface {
 	RecoveryScanStatus() (bool, types.BlockHeight)
 
 	// DeleteFile deletes a file entry from the renter.
-	DeleteFile(path string) error
+	DeleteFile(siaPath SiaPath) error
 
 	// Download performs a download according to the parameters passed, including
 	// downloads of `offset` and `length` type.
@@ -572,7 +571,7 @@ type Renter interface {
 	DownloadHistory() []DownloadInfo
 
 	// File returns information on specific file queried by user
-	File(siaPath string) (FileInfo, error)
+	File(siaPath SiaPath) (FileInfo, error)
 
 	// FileList returns information on all of the files stored by the renter.
 	FileList() ([]FileInfo, error)
@@ -592,15 +591,15 @@ type Renter interface {
 	PriceEstimation(allowance Allowance) (RenterPriceEstimation, Allowance, error)
 
 	// RenameFile changes the path of a file.
-	RenameFile(path, newPath string) error
+	RenameFile(siaPath, newSiaPath SiaPath) error
 
 	// EstimateHostScore will return the score for a host with the provided
 	// settings, assuming perfect age and uptime adjustments
-	EstimateHostScore(entry HostDBEntry, allowance Allowance) HostScoreBreakdown
+	EstimateHostScore(entry HostDBEntry, allowance Allowance) (HostScoreBreakdown, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
-	ScoreBreakdown(entry HostDBEntry) HostScoreBreakdown
+	ScoreBreakdown(entry HostDBEntry) (HostScoreBreakdown, error)
 
 	// Settings returns the Renter's current settings.
 	Settings() RenterSettings
@@ -610,24 +609,24 @@ type Renter interface {
 
 	// SetFileTrackingPath sets the on-disk location of an uploaded file to a
 	// new value. Useful if files need to be moved on disk.
-	SetFileTrackingPath(siaPath, newPath string) error
+	SetFileTrackingPath(siaPath SiaPath, newPath string) error
 
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed
 	// resource.
-	Streamer(siapath string) (string, Streamer, error)
+	Streamer(siapath SiaPath) (string, Streamer, error)
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
 
 	// CreateDir creates a directory for the renter
-	CreateDir(siaPath string) error
+	CreateDir(siaPath SiaPath) error
 
 	// DeleteDir deletes a directory from the renter
-	DeleteDir(siaPath string) error
+	DeleteDir(siaPath SiaPath) error
 
 	// DirList lists the directories and the files stored in a siadir
-	DirList(siaPath string) ([]DirectoryInfo, []FileInfo, error)
+	DirList(siaPath SiaPath) ([]DirectoryInfo, []FileInfo, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -644,6 +643,6 @@ type RenterDownloadParameters struct {
 	Httpwriter  io.Writer
 	Length      uint64
 	Offset      uint64
-	SiaPath     string
+	SiaPath     SiaPath
 	Destination string
 }

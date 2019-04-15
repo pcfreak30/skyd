@@ -41,7 +41,7 @@ var (
 	ErrNoNicknames = errors.New("at least one nickname must be supplied")
 	// ErrNonShareSuffix is an error when the suffix of a file does not match
 	// the defined share extension
-	ErrNonShareSuffix = errors.New("suffix of file must be " + siafile.ShareExtension)
+	ErrNonShareSuffix = errors.New("suffix of file must be " + modules.SiaFileExtension)
 
 	settingsMetadata = persist.Metadata{
 		Header:  "Renter Persistence",
@@ -62,7 +62,6 @@ type (
 	persistence struct {
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
-		StreamCacheSize  uint64
 	}
 )
 
@@ -201,8 +200,10 @@ func (r *Renter) loadAndExecuteBubbleUpdates() error {
 	if err != nil {
 		return err
 	}
+	var siaPath modules.SiaPath
 	for dir := range r.bubbleUpdates {
-		go r.threadedBubbleMetadata(dir)
+		siaPath.LoadString(dir)
+		go r.threadedBubbleMetadata(siaPath)
 	}
 	return nil
 }
@@ -215,7 +216,6 @@ func (r *Renter) managedLoadSettings() error {
 		// No persistence yet, set the defaults and continue.
 		r.persist.MaxDownloadSpeed = DefaultMaxDownloadSpeed
 		r.persist.MaxUploadSpeed = DefaultMaxUploadSpeed
-		r.persist.StreamCacheSize = DefaultStreamCacheSize
 		err = r.saveSync()
 		if err != nil {
 			return err

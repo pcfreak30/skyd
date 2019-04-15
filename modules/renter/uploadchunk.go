@@ -14,8 +14,8 @@ import (
 
 // uploadChunkID is a unique identifier for each chunk in the renter.
 type uploadChunkID struct {
-	fileUID string // Unique to each file.
-	index   uint64 // Unique to each chunk within a file.
+	fileUID siafile.SiafileUID // Unique to each file.
+	index   uint64             // Unique to each chunk within a file.
 }
 
 // unfinishedUploadChunk contains a chunk from the filesystem that has not
@@ -165,7 +165,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
-		file:            chunk.fileEntry.SiaFile.Snapshot(),
+		file:            chunk.fileEntry.Snapshot(),
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
 		length:        downloadLength,
@@ -436,7 +436,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		if !r.deps.Disrupt("disableCloseUploadEntry") {
 			err := uc.fileEntry.Close()
 			if err != nil {
-				r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", uc.fileEntry.SiaPath(), err)
+				r.log.Debugf("WARN: file not closed after chunk upload complete: %v %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
 			}
 		}
 		r.uploadHeap.mu.Lock()
@@ -475,13 +475,18 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	// Update chunk stuck status
 	err := uc.fileEntry.SetStuck(uc.index, stuck)
 	if err != nil {
-		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaPath(), err)
+		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
-	go r.threadedBubbleMetadata(uc.fileEntry.DirSiaPath())
+	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return err
+	}
+	go r.threadedBubbleMetadata(dirSiaPath)
 	// Close SiaFile
 	err = uc.fileEntry.Close()
 	if err != nil {
-		return fmt.Errorf("WARN: unable to close siafile %v", uc.fileEntry.SiaPath())
+		return fmt.Errorf("WARN: unable to close siafile %v", r.staticFileSet.SiaPath(uc.fileEntry))
 	}
 	return nil
 }
@@ -499,17 +504,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	uc.mu.Unlock()
 
 	// Determine if repair was successful
-	var successfulRepair bool
-	if _, err := os.Stat(uc.fileEntry.LocalPath()); err != nil {
-		// If there is an error with stat then the file is not on disk or
-		// potentially unaccessible. In either case the repair is successful if
-		// it completed more pieces than the RemoteRepairDownloadThreshold
-		successfulRepair = (1-siafile.RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
-	} else {
-		// Since the file is on disk and accessible with stat then the repair is
-		// successful if >= piecesNeeded pieces are repaired
-		successfulRepair = piecesNeeded <= piecesCompleted
-	}
+	successfulRepair := (1-siafile.RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
 
 	// Check if renter is shutting down
 	var renterError bool
@@ -530,11 +525,13 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	}
 	// Log if the repair was unsuccessful
 	if !successfulRepair {
-		r.log.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck")
+		r.log.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck", float64(piecesCompleted)/float64(piecesNeeded))
+	} else {
+		r.log.Debugln("SUCCESS: repair successsful, marking chunk as non-stuck:", uc.id)
 	}
 	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
-		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaPath(), err)
+		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, r.staticFileSet.SiaPath(uc.fileEntry), err)
 	}
 
 	// Bubble the updated information. We call this in a blocking fashion as the
@@ -542,7 +539,12 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// stuck files to the heap and then find the next stuck chunk. By ensuring
 	// that the directory has been updated we eliminate the possibility that the
 	// same chunk is found by the stuck loop and re-added to the repair heap
-	r.threadedBubbleMetadata(uc.fileEntry.DirSiaPath())
+	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		return
+	}
+	r.managedBubbleMetadata(dirSiaPath)
 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop
@@ -553,7 +555,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		case <-r.tg.StopChan():
 			r.log.Debugln("WARN: renter shut down before the stuck loop was signalled that the stuck repair was successful")
 			return
-		case r.uploadHeap.stuckChunkSuccess <- uc.fileEntry.SiaPath():
+		case r.uploadHeap.stuckChunkSuccess <- r.staticFileSet.SiaPath(uc.fileEntry):
 		}
 	}
 }

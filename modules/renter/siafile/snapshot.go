@@ -20,7 +20,7 @@ type (
 		staticMasterKey   crypto.CipherKey
 		staticMode        os.FileMode
 		staticPubKeyTable []HostPublicKey
-		staticSiaPath     string
+		staticSiaPath     modules.SiaPath
 	}
 )
 
@@ -118,7 +118,7 @@ func (s *Snapshot) PieceSize() uint64 {
 }
 
 // SiaPath returns the SiaPath of the file.
-func (s *Snapshot) SiaPath() string {
+func (s *Snapshot) SiaPath() modules.SiaPath {
 	return s.staticSiaPath
 }
 
@@ -128,10 +128,9 @@ func (s *Snapshot) Size() uint64 {
 }
 
 // Snapshot creates a snapshot of the SiaFile.
-func (sf *SiaFile) Snapshot() *Snapshot {
+func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	mk := sf.MasterKey()
 	sf.mu.RLock()
-	defer sf.mu.RUnlock()
 
 	// Copy PubKeyTable.
 	pkt := make([]HostPublicKey, len(sf.pubKeyTable))
@@ -169,6 +168,11 @@ func (sf *SiaFile) Snapshot() *Snapshot {
 			Pieces: pieces,
 		})
 	}
+	sf.mu.RUnlock()
+
+	sf.siaFileSet.mu.Lock()
+	sp := sf.siaFileSet.siaPath(sf)
+	sf.siaFileSet.mu.Unlock()
 
 	return &Snapshot{
 		staticChunks:      chunks,
@@ -178,6 +182,6 @@ func (sf *SiaFile) Snapshot() *Snapshot {
 		staticMasterKey:   mk,
 		staticMode:        sf.staticMetadata.Mode,
 		staticPubKeyTable: pkt,
-		staticSiaPath:     sf.staticMetadata.SiaPath,
+		staticSiaPath:     sp,
 	}
 }

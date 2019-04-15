@@ -25,7 +25,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -94,7 +93,7 @@ type hostDB interface {
 
 	// ScoreBreakdown returns a detailed explanation of the various properties
 	// of the host.
-	ScoreBreakdown(modules.HostDBEntry) modules.HostScoreBreakdown
+	ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
 
 	// SetIPViolationCheck enables/disables the IP violation check within the
 	// hostdb.
@@ -102,7 +101,7 @@ type hostDB interface {
 
 	// EstimateHostScore returns the estimated score breakdown of a host with the
 	// provided settings.
-	EstimateHostScore(modules.HostDBEntry, modules.Allowance) modules.HostScoreBreakdown
+	EstimateHostScore(modules.HostDBEntry, modules.Allowance) (modules.HostScoreBreakdown, error)
 }
 
 // A hostContractor negotiates, revises, renews, and provides access to file
@@ -211,7 +210,8 @@ type Renter struct {
 	downloadHistoryMu sync.Mutex
 
 	// Upload management.
-	uploadHeap uploadHeap
+	uploadHeap    uploadHeap
+	directoryHeap directoryHeap
 
 	// List of workers that can be used for uploading and/or downloading.
 	memoryManager *memoryManager
@@ -231,20 +231,19 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	staticStreamCache *streamCache
-	cs                modules.ConsensusSet
-	deps              modules.Dependencies
-	g                 modules.Gateway
-	hostContractor    hostContractor
-	hostDB            hostDB
-	log               *persist.Logger
-	persist           persistence
-	persistDir        string
-	staticFilesDir    string
-	mu                *siasync.RWMutex
-	tg                threadgroup.ThreadGroup
-	tpool             modules.TransactionPool
-	wal               *writeaheadlog.WAL
+	cs             modules.ConsensusSet
+	deps           modules.Dependencies
+	g              modules.Gateway
+	hostContractor hostContractor
+	hostDB         hostDB
+	log            *persist.Logger
+	persist        persistence
+	persistDir     string
+	staticFilesDir string
+	mu             *siasync.RWMutex
+	tg             threadgroup.ThreadGroup
+	tpool          modules.TransactionPool
+	wal            *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies
@@ -402,7 +401,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	}
 
 	// Divide by zero check. The only way to get 0 numHosts is if
-	// RenterPayoutsPreTax errors for every host. This would happend if the
+	// RenterPayoutsPreTax errors for every host. This would happen if the
 	// funding of the allowance is not enough as that would cause the
 	// fundingPerHost to be less than the contract price
 	if numHosts == 0 {
@@ -413,7 +412,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	hostCollateral = hostCollateral.Mul64(allowance.Hosts)
 
 	// Add in siafund fee. which should be around 10%. The 10% siafund fee
-	// accounts for paying 3.9% siafund on transactions and host collatoral. We
+	// accounts for paying 3.9% siafund on transactions and host collateral. We
 	// estimate the renter to spend all of it's allowance so the siafund fee
 	// will be calculated on the sum of the allowance and the hosts collateral
 	totalPayout := allowance.Funds.Add(hostCollateral)
@@ -545,9 +544,6 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	if s.MaxDownloadSpeed < 0 || s.MaxUploadSpeed < 0 {
 		return errors.New("bandwidth limits cannot be negative")
 	}
-	if s.StreamCacheSize <= 0 {
-		return errors.New("stream cache size needs to be 1 or larger")
-	}
 
 	// Set allowance.
 	err := r.hostContractor.SetAllowance(s.Allowance)
@@ -562,13 +558,6 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	}
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-
-	// Set StreamingCacheSize
-	err = r.staticStreamCache.SetStreamingCacheSize(s.StreamCacheSize)
-	if err != nil {
-		return err
-	}
-	r.persist.StreamCacheSize = s.StreamCacheSize
 
 	// Set IPViolationsCheck
 	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
@@ -591,7 +580,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // right size, but it can't check that the content is the same. Therefore the
 // caller is responsible for not accidentally corrupting the uploaded file by
 // providing a different file with the same size.
-func (r *Renter) SetFileTrackingPath(siaPath, newPath string) error {
+func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -651,12 +640,12 @@ func (r *Renter) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) { retu
 func (r *Renter) InitialScanComplete() (bool, error) { return r.hostDB.InitialScanComplete() }
 
 // ScoreBreakdown returns the score breakdown
-func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) modules.HostScoreBreakdown {
+func (r *Renter) ScoreBreakdown(e modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
 	return r.hostDB.ScoreBreakdown(e)
 }
 
 // EstimateHostScore returns the estimated host score
-func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) modules.HostScoreBreakdown {
+func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) (modules.HostScoreBreakdown, error) {
 	if reflect.DeepEqual(a, modules.Allowance{}) {
 		a = r.Settings().Allowance
 	}
@@ -716,7 +705,6 @@ func (r *Renter) Settings() modules.RenterSettings {
 		IPViolationsCheck: r.hostDB.IPViolationsCheck(),
 		MaxDownloadSpeed:  download,
 		MaxUploadSpeed:    upload,
-		StreamCacheSize:   r.staticStreamCache.cacheSize,
 	}
 }
 
@@ -731,42 +719,6 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 // same name.
 func (r *Renter) SetIPViolationCheck(enabled bool) {
 	r.hostDB.SetIPViolationCheck(enabled)
-}
-
-// validateSiapath checks that a Siapath is a legal filename.
-// ../ is disallowed to prevent directory traversal, and paths must not begin
-// with / or be empty.
-func validateSiapath(siapath string) error {
-	if siapath == "" {
-		return ErrEmptyFilename
-	}
-	if siapath == ".." {
-		return errors.New("siapath cannot be '..'")
-	}
-	if siapath == "." {
-		return errors.New("siapath cannot be '.'")
-	}
-	// check prefix
-	if strings.HasPrefix(siapath, "/") {
-		return errors.New("siapath cannot begin with /")
-	}
-	if strings.HasPrefix(siapath, "../") {
-		return errors.New("siapath cannot begin with ../")
-	}
-	if strings.HasPrefix(siapath, "./") {
-		return errors.New("siapath connot begin with ./")
-	}
-	var prevElem string
-	for _, pathElem := range strings.Split(siapath, "/") {
-		if pathElem == "." || pathElem == ".." {
-			return errors.New("siapath cannot contain . or .. elements")
-		}
-		if prevElem != "" && pathElem == "" {
-			return ErrEmptyFilename
-		}
-		prevElem = pathElem
-	}
-	return nil
 }
 
 // Enforce that Renter satisfies the modules.Renter interface.
@@ -805,7 +757,10 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			newUploads:        make(chan struct{}, 1),
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
-			stuckChunkSuccess: make(chan string, 1),
+			stuckChunkSuccess: make(chan modules.SiaPath, 1),
+		},
+		directoryHeap: directoryHeap{
+			heapDirectories: make(map[modules.SiaPath]struct{}),
 		},
 
 		workerPool: make(map[types.FileContractID]*worker),
@@ -833,9 +788,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
 		return nil, err
 	}
-
-	// Initialize the streaming cache.
-	r.staticStreamCache = newStreamCache(r.persist.StreamCacheSize)
 
 	// Subscribe to the consensus set.
 	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())

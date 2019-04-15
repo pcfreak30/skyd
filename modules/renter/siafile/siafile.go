@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -17,7 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -29,9 +27,6 @@ var (
 	// ErrUnknownThread is an error when a SiaFile is trying to be closed by a
 	// thread that is not in the threadMap
 	ErrUnknownThread = errors.New("thread should not be calling Close(), does not have control of the siafile")
-
-	// ShareExtension is the extension to be used
-	ShareExtension = ".sia"
 )
 
 type (
@@ -55,11 +50,10 @@ type (
 		staticChunks []chunk
 
 		// utility fields. These are not persisted.
-		deleted        bool
-		deps           modules.Dependencies
-		mu             sync.RWMutex
-		staticUniqueID string
-		wal            *writeaheadlog.WAL // the wal that is used for SiaFiles
+		deleted bool
+		deps    modules.Dependencies
+		mu      sync.RWMutex
+		wal     *writeaheadlog.WAL // the wal that is used for SiaFiles
 
 		// siaFilePath is the path to the .sia file on disk.
 		siaFilePath string
@@ -112,6 +106,13 @@ func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	return e.Err()
 }
 
+// SiaFilePath returns the siaFilePath field of the SiaFile.
+func (sf *SiaFile) SiaFilePath() string {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.siaFilePath
+}
+
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface.
 func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
@@ -131,7 +132,7 @@ func (c *chunk) numPieces() (numPieces int) {
 }
 
 // New create a new SiaFile.
-func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
+func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	file := &SiaFile{
@@ -151,12 +152,11 @@ func New(siaFilePath, siaPath, source string, wal *writeaheadlog.WAL, erasureCod
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
-			SiaPath:                 siaPath,
+			StaticUniqueID:          uniqueID(),
 		},
-		deps:           modules.ProdDependencies,
-		siaFilePath:    siaFilePath,
-		staticUniqueID: hex.EncodeToString(fastrand.Bytes(20)),
-		wal:            wal,
+		deps:        modules.ProdDependencies,
+		siaFilePath: siaFilePath,
+		wal:         wal,
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
@@ -390,7 +390,7 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	}
 
 	// Check if all chunks are stuck, if so then set health to max health to
-	// avoid file being targetted for repair
+	// avoid file being targeted for repair
 	if int(numStuckChunks) == len(sf.staticChunks) {
 		health = float64(0)
 	}
@@ -439,7 +439,7 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 
 // MarkAllHealthyChunksAsUnstuck marks all health chunks as unstuck in the
 // siafile
-func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodForRenew map[string]bool) error {
+func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file has been deleted we can't mark a chunk as stuck.
@@ -459,6 +459,14 @@ func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodFo
 		if chunkHealth != 0 {
 			continue
 		}
+		// In case an error happens we need to revert the changes we are going
+		// to make.
+		defer func() {
+			if err != nil {
+				sf.staticChunks[chunkIndex].Stuck = true
+				sf.staticMetadata.NumStuckChunks++
+			}
+		}()
 		// Update chunk and NumStuckChunks in siafile metadata
 		sf.staticChunks[chunkIndex].Stuck = false
 		sf.staticMetadata.NumStuckChunks--
@@ -480,7 +488,7 @@ func (sf *SiaFile) MarkAllHealthyChunksAsUnstuck(offline map[string]bool, goodFo
 
 // MarkAllUnhealthyChunksAsStuck marks all unhealthy chunks as stuck in the
 // siafile
-func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) error {
+func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file has been deleted we can't mark a chunk as stuck.
@@ -496,9 +504,17 @@ func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodFo
 		// Check health of chunk
 		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
 		// If chunk is healthy then we don't need to mark it as stuck
-		if chunkHealth <= RemoteRepairDownloadThreshold {
+		if chunkHealth < RemoteRepairDownloadThreshold {
 			continue
 		}
+		// In case an error happens we need to revert the changes we are going
+		// to make.
+		defer func() {
+			if err != nil {
+				sf.staticChunks[chunkIndex].Stuck = false
+				sf.staticMetadata.NumStuckChunks--
+			}
+		}()
 		// Update chunk and NumStuckChunks in siafile metadata
 		sf.staticChunks[chunkIndex].Stuck = true
 		sf.staticMetadata.NumStuckChunks++
@@ -599,7 +615,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 }
 
 // SetStuck sets the Stuck field of the chunk at the given index
-func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
+func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file has been deleted we can't mark a chunk as stuck.
@@ -610,6 +626,15 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) error {
 	if stuck == sf.staticChunks[index].Stuck {
 		return nil
 	}
+	// Remember the currenct number of stuck chunks in case an error happens.
+	nsc := sf.staticMetadata.NumStuckChunks
+	s := sf.staticChunks[index].Stuck
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.NumStuckChunks = nsc
+			sf.staticChunks[index].Stuck = s
+		}
+	}()
 	// Update chunk and NumStuckChunks in siafile metadata
 	sf.staticChunks[index].Stuck = stuck
 	if stuck {
@@ -638,25 +663,18 @@ func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
 }
 
 // UID returns a unique identifier for this file.
-func (sf *SiaFile) UID() string {
-	return sf.staticUniqueID
+func (sf *SiaFile) UID() SiafileUID {
+	return sf.staticMetadata.StaticUniqueID
 }
 
 // UploadedBytes indicates how many bytes of the file have been uploaded via
-// current file contracts. Note that this includes padding and redundancy, so
-// uploadedBytes can return a value much larger than the file's original filesize.
+// current file contracts. Note that this is total uploaded bytes so it includes
+// padding and redundancy, so uploadedBytes can return a value much larger than
+// the file's original filesize.
 func (sf *SiaFile) UploadedBytes() uint64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	var uploaded uint64
-	for _, chunk := range sf.staticChunks {
-		for _, pieceSet := range chunk.Pieces {
-			// Note: we need to multiply by SectorSize here instead of
-			// f.pieceSize because the actual bytes uploaded include overhead
-			// from TwoFish encryption
-			uploaded += uint64(len(pieceSet)) * modules.SectorSize
-		}
-	}
+	uploaded, _ := sf.uploadedBytes()
 	return uploaded
 }
 
@@ -708,15 +726,17 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
-// UploadProgress indicates what percentage of the file (plus redundancy) has
-// been uploaded. Note that a file may be Available long before UploadProgress
-// reaches 100%, and UploadProgress may report a value greater than 100%.
+// UploadProgress indicates what percentage of the file has been uploaded based
+// on the unique pieces that have been uploaded. Note that a file may be
+// Available long before UploadProgress reaches 100%.
 func (sf *SiaFile) UploadProgress() float64 {
 	if sf.Size() == 0 {
 		return 100
 	}
-	uploaded := sf.UploadedBytes()
 	desired := sf.NumChunks() * modules.SectorSize * uint64(sf.ErasureCode().NumPieces())
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	_, uploaded := sf.uploadedBytes()
 	return math.Min(100*(float64(uploaded)/float64(desired)), 100)
 }
 
@@ -770,7 +790,6 @@ func (sf *SiaFile) pruneHosts() {
 				if exists {
 					pieceSet[i].HostTableOffset = newOffset
 					newPieceSet = append(newPieceSet, pieceSet[i])
-
 				}
 			}
 			sf.staticChunks[chunkIndex].Pieces[pieceIndex] = newPieceSet
@@ -791,6 +810,13 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 		foundGoodForRenew := false
 		foundOnline := false
 		for _, piece := range pieceSet {
+			// Add dummy hostkeys to the table in case of siafile corruption and mark
+			// them as unused. The next time the table is pruned, the keys will be
+			// removed which is fine. This doesn't fix heavy corruption and the file but
+			// still be lost but it's better than crashing.
+			for piece.HostTableOffset >= uint32(len(sf.pubKeyTable)) {
+				sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+			}
 			offline, exists1 := offlineMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
 			goodForRenew, exists2 := goodForRenewMap[sf.pubKeyTable[piece.HostTableOffset].PublicKey.String()]
 			if exists1 != exists2 {
@@ -817,4 +843,30 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 		}
 	}
 	return numPiecesGoodForRenew, numPiecesGoodForUpload
+}
+
+// uploadedBytes indicates how many bytes of the file have been uploaded via
+// current file contracts in total as well as unique uploaded bytes. Note that
+// this includes padding and redundancy, so uploadedBytes can return a value
+// much larger than the file's original filesize.
+func (sf *SiaFile) uploadedBytes() (uint64, uint64) {
+	var total, unique uint64
+	for _, chunk := range sf.staticChunks {
+		for _, pieceSet := range chunk.Pieces {
+			// Move onto the next pieceSet if nothing has been uploaded yet
+			if len(pieceSet) == 0 {
+				continue
+			}
+
+			// Note: we need to multiply by SectorSize here instead of
+			// f.pieceSize because the actual bytes uploaded include overhead
+			// from TwoFish encryption
+			//
+			// Sum the total bytes uploaded
+			total += uint64(len(pieceSet)) * modules.SectorSize
+			// Sum the unique bytes uploaded
+			unique += modules.SectorSize
+		}
+	}
+	return total, unique
 }

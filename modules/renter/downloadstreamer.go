@@ -266,7 +266,7 @@ func (s *streamer) managedFillCache() bool {
 		s.cacheOffset = streamOffset
 	}
 
-	// Return true, indicating that this function should be called agian,
+	// Return true, indicating that this function should be called again,
 	// because there may be more cache that has been requested or used since the
 	// previous request.
 	return true
@@ -455,7 +455,7 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 
 // Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
-func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
+func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, error) {
 	if err := r.tg.Add(); err != nil {
 		return "", nil, err
 	}
@@ -478,5 +478,5 @@ func (r *Renter) Streamer(siaPath string) (string, modules.Streamer, error) {
 	}
 
 	go s.threadedFillCache()
-	return entry.SiaPath(), s, nil
+	return r.staticFileSet.SiaPath(entry).String(), s, nil
 }
