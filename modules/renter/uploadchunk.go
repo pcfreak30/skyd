@@ -556,8 +556,13 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// stuck files to the heap and then find the next stuck chunk. By ensuring
 	// that the directory has been updated we eliminate the possibility that the
 	// same chunk is found by the stuck loop and re-added to the repair heap
-	siaPath := r.staticFileSet.SiaPath(uc.fileEntry)
-	dirSiaPath, err := siaPath.Dir()
+	var sfs *siafile.SiaFileSet
+	if uc.fileEntry.SiaFile.LocalPath() == "" {
+		sfs = r.staticBackupFileSet
+	} else {
+		sfs = r.staticFileSet
+	}
+	dirSiaPath, err := sfs.SiaPath(uc.fileEntry).Dir()
 	if err != nil {
 		return
 	}
