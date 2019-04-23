@@ -170,9 +170,9 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	}
 	sf.mu.RUnlock()
 
-	sf.siaFileSet.mu.Lock()
-	sp := sf.siaFileSet.siaPath(sf)
-	sf.siaFileSet.mu.Unlock()
+	sf.staticSiaFileSet.mu.Lock()
+	sp := sf.staticSiaFileSet.siaPath(sf)
+	sf.staticSiaFileSet.mu.Unlock()
 
 	return &Snapshot{
 		staticChunks:      chunks,
