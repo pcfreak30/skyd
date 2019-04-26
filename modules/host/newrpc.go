@@ -40,7 +40,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 
 	// Read the request.
 	var req modules.LoopLockRequest
-	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
+	if err := s.readRequest(&req, modules.RPCMaxLen); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -146,7 +146,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	// sent immediately.
 	var sigResponse modules.LoopWriteResponse
 	if !req.MerkleProof {
-		if err := s.readResponse(&sigResponse, modules.RPCMinLen); err != nil {
+		if err := s.readResponse(&sigResponse, modules.RPCMaxLen); err != nil {
 			return err
 		}
 	}
@@ -337,7 +337,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	if req.MerkleProof {
 		if err := s.writeResponse(merkleResp); err != nil {
 			return err
-		} else if err := s.readResponse(&sigResponse, modules.RPCMinLen); err != nil {
+		} else if err := s.readResponse(&sigResponse, modules.RPCMaxLen); err != nil {
 			return err
 		}
 	}
@@ -386,7 +386,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 
 	// Read the request.
 	var req modules.LoopReadRequest
-	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
+	if err := s.readRequest(&req, modules.RPCMaxLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
 		s.writeError(err)
@@ -399,7 +399,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	stopSignal := make(chan error, 1)
 	go func() {
 		var id types.Specifier
-		err := s.readResponse(&id, modules.RPCMinLen)
+		err := s.readResponse(&id, modules.RPCMaxLen)
 		if err != nil {
 			stopSignal <- err
 		} else if id != modules.RPCLoopReadStop {
@@ -606,7 +606,7 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	// transaction and a signature for the implicit no-op file contract
 	// revision.
 	var renterSigs modules.LoopContractSignatures
-	if err := s.readResponse(&renterSigs, modules.RPCMinLen); err != nil {
+	if err := s.readResponse(&renterSigs, modules.RPCMaxLen); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -687,7 +687,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	// transaction and a signature for the implicit no-op file contract
 	// revision.
 	var renterSigs modules.LoopContractSignatures
-	if err := s.readResponse(&renterSigs, modules.RPCMinLen); err != nil {
+	if err := s.readResponse(&renterSigs, modules.RPCMaxLen); err != nil {
 		s.writeError(err)
 		return err
 	}
@@ -727,7 +727,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 
 	// Read the request.
 	var req modules.LoopSectorRootsRequest
-	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
+	if err := s.readRequest(&req, modules.RPCMaxLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
 		s.writeError(err)

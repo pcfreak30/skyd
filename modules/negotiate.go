@@ -542,6 +542,9 @@ func (e *RPCError) Error() string {
 // would be smaller than RPCMinLen, it is padded with random data.
 const RPCMinLen = 4096
 
+// RPCMaxLen is the maximum size of an RPC message.
+const RPCMaxLen = 2 * RPCMinLen
+
 // WriteRPCMessage writes an encrypted RPC message.
 func WriteRPCMessage(w io.Writer, aead cipher.AEAD, obj interface{}) error {
 	payload := encoding.Marshal(obj)
@@ -618,7 +621,7 @@ func WriteRPCResponse(w io.Writer, aead cipher.AEAD, resp interface{}, err error
 
 // ReadRPCID reads an RPC request ID using the new loop protocol.
 func ReadRPCID(r io.Reader, aead cipher.AEAD) (rpcID types.Specifier, err error) {
-	err = ReadRPCMessage(r, aead, &rpcID, RPCMinLen)
+	err = ReadRPCMessage(r, aead, &rpcID, RPCMaxLen)
 	return
 }
 
@@ -715,7 +718,7 @@ func NewRenterSession(conn net.Conn, hostPublicKey types.SiaPublicKey) (*RenterH
 
 	// read host's challenge
 	var challengeReq LoopChallengeRequest
-	if err := ReadRPCMessage(conn, aead, &challengeReq, RPCMinLen); err != nil {
+	if err := ReadRPCMessage(conn, aead, &challengeReq, RPCMaxLen); err != nil {
 		return nil, LoopChallengeRequest{}, err
 	}
 	return &RenterHostSession{

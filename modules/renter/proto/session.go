@@ -70,7 +70,7 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	timeoutDur := time.Duration(defaultContractLockTimeout) * time.Millisecond
 	extendDeadline(s.conn, modules.NegotiateSettingsTime+timeoutDur)
 	var resp modules.LoopLockResponse
-	if err := s.call(modules.RPCLoopLock, req, &resp, modules.RPCMinLen); err != nil {
+	if err := s.call(modules.RPCLoopLock, req, &resp, modules.RPCMaxLen); err != nil {
 		return types.FileContractRevision{}, nil, err
 	}
 	// Unconditionally update the challenge.
@@ -97,7 +97,7 @@ func (s *Session) Unlock() error {
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
 	var resp modules.LoopSettingsResponse
-	if err := s.call(modules.RPCLoopSettings, nil, &resp, modules.RPCMinLen); err != nil {
+	if err := s.call(modules.RPCLoopSettings, nil, &resp, modules.RPCMaxLen); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
 	if err := json.Unmarshal(resp.Settings, &s.host.HostExternalSettings); err != nil {
@@ -257,7 +257,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 
 	// read Merkle proof from host
 	var merkleResp modules.LoopWriteMerkleProof
-	if err := s.readResponse(&merkleResp, modules.RPCMinLen); err != nil {
+	if err := s.readResponse(&merkleResp, modules.RPCMaxLen); err != nil {
 		return modules.RenterContract{}, err
 	}
 	// verify the proof, first by verifying the old Merkle root...
@@ -305,7 +305,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 
 	// read the host's signature
 	var hostSig modules.LoopWriteResponse
-	if err := s.readResponse(&hostSig, modules.RPCMinLen); err != nil {
+	if err := s.readResponse(&hostSig, modules.RPCMaxLen); err != nil {
 		return modules.RenterContract{}, err
 	}
 	txn.TransactionSignatures[1].Signature = hostSig.Signature
@@ -460,7 +460,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	var hostSig []byte
 	for _, sec := range req.Sections {
 		var resp modules.LoopReadResponse
-		err = s.readResponse(&resp, modules.RPCMinLen+uint64(sec.Length))
+		err = s.readResponse(&resp, modules.RPCMaxLen+uint64(sec.Length))
 		if err != nil {
 			return modules.RenterContract{}, err
 		}
@@ -494,7 +494,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 		// yet, they should send an empty ReadResponse containing just the
 		// signature.
 		var resp modules.LoopReadResponse
-		err = s.readResponse(&resp, modules.RPCMinLen)
+		err = s.readResponse(&resp, modules.RPCMaxLen)
 		if err != nil {
 			return modules.RenterContract{}, err
 		}
@@ -614,7 +614,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	// send SectorRoots RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopSectorRootsResponse
-	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMinLen+(req.NumRoots*crypto.HashSize))
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMaxLen+(req.NumRoots*crypto.HashSize))
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -715,7 +715,7 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	// send SectorRoots RPC request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
 	var resp modules.LoopSectorRootsResponse
-	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMinLen+(req.NumRoots*crypto.HashSize))
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMaxLen+(req.NumRoots*crypto.HashSize))
 	if err != nil {
 		return types.Transaction{}, nil, err
 	}
