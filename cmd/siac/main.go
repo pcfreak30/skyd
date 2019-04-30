@@ -52,8 +52,6 @@ const (
 	exitCodeUsage   = 64 // EX_USAGE in sysexits.h
 )
 
-// post makes an API call and discards the response. An error is returned if
-// the response status is not 2xx.
 // wrap wraps a generic command with a check that the command has been
 // passed the correct number of arguments. The command must take only strings
 // as arguments.
@@ -72,6 +70,36 @@ func wrap(fn interface{}) func(*cobra.Command, []string) {
 		if len(args) != fnType.NumIn() {
 			cmd.UsageFunc()(cmd)
 			os.Exit(exitCodeUsage)
+		}
+		argVals := make([]reflect.Value, fnType.NumIn())
+		for i := range args {
+			argVals[i] = reflect.ValueOf(args[i])
+		}
+		fnVal.Call(argVals)
+	}
+}
+
+// wrapEmpty wraps a generic command with a check that the command has not been
+// passed too many arguments. If there are too few arguments, the empty value is
+// passed in for the aruments that are not supplied.
+func wrapEmpty(fn interface{}) func(*cobra.Command, []string) {
+	fnVal, fnType := reflect.ValueOf(fn), reflect.TypeOf(fn)
+	if fnType.Kind() != reflect.Func {
+		panic("wrapped function has wrong type signature")
+	}
+	for i := 0; i < fnType.NumIn(); i++ {
+		if fnType.In(i).Kind() != reflect.String {
+			panic("wrapped function has wrong type signature")
+		}
+	}
+
+	return func(cmd *cobra.Command, args []string) {
+		if len(args) > fnType.NumIn() {
+			cmd.UsageFunc()(cmd)
+			os.Exit(exitCodeUsage)
+		}
+		for len(args) < fnType.NumIn() {
+			args = append(args, "")
 		}
 		argVals := make([]reflect.Value, fnType.NumIn())
 		for i := range args {
