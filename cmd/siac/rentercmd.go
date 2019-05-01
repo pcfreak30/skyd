@@ -1172,6 +1172,9 @@ func (s byDirectoryInfo) Less(i, j int) bool {
 // subdirs.
 func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
 	rgd, err := httpClient.RenterGetDir(siaPath)
+	if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+		die("no such directory")
+	}
 	if err != nil && !strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
 		die("failed to get dir info:", err)
 	}
@@ -1211,6 +1214,11 @@ func renterfileslistcmd(path string) {
 			die("could not parse siapath:", err)
 		}
 	}
+
+	// TODO: Currently the list command can only look at directories. We
+	// probably want to add support for looking at specific files as well
+	// though.
+
 	// Get dirs with their corresponding files.
 	dirs := getDir(sp)
 	numFiles := 0
@@ -1221,7 +1229,7 @@ func renterfileslistcmd(path string) {
 		}
 		numFiles += len(dir.files)
 	}
-	if numFiles+len(dirs) <= 1 {
+	if numFiles+len(dirs) < 1 {
 		fmt.Println("No files/dirs have been uploaded.")
 		return
 	}
