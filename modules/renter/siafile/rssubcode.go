@@ -2,6 +2,7 @@ package siafile
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 
@@ -82,6 +83,16 @@ func (rs *RSSubCode) EncodeShards(pieces [][]byte) ([][]byte, error) {
 		segmentOffset += rs.staticSegmentSize
 	}
 	return pieces, nil
+}
+
+// Identifier returns an identifier for an erasure coder which can be used to
+// identify erasure coders of the same type, dataPieces and parityPieces.
+func (rs *RSSubCode) Identifier() modules.ErasureCoderIdentifier {
+	t := rs.Type()
+	dataPieces := rs.MinPieces()
+	parityPieces := rs.NumPieces() - dataPieces
+	id := fmt.Sprintf("%v:%v/%v", hex.EncodeToString(t[:]), dataPieces, parityPieces)
+	return modules.ErasureCoderIdentifier(id)
 }
 
 // Recover accepts encoded pieces and decodes the segment at

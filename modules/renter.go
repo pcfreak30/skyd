@@ -130,6 +130,10 @@ type (
 	// coders.
 	ErasureCoderType [4]byte
 
+	// ErasureCoderIdentifier is an identifier that only matches another
+	// ErasureCoder's identifier if they both are of the same type and settings.
+	ErasureCoderIdentifier string
+
 	// An ErasureCoder is an error-correcting encoder and decoder.
 	ErasureCoder interface {
 		// NumPieces is the number of pieces returned by Encode.
@@ -142,6 +146,9 @@ type (
 		// Encode splits data into equal-length pieces, with some pieces
 		// containing parity data.
 		Encode(data []byte) ([][]byte, error)
+
+		// Identifier returns the ErasureCoderIdentifier of the ErasureCoder.
+		Identifier() ErasureCoderIdentifier
 
 		// EncodeShards encodes the input data like Encode but accepts an already
 		// sharded input.

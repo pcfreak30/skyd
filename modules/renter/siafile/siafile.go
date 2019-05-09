@@ -80,6 +80,8 @@ type (
 
 	// piece represents a single piece of a chunk on disk
 	piece struct {
+		offset          uint32      // offset of the piece within the sector
+		length          uint32      // length of the piece within the sector
 		HostTableOffset uint32      // offset of the host's key within the pubKeyTable
 		MerkleRoot      crypto.Hash // merkle root of the piece
 	}
@@ -104,6 +106,23 @@ func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	e.Encode(hpk.PublicKey)
 	e.WriteBool(hpk.Used)
 	return e.Err()
+}
+
+// DeletePartialChunk deletes a partial chunk file from disk. This should happen
+// after the partial chunk has been included in a CombinedChunk.
+func (sf *SiaFile) DeletePartialChunk([]byte) error {
+	panic("not implemented yet")
+}
+
+// SavePartialChunk saves the binary data of the last chunk of the file in a
+// separate file in the same folder as the SiaFile.
+func (sf *SiaFile) SavePartialChunk([]byte) error {
+	panic("not implemented yet")
+}
+
+// LoadPartialChunk loads the contents of a partial chunk from disk.
+func (sf *SiaFile) LoadPartialChunk([]byte) error {
+	panic("not implemented yet")
 }
 
 // SiaFilePath returns the siaFilePath field of the SiaFile.

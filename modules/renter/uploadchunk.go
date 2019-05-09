@@ -46,6 +46,10 @@ type unfinishedUploadChunk struct {
 	stuckRepair    bool   // indicates if the chunk was identified for repair by the stuck loop
 	priority       bool   // indicates if the chunks is supposed to be repaird asap
 
+	// Information about whether the chunk is a combined chunk and therefore needs
+	// special treatment.
+	combinedChunk *CombinedChunk // information about the combined chunk
+
 	// The logical data is the data that is presented to the user when the user
 	// requests the chunk. The physical data is all of the pieces that get
 	// stored across the network.
@@ -352,6 +356,11 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			return errors.AddContext(err, "failed to read chunk from sourceReader")
 		}
+		// Check if the last chunk was only uploaded partially.
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			chunk.fileEntry.SavePartialChunk(byteBuf[:n])
+			panic("not implemented yet") // consider chunk uploaded for now
+		}
 		// Read the byteBuf into the sharded destination buffer.
 		buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 		_, err = buf.ReadFrom(bytes.NewBuffer(byteBuf))
@@ -367,6 +376,11 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		return r.managedDownloadLogicalChunkData(chunk)
 	} else if chunk.fileEntry.LocalPath() == "" {
 		return errors.New("file not available locally")
+	}
+
+	// Special handling for partial chunks.
+	if chunk.index == chunk.fileEntry.NumChunks()-1 {
+		panic("copy partial chunk into siafile and try to load a combined chunk")
 	}
 
 	// Try to read the data from disk. If that fails at any point, prefer to

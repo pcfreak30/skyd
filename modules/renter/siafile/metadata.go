@@ -19,9 +19,15 @@ type (
 	// siafiles even after renaming them.
 	SiafileUID string
 
+	// CombinedChunkID is a unique identifier for a chunk that consists of multiple
+	// partial chunks. Using the ID, the PartialChunkSet can provide a previously
+	// created CombinedChunk if it still resides on disk.
+	CombinedChunkID string
+
 	// Metadata is the metadata of a SiaFile and is JSON encoded.
 	Metadata struct {
-		StaticUniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
+		CombinedChunkID CombinedChunkID `json:"combinedchunkid"` // unique identifier for the CombinedChunk associated with this file.
+		StaticUniqueID  SiafileUID      `json:"uniqueid"`        // unique identifier for file
 
 		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
 		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
@@ -168,6 +174,13 @@ func (sf *SiaFile) ChangeTime() time.Time {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return sf.staticMetadata.ChangeTime
+}
+
+// CombinedChunkID returns the CombinedChunkID of the file.
+func (sf *SiaFile) CombinedChunkID() CombinedChunkID {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.CombinedChunkID
 }
 
 // CreateTime returns the CreateTime timestamp of the file.
