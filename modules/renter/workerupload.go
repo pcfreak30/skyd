@@ -2,9 +2,12 @@ package renter
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 )
 
 // managedDropChunk will remove a worker from the responsibility of tracking a chunk.
@@ -221,13 +224,30 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
 	if w.renter.g.Online() {
+		var insufficientStorageError bool
+		var contract modules.RenterContract
 		w.mu.Lock()
+		// Update worker upload error fields
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr
 		w.uploadConsecutiveFailures++
 		failures := w.uploadConsecutiveFailures
+		// Check if upload failure was due to insufficient storage
+		if strings.Contains(failureErr.Error(), contractmanager.ErrInsufficientStorageForSector.Error()) {
+			insufficientStorageError = true
+			w.contract.Utility.GoodForUpload = false
+			contract = w.contract
+		}
 		w.mu.Unlock()
 		w.renter.log.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v", w.hostPubKey, failures, uc.id)
+
+		// Check if it was an error due to insufficient storage
+		if insufficientStorageError {
+			err := w.renter.hostContractor.UpdateContractUtility(contract.ID, contract.Utility)
+			if err != nil {
+				w.renter.log.Println("WARN: unable to update contract utility:", err)
+			}
+		}
 	}
 
 	// Unregister the piece from the chunk and hunt for a replacement.

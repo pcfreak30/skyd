@@ -67,7 +67,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 				// None of the storage folders have enough room to house the
 				// sector.
 				wal.mu.Unlock()
-				return errInsufficientStorageForSector
+				return ErrInsufficientStorageForSector
 			}
 			defer sf.mu.RUnlock()
 
@@ -136,7 +136,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			wal.mu.Unlock()
 			return nil
 		}()
-		if err == errInsufficientStorageForSector {
+		if err == ErrInsufficientStorageForSector {
 			return err
 		} else if err != nil {
 			// Try the next storage folder.
@@ -147,20 +147,20 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 		break
 	}
 	if len(storageFolders) < 1 {
-		return errInsufficientStorageForSector
+		return ErrInsufficientStorageForSector
 	}
 	return nil
 }
 
-// managedEmptyStorageFolder will empty out the storage folder with the
-// provided index starting with the 'startingPoint'th sector all the way to the
-// end of the storage folder, allowing the storage folder to be safely
-// truncated. If 'force' is set to true, the function will not give up when
-// there is no more space available, instead choosing to lose data.
+// managedEmptyStorageFolder will empty out the storage folder with the provided
+// index starting with the 'startingPoint' of the sector all the way to the end
+// of the storage folder, allowing the storage folder to be safely truncated. If
+// 'force' is set to true, the function will not give up when there is no more
+// space available, instead choosing to lose data.
 //
-// This function assumes that the storage folder has already been made
-// invisible to AddSector, and that this is the only thread that will be
-// interacting with the storage folder.
+// This function assumes that the storage folder has already been made invisible
+// to AddSector, and that this is the only thread that will be interacting with
+// the storage folder.
 func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoint uint32) (uint64, error) {
 	// Grab the storage folder in question.
 	wal.mu.Lock()

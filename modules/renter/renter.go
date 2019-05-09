@@ -179,6 +179,9 @@ type hostContractor interface {
 	// SetRateLimits sets the bandwidth limits for connections created by the
 	// contractor and its submodules.
 	SetRateLimits(int64, int64, uint64)
+
+	// UpdateContractUtility updates the contracts utility fields
+	UpdateContractUtility(types.FileContractID, modules.ContractUtility) error
 }
 
 // A Renter is responsible for tracking all of the files that a user has

@@ -105,3 +105,12 @@ func (c *Contractor) RecoverableContracts() []modules.RecoverableContract {
 	}
 	return contracts
 }
+
+// UpdateContractUtility updates the Contract's Utility fields
+func (c *Contractor) UpdateContractUtility(cid types.FileContractID, u modules.ContractUtility) error {
+	if err := c.tg.Add(); err != nil {
+		return err
+	}
+	defer c.tg.Done()
+	return c.managedUpdateContractUtility(cid, u)
+}
