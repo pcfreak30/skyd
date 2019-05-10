@@ -19,15 +19,9 @@ type (
 	// siafiles even after renaming them.
 	SiafileUID string
 
-	// CombinedChunkID is a unique identifier for a chunk that consists of multiple
-	// partial chunks. Using the ID, the PartialChunkSet can provide a previously
-	// created CombinedChunk if it still resides on disk.
-	CombinedChunkID string
-
 	// Metadata is the metadata of a SiaFile and is JSON encoded.
 	Metadata struct {
-		CombinedChunkID CombinedChunkID `json:"combinedchunkid"` // unique identifier for the CombinedChunk associated with this file.
-		StaticUniqueID  SiafileUID      `json:"uniqueid"`        // unique identifier for file
+		StaticUniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
 
 		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
 		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
@@ -35,11 +29,15 @@ type (
 		StaticPieceSize     uint64   `json:"piecesize"`     // size of a single piece of the file
 		LocalPath           string   `json:"localpath"`     // file to the local copy of the file used for repairing
 
-		// fields for encryption
+		// Fields for encryption
 		StaticMasterKey      []byte            `json:"masterkey"` // masterkey used to encrypt pieces
 		StaticMasterKeyType  crypto.CipherType `json:"masterkeytype"`
 		StaticSharingKey     []byte            `json:"sharingkey"` // key used to encrypt shared pieces
 		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
+
+		// Fields for partial uploads
+		CombinedChunkIndex  uint64 `json:"combinedchunkindex"`  // index of the chunk in the combined chunks siafile
+		CombinedChunkStatus uint8  `json:"combinedchunkstatus"` // status of the file's partial chunk
 
 		// The following fields are the usual unix timestamps of files.
 		ModTime    time.Time `json:"modtime"`    // time of last content modification
@@ -176,11 +174,11 @@ func (sf *SiaFile) ChangeTime() time.Time {
 	return sf.staticMetadata.ChangeTime
 }
 
-// CombinedChunkID returns the CombinedChunkID of the file.
-func (sf *SiaFile) CombinedChunkID() CombinedChunkID {
+// CombinedChunkIndex returns the CombinedChunkIndex of the file.
+func (sf *SiaFile) CombinedChunkIndex() uint64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.CombinedChunkID
+	return sf.staticMetadata.CombinedChunkIndex
 }
 
 // CreateTime returns the CreateTime timestamp of the file.

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -116,8 +118,29 @@ func (sf *SiaFile) DeletePartialChunk([]byte) error {
 
 // SavePartialChunk saves the binary data of the last chunk of the file in a
 // separate file in the same folder as the SiaFile.
-func (sf *SiaFile) SavePartialChunk([]byte) error {
-	panic("not implemented yet")
+func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
+	// Sanity check partial chunk size.
+	if uint64(len(partialChunk)) >= sf.staticChunkSize() || len(partialChunk) == 0 {
+		err := fmt.Errorf("can't call SavePartialChunk with a partial chunk >= chunkSize (%v >= %v) or 0",
+			len(partialChunk), sf.staticChunkSize())
+		build.Critical(err)
+		return err
+	}
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Write the chunk to disk.
+	partialFile := strings.TrimSuffix(sf.siaFilePath, modules.SiaFileExtension) + modules.PartialChunkExtension
+	err := ioutil.WriteFile(partialFile, partialChunk, 0600)
+	if err != nil {
+		return err
+	}
+	// Update the status of the combined chunk.
+	sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusIncomplete
+	u, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(u...)
 }
 
 // LoadPartialChunk loads the contents of a partial chunk from disk.

@@ -45,6 +45,15 @@ const (
 	fileListRoutines = 20
 )
 
+// Constants to indicate which part of the partial upload the file is currently
+// at.
+const (
+	combinedChunkStatusInvalid = iota
+	combinedChunkStatusNoChunk
+	combinedChunkStatusIncomplete
+	combinedChunkStatusComplete
+)
+
 var (
 	// ecReedSolomon is the marshaled type of the reed solomon coder.
 	ecReedSolomon = modules.ErasureCoderType{0, 0, 0, 1}

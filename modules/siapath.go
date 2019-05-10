@@ -24,6 +24,9 @@ var (
 
 	// SiaFileExtension is the extension for siafiles on disk
 	SiaFileExtension = ".sia"
+
+	// PartialChunkExtension is the extension for a partial chunk on disk
+	PartialChunkExtension = ".partial"
 )
 
 type (
@@ -50,6 +53,12 @@ func RandomSiaPath() (sp SiaPath) {
 // RootSiaPath returns a SiaPath for the root siadir which has a blank path
 func RootSiaPath() SiaPath {
 	return SiaPath{}
+}
+
+// CombinedSiaFilePath returns the SiaPath to a hidden siafile which is used to
+// store chunks that contain pieces of multiple siafiles.
+func CombinedSiaFilePath(ec ErasureCoder) SiaPath {
+	return SiaPath{Path: fmt.Sprintf(".%v", ec.Identifier())}
 }
 
 // clean cleans up the string by converting an OS separators to forward slashes
