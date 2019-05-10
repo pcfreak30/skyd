@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -37,6 +38,68 @@ func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 // production dependencies.
 func LoadSiaFileMetadata(path string) (Metadata, error) {
 	return loadSiaFileMetadata(path, modules.ProdDependencies)
+}
+
+// DeletePartialChunk deletes a partial chunk file from disk. This should happen
+// after the partial chunk has been included in a CombinedChunk.
+func (sf *SiaFile) DeletePartialChunk() error {
+	// DeletePartialChunk can only be called when the partial chunk has been
+	// included in a combined chunk but the .partial file hasn't been deleted yet.
+	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusCombined {
+		return fmt.Errorf("Can't call DeletePartialChunk unless status is %v but was %v",
+			combinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
+	}
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Prepare updates to delete the file and to save the metadata.
+	deleteUpdate := createDeletePartialUpdate(sf.partialFilePath())
+	sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusCompleted
+	u, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(append(u, deleteUpdate)...)
+}
+
+// SavePartialChunk saves the binary data of the last chunk of the file in a
+// separate file in the same folder as the SiaFile.
+func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
+	// SavePartialChunk can only be called when there is no partial chunk yet.
+	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusNoChunk {
+		return fmt.Errorf("Can't call SavePartialChunk unless status is %v but was %v",
+			combinedChunkStatusNoChunk, sf.staticMetadata.CombinedChunkStatus)
+	}
+	// Sanity check partial chunk size.
+	if uint64(len(partialChunk)) >= sf.staticChunkSize() || len(partialChunk) == 0 {
+		return fmt.Errorf("can't call SavePartialChunk with a partial chunk >= chunkSize (%v >= %v) or 0",
+			len(partialChunk), sf.staticChunkSize())
+	}
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Write the chunk to disk.
+	err := ioutil.WriteFile(sf.partialFilePath(), partialChunk, 0600)
+	if err != nil {
+		return err
+	}
+	// Update the status of the combined chunk.
+	sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusIncomplete
+	u, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(u...)
+}
+
+// LoadPartialChunk loads the contents of a partial chunk from disk.
+func (sf *SiaFile) LoadPartialChunk() ([]byte, error) {
+	// LoadPartialChunk can only be called when there is no combined chunk yet.
+	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusIncomplete {
+		return nil, fmt.Errorf("Can't call LoadPartialChunk unless status is %v but was %v",
+			combinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
+	}
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return ioutil.ReadFile(sf.partialFilePath())
 }
 
 // applyUpdates applies a number of writeaheadlog updates to the corresponding
@@ -71,6 +134,15 @@ func createDeleteUpdate(path string) writeaheadlog.Update {
 	}
 }
 
+// createDeletePartialUpdate is a helper method that creates a writeaheadlog for
+// deleting a .partial file.
+func createDeletePartialUpdate(path string) writeaheadlog.Update {
+	return writeaheadlog.Update{
+		Name:         updateDeletePartialName,
+		Instructions: []byte(path),
+	}
+}
+
 // loadSiaFile loads a SiaFile from disk.
 func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
 	// Create the SiaFile
@@ -93,6 +165,10 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 	// COMPATv137 legacy files might not have a unique id.
 	if sf.staticMetadata.StaticUniqueID == "" {
 		sf.staticMetadata.StaticUniqueID = uniqueID()
+	}
+	// COMPATv140 legacy files might not have the CombinedChunkStatus set.
+	if sf.staticMetadata.CombinedChunkStatus == combinedChunkStatusInvalid {
+		sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusNoChunk
 	}
 	// Create the erasure coder.
 	sf.staticMetadata.staticErasureCode, err = unmarshalErasureCoder(sf.staticMetadata.StaticErasureCodeType, sf.staticMetadata.StaticErasureCodeParams)
@@ -316,6 +392,8 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 				return nil
 			case updateInsertName:
 				return sf.readAndApplyInsertUpdate(f, u)
+			case updateDeletePartialName:
+				return readAndApplyDeleteUpdate(sf.deps, u)
 			default:
 				return errUnknownSiaFileUpdate
 			}
@@ -386,6 +464,12 @@ func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Up
 		Name:         updateInsertName,
 		Instructions: encoding.MarshalAll(sf.siaFilePath, index, data),
 	}
+}
+
+// partialFilePath is a helper to return the path to the SiaFile's .partial
+// file.
+func (sf *SiaFile) partialFilePath() string {
+	return strings.TrimSuffix(sf.siaFilePath, modules.SiaFileExtension) + modules.PartialChunkExtension
 }
 
 // readAndApplyInsertUpdate reads the insert update for a SiaFile and then

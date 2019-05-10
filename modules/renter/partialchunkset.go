@@ -1,7 +1,8 @@
 package renter
 
-// TODO: Figure out how to include combined chunks in snapshots
 // TODO: Combined chunks need to be deleted once they have reached full redundancy
+// TODO: Support repairing a partial chunk if redundancy dropped below 1x, the
+// complete chunk was deleted but the source is available locally
 
 import (
 	"sync"
@@ -52,38 +53,39 @@ func NewPartialChunkSet() *PartialChunkSet {
 func (pcs *PartialChunkSet) CombinedChunk(entry *siafile.SiaFileSetEntry) (*CombinedChunk, error) {
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
+	panic("not done implementing")
 
 	// Check if the file already has a combined chunk assigned to it.
-	if cid := entry.CombinedChunkID(); cid != "" {
-		return pcs.loadCombinedChunk(cid)
-	}
-
-	// Check if a request already exists for that file.
-	ec := entry.ErasureCode()
-	ecid := ec.Identifier()
-	if _, exists := pcs.requests[ecid]; exists {
-		return nil, nil
-	}
-
-	// If not, add a new request.
-	if _, exists := pcs.requests[ecid]; !exists {
-		pcs.requests[ecid] = make(chunkRequestSet)
-	}
-	pcs.requests[ecid][entry.UID()] = &chunkRequest{}
-
-	// See if we can combine multiple requests into a chunk.
-	crs := pcs.requests[ecid]
-	requests := crs.combineRequests()
-	if requests == nil {
-		return nil, nil // not enough requests yet
-	}
-
-	// Build combined chunk and return it.
-	return crs.buildChunk(requests)
+	//	if cid := entry.CombinedChunkID(); cid != "" {
+	//		return pcs.loadCombinedChunk(cid)
+	//	}
+	//
+	//	// Check if a request already exists for that file.
+	//	ec := entry.ErasureCode()
+	//	ecid := ec.Identifier()
+	//	if _, exists := pcs.requests[ecid]; exists {
+	//		return nil, nil
+	//	}
+	//
+	//	// If not, add a new request.
+	//	if _, exists := pcs.requests[ecid]; !exists {
+	//		pcs.requests[ecid] = make(chunkRequestSet)
+	//	}
+	//	pcs.requests[ecid][entry.UID()] = &chunkRequest{}
+	//
+	//	// See if we can combine multiple requests into a chunk.
+	//	crs := pcs.requests[ecid]
+	//	requests := crs.combineRequests()
+	//	if requests == nil {
+	//		return nil, nil // not enough requests yet
+	//	}
+	//
+	//	// Build combined chunk and return it.
+	//	return crs.buildChunk(requests)
 }
 
-// loadCombinedChunk loads a CombinedChunk from disk using it's id.
-func (pcs *PartialChunkSet) loadCombinedChunk(id siafile.CombinedChunkID) (*CombinedChunk, error) {
+// loadCombinedChunk loads a CombinedChunk from disk using it's chunkIndex.
+func (pcs *PartialChunkSet) loadCombinedChunk(chunkIndex uint64) (*CombinedChunk, error) {
 	panic("not implemented yet")
 }
 

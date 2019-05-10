@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -812,5 +814,98 @@ func TestUniqueIDMissing(t *testing.T) {
 	// It should have a UID now.
 	if sf.staticMetadata.StaticUniqueID == "" {
 		t.Fatal("unique ID wasn't set after loading file")
+	}
+}
+
+// TestSaveLoadDeletePartialChunk tests SavePartialChunk, LoadPartialChunk and
+// DeletePartialChunk.
+func TestSaveLoadDeletePartialChunk(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a new siafile
+	sf := newBlankTestFile()
+	// The chunk status should be set to "combinedChunkStatusNoChunk"
+	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusNoChunk {
+		t.Fatal("Initial status wasn't combinedChunkStatusNoChunk")
+	}
+	// LoadPartialChunk and DeletePartialChunk should fail.
+	if _, err := sf.LoadPartialChunk(); err == nil {
+		t.Fatal("LoadPartialChunk should fail")
+	}
+	if err := sf.DeletePartialChunk(); err == nil {
+		t.Fatal("DeletePartialChunk should fail")
+	}
+	// Save a chunk that's too big.
+	if err := sf.SavePartialChunk(fastrand.Bytes(int(sf.staticChunkSize()))); err == nil {
+		t.Fatal("Shouldn't be able to save chunk that is too big")
+	}
+	// Save a valid chunk
+	partialChunk := fastrand.Bytes(int(sf.staticChunkSize()) - 1)
+	if err := sf.SavePartialChunk(partialChunk); err != nil {
+		t.Fatal(err)
+	}
+	// The chunk status should be set to "combinedChunkStatusIncomplete"
+	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusIncomplete {
+		t.Fatal("Initial status wasn't combinedChunkStatusIncomplete")
+	}
+	// Make sure the partial chunk was written to disk correctly.
+	path := strings.TrimSuffix(sf.SiaFilePath(), modules.SiaFileExtension) + modules.PartialChunkExtension
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(b, partialChunk) {
+		t.Fatal("Read partial chunk doesn't match written chunk")
+	}
+	// SavePartialChunk and DeletePartialChunk should fail.
+	if err := sf.SavePartialChunk(partialChunk); err == nil {
+		t.Fatal("SavePartialChunk should fail")
+	}
+	if err := sf.DeletePartialChunk(); err == nil {
+		t.Fatal("DeletePartialChunk should fail")
+	}
+	// LoadPartialChunk and make sure it has the right contents.
+	b, err = sf.LoadPartialChunk()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(b, partialChunk) {
+		t.Fatal("Loaded partial chunk doesn't match written chunk")
+	}
+	// Set the status to combined for delete to suceed.
+	// TODO: We will need a method for that which we should use here once it's
+	// implemented.
+	sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusCombined
+	// LoadPartialChunk and SavePartialChunk should fail.
+	if _, err := sf.LoadPartialChunk(); err == nil {
+		t.Fatal("LoadPartialChunk should fail")
+	}
+	if err := sf.SavePartialChunk(partialChunk); err == nil {
+		t.Fatal("SavePartialChunk should fail")
+	}
+	// Delete the partial chunk.
+	if err := sf.DeletePartialChunk(); err != nil {
+		t.Fatal(err)
+	}
+	// The chunk status should be set to "combinedChunkStatusCompleted"
+	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusCompleted {
+		t.Fatal("Initial status wasn't combinedChunkStatusCompleted")
+	}
+	// Make sure the file is gone.
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("File wasn't removed correctly")
+	}
+	// All three methods should fail now
+	if err := sf.SavePartialChunk(partialChunk); err == nil {
+		t.Fatal("SavePartialChunk should fail")
+	}
+	if err := sf.DeletePartialChunk(); err == nil {
+		t.Fatal("DeletePartialChunk should fail")
+	}
+	if _, err := sf.LoadPartialChunk(); err == nil {
+		t.Fatal("LoadPartialChunk should fail")
 	}
 }

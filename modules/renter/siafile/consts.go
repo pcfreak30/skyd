@@ -23,6 +23,10 @@ const (
 	// specified file.
 	updateDeleteName = "SiaFileDelete"
 
+	// updateDeletePartialName is the name of a wal update that deletes the
+	// specified file.
+	updateDeletePartialName = "PartialChunkDelete"
+
 	// marshaledPieceSize is the size of a piece on disk. It consists of a 4
 	// byte pieceIndex, a 4 byte table offset and a hash.
 	marshaledPieceSize = 4 + 4 + crypto.HashSize
@@ -48,10 +52,11 @@ const (
 // Constants to indicate which part of the partial upload the file is currently
 // at.
 const (
-	combinedChunkStatusInvalid = iota
-	combinedChunkStatusNoChunk
-	combinedChunkStatusIncomplete
-	combinedChunkStatusComplete
+	combinedChunkStatusInvalid    = iota // status wasn't initialized
+	combinedChunkStatusNoChunk           // file has no partial chunk or it hasn't been added yet
+	combinedChunkStatusIncomplete        // partial chunk is not yet included in a combined chunk and stored in a .partial file
+	combinedChunkStatusCombined          // partial chunk is included in a combined chunk and .partial file still exists
+	combinedChunkStatusCompleted         // partial chunk is included in a combined chunk and .partial file was deleted
 )
 
 var (
@@ -82,7 +87,7 @@ func marshaledChunkSize(numPieces int) int64 {
 // to the SiaFile package.
 func IsSiaFileUpdate(update writeaheadlog.Update) bool {
 	switch update.Name {
-	case updateInsertName, updateDeleteName:
+	case updateInsertName, updateDeleteName, updateDeletePartialName:
 		return true
 	default:
 		return false

@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -110,44 +108,6 @@ func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	return e.Err()
 }
 
-// DeletePartialChunk deletes a partial chunk file from disk. This should happen
-// after the partial chunk has been included in a CombinedChunk.
-func (sf *SiaFile) DeletePartialChunk([]byte) error {
-	panic("not implemented yet")
-}
-
-// SavePartialChunk saves the binary data of the last chunk of the file in a
-// separate file in the same folder as the SiaFile.
-func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
-	// Sanity check partial chunk size.
-	if uint64(len(partialChunk)) >= sf.staticChunkSize() || len(partialChunk) == 0 {
-		err := fmt.Errorf("can't call SavePartialChunk with a partial chunk >= chunkSize (%v >= %v) or 0",
-			len(partialChunk), sf.staticChunkSize())
-		build.Critical(err)
-		return err
-	}
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// Write the chunk to disk.
-	partialFile := strings.TrimSuffix(sf.siaFilePath, modules.SiaFileExtension) + modules.PartialChunkExtension
-	err := ioutil.WriteFile(partialFile, partialChunk, 0600)
-	if err != nil {
-		return err
-	}
-	// Update the status of the combined chunk.
-	sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusIncomplete
-	u, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(u...)
-}
-
-// LoadPartialChunk loads the contents of a partial chunk from disk.
-func (sf *SiaFile) LoadPartialChunk([]byte) error {
-	panic("not implemented yet")
-}
-
 // SiaFilePath returns the siaFilePath field of the SiaFile.
 func (sf *SiaFile) SiaFilePath() string {
 	sf.mu.RLock()
@@ -183,6 +143,7 @@ func New(siaPath modules.SiaPath, siaFilePath, source string, wal *writeaheadlog
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
+			CombinedChunkStatus:     combinedChunkStatusNoChunk,
 			CreateTime:              currentTime,
 			CachedHealth:            zeroHealth,
 			CachedStuckHealth:       0,
