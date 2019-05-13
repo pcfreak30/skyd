@@ -91,6 +91,10 @@ func NewConfig(path string) (*SiadConfig, error) {
 			fmt.Println("A secure API password has been written to", cfg.path)
 			fmt.Println("This password will be used automatically the next time you run siad.")
 		}
+		// Save new config to disk.
+		if err := cfg.save(); err != nil {
+			return nil, err
+		}
 	}
 	// Init the global ratelimit.
 	GlobalRateLimits.SetLimits(cfg.ReadBPS, cfg.WriteBPS, cfg.PacketSize)
