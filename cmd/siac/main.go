@@ -244,14 +244,14 @@ func main() {
 	// it inside OnInitialize.
 	cobra.OnInitialize(func() {
 		if httpClient.Password == "" {
+			// Try reading it from the legacy file.
 			pw, err := ioutil.ReadFile(build.APIPasswordFile(siaDir))
-			if err != nil {
-				fmt.Println("Could not read API password file:", err)
+			if err != nil && !os.IsNotExist(err) {
+				fmt.Println("Could not read legacy API password file:", err)
 				httpClient.Password = ""
-			} else {
+			} else if err == nil {
 				httpClient.Password = strings.TrimSpace(string(pw))
 			}
-
 		}
 	})
 

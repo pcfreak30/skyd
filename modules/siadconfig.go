@@ -72,6 +72,14 @@ func (cfg *SiadConfig) load(path string) error {
 	return persist.LoadJSON(configMetadata, cfg, path)
 }
 
+// LoadConfig loads a config from disk if possible. It won't do anything else in
+// case the config doesn't exist. It also won't change any global variables.
+func LoadConfig(path string) (cfg SiadConfig, err error) {
+	cfg.path = path
+	err = cfg.load(path)
+	return
+}
+
 // NewConfig loads a config from disk or creates a new one if no config exists
 // yet.
 func NewConfig(path string) (*SiadConfig, error) {
