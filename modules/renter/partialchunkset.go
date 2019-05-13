@@ -3,6 +3,7 @@ package renter
 // TODO: Combined chunks need to be deleted once they have reached full redundancy
 // TODO: Support repairing a partial chunk if redundancy dropped below 1x, the
 // complete chunk was deleted but the source is available locally
+// TODO: Have the mega siafile be ignored by the repair loop.
 
 import (
 	"sync"
