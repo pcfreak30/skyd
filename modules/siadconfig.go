@@ -1,10 +1,15 @@
 package modules
 
 import (
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/ratelimit"
 )
@@ -16,6 +21,9 @@ type (
 		ReadBPS    int64  `json:"readbps"`
 		WriteBPS   int64  `json:"writeps"`
 		PacketSize uint64 `json:"packetsize"`
+
+		// API related fields
+		APIPassword string `json:"apipassword"`
 
 		// path of config on disk.
 		path string
@@ -75,9 +83,14 @@ func NewConfig(path string) (*SiadConfig, error) {
 		return nil, err
 	} else if os.IsNotExist(err) {
 		// Otherwise init with default values.
-		cfg.ReadBPS = 0    // unlimited
-		cfg.WriteBPS = 0   // unlimited
-		cfg.PacketSize = 0 // unlimited
+		cfg.ReadBPS = 0                                          // unlimited
+		cfg.WriteBPS = 0                                         // unlimited
+		cfg.PacketSize = 0                                       // unlimited
+		cfg.APIPassword = hex.EncodeToString(fastrand.Bytes(16)) // strong random password
+		if build.Release == "standard" {
+			fmt.Println("A secure API password has been written to", cfg.path)
+			fmt.Println("This password will be used automatically the next time you run siad.")
+		}
 	}
 	// Init the global ratelimit.
 	GlobalRateLimits.SetLimits(cfg.ReadBPS, cfg.WriteBPS, cfg.PacketSize)

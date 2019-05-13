@@ -122,26 +122,32 @@ func (srv *Server) Unlock(password string) error {
 	return modules.ErrBadEncryptionKey
 }
 
-// New creates a new API server from the provided modules. The API will
-// require authentication using HTTP basic auth if the supplied password is not
-// the empty string. Usernames are ignored for authentication. This type of
-// authentication sends passwords in plaintext and should therefore only be
-// used if the APIaddr is localhost.
-func New(APIaddr string, requiredUserAgent string, requiredPassword string, nodeParams node.NodeParams) (*Server, error) {
+// New creates a new API server from the provided modules. The API will require
+// authentication using HTTP basic auth if authenticateAPI is set to 'true'. If
+// authentication is enabled and temporaryPassword is an empty string, a strong
+// password from the global siad config will be used. Otherwise, a temporary
+// password is used which is not persisted on disk. This type of authentication
+// sends passwords in plaintext and should therefore only be used if the APIaddr
+// is localhost.
+func New(APIaddr, requiredUserAgent, temporaryPassword string, authenticateAPI bool, nodeParams node.NodeParams) (*Server, error) {
 	// Create the server listener.
 	listener, err := net.Listen("tcp", APIaddr)
 	if err != nil {
 		return nil, err
 	}
-
 	// Load the config file.
 	cfg, err := modules.NewConfig(filepath.Join(nodeParams.Dir, configName))
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load siad config")
 	}
+	// If no password was supplied and authentication isn't disabled, use the one
+	// from the config.
+	if authenticateAPI && temporaryPassword == "" {
+		temporaryPassword = cfg.APIPassword
+	}
 
 	// Create the api for the server.
-	api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil)
+	api := api.New(cfg, requiredUserAgent, temporaryPassword, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := &Server{
 		api: api,
 		apiServer: &http.Server{

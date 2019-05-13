@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -17,7 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
 	"gitlab.com/NebulousLabs/Sia/profile"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh/terminal"
@@ -124,7 +122,7 @@ func apiPassword(siaDir string) (string, error) {
 		return pw, nil
 	}
 
-	// Try to read the password from disk.
+	// Try to read the password from disk at the legacy location.
 	path := build.APIPasswordFile(siaDir)
 	pwFile, err := ioutil.ReadFile(path)
 	if err == nil {
@@ -133,19 +131,8 @@ func apiPassword(siaDir string) (string, error) {
 	} else if !os.IsNotExist(err) {
 		return "", err
 	}
-
-	// No password file; generate a secure one.
-	// Generate a password file.
-	if err := os.MkdirAll(siaDir, 0700); err != nil {
-		return "", err
-	}
-	pw = hex.EncodeToString(fastrand.Bytes(16))
-	if err := ioutil.WriteFile(path, []byte(pw+"\n"), 0600); err != nil {
-		return "", err
-	}
-	fmt.Println("A secure API password has been written to", path)
-	fmt.Println("This password will be used automatically the next time you run siad.")
-	return pw, nil
+	// The siad.config password file will be used.
+	return "", nil
 }
 
 // loadAPIPassword determines whether to use an API password from disk or a
@@ -161,7 +148,6 @@ func loadAPIPassword(config Config) (err error) {
 			}
 		} else {
 			// load API password from environment variable or file.
-			// TODO: allow user to specify location of password file.
 			config.APIPassword, err = apiPassword(build.DefaultSiaDir())
 			if err != nil {
 				return err
@@ -249,7 +235,7 @@ func startDaemon(config Config) (err error) {
 	nodeParams := parseModules(config)
 
 	// Start and run the server.
-	srv, err := server.New(config.Siad.APIaddr, config.Siad.RequiredUserAgent, config.APIPassword, nodeParams)
+	srv, err := server.New(config.Siad.APIaddr, config.Siad.RequiredUserAgent, config.APIPassword, config.Siad.AuthenticateAPI, nodeParams)
 	if err != nil {
 		return err
 	}

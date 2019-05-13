@@ -130,7 +130,7 @@ func (tn *TestNode) RestartNode() error {
 // StartNode starts a TestNode from an active group
 func (tn *TestNode) StartNode() error {
 	// Create server
-	s, err := server.New(":0", tn.UserAgent, tn.Password, tn.params)
+	s, err := server.New(":0", tn.UserAgent, tn.Password, true, tn.params)
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
 	password := "password"
 
 	// Create server
-	s, err := server.New(":0", userAgent, password, nodeParams)
+	s, err := server.New(":0", userAgent, password, true, nodeParams)
 	if err != nil {
 		return nil, err
 	}
