@@ -49,6 +49,10 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		return &SiaFileSetEntry{}, err
 	}
 	zeroHealth := float64(1 + fd.ErasureCode.MinPieces()/(fd.ErasureCode.NumPieces()-fd.ErasureCode.MinPieces()))
+	partialsSiaFile, err := sfs.openPartialsSiaFile(fd.ErasureCode)
+	if err != nil {
+		return nil, err
+	}
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			AccessTime:              currentTime,
@@ -73,14 +77,15 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticPieceSize:         fd.PieceSize,
 			StaticUniqueID:          SiafileUID(fd.UID),
 		},
-		siaFilePath: siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
-		deps:        modules.ProdDependencies,
-		deleted:     fd.Deleted,
-		wal:         sfs.wal,
+		deps:            modules.ProdDependencies,
+		deleted:         fd.Deleted,
+		partialsSiaFile: partialsSiaFile,
+		siaFilePath:     siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
+		wal:             sfs.wal,
 	}
-	file.chunks = make([]chunk, len(fd.Chunks))
-	for i := range file.chunks {
-		file.chunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
+	file.fullChunks = make([]chunk, len(fd.Chunks))
+	for i := range file.fullChunks {
+		file.fullChunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
 	}
 	// Update cached fields for 0-Byte files.
 	if file.staticMetadata.FileSize == 0 {
@@ -106,7 +111,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 					})
 				}
 				// Add the piece to the SiaFile.
-				file.chunks[chunkIndex].Pieces[pieceIndex] = append(file.chunks[chunkIndex].Pieces[pieceIndex], piece{
+				file.fullChunks[chunkIndex].Pieces[pieceIndex] = append(file.fullChunks[chunkIndex].Pieces[pieceIndex], piece{
 					HostTableOffset: tableOffset,
 					MerkleRoot:      p.MerkleRoot,
 				})

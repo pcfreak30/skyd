@@ -354,10 +354,18 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 			build.Critical(err)
 			return nil, err
 		}
-		entry, err = sfs.newSiaFileSetEntry(sf)
+		// Load the corresponding partialsSiaFile.
+		partialsSiaFile, err := sfs.openPartialsSiaFile(sf.ErasureCode())
 		if err != nil {
 			return nil, err
 		}
+		// Create the entry for the SiaFile and assign the partials file.
+		entry, err = sfs.newSiaFileSetEntry(sf)
+		if err != nil {
+			sfs.closeEntry(partialsSiaFile)
+			return nil, err
+		}
+		entry.SetPartialsSiaFile(partialsSiaFile)
 	}
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
@@ -552,14 +560,12 @@ func (sfs *SiaFileSet) FileList(siaPath modules.SiaPath, recursive, cached bool,
 	return fileList, nil
 }
 
-// NewSiaFile create a new SiaFile, adds it to the SiaFileSet, adds the thread
+// newSiaFile create a new SiaFile, adds it to the SiaFileSet, adds the thread
 // to the threadMap, and returns the SiaFileSetEntry. Since this method returns
 // the SiaFileSetEntry, wherever NewSiaFile is called there should be a Close
 // called on the SiaFileSetEntry to avoid the file being stuck in memory due the
 // thread never being removed from the threadMap
-func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, error) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
+func (sfs *SiaFileSet) newSiaFile(up modules.FileUploadParams, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, error) {
 	// Check is SiaFile already exists
 	exists := sfs.exists(up.SiaPath)
 	if exists && !up.Force {
@@ -567,7 +573,10 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 	}
 	// Make sure there are no leading slashes
 	siaFilePath := up.SiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
-	sf, err := New(up.SiaPath, siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode)
+	if true {
+		panic("not implemented yet")
+	}
+	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -581,6 +590,17 @@ func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.
 		siaFileSetEntry: entry,
 		threadUID:       threadUID,
 	}, nil
+}
+
+// NewSiaFile create a new SiaFile, adds it to the SiaFileSet, adds the thread
+// to the threadMap, and returns the SiaFileSetEntry. Since this method returns
+// the SiaFileSetEntry, wherever NewSiaFile is called there should be a Close
+// called on the SiaFileSetEntry to avoid the file being stuck in memory due the
+// thread never being removed from the threadMap
+func (sfs *SiaFileSet) NewSiaFile(up modules.FileUploadParams, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFileSetEntry, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.newSiaFile(up, masterKey, fileSize, fileMode)
 }
 
 // Open returns the siafile from the SiaFileSet for the corresponding key and
@@ -625,7 +645,7 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 	delete(sfs.siapathToUID, siaPath)
 
 	// Update the siafile to have a new name.
-	return entry.Rename(newSiaPath, newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir))
+	return entry.Rename(newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir))
 }
 
 // healthPercentage returns the health in a more human understandable format out
@@ -738,4 +758,11 @@ func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir
 		entry.siaFilePath = sp.SiaFileSysPath(sfs.staticSiaFileDir)
 	}
 	return nil
+}
+
+// openPartialsSiaFile opens a SiaFile which will be used to upload chunks
+// consisting of partial chunks which corresponds to a given erasure coder. If
+// the SiaFile doesn't exist, it will be created.
+func (sfs *SiaFileSet) openPartialsSiaFile(ec modules.ErasureCoder) (*SiaFileSetEntry, error) {
+	panic("not implemented yet")
 }

@@ -2,13 +2,11 @@ package siafile
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -24,8 +22,8 @@ func TestSnapshot(t *testing.T) {
 	snap := sf.Snapshot()
 
 	// Make sure the snapshot has the same fields as the SiaFile.
-	if len(sf.chunks) != len(snap.staticChunks) {
-		t.Errorf("expected %v chunks but got %v", len(sf.chunks), len(snap.staticChunks))
+	if sf.numChunks() != uint64(len(snap.staticChunks)) {
+		t.Errorf("expected %v chunks but got %v", sf.numChunks(), len(snap.staticChunks))
 	}
 	if sf.staticMetadata.FileSize != snap.staticFileSize {
 		t.Errorf("staticFileSize was %v but should be %v",
@@ -61,7 +59,7 @@ func TestSnapshot(t *testing.T) {
 	}
 	sf.staticSiaFileSet.mu.Unlock()
 	// Compare the pieces.
-	for i := range sf.chunks {
+	for i := range sf.allChunks() {
 		sfPieces, err1 := sf.Pieces(uint64(i))
 		snapPieces, err2 := snap.Pieces(uint64(i))
 		if err := errors.Compose(err1, err2); err != nil {
@@ -100,34 +98,18 @@ func BenchmarkSnapshot10GB(b *testing.B) {
 // benchmarkSnapshot is a helper function for benchmarking the creation of
 // snapshots of Siafiles with different sizes.
 func benchmarkSnapshot(b *testing.B, fileSize uint64) {
-	// Setup the file.
-	siaFilePath, siaPath, source, rc, sk, _, _, fileMode := newTestFileParams()
-
-	// Create the path to the file.
-	dir, _ := filepath.Split(siaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		b.Fatal(err)
-	}
 	// Create the file.
-	chunkSize := (modules.SectorSize - crypto.TypeDefaultRenter.Overhead()) * uint64(rc.MinPieces())
-	numChunks := fileSize / chunkSize
-	if fileSize%chunkSize != 0 {
-		numChunks++
-	}
-	wal, _ := newTestWAL()
-	siafile, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	siafile := newBlankTestFile()
 	sf := dummyEntry(siafile)
 	// Add a host key to the table.
 	sf.addRandomHostKeys(1)
-	// Add numPieces to each chunks.
+	// Add numPieces to each chunk.
 	for i := uint64(0); i < sf.NumChunks(); i++ {
-		for j := uint64(0); j < uint64(rc.NumPieces()); j++ {
-			sf.chunks[i].Pieces[j] = append(sf.chunks[i].Pieces[j], piece{})
+		for j := uint64(0); j < uint64(sf.ErasureCode().NumPieces()); j++ {
+			sf.AddPiece(types.SiaPublicKey{}, i, j, crypto.Hash{})
 		}
 	}
+
 	// Save the file to disk.
 	if err := sf.saveFile(); err != nil {
 		b.Fatal(err)

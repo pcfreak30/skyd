@@ -102,6 +102,14 @@ func (sf *SiaFile) LoadPartialChunk() ([]byte, error) {
 	return ioutil.ReadFile(sf.partialFilePath())
 }
 
+// SetPartialsSiaFile sets the partialsSiaFile field of the SiaFile. This is
+// usually done for non-partials SiaFiles after loading them from disk.
+func (sf *SiaFile) SetPartialsSiaFile(partialsSiaFile *SiaFileSetEntry) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.partialsSiaFile = partialsSiaFile
+}
+
 // applyUpdates applies a number of writeaheadlog updates to the corresponding
 // SiaFile. This method can apply updates from different SiaFiles and should
 // only be run before the SiaFiles are loaded from disk right after the startup
@@ -219,7 +227,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		if err != nil {
 			return nil, err
 		}
-		sf.chunks = append(sf.chunks, chunk)
+		sf.fullChunks = append(sf.fullChunks, chunk)
 	}
 	return sf, nil
 }
@@ -515,7 +523,7 @@ func (sf *SiaFile) saveFile() error {
 // to disk when applied.
 func (sf *SiaFile) saveChunkUpdate(chunkIndex int) writeaheadlog.Update {
 	offset := sf.chunkOffset(chunkIndex)
-	chunkBytes := marshalChunk(sf.chunks[chunkIndex])
+	chunkBytes := marshalChunk(sf.fullChunks[chunkIndex])
 	return sf.createInsertUpdate(offset, chunkBytes)
 }
 
@@ -523,8 +531,8 @@ func (sf *SiaFile) saveChunkUpdate(chunkIndex int) writeaheadlog.Update {
 // the SiaFile to disk when applied.
 func (sf *SiaFile) saveChunksUpdates() []writeaheadlog.Update {
 	// Marshal all the chunks and create updates for them.
-	updates := make([]writeaheadlog.Update, 0, len(sf.chunks))
-	for chunkIndex := range sf.chunks {
+	updates := make([]writeaheadlog.Update, 0, len(sf.fullChunks))
+	for chunkIndex := range sf.fullChunks {
 		update := sf.saveChunkUpdate(chunkIndex)
 		updates = append(updates, update)
 	}

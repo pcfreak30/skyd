@@ -34,7 +34,7 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	fdd.disable()
 
 	// Create a new blank siafile.
-	siafile, wal, walPath := newBlankTestFileAndWAL()
+	siafile, wal, walPath := newBlankTestFileAndWAL(1)
 	siafile.deps = fdd
 
 	// Wrap it in a file set entry.

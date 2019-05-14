@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -65,10 +66,10 @@ func equalFiles(sf, sf2 *SiaFile) error {
 		fmt.Println(sf2.pubKeyTable)
 		return errors.New("sf pubKeyTable doesn't equal sf2 pubKeyTable")
 	}
-	if !reflect.DeepEqual(sf.chunks, sf2.chunks) {
-		fmt.Println(len(sf.chunks), len(sf2.chunks))
-		fmt.Println("sf1", sf.chunks)
-		fmt.Println("sf2", sf2.chunks)
+	if !reflect.DeepEqual(sf.allChunks(), sf2.allChunks()) {
+		fmt.Println(sf.numChunks(), sf2.numChunks())
+		fmt.Println("sf1", sf.allChunks())
+		fmt.Println("sf2", sf2.allChunks())
 		return errors.New("sf chunks don't equal sf2 chunks")
 	}
 	if sf.siaFilePath != sf2.siaFilePath {
@@ -105,23 +106,41 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 
 // newBlankTestFileAndWAL creates an empty SiaFile for testing and also returns
 // the WAL used in the creation and the path of the WAL.
-func newBlankTestFileAndWAL() (*SiaFile, *writeaheadlog.WAL, string) {
+func newBlankTestFileAndWAL(minChunks int) (*SiaFile, *writeaheadlog.WAL, string) {
 	// Get new file params
-	siaFilePath, siaPath, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams()
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(minChunks)
 
 	// Create the path to the file.
 	dir, _ := filepath.Split(siaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	err := os.MkdirAll(dir, 0700)
+	if err != nil {
 		panic(err)
 	}
-	// Create the file.
+	// Create a test wal
 	wal, walPath := newTestWAL()
-	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, fileSize, fileMode)
+	// Create the corresponding partials file if it doesn't exist already.
+	var partialsSiaFile *SiaFile
+	partialsSiaPath := modules.CombinedSiaFilePath(rc)
+	partialsSiaFilePath := partialsSiaPath.SiaFileSysPath(dir)
+	if _, err = os.Stat(partialsSiaFilePath); os.IsNotExist(err) {
+		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil)
+	} else {
+		partialsSiaFile, err = LoadSiaFile(partialsSiaFilePath, wal)
+	}
+	if err != nil {
+		panic(fmt.Sprint("failed to load partialsSiaFile", err))
+	}
+	partialsEntry := &SiaFileSetEntry{
+		dummyEntry(partialsSiaFile),
+		uint64(fastrand.Intn(math.MaxInt32)),
+	}
+	// Create the file.
+	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, partialsEntry)
 	if err != nil {
 		panic(err)
 	}
 	// Check that the number of chunks in the file is correct.
-	if len(sf.chunks) != numChunks {
+	if len(sf.allChunks()) != numChunks {
 		panic("newTestFile didn't create the expected number of chunks")
 	}
 	return sf, wal, walPath
@@ -130,7 +149,7 @@ func newBlankTestFileAndWAL() (*SiaFile, *writeaheadlog.WAL, string) {
 // newBlankTestFile is a helper method to create a SiaFile for testing without
 // any hosts or uploaded pieces.
 func newBlankTestFile() *SiaFile {
-	sf, _, _ := newBlankTestFileAndWAL()
+	sf, _, _ := newBlankTestFileAndWAL(1)
 	return sf
 }
 
@@ -139,7 +158,7 @@ func newBlankTestFile() *SiaFile {
 func newTestFile() *SiaFile {
 	sf := newBlankTestFile()
 	// Add pieces to each chunk.
-	for chunkIndex := range sf.chunks {
+	for chunkIndex := range sf.allChunks() {
 		for pieceIndex := 0; pieceIndex < sf.ErasureCode().NumPieces(); pieceIndex++ {
 			numPieces := fastrand.Intn(3) // up to 2 hosts for each piece
 			for i := 0; i < numPieces; i++ {
@@ -157,7 +176,7 @@ func newTestFile() *SiaFile {
 
 // newTestFileParams creates the required parameters for creating a siafile and
 // creates a directory for the file
-func newTestFileParams() (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
+func newTestFileParams(minChunks int) (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
 	pieceSize := modules.SectorSize - sk.Type().Overhead()
@@ -166,7 +185,7 @@ func newTestFileParams() (string, modules.SiaPath, string, modules.ErasureCoder,
 	if err != nil {
 		panic(err)
 	}
-	numChunks := fastrand.Intn(10) + 1
+	numChunks := fastrand.Intn(10) + minChunks
 	fileSize := pieceSize * uint64(rc.MinPieces()) * uint64(numChunks)
 	fileMode := os.FileMode(777)
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))
@@ -221,7 +240,7 @@ func TestNewFile(t *testing.T) {
 	}
 	// Marshal the chunks.
 	var chunks [][]byte
-	for _, chunk := range sf.chunks {
+	for _, chunk := range sf.fullChunks {
 		c := marshalChunk(chunk)
 		chunks = append(chunks, c)
 	}
@@ -243,7 +262,7 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Size() != sf.chunkOffset(len(sf.chunks)-1)+int64(len(chunks[len(chunks)-1])) {
+	if fi.Size() != sf.chunkOffset(len(sf.fullChunks)-1)+int64(len(chunks[len(chunks)-1])) {
 		t.Fatal("file doesn't have right size")
 	}
 	// Compare the metadata to the on-disk metadata.
@@ -266,7 +285,7 @@ func TestNewFile(t *testing.T) {
 	}
 	// Compare the chunks to the on-disk chunks one-by-one.
 	readChunk := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
-	for chunkIndex := range sf.chunks {
+	for chunkIndex := range sf.fullChunks {
 		_, err := f.ReadAt(readChunk, sf.chunkOffset(chunkIndex))
 		if err != nil && err != io.EOF {
 			t.Fatal(err)
@@ -381,7 +400,7 @@ func TestRename(t *testing.T) {
 	oldSiaFilePath := entry.siaFilePath
 
 	// Rename file
-	if err := entry.Rename(newSiaPath, newSiaFilePath); err != nil {
+	if err := entry.Rename(newSiaFilePath); err != nil {
 		t.Fatal("Failed to rename file", err)
 	}
 
@@ -439,22 +458,12 @@ func TestZeroByteFileCompat(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Get new file params
-	siaFilePath, siaPath, source, rc, sk, _, _, fileMode := newTestFileParams()
-
-	// Create the path to the file.
-	dir, _ := filepath.Split(siaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		panic(err)
-	}
 	// Create the file.
-	wal, _ := newTestWAL()
-	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, 0, fileMode)
-	if err != nil {
-		panic(err)
-	}
+	sf, wal, _ := newBlankTestFileAndWAL(1)
+	siaFilePath := sf.SiaFilePath()
+	rc := sf.ErasureCode()
 	// Check that the number of chunks in the file is correct.
-	if len(sf.chunks) != 1 {
+	if len(sf.allChunks()) != 1 {
 		panic("newTestFile didn't create the expected number of chunks")
 	}
 	// Set the cached fields to 0 like they would be if the file was already
@@ -467,7 +476,7 @@ func TestZeroByteFileCompat(t *testing.T) {
 	if err := sf.Save(); err != nil {
 		t.Fatal(err)
 	}
-	sf, err = loadSiaFile(siaFilePath, wal, modules.ProdDependencies)
+	sf, err := loadSiaFile(siaFilePath, wal, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -756,9 +765,9 @@ func TestSaveChunk(t *testing.T) {
 	sf := newTestFile()
 
 	// Choose a random chunk from the file and replace it.
-	chunkIndex := fastrand.Intn(len(sf.chunks))
+	chunkIndex := fastrand.Intn(len(sf.fullChunks))
 	chunk := randomChunk()
-	sf.chunks[chunkIndex] = chunk
+	sf.fullChunks[chunkIndex] = chunk
 
 	// Write the chunk to disk using saveChunk.
 	update := sf.saveChunkUpdate(chunkIndex)
@@ -796,7 +805,7 @@ func TestUniqueIDMissing(t *testing.T) {
 	t.Parallel()
 
 	// Create a new file.
-	sf, wal, _ := newBlankTestFileAndWAL()
+	sf, wal, _ := newBlankTestFileAndWAL(1)
 	// It should have a UID.
 	if sf.staticMetadata.StaticUniqueID == "" {
 		t.Fatal("unique ID wasn't set")

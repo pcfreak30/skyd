@@ -20,7 +20,7 @@ import (
 // that they are linked
 func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 	// Create new SiaFile params
-	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1)
 	dir := filepath.Join(os.TempDir(), "siafiles")
 	// Create SiaFileSet
 	wal, _ := newTestWAL()
@@ -48,7 +48,7 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	t.Parallel()
 
 	// Create new SiaFile params
-	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+	_, siaPath, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1)
 	// Create SiaFileSet
 	wal, _ := newTestWAL()
 	dir := filepath.Join(os.TempDir(), "siafiles")
@@ -476,7 +476,7 @@ func TestSiaDirDelete(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1)
 		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc}, sk, fileSize, fileMode)
 		if err != nil {
 			t.Fatal(err)

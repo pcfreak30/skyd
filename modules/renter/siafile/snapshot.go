@@ -136,14 +136,15 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	pkt := make([]HostPublicKey, len(sf.pubKeyTable))
 	copy(pkt, sf.pubKeyTable)
 
-	chunks := make([]Chunk, 0, len(sf.chunks))
+	chunks := make([]Chunk, 0, sf.numChunks())
 	// Figure out how much memory we need to allocate for the piece sets and
 	// pieces.
+	allChunks := sf.allChunks()
 	var numPieceSets, numPieces int
-	for chunkIndex := range sf.chunks {
-		numPieceSets += len(sf.chunks[chunkIndex].Pieces)
-		for pieceIndex := range sf.chunks[chunkIndex].Pieces {
-			numPieces += len(sf.chunks[chunkIndex].Pieces[pieceIndex])
+	for chunkIndex := range allChunks {
+		numPieceSets += len(allChunks[chunkIndex].Pieces)
+		for pieceIndex := range allChunks[chunkIndex].Pieces {
+			numPieces += len(allChunks[chunkIndex].Pieces[pieceIndex])
 		}
 	}
 	// Allocate all the piece sets and pieces at once.
@@ -151,13 +152,13 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	allPieces := make([]Piece, numPieces)
 
 	// Copy chunks.
-	for chunkIndex := range sf.chunks {
-		pieces := allPieceSets[:len(sf.chunks[chunkIndex].Pieces)]
-		allPieceSets = allPieceSets[len(sf.chunks[chunkIndex].Pieces):]
+	for chunkIndex := range allChunks {
+		pieces := allPieceSets[:len(allChunks[chunkIndex].Pieces)]
+		allPieceSets = allPieceSets[len(allChunks[chunkIndex].Pieces):]
 		for pieceIndex := range pieces {
-			pieces[pieceIndex] = allPieces[:len(sf.chunks[chunkIndex].Pieces[pieceIndex])]
-			allPieces = allPieces[len(sf.chunks[chunkIndex].Pieces[pieceIndex]):]
-			for i, piece := range sf.chunks[chunkIndex].Pieces[pieceIndex] {
+			pieces[pieceIndex] = allPieces[:len(allChunks[chunkIndex].Pieces[pieceIndex])]
+			allPieces = allPieces[len(allChunks[chunkIndex].Pieces[pieceIndex]):]
+			for i, piece := range allChunks[chunkIndex].Pieces[pieceIndex] {
 				pieces[pieceIndex][i] = Piece{
 					HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
 					MerkleRoot: piece.MerkleRoot,

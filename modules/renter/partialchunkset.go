@@ -4,6 +4,7 @@ package renter
 // TODO: Support repairing a partial chunk if redundancy dropped below 1x, the
 // complete chunk was deleted but the source is available locally
 // TODO: Have the mega siafile be ignored by the repair loop.
+// TODO: Close entry of partial siafiles when siafile is closed.
 
 import (
 	"sync"
