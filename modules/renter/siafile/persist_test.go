@@ -104,12 +104,9 @@ func (sf *SiaFile) addRandomHostKeys(n int) {
 	}
 }
 
-// newBlankTestFileAndWAL creates an empty SiaFile for testing and also returns
+// customTestFileAndWAL creates an empty SiaFile for testing and also returns
 // the WAL used in the creation and the path of the WAL.
-func newBlankTestFileAndWAL(minChunks int) (*SiaFile, *writeaheadlog.WAL, string) {
-	// Get new file params
-	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(minChunks)
-
+func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, sk crypto.CipherKey, fileSize uint64, numChunks int, fileMode os.FileMode) (*SiaFile, *writeaheadlog.WAL, string) {
 	// Create the path to the file.
 	dir, _ := filepath.Split(siaFilePath)
 	err := os.MkdirAll(dir, 0700)
@@ -144,6 +141,21 @@ func newBlankTestFileAndWAL(minChunks int) (*SiaFile, *writeaheadlog.WAL, string
 		panic("newTestFile didn't create the expected number of chunks")
 	}
 	return sf, wal, walPath
+}
+
+// newBlankTestFileAndWAL is like customTestFileAndWAL but uses random params
+// and allows the caller to specify how many chunks the file should at least
+// contain.
+func newBlankTestFileAndWAL(minChunks int) (*SiaFile, *writeaheadlog.WAL, string) {
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1)
+	return customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
+}
+
+// newBlankTestFileAndWALWithEC is like customTestFileAndWAL but let's the
+// caller specify custom erasure code settings.
+func newBlankTestFileAndWALWithEC(ec modules.ErasureCoder) (*SiaFile, *writeaheadlog.WAL, string) {
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1)
+	return customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 }
 
 // newBlankTestFile is a helper method to create a SiaFile for testing without
