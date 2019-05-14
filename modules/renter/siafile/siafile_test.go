@@ -90,7 +90,8 @@ func TestFileNumChunks(t *testing.T) {
 		// Create erasure-coder
 		rsc, _ := NewRSCode(test.dataPieces, 1) // can't use 0
 		// Create the file
-		f, _, _ := newBlankTestFileAndWALWithEC(rsc)
+		siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1)
+		f, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, test.fileSize, -1, fileMode)
 		// Make sure the file reports the correct pieceSize.
 		if f.PieceSize() != modules.SectorSize-f.MasterKey().Type().Overhead() {
 			t.Fatal("file has wrong pieceSize for its encryption type")

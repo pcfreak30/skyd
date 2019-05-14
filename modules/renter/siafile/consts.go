@@ -53,8 +53,9 @@ const (
 // at.
 const (
 	combinedChunkStatusInvalid    = iota // status wasn't initialized
-	combinedChunkStatusNoChunk           // file has no partial chunk or it hasn't been added yet
-	combinedChunkStatusIncomplete        // partial chunk is not yet included in a combined chunk and stored in a .partial file
+	combinedChunkStatusNoChunk           // file has no partial chunk
+	combinedChunkStatusHasChunk          // file has a partial chunk but doesn't link to it yet
+	combinedChunkStatusIncomplete        // partial chunk is not yet included in a combined chunk and was stored in a .partial file
 	combinedChunkStatusCombined          // partial chunk is included in a combined chunk and .partial file still exists
 	combinedChunkStatusCompleted         // partial chunk is included in a combined chunk and .partial file was deleted
 )

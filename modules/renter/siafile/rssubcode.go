@@ -91,7 +91,7 @@ func (rs *RSSubCode) Identifier() modules.ErasureCoderIdentifier {
 	t := rs.Type()
 	dataPieces := rs.MinPieces()
 	parityPieces := rs.NumPieces() - dataPieces
-	id := fmt.Sprintf("%v:%v:%v", binary.BigEndian.Uint32(t[:]), dataPieces, parityPieces)
+	id := fmt.Sprintf("%v+%v+%v", binary.BigEndian.Uint32(t[:]), dataPieces, parityPieces)
 	return modules.ErasureCoderIdentifier(id)
 }
 

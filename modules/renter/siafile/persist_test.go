@@ -137,7 +137,7 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 		panic(err)
 	}
 	// Check that the number of chunks in the file is correct.
-	if len(sf.allChunks()) != numChunks {
+	if numChunks >= 0 && sf.numChunks() != uint64(numChunks) {
 		panic("newTestFile didn't create the expected number of chunks")
 	}
 	return sf, wal, walPath
