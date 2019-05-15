@@ -766,5 +766,41 @@ func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir
 // consisting of partial chunks which corresponds to a given erasure coder. If
 // the SiaFile doesn't exist, it will be created.
 func (sfs *SiaFileSet) openPartialsSiaFile(ec modules.ErasureCoder) (*SiaFileSetEntry, error) {
-	panic("not implemented yet")
+	// Get the siapath of the partials file.
+	siaPath := modules.CombinedSiaFilePath(ec)
+	var entry *siaFileSetEntry
+	var exists bool
+	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
+	if !exists {
+		// Try and Load File from disk
+		sf, err := LoadSiaFile(siaPath.SiaFileSysPath(sfs.staticSiaFileDir), sfs.wal)
+		if os.IsNotExist(err) {
+			return nil, ErrUnknownPath
+		}
+		if err != nil {
+			return nil, err
+		}
+		// Check for duplicate uid.
+		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
+			err := fmt.Errorf("%v and %v share the same UID", sfs.siaPath(conflictingEntry), siaPath)
+			build.Critical(err)
+			return nil, err
+		}
+		// Create the entry for the SiaFile and assign the partials file.
+		entry, err = sfs.newSiaFileSetEntry(sf)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if entry.Deleted() {
+		return nil, ErrUnknownPath
+	}
+	threadUID := randomThreadUID()
+	entry.threadMapMu.Lock()
+	defer entry.threadMapMu.Unlock()
+	entry.threadMap[threadUID] = newThreadInfo()
+	return &SiaFileSetEntry{
+		siaFileSetEntry: entry,
+		threadUID:       threadUID,
+	}, nil
 }
