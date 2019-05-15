@@ -571,12 +571,14 @@ func (sfs *SiaFileSet) newSiaFile(up modules.FileUploadParams, masterKey crypto.
 	if exists && !up.Force {
 		return nil, ErrPathOverload
 	}
+	// Open the corresponding partials file.
+	partialsSiaFile, err := sfs.openPartialsSiaFile(up.ErasureCode)
+	if err != nil {
+		return nil, err
+	}
 	// Make sure there are no leading slashes
 	siaFilePath := up.SiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
-	if true {
-		panic("not implemented yet")
-	}
-	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, nil)
+	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, partialsSiaFile)
 	if err != nil {
 		return nil, err
 	}

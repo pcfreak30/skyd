@@ -207,6 +207,39 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	return nil
 }
 
+// managedStreamLogicalChunkData handles fetching logical chunk data from a
+// stream instead of downloading it or loading it from disk.
+func (r *Renter) managedStreamLogicalChunkData(chunk *unfinishedUploadChunk) (bool, error) {
+	// Read up to chunk.length bytes from the stream.
+	byteBuf := make([]byte, chunk.length)
+	n, err := io.ReadFull(chunk.sourceReader, byteBuf)
+	defer chunk.sourceReader.Close()
+	// Adjust the fileSize. Since we don't know the length of the stream
+	// beforehand we simply assume that a whole chunk will be added to the
+	// file. That's why we subtract the difference between the size of a
+	// chunk and n here.
+	adjustedSize := chunk.fileEntry.Size() - chunk.length + uint64(n)
+	if errSize := chunk.fileEntry.SetFileSize(adjustedSize); errSize != nil {
+		return false, errors.AddContext(errSize, "failed to adjust FileSize")
+	}
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return false, errors.AddContext(err, "failed to read chunk from sourceReader")
+	}
+	// Check if the last chunk was only uploaded partially.
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		chunk.fileEntry.SavePartialChunk(byteBuf[:n])
+		return false, nil
+	}
+	// Read the byteBuf into the sharded destination buffer.
+	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
+	_, err = buf.ReadFrom(bytes.NewBuffer(byteBuf))
+	if err == nil || err == io.EOF || err == io.ErrUnexpectedEOF {
+		chunk.logicalChunkData = buf.buf
+		return true, nil
+	}
+	return false, errors.AddContext(err, "failed to get logicalChunkData from stream")
+}
+
 // threadedFetchAndRepairChunk will fetch the logical data for a chunk, create
 // the physical pieces for the chunk, and then distribute them.
 func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
@@ -241,7 +274,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	defer r.managedCleanUpUploadChunk(chunk)
 
 	// Fetch the logical data for the chunk.
-	err = r.managedFetchLogicalChunkData(chunk)
+	fetched, err := r.managedFetchLogicalChunkData(chunk)
 	if err != nil {
 		// Logical data is not available, cannot upload. Chunk will not be
 		// distributed to workers, therefore set workersRemaining equal to zero.
@@ -260,6 +293,14 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			r.log.Debugln("Error marking chunk", chunk.id, "as stuck:", err)
 		}
 		return
+	}
+	if err == nil && !fetched {
+		// Logical data is not available but no error was returned. It's probably a
+		// partial chunk that hasn't been included in a combined chunk yet.
+		chunk.logicalChunkData = nil
+		chunk.workersRemaining = 0
+		r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
+		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 	}
 
 	// Create the physical pieces for the data. Immediately release the logical
@@ -332,54 +373,29 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 //
 // chunk.data should be passed as 'nil' to the download, to keep memory usage as
 // light as possible.
-func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
+func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) (bool, error) {
 	// Only download this file if more than 25% of the redundancy is missing.
 	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
 	chunkHealth := 1 - (float64(chunk.piecesCompleted-chunk.minimumPieces) / numParityPieces)
 	download := chunkHealth >= siafile.RemoteRepairDownloadThreshold
 
-	// If a sourceReader is available, use it.
+	// If a sourceReader is available, use it instead.
 	var err error
 	if chunk.sourceReader != nil {
-		// Read up to chunk.length bytes from the stream.
-		byteBuf := make([]byte, chunk.length)
-		n, err := io.ReadFull(chunk.sourceReader, byteBuf)
-		defer chunk.sourceReader.Close()
-		// Adjust the fileSize. Since we don't know the length of the stream
-		// beforehand we simply assume that a whole chunk will be added to the
-		// file. That's why we subtract the difference between the size of a
-		// chunk and n here.
-		adjustedSize := chunk.fileEntry.Size() - chunk.length + uint64(n)
-		if errSize := chunk.fileEntry.SetFileSize(adjustedSize); errSize != nil {
-			return errors.AddContext(errSize, "failed to adjust FileSize")
-		}
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return errors.AddContext(err, "failed to read chunk from sourceReader")
-		}
-		// Check if the last chunk was only uploaded partially.
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			chunk.fileEntry.SavePartialChunk(byteBuf[:n])
-			panic("not implemented yet") // consider chunk uploaded for now
-		}
-		// Read the byteBuf into the sharded destination buffer.
-		buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-		_, err = buf.ReadFrom(bytes.NewBuffer(byteBuf))
-		if err == nil || err == io.EOF || err == io.ErrUnexpectedEOF {
-			chunk.logicalChunkData = buf.buf
-			return nil
-		}
-		return errors.AddContext(err, "failed to get logicalChunkData from stream")
+		return r.managedStreamLogicalChunkData(chunk)
 	}
-
 	// Download the chunk if it's not on disk.
 	if chunk.fileEntry.LocalPath() == "" && download {
-		return r.managedDownloadLogicalChunkData(chunk)
+		return true, r.managedDownloadLogicalChunkData(chunk)
 	} else if chunk.fileEntry.LocalPath() == "" {
-		return errors.New("file not available locally")
+		return false, errors.New("file not available locally")
 	}
-
 	// Special handling for partial chunks.
 	if chunk.index == chunk.fileEntry.NumChunks()-1 {
+		// TODO: Multiple options here:
+		// 1) partial chunk wasn't added to the siafile yet (add it and try to get a combined chunk)
+		// 2) partial chunk was added but not included in a combined chunk (don't add it but try to get combined chunk)
+		// 3) combined chunk exists and can be uploaded (don't add it and load combined chunk)
 		panic("copy partial chunk into siafile and try to load a combined chunk")
 	}
 
@@ -392,9 +408,9 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// separate struct.
 	osFile, err := os.Open(chunk.fileEntry.LocalPath())
 	if err != nil && download {
-		return r.managedDownloadLogicalChunkData(chunk)
+		return true, r.managedDownloadLogicalChunkData(chunk)
 	} else if err != nil {
-		return errors.Extend(err, errors.New("failed to open file locally"))
+		return false, errors.Extend(err, errors.New("failed to open file locally"))
 	}
 	defer osFile.Close()
 	// TODO: Once we have enabled support for small chunks, we should stop
@@ -405,15 +421,15 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	_, err = buf.ReadFrom(sr)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF && download {
 		r.log.Debugln("failed to read file, downloading instead:", err)
-		return r.managedDownloadLogicalChunkData(chunk)
+		return true, r.managedDownloadLogicalChunkData(chunk)
 	} else if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		r.log.Debugln("failed to read file locally:", err)
-		return errors.Extend(err, errors.New("failed to read file locally"))
+		return false, errors.Extend(err, errors.New("failed to read file locally"))
 	}
 	chunk.logicalChunkData = buf.buf
 
 	// Data successfully read from disk.
-	return nil
+	return false, nil
 }
 
 // managedCleanUpUploadChunk will check the state of the chunk and perform any
