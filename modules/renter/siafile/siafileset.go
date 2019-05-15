@@ -169,6 +169,11 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 		delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	}
+
+	// If the entry had a partialSiaFile, close that as well.
+	if entry.partialsSiaFile != nil {
+		sfs.closeEntry(entry.partialsSiaFile)
+	}
 }
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
@@ -325,7 +330,7 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) (*siaFileSetEntry, error)
 	// Add entry to siaFileMap and siapathToUID map. Sanity check that the UID is
 	// in fact unique.
 	if _, exists := sfs.siaFileMap[entry.UID()]; exists {
-		err := errors.New("siafile was already loaded")
+		err := fmt.Errorf("siafile '%v' with uid '%v' was already loaded", sfs.siaPath(entry), entry.UID())
 		build.Critical(err)
 		return nil, err
 	}
@@ -346,12 +351,6 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 			return nil, ErrUnknownPath
 		}
 		if err != nil {
-			return nil, err
-		}
-		// Check for duplicate uid.
-		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
-			err := fmt.Errorf("%v and %v share the same UID", sfs.siaPath(conflictingEntry), siaPath)
-			build.Critical(err)
 			return nil, err
 		}
 		// Load the corresponding partialsSiaFile.
@@ -772,18 +771,17 @@ func (sfs *SiaFileSet) openPartialsSiaFile(ec modules.ErasureCoder) (*SiaFileSet
 	var exists bool
 	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
 	if !exists {
-		// Try and Load File from disk
+		// Try and Load File from disk.
 		sf, err := LoadSiaFile(siaPath.SiaFileSysPath(sfs.staticSiaFileDir), sfs.wal)
 		if os.IsNotExist(err) {
-			return nil, ErrUnknownPath
+			// File doesn't exist. Create a new one.
+			siaFilePath := siaPath.SiaFileSysPath(sfs.staticSiaFileDir)
+			sf, err = New(siaFilePath, "", sfs.wal, ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 0, 0600, nil)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if err != nil {
-			return nil, err
-		}
-		// Check for duplicate uid.
-		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
-			err := fmt.Errorf("%v and %v share the same UID", sfs.siaPath(conflictingEntry), siaPath)
-			build.Critical(err)
 			return nil, err
 		}
 		// Create the entry for the SiaFile and assign the partials file.
