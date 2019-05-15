@@ -181,6 +181,13 @@ func (sf *SiaFile) CombinedChunkIndex() uint64 {
 	return sf.staticMetadata.CombinedChunkIndex
 }
 
+// CombinedChunkStatus returns the CombinedChunkStatus of the file's metadata.
+func (sf *SiaFile) CombinedChunkStatus() uint8 {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.CombinedChunkStatus
+}
+
 // CreateTime returns the CreateTime timestamp of the file.
 func (sf *SiaFile) CreateTime() time.Time {
 	sf.mu.RLock()

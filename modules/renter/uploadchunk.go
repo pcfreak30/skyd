@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 
@@ -369,37 +370,9 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	r.managedDistributeChunkToWorkers(chunk)
 }
 
-// managedFetchLogicalChunkData will get the raw data for a chunk, pulling it from disk if
-// possible but otherwise queueing a download.
-//
-// chunk.data should be passed as 'nil' to the download, to keep memory usage as
-// light as possible.
-func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) (bool, error) {
-	// Only download this file if more than 25% of the redundancy is missing.
-	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
-	chunkHealth := 1 - (float64(chunk.piecesCompleted-chunk.minimumPieces) / numParityPieces)
-	download := chunkHealth >= siafile.RemoteRepairDownloadThreshold
-
-	// If a sourceReader is available, use it instead.
-	var err error
-	if chunk.sourceReader != nil {
-		return r.managedStreamLogicalChunkData(chunk)
-	}
-	// Download the chunk if it's not on disk.
-	if chunk.fileEntry.LocalPath() == "" && download {
-		return true, r.managedDownloadLogicalChunkData(chunk)
-	} else if chunk.fileEntry.LocalPath() == "" {
-		return false, errors.New("file not available locally")
-	}
-	// Special handling for partial chunks.
-	if chunk.index == chunk.fileEntry.NumChunks()-1 {
-		// TODO: Multiple options here:
-		// 1) partial chunk wasn't added to the siafile yet (add it and try to get a combined chunk)
-		// 2) partial chunk was added but not included in a combined chunk (don't add it but try to get combined chunk)
-		// 3) combined chunk exists and can be uploaded (don't add it and load combined chunk)
-		panic("copy partial chunk into siafile and try to load a combined chunk")
-	}
-
+// managedReadFullLogicalChunkData reads the logical data of a full chunk from
+// disk.
+func (r *Renter) managedReadFullLogicalChunkData(chunk *unfinishedUploadChunk, download bool) (bool, error) {
 	// Try to read the data from disk. If that fails at any point, prefer to
 	// download the chunk.
 	//
@@ -430,7 +403,73 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) (boo
 	chunk.logicalChunkData = buf.buf
 
 	// Data successfully read from disk.
-	return false, nil
+	return true, nil
+}
+
+// managedReadPartialLogicalChunkData reads the logical data of a partial chunk from
+// disk.
+func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk, download bool) (bool, error) {
+	switch chunk.fileEntry.CombinedChunkStatus() {
+	case siafile.CombinedChunkStatusHasChunk:
+		// Load the partial chunk from disk.
+		osFile, err := os.Open(chunk.fileEntry.LocalPath())
+		sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
+		partialChunk := make([]byte, chunk.fileEntry.ChunkSize())
+		n, err := io.ReadFull(sr, partialChunk)
+		if err == nil {
+			// Something is wrong if we were able to read a full chunk.
+			return false, errors.New("shouldn't be able to read a full chunk from the source")
+		} else if err != io.ErrUnexpectedEOF {
+			// Return unexpected errors.
+			return true, err
+		}
+		// Save the partial chunk.
+		if err := chunk.fileEntry.SavePartialChunk(partialChunk[:n]); err != nil {
+			return true, r.managedDownloadLogicalChunkData(chunk)
+		}
+		fallthrough
+	case siafile.CombinedChunkStatusIncomplete:
+		build.Critical("Try combining again")
+		fallthrough
+	case siafile.CombinedChunkStatusCombined:
+		fallthrough
+	case siafile.CombinedChunkStatusCompleted:
+		build.Critical("Use combined chunk")
+	default:
+		build.Critical("Unknown CombinedChunkStatus:", chunk.fileEntry.CombinedChunkStatus())
+		return false, errors.New("Unknown CombinedChunkStatus")
+	}
+	return true, nil
+}
+
+// managedFetchLogicalChunkData will get the raw data for a chunk, pulling it from disk if
+// possible but otherwise queueing a download.
+//
+// chunk.data should be passed as 'nil' to the download, to keep memory usage as
+// light as possible.
+func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) (bool, error) {
+	// Only download this file if more than 25% of the redundancy is missing.
+	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
+	chunkHealth := 1 - (float64(chunk.piecesCompleted-chunk.minimumPieces) / numParityPieces)
+	download := chunkHealth >= siafile.RemoteRepairDownloadThreshold
+
+	// If a sourceReader is available, use it instead.
+	if chunk.sourceReader != nil {
+		return r.managedStreamLogicalChunkData(chunk)
+	}
+	// Download the chunk if it's not on disk.
+	if chunk.fileEntry.LocalPath() == "" && download {
+		return true, r.managedDownloadLogicalChunkData(chunk)
+	} else if chunk.fileEntry.LocalPath() == "" {
+		return false, errors.New("file not available locally")
+	}
+	// Special handling for partial chunks.
+	if chunk.fileEntry.CombinedChunkStatus() > siafile.CombinedChunkStatusNoChunk &&
+		chunk.index == chunk.fileEntry.NumChunks()-1 {
+		return r.managedReadPartialLogicalChunkData(chunk, download)
+	}
+	// Otherwise read full chunk from disk.
+	return r.managedReadFullLogicalChunkData(chunk, download)
 }
 
 // managedCleanUpUploadChunk will check the state of the chunk and perform any

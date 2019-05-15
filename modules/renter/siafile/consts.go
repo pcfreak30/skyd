@@ -52,12 +52,12 @@ const (
 // Constants to indicate which part of the partial upload the file is currently
 // at.
 const (
-	combinedChunkStatusInvalid    = iota // status wasn't initialized
-	combinedChunkStatusNoChunk           // file has no partial chunk
-	combinedChunkStatusHasChunk          // file has a partial chunk but doesn't link to it yet
-	combinedChunkStatusIncomplete        // partial chunk is not yet included in a combined chunk and was stored in a .partial file
-	combinedChunkStatusCombined          // partial chunk is included in a combined chunk and .partial file still exists
-	combinedChunkStatusCompleted         // partial chunk is included in a combined chunk and .partial file was deleted
+	CombinedChunkStatusInvalid    = iota // status wasn't initialized
+	CombinedChunkStatusNoChunk           // file has no partial chunk
+	CombinedChunkStatusHasChunk          // file has a partial chunk but doesn't link to it yet
+	CombinedChunkStatusIncomplete        // partial chunk is not yet included in a combined chunk and was stored in a .partial file
+	CombinedChunkStatusCombined          // partial chunk is included in a combined chunk and .partial file still exists
+	CombinedChunkStatusCompleted         // partial chunk is included in a combined chunk and .partial file was deleted
 )
 
 var (

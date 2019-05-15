@@ -849,7 +849,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	// Create a new siafile
 	sf := newBlankTestFile()
 	// The chunk status should be set to "combinedChunkStatusNoChunk"
-	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusNoChunk {
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusNoChunk {
 		t.Fatal("Initial status wasn't combinedChunkStatusNoChunk")
 	}
 	// LoadPartialChunk and DeletePartialChunk should fail.
@@ -869,7 +869,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The chunk status should be set to "combinedChunkStatusIncomplete"
-	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusIncomplete {
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusIncomplete {
 		t.Fatal("Initial status wasn't combinedChunkStatusIncomplete")
 	}
 	// Make sure the partial chunk was written to disk correctly.
@@ -899,7 +899,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	// Set the status to combined for delete to suceed.
 	// TODO: We will need a method for that which we should use here once it's
 	// implemented.
-	sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusCombined
+	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCombined
 	// LoadPartialChunk and SavePartialChunk should fail.
 	if _, err := sf.LoadPartialChunk(); err == nil {
 		t.Fatal("LoadPartialChunk should fail")
@@ -912,7 +912,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The chunk status should be set to "combinedChunkStatusCompleted"
-	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusCompleted {
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusCompleted {
 		t.Fatal("Initial status wasn't combinedChunkStatusCompleted")
 	}
 	// Make sure the file is gone.

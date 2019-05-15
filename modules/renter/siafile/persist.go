@@ -45,15 +45,15 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 func (sf *SiaFile) DeletePartialChunk() error {
 	// DeletePartialChunk can only be called when the partial chunk has been
 	// included in a combined chunk but the .partial file hasn't been deleted yet.
-	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusCombined {
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusCombined {
 		return fmt.Errorf("Can't call DeletePartialChunk unless status is %v but was %v",
-			combinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
+			CombinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
 	}
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// Prepare updates to delete the file and to save the metadata.
 	deleteUpdate := createDeletePartialUpdate(sf.partialFilePath())
-	sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusCompleted
+	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
 	u, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
@@ -65,9 +65,9 @@ func (sf *SiaFile) DeletePartialChunk() error {
 // separate file in the same folder as the SiaFile.
 func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
 	// SavePartialChunk can only be called when there is no partial chunk yet.
-	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusNoChunk {
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusNoChunk {
 		return fmt.Errorf("Can't call SavePartialChunk unless status is %v but was %v",
-			combinedChunkStatusNoChunk, sf.staticMetadata.CombinedChunkStatus)
+			CombinedChunkStatusNoChunk, sf.staticMetadata.CombinedChunkStatus)
 	}
 	// Sanity check partial chunk size.
 	if uint64(len(partialChunk)) >= sf.staticChunkSize() || len(partialChunk) == 0 {
@@ -82,7 +82,7 @@ func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
 		return err
 	}
 	// Update the status of the combined chunk.
-	sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusIncomplete
+	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusIncomplete
 	u, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
@@ -93,9 +93,9 @@ func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
 // LoadPartialChunk loads the contents of a partial chunk from disk.
 func (sf *SiaFile) LoadPartialChunk() ([]byte, error) {
 	// LoadPartialChunk can only be called when there is no combined chunk yet.
-	if sf.staticMetadata.CombinedChunkStatus != combinedChunkStatusIncomplete {
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusIncomplete {
 		return nil, fmt.Errorf("Can't call LoadPartialChunk unless status is %v but was %v",
-			combinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
+			CombinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
 	}
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
@@ -175,8 +175,8 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 		sf.staticMetadata.StaticUniqueID = uniqueID()
 	}
 	// COMPATv140 legacy files might not have the CombinedChunkStatus set.
-	if sf.staticMetadata.CombinedChunkStatus == combinedChunkStatusInvalid {
-		sf.staticMetadata.CombinedChunkStatus = combinedChunkStatusNoChunk
+	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusInvalid {
+		sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusNoChunk
 	}
 	// Create the erasure coder.
 	sf.staticMetadata.staticErasureCode, err = unmarshalErasureCoder(sf.staticMetadata.StaticErasureCodeType, sf.staticMetadata.StaticErasureCodeParams)
