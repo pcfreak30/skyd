@@ -198,6 +198,7 @@ func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {
 	}
 	relPath := strings.TrimPrefix(siaFilePath, dir)
 	relPath = strings.TrimSuffix(relPath, SiaFileExtension)
+	relPath = strings.TrimSuffix(relPath, PartialsSiaFileExtension)
 	*sp, err = newSiaPath(relPath)
 	return
 }
