@@ -911,6 +911,9 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 	if chunkIndex == int(sf.numChunks())-1 && sf.staticMetadata.CombinedChunkStatus > combinedChunkStatusHasChunk {
 		return sf.partialsSiaFile.GoodPieces(int(sf.staticMetadata.CombinedChunkIndex), offlineMap, goodForRenewMap)
 	}
+	if chunkIndex == int(sf.numChunks())-1 && sf.staticMetadata.CombinedChunkStatus == combinedChunkStatusHasChunk {
+		return 0, 0
+	}
 
 	for _, pieceSet := range sf.fullChunks[chunkIndex].Pieces {
 		// Remember if we encountered a goodForRenew piece or a
