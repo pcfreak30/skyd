@@ -71,16 +71,16 @@ func TestIdentifierAndCombinedSiaPath(t *testing.T) {
 	if err := errors.Compose(err1, err2, err3, err4); err != nil {
 		t.Fatal(err)
 	}
-	if ec1.Identifier() != "1:1:2" {
+	if ec1.Identifier() != "1+1+2" {
 		t.Error("wrong identifier for ec1")
 	}
-	if ec2.Identifier() != "1:1:2" {
+	if ec2.Identifier() != "1+1+2" {
 		t.Error("wrong identifier for ec2")
 	}
-	if ec3.Identifier() != "1:1:3" {
+	if ec3.Identifier() != "1+1+3" {
 		t.Error("wrong identifier for ec3")
 	}
-	if ec4.Identifier() != "2:1:2" {
+	if ec4.Identifier() != "2+1+2" {
 		t.Error("wrong identifier for ec4")
 	}
 	sp1 := modules.CombinedSiaFilePath(ec1)
