@@ -1065,9 +1065,6 @@ func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 // bytes have been uploaded of that file in total. Note that a file may be
 // Available long before UploadProgress reaches 100%.
 func (sf *SiaFile) uploadProgressAndBytes() (float64, uint64) {
-	if true {
-		panic("not implemented yet")
-	}
 	_, uploaded := sf.uploadedBytes()
 	if sf.staticMetadata.FileSize == 0 {
 		// Update cache.
