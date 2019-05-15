@@ -710,8 +710,8 @@ func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	if index == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
 		return sf.partialsSiaFile.SetStuck(sf.staticMetadata.CombinedChunkIndex, stuck)
 	}
-	if index == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusHasChunk {
-		return errors.New("")
+	if index == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+		return nil // TODO: Handle this differently?
 	}
 
 	// If the file has been deleted we can't mark a chunk as stuck.
