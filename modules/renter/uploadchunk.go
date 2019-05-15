@@ -301,6 +301,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		chunk.workersRemaining = 0
 		r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
+		return
 	}
 
 	// Create the physical pieces for the data. Immediately release the logical
