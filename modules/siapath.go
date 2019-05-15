@@ -25,6 +25,10 @@ var (
 	// SiaFileExtension is the extension for siafiles on disk
 	SiaFileExtension = ".sia"
 
+	// PartialsSiaFileExtension is the extension for siafiles which contain
+	// combined chunks.
+	PartialsSiaFileExtension = ".csia"
+
 	// PartialChunkExtension is the extension for a partial chunk on disk
 	PartialChunkExtension = ".partial"
 )
@@ -172,6 +176,13 @@ func (sp SiaPath) SiaDirMetadataSysPath(dir string) string {
 // the input dir is the root siafile directory on disk
 func (sp SiaPath) SiaFileSysPath(dir string) string {
 	return filepath.Join(dir, filepath.FromSlash(sp.Path)+SiaFileExtension)
+}
+
+// SiaPartialsFileSysPath returns the system path needed to read the
+// PartialsSiaFile from disk, the input dir is the root siafile directory on
+// disk
+func (sp SiaPath) SiaPartialsFileSysPath(dir string) string {
+	return filepath.Join(dir, filepath.FromSlash(sp.Path)+PartialsSiaFileExtension)
 }
 
 // String returns the SiaPath's path
