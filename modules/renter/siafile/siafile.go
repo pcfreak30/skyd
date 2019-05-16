@@ -241,6 +241,15 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if chunkIndex == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusHasChunk {
 		return sf.partialsSiaFile.AddPiece(pk, sf.staticMetadata.CombinedChunkIndex, pieceIndex, merkleRoot)
 	}
+	// Can't add a piece to a non-existent combined chunk. We could just return
+	// 'nil' here but we don't want the repair code to waste money on uploading a
+	// piece to a host and then not return an error when we can't add it to a
+	// SiaFile.
+	if chunkIndex == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+		err := errors.New("AddPiece: SiaFile doesn't have a combined chunk yet")
+		build.Critical(err)
+		return err
+	}
 
 	// Get the index of the host in the public key table.
 	tableIndex := -1
@@ -322,6 +331,9 @@ func (sf *SiaFile) chunkHealth(chunkIndex int, offlineMap map[string]bool, goodF
 	if chunkIndex == int(sf.numChunks())-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusHasChunk {
 		return sf.partialsSiaFile.ChunkHealth(int(sf.staticMetadata.CombinedChunkIndex), offlineMap, goodForRenewMap)
 	}
+	if chunkIndex == int(sf.numChunks())-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+		return 0 // Partial chunk has full redundancy if not yet included in combined chunk
+	}
 	// The max number of good pieces that a chunk can have is NumPieces()
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
 	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
@@ -401,7 +413,8 @@ func (sf *SiaFile) SaveMetadata() error {
 // Expiration updates CachedExpiration with the lowest height at which any of
 // the file's contracts will expire and returns the new value.
 func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types.BlockHeight {
-	// TODO: how to handle the partial chunk here?
+	// TODO: how to handle the partial chunk here? The minimum of the siafiles
+	// expiration and the combined files expiration?
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if len(sf.pubKeyTable) == 0 {

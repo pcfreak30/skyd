@@ -5,7 +5,6 @@ package renter
 // complete chunk was deleted but the source is available locally
 
 import (
-	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -38,7 +37,6 @@ type (
 // newPartialChunkSet creates a partial chunk set ready to combine partial
 // chunks.
 func newPartialChunkSet() *partialChunkSet {
-	fmt.Println("not implemented yet")
 	return &partialChunkSet{}
 }
 
@@ -47,7 +45,6 @@ func newPartialChunkSet() *partialChunkSet {
 // waiting to be repaired and combining them. If not enough partial chunks exist
 // at the moment, it remembers the request and returns 'false'.
 func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
-	fmt.Println("not implemented yet")
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
 	return false, nil
