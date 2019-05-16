@@ -65,9 +65,9 @@ func (sf *SiaFile) DeletePartialChunk() error {
 // separate file in the same folder as the SiaFile.
 func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
 	// SavePartialChunk can only be called when there is no partial chunk yet.
-	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusNoChunk {
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusHasChunk {
 		return fmt.Errorf("Can't call SavePartialChunk unless status is %v but was %v",
-			CombinedChunkStatusNoChunk, sf.staticMetadata.CombinedChunkStatus)
+			CombinedChunkStatusHasChunk, sf.staticMetadata.CombinedChunkStatus)
 	}
 	// Sanity check partial chunk size.
 	if uint64(len(partialChunk)) >= sf.staticChunkSize() || len(partialChunk) == 0 {

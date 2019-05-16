@@ -198,7 +198,8 @@ func newTestFileParams(minChunks int) (string, modules.SiaPath, string, modules.
 		panic(err)
 	}
 	numChunks := fastrand.Intn(10) + minChunks
-	fileSize := pieceSize * uint64(rc.MinPieces()) * uint64(numChunks)
+	chunkSize := pieceSize * uint64(rc.MinPieces())
+	fileSize := chunkSize*uint64(numChunks) - 1 // guarantee partial chunk at the end
 	fileMode := os.FileMode(777)
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))
 
@@ -848,8 +849,8 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 
 	// Create a new siafile
 	sf := newBlankTestFile()
-	// The chunk status should be set to "combinedChunkStatusNoChunk"
-	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusNoChunk {
+	// The chunk status should be set to "combinedChunkStatusHasChunk"
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusHasChunk {
 		t.Fatal("Initial status wasn't combinedChunkStatusNoChunk")
 	}
 	// LoadPartialChunk and DeletePartialChunk should fail.
