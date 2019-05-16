@@ -7,6 +7,7 @@ package renter
 // TODO: Close entry of partial siafiles when siafile is closed.
 
 import (
+	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -25,11 +26,6 @@ type (
 		uh       *uploadHeap
 		requests map[modules.ErasureCoderIdentifier]chunkRequestSet
 	}
-
-	// CombinedChunk is a chunk that was combined by the PartialChunkSet out of
-	// multiple chunkRequests.
-	CombinedChunk struct {
-	}
 )
 
 type (
@@ -45,17 +41,19 @@ type (
 // NewPartialChunkSet creates a partial chunk set ready to combine partial
 // chunks.
 func NewPartialChunkSet() *PartialChunkSet {
-	panic("not implemented yet")
+	fmt.Println("not implemented yet")
+	return &PartialChunkSet{}
 }
 
-// CombinedChunk accepts a new request for including a partial chunk in a
-// combined chunk and if enough requests were already registered, or if a
-// Combined chunk has previously been built for the specified partial chunk, it
-// will return the combined chunk.
-func (pcs *PartialChunkSet) CombinedChunk(entry *siafile.SiaFileSetEntry) (*CombinedChunk, error) {
+// FetchLogicalCombinedChunk fetches the logical data for an
+// unfinishedUploadChunk. It does so by checking if enough partial chunks are
+// waiting to be repaired and combining them. If not enough partial chunks exist
+// at the moment, it remembers the request and returns 'false'.
+func (pcs *PartialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
+	fmt.Println("not implemented yet")
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
-	panic("not done implementing")
+	return false, nil
 
 	// Check if the file already has a combined chunk assigned to it.
 	//	if cid := entry.CombinedChunkID(); cid != "" {
@@ -87,7 +85,7 @@ func (pcs *PartialChunkSet) CombinedChunk(entry *siafile.SiaFileSetEntry) (*Comb
 }
 
 // loadCombinedChunk loads a CombinedChunk from disk using it's chunkIndex.
-func (pcs *PartialChunkSet) loadCombinedChunk(chunkIndex uint64) (*CombinedChunk, error) {
+func (pcs *PartialChunkSet) loadCombinedChunk(chunkIndex uint64) error {
 	panic("not implemented yet")
 }
 
@@ -98,6 +96,6 @@ func (crs chunkRequestSet) combineRequests() []chunkRequest {
 }
 
 // buildChunk builds a chunk and stores it on disk using the given requests.
-func (crs chunkRequestSet) buildChunk(requests []chunkRequest) (*CombinedChunk, error) {
+func (crs chunkRequestSet) buildChunk(requests []chunkRequest) error {
 	panic("not implemented yet")
 }

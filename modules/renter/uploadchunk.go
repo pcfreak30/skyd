@@ -47,10 +47,6 @@ type unfinishedUploadChunk struct {
 	stuckRepair    bool   // indicates if the chunk was identified for repair by the stuck loop
 	priority       bool   // indicates if the chunks is supposed to be repaird asap
 
-	// Information about whether the chunk is a combined chunk and therefore needs
-	// special treatment.
-	combinedChunk *CombinedChunk // information about the combined chunk
-
 	// The logical data is the data that is presented to the user when the user
 	// requests the chunk. The physical data is all of the pieces that get
 	// stored across the network.
@@ -427,17 +423,20 @@ func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk
 		if err := chunk.fileEntry.SavePartialChunk(partialChunk[:n]); err != nil {
 			return true, r.managedDownloadLogicalChunkData(chunk)
 		}
-		fallthrough
 	case siafile.CombinedChunkStatusIncomplete:
-		build.Critical("Try combining again")
-		fallthrough
 	case siafile.CombinedChunkStatusCombined:
-		fallthrough
 	case siafile.CombinedChunkStatusCompleted:
-		build.Critical("Use combined chunk")
 	default:
 		build.Critical("Unknown CombinedChunkStatus:", chunk.fileEntry.CombinedChunkStatus())
 		return false, errors.New("Unknown CombinedChunkStatus")
+	}
+	// Fetch a combined chunk.
+	fetched, err := r.staticPartialChunkSet.FetchLogicalCombinedChunk(chunk)
+	if err != nil {
+		return false, err
+	}
+	if !fetched {
+		return false, nil // Combined chunk not ready yet
 	}
 	return true, nil
 }

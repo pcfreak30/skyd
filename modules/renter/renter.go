@@ -216,8 +216,9 @@ type Renter struct {
 	downloadHistoryMu sync.Mutex
 
 	// Upload management.
-	uploadHeap    uploadHeap
-	directoryHeap directoryHeap
+	uploadHeap            uploadHeap
+	directoryHeap         directoryHeap
+	staticPartialChunkSet *PartialChunkSet
 
 	// List of workers that can be used for uploading and/or downloading.
 	memoryManager *memoryManager
@@ -783,17 +784,18 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 		bubbleUpdates: make(map[string]bubbleStatus),
 
-		cs:               cs,
-		deps:             deps,
-		g:                g,
-		w:                w,
-		hostDB:           hdb,
-		hostContractor:   hc,
-		persistDir:       persistDir,
-		staticFilesDir:   filepath.Join(persistDir, modules.SiapathRoot),
-		staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
-		mu:               siasync.New(modules.SafeMutexDelay, 1),
-		tpool:            tpool,
+		cs:                    cs,
+		deps:                  deps,
+		g:                     g,
+		w:                     w,
+		hostDB:                hdb,
+		hostContractor:        hc,
+		persistDir:            persistDir,
+		staticFilesDir:        filepath.Join(persistDir, modules.SiapathRoot),
+		staticBackupsDir:      filepath.Join(persistDir, modules.BackupRoot),
+		staticPartialChunkSet: NewPartialChunkSet(),
+		mu:                    siasync.New(modules.SafeMutexDelay, 1),
+		tpool:                 tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 
