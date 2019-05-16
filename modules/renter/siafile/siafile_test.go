@@ -90,7 +90,7 @@ func TestFileNumChunks(t *testing.T) {
 		// Create erasure-coder
 		rsc, _ := NewRSCode(test.dataPieces, 1) // can't use 0
 		// Create the file
-		siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1)
+		siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
 		f, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, test.fileSize, -1, fileMode)
 		// Make sure the file reports the correct pieceSize.
 		if f.PieceSize() != modules.SectorSize-f.MasterKey().Type().Overhead() {
@@ -217,7 +217,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Create a Zero byte file
 	rsc, _ := NewRSCode(10, 20)
-	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1)
+	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
 	zeroFile, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, 0, 1, fileMode)
 
 	// Create offline map
@@ -237,7 +237,7 @@ func TestFileHealth(t *testing.T) {
 	}
 
 	// Create File with 1 chunk
-	siaFilePath, _, source, _, sk, _, _, fileMode = newTestFileParams(1)
+	siaFilePath, _, source, _, sk, _, _, fileMode = newTestFileParams(1, true)
 	f, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, 100, 1, fileMode)
 
 	// Check file health, since there are no pieces in the chunk yet no good
@@ -323,7 +323,7 @@ func TestFileHealth(t *testing.T) {
 	}
 
 	// Create File with 2 chunks
-	siaFilePath, _, source, _, sk, _, _, fileMode = newTestFileParams(1)
+	siaFilePath, _, source, _, sk, _, _, fileMode = newTestFileParams(1, true)
 	f, _, _ = customTestFileAndWAL(siaFilePath, source, rsc, sk, 5e4, 2, fileMode)
 	if err != nil {
 		t.Fatal(err)

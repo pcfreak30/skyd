@@ -147,14 +147,14 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 // and allows the caller to specify how many chunks the file should at least
 // contain.
 func newBlankTestFileAndWAL(minChunks int) (*SiaFile, *writeaheadlog.WAL, string) {
-	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1)
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, true)
 	return customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 }
 
 // newBlankTestFileAndWALWithEC is like customTestFileAndWAL but let's the
 // caller specify custom erasure code settings.
 func newBlankTestFileAndWALWithEC(ec modules.ErasureCoder) (*SiaFile, *writeaheadlog.WAL, string) {
-	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1)
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, true)
 	return customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 }
 
@@ -188,7 +188,7 @@ func newTestFile() *SiaFile {
 
 // newTestFileParams creates the required parameters for creating a siafile and
 // creates a directory for the file
-func newTestFileParams(minChunks int) (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
+func newTestFileParams(minChunks int, partialChunk bool) (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
 	pieceSize := modules.SectorSize - sk.Type().Overhead()
@@ -199,7 +199,10 @@ func newTestFileParams(minChunks int) (string, modules.SiaPath, string, modules.
 	}
 	numChunks := fastrand.Intn(10) + minChunks
 	chunkSize := pieceSize * uint64(rc.MinPieces())
-	fileSize := chunkSize*uint64(numChunks) - 1 // guarantee partial chunk at the end
+	fileSize := chunkSize*uint64(numChunks) - 1
+	if partialChunk {
+		fileSize-- // force partial chunk
+	}
 	fileMode := os.FileMode(777)
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))
 
