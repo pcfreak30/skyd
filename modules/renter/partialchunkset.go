@@ -72,12 +72,13 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 		return false, nil // not enough requests yet
 	}
 	//	If we can, build combined chunk.
-	chunkID, err := crs.buildChunk(requests)
+	chunkID, chunkData, err := crs.buildChunk(requests)
 	if err != nil {
 		return false, err
 	}
 	// Let the SiaFile know about the combined chunk.
-	if err := entry.SetCombinedChunk(chunkID); err != nil {
+	// TODO: Also inform other siafiles.
+	if err := siafile.SetCombinedChunk([]*siafile.SiaFile{}, chunkID, chunkData); err != nil {
 		return false, err
 	}
 	// Return the new combined chunk.
@@ -96,6 +97,6 @@ func (crs chunkRequestSet) combineRequests() []chunkRequest {
 }
 
 // buildChunk builds a chunk and stores it on disk using the given requests.
-func (crs chunkRequestSet) buildChunk(requests []chunkRequest) (string, error) {
+func (crs chunkRequestSet) buildChunk(requests []chunkRequest) (string, []byte, error) {
 	panic("not implemented yet")
 }

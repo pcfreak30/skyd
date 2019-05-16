@@ -219,31 +219,59 @@ func (sf *SiaFile) LocalPath() string {
 // SetCombinedChunk adds a combined chunk to the SiaFile, corresponding
 // combined SiaFile, and deletes the .partial file. All of that happens
 // atomically.
-func (sf *SiaFile) SetCombinedChunk(combinedChunkID string) error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusIncomplete {
-		return fmt.Errorf("previous combined chunk status needs to be %v but was %v",
-			CombinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
+func SetCombinedChunk(sfs []*SiaFile, combinedChunkID string, combinedChunk []byte) error {
+	sf0 := sfs[0]
+	sf0.mu.RLock()
+	partialsSiaFile := sf0.partialsSiaFile
+	sf0.mu.RUnlock()
+
+	// Sanity check combined chunk length.
+	if uint64(len(combinedChunk)) != partialsSiaFile.ChunkSize() {
+		return fmt.Errorf("size of combined chunk should be %v but was %v",
+			partialsSiaFile.staticChunkSize(), len(combinedChunk))
 	}
-	// Prepare delete update of .partial file.
-	deleteUpdate := createDeletePartialUpdate(sf.partialFilePath())
-	// Get updates to add chunk to combined SiaFile.
-	chunkIndex, addCombinedChunkUpdates, err := sf.partialsSiaFile.AddCombinedChunk()
+	// Get the wal updates to grow the partialsSiaFile by a chunk while holding its
+	// lock during the whole operation. We don't want other chunks to be added
+	// while we are modifying the SiaFiles in this function.
+	partialsSiaFile.mu.Lock()
+	defer partialsSiaFile.mu.Unlock()
+	chunkIndex, addCombinedChunkUpdates, err := partialsSiaFile.addCombinedChunk()
 	if err != nil {
 		return err
 	}
-	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
-	sf.staticMetadata.CombinedChunkID = combinedChunkID
-	sf.staticMetadata.CombinedChunkIndex = chunkIndex
-	metadataUpdates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
+
+	// Get updates to delete all the .partial files and update all the siafiles.
+	identifier := partialsSiaFile.staticMetadata.staticErasureCode.Identifier()
+	updates := addCombinedChunkUpdates
+	for _, sf := range sfs {
+		// Sanity check that all the SiaFile's have the same erasure code settings.
+		if sf.ErasureCode().Identifier() != identifier {
+			return errors.New("combined files don't have matching erasure coders")
+		}
+		sf.mu.Lock()
+		if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusIncomplete {
+			sf.mu.Unlock()
+			return fmt.Errorf("previous combined chunk status needs to be %v but was %v",
+				CombinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
+		}
+		// Prepare delete update of .partial file.
+		deleteUpdate := createDeletePartialUpdate(sf.partialFilePath())
+		// Get updates to add chunk to combined SiaFile.
+		sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
+		sf.staticMetadata.CombinedChunkID = combinedChunkID
+		sf.staticMetadata.CombinedChunkIndex = chunkIndex
+		metadataUpdates, err := sf.saveMetadataUpdates()
+		if err != nil {
+			sf.mu.Unlock()
+			return err
+		}
+		// Append new updates.
+		updates := append(addCombinedChunkUpdates, deleteUpdate)
+		updates = append(updates, metadataUpdates...)
+		sf.mu.Unlock()
 	}
-	// Add all updates together and apply them.
-	updates := append(addCombinedChunkUpdates, deleteUpdate)
-	updates = append(updates, metadataUpdates...)
-	return sf.createAndApplyTransaction(updates...)
+	createAndApplyTransaction(partialsSiaFile.wal, updates...)
+	panic("TODO: Add update to write combined chunk to disk.")
 }
 
 // MasterKey returns the masterkey used to encrypt the file.

@@ -196,13 +196,11 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 	return file, file.saveFile()
 }
 
-// AddCombinedChunk adds a new combined chunk to a combined Siafile. This can't
+// addCombinedChunk adds a new combined chunk to a combined Siafile. This can't
 // be called on a regular SiaFile.
-func (sf *SiaFile) AddCombinedChunk() (uint64, []writeaheadlog.Update, error) {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
+func (sf *SiaFile) addCombinedChunk() (uint64, []writeaheadlog.Update, error) {
 	if filepath.Ext(sf.siaFilePath) != modules.PartialsSiaFileExtension {
-		return 0, nil, errors.New("can only call AddCombinedChunk on combined SiaFiles")
+		return 0, nil, errors.New("can only call addCombinedChunk on combined SiaFiles")
 	}
 	// TODO: Create updates to add a chunk and return index of that new chunk.
 	panic("not implemented yet")

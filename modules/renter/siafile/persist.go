@@ -430,6 +430,32 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	return nil
 }
 
+// createAndApplyTransacton is a generic version of the
+// createAndApplyTransaction method of the SiaFile.
+func createAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	// Create the writeaheadlog transaction.
+	txn, err := wal.NewTransaction(updates)
+	if err != nil {
+		return errors.AddContext(err, "failed to create wal txn")
+	}
+	// No extra setup is required. Signal that it is done.
+	if err := <-txn.SignalSetupComplete(); err != nil {
+		return errors.AddContext(err, "failed to signal setup completion")
+	}
+	// Apply the updates.
+	if err := ApplyUpdates(updates...); err != nil {
+		return errors.AddContext(err, "failed to apply updates")
+	}
+	// Updates are applied. Let the writeaheadlog know.
+	if err := txn.SignalUpdatesApplied(); err != nil {
+		return errors.AddContext(err, "failed to signal that updates are applied")
+	}
+	return nil
+}
+
 // createDeleteUpdate is a helper method that creates a writeaheadlog for
 // deleting a file.
 func (sf *SiaFile) createDeleteUpdate() writeaheadlog.Update {
