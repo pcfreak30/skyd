@@ -118,7 +118,7 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 	// Create the corresponding partials file if it doesn't exist already.
 	var partialsSiaFile *SiaFile
 	partialsSiaPath := modules.CombinedSiaFilePath(rc)
-	partialsSiaFilePath := partialsSiaPath.SiaFileSysPath(dir)
+	partialsSiaFilePath := partialsSiaPath.SiaPartialsFileSysPath(dir)
 	if _, err = os.Stat(partialsSiaFilePath); os.IsNotExist(err) {
 		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil)
 	} else {
@@ -853,12 +853,12 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusHasChunk {
 		t.Fatal("Initial status wasn't combinedChunkStatusNoChunk")
 	}
-	// LoadPartialChunk and DeletePartialChunk should fail.
+	// LoadPartialChunk and SetCombinedChunk should fail.
 	if _, err := sf.LoadPartialChunk(); err == nil {
 		t.Fatal("LoadPartialChunk should fail")
 	}
-	if err := sf.DeletePartialChunk(); err == nil {
-		t.Fatal("DeletePartialChunk should fail")
+	if err := sf.SetCombinedChunk(""); err == nil {
+		t.Fatal("SetCombinedChunk should fail")
 	}
 	// Save a chunk that's too big.
 	if err := sf.SavePartialChunk(fastrand.Bytes(int(sf.staticChunkSize()))); err == nil {
@@ -882,12 +882,12 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if !bytes.Equal(b, partialChunk) {
 		t.Fatal("Read partial chunk doesn't match written chunk")
 	}
-	// SavePartialChunk and DeletePartialChunk should fail.
+	// SavePartialChunk and SetCombinedChunk should fail.
 	if err := sf.SavePartialChunk(partialChunk); err == nil {
 		t.Fatal("SavePartialChunk should fail")
 	}
-	if err := sf.DeletePartialChunk(); err == nil {
-		t.Fatal("DeletePartialChunk should fail")
+	if err := sf.SetCombinedChunk(""); err == nil {
+		t.Fatal("SetCombinedChunk should fail")
 	}
 	// LoadPartialChunk and make sure it has the right contents.
 	b, err = sf.LoadPartialChunk()
@@ -897,19 +897,12 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if !bytes.Equal(b, partialChunk) {
 		t.Fatal("Loaded partial chunk doesn't match written chunk")
 	}
-	// Set the status to combined for delete to suceed.
-	// TODO: We will need a method for that which we should use here once it's
-	// implemented.
-	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCombined
-	// LoadPartialChunk and SavePartialChunk should fail.
-	if _, err := sf.LoadPartialChunk(); err == nil {
-		t.Fatal("LoadPartialChunk should fail")
-	}
+	// SavePartialChunk should fail.
 	if err := sf.SavePartialChunk(partialChunk); err == nil {
 		t.Fatal("SavePartialChunk should fail")
 	}
-	// Delete the partial chunk.
-	if err := sf.DeletePartialChunk(); err != nil {
+	// Set the combined chunk.
+	if err := sf.SetCombinedChunk(""); err != nil {
 		t.Fatal(err)
 	}
 	// The chunk status should be set to "combinedChunkStatusCompleted"
@@ -924,8 +917,8 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if err := sf.SavePartialChunk(partialChunk); err == nil {
 		t.Fatal("SavePartialChunk should fail")
 	}
-	if err := sf.DeletePartialChunk(); err == nil {
-		t.Fatal("DeletePartialChunk should fail")
+	if err := sf.SetCombinedChunk(""); err == nil {
+		t.Fatal("SetCombinedChunk should fail")
 	}
 	if _, err := sf.LoadPartialChunk(); err == nil {
 		t.Fatal("LoadPartialChunk should fail")

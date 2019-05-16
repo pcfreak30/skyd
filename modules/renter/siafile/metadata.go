@@ -2,6 +2,7 @@ package siafile
 
 import (
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -37,6 +38,7 @@ type (
 
 		// Fields for partial uploads
 		CombinedChunkIndex  uint64 `json:"combinedchunkindex"`  // index of the chunk in the combined chunks siafile
+		CombinedChunkID     string `json:"combinedchunkid"`     // id to find the combined chunk on disk
 		CombinedChunkStatus uint8  `json:"combinedchunkstatus"` // status of the file's partial chunk
 
 		// The following fields are the usual unix timestamps of files.
@@ -212,6 +214,36 @@ func (sf *SiaFile) LocalPath() string {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return sf.staticMetadata.LocalPath
+}
+
+// SetCombinedChunk adds a combined chunk to the SiaFile, corresponding
+// combined SiaFile, and deletes the .partial file. All of that happens
+// atomically.
+func (sf *SiaFile) SetCombinedChunk(combinedChunkID string) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusIncomplete {
+		return fmt.Errorf("previous combined chunk status needs to be %v but was %v",
+			CombinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
+	}
+	// Prepare delete update of .partial file.
+	deleteUpdate := createDeletePartialUpdate(sf.partialFilePath())
+	// Get updates to add chunk to combined SiaFile.
+	chunkIndex, addCombinedChunkUpdates, err := sf.partialsSiaFile.AddCombinedChunk()
+	if err != nil {
+		return err
+	}
+	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
+	sf.staticMetadata.CombinedChunkID = combinedChunkID
+	sf.staticMetadata.CombinedChunkIndex = chunkIndex
+	metadataUpdates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	// Add all updates together and apply them.
+	updates := append(addCombinedChunkUpdates, deleteUpdate)
+	updates = append(updates, metadataUpdates...)
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // MasterKey returns the masterkey used to encrypt the file.

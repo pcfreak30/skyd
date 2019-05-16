@@ -424,7 +424,6 @@ func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk
 			return true, r.managedDownloadLogicalChunkData(chunk)
 		}
 	case siafile.CombinedChunkStatusIncomplete:
-	case siafile.CombinedChunkStatusCombined:
 	case siafile.CombinedChunkStatusCompleted:
 	default:
 		build.Critical("Unknown CombinedChunkStatus:", chunk.fileEntry.CombinedChunkStatus())

@@ -40,27 +40,6 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 	return loadSiaFileMetadata(path, modules.ProdDependencies)
 }
 
-// DeletePartialChunk deletes a partial chunk file from disk. This should happen
-// after the partial chunk has been included in a CombinedChunk.
-func (sf *SiaFile) DeletePartialChunk() error {
-	// DeletePartialChunk can only be called when the partial chunk has been
-	// included in a combined chunk but the .partial file hasn't been deleted yet.
-	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusCombined {
-		return fmt.Errorf("Can't call DeletePartialChunk unless status is %v but was %v",
-			CombinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
-	}
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// Prepare updates to delete the file and to save the metadata.
-	deleteUpdate := createDeletePartialUpdate(sf.partialFilePath())
-	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
-	u, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(append(u, deleteUpdate)...)
-}
-
 // SavePartialChunk saves the binary data of the last chunk of the file in a
 // separate file in the same folder as the SiaFile.
 func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
