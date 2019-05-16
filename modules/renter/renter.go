@@ -218,7 +218,7 @@ type Renter struct {
 	// Upload management.
 	uploadHeap            uploadHeap
 	directoryHeap         directoryHeap
-	staticPartialChunkSet *PartialChunkSet
+	staticPartialChunkSet *partialChunkSet
 
 	// List of workers that can be used for uploading and/or downloading.
 	memoryManager *memoryManager
@@ -793,7 +793,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		persistDir:            persistDir,
 		staticFilesDir:        filepath.Join(persistDir, modules.SiapathRoot),
 		staticBackupsDir:      filepath.Join(persistDir, modules.BackupRoot),
-		staticPartialChunkSet: NewPartialChunkSet(),
+		staticPartialChunkSet: newPartialChunkSet(),
 		mu:                    siasync.New(modules.SafeMutexDelay, 1),
 		tpool:                 tpool,
 	}

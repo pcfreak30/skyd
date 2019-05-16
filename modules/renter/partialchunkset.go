@@ -1,10 +1,8 @@
 package renter
 
-// TODO: Combined chunks need to be deleted once they have reached full redundancy
+// TODO: ??? Combined chunks need to be deleted once they have reached full redundancy
 // TODO: Support repairing a partial chunk if redundancy dropped below 1x, the
 // complete chunk was deleted but the source is available locally
-// TODO: Have the mega siafile be ignored by the repair loop.
-// TODO: Close entry of partial siafiles when siafile is closed.
 
 import (
 	"fmt"
@@ -15,15 +13,14 @@ import (
 )
 
 type (
-	// PartialChunkSet is a set used by the repair code to combine partial chunks
+	// partialChunkSet is a set used by the repair code to combine partial chunks
 	// into full chunks. Chunks won't be combined right away but instead the set
 	// waits for enough requests to build the best chunk and only then creates the
 	// full chunk on disk.
 	// NOTE: Currently the implementation assumes that every file will have at most
 	// 1 CombinedChunk and that's the chunk at the end.
-	PartialChunkSet struct {
+	partialChunkSet struct {
 		mu       sync.Mutex
-		uh       *uploadHeap
 		requests map[modules.ErasureCoderIdentifier]chunkRequestSet
 	}
 )
@@ -38,18 +35,18 @@ type (
 	chunkRequestSet map[siafile.SiafileUID]*chunkRequest
 )
 
-// NewPartialChunkSet creates a partial chunk set ready to combine partial
+// newPartialChunkSet creates a partial chunk set ready to combine partial
 // chunks.
-func NewPartialChunkSet() *PartialChunkSet {
+func newPartialChunkSet() *partialChunkSet {
 	fmt.Println("not implemented yet")
-	return &PartialChunkSet{}
+	return &partialChunkSet{}
 }
 
 // FetchLogicalCombinedChunk fetches the logical data for an
 // unfinishedUploadChunk. It does so by checking if enough partial chunks are
 // waiting to be repaired and combining them. If not enough partial chunks exist
 // at the moment, it remembers the request and returns 'false'.
-func (pcs *PartialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
+func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
 	fmt.Println("not implemented yet")
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
@@ -85,7 +82,7 @@ func (pcs *PartialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 }
 
 // loadCombinedChunk loads a CombinedChunk from disk using it's chunkIndex.
-func (pcs *PartialChunkSet) loadCombinedChunk(chunkIndex uint64) error {
+func (pcs *partialChunkSet) loadCombinedChunk(chunkIndex uint64) error {
 	panic("not implemented yet")
 }
 
