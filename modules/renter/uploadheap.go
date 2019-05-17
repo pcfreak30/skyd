@@ -491,7 +491,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		// off of the metadata information updated by bubble this cached health
 		// is accurate enough to use in order to determine if a file has any
 		// chunks that need repair
-		if file.Metadata().CachedHealth < siafile.RemoteRepairDownloadThreshold {
+		if file.Metadata().CachedHealth < siafile.RemoteRepairDownloadThreshold && file.CombinedChunkStatus() > siafile.CombinedChunkStatusIncomplete {
 			continue
 		}
 

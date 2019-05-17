@@ -5,6 +5,7 @@ package renter
 // complete chunk was deleted but the source is available locally
 // TODO: how to figure out which combined chunks are no longer useful?
 // TODO: how to prune the mega files?
+// TODO: force snapshots not to use partial uploads
 
 import (
 	"sync"
