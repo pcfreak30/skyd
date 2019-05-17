@@ -56,17 +56,14 @@ func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// Write the chunk to disk.
-	err := ioutil.WriteFile(sf.partialFilePath(), partialChunk, 0600)
-	if err != nil {
-		return err
-	}
+	update := createInsertUpdate(sf.partialFilePath(), 0, partialChunk)
 	// Update the status of the combined chunk.
 	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusIncomplete
 	u, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
 	}
-	return sf.createAndApplyTransaction(u...)
+	return createAndApplyTransaction(sf.wal, append(u, update)...)
 }
 
 // LoadPartialChunk loads the contents of a partial chunk from disk.
@@ -466,7 +463,7 @@ func (sf *SiaFile) createDeleteUpdate() writeaheadlog.Update {
 // writing the specified data to the provided index. It is usually not called
 // directly but wrapped into another helper that creates an update for a
 // specific part of the SiaFile. e.g. the metadata
-func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Update {
+func createInsertUpdate(path string, index int64, data []byte) writeaheadlog.Update {
 	if index < 0 {
 		index = 0
 		data = []byte{}
@@ -475,8 +472,16 @@ func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Up
 	// Create update
 	return writeaheadlog.Update{
 		Name:         updateInsertName,
-		Instructions: encoding.MarshalAll(sf.siaFilePath, index, data),
+		Instructions: encoding.MarshalAll(path, index, data),
 	}
+}
+
+// createInsertUpdate is a helper method which creates a writeaheadlog update for
+// writing the specified data to the provided index. It is usually not called
+// directly but wrapped into another helper that creates an update for a
+// specific part of the SiaFile. e.g. the metadata
+func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Update {
+	return createInsertUpdate(sf.siaFilePath, index, data)
 }
 
 // partialFilePath is a helper to return the path to the SiaFile's .partial

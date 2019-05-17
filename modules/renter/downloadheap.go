@@ -11,6 +11,8 @@ import (
 	"container/heap"
 	"errors"
 	"time"
+
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
 var (
@@ -153,6 +155,44 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 	}
 }
 
+// managedTryLoadFromDisk will try to load a chunk from disk before trying to
+// download it from hosts.
+func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
+	if udc.staticChunkIndex == udc.renterFile.NumChunks()-1 &&
+		udc.renterFile.CombinedChunkStatus() == siafile.CombinedChunkStatusIncomplete {
+		// Open siafile since a snapshot isn't enough.
+		entry, err := r.staticFileSet.Open(udc.renterFile.SiaPath())
+		if err != nil {
+			r.log.Debugln(err)
+			return false
+		}
+		defer entry.Close()
+		// Make sure the file is the same one as the one in the snapshot.
+		if entry.UID() != udc.renterFile.UID() {
+			r.log.Debugln("opened file's uid doesn't match the one in the snapshot")
+			return false
+		}
+		// Get partial chunk.
+		partialChunk, err := entry.LoadPartialChunk()
+		if err != nil {
+			r.log.Debugln(err)
+			return false
+		}
+		// Write the partial chunk to the destination.
+		_, err = udc.destination.WriteAt(partialChunk[:udc.staticFetchLength], udc.staticWriteOffset)
+		if err != nil {
+			r.log.Debugln(err)
+			return false
+		}
+		// Return all the memory.
+		udc.recoveryComplete = true
+		udc.returnMemory()
+		return true
+	}
+	// TODO: Download regular files from source if available in Release builds.
+	return false
+}
+
 // threadedDownloadLoop utilizes the worker pool to make progress on any queued
 // downloads.
 func (r *Renter) threadedDownloadLoop() {
@@ -199,6 +239,11 @@ LOOP:
 			if !r.managedAcquireMemoryForDownloadChunk(nextChunk) {
 				// The renter shut down before memory could be acquired.
 				return
+			}
+			// Try loading the data from disk first.
+			ok := r.managedTryLoadFromDisk(nextChunk)
+			if ok {
+				continue
 			}
 			// Distribute the chunk to workers.
 			r.managedDistributeDownloadChunkToWorkers(nextChunk)

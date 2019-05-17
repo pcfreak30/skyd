@@ -409,6 +409,9 @@ func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk
 	case siafile.CombinedChunkStatusHasChunk:
 		// Load the partial chunk from disk.
 		osFile, err := os.Open(chunk.fileEntry.LocalPath())
+		if err != nil {
+			return false, err
+		}
 		sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
 		partialChunk := make([]byte, chunk.fileEntry.ChunkSize())
 		n, err := io.ReadFull(sr, partialChunk)

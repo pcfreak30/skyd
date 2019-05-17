@@ -13,14 +13,16 @@ type (
 	// can be accessed without locking at the cost of being a frozen readonly
 	// representation of a siafile which only exists in memory.
 	Snapshot struct {
-		staticChunks      []Chunk
-		staticFileSize    int64
-		staticPieceSize   uint64
-		staticErasureCode modules.ErasureCoder
-		staticMasterKey   crypto.CipherKey
-		staticMode        os.FileMode
-		staticPubKeyTable []HostPublicKey
-		staticSiaPath     modules.SiaPath
+		staticChunks              []Chunk
+		staticFileSize            int64
+		staticPieceSize           uint64
+		staticErasureCode         modules.ErasureCoder
+		staticMasterKey           crypto.CipherKey
+		staticMode                os.FileMode
+		staticPubKeyTable         []HostPublicKey
+		staticSiaPath             modules.SiaPath
+		staticCombinedChunkStatus uint8
+		staticUID                 SiafileUID
 	}
 )
 
@@ -82,6 +84,11 @@ func (s *Snapshot) ChunkSize() uint64 {
 	return s.staticPieceSize * uint64(s.staticErasureCode.MinPieces())
 }
 
+// CombinedChunkStatus returns the combined chunk status of the file.
+func (s *Snapshot) CombinedChunkStatus() uint8 {
+	return s.staticCombinedChunkStatus
+}
+
 // ErasureCode returns the erasure coder used by the file.
 func (s *Snapshot) ErasureCode() modules.ErasureCoder {
 	return s.staticErasureCode
@@ -125,6 +132,11 @@ func (s *Snapshot) SiaPath() modules.SiaPath {
 // Size returns the size of the file.
 func (s *Snapshot) Size() uint64 {
 	return uint64(s.staticFileSize)
+}
+
+// UID returns the UID of the file.
+func (s *Snapshot) UID() SiafileUID {
+	return s.staticUID
 }
 
 // Snapshot creates a snapshot of the SiaFile.
@@ -179,13 +191,15 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	sf.staticSiaFileSet.mu.Unlock()
 
 	return &Snapshot{
-		staticChunks:      chunks,
-		staticFileSize:    fileSize,
-		staticPieceSize:   sf.staticMetadata.StaticPieceSize,
-		staticErasureCode: sf.staticMetadata.staticErasureCode,
-		staticMasterKey:   mk,
-		staticMode:        mode,
-		staticPubKeyTable: pkt,
-		staticSiaPath:     sp,
+		staticChunks:              chunks,
+		staticCombinedChunkStatus: sf.staticMetadata.CombinedChunkStatus,
+		staticFileSize:            fileSize,
+		staticPieceSize:           sf.staticMetadata.StaticPieceSize,
+		staticErasureCode:         sf.staticMetadata.staticErasureCode,
+		staticMasterKey:           mk,
+		staticMode:                mode,
+		staticPubKeyTable:         pkt,
+		staticSiaPath:             sp,
+		staticUID:                 sf.staticMetadata.StaticUniqueID,
 	}
 }

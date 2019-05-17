@@ -342,8 +342,8 @@ func (sf *SiaFile) chunkHealth(chunkIndex int, offlineMap map[string]bool, goodF
 	if chunkIndex == int(sf.numChunks())-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
 		return sf.partialsSiaFile.ChunkHealth(int(sf.staticMetadata.CombinedChunkIndex), offlineMap, goodForRenewMap)
 	}
-	if chunkIndex == int(sf.numChunks())-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
-		return 0 // Partial chunk has full redundancy if not yet included in combined chunk
+	if chunkIndex == int(sf.numChunks())-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusHasChunk {
+		return 0 // Partial chunk has full health if not yet included in combined chunk
 	}
 	// The max number of good pieces that a chunk can have is NumPieces()
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
@@ -668,8 +668,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 		// If the partial chunk hasn't been included in a combined chunk yet, we don't
 		// use it for determining the redundancy.
 		if chunkIndex == len(allChunks)-1 &&
-			(sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusHasChunk ||
-				sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete) {
+			sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
 			continue
 		}
 		// Loop over chunks and remember how many unique pieces of the chunk
@@ -1047,7 +1046,7 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) error {
 // setStuck sets the Stuck field of the chunk at the given index
 func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 	// Handle partial chunk.
-	if index == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusHasChunk {
+	if index == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
 		return sf.partialsSiaFile.SetStuck(sf.staticMetadata.CombinedChunkIndex, stuck)
 	}
 
@@ -1115,8 +1114,7 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64) {
 			// If the partial chunk hasn't been included in a combined chunk yet, we lie
 			// and return that all bytes have been uploaded.
 			unfinishedPartialChunk := chunkIndex == len(allChunks)-1 &&
-				(sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusHasChunk ||
-					sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete)
+				sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete
 			// Move onto the next pieceSet if nothing has been uploaded yet
 			if len(pieceSet) == 0 && !unfinishedPartialChunk {
 				continue
