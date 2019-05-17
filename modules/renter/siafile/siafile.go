@@ -667,7 +667,9 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 	for chunkIndex := range allChunks {
 		// If the partial chunk hasn't been included in a combined chunk yet, we don't
 		// use it for determining the redundancy.
-		if chunkIndex == len(allChunks)-1 && sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
+		if chunkIndex == len(allChunks)-1 &&
+			(sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusHasChunk ||
+				sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete) {
 			continue
 		}
 		// Loop over chunks and remember how many unique pieces of the chunk
