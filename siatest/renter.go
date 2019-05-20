@@ -430,7 +430,7 @@ func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float
 		return ErrFileNotTracked
 	}
 	// Wait until it reaches the redundancy
-	return Retry(1000, 100*time.Millisecond, func() error {
+	return Retry(100, 100*time.Millisecond, func() error {
 		file, err := tn.File(rf)
 		if err != nil {
 			return ErrFileNotTracked

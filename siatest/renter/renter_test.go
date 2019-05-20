@@ -1474,9 +1474,10 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a file.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts()) - 1)
+	fileSize := int(modules.SectorSize * dataPieces) // file without partial chunk
 
 	renter := tg.Renters()[0]
-	_, rf, err := renter.UploadNewFileBlocking(100, dataPieces, parityPieces, false)
+	_, rf, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1795,7 +1796,8 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a file.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts()) - 1)
-	_, rf, err := renter.UploadNewFileBlocking(100, dataPieces, parityPieces, false)
+	fileSize := int(dataPieces * modules.SectorSize) // file without partial chunk to guarantee upload
+	_, rf, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1843,7 +1845,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	time.Sleep(5 * time.Second)
 
 	// Try to upload a file after the allowance was cancelled. Should succeed.
-	_, rf2, err := renter.UploadNewFile(100, dataPieces, parityPieces, false)
+	_, rf2, err := renter.UploadNewFile(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
