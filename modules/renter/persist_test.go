@@ -156,7 +156,7 @@ func TestRenterPaths(t *testing.T) {
 	}
 
 	wal := rt.renter.wal
-	rc, err := siafile.NewRSSubCode(1, 1, modules.SectorSize)
+	rc, err := siafile.NewRSSubCode(1, 1, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}
