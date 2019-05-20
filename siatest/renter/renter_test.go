@@ -4830,52 +4830,44 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
 	r := tg.Renters()[0]
 
-	// Check if there are already uploaded file we can use.
-	rfg, err := r.RenterFilesGet(false)
+	// Set fileSize and redundancy for upload
+	dataPieces := uint64(4)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(modules.SectorSize * dataPieces) // file without partial chunk
+
+	// Upload file
+	_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if len(rfg.Files) == 0 {
-		// Set fileSize and redundancy for upload
-		fileSize := int(modules.SectorSize)
-		dataPieces := uint64(4)
-		parityPieces := uint64(len(tg.Hosts())) - dataPieces
-
-		// Upload file
-		_, _, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
-		if err != nil {
-			t.Fatal(err)
-		}
 	}
 	// Get a file.
-	rfg, err = r.RenterFilesGet(false)
+	f, err := r.File(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := rfg.Files[0]
 	// Set stuck to the opposite value it had before.
 	if err := r.RenterSetFileStuckPost(f.SiaPath, !f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.
-	fi, err := r.RenterFileGet(f.SiaPath)
+	fi, err := r.File(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.File.Stuck == f.Stuck {
-		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.File.Stuck)
+	if fi.Stuck == f.Stuck {
+		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.Stuck)
 	}
 	// Set stuck to the original value.
 	if err := r.RenterSetFileStuckPost(f.SiaPath, f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.
-	fi, err = r.RenterFileGet(f.SiaPath)
+	fi, err = r.File(rf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.File.Stuck != f.Stuck {
-		t.Fatalf("Stuck field should be %v but was %v", f.Stuck, fi.File.Stuck)
+	if fi.Stuck != f.Stuck {
+		t.Fatalf("Stuck field should be %v but was %v", f.Stuck, fi.Stuck)
 	}
 }
 
