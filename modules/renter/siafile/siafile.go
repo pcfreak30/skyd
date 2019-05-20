@@ -717,7 +717,10 @@ func (sf *SiaFile) SetAllStuck(stuck bool) error {
 		}
 	}
 	// Update NumStuckChunks in siafile metadata
-	if stuck {
+	if stuck && sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusHasChunk ||
+		sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
+		sf.staticMetadata.NumStuckChunks = sf.numChunks() - 1 // partial chunk can't be stuck in this state
+	} else if stuck {
 		sf.staticMetadata.NumStuckChunks = sf.numChunks()
 	} else {
 		sf.staticMetadata.NumStuckChunks = 0
