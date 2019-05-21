@@ -411,7 +411,8 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		return nil, errors.New("download offset cannot be a negative number")
 	}
 	if params.offset+params.length > params.file.Size() {
-		return nil, errors.New("download is requesting data past the boundary of the file")
+		return nil, fmt.Errorf("download is requesting data past the boundary of the file %v > %v",
+			params.offset+params.length, params.file.Size())
 	}
 
 	// Create the download object.
@@ -460,7 +461,6 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	if minChunk == params.file.NumChunks() || maxChunk == params.file.NumChunks() {
 		return nil, errors.New("download is requesting a chunk that is past the boundary of the file")
 	}
-
 	// For each chunk, assemble a mapping from the contract id to the index of
 	// the piece within the chunk that the contract is responsible for.
 	chunkMaps := make([]map[string]downloadPieceInfo, maxChunk-minChunk+1)

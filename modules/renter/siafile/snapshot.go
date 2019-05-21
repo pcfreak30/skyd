@@ -190,6 +190,11 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 		chunks = append(chunks, Chunk{
 			Pieces: partialChunkPieces,
 		})
+	} else if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+		// Add empty chunk
+		chunks = append(chunks, Chunk{
+			Pieces: make([][]Piece, sf.staticMetadata.staticErasureCode.NumPieces()),
+		})
 	}
 	// Get non-static metadata fields under lock.
 	fileSize := sf.staticMetadata.FileSize

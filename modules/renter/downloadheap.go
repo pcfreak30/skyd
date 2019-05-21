@@ -187,6 +187,14 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 		// Return all the memory.
 		udc.recoveryComplete = true
 		udc.returnMemory()
+		// Update the download and signal completion of this chunk.
+		udc.download.mu.Lock()
+		defer udc.download.mu.Unlock()
+		udc.download.chunksRemaining--
+		if udc.download.chunksRemaining == 0 {
+			// Download is complete, send out a notification.
+			udc.download.markComplete()
+		}
 		return true
 	}
 	// TODO: Download regular files from source if available in Release builds.
