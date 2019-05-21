@@ -190,7 +190,7 @@ func newTestFile() *SiaFile {
 // creates a directory for the file
 func newTestFileParams(minChunks int, partialChunk bool) (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
 	// Create arguments for new file.
-	sk := crypto.GenerateSiaKey(crypto.RandomCipherType())
+	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
 	pieceSize := modules.SectorSize - sk.Type().Overhead()
 	siaPath := modules.RandomSiaPath()
 	rc, err := NewRSCode(10, 20)
@@ -852,6 +852,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 
 	// Create a new siafile
 	sf := newBlankTestFile()
+	testDir := filepath.Join(os.TempDir(), t.Name())
 	// The chunk status should be set to "combinedChunkStatusHasChunk"
 	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusHasChunk {
 		t.Fatal("Initial status wasn't combinedChunkStatusNoChunk")
@@ -860,7 +861,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if _, err := sf.LoadPartialChunk(); err == nil {
 		t.Fatal("LoadPartialChunk should fail")
 	}
-	if err := SetCombinedChunk([]*SiaFile{sf}, "", []byte{}); err == nil {
+	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", []byte{}, testDir); err == nil {
 		t.Fatal("SetCombinedChunk should fail")
 	}
 	// Save a chunk that's too big.
@@ -889,7 +890,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if err := sf.SavePartialChunk(partialChunk); err == nil {
 		t.Fatal("SavePartialChunk should fail")
 	}
-	if err := SetCombinedChunk([]*SiaFile{sf}, "", []byte{}); err == nil {
+	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", []byte{}, testDir); err == nil {
 		t.Fatal("SetCombinedChunk should fail")
 	}
 	// LoadPartialChunk and make sure it has the right contents.
@@ -905,7 +906,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 		t.Fatal("SavePartialChunk should fail")
 	}
 	// Set the combined chunk.
-	if err := SetCombinedChunk([]*SiaFile{sf}, "", []byte{}); err != nil {
+	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", []byte{}, testDir); err != nil {
 		t.Fatal(err)
 	}
 	// The chunk status should be set to "combinedChunkStatusCompleted"
@@ -920,7 +921,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if err := sf.SavePartialChunk(partialChunk); err == nil {
 		t.Fatal("SavePartialChunk should fail")
 	}
-	if err := SetCombinedChunk([]*SiaFile{sf}, "", []byte{}); err == nil {
+	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", []byte{}, testDir); err == nil {
 		t.Fatal("SetCombinedChunk should fail")
 	}
 	if _, err := sf.LoadPartialChunk(); err == nil {

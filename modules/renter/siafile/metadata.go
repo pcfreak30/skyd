@@ -16,6 +16,14 @@ import (
 )
 
 type (
+	// PartialChunkInfo contains information required to find a partial chunk
+	// within a combined chunk.
+	PartialChunkInfo struct {
+		length uint64
+		offset uint64
+		sf     *SiaFile
+	}
+
 	// SiafileUID is a unique identifier for siafile which is used to track
 	// siafiles even after renaming them.
 	SiafileUID string
@@ -37,9 +45,11 @@ type (
 		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
 
 		// Fields for partial uploads
-		CombinedChunkIndex  uint64 `json:"combinedchunkindex"`  // index of the chunk in the combined chunks siafile
 		CombinedChunkID     string `json:"combinedchunkid"`     // id to find the combined chunk on disk
+		CombinedChunkIndex  uint64 `json:"combinedchunkindex"`  // index of the chunk in the combined chunks siafile
 		CombinedChunkStatus uint8  `json:"combinedchunkstatus"` // status of the file's partial chunk
+		CombinedChunkOffset uint64 `json:"combinedchunkoffset"` // offset of partial chunk within combined chunk
+		CombinedChunkLength uint64 `json:"combinedchunklength"` // length of partial chunk within combined chunk
 
 		// The following fields are the usual unix timestamps of files.
 		ModTime    time.Time `json:"modtime"`    // time of last content modification
@@ -219,8 +229,8 @@ func (sf *SiaFile) LocalPath() string {
 // SetCombinedChunk adds a combined chunk to the SiaFile, corresponding
 // combined SiaFile, and deletes the .partial file. All of that happens
 // atomically.
-func SetCombinedChunk(sfs []*SiaFile, combinedChunkID string, combinedChunk []byte) error {
-	sf0 := sfs[0]
+func SetCombinedChunk(cci []PartialChunkInfo, combinedChunkID string, combinedChunk []byte, dir string) error {
+	sf0 := cci[0].sf
 	sf0.mu.RLock()
 	partialsSiaFile := sf0.partialsSiaFile
 	sf0.mu.RUnlock()
@@ -243,7 +253,8 @@ func SetCombinedChunk(sfs []*SiaFile, combinedChunkID string, combinedChunk []by
 	// Get updates to delete all the .partial files and update all the siafiles.
 	identifier := partialsSiaFile.staticMetadata.staticErasureCode.Identifier()
 	updates := addCombinedChunkUpdates
-	for _, sf := range sfs {
+	for _, ci := range cci {
+		sf := ci.sf
 		// Sanity check that all the SiaFile's have the same erasure code settings.
 		if sf.ErasureCode().Identifier() != identifier {
 			return errors.New("combined files don't have matching erasure coders")
@@ -260,6 +271,8 @@ func SetCombinedChunk(sfs []*SiaFile, combinedChunkID string, combinedChunk []by
 		sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
 		sf.staticMetadata.CombinedChunkID = combinedChunkID
 		sf.staticMetadata.CombinedChunkIndex = chunkIndex
+		sf.staticMetadata.CombinedChunkLength = ci.length
+		sf.staticMetadata.CombinedChunkOffset = ci.offset
 		metadataUpdates, err := sf.saveMetadataUpdates()
 		if err != nil {
 			sf.mu.Unlock()
@@ -270,8 +283,9 @@ func SetCombinedChunk(sfs []*SiaFile, combinedChunkID string, combinedChunk []by
 		updates = append(updates, metadataUpdates...)
 		sf.mu.Unlock()
 	}
-	createAndApplyTransaction(partialsSiaFile.wal, updates...)
-	panic("TODO: Add update to write combined chunk to disk.")
+	// Add update to write combined chunk to disk.
+	updates = append(updates, createInsertUpdate(filepath.Join(dir, combinedChunkID), 0, combinedChunk))
+	return createAndApplyTransaction(partialsSiaFile.wal, updates...)
 }
 
 // MasterKey returns the masterkey used to encrypt the file.

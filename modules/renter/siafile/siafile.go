@@ -177,7 +177,8 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
-	if fileSize%file.staticChunkSize() != 0 || numChunks == 0 {
+	if (fileSize%file.staticChunkSize() != 0 || numChunks == 0) &&
+		partialsSiaFile != nil {
 		// This file has a partial chunk
 		file.staticMetadata.CombinedChunkStatus = CombinedChunkStatusHasChunk
 	}
@@ -202,16 +203,10 @@ func (sf *SiaFile) addCombinedChunk() (uint64, []writeaheadlog.Update, error) {
 	if filepath.Ext(sf.siaFilePath) != modules.PartialsSiaFileExtension {
 		return 0, nil, errors.New("can only call addCombinedChunk on combined SiaFiles")
 	}
-	// TODO: Create updates to add a chunk and return index of that new chunk.
-	panic("not implemented yet")
-}
-
-// GrowByOneChunk grows a SiaFile by exactly one chunk.
-func (sf *SiaFile) GrowByOneChunk() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
+	// Create updates to add a chunk and return index of that new chunk.
 	numChunks := sf.numChunks()
-	return sf.growNumChunks(numChunks + 1)
+	updates, err := sf.growNumChunks(numChunks + 1)
+	return numChunks, updates, err
 }
 
 // GrowNumChunks increases the number of chunks in the SiaFile to numChunks. If
@@ -219,7 +214,11 @@ func (sf *SiaFile) GrowByOneChunk() error {
 func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	return sf.growNumChunks(numChunks)
+	updates, err := sf.growNumChunks(numChunks)
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // SetFileSize changes the fileSize of the SiaFile.
@@ -1015,17 +1014,17 @@ func (sf *SiaFile) allChunks() []chunk {
 
 // growNumChunks increases the number of chunks in the SiaFile to numChunks. If
 // the file already contains >= numChunks chunks then GrowNumChunks is a no-op.
-func (sf *SiaFile) growNumChunks(numChunks uint64) error {
+func (sf *SiaFile) growNumChunks(numChunks uint64) ([]writeaheadlog.Update, error) {
 	// Don't allow a SiaFile with a partial chunk to grow.
 	if sf.staticMetadata.CombinedChunkIndex > CombinedChunkStatusNoChunk {
-		return errors.New("can't grow a siafile with a partial chunk (yet)")
+		return nil, errors.New("can't grow a siafile with a partial chunk (yet)")
 	}
 	// Check if we need to grow the file.
 	if uint64(len(sf.fullChunks)) >= numChunks {
 		// Handle edge case where file has 1 chunk but has a size of 0. When we grow
 		// such a file to 1 chunk we want to increment the size to >0.
 		sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(len(sf.fullChunks)))
-		return nil
+		return nil, nil
 	}
 	// Update the chunks.
 	var updates []writeaheadlog.Update
@@ -1039,11 +1038,9 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) error {
 	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(len(sf.fullChunks)))
 	mdu, err := sf.saveMetadataUpdates()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	updates = append(updates, mdu...)
-	// Update the filesize in the metadata.
-	return sf.createAndApplyTransaction(updates...)
+	return append(updates, mdu...), nil
 }
 
 // setStuck sets the Stuck field of the chunk at the given index

@@ -112,6 +112,10 @@ const (
 	// snapshot siafiles.
 	BackupRoot = "snapshots"
 
+	// CombinedChunksRoot is the name of the directory that contains combined
+	// chunks consisting of multiple partial chunks.
+	CombinedChunksRoot = ".combined_chunks"
+
 	// EstimatedFileContractTransactionSetSize is the estimated blockchain size
 	// of a transaction set between a renter and a host that contains a file
 	// contract. This transaction set will contain a setup transaction from each

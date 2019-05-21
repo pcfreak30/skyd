@@ -22,8 +22,9 @@ type (
 	// NOTE: Currently the implementation assumes that every file will have at most
 	// 1 CombinedChunk and that's the chunk at the end.
 	partialChunkSet struct {
-		mu       sync.Mutex
-		requests map[modules.ErasureCoderIdentifier]chunkRequestSet
+		mu                sync.Mutex
+		requests          map[modules.ErasureCoderIdentifier]chunkRequestSet
+		combinedChunkRoot string
 	}
 )
 
@@ -79,7 +80,7 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	}
 	// Let the SiaFile know about the combined chunk.
 	// TODO: Also inform other siafiles.
-	if err := siafile.SetCombinedChunk([]*siafile.SiaFile{}, chunkID, chunkData); err != nil {
+	if err := siafile.SetCombinedChunk([]siafile.PartialChunkInfo{}, chunkID, chunkData, pcs.combinedChunkRoot); err != nil {
 		return false, err
 	}
 	// Return the new combined chunk.
