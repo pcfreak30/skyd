@@ -523,7 +523,11 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		stuckHealth = worstHealth
 	}
 	// Sanity Check that the number of stuck chunks makes sense
-	if numStuckChunks != sf.staticMetadata.NumStuckChunks {
+	expectedStuckChunks := sf.staticMetadata.NumStuckChunks
+	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete && allChunks[len(allChunks)-1].Stuck {
+		expectedStuckChunks++
+	}
+	if numStuckChunks != expectedStuckChunks {
 		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, sf.staticMetadata.NumStuckChunks)
 	}
 	return health, stuckHealth, numStuckChunks

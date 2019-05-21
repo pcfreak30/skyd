@@ -98,6 +98,8 @@ func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) er
 				return readAndApplyDeleteUpdate(deps, u)
 			case updateInsertName:
 				return readAndApplyInsertUpdate(deps, u)
+			case updateDeletePartialName:
+				return readAndApplyDeleteUpdate(deps, u)
 			default:
 				return errUnknownSiaFileUpdate
 			}

@@ -39,6 +39,9 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 
 	// Wrap it in a file set entry.
 	sf := dummyEntry(siafile)
+	if err := setCombinedChunkOfTestFile(sf.SiaFile); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create 50 hostkeys from which to choose from.
 	hostkeys := make([]types.SiaPublicKey, 0, 50)

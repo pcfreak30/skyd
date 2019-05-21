@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -25,19 +26,23 @@ func setCombinedChunkOfTestFile(sf *siafile.SiaFile) error {
 	// If the file has a partial chunk, fake a combined chunk to make sure we can
 	// add a piece to it.
 	dir := filepath.Dir(sf.SiaFilePath())
+	if sf.CombinedChunkStatus() <= siafile.CombinedChunkStatusNoChunk {
+		return nil
+	}
+	partialChunk := fastrand.Bytes(int(sf.Size()) % int(sf.ChunkSize()))
 	if sf.CombinedChunkStatus() > siafile.CombinedChunkStatusNoChunk {
-		partialChunk := fastrand.Bytes(int(sf.Size()) % int(sf.ChunkSize()))
-		if sf.CombinedChunkStatus() > siafile.CombinedChunkStatusNoChunk {
-			if err := sf.SavePartialChunk(partialChunk); err != nil {
-				return err
-			}
-		}
-		pci := siafile.NewPartialChunkInfo(uint64(len(partialChunk)), 0, sf)
-		padding := make([]byte, sf.ChunkSize()-uint64(len(partialChunk)))
-		err := siafile.SetCombinedChunk([]siafile.PartialChunkInfo{pci}, hex.EncodeToString(fastrand.Bytes(16)), append(partialChunk, padding...), dir)
-		if err != nil {
+		if err := sf.SavePartialChunk(partialChunk); err != nil {
 			return err
 		}
+	}
+	pci := siafile.NewPartialChunkInfo(uint64(len(partialChunk)), 0, sf)
+	padding := make([]byte, sf.ChunkSize()-uint64(len(partialChunk)))
+	err := siafile.SetCombinedChunk([]siafile.PartialChunkInfo{pci}, hex.EncodeToString(fastrand.Bytes(16)), append(partialChunk, padding...), dir)
+	if err != nil {
+		return err
+	}
+	if sf.CombinedChunkStatus() != siafile.CombinedChunkStatusCompleted {
+		return errors.New("siafile should have status 'completed' now")
 	}
 	return nil
 }

@@ -693,8 +693,11 @@ func TestRandomStuckDirectory(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 100, 0777)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setCombinedChunkOfTestFile(f.SiaFile); err != nil {
 		t.Fatal(err)
 	}
 	if err = f.SetStuck(uint64(0), true); err != nil {
@@ -707,8 +710,11 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	f, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 100, 0777)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setCombinedChunkOfTestFile(f.SiaFile); err != nil {
 		t.Fatal(err)
 	}
 	if err = f.SetStuck(uint64(0), true); err != nil {

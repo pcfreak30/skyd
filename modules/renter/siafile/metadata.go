@@ -289,7 +289,7 @@ func SetCombinedChunk(cci []PartialChunkInfo, combinedChunkID string, combinedCh
 			return err
 		}
 		// Append new updates.
-		updates := append(addCombinedChunkUpdates, deleteUpdate)
+		updates = append(updates, deleteUpdate)
 		updates = append(updates, metadataUpdates...)
 		sf.mu.Unlock()
 	}
