@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,6 +57,31 @@ func randomPiece() piece {
 	piece.HostTableOffset = uint32(fastrand.Intn(100))
 	fastrand.Read(piece.MerkleRoot[:])
 	return piece
+}
+
+// setCombinedChunkOfTestFile adds a Combined chunk to a SiaFile for tests to be
+// able to use a SiaFile that already has its partial chunk contained within a
+// combined chunk. If the SiaFile doesn't have a partial chunk, this is a no-op.
+// The combined chunk will be stored in the provided 'dir'.
+func setCombinedChunkOfTestFile(sf *SiaFile) error {
+	// If the file has a partial chunk, fake a combined chunk to make sure we can
+	// add a piece to it.
+	dir := filepath.Dir(sf.SiaFilePath())
+	if sf.CombinedChunkStatus() > CombinedChunkStatusNoChunk {
+		partialChunk := fastrand.Bytes(int(sf.Size()) % int(sf.ChunkSize()))
+		if sf.CombinedChunkStatus() > CombinedChunkStatusNoChunk {
+			if err := sf.SavePartialChunk(partialChunk); err != nil {
+				return err
+			}
+		}
+		pci := NewPartialChunkInfo(uint64(len(partialChunk)), 0, sf)
+		padding := make([]byte, sf.ChunkSize()-uint64(len(partialChunk)))
+		err := SetCombinedChunk([]PartialChunkInfo{pci}, hex.EncodeToString(fastrand.Bytes(16)), append(partialChunk, padding...), dir)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // TestFileNumChunks checks the numChunks method of the file type.
@@ -166,23 +192,8 @@ func TestFileRedundancy(t *testing.T) {
 		}
 		// If the file has a partial chunk, fake a combined chunk to make sure we can
 		// add a piece to it.
-		if f.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
-			partialChunk := fastrand.Bytes(int(f.staticMetadata.FileSize) % int(f.ChunkSize()))
-			if f.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
-				if err := f.SavePartialChunk(partialChunk); err != nil {
-					t.Fatal(err)
-				}
-			}
-			pci := PartialChunkInfo{
-				length: uint64(len(partialChunk)),
-				offset: 0,
-				sf:     f,
-			}
-			padding := make([]byte, f.ChunkSize()-uint64(len(partialChunk)))
-			err := SetCombinedChunk([]PartialChunkInfo{pci}, "id", append(partialChunk, padding...), dir)
-			if err != nil {
-				t.Fatal(err)
-			}
+		if err := setCombinedChunkOfTestFile(f); err != nil {
+			t.Fatal(err)
 		}
 		// Test that adding a file contract with a piece for the missing chunk
 		// results in a file with redundancy > 0 && <= 1.
@@ -961,6 +972,10 @@ func TestFileUploadProgressPinning(t *testing.T) {
 		t.SkipNow()
 	}
 	f := newBlankTestFile()
+	if err := setCombinedChunkOfTestFile(f); err != nil {
+		t.Fatal(err)
+	}
+
 	for chunkIndex := uint64(0); chunkIndex < f.NumChunks(); chunkIndex++ {
 		for pieceIndex := uint64(0); pieceIndex < uint64(f.ErasureCode().NumPieces()); pieceIndex++ {
 			err1 := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(0)}}, chunkIndex, pieceIndex, crypto.Hash{})

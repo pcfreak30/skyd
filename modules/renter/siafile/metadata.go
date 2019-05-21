@@ -226,6 +226,16 @@ func (sf *SiaFile) LocalPath() string {
 	return sf.staticMetadata.LocalPath
 }
 
+// NewPartialChunkInfo creates a new PartialChunkInfo from a given length,
+// offset and SiaFile.
+func NewPartialChunkInfo(length, offset uint64, sf *SiaFile) PartialChunkInfo {
+	return PartialChunkInfo{
+		length: length,
+		offset: offset,
+		sf:     sf,
+	}
+}
+
 // SetCombinedChunk adds a combined chunk to the SiaFile, corresponding
 // combined SiaFile, and deletes the .partial file. All of that happens
 // atomically.

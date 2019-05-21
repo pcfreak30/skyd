@@ -1,8 +1,10 @@
 package renter
 
 import (
+	"encoding/hex"
 	"math"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
@@ -12,7 +14,33 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// setCombinedChunkOfTestFile adds a Combined chunk to a SiaFile for tests to be
+// able to use a SiaFile that already has its partial chunk contained within a
+// combined chunk. If the SiaFile doesn't have a partial chunk, this is a no-op.
+// The combined chunk will be stored in the provided 'dir'.
+func setCombinedChunkOfTestFile(sf *siafile.SiaFile) error {
+	// If the file has a partial chunk, fake a combined chunk to make sure we can
+	// add a piece to it.
+	dir := filepath.Dir(sf.SiaFilePath())
+	if sf.CombinedChunkStatus() > siafile.CombinedChunkStatusNoChunk {
+		partialChunk := fastrand.Bytes(int(sf.Size()) % int(sf.ChunkSize()))
+		if sf.CombinedChunkStatus() > siafile.CombinedChunkStatusNoChunk {
+			if err := sf.SavePartialChunk(partialChunk); err != nil {
+				return err
+			}
+		}
+		pci := siafile.NewPartialChunkInfo(uint64(len(partialChunk)), 0, sf)
+		padding := make([]byte, sf.ChunkSize()-uint64(len(partialChunk)))
+		err := siafile.SetCombinedChunk([]siafile.PartialChunkInfo{pci}, hex.EncodeToString(fastrand.Bytes(16)), append(partialChunk, padding...), dir)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
 // correct chunks are being added to the heap
@@ -52,6 +80,11 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		t.Fatalf("File created with not enough chunks for test, have %v need at least 2", f.NumChunks())
 	}
 	if err = f.SetStuck(uint64(0), true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a combined chunk to the file.
+	if err := setCombinedChunkOfTestFile(f.SiaFile); err != nil {
 		t.Fatal(err)
 	}
 
