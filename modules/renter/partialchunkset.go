@@ -6,6 +6,7 @@ package renter
 // TODO: how to figure out which combined chunks are no longer useful?
 // TODO: how to prune the mega files?
 // TODO: force snapshots not to use partial uploads
+// TODO: make sure we don't push the same combined chunk into the repair heap multiple times in parallel
 
 import (
 	"sync"

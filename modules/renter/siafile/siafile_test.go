@@ -2,6 +2,7 @@ package siafile
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -125,6 +126,14 @@ func TestFileRedundancy(t *testing.T) {
 		neverOffline[pk.String()] = false
 		goodForRenew[pk.String()] = true
 	}
+	// Create a testDir.
+	dir := filepath.Join(os.TempDir(), t.Name())
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, nData := range nDatas {
 		rsc, _ := NewRSCode(nData, 10)
@@ -154,6 +163,26 @@ func TestFileRedundancy(t *testing.T) {
 		}
 		if r := f.Redundancy(neverOffline, goodForRenew); r != 0 {
 			t.Error("expected 0 redundancy, got", r)
+		}
+		// If the file has a partial chunk, fake a combined chunk to make sure we can
+		// add a piece to it.
+		if f.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+			partialChunk := fastrand.Bytes(int(f.staticMetadata.FileSize) % int(f.ChunkSize()))
+			if f.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+				if err := f.SavePartialChunk(partialChunk); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pci := PartialChunkInfo{
+				length: uint64(len(partialChunk)),
+				offset: 0,
+				sf:     f,
+			}
+			padding := make([]byte, f.ChunkSize()-uint64(len(partialChunk)))
+			err := SetCombinedChunk([]PartialChunkInfo{pci}, "id", append(partialChunk, padding...), dir)
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		// Test that adding a file contract with a piece for the missing chunk
 		// results in a file with redundancy > 0 && <= 1.
