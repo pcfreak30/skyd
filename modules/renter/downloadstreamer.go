@@ -476,9 +476,13 @@ func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, er
 		return "", nil, err
 	}
 	defer entry.Close()
-
+	// Create the snapshot.
+	snapshot, err := entry.Snapshot()
+	if err != nil {
+		return "", nil, err
+	}
 	// Create the streamer
-	s := r.managedStreamer(entry.Snapshot())
+	s := r.managedStreamer(snapshot)
 	return r.staticFileSet.SiaPath(entry).String(), s, nil
 }
 

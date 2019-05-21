@@ -176,8 +176,13 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 		return err
 	}
 	defer entry.Close()
+	// Create snapshot.
+	snapshot, err := entry.Snapshot()
+	if err != nil {
+		return err
+	}
 	// Use .sia file to download snapshot.
-	s := r.managedStreamer(entry.Snapshot())
+	s := r.managedStreamer(snapshot)
 	defer s.Close()
 	_, err = io.Copy(dstFile, s)
 	return err

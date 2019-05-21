@@ -113,10 +113,10 @@ func (s *Snapshot) NumChunks() uint64 {
 
 // Pieces returns all the pieces for a chunk in a slice of slices that contains
 // all the pieces for a certain index.
-func (s *Snapshot) Pieces(chunkIndex uint64) ([][]Piece, error) {
+func (s *Snapshot) Pieces(chunkIndex uint64) [][]Piece {
 	// Return the pieces. Since the snapshot is meant to be used read-only, we
 	// don't have to return a deep-copy here.
-	return s.staticChunks[chunkIndex].Pieces, nil
+	return s.staticChunks[chunkIndex].Pieces
 }
 
 // PieceSize returns the size of a single piece of the file.
@@ -140,7 +140,7 @@ func (s *Snapshot) UID() SiafileUID {
 }
 
 // Snapshot creates a snapshot of the SiaFile.
-func (sf *siaFileSetEntry) Snapshot() *Snapshot {
+func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	mk := sf.MasterKey()
 	sf.mu.RLock()
 
@@ -163,8 +163,8 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 	allPieceSets := make([][]Piece, numPieceSets)
 	allPieces := make([]Piece, numPieces)
 
-	// Copy chunks.
-	for chunkIndex := range allChunks {
+	// Copy fullChunks. Partial chunk will be handled later.
+	for chunkIndex := range sf.fullChunks {
 		pieces := allPieceSets[:len(allChunks[chunkIndex].Pieces)]
 		allPieceSets = allPieceSets[len(allChunks[chunkIndex].Pieces):]
 		for pieceIndex := range pieces {
@@ -179,6 +179,16 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 		}
 		chunks = append(chunks, Chunk{
 			Pieces: pieces,
+		})
+	}
+	// Handle potential partial chunk.
+	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
+		partialChunkPieces, err := sf.partialsSiaFile.Pieces(sf.staticMetadata.CombinedChunkIndex)
+		if err != nil {
+			return nil, err
+		}
+		chunks = append(chunks, Chunk{
+			Pieces: partialChunkPieces,
 		})
 	}
 	// Get non-static metadata fields under lock.
@@ -201,5 +211,5 @@ func (sf *siaFileSetEntry) Snapshot() *Snapshot {
 		staticPubKeyTable:         pkt,
 		staticSiaPath:             sp,
 		staticUID:                 sf.staticMetadata.StaticUniqueID,
-	}
+	}, nil
 }

@@ -350,12 +350,18 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		}
 	}
 
+	// Create Siafile snapshot.
+	snapshot, err := entry.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the download object.
 	d, err := r.managedNewDownload(downloadParams{
 		destination:       dw,
 		destinationType:   destinationType,
 		destinationString: p.Destination,
-		file:              entry.Snapshot(),
+		file:              snapshot,
 
 		latencyTarget: 25e3 * time.Millisecond, // TODO: high default until full latency support is added.
 		length:        p.Length,
@@ -462,10 +468,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		// Create the map.
 		chunkMaps[chunkIndex-minChunk] = make(map[string]downloadPieceInfo)
 		// Get the pieces for the chunk.
-		pieces, err := params.file.Pieces(uint64(chunkIndex))
-		if err != nil {
-			return nil, err
-		}
+		pieces := params.file.Pieces(uint64(chunkIndex))
 		for pieceIndex, pieceSet := range pieces {
 			for _, piece := range pieceSet {
 				// Sanity check - the same worker should not have two pieces for

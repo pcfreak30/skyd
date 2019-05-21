@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSnapshot tests if a snapshot is created correctly from a SiaFile.
@@ -19,7 +18,10 @@ func TestSnapshot(t *testing.T) {
 
 	// Create a random file for testing and create a snapshot from it.
 	sf := dummyEntry(newTestFile())
-	snap := sf.Snapshot()
+	snap, err := sf.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Make sure the snapshot has the same fields as the SiaFile.
 	if sf.numChunks() != uint64(len(snap.staticChunks)) {
@@ -60,9 +62,9 @@ func TestSnapshot(t *testing.T) {
 	sf.staticSiaFileSet.mu.Unlock()
 	// Compare the pieces.
 	for i := range sf.allChunks() {
-		sfPieces, err1 := sf.Pieces(uint64(i))
-		snapPieces, err2 := snap.Pieces(uint64(i))
-		if err := errors.Compose(err1, err2); err != nil {
+		sfPieces, err := sf.Pieces(uint64(i))
+		snapPieces := snap.Pieces(uint64(i))
+		if err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(sfPieces, snapPieces) {
@@ -119,6 +121,9 @@ func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 
 	// Create snapshots as fast as possible.
 	for i := 0; i < b.N; i++ {
-		_ = sf.Snapshot()
+		_, err := sf.Snapshot()
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }

@@ -618,14 +618,14 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 	if chunkIndex >= sf.numChunks() {
 		err := fmt.Errorf("index %v out of bounds (%v)", chunkIndex, allChunks)
 		build.Critical(err)
-		return nil, err
+		return [][]Piece{}, err
 	}
 	// Handle partial chunk.
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
 		return sf.partialsSiaFile.Pieces(sf.staticMetadata.CombinedChunkIndex) // get pieces from linked siafile
 	}
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
-		return make([][]Piece, len(allChunks[chunkIndex].Pieces)), nil // return no pieces
+		return make([][]Piece, len(allChunks[chunkIndex].Pieces)), nil
 	}
 
 	// Return a deep-copy to avoid race conditions.

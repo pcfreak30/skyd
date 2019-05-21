@@ -159,13 +159,17 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	if chunk.index == chunk.fileEntry.NumChunks()-1 && chunk.fileEntry.Size()%chunk.length != 0 {
 		downloadLength = chunk.fileEntry.Size() % chunk.length
 	}
-
+	// Create the snapshot.
+	snapshot, err := chunk.fileEntry.Snapshot()
+	if err != nil {
+		return err
+	}
 	// Create the download.
 	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
-		file:            chunk.fileEntry.Snapshot(),
+		file:            snapshot,
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
 		length:        downloadLength,

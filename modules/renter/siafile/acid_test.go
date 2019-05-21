@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -81,7 +82,16 @@ OUTER:
 			if fastrand.Intn(100) < 80 {
 				spk := hostkeys[fastrand.Intn(len(hostkeys))]
 				offset := uint64(fastrand.Intn(int(sf.staticMetadata.FileSize)))
-				chunkIndex, _ := sf.Snapshot().ChunkIndexByOffset(offset)
+				snapshot, err := sf.Snapshot()
+				if err != nil && errors.Contains(err, errDiskFault) {
+					numRecoveries++
+					break
+				} else if err != nil {
+					// If the error wasn't caused by the dependency, the test
+					// fails.
+					t.Fatal(err)
+				}
+				chunkIndex, _ := snapshot.ChunkIndexByOffset(offset)
 				pieceIndex := uint64(fastrand.Intn(sf.staticMetadata.staticErasureCode.NumPieces()))
 				if err := sf.AddPiece(spk, chunkIndex, pieceIndex, crypto.Hash{}); err != nil {
 					if errors.Contains(err, errDiskFault) {
@@ -135,6 +145,15 @@ OUTER:
 				}
 			}
 			// Load file again.
+			partialsSiaFile, err := loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
+			if err != nil {
+				if errors.Contains(err, errDiskFault) {
+					numRecoveries++
+					continue // try again
+				} else {
+					t.Fatal(err)
+				}
+			}
 			siafile, err = loadSiaFile(sf.siaFilePath, wal, fdd)
 			if err != nil {
 				if errors.Contains(err, errDiskFault) {
@@ -144,8 +163,13 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
+			partialsEntry := &SiaFileSetEntry{
+				dummyEntry(partialsSiaFile),
+				uint64(fastrand.Intn(math.MaxInt32)),
+			}
 			siafile.deps = fdd
 			sf = dummyEntry(siafile)
+			sf.SetPartialsSiaFile(partialsEntry)
 			break
 		}
 
