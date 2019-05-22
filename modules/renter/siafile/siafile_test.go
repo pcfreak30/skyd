@@ -948,6 +948,9 @@ func TestUploadedBytes(t *testing.T) {
 	}
 	// Create a new blank test file
 	f := newBlankTestFile()
+	if err := setCombinedChunkOfTestFile(f); err != nil {
+		t.Fatal(err)
+	}
 	// Add multiple pieces to the first pieceSet of the first piece of the first
 	// chunk
 	for i := 0; i < 4; i++ {

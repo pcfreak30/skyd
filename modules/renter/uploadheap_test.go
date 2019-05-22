@@ -77,7 +77,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
+	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 10e3, 0777)
 	if err != nil {
 		t.Fatal(err)
 	}
