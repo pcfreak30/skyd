@@ -37,7 +37,8 @@ type StreamShard struct {
 	n   int
 	err error
 
-	r io.Reader
+	peekByte []byte
+	r        io.Reader
 
 	closed     bool
 	mu         sync.Mutex
@@ -45,7 +46,7 @@ type StreamShard struct {
 }
 
 // NewStreamShard creates a new stream shard from a reader.
-func NewStreamShard(r io.Reader) *StreamShard {
+func NewStreamShard(r io.Reader, peekByte []byte) *StreamShard {
 	return &StreamShard{
 		r:          r,
 		signalChan: make(chan struct{}),
@@ -57,6 +58,14 @@ func (ss *StreamShard) Close() error {
 	close(ss.signalChan)
 	ss.closed = true
 	return nil
+}
+
+// Peek determines if more data could be read from the underlying reader. It
+// will read a single byte and return 'false' if Read returns 0 and io.EOF.
+func (ss *StreamShard) Peek() ([]byte, bool) {
+	b := make([]byte, 1)
+	n, err := ss.r.Read(b)
+	return b, !(n == 0 && err == io.EOF)
 }
 
 // Result returns the returned values of calling Read on the shard.
@@ -74,6 +83,12 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 	}
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
+	// Add the peek byte if available.
+	n := copy(b, ss.peekByte)
+	ss.peekByte = ss.peekByte[n:]
+	b = b[n:]
+	ss.n += n
+	// Read from the underlying reader.
 	n, err := ss.r.Read(b)
 	ss.n += n
 	ss.err = err
@@ -197,6 +212,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 	// Read the chunks we want to upload one by one from the input stream using
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
+	var peekByte []byte
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing connectivity
 		// during the upload.
@@ -218,7 +234,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		r.mu.Unlock(id)
 
 		// Create a new shard set it to be the source reader of the chunk.
-		ss := NewStreamShard(reader)
+		ss := NewStreamShard(reader, peekByte)
 		uuc.sourceReader = ss
 
 		// Check if the chunk needs any work or if we can skip it.
@@ -254,13 +270,19 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		case <-ss.signalChan:
 		}
 
+		// If the last shard returned no data, we remove the chunk we added before again.
 		// If an io.EOF error occurred or less than chunkSize was read, we are
 		// done. Otherwise we report the error.
 		if _, err := ss.Result(); err == io.EOF {
-			// Adjust the fileSize
 			return nil
 		} else if ss.err != nil {
 			return ss.err
+		}
+		// Peek to see if more data can be read from the connection.
+		var cont bool
+		peekByte, cont = ss.Peek()
+		if !cont {
+			return nil
 		}
 	}
 }

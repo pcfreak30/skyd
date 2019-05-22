@@ -258,11 +258,12 @@ type DownloadInfo struct {
 // FileUploadParams contains the information used by the Renter to upload a
 // file.
 type FileUploadParams struct {
-	Source      string
-	SiaPath     SiaPath
-	ErasureCode ErasureCoder
-	Force       bool
-	Repair      bool
+	Source              string
+	SiaPath             SiaPath
+	ErasureCode         ErasureCoder
+	Force               bool
+	DisablePartialChunk bool
+	Repair              bool
 }
 
 // FileInfo provides information about a file.

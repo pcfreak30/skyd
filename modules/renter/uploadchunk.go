@@ -227,9 +227,10 @@ func (r *Renter) managedStreamLogicalChunkData(chunk *unfinishedUploadChunk) (bo
 		return false, errors.AddContext(err, "failed to read chunk from sourceReader")
 	}
 	// Check if the last chunk was only uploaded partially.
-	if err == io.EOF || err == io.ErrUnexpectedEOF {
-		chunk.fileEntry.SavePartialChunk(byteBuf[:n])
-		return false, nil
+	if err == io.EOF {
+		return false, nil // no bytes were fetched
+	} else if err == io.ErrUnexpectedEOF && !chunk.fileEntry.Metadata().DisablePartialChunk {
+		return false, chunk.fileEntry.SavePartialChunk(byteBuf[:n]) // partial chunk was fetched
 	}
 	// Read the byteBuf into the sharded destination buffer.
 	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())

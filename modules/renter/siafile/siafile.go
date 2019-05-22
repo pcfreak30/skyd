@@ -142,7 +142,7 @@ func (c *chunk) numPieces() (numPieces int) {
 }
 
 // New create a new SiaFile.
-func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFileSetEntry) (*SiaFile, error) {
+func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFileSetEntry, disablePartialUpload bool) (*SiaFile, error) {
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	zeroHealth := float64(1 + erasureCode.MinPieces()/(erasureCode.NumPieces()-erasureCode.MinPieces()))
@@ -157,6 +157,7 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 			CachedStuckHealth:       0,
 			CachedRedundancy:        0,
 			CachedUploadProgress:    0,
+			DisablePartialChunk:     disablePartialUpload,
 			FileSize:                int64(fileSize),
 			LocalPath:               source,
 			StaticMasterKey:         masterKey.Key(),
@@ -177,10 +178,14 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
-	if (fileSize%file.staticChunkSize() != 0 || numChunks == 0) &&
-		partialsSiaFile != nil {
+	if fileSize%file.staticChunkSize() != 0 && partialsSiaFile != nil && !disablePartialUpload {
 		// This file has a partial chunk
 		file.staticMetadata.CombinedChunkStatus = CombinedChunkStatusHasChunk
+	} else if fileSize%file.staticChunkSize() != 0 && disablePartialUpload {
+		// This file does have a partial chunk but we treat it as a full chunk.
+		numChunks++
+	} else if fileSize%file.staticChunkSize() != 0 && partialsSiaFile == nil {
+		return nil, errors.New("can't create a file with a partial chunk without assigning a partialsSiaFile")
 	}
 	file.fullChunks = make([]chunk, numChunks)
 	for i := range file.fullChunks {
@@ -221,11 +226,47 @@ func (sf *SiaFile) GrowNumChunks(numChunks uint64) error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
+// RemoveLastChunk removes the last chunk of the SiaFile and truncates the file
+// accordingly.
+func (sf *SiaFile) RemoveLastChunk() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.removeLastChunk()
+}
+
 // SetFileSize changes the fileSize of the SiaFile.
 func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+		return errors.New("can't call SetFileSize on file with partial chunk")
+	}
+	// Make sure that SetFileSize doesn't affect the number of total chunks within
+	// the file.
+	newNumChunks := fileSize / sf.staticChunkSize()
+	if newNumChunks == 0 && fileSize%sf.staticChunkSize() != 0 {
+		newNumChunks++
+	}
+	if sf.numChunks() != newNumChunks {
+		return errors.New("can't change fileSize since it would change the number of chunks")
+	}
+	println("setting size", sf.numChunks())
 	sf.staticMetadata.FileSize = int64(fileSize)
+	// Check if the file changed from not having a partial chunk to having one.
+	if !sf.staticMetadata.DisablePartialChunk &&
+		sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusNoChunk &&
+		uint64(sf.staticMetadata.FileSize)%sf.staticChunkSize() != 0 {
+		if len(sf.fullChunks) > 0 {
+			// Last fullChunk is replaced by a partial chunk so we remove it.
+			if err := sf.removeLastChunk(); err != nil {
+				return (err)
+			}
+		}
+		sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusHasChunk
+		if sf.partialsSiaFile == nil {
+			return errors.New("can't turn file without partial chunk into a file with one if partialsSiaFile == nil")
+		}
+	}
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
@@ -256,7 +297,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// piece to a host and then not return an error when we can't add it to a
 	// SiaFile.
 	if chunkIndex == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
-		err := errors.New("AddPiece: SiaFile doesn't have a combined chunk yet")
+		err := errors.New("AddPiece: SiaFile doesn't have a combined chunk")
 		build.Critical(err)
 		return err
 	}
@@ -1020,8 +1061,8 @@ func (sf *SiaFile) allChunks() []chunk {
 // the file already contains >= numChunks chunks then GrowNumChunks is a no-op.
 func (sf *SiaFile) growNumChunks(numChunks uint64) ([]writeaheadlog.Update, error) {
 	// Don't allow a SiaFile with a partial chunk to grow.
-	if sf.staticMetadata.CombinedChunkIndex > CombinedChunkStatusNoChunk {
-		return nil, errors.New("can't grow a siafile with a partial chunk (yet)")
+	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+		return nil, errors.New("can't grow a siafile with a partial chunk")
 	}
 	// Check if we need to grow the file.
 	if uint64(len(sf.fullChunks)) >= numChunks {
@@ -1045,6 +1086,24 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) ([]writeaheadlog.Update, erro
 		return nil, err
 	}
 	return append(updates, mdu...), nil
+}
+
+// removeLastChunk removes the last chunk of the SiaFile and truncates the file
+// accordingly.
+func (sf *SiaFile) removeLastChunk() error {
+	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+		return errors.New("can't remove last chunk if it is a partial chunk")
+	}
+	sf.fullChunks = sf.fullChunks[:len(sf.fullChunks)-1]
+	fi, err := os.Stat(sf.siaFilePath)
+	if err != nil {
+		return err
+	}
+	err = os.Truncate(sf.siaFilePath, fi.Size()-int64(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // setStuck sets the Stuck field of the chunk at the given index

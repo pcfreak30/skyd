@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/twofish"
@@ -227,25 +228,31 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		}
 		relPath := strings.TrimPrefix(path, r.staticFilesDir)
 		header.Name = relPath
-		// Write the header.
-		if err := tw.WriteHeader(header); err != nil {
-			return err
-		}
 		// If the info is a dir there is nothing more to do.
 		if info.IsDir() {
-			return nil
+			return tw.WriteHeader(header)
 		}
 		// Handle siafiles and siadirs differently.
 		var file io.Reader
 		if filepath.Ext(path) == modules.SiaFileExtension || filepath.Ext(path) == modules.PartialsSiaFileExtension {
 			// Get the siafile.
-			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
+			siaPathStr := strings.TrimSuffix(relPath, modules.SiaFileExtension)
+			siaPathStr = strings.TrimSuffix(siaPathStr, modules.PartialsSiaFileExtension)
+			siaPath, err := modules.NewSiaPath(siaPathStr)
 			if err != nil {
 				return err
 			}
-			entry, err := r.staticFileSet.Open(siaPath)
-			if err != nil {
-				return err
+			var entry *siafile.SiaFileSetEntry
+			if filepath.Ext(path) == modules.SiaFileExtension {
+				entry, err = r.staticFileSet.Open(siaPath)
+				if err != nil {
+					return err
+				}
+			} else {
+				entry, err = r.staticFileSet.LoadPartialSiaFile(siaPath)
+				if err != nil {
+					return err
+				}
 			}
 			defer entry.Close()
 			// Get a reader to read from the siafile.
@@ -281,7 +288,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			file = dr
 		} else if filepath.Ext(path) == modules.PartialChunkExtension {
 			// Get the siafile.
-			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
+			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.PartialChunkExtension))
 			if err != nil {
 				return err
 			}
@@ -296,6 +303,10 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 				return err
 			}
 			file = bytes.NewReader(partialChunk)
+		}
+		// Write the header.
+		if err := tw.WriteHeader(header); err != nil {
+			return err
 		}
 		// Add the file to the archive.
 		_, err = io.Copy(tw, file)

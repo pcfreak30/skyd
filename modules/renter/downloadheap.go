@@ -161,7 +161,7 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 	if udc.staticChunkIndex == udc.renterFile.NumChunks()-1 &&
 		udc.renterFile.CombinedChunkStatus() == siafile.CombinedChunkStatusIncomplete {
 		// Open siafile since a snapshot isn't enough.
-		entry, err := r.staticFileSet.Open(udc.renterFile.SiaPath())
+		entry, err := udc.renterFile.FileSet().Open(udc.renterFile.SiaPath())
 		if err != nil {
 			r.log.Debugln(err)
 			return false

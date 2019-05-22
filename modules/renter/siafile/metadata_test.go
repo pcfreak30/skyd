@@ -31,7 +31,7 @@ func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 	partialsSiaPath := modules.CombinedSiaFilePath(rc)
 	partialsSiaFilePath := partialsSiaPath.SiaPartialsFileSysPath(dir)
 	if _, err = os.Stat(partialsSiaFilePath); os.IsNotExist(err) {
-		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil)
+		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil, false)
 	} else {
 		partialsSiaFile, err = LoadSiaFile(partialsSiaFilePath, wal)
 	}
@@ -45,11 +45,11 @@ func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 	// Create the files.
 	sf1Path := filepath.Join(dir, "sf1"+modules.SiaFileExtension)
 	sf2Path := filepath.Join(dir, "sf2"+modules.SiaFileExtension)
-	sf1, err := New(sf1Path, source, wal, rc, sk, fileSize, fileMode, partialsEntry)
+	sf1, err := New(sf1Path, source, wal, rc, sk, fileSize, fileMode, partialsEntry, false)
 	if err != nil {
 		return nil, nil, err
 	}
-	sf2, err := New(sf2Path, source, wal, rc, sk, fileSize, fileMode, partialsEntry)
+	sf2, err := New(sf2Path, source, wal, rc, sk, fileSize, fileMode, partialsEntry, false)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -582,7 +582,7 @@ func (sfs *SiaFileSet) newSiaFile(up modules.FileUploadParams, masterKey crypto.
 	}
 	// Make sure there are no leading slashes
 	siaFilePath := up.SiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
-	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, partialsSiaFile)
+	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, partialsSiaFile, up.DisablePartialChunk)
 	if err != nil {
 		return nil, err
 	}
@@ -616,6 +616,13 @@ func (sfs *SiaFileSet) Open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.open(siaPath)
+}
+
+// LoadPartialSiaFile loads a SiaFile containing combined chunks.
+func (sfs *SiaFileSet) LoadPartialSiaFile(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.loadPartialsSiaFile(siaPath)
 }
 
 // Metadata returns the metadata of a SiaFile.
@@ -767,10 +774,9 @@ func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir
 }
 
 // openPartialsSiaFile opens a SiaFile which will be used to upload chunks
-// consisting of partial chunks which corresponds to a given erasure coder. If
-// the SiaFile doesn't exist, it will be created.
+// consisting of partial chunks. If the SiaFile doesn't exist, it will be
+// created.
 func (sfs *SiaFileSet) openPartialsSiaFile(ec modules.ErasureCoder) (*SiaFileSetEntry, error) {
-	// Get the siapath of the partials file.
 	siaPath := modules.CombinedSiaFilePath(ec)
 	var entry *siaFileSetEntry
 	var exists bool
@@ -781,10 +787,44 @@ func (sfs *SiaFileSet) openPartialsSiaFile(ec modules.ErasureCoder) (*SiaFileSet
 		if os.IsNotExist(err) {
 			// File doesn't exist. Create a new one.
 			siaFilePath := siaPath.SiaPartialsFileSysPath(sfs.staticSiaFileDir)
-			sf, err = New(siaFilePath, "", sfs.wal, ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 0, 0600, nil)
+			sf, err = New(siaFilePath, "", sfs.wal, ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 0, 0600, nil, true)
 			if err != nil {
 				return nil, err
 			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		// Create the entry for the SiaFile and assign the partials file.
+		entry, err = sfs.newSiaFileSetEntry(sf)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if entry.Deleted() {
+		return nil, ErrUnknownPath
+	}
+	threadUID := randomThreadUID()
+	entry.threadMapMu.Lock()
+	defer entry.threadMapMu.Unlock()
+	entry.threadMap[threadUID] = newThreadInfo()
+	return &SiaFileSetEntry{
+		siaFileSetEntry: entry,
+		threadUID:       threadUID,
+	}, nil
+}
+
+// loadPartialsSiaFile loads a SiaFile which will be used to upload chunks
+// consisting of partial chunks.
+func (sfs *SiaFileSet) loadPartialsSiaFile(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
+	var entry *siaFileSetEntry
+	var exists bool
+	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
+	if !exists {
+		// Try and Load File from disk.
+		sf, err := LoadSiaFile(siaPath.SiaPartialsFileSysPath(sfs.staticSiaFileDir), sfs.wal)
+		if os.IsNotExist(err) {
+			return nil, ErrUnknownPath
 		}
 		if err != nil {
 			return nil, err

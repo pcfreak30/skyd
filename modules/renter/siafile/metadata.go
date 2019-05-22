@@ -45,6 +45,7 @@ type (
 		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
 
 		// Fields for partial uploads
+		DisablePartialChunk bool   `json:"disablepartialchunk"` // determines whether the file should be treated like legacy files
 		CombinedChunkID     string `json:"combinedchunkid"`     // id to find the combined chunk on disk
 		CombinedChunkIndex  uint64 `json:"combinedchunkindex"`  // index of the chunk in the combined chunks siafile
 		CombinedChunkStatus uint8  `json:"combinedchunkstatus"` // status of the file's partial chunk

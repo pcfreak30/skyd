@@ -120,7 +120,7 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 	partialsSiaPath := modules.CombinedSiaFilePath(rc)
 	partialsSiaFilePath := partialsSiaPath.SiaPartialsFileSysPath(dir)
 	if _, err = os.Stat(partialsSiaFilePath); os.IsNotExist(err) {
-		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil)
+		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil, false)
 	} else {
 		partialsSiaFile, err = LoadSiaFile(partialsSiaFilePath, wal)
 	}
@@ -132,7 +132,7 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 		uint64(fastrand.Intn(math.MaxInt32)),
 	}
 	// Create the file.
-	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, partialsEntry)
+	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, partialsEntry, false)
 	if err != nil {
 		panic(err)
 	}

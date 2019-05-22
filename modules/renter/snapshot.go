@@ -103,12 +103,15 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return err
 	}
 	up := modules.FileUploadParams{
-		SiaPath:     sp,
-		ErasureCode: ec,
-		Force:       false,
+		SiaPath:             sp,
+		ErasureCode:         ec,
+		Force:               false,
+		DisablePartialChunk: true,
 	}
 	// Begin uploading the backup. When the upload finishes, the backup .sia
 	// file will be uploaded by r.threadedSynchronizeSnapshots and then deleted.
+	// The backup is uploaded with some padding to make sure it doesn't have a
+	// partial chunk at the end.
 	if err := r.managedUploadStreamFromReader(up, backup, true); err != nil {
 		return errors.AddContext(err, "failed to upload backup")
 	}

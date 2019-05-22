@@ -23,6 +23,7 @@ type (
 		staticSiaPath             modules.SiaPath
 		staticCombinedChunkStatus uint8
 		staticUID                 SiafileUID
+		staticFileSet             *SiaFileSet
 	}
 )
 
@@ -134,6 +135,12 @@ func (s *Snapshot) Size() uint64 {
 	return uint64(s.staticFileSize)
 }
 
+// FileSet returns the SiaFileSet that was used to open the SiaFile from which
+// this snapshot was created.
+func (s *Snapshot) FileSet() *SiaFileSet {
+	return s.staticFileSet
+}
+
 // UID returns the UID of the file.
 func (s *Snapshot) UID() SiafileUID {
 	return s.staticUID
@@ -216,5 +223,6 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 		staticPubKeyTable:         pkt,
 		staticSiaPath:             sp,
 		staticUID:                 sf.staticMetadata.StaticUniqueID,
+		staticFileSet:             sf.staticSiaFileSet,
 	}, nil
 }
