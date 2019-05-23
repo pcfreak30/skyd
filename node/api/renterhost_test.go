@@ -271,7 +271,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 
 	// On a second connection, upload another file.
 	path2 := filepath.Join(st.dir, "test2.dat")
-	test2Size := modules.SectorSize*2 + 1
+	test2Size := modules.SectorSize * 2 // avoid partial chunk
 	err = createRandFile(path2, int(test2Size))
 	if err != nil {
 		t.Fatal(err)
