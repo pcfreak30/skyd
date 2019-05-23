@@ -1027,7 +1027,9 @@ func (sf *SiaFile) goodPieces(chunkIndex int, offlineMap map[string]bool, goodFo
 func (sf *SiaFile) numChunks() uint64 {
 	numChunks := uint64(len(sf.fullChunks))
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
-		numChunks++
+		numChunks++ // file with partial chunk
+	} else if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusNoChunk && numChunks == 0 {
+		numChunks++ // 0-byte file
 	}
 	return numChunks
 }
