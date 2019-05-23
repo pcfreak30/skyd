@@ -1028,7 +1028,9 @@ func (sf *SiaFile) numChunks() uint64 {
 	numChunks := uint64(len(sf.fullChunks))
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
 		numChunks++ // file with partial chunk
-	} else if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusNoChunk && numChunks == 0 {
+	} else if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusNoChunk &&
+		numChunks == 0 &&
+		filepath.Ext(sf.siaFilePath) != modules.PartialsSiaFileExtension {
 		numChunks++ // 0-byte file
 	}
 	return numChunks
