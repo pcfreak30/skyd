@@ -1913,7 +1913,7 @@ func TestHealthLoop(t *testing.T) {
 
 	// Create and upload files
 	path := filepath.Join(st1.dir, "test.dat")
-	if err = createRandFile(path, 1024); err != nil {
+	if err = createRandFile(path, int(modules.SectorSize*5)); err != nil {
 		t.Fatal(err)
 	}
 
