@@ -127,6 +127,10 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 	if err != nil {
 		panic(fmt.Sprint("failed to load partialsSiaFile", err))
 	}
+	// Check that the partials file is sane.
+	if partialsSiaFile.numChunks() > 0 {
+		panic(fmt.Sprint("partialsSiaFile shouldn't have any chunks but had ", partialsSiaFile.numChunks()))
+	}
 	partialsEntry := &SiaFileSetEntry{
 		dummyEntry(partialsSiaFile),
 		uint64(fastrand.Intn(math.MaxInt32)),
@@ -169,6 +173,9 @@ func newBlankTestFile() *SiaFile {
 // number of pieces.
 func newTestFile() *SiaFile {
 	sf := newBlankTestFile()
+	if err := setCombinedChunkOfTestFile(sf); err != nil {
+		panic(err)
+	}
 	// Add pieces to each chunk.
 	for chunkIndex := range sf.allChunks() {
 		for pieceIndex := 0; pieceIndex < sf.ErasureCode().NumPieces(); pieceIndex++ {
@@ -207,7 +214,7 @@ func newTestFileParams(minChunks int, partialChunk bool) (string, modules.SiaPat
 	source := string(hex.EncodeToString(fastrand.Bytes(8)))
 
 	// Create the path to the file.
-	siaFilePath := siaPath.SiaFileSysPath(filepath.Join(os.TempDir(), "siafiles"))
+	siaFilePath := siaPath.SiaFileSysPath(filepath.Join(os.TempDir(), "siafiles", hex.EncodeToString(fastrand.Bytes(16))))
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		panic(err)
