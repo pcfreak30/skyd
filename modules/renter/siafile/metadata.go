@@ -3,6 +3,7 @@ package siafile
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -351,11 +352,21 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	defer sf.mu.Unlock()
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	err := os.MkdirAll(dir, 0700)
+	if err != nil {
 		return err
 	}
 	// Create the delete update before changing the path to the new one.
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
+	// If there is a .partial file, delete it too.
+	var partialChunk []byte
+	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
+		updates = append(updates, createDeletePartialUpdate(sf.partialFilePath()))
+		partialChunk, err = ioutil.ReadFile(sf.partialFilePath())
+		if err != nil {
+			return err
+		}
+	}
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
 	// Update the ChangeTime because the metadata changed.
@@ -369,8 +380,12 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	// Write the chunks to the new location.
 	chunksUpdates := sf.saveChunksUpdates()
 	updates = append(updates, chunksUpdates...)
+	// Write a potential .partial file to the new location.
+	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
+		updates = append(updates, createInsertUpdate(sf.partialFilePath(), 0, partialChunk))
+	}
 	// Apply updates.
-	return sf.createAndApplyTransaction(updates...)
+	return createAndApplyTransaction(sf.wal, updates...)
 }
 
 // SetMode sets the filemode of the sia file.
