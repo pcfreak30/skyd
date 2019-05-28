@@ -72,7 +72,7 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 		t.Fatal("allowance setting failed")
 	}
 
-	filesize := int(1024)
+	filesize := int(modules.SectorSize) // upload full chunk file to make sure it's uploaded right away.
 	path := filepath.Join(st.dir, "test.dat")
 	err = createRandFile(path, filesize)
 	if err != nil {
