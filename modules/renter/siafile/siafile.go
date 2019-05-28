@@ -289,7 +289,8 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	defer sf.uploadProgressAndBytes()
 
 	// Handle piece being added to the partial chunk.
-	if chunkIndex == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
+	if chunkIndex == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete &&
+		chunkIndex == uint64(len(sf.fullChunks)) {
 		return sf.partialsSiaFile.AddPiece(pk, sf.staticMetadata.CombinedChunkIndex, pieceIndex, merkleRoot)
 	}
 	// Can't add a piece to a non-existent combined chunk. We could just return
@@ -662,10 +663,10 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 		return [][]Piece{}, err
 	}
 	// Handle partial chunk.
-	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
+	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete && chunkIndex == uint64(len(allChunks)-1) {
 		return sf.partialsSiaFile.Pieces(sf.staticMetadata.CombinedChunkIndex) // get pieces from linked siafile
 	}
-	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk && chunkIndex == uint64(len(allChunks)-1) {
 		return make([][]Piece, len(allChunks[chunkIndex].Pieces)), nil
 	}
 

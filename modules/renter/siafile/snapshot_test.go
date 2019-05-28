@@ -56,8 +56,9 @@ func TestSnapshot(t *testing.T) {
 	if sf.staticMetadata.Mode != snap.staticMode {
 		t.Error("modes don't match")
 	}
-	if !reflect.DeepEqual(sf.pubKeyTable, snap.staticPubKeyTable) {
-		t.Error("pubkeytables don't match")
+	if len(sf.pubKeyTable) > 0 && len(snap.staticPubKeyTable) > 0 &&
+		!reflect.DeepEqual(sf.pubKeyTable, snap.staticPubKeyTable) {
+		t.Error("pubkeytables don't match", sf.pubKeyTable, snap.staticPubKeyTable)
 	}
 	sf.staticSiaFileSet.mu.Lock()
 	if sf.staticSiaFileSet.siaPath(sf) != snap.staticSiaPath {
