@@ -10,6 +10,7 @@ package renter
 import (
 	"container/heap"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -191,6 +192,7 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 		udc.download.mu.Lock()
 		defer udc.download.mu.Unlock()
 		udc.download.chunksRemaining--
+		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength)
 		if udc.download.chunksRemaining == 0 {
 			// Download is complete, send out a notification.
 			udc.download.markComplete()

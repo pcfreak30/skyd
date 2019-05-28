@@ -280,7 +280,9 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error)
 		return nil, err
 	}
 	if f != nil {
+		d.mu.Lock()
 		d.onComplete(f)
+		d.mu.Unlock()
 	}
 	return d.managedCancel, err
 }

@@ -449,7 +449,7 @@ func TestRenterAsyncDownload(t *testing.T) {
 	}
 	t.Parallel()
 
-	st, _ := setupTestDownload(t, 1e4, "test.dat", true)
+	st, _ := setupTestDownload(t, fastrand.Intn(2*int(modules.SectorSize)+1), "test.dat", true)
 	defer st.server.panicClose()
 
 	// Download the file asynchronously.
