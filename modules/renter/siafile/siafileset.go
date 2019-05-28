@@ -169,11 +169,12 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 		delete(sfs.siaFileMap, entry.Metadata().StaticUniqueID)
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
 	}
-
 	// If the entry had a partialSiaFile, close that as well.
-	if entry.partialsSiaFile != nil {
-		sfs.closeEntry(entry.partialsSiaFile)
-	}
+	// TODO: Closing it like this is not working. Maybe we just never close partial
+	// SiaFiles? There are not many of them.
+	//	if entry.partialsSiaFile != nil {
+	//		sfs.closeEntry(entry.partialsSiaFile)
+	//	}
 }
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog

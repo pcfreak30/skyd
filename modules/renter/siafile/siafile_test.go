@@ -295,6 +295,9 @@ func TestFileHealth(t *testing.T) {
 	}
 
 	// Add good pieces to first Piece Set
+	if err := setCombinedChunkOfTestFile(f); err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 2; i++ {
 		host := fmt.Sprintln("host", i)
 		spk := types.SiaPublicKey{}
@@ -401,6 +404,9 @@ func TestFileHealth(t *testing.T) {
 
 	// Add good pieces to second chunk, confirm health is 1.40 since both chunks
 	// have 2 good pieces.
+	if err := setCombinedChunkOfTestFile(f); err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 4; i++ {
 		host := fmt.Sprintln("host", i)
 		spk := types.SiaPublicKey{}
@@ -443,7 +449,8 @@ func TestGrowNumChunks(t *testing.T) {
 	t.Parallel()
 
 	// Create a blank file.
-	sf, wal, _ := newBlankTestFileAndWAL(1)
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, false)
+	sf, wal, _ := customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 	expectedChunks := sf.NumChunks()
 	expectedSize := sf.Size()
 
@@ -793,10 +800,14 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	expectedStuckChunks := sf.NumChunks()
+	if sf.CombinedChunkStatus() == CombinedChunkStatusHasChunk {
+		expectedStuckChunks--
+	}
 	// Confirm that all chunks were marked as stuck
 	_, _, numStuckChunks := sf.Health(offlineMap, goodForRenewMap)
-	if numStuckChunks != sf.NumChunks() {
-		t.Fatalf("numStuckChunks should be %v but was %v", sf.NumChunks(), numStuckChunks)
+	if numStuckChunks != expectedStuckChunks {
+		t.Fatalf("numStuckChunks should be %v but was %v", expectedStuckChunks, numStuckChunks)
 	}
 
 	// Reset chunk stuck status
@@ -823,10 +834,14 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm that all but 1 chunk was marked as stuck
+	// Confirm that all but 1 or 2 chunk was marked as stuck
+	expectedStuckChunks = sf.NumChunks() - 1
+	if sf.CombinedChunkStatus() == CombinedChunkStatusHasChunk {
+		expectedStuckChunks--
+	}
 	_, _, numStuckChunks = sf.Health(offlineMap, goodForRenewMap)
-	if numStuckChunks != sf.NumChunks()-1 {
-		t.Fatalf("numStuckChunks should be %v but was %v", sf.NumChunks()-1, numStuckChunks)
+	if numStuckChunks != expectedStuckChunks {
+		t.Fatalf("numStuckChunks should be %v but was %v", expectedStuckChunks, numStuckChunks)
 	}
 
 	// Reset chunk stuck status
@@ -841,6 +856,9 @@ func TestMarkUnhealthyChunksAsStuck(t *testing.T) {
 	goodForRenewMap = make(map[string]bool)
 
 	// Add good pieces to all chunks
+	if err := setCombinedChunkOfTestFile(sf); err != nil {
+		t.Fatal(err)
+	}
 	for chunkIndex, chunk := range sf.allChunks() {
 		for pieceIndex := range chunk.Pieces {
 			host := fmt.Sprintln("host", chunkIndex, pieceIndex)
@@ -886,6 +904,10 @@ func TestStuckChunks(t *testing.T) {
 		if (i % 2) != 0 {
 			continue
 		}
+		if sf.CombinedChunkStatus() == CombinedChunkStatusIncomplete &&
+			uint64(i) == sf.NumChunks()-1 {
+			continue // partial chunk at the end can't be stuck
+		}
 		if err := sf.SetStuck(uint64(i), true); err != nil {
 			t.Fatal(err)
 		}
@@ -908,10 +930,10 @@ func TestStuckChunks(t *testing.T) {
 	if err = sf.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(sfs.siaFileMap) != 0 {
+	if len(sfs.siaFileMap) != 1 {
 		t.Fatal("File not removed from memory")
 	}
-	if len(sfs.siapathToUID) != 0 {
+	if len(sfs.siapathToUID) != 1 {
 		t.Fatal("File not removed from uid map")
 	}
 

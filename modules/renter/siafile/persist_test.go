@@ -68,8 +68,6 @@ func equalFiles(sf, sf2 *SiaFile) error {
 	}
 	if !reflect.DeepEqual(sf.allChunks(), sf2.allChunks()) {
 		fmt.Println(sf.numChunks(), sf2.numChunks())
-		fmt.Println("sf1", sf.allChunks())
-		fmt.Println("sf2", sf2.allChunks())
 		return errors.New("sf chunks don't equal sf2 chunks")
 	}
 	if sf.siaFilePath != sf2.siaFilePath {
@@ -206,7 +204,7 @@ func newTestFileParams(minChunks int, partialChunk bool) (string, modules.SiaPat
 	}
 	numChunks := fastrand.Intn(10) + minChunks
 	chunkSize := pieceSize * uint64(rc.MinPieces())
-	fileSize := chunkSize*uint64(numChunks) - 1
+	fileSize := chunkSize * uint64(numChunks)
 	if partialChunk {
 		fileSize-- // force partial chunk
 	}
