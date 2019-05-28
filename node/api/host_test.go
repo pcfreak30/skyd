@@ -965,7 +965,7 @@ func TestRemoveStorageFolderForced(t *testing.T) {
 
 	// Create a file for upload.
 	path := filepath.Join(st.dir, "test.dat")
-	if err := createRandFile(path, 512); err != nil {
+	if err := createRandFile(path, int(modules.SectorSize)); err != nil { // upload full chunk file to make sure it's actually uploaded
 		t.Fatal(err)
 	}
 	// Upload to host.
