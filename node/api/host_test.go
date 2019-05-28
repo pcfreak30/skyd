@@ -355,7 +355,7 @@ func TestStorageHandler(t *testing.T) {
 
 	// Create a file.
 	path := filepath.Join(st.dir, "test.dat")
-	fileBytes := 1024
+	fileBytes := int(modules.SectorSize) // create full chunk file to make sure it's actually uploaded
 	if err := createRandFile(path, fileBytes); err != nil {
 		t.Fatal(err)
 	}
