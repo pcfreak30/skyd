@@ -866,7 +866,8 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if _, err := sf.LoadPartialChunk(); err == nil {
 		t.Fatal("LoadPartialChunk should fail")
 	}
-	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", []byte{}, testDir); err == nil {
+	combinedChunk := fastrand.Bytes(int(sf.ChunkSize()))
+	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", combinedChunk, testDir); err == nil {
 		t.Fatal("SetCombinedChunk should fail")
 	}
 	// Save a chunk that's too big.
@@ -891,12 +892,9 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if !bytes.Equal(b, partialChunk) {
 		t.Fatal("Read partial chunk doesn't match written chunk")
 	}
-	// SavePartialChunk and SetCombinedChunk should fail.
+	// SavePartialChunk should fail.
 	if err := sf.SavePartialChunk(partialChunk); err == nil {
 		t.Fatal("SavePartialChunk should fail")
-	}
-	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", []byte{}, testDir); err == nil {
-		t.Fatal("SetCombinedChunk should fail")
 	}
 	// LoadPartialChunk and make sure it has the right contents.
 	b, err = sf.LoadPartialChunk()
@@ -911,7 +909,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 		t.Fatal("SavePartialChunk should fail")
 	}
 	// Set the combined chunk.
-	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", []byte{}, testDir); err != nil {
+	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", combinedChunk, testDir); err != nil {
 		t.Fatal(err)
 	}
 	// The chunk status should be set to "combinedChunkStatusCompleted"
@@ -926,7 +924,7 @@ func TestSaveLoadDeletePartialChunk(t *testing.T) {
 	if err := sf.SavePartialChunk(partialChunk); err == nil {
 		t.Fatal("SavePartialChunk should fail")
 	}
-	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", []byte{}, testDir); err == nil {
+	if err := SetCombinedChunk([]PartialChunkInfo{{sf: sf}}, "", combinedChunk, testDir); err == nil {
 		t.Fatal("SetCombinedChunk should fail")
 	}
 	if _, err := sf.LoadPartialChunk(); err == nil {
