@@ -4664,8 +4664,8 @@ func testFileAvailableAndRecoverable(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
 	dataPieces := uint64(4)
+	fileSize := int(dataPieces*modules.SectorSize) + 1 // 1 full chunk + 1 partial one
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
