@@ -698,7 +698,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 	allChunks := sf.allChunks()
 	if sf.staticMetadata.FileSize == 0 {
 		// TODO change this once tiny files are supported.
-		if len(allChunks) != 1 {
+		if len(allChunks) != 0 {
 			// should never happen
 			return -1
 		}
