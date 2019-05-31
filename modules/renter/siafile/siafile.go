@@ -250,7 +250,6 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 	if sf.numChunks() != newNumChunks {
 		return errors.New("can't change fileSize since it would change the number of chunks")
 	}
-	println("setting size", sf.numChunks())
 	sf.staticMetadata.FileSize = int64(fileSize)
 	// Check if the file changed from not having a partial chunk to having one.
 	if !sf.staticMetadata.DisablePartialChunk &&
