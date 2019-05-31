@@ -320,6 +320,7 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to load SiaFile from disk", err)
 	}
+	sf2.SetPartialsSiaFile(sf.partialsSiaFile)
 	// Compare the files.
 	if err := equalFiles(sf, sf2); err != nil {
 		t.Fatal(err)
