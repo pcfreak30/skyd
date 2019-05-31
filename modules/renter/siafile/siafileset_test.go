@@ -589,7 +589,7 @@ func TestSiaDirRename(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams()
+		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1, true)
 		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc}, sk, fileSize, fileMode)
 		if err != nil {
 			t.Fatal(err)
