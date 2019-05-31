@@ -507,16 +507,23 @@ func TestSiaDirDelete(t *testing.T) {
 	close(stop)
 	wg.Wait()
 	time.Sleep(time.Second)
-	// The root siafile dir should be empty except for 1 .siadir file.
+	// The root siafile dir should be empty except for 1 .siadir file and a .csia
+	// file.
 	files, err := ioutil.ReadDir(sfs.staticSiaFileDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 1 || filepath.Ext(files[0].Name()) != modules.SiaDirExtension {
+	if len(files) != 2 {
 		for _, file := range files {
 			t.Log("Found ", file.Name())
 		}
 		t.Fatalf("There should be %v files/folders in the root dir but found %v\n", 1, len(files))
+	}
+	for _, file := range files {
+		if filepath.Ext(file.Name()) != modules.SiaDirExtension &&
+			filepath.Ext(file.Name()) != modules.PartialsSiaFileExtension {
+			t.Fatal("Encountered unexpected file:", file.Name())
+		}
 	}
 }
 
