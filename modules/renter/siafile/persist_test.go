@@ -149,7 +149,7 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 // and allows the caller to specify how many chunks the file should at least
 // contain.
 func newBlankTestFileAndWAL(minChunks int) (*SiaFile, *writeaheadlog.WAL, string) {
-	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, true)
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(minChunks, true)
 	return customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 }
 

@@ -713,8 +713,8 @@ func TestChunkHealth(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	// Get a blank siafile with at least 2 chunks.
-	sf, _, _ := newBlankTestFileAndWAL(2)
+	// Get a blank siafile with at least 3 chunks.
+	sf, _, _ := newBlankTestFileAndWAL(3)
 	rc := sf.ErasureCode()
 
 	// Create offline map
@@ -745,6 +745,9 @@ func TestChunkHealth(t *testing.T) {
 	spk.LoadString(host)
 	offlineMap[spk.String()] = false
 	goodForRenewMap[spk.String()] = true
+	if err := setCombinedChunkOfTestFile(sf); err != nil {
+		t.Fatal(err)
+	}
 	if err := sf.AddPiece(spk, 0, 0, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
