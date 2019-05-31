@@ -904,7 +904,7 @@ func TestStuckChunks(t *testing.T) {
 		if (i % 2) != 0 {
 			continue
 		}
-		if sf.CombinedChunkStatus() == CombinedChunkStatusIncomplete &&
+		if sf.CombinedChunkStatus() == CombinedChunkStatusHasChunk &&
 			uint64(i) == sf.NumChunks()-1 {
 			continue // partial chunk at the end can't be stuck
 		}
@@ -912,11 +912,6 @@ func TestStuckChunks(t *testing.T) {
 			t.Fatal(err)
 		}
 		expectedStuckChunks++
-	}
-
-	// Sanity Check
-	if expectedStuckChunks == 0 {
-		t.Fatal("No chunks were set to stuck")
 	}
 
 	// Check that the total number of stuck chunks is consistent
@@ -950,6 +945,10 @@ func TestStuckChunks(t *testing.T) {
 
 	// Check chunks and Stuck Chunk Table
 	for i, chunk := range sf.allChunks() {
+		if sf.CombinedChunkStatus() == CombinedChunkStatusHasChunk &&
+			uint64(i) == sf.NumChunks()-1 {
+			continue // partial chunk at the end can't be stuck
+		}
 		if i%2 != 0 {
 			if chunk.Stuck {
 				t.Fatal("Found stuck chunk when un-stuck chunk was expected")
