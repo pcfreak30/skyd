@@ -4680,7 +4680,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Set fileSize and redundancy for upload
-	dataPieces := uint64(4)
+	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := int(modules.SectorSize * dataPieces) // file without partial chunk
 
