@@ -48,6 +48,7 @@ type StreamShard struct {
 // NewStreamShard creates a new stream shard from a reader.
 func NewStreamShard(r io.Reader, peekByte []byte) *StreamShard {
 	return &StreamShard{
+		peekByte:   peekByte,
 		r:          r,
 		signalChan: make(chan struct{}),
 	}
@@ -84,15 +85,15 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	// Add the peek byte if available.
-	n := copy(b, ss.peekByte)
-	ss.peekByte = ss.peekByte[n:]
-	b = b[n:]
-	ss.n += n
+	nPeek := copy(b, ss.peekByte)
+	ss.peekByte = ss.peekByte[nPeek:]
+	b = b[nPeek:]
+	ss.n += nPeek
 	// Read from the underlying reader.
-	n, err := ss.r.Read(b)
-	ss.n += n
+	nRead, err := ss.r.Read(b)
+	ss.n += nRead
 	ss.err = err
-	return n, err
+	return nPeek + nRead, err
 }
 
 // UploadStreamFromReader reads from the provided reader until io.EOF is reached and
