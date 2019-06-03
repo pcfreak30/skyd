@@ -368,6 +368,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		return nil
 	})
 	if err != nil {
+		t.Logf("FileSize: %v", fileSize)
 		t.Fatal(err)
 	}
 	// Download the file again.
@@ -2331,8 +2332,8 @@ func TestRenterLosingHosts(t *testing.T) {
 		contractHosts[c.HostPublicKey.String()] = struct{}{}
 	}
 
-	// Upload a file
-	_, rf, err := r.UploadNewFileBlocking(100, 2, 1, false)
+	// Upload a file without partial chunk.
+	_, rf, err := r.UploadNewFileBlocking(int(modules.SectorSize), 2, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
