@@ -283,8 +283,11 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Size() != sf.chunkOffset(len(sf.fullChunks)-1)+int64(len(chunks[len(chunks)-1])) {
-		t.Fatal("file doesn't have right size")
+	// If the file only has 1 partial chunk and no full chunk don't do this check.
+	if len(sf.fullChunks) > 0 {
+		if fi.Size() != sf.chunkOffset(len(sf.fullChunks)-1)+int64(len(chunks[len(chunks)-1])) {
+			t.Fatal("file doesn't have right size")
+		}
 	}
 	// Compare the metadata to the on-disk metadata.
 	readMD := make([]byte, len(md))
