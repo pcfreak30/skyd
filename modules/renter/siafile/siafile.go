@@ -244,11 +244,12 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 	// Make sure that SetFileSize doesn't affect the number of total chunks within
 	// the file.
 	newNumChunks := fileSize / sf.staticChunkSize()
-	if newNumChunks == 0 && fileSize%sf.staticChunkSize() != 0 {
+	if fileSize%sf.staticChunkSize() != 0 {
 		newNumChunks++
 	}
 	if sf.numChunks() != newNumChunks {
-		return errors.New("can't change fileSize since it would change the number of chunks")
+		return fmt.Errorf("can't change fileSize since it would change the number of chunks from %v to %v",
+			sf.numChunks(), newNumChunks)
 	}
 	sf.staticMetadata.FileSize = int64(fileSize)
 	// Check if the file changed from not having a partial chunk to having one.
@@ -782,47 +783,7 @@ func (sf *SiaFile) SetAllStuck(stuck bool) error {
 func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-
-	// Handle partial chunk.
-	if index == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
-		return sf.partialsSiaFile.SetStuck(sf.staticMetadata.CombinedChunkIndex, stuck)
-	}
-	if index == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
-		return nil // TODO: Handle this differently?
-	}
-
-	// If the file has been deleted we can't mark a chunk as stuck.
-	if sf.deleted {
-		return errors.New("can't call SetStuck on deleted file")
-	}
-	// Check for change
-	if stuck == sf.fullChunks[index].Stuck {
-		return nil
-	}
-	// Remember the currenct number of stuck chunks in case an error happens.
-	nsc := sf.staticMetadata.NumStuckChunks
-	s := sf.fullChunks[index].Stuck
-	defer func() {
-		if err != nil {
-			sf.staticMetadata.NumStuckChunks = nsc
-			sf.fullChunks[index].Stuck = s
-		}
-	}()
-	// Update chunk and NumStuckChunks in siafile metadata
-	sf.fullChunks[index].Stuck = stuck
-	if stuck {
-		sf.staticMetadata.NumStuckChunks++
-	} else {
-		sf.staticMetadata.NumStuckChunks--
-	}
-	// Update chunk and metadata on disk
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	update := sf.saveChunkUpdate(int(index))
-	updates = append(updates, update)
-	return sf.createAndApplyTransaction(updates...)
+	return sf.setStuck(index, stuck)
 }
 
 // StuckChunkByIndex returns if the chunk at the index is marked as Stuck or not
@@ -1100,12 +1061,18 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) ([]writeaheadlog.Update, erro
 }
 
 // removeLastChunk removes the last chunk of the SiaFile and truncates the file
-// accordingly.
+// accordingly. This method might change the metadata but doesn't persist the
+// change itself. Handle this accordingly.
 func (sf *SiaFile) removeLastChunk() error {
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
 		return errors.New("can't remove last chunk if it is a partial chunk")
 	}
+	// Remove a chunk. If the removed chunk was stuck, update the metadata.
+	if sf.fullChunks[0].Stuck {
+		sf.staticMetadata.NumStuckChunks--
+	}
 	sf.fullChunks = sf.fullChunks[:len(sf.fullChunks)-1]
+	// Truncate the file on disk.
 	fi, err := os.Stat(sf.siaFilePath)
 	if err != nil {
 		return err
@@ -1122,6 +1089,9 @@ func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 	// Handle partial chunk.
 	if index == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
 		return sf.partialsSiaFile.SetStuck(sf.staticMetadata.CombinedChunkIndex, stuck)
+	}
+	if index == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+		return nil // TODO: handle this differently?
 	}
 
 	// If the file has been deleted we can't mark a chunk as stuck.

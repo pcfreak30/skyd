@@ -476,7 +476,7 @@ func (sf *SiaFile) UpdateCachedHealthMetadata(metadata CachedHealthMetadata) err
 	defer sf.mu.Unlock()
 	// Update the number of stuck chunks
 	var numStuckChunks uint64
-	for _, chunk := range sf.allChunks() {
+	for _, chunk := range sf.fullChunks {
 		if chunk.Stuck {
 			numStuckChunks++
 		}
