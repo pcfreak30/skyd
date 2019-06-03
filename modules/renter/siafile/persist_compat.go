@@ -75,7 +75,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
 			StaticPieceSize:         fd.PieceSize,
-			StaticUniqueID:          SiafileUID(fd.UID),
+			UniqueID:                SiafileUID(fd.UID),
 		},
 		deps:            modules.ProdDependencies,
 		deleted:         fd.Deleted,

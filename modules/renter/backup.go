@@ -6,16 +6,19 @@ import (
 	"compress/gzip"
 	"crypto/cipher"
 	"encoding/json"
-	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/twofish"
@@ -125,12 +128,6 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	}
 	defer root.Close()
 
-	// Make sure the number of files is 0.
-	numFiles := root.Metadata().AggregateNumFiles
-	if numFiles != 0 {
-		return fmt.Errorf("Backups can only be loaded on renters with 0 files but got %v", numFiles)
-	}
-
 	// Open the gzip file.
 	f, err := os.Open(src)
 	if err != nil {
@@ -200,7 +197,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	// Wrap the gzip reader in a tar reader.
 	tr := tar.NewReader(gzr)
 	// Untar the files.
-	return untarDir(tr, r.staticFilesDir)
+	return r.managedUntarDir(tr)
 }
 
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
@@ -228,13 +225,17 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		}
 		relPath := strings.TrimPrefix(path, r.staticFilesDir)
 		header.Name = relPath
-		// If the info is a dir there is nothing more to do.
+		// If the info is a dir there is nothing more to do besides writing the
+		// header.
 		if info.IsDir() {
 			return tw.WriteHeader(header)
 		}
 		// Handle siafiles and siadirs differently.
 		var file io.Reader
-		if filepath.Ext(path) == modules.SiaFileExtension || filepath.Ext(path) == modules.PartialsSiaFileExtension {
+		switch filepath.Ext(path) {
+		case modules.SiaFileExtension:
+			fallthrough
+		case modules.PartialsSiaFileExtension:
 			// Get the siafile.
 			siaPathStr := strings.TrimSuffix(relPath, modules.SiaFileExtension)
 			siaPathStr = strings.TrimSuffix(siaPathStr, modules.PartialsSiaFileExtension)
@@ -262,7 +263,14 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			}
 			defer sr.Close()
 			file = sr
-		} else if filepath.Ext(path) == modules.SiaDirExtension {
+			// Update the size of the file within the header since it might have changed
+			// while we weren't holding the lock.
+			fi, err := sr.Stat()
+			if err != nil {
+				return err
+			}
+			header.Size = fi.Size()
+		case modules.SiaDirExtension:
 			// Get the siadir.
 			var siaPath modules.SiaPath
 			siaPathStr := strings.TrimSuffix(relPath, modules.SiaDirExtension)
@@ -286,7 +294,14 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			}
 			defer dr.Close()
 			file = dr
-		} else if filepath.Ext(path) == modules.PartialChunkExtension {
+			// Update the size of the file within the header since it might have changed
+			// while we weren't holding the lock.
+			fi, err := dr.Stat()
+			if err != nil {
+				return err
+			}
+			header.Size = fi.Size()
+		case modules.PartialChunkExtension:
 			// Get the siafile.
 			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.PartialChunkExtension))
 			if err != nil {
@@ -314,9 +329,9 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 	})
 }
 
-// untarDir untars the archive from src and writes the contents to dstFolder
+// managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
-func untarDir(tr *tar.Reader, dstFolder string) error {
+func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 	// Copy the files from the tarball to the new location.
 	for {
 		header, err := tr.Next()
@@ -325,7 +340,7 @@ func untarDir(tr *tar.Reader, dstFolder string) error {
 		} else if err != nil {
 			return err
 		}
-		dst := filepath.Join(dstFolder, header.Name)
+		dst := filepath.Join(r.staticFilesDir, header.Name)
 
 		// Check for dir.
 		info := header.FileInfo()
@@ -335,54 +350,80 @@ func untarDir(tr *tar.Reader, dstFolder string) error {
 			}
 			continue
 		}
-		// Add a suffix to the dst path if the file already exists for siafiles. We do
-		// this for .sia and .partial files. We don't want .csia files or .siadir
-		// files to be renamed since the renter won't be able to find it anymore.
-		uniqueName := filepath.Ext(dst) == modules.SiaFileExtension ||
-			filepath.Ext(dst) == modules.PartialChunkExtension
-		if uniqueName {
-			dst = uniqueFilename(dst)
-		}
-		// Create file while preserving mode.
-		f, err := os.OpenFile(dst, os.O_EXCL|os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
-		if !uniqueName && os.IsExist(err) {
-			// TODO: maybe some logging to indicate that we skipped files.
-			continue
-		}
+		// Load the new file in memory.
+		b, err := ioutil.ReadAll(tr)
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(f, tr)
-
-		// Close the file right away instead of defering it.
-		_ = f.Close()
-
-		// Check if io.Copy was successful.
-		if err != nil {
-			return err
+		var uniqueFilename bool
+		switch filepath.Base(info.Name()) {
+		case modules.SiaDirExtension:
+			// Load the file as a .siadir
+			var md siadir.Metadata
+			err = json.Unmarshal(b, &md)
+			if err != nil {
+				return err
+			}
+			// Try creating a new SiaDir.
+			var siaPath modules.SiaPath
+			if err := siaPath.LoadSysPath(r.staticFilesDir, dst); err != nil {
+				return err
+			}
+			siaPath, err = siaPath.Dir()
+			if err != nil {
+				return err
+			}
+			dirEntry, err := r.staticDirSet.NewSiaDir(siaPath)
+			if err == siadir.ErrPathOverload {
+				// .siadir exists already
+				continue
+			} else if err != nil {
+				return err // unexpected error
+			}
+			// Update the metadata.
+			if err := dirEntry.UpdateMetadata(md); err != nil {
+				dirEntry.Close()
+				return err
+			}
+			if err := dirEntry.Close(); err != nil {
+				return err
+			}
+		case modules.SiaFileExtension:
+			uniqueFilename = true
+			fallthrough
+		case modules.PartialsSiaFileExtension:
+			// Load the file as a SiaFile.
+			sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
+			if err != nil {
+				return err
+			}
+			// Add the file to the SiaFileSet.
+			err = r.staticFileSet.AddExistingSiaFile(sf, uniqueFilename)
+			if err != nil {
+				return err
+			}
+		case modules.PartialChunkExtension:
+			// TODO: this is actually more tricky than this. There is a chance that the
+			// partial chunk belongs to a siafile with a suffix. We need to figure out
+			// how to handle that.
+			f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			if os.IsExist(err) {
+				continue // partial chunk exists already
+			} else if err != nil {
+				return err
+			}
+			// Write partial chunk.
+			_, err = f.Write(b)
+			if err != nil {
+				return errors.Compose(err, f.Close())
+			}
+			// Close file again.
+			if err := f.Close(); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
-}
-
-// uniqueFilename checks if a file exists at a certain destination. If it does
-// it will append a suffix of the form _[num] and increment [num] until it can
-// find a suffix that isn't in use yet.
-func uniqueFilename(dst string) string {
-	suffix := ""
-	counter := 1
-	extension := filepath.Ext(dst)
-	nameNoExt := strings.TrimSuffix(dst, extension)
-	for {
-		path := nameNoExt + suffix + extension
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			// File doesn't exist. We are done.
-			return path
-		}
-		// Duplicate detected. Increment suffix and counter.
-		suffix = fmt.Sprintf("_%v", counter)
-		counter++
-	}
 }
 
 // wrapReaderInCipher wraps the reader r into another reader according to the

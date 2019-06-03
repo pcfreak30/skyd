@@ -169,7 +169,7 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
-			StaticUniqueID:          uniqueID(),
+			UniqueID:                uniqueID(),
 		},
 		deps:            modules.ProdDependencies,
 		partialsSiaFile: partialsSiaFile,
@@ -834,7 +834,9 @@ func (sf *SiaFile) StuckChunkByIndex(index uint64) bool {
 
 // UID returns a unique identifier for this file.
 func (sf *SiaFile) UID() SiafileUID {
-	return sf.staticMetadata.StaticUniqueID
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.UniqueID
 }
 
 // UpdateUsedHosts updates the 'Used' flag for the entries in the pubKeyTable

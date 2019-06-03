@@ -206,6 +206,7 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	// Get non-static metadata fields under lock.
 	fileSize := sf.staticMetadata.FileSize
 	mode := sf.staticMetadata.Mode
+	uid := sf.staticMetadata.UniqueID
 	sf.mu.RUnlock()
 
 	sf.staticSiaFileSet.mu.Lock()
@@ -222,7 +223,7 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 		staticMode:                mode,
 		staticPubKeyTable:         pkt,
 		staticSiaPath:             sp,
-		staticUID:                 sf.staticMetadata.StaticUniqueID,
+		staticUID:                 uid,
 		staticFileSet:             sf.staticSiaFileSet,
 	}, nil
 }
