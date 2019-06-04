@@ -2333,7 +2333,9 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 
 	// Upload a file without partial chunk.
-	_, rf, err := r.UploadNewFileBlocking(int(modules.SectorSize), 2, 1, false)
+	dataPieces := uint64(2)
+	parityPieces := uint64(1)
+	_, rf, err := r.UploadNewFileBlocking(int(dataPieces*modules.SectorSize), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
