@@ -4157,7 +4157,6 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 
 	// Start the renter again. This time it's unlocked and the automatic recovery
 	// scan isn't disabled.
-	println("starting")
 	if err := tg.StartNodeCleanDeps(r); err != nil {
 		t.Fatal(err)
 	}
@@ -4266,12 +4265,12 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Create a backup.
 	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
-	err = r.RenterCreateBackupPost(backupPath, false)
+	err = r.RenterCreateLocalBackupPost(backupPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Recover the backup into the same renter. Nothing should change.
-	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
 		t.Fatal(err)
 	}
 	files, err := r.Files(false)
@@ -4300,7 +4299,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	r = nodes[0]
 	// Recover the backup.
-	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
 		t.Fatal(err)
 	}
 	// The .siadir file should also be recovered.
@@ -4336,7 +4335,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Recover the backup again. Now there should be another file with a suffix at
 	// the end.
-	if err := r.RenterRecoverBackupPost(backupPath, false); err != nil {
+	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
 		t.Fatal(err)
 	}
 	fis, err := r.RenterFilesGet(false)
@@ -4833,13 +4832,13 @@ func TestRemoteBackup(t *testing.T) {
 	}
 	// Create a snapshot.
 	createSnapshot := func(name string) error {
-		if err := r.RenterCreateBackupPost(name, true); err != nil {
+		if err := r.RenterCreateBackupPost(name); err != nil {
 			return err
 		}
 		// wait for backup to upload
 		return build.Retry(60, time.Second, func() error {
-			ubs, _ := r.RenterUploadedBackups()
-			for _, ub := range ubs {
+			ubs, _ := r.RenterBackups()
+			for _, ub := range ubs.Backups {
 				if ub.Name != name {
 					continue
 				} else if ub.UploadProgress != 100 {
@@ -4868,10 +4867,10 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Both snapshots should be listed.
-	ubs, err := r.RenterUploadedBackups()
+	ubs, err := r.RenterBackups()
 	if err != nil {
 		t.Fatal(err)
-	} else if len(ubs) != 2 {
+	} else if len(ubs.Backups) != 2 {
 		t.Fatal("expected two backups, got", ubs)
 	}
 
@@ -4882,7 +4881,7 @@ func TestRemoteBackup(t *testing.T) {
 	if err := r.RenterDeletePost(rf2.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.RenterRecoverBackupPost("foo", true); err != nil {
+	if err := r.RenterRecoverBackupPost("foo"); err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download the first file.
@@ -4899,7 +4898,7 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Restore the second snapshot.
-	if err := r.RenterRecoverBackupPost("bar", true); err != nil {
+	if err := r.RenterRecoverBackupPost("bar"); err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download both files now.
@@ -4952,11 +4951,13 @@ func TestRemoteBackup(t *testing.T) {
 	// Wait for the recovery process to complete.
 	err = build.Retry(60, time.Second, func() error {
 		// Both snapshots should be listed.
-		ubs, err = r.RenterUploadedBackups()
+		ubs, err = r.RenterBackups()
 		if err != nil {
 			return err
-		} else if len(ubs) != 2 {
-			return fmt.Errorf("expected two backups, got %v", ubs)
+		} else if len(ubs.Backups) != 2 {
+			return fmt.Errorf("expected two backups, got %v", ubs.Backups)
+		} else if len(ubs.SyncedHosts) != 2 {
+			return fmt.Errorf("expected two synced hosts, got %v", len(ubs.SyncedHosts))
 		}
 		return nil
 	})
@@ -4965,7 +4966,7 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Restore the second snapshot.
-	if err := r.RenterRecoverBackupPost("bar", true); err != nil {
+	if err := r.RenterRecoverBackupPost("bar"); err != nil {
 		t.Fatal(err)
 	}
 	// We should be able to download both files now.
@@ -5150,22 +5151,19 @@ func TestOutOfStorageHandling(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if len(rcg.ActiveContracts) != 2 {
-			return fmt.Errorf("Expected 2 active contracts but got %v", len(rcg.ActiveContracts))
+		// One contract should be good for uploads and renewal and is therefore
+		// active.
+		if len(rcg.ActiveContracts) != 1 {
+			return fmt.Errorf("Expected 1 active contract but got %v", len(rcg.ActiveContracts))
 		}
-		var hostContract api.RenterContract
-		if hc := rcg.ActiveContracts[0]; hc.HostPublicKey.String() == hpk.String() {
-			hostContract = hc
-		} else if hc := rcg.ActiveContracts[1]; hc.HostPublicKey.String() == hpk.String() {
-			hostContract = hc
-		} else {
-			return errors.New("Neither of the active contracts belongs to the host")
+		// One contract should be good for renewal but not uploading and is therefore
+		// passive.
+		if len(rcg.PassiveContracts) != 1 {
+			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
 		}
-		if !hostContract.GoodForRenew {
-			return errors.New("contract should be GoodForRenew but wasn't")
-		}
-		if hostContract.GoodForUpload {
-			return errors.New("contract shouldn't be GoodForUPload but was")
+		hostContract := rcg.PassiveContracts[0]
+		if hostContract.HostPublicKey.String() != hpk.String() {
+			return errors.New("Passive contract doesn't belong to the host")
 		}
 		return nil
 	})
@@ -5182,12 +5180,32 @@ func TestOutOfStorageHandling(t *testing.T) {
 	if err := renter.WaitForUploadRedundancy(rf, allowance.ExpectedRedundancy); err != nil {
 		t.Fatal(err)
 	}
-	// There should be 3 active contracts now.
+	// There should be 2 active contracts now and 1 passive one.
 	rcg, err := renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rcg.ActiveContracts) != 3 {
-		t.Fatal("Expected 3 active contracts but got", len(rcg.ActiveContracts))
+	if len(rcg.ActiveContracts) != 2 {
+		t.Fatal("Expected 2 active contracts but got", len(rcg.ActiveContracts))
+	}
+	if len(rcg.PassiveContracts) != 1 {
+		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
+	}
+	// After a while we give the host a new chance and it should be active again.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if err := tg.Miners()[0].MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		rcg, err = renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcg.ActiveContracts) != 3 {
+			return fmt.Errorf("Expected 3 active contracts but got %v", len(rcg.ActiveContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
