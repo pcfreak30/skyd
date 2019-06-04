@@ -492,13 +492,8 @@ func (r *Renter) managedRenterContractsAndUtilities(entrys []*siafile.SiaFileSet
 	goodForRenew = make(map[string]bool)
 	offline = make(map[string]bool)
 	for _, e := range entrys {
-		var used []types.SiaPublicKey
 		for _, pk := range e.HostPublicKeys() {
 			pks[pk.String()] = pk
-			used = append(used, pk)
-		}
-		if err := e.UpdateUsedHosts(used); err != nil {
-			r.log.Debugln("WARN: Could not update used hosts:", err)
 		}
 	}
 	// Build 2 maps that map every pubkey to its offline and goodForRenew
@@ -517,11 +512,28 @@ func (r *Renter) managedRenterContractsAndUtilities(entrys []*siafile.SiaFileSet
 		offline[pk.String()] = r.hostContractor.IsOffline(pk)
 		contracts[pk.String()] = contract
 	}
-	// Update the cached expiration of the siafiles.
+	// Update the cached expiration of the siafiles and update the used hosts based on all
+	used := r.managedUsedHosts()
 	for _, e := range entrys {
+		if err := e.UpdateUsedHosts(used); err != nil {
+			r.log.Debugln("WARN: Could not update used hosts:", err)
+		}
 		_ = e.Expiration(contracts)
 	}
 	return offline, goodForRenew, contracts
+}
+
+// managedUsedHosts returns all the pubkeys of the current hosts that the renter
+// has contracts with
+func (r *Renter) managedUsedHosts() []types.SiaPublicKey {
+	// Get the list of public keys from the contractor and use it to fill out
+	// the contracts map.
+	cs := r.hostContractor.Contracts()
+	var used []types.SiaPublicKey
+	for _, c := range cs {
+		used = append(used, c.HostPublicKey)
+	}
+	return used
 }
 
 // setBandwidthLimits will change the bandwidth limits of the renter based on

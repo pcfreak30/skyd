@@ -788,7 +788,9 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	}
 	// Prune the pubKeyTable if necessary.
 	pruned := false
-	if unusedHosts > pubKeyTablePruneThreshold {
+	tooManyUnusedHosts := unusedHosts > pubKeyTablePruneThreshold
+	enoughUsedHosts := len(used) > sf.staticMetadata.staticErasureCode.NumPieces()
+	if tooManyUnusedHosts && enoughUsedHosts {
 		sf.pruneHosts()
 		pruned = true
 	}
