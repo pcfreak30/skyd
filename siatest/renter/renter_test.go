@@ -3396,8 +3396,8 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("This test requires at least 2 hosts")
 	}
 	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
 	dataPieces := uint64(1)
+	fileSize := int(dataPieces * modules.SectorSize)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
