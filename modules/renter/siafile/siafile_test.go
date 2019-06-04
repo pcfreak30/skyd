@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -179,15 +180,19 @@ func TestPruneHosts(t *testing.T) {
 	// hosts were pruned and that the remaining pieces have the correct offset
 	// now.
 	for chunkIndex := range sf.chunks {
-		for _, pieceSet := range sf.chunks[chunkIndex].Pieces {
+		pieces, err := sf.Pieces(uint64(chunkIndex))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pieceSet := range pieces {
 			if len(pieceSet) != 1 {
 				t.Fatalf("Expected 1 piece in the set but was %v", len(pieceSet))
 			}
 			// The HostTableOffset should always be 0 since the keys at index 0
 			// and 2 were pruned which means that index 1 is now index 0.
 			for _, piece := range pieceSet {
-				if piece.HostTableOffset != 0 {
-					t.Fatalf("HostTableOffset should be 0 but was %v", piece.HostTableOffset)
+				if piece.HostPubKey.String() != sf.pubKeyTable[0].PublicKey.String() {
+					t.Fatalf("Public key at index 0 didn't match expected public key")
 				}
 			}
 		}
@@ -800,4 +805,91 @@ func TestFileExpiration(t *testing.T) {
 	if f.staticMetadata.CachedExpiration != 50 {
 		t.Error("file did not report lowest WindowStart")
 	}
+}
+
+// TestPruneHostsMassive is a unit test for the pruneHosts method.
+func TestPruneHostsMassive(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sf := newBlankTestFile()
+
+	// Add 100 random hostkeys to the file.
+	numKeys := 100
+	sf.addRandomHostKeys(numKeys)
+
+	// Save changes to disk.
+	if err := sf.saveFile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start a goroutine that adds pieces for random hosts to chunks.
+	stop := make(chan struct{})
+	worker := func() {
+	LOOP:
+		for {
+			select {
+			case <-stop:
+				break LOOP
+			default:
+			}
+			time.Sleep(100 * time.Millisecond)
+			// Add a new piece.
+			hk := sf.HostPublicKeys()[fastrand.Intn(len(sf.HostPublicKeys()))]
+			chunkIndex := fastrand.Intn(int(sf.NumChunks()))
+			pieceIndex := fastrand.Intn(sf.ErasureCode().NumPieces())
+			if err := sf.AddPiece(hk, uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
+				t.Fatal(err)
+			}
+			// Mark random hosts as used.
+			allHosts := sf.HostPublicKeys()
+			var usedHosts []types.SiaPublicKey
+			for _, hpc := range allHosts {
+				if fastrand.Intn(2) == 0 {
+					continue
+				}
+				usedHosts = append(usedHosts, hpc)
+			}
+			if err := sf.UpdateUsedHosts(usedHosts); err != nil {
+				t.Fatal(err)
+			}
+			// Grow the number of hosts in the table if they drop below 10% of the
+			// initial keys.
+			if float64(len(sf.HostPublicKeys())) < 0.1*float64(numKeys) {
+				sf.mu.Lock()
+				sf.addRandomHostKeys(numKeys - len(sf.HostPublicKeys()))
+				if err := sf.saveFile(); err != nil {
+					t.Fatal(err)
+				}
+				sf.mu.Unlock()
+			}
+		}
+	}
+
+	// Spin up workers.
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			wg.Done()
+			go worker()
+		}()
+	}
+
+	// Over a period of time keep calling sf.Pieces periodically.
+	start := time.Now()
+	for {
+		if time.Since(start) > time.Minute {
+			break
+		}
+		_, err := sf.Pieces(uint64(fastrand.Intn(int(sf.NumChunks()))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	close(stop)
+	wg.Wait()
 }
