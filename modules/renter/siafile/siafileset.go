@@ -360,7 +360,7 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 			return nil, err
 		}
 		// Load the corresponding partialsSiaFile.
-		partialsSiaFile, err := sfs.openPartialsSiaFile(sf.ErasureCode())
+		partialsSiaFile, err := sfs.openPartialsSiaFile(sf.ErasureCode(), true)
 		if err != nil {
 			return nil, err
 		}
@@ -408,15 +408,44 @@ func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, erro
 	return md, nil
 }
 
+// AddExistingPartialsSiaFile adds an existing partial SiaFile to the set and
+// stores it on disk. If the file already exists this will produce an error
+// since we can't just add a suffix to it.
+func (sfs *SiaFileSet) AddExistingPartialsSiaFile(sf *SiaFile) error {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.addExistingPartialsSiaFile(sf)
+}
+
 // AddExistingSiaFile adds an existing SiaFile to the set and stores it on disk.
 // If the exact same file already exists, this is a no-op. If a file already
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile, uniqueFilename bool) error {
+func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.addExistingSiaFile(sf, uniqueFilename, 0)
+	return sfs.addExistingSiaFile(sf, 0)
+}
+
+// addExistingPartialsSiaFile adds an existing partial SiaFile to the set and
+// stores it on disk. If the file already exists this will produce an error
+// since we can't just add a suffix to it.
+func (sfs *SiaFileSet) addExistingPartialsSiaFile(sf *SiaFile) error {
+	// Check if a file with that path exists already.
+	var siaPath modules.SiaPath
+	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
+	if err != nil {
+		return os.ErrExist
+	}
+	oldFile, err := sfs.openPartialsSiaFile(sf.ErasureCode(), false)
+	if err == nil {
+		sfs.closeEntry(oldFile)
+		return os.ErrExist
+	} else if os.IsNotExist(err) {
+		return sf.Save()
+	}
+	return err
 }
 
 // addExistingSiaFile adds an existing SiaFile to the set and stores it on disk.
@@ -424,7 +453,7 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile, uniqueFilename bool) erro
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, uniqueFilename bool, suffix uint) error {
+func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
@@ -452,17 +481,20 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, uniqueFilename bool, suff
 			siaFilePath := siaPath.AddSuffix(suffix).SiaFileSysPath(sfs.staticSiaFileDir)
 			sf.SetSiaFilePath(siaFilePath)
 		}
+		// Set the correct partials SiaFile.
+		ec := sf.ErasureCode()
+		psf, err := sfs.openPartialsSiaFile(ec, true)
+		if err != nil {
+			return err
+		}
+		sf.SetPartialsSiaFile(psf)
 		return sf.Save()
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {
 		return nil
 	}
-	// If it exists and the UIDs don't match, increment the suffix and try again.
-	if uniqueFilename {
-		return sfs.addExistingSiaFile(sf, uniqueFilename, suffix+1)
-	}
-	return os.ErrExist
+	return sfs.addExistingSiaFile(sf, suffix+1)
 }
 
 // Delete deletes the SiaFileSetEntry's SiaFile
@@ -634,7 +666,7 @@ func (sfs *SiaFileSet) newSiaFile(up modules.FileUploadParams, masterKey crypto.
 		return nil, ErrPathOverload
 	}
 	// Open the corresponding partials file.
-	partialsSiaFile, err := sfs.openPartialsSiaFile(up.ErasureCode)
+	partialsSiaFile, err := sfs.openPartialsSiaFile(up.ErasureCode, true)
 	if err != nil {
 		return nil, err
 	}
@@ -834,12 +866,14 @@ func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir
 // openPartialsSiaFile opens a SiaFile which will be used to upload chunks
 // consisting of partial chunks. If the SiaFile doesn't exist, it will be
 // created.
-func (sfs *SiaFileSet) openPartialsSiaFile(ec modules.ErasureCoder) (*SiaFileSetEntry, error) {
+func (sfs *SiaFileSet) openPartialsSiaFile(ec modules.ErasureCoder, create bool) (*SiaFileSetEntry, error) {
 	siaPath := modules.CombinedSiaFilePath(ec)
 	var entry *siaFileSetEntry
 	var exists bool
 	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)
-	if !exists {
+	if !exists && !create {
+		return nil, os.ErrNotExist
+	} else if !exists {
 		// Try and Load File from disk.
 		sf, err := LoadSiaFile(siaPath.SiaPartialsFileSysPath(sfs.staticSiaFileDir), sfs.wal)
 		if os.IsNotExist(err) {

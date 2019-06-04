@@ -201,12 +201,18 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 	if _, err := r.Seek(sf.staticMetadata.PubKeyTableOffset, io.SeekStart); err != nil {
 		return nil, errors.AddContext(err, "failed to seek to pubKeyTable")
 	}
-	if _, err := r.Read(rawPubKeyTable); err != nil {
+	if _, err := r.Read(rawPubKeyTable); err == io.EOF {
+		// Empty table.
+		sf.pubKeyTable = []HostPublicKey{}
+	} else if err != nil {
+		// Unexpected error.
 		return nil, errors.AddContext(err, "failed to read pubKeyTable from disk")
-	}
-	sf.pubKeyTable, err = unmarshalPubKeyTable(rawPubKeyTable)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to unmarshal pubKeyTable")
+	} else {
+		// Unmarshal table.
+		sf.pubKeyTable, err = unmarshalPubKeyTable(rawPubKeyTable)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to unmarshal pubKeyTable")
+		}
 	}
 	// Seek to the start of the chunks.
 	off, err := r.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)

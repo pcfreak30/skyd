@@ -51,7 +51,7 @@ func TestAddExistingSiafile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add the existing file to the set again this shouldn't do anything.
-	if err := sfs.AddExistingSiaFile(sf.SiaFile, true); err != nil {
+	if err := sfs.AddExistingSiaFile(sf.SiaFile); err != nil {
 		t.Fatal(err)
 	}
 	numSiaFiles := 0
@@ -82,7 +82,7 @@ func TestAddExistingSiafile(t *testing.T) {
 	preImportUID := newSF.UID()
 	// Import the file. This should work because the files no longer share the same
 	// UID.
-	if err := sfs.AddExistingSiaFile(newSF, true); err != nil {
+	if err := sfs.AddExistingSiaFile(newSF); err != nil {
 		t.Fatal(err)
 	}
 	numSiaFiles = 0

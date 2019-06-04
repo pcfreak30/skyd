@@ -49,7 +49,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		return &SiaFileSetEntry{}, err
 	}
 	zeroHealth := float64(1 + fd.ErasureCode.MinPieces()/(fd.ErasureCode.NumPieces()-fd.ErasureCode.MinPieces()))
-	partialsSiaFile, err := sfs.openPartialsSiaFile(fd.ErasureCode)
+	partialsSiaFile, err := sfs.openPartialsSiaFile(fd.ErasureCode, true)
 	if err != nil {
 		return nil, err
 	}

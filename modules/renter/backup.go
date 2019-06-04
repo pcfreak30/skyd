@@ -355,8 +355,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		if err != nil {
 			return err
 		}
-		var uniqueFilename bool
-		switch filepath.Base(info.Name()) {
+		switch filepath.Ext(info.Name()) {
 		case modules.SiaDirExtension:
 			// Load the file as a .siadir
 			var md siadir.Metadata
@@ -389,16 +388,24 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 				return err
 			}
 		case modules.SiaFileExtension:
-			uniqueFilename = true
-			fallthrough
-		case modules.PartialsSiaFileExtension:
 			// Load the file as a SiaFile.
 			sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
 			if err != nil {
 				return err
 			}
 			// Add the file to the SiaFileSet.
-			err = r.staticFileSet.AddExistingSiaFile(sf, uniqueFilename)
+			err = r.staticFileSet.AddExistingSiaFile(sf)
+			if err != nil {
+				return err
+			}
+		case modules.PartialsSiaFileExtension:
+			// Load the file as a SiaFile.
+			psf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
+			if err != nil {
+				return err
+			}
+			// Add the file to the SiaFileSet.
+			err = r.staticFileSet.AddExistingPartialsSiaFile(psf)
 			if err != nil {
 				return err
 			}
