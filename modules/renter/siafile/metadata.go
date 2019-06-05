@@ -300,6 +300,14 @@ func SetCombinedChunk(cci []PartialChunkInfo, combinedChunkID string, combinedCh
 	return createAndApplyTransaction(partialsSiaFile.wal, updates...)
 }
 
+// SetCombinedChunkIndex updates the CombinedChunkIndex field of the Siafile's
+// metadata in memory.
+func (sf *SiaFile) SetCombinedChunkIndex(chunkIndex uint64) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.CombinedChunkIndex = chunkIndex
+}
+
 // MasterKey returns the masterkey used to encrypt the file.
 func (sf *SiaFile) MasterKey() crypto.CipherKey {
 	sk, err := crypto.NewSiaKey(sf.staticMetadata.StaticMasterKeyType, sf.staticMetadata.StaticMasterKey)

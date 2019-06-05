@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/cipher"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -98,7 +99,13 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 	gzw := gzip.NewWriter(archive)
 	// Wrap the gzip writer into a tar writer.
 	tw := tar.NewWriter(gzw)
-	// Add the files to the archive.
+	// Tar the partials Siafiles first.
+	if err := r.managedTarPartialsSiaFile(tw); err != nil {
+		twErr := tw.Close()
+		gzwErr := gzw.Close()
+		return errors.Compose(err, twErr, gzwErr)
+	}
+	// Add the remaining files to the archive.
 	if err := r.managedTarSiaFiles(tw); err != nil {
 		twErr := tw.Close()
 		gzwErr := gzw.Close()
@@ -200,6 +207,62 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	return r.managedUntarDir(tr)
 }
 
+// managedTarPartialsSiaFile tars only partials Siafiles. This makes sure than
+// when untaring the archive, we read those files first.
+func (r *Renter) managedTarPartialsSiaFile(tw *tar.Writer) error {
+	// Walk over all the siafiles and add them to the tarball.
+	return filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
+		// This error is non-nil if filepath.Walk couldn't stat a file or
+		// folder.
+		if err != nil {
+			return err
+		}
+		// Nothing to do for files that are not PartialsSiaFiles
+		if filepath.Ext(path) != modules.PartialsSiaFileExtension {
+			return nil
+		}
+		// Create the header for the file/dir.
+		header, err := tar.FileInfoHeader(info, info.Name())
+		if err != nil {
+			return err
+		}
+		relPath := strings.TrimPrefix(path, r.staticFilesDir)
+		header.Name = relPath
+		// Get the siafile.
+		siaPathStr := strings.TrimSuffix(relPath, modules.SiaFileExtension)
+		siaPathStr = strings.TrimSuffix(siaPathStr, modules.PartialsSiaFileExtension)
+		siaPath, err := modules.NewSiaPath(siaPathStr)
+		if err != nil {
+			return err
+		}
+		entry, err := r.staticFileSet.LoadPartialSiaFile(siaPath)
+		if err != nil {
+			return err
+		}
+		defer entry.Close()
+		// Get a reader to read from the siafile.
+		sr, err := entry.SnapshotReader()
+		if err != nil {
+			return err
+		}
+		defer sr.Close()
+		// Update the size of the file within the header since it might have changed
+		// while we weren't holding the lock.
+		fi, err := sr.Stat()
+		if err != nil {
+			return err
+		}
+		header.Size = fi.Size()
+		// Write the header.
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		// Add the file to the archive.
+		_, err = io.Copy(tw, sr)
+		return err
+	})
+}
+
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
 // it to dst.
 func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
@@ -214,7 +277,6 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		if !info.IsDir() &&
 			filepath.Ext(path) != modules.SiaFileExtension &&
 			filepath.Ext(path) != modules.SiaDirExtension &&
-			filepath.Ext(path) != modules.PartialsSiaFileExtension &&
 			filepath.Ext(path) != modules.PartialChunkExtension {
 			return nil
 		}
@@ -234,8 +296,6 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		var file io.Reader
 		switch filepath.Ext(path) {
 		case modules.SiaFileExtension:
-			fallthrough
-		case modules.PartialsSiaFileExtension:
 			// Get the siafile.
 			siaPathStr := strings.TrimSuffix(relPath, modules.SiaFileExtension)
 			siaPathStr = strings.TrimSuffix(siaPathStr, modules.PartialsSiaFileExtension)
@@ -243,17 +303,9 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			if err != nil {
 				return err
 			}
-			var entry *siafile.SiaFileSetEntry
-			if filepath.Ext(path) == modules.SiaFileExtension {
-				entry, err = r.staticFileSet.Open(siaPath)
-				if err != nil {
-					return err
-				}
-			} else {
-				entry, err = r.staticFileSet.LoadPartialSiaFile(siaPath)
-				if err != nil {
-					return err
-				}
+			entry, err := r.staticFileSet.Open(siaPath)
+			if err != nil {
+				return err
 			}
 			defer entry.Close()
 			// Get a reader to read from the siafile.
@@ -355,6 +407,10 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		if err != nil {
 			return err
 		}
+		// Save conversion maps required to map the CombinedChunkIndex of imported
+		// Siafiles to their new CombinedChunkIndex.
+		idxConversionMaps := make(map[modules.ErasureCoderIdentifier]map[uint64]uint64)
+
 		switch filepath.Ext(info.Name()) {
 		case modules.SiaDirExtension:
 			// Load the file as a .siadir
@@ -393,6 +449,20 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			if err != nil {
 				return err
 			}
+			// Use the conversion map to update the file's CombinedChunkIndex if
+			// necessary.
+			eci := sf.ErasureCode().Identifier()
+			indexMap := idxConversionMaps[eci]
+			if sf.CombinedChunkStatus() == siafile.CombinedChunkStatusCompleted {
+				if indexMap == nil {
+					return fmt.Errorf("expected indexMap for '%v' but couldn't find it", eci)
+				}
+				newIndex, ok := indexMap[sf.CombinedChunkIndex()]
+				if !ok {
+					return fmt.Errorf("missing mapping for identifier '%v' at index '%v'", eci, sf.CombinedChunkIndex())
+				}
+				sf.SetCombinedChunkIndex(newIndex)
+			}
 			// Add the file to the SiaFileSet.
 			err = r.staticFileSet.AddExistingSiaFile(sf)
 			if err != nil {
@@ -404,11 +474,18 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			if err != nil {
 				return err
 			}
-			// Add the file to the SiaFileSet.
-			err = r.staticFileSet.AddExistingPartialsSiaFile(psf)
+			// Add partial siafile to set.
+			indexMap, err := r.staticFileSet.AddExistingPartialsSiaFile(psf)
 			if err != nil {
 				return err
 			}
+			// Remember indexMap to translate the combinedChunkIndex of imported
+			// SiaFiles.
+			eci := psf.ErasureCode().Identifier()
+			if _, exists := idxConversionMaps[eci]; !exists {
+				return fmt.Errorf("idxConversionMaps already contains an entry for '%v' which shouldn't be the case", eci)
+			}
+			idxConversionMaps[eci] = indexMap
 		case modules.PartialChunkExtension:
 			// TODO: this is actually more tricky than this. There is a chance that the
 			// partial chunk belongs to a siafile with a suffix. We need to figure out

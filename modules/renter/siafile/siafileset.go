@@ -411,7 +411,7 @@ func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, erro
 // AddExistingPartialsSiaFile adds an existing partial SiaFile to the set and
 // stores it on disk. If the file already exists this will produce an error
 // since we can't just add a suffix to it.
-func (sfs *SiaFileSet) AddExistingPartialsSiaFile(sf *SiaFile) error {
+func (sfs *SiaFileSet) AddExistingPartialsSiaFile(sf *SiaFile) (map[uint64]uint64, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.addExistingPartialsSiaFile(sf)
@@ -431,21 +431,21 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
 // addExistingPartialsSiaFile adds an existing partial SiaFile to the set and
 // stores it on disk. If the file already exists this will produce an error
 // since we can't just add a suffix to it.
-func (sfs *SiaFileSet) addExistingPartialsSiaFile(sf *SiaFile) error {
+func (sfs *SiaFileSet) addExistingPartialsSiaFile(sf *SiaFile) (map[uint64]uint64, error) {
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
 	if err != nil {
-		return os.ErrExist
+		return nil, err
 	}
 	oldFile, err := sfs.openPartialsSiaFile(sf.ErasureCode(), false)
 	if err == nil {
-		sfs.closeEntry(oldFile)
-		return os.ErrExist
+		defer sfs.closeEntry(oldFile)
+		return oldFile.Merge(sf)
 	} else if os.IsNotExist(err) {
-		return sf.Save()
+		return nil, sf.Save()
 	}
-	return err
+	return nil, err
 }
 
 // addExistingSiaFile adds an existing SiaFile to the set and stores it on disk.
