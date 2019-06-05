@@ -1028,6 +1028,10 @@ func TestFileExpiration(t *testing.T) {
 	if f.staticMetadata.CachedExpiration != 0 {
 		t.Error("file with no pieces should report as having no time remaining")
 	}
+	// Set a combined chunk for the file if necessary.
+	if err := setCombinedChunkOfTestFile(f); err != nil {
+		t.Fatal(err)
+	}
 	// Create 3 public keys
 	pk1 := types.SiaPublicKey{Key: []byte{0}}
 	pk2 := types.SiaPublicKey{Key: []byte{1}}

@@ -453,8 +453,6 @@ func (sf *SiaFile) SaveMetadata() error {
 // Expiration updates CachedExpiration with the lowest height at which any of
 // the file's contracts will expire and returns the new value.
 func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types.BlockHeight {
-	// TODO: how to handle the partial chunk here? The minimum of the siafiles
-	// expiration and the combined files expiration?
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if len(sf.pubKeyTable) == 0 {
@@ -462,7 +460,26 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 		return 0
 	}
 
+	// If the file has a combined chunk, also take the pubkeys from that chunk into
+	// account.
 	lowest := ^types.BlockHeight(0)
+	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
+		pieceSets, err := sf.partialsSiaFile.Pieces(sf.staticMetadata.CombinedChunkIndex)
+		if err == nil {
+			for _, pieceSet := range pieceSets {
+				for _, piece := range pieceSet {
+					contract, exists := contracts[piece.HostPubKey.String()]
+					if !exists {
+						continue
+					}
+					if contract.EndHeight < lowest {
+						lowest = contract.EndHeight
+					}
+				}
+			}
+		}
+	}
+
 	for _, pk := range sf.pubKeyTable {
 		contract, exists := contracts[pk.PublicKey.String()]
 		if !exists {
