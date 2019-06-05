@@ -37,5 +37,13 @@ func (sf *SiaFile) merge(newFile *SiaFile) (map[uint64]uint64, error) {
 	if filepath.Ext(newFile.SiaFilePath()) != modules.PartialsSiaFileExtension {
 		return nil, errors.New("can only merge PartialsSiafiles into a PartialsSiaFile")
 	}
-	panic("merge not implemented yet")
+	newFile.mu.Lock()
+	defer newFile.mu.Unlock()
+	indexMap := make(map[uint64]uint64)
+	for chunkIndex, chunk := range newFile.fullChunks {
+		newIndex := uint64(len(sf.fullChunks))
+		sf.fullChunks = append(sf.fullChunks, chunk)
+		indexMap[uint64(chunkIndex)] = newIndex
+	}
+	return indexMap, sf.saveFile()
 }
