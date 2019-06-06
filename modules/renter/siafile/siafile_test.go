@@ -661,7 +661,7 @@ func TestDefragChunk(t *testing.T) {
 
 	// Create a new file with 2 used hosts and 1 unused one. This file should
 	// use 2 pages per chunk.
-	sf = newBlankTestFile()
+	sf, _, _ = newBlankTestFileAndWAL(2) // make sure we have 1 full chunk at the beginning of the file.
 	sf.staticMetadata.StaticPagesPerChunk = 2
 	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true})
 	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true})

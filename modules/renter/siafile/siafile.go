@@ -226,6 +226,9 @@ func (sf *SiaFile) RemoveLastChunk() error {
 func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	if sf.deleted {
+		return errors.New("can't set filesize of deleted file")
+	}
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
 		return errors.New("can't call SetFileSize on file with partial chunk")
 	}
@@ -443,6 +446,9 @@ func (sf *SiaFile) Save() error {
 func (sf *SiaFile) SaveMetadata() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	if sf.deleted {
+		return errors.New("can't SaveMetadata of deleted file")
+	}
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
@@ -1037,6 +1043,9 @@ func (sf *SiaFile) allChunks() []chunk {
 // growNumChunks increases the number of chunks in the SiaFile to numChunks. If
 // the file already contains >= numChunks chunks then GrowNumChunks is a no-op.
 func (sf *SiaFile) growNumChunks(numChunks uint64) ([]writeaheadlog.Update, error) {
+	if sf.deleted {
+		return nil, errors.New("can't grow number of chunks of deleted file")
+	}
 	// Don't allow a SiaFile with a partial chunk to grow.
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
 		return nil, errors.New("can't grow a siafile with a partial chunk")
@@ -1069,6 +1078,9 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) ([]writeaheadlog.Update, erro
 // accordingly. This method might change the metadata but doesn't persist the
 // change itself. Handle this accordingly.
 func (sf *SiaFile) removeLastChunk() error {
+	if sf.deleted {
+		return errors.New("can't remove last chunk of deleted file")
+	}
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
 		return errors.New("can't remove last chunk if it is a partial chunk")
 	}
