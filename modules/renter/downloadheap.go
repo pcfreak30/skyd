@@ -180,7 +180,7 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 			return false
 		}
 		// Write the partial chunk to the destination.
-		_, err = udc.destination.WriteAt(partialChunk[:udc.staticFetchLength], udc.staticWriteOffset)
+		_, err = udc.destination.WriteAt(partialChunk[udc.staticFetchOffset:udc.staticFetchOffset+udc.staticFetchLength], udc.staticWriteOffset)
 		if err != nil {
 			r.log.Debugln(err)
 			return false
