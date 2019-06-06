@@ -603,7 +603,7 @@ func TestDefragChunk(t *testing.T) {
 	}
 	t.Parallel()
 	// Get a blank
-	sf := newBlankTestFile()
+	sf, _, _ := newBlankTestFileAndWAL(2) // make sure we have 1 full chunk at the beginning of sf.fullChunks
 
 	// Use the first chunk of the file for testing.
 	chunk := &sf.fullChunks[0]
