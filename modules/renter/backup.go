@@ -482,7 +482,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			// Remember indexMap to translate the combinedChunkIndex of imported
 			// SiaFiles.
 			eci := psf.ErasureCode().Identifier()
-			if _, exists := idxConversionMaps[eci]; !exists {
+			if _, exists := idxConversionMaps[eci]; exists {
 				return fmt.Errorf("idxConversionMaps already contains an entry for '%v' which shouldn't be the case", eci)
 			}
 			idxConversionMaps[eci] = indexMap
