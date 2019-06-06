@@ -131,7 +131,10 @@ func (pcs *partialChunkSet) buildChunk(requests []*chunkRequest) (string, []byte
 
 // combineRequests tries to combine multiple requests with the same erasure code
 // id into a full chunk.
-// TODO: This is a very trivial algorithm and can probably be improved.
+// TODO: This is a very trivial algorithm and can probably be improved a lot.
+// Right now it's greedy and might not perform well for large chunks. It also
+// won't consider the total size of all requests before starting. So even if all
+// the requests are below ChunkSize it will try to form a chunk.
 func (crs chunkRequestSet) combineRequests() []*chunkRequest {
 	// No requests yet.
 	if len(crs) == 0 {

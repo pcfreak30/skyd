@@ -107,13 +107,15 @@ func TestSetCombinedChunk(t *testing.T) {
 	combinedChunk := append(sf1PartialChunk, sf2PartialChunk...)
 
 	// Try setting the chunk. Should fail since it's not exactly chunkSize large.
-	err = SetCombinedChunk([]PartialChunkInfo{ci1, ci2}, combinedChunkID, combinedChunk, dir)
+	cci := NewCombinedChunkInfo(combinedChunkID, combinedChunk, []PartialChunkInfo{ci1, ci2})
+	err = SetCombinedChunk(cci, dir)
 	if err == nil {
 		t.Fatal("Should've failed")
 	}
 	// Add some padding to the chunk and try again. This should work.
 	combinedChunk = append(combinedChunk, make([]byte, sf1.ChunkSize()-uint64(len(combinedChunk)))...)
-	err = SetCombinedChunk([]PartialChunkInfo{ci1, ci2}, combinedChunkID, combinedChunk, dir)
+	cci = NewCombinedChunkInfo(combinedChunkID, combinedChunk, []PartialChunkInfo{ci1, ci2})
+	err = SetCombinedChunk(cci, dir)
 	if err != nil {
 		t.Fatal(err)
 	}

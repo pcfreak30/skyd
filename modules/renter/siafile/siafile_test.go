@@ -76,7 +76,8 @@ func setCombinedChunkOfTestFile(sf *SiaFile) error {
 		}
 		pci := NewPartialChunkInfo(uint64(len(partialChunk)), 0, sf)
 		padding := make([]byte, sf.ChunkSize()-uint64(len(partialChunk)))
-		err := SetCombinedChunk([]PartialChunkInfo{pci}, hex.EncodeToString(fastrand.Bytes(16)), append(partialChunk, padding...), dir)
+		cci := NewCombinedChunkInfo(hex.EncodeToString(fastrand.Bytes(16)), append(partialChunk, padding...), []PartialChunkInfo{pci})
+		err := SetCombinedChunk(cci, dir)
 		if err != nil {
 			return err
 		}
