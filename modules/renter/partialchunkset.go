@@ -152,22 +152,27 @@ func (crs chunkRequestSet) combineRequests() []*chunkRequest {
 	})
 	// Choose requests to fill up the combined chunk.
 	var chosenRequests []*chunkRequest
-	chunkSize := requests[0].sf.ChunkSize()
-	totalSize := uint64(0)
-	for _, request := range requests {
-		size := request.sf.Size() % chunkSize
-		if totalSize+size <= chunkSize {
-			chosenRequests = append(chosenRequests, request)
-			totalSize += size
+	for len(requests) > 0 {
+		chosenRequests = []*chunkRequest{} // reset
+		chunkSize := requests[0].sf.ChunkSize()
+		totalSize := uint64(0)
+		for _, request := range requests {
+			size := request.sf.Size() % chunkSize
+			if totalSize+size <= chunkSize {
+				chosenRequests = append(chosenRequests, request)
+				totalSize += size
+			}
 		}
+		// Check if the totalSize is within the acceptable threshold of 10%.
+		if chunkSize-totalSize > uint64(0.1*float64(chunkSize)) {
+			requests = requests[1:] // ignore the largest request on the next try
+			return nil              // not good enough
+		}
+		// Remove the chose requests from the set.
+		for _, request := range chosenRequests {
+			delete(crs, request.sf.UID())
+		}
+		return chosenRequests
 	}
-	// Check if the totalSize is within the acceptable threshold of 10%.
-	if chunkSize-totalSize > uint64(0.1*float64(chunkSize)) {
-		return nil // not good enough
-	}
-	// Remove the chose requests from the set.
-	for _, request := range chosenRequests {
-		delete(crs, request.sf.UID())
-	}
-	return chosenRequests
+	return nil
 }
