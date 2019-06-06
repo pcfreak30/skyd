@@ -17,6 +17,14 @@ import (
 )
 
 type (
+	// CombinedChunkInfo contains all the essential information about a combined
+	// chunk relevant to SiaFiles.
+	CombinedChunkInfo struct {
+		chunkData     []byte
+		chunkID       string
+		partialChunks []PartialChunkInfo
+	}
+
 	// PartialChunkInfo contains information required to find a partial chunk
 	// within a combined chunk.
 	PartialChunkInfo struct {
@@ -228,6 +236,15 @@ func (sf *SiaFile) LocalPath() string {
 	return sf.staticMetadata.LocalPath
 }
 
+// NewCombinedChunkInfo creates a new CombinedChunkInfo.
+func NewCombinedChunkInfo(chunkID string, chunkData []byte, partialChunks []PartialChunkInfo) CombinedChunkInfo {
+	return CombinedChunkInfo{
+		chunkID:       chunkID,
+		chunkData:     chunkData,
+		partialChunks: partialChunks,
+	}
+}
+
 // NewPartialChunkInfo creates a new PartialChunkInfo from a given length,
 // offset and SiaFile.
 func NewPartialChunkInfo(length, offset uint64, sf *SiaFile) PartialChunkInfo {
@@ -238,11 +255,12 @@ func NewPartialChunkInfo(length, offset uint64, sf *SiaFile) PartialChunkInfo {
 	}
 }
 
-// SetCombinedChunk adds a combined chunk to the SiaFile, corresponding
+// SetCombinedChunk adds a combined chunk to the SiaFiles, corresponding
 // combined SiaFile, and deletes the .partial file. All of that happens
 // atomically.
-func SetCombinedChunk(cci []PartialChunkInfo, combinedChunkID string, combinedChunk []byte, dir string) error {
-	sf0 := cci[0].sf
+func SetCombinedChunk(cci CombinedChunkInfo, dir string) error {
+	pci, combinedChunk, combinedChunkID := cci.partialChunks, cci.chunkData, cci.chunkID
+	sf0 := pci[0].sf
 	sf0.mu.RLock()
 	partialsSiaFile := sf0.partialsSiaFile
 	sf0.mu.RUnlock()
@@ -265,7 +283,7 @@ func SetCombinedChunk(cci []PartialChunkInfo, combinedChunkID string, combinedCh
 	// Get updates to delete all the .partial files and update all the siafiles.
 	identifier := partialsSiaFile.staticMetadata.staticErasureCode.Identifier()
 	updates := addCombinedChunkUpdates
-	for _, ci := range cci {
+	for _, ci := range pci {
 		sf := ci.sf
 		// Sanity check that all the SiaFile's have the same erasure code settings.
 		if sf.ErasureCode().Identifier() != identifier {

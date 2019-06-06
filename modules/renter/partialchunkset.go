@@ -9,7 +9,11 @@ package renter
 // TODO: make sure we don't push the same combined chunk into the repair heap multiple times in parallel
 
 import (
+	"encoding/hex"
+	"fmt"
 	"sync"
+
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -33,6 +37,7 @@ type (
 	// chunkRequest is a request to include a certain chunk of a specific file into
 	// a combined chunk.
 	chunkRequest struct {
+		sf *siafile.SiaFileSetEntry
 	}
 
 	// chunkRequestSet is a map of chunkRequests to avoid duplicates.
@@ -52,9 +57,6 @@ func newPartialChunkSet() *partialChunkSet {
 func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
-	if true {
-		return false, nil // TODO: Remove this
-	}
 
 	// File has a combined chunk assigned to it. Load it from disk.
 	entry := chunk.fileEntry
@@ -67,21 +69,31 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	if _, exists := pcs.requests[ecid]; !exists {
 		pcs.requests[ecid] = make(chunkRequestSet)
 	}
-	pcs.requests[ecid][entry.UID()] = &chunkRequest{}
+	pcs.requests[ecid][entry.UID()] = &chunkRequest{
+		sf: chunk.fileEntry.CopyEntry(), // Copy the SiaFileSetEntry for the request
+	}
 	// See if we can combine multiple requests into a chunk.
 	crs := pcs.requests[ecid]
 	requests := crs.combineRequests()
 	if requests == nil {
 		return false, nil // not enough requests yet
 	}
+	// We removed the requests from the set of requests. We need to close them when
+	// done. If something goes wrong they will simply be added again by the repair
+	// code later.
+	defer func() {
+		for _, request := range requests {
+			_ = request.sf.Close()
+		}
+	}()
 	//	If we can, build combined chunk.
-	chunkID, chunkData, err := crs.buildChunk(requests)
+	chunkID, chunkData, pci, err := pcs.buildChunk(requests)
 	if err != nil {
 		return false, err
 	}
+	cci := siafile.NewCombinedChunkInfo(chunkID, chunkData, pci)
 	// Let the SiaFile know about the combined chunk.
-	// TODO: Also inform other siafiles.
-	if err := siafile.SetCombinedChunk([]siafile.PartialChunkInfo{}, chunkID, chunkData, pcs.combinedChunkRoot); err != nil {
+	if err := siafile.SetCombinedChunk(cci, pcs.combinedChunkRoot); err != nil {
 		return false, err
 	}
 	// Return the new combined chunk.
@@ -93,13 +105,31 @@ func (pcs *partialChunkSet) fetchLogicalCombinedChunk(chunkID string) error {
 	panic("not implemented yet")
 }
 
+// buildChunk builds a chunk and returns it together with its ID.
+func (pcs *partialChunkSet) buildChunk(requests []chunkRequest) (string, []byte, []siafile.PartialChunkInfo, error) {
+	var chunkInfos []siafile.PartialChunkInfo
+	chunkID := hex.EncodeToString(fastrand.Bytes(16))
+	chunkData := make([]byte, requests[0].sf.ChunkSize())
+	copiedData := 0
+	totalData := 0
+	for _, request := range requests {
+		partialChunk, err := request.sf.LoadPartialChunk()
+		if err != nil {
+			return "", nil, nil, err
+		}
+		totalData += len(partialChunk)
+		n := copy(chunkData[copiedData:], partialChunk)
+		chunkInfos = append(chunkInfos, siafile.NewPartialChunkInfo(uint64(len(partialChunk)), uint64(copiedData), request.sf.SiaFile))
+		copiedData += n
+	}
+	if totalData != copiedData {
+		return "", nil, nil, fmt.Errorf("only %v out of %v bytes were copied", copiedData, totalData)
+	}
+	return chunkID, chunkData, chunkInfos, nil
+}
+
 // combineRequests tries to combine multiple requests with the same erasure code
 // id into a full chunk.
 func (crs chunkRequestSet) combineRequests() []chunkRequest {
-	panic("not implemented yet")
-}
-
-// buildChunk builds a chunk and stores it on disk using the given requests.
-func (crs chunkRequestSet) buildChunk(requests []chunkRequest) (string, []byte, error) {
 	panic("not implemented yet")
 }
