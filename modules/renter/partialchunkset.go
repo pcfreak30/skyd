@@ -11,6 +11,7 @@ package renter
 import (
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"sync"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -106,7 +107,7 @@ func (pcs *partialChunkSet) fetchLogicalCombinedChunk(chunkID string) error {
 }
 
 // buildChunk builds a chunk and returns it together with its ID.
-func (pcs *partialChunkSet) buildChunk(requests []chunkRequest) (string, []byte, []siafile.PartialChunkInfo, error) {
+func (pcs *partialChunkSet) buildChunk(requests []*chunkRequest) (string, []byte, []siafile.PartialChunkInfo, error) {
 	var chunkInfos []siafile.PartialChunkInfo
 	chunkID := hex.EncodeToString(fastrand.Bytes(16))
 	chunkData := make([]byte, requests[0].sf.ChunkSize())
@@ -130,6 +131,43 @@ func (pcs *partialChunkSet) buildChunk(requests []chunkRequest) (string, []byte,
 
 // combineRequests tries to combine multiple requests with the same erasure code
 // id into a full chunk.
-func (crs chunkRequestSet) combineRequests() []chunkRequest {
-	panic("not implemented yet")
+// TODO: This is a very trivial algorithm and can probably be improved.
+func (crs chunkRequestSet) combineRequests() []*chunkRequest {
+	// No requests yet.
+	if len(crs) == 0 {
+		return nil
+	}
+	// Get all the requests in a slice
+	requests := make([]*chunkRequest, 0, len(crs))
+	for _, cr := range crs {
+		requests = append(requests, cr)
+	}
+	// Sort the requests in decending order.
+	sort.Slice(requests, func(i, j int) bool {
+		sfi := requests[i].sf
+		sfj := requests[j].sf
+		sfiSize := sfi.Size() % sfi.ChunkSize()
+		sfjSize := sfj.Size() % sfj.ChunkSize()
+		return sfjSize < sfiSize
+	})
+	// Choose requests to fill up the combined chunk.
+	var chosenRequests []*chunkRequest
+	chunkSize := requests[0].sf.ChunkSize()
+	totalSize := uint64(0)
+	for _, request := range requests {
+		size := request.sf.Size() % chunkSize
+		if totalSize+size <= chunkSize {
+			chosenRequests = append(chosenRequests, request)
+			totalSize += size
+		}
+	}
+	// Check if the totalSize is within the acceptable threshold of 10%.
+	if chunkSize-totalSize > uint64(0.1*float64(chunkSize)) {
+		return nil // not good enough
+	}
+	// Remove the chose requests from the set.
+	for _, request := range chosenRequests {
+		delete(crs, request.sf.UID())
+	}
+	return chosenRequests
 }
