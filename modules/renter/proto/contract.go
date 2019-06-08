@@ -414,19 +414,16 @@ func (c *SafeContract) unappliedHeader() (h contractHeader) {
 // match, and the host's revision is ahead of the renter's, syncRevision uses
 // the host's revision.
 func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
-	c.headerMu.Lock()
-	defer c.headerMu.Unlock()
-
 	// Our current revision should always be signed. If it isn't, we have no
 	// choice but to accept the host's revision.
+	c.headerMu.Lock()
 	if len(c.header.Transaction.TransactionSignatures) == 0 {
 		c.header.Transaction.FileContractRevisions[0] = rev
 		c.header.Transaction.TransactionSignatures = sigs
+		c.headerMu.Unlock()
 		return nil
 	}
-
 	ourRev := c.header.LastRevision()
-
 	// If the revision number and Merkle root match, we don't need to do anything.
 	if rev.NewRevisionNumber == ourRev.NewRevisionNumber && rev.NewFileMerkleRoot == ourRev.NewFileMerkleRoot {
 		// If any other fields mismatch, it must be our fault, since we signed
@@ -434,8 +431,10 @@ func (c *SafeContract) syncRevision(rev types.FileContractRevision, sigs []types
 		// consistent, we blindly overwrite our revision with the host's.
 		c.header.Transaction.FileContractRevisions[0] = rev
 		c.header.Transaction.TransactionSignatures = sigs
+		c.headerMu.Unlock()
 		return nil
 	}
+	c.headerMu.Unlock()
 
 	// The host should never report a lower revision number than ours. If they
 	// do, it may mean they are intentionally (and maliciously) trying to
