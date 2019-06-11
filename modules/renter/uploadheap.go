@@ -264,6 +264,11 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 				// count for redundancy.
 				continue
 			}
+			if r.hostContractor.IsOffline(piece.HostPubKey) {
+				// Do not count a host towards the good redundancy if the host
+				// is offline.
+				continue
+			}
 
 			// Mark the chunk set based on the pieces in this contract.
 			_, exists = uuc.unusedHosts[piece.HostPubKey.String()]
