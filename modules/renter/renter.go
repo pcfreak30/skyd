@@ -186,13 +186,6 @@ type hostContractor interface {
 
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
-//
-// TODO: Separate the workerPool to have its own mutex. The workerPool doesn't
-// interfere with any of the other fields in the renter, should be fine for it
-// to have a separate mutex, that way operations on the worker pool don't block
-// operations on other parts of the struct. If we're going to do it that way,
-// might make sense to split the worker pool off into it's own struct entirely
-// the same way that we split of the memoryManager entirely.
 type Renter struct {
 	// File management.
 	//
@@ -222,10 +215,6 @@ type Renter struct {
 	uploadHeap    uploadHeap
 	directoryHeap directoryHeap
 
-	// List of workers that can be used for uploading and/or downloading.
-	memoryManager *memoryManager
-	workerPool    map[types.FileContractID]*worker
-
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
 
@@ -247,6 +236,7 @@ type Renter struct {
 	hostContractor   hostContractor
 	hostDB           hostDB
 	log              *persist.Logger
+	memoryManager    *memoryManager
 	persist          persistence
 	persistDir       string
 	staticFilesDir   string
@@ -255,6 +245,7 @@ type Renter struct {
 	tg               threadgroup.ThreadGroup
 	tpool            modules.TransactionPool
 	wal              *writeaheadlog.WAL
+	workerPool       *workerPool
 }
 
 // Close closes the Renter and its dependencies
@@ -451,79 +442,6 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	return est, allowance, nil
 }
 
-// managedContractUtilityMaps returns a set of maps that contain contract
-// information. Information about which contracts are offline, goodForRenew are
-// available, as well as a full list of contracts keyed by their public key.
-func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
-	// Save host keys in map.
-	contracts = make(map[string]modules.RenterContract)
-	goodForRenew = make(map[string]bool)
-	offline = make(map[string]bool)
-
-	// Get the list of public keys from the contractor and use it to fill out
-	// the contracts map.
-	cs := r.hostContractor.Contracts()
-	for i := 0; i < len(cs); i++ {
-		contracts[cs[i].HostPublicKey.String()] = cs[i]
-	}
-
-	// Fill out the goodForRenew and offline maps based on the utility values of
-	// the contractor.
-	for pkString, contract := range contracts {
-		cu, ok := r.ContractUtility(contract.HostPublicKey)
-		if !ok {
-			continue
-		}
-		goodForRenew[pkString] = cu.GoodForRenew
-		offline[pkString] = r.hostContractor.IsOffline(contract.HostPublicKey)
-	}
-	return offline, goodForRenew, contracts
-}
-
-// managedRenterContractsAndUtilities grabs the pubkeys of the hosts that the
-// file(s) have been uploaded to and then generates maps of the contract's
-// utilities showing which hosts are GoodForRenew and which hosts are Offline.
-// Additionally a map of host pubkeys to renter contract is returned.  The
-// offline and goodforrenew maps are needed for calculating redundancy and other
-// file metrics.
-func (r *Renter) managedRenterContractsAndUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
-	// Save host keys in map.
-	pks := make(map[string]types.SiaPublicKey)
-	goodForRenew = make(map[string]bool)
-	offline = make(map[string]bool)
-	for _, e := range entrys {
-		var used []types.SiaPublicKey
-		for _, pk := range e.HostPublicKeys() {
-			pks[pk.String()] = pk
-			used = append(used, pk)
-		}
-		if err := e.UpdateUsedHosts(used); err != nil {
-			r.log.Debugln("WARN: Could not update used hosts:", err)
-		}
-	}
-	// Build 2 maps that map every pubkey to its offline and goodForRenew
-	// status.
-	contracts = make(map[string]modules.RenterContract)
-	for _, pk := range pks {
-		cu, ok := r.ContractUtility(pk)
-		if !ok {
-			continue
-		}
-		contract, ok := r.hostContractor.ContractByPublicKey(pk)
-		if !ok {
-			continue
-		}
-		goodForRenew[pk.String()] = cu.GoodForRenew
-		offline[pk.String()] = r.hostContractor.IsOffline(pk)
-		contracts[pk.String()] = contract
-	}
-	// Update the cached expiration of the siafiles.
-	for _, e := range entrys {
-		_ = e.Expiration(contracts)
-	}
-	return offline, goodForRenew, contracts
-}
-
 // setBandwidthLimits will change the bandwidth limits of the renter based on
 // the persist values for the bandwidth.
 func (r *Renter) setBandwidthLimits(downloadSpeed int64, uploadSpeed int64) error {
@@ -586,7 +504,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 
 	// Update the worker pool so that the changes are immediately apparent to
 	// users.
-	r.managedUpdateWorkerPool()
+	r.workerPool.managedUpdate()
 	return nil
 }
 
@@ -790,8 +708,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
-		workerPool: make(map[types.FileContractID]*worker),
-
 		bubbleUpdates: make(map[string]bubbleStatus),
 
 		cs:               cs,
@@ -807,6 +723,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		tpool:            tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.workerPool = newWorkerPool(r)
 
 	// Load all saved data.
 	if err := r.managedInitPersist(); err != nil {
@@ -825,21 +742,10 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 
 	// Spin up the workers for the work pool.
-	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
 	go r.threadedUploadAndRepair()
 	go r.threadedUpdateRenterHealth()
 	go r.threadedStuckFileLoop()
-
-	// Kill workers on shutdown.
-	r.tg.OnStop(func() error {
-		id := r.mu.RLock()
-		for _, worker := range r.workerPool {
-			close(worker.killChan)
-		}
-		r.mu.RUnlock(id)
-		return nil
-	})
 
 	// Spin up the snapshot synchronization thread.
 	go r.threadedSynchronizeSnapshots()

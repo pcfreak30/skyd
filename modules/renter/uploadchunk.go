@@ -21,6 +21,9 @@ type uploadChunkID struct {
 
 // unfinishedUploadChunk contains a chunk from the filesystem that has not
 // finished uploading, including knowledge of the progress.
+//
+// TODO: Rename 'health' to 'initialHealth', because the health of the chunk is
+// not updated as the chunk gets repaired.
 type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
@@ -127,18 +130,18 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
-func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
+func (wp *workerPool) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// Give the chunk to each worker, marking the number of workers that have
 	// received the chunk. The workers cannot be interacted with while the
 	// renter is holding a lock, so we need to build a list of workers while
 	// under lock and then launch work jobs after that.
-	id := r.mu.RLock()
-	uc.workersRemaining += len(r.workerPool)
-	workers := make([]*worker, 0, len(r.workerPool))
-	for _, worker := range r.workerPool {
+	wp.mu.RLock()
+	uc.workersRemaining += len(wp.workers)
+	workers := make([]*worker, 0, len(wp.workers))
+	for _, worker := range wp.workers {
 		workers = append(workers, worker)
 	}
-	r.mu.RUnlock(id)
+	wp.mu.RUnlock()
 	for _, worker := range workers {
 		worker.managedQueueUploadChunk(uc)
 	}
@@ -320,7 +323,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	}
 
 	// Distribute the chunk to the workers.
-	r.managedDistributeChunkToWorkers(chunk)
+	r.workerPool.managedDistributeChunkToWorkers(chunk)
 }
 
 // managedFetchLogicalChunkData will get the raw data for a chunk, pulling it from disk if

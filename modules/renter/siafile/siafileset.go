@@ -307,8 +307,8 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 // readLockFileInfo returns information on a siafile. As a performance
 // optimization, the fileInfo takes the maps returned by
 // renter.managedContractUtilityMaps for many files at once.
-func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
-	// Get the file's metadata and its contracts
+func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool) (modules.FileInfo, error) {
+	// Get the files metadata.
 	md, err := sfs.readLockMetadata(siaPath)
 	if err != nil {
 		return modules.FileInfo{}, err
@@ -553,10 +553,10 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 
 // CachedFileInfo returns a modules.FileInfo for a given file like FileInfo but
 // instead of computing redundancy, health etc. it uses cached values.
-func (sfs *SiaFileSet) CachedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (sfs *SiaFileSet) CachedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool) (modules.FileInfo, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.readLockCachedFileInfo(siaPath, offline, goodForRenew, contracts)
+	return sfs.readLockCachedFileInfo(siaPath, offline, goodForRenew)
 }
 
 // FileList returns all of the files that the renter has in the folder specified
@@ -585,7 +585,7 @@ func (sfs *SiaFileSet) FileList(siaPath modules.SiaPath, recursive, cached bool,
 			var file modules.FileInfo
 			var err error
 			if cached {
-				file, err = sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap, contractsMap)
+				file, err = sfs.readLockCachedFileInfo(siaPath, offlineMap, goodForRenewMap)
 			} else {
 				// It is ok to call an Exported method here because we only
 				// acquire the siaFileSet lock if we are requesting the cached

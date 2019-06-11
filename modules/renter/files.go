@@ -81,19 +81,24 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 		return []modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
-	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+
+	r.workerPool.mu.RLock()
+	infos, err := r.staticFileSet.FileList(siaPath, recursive, cached, r.workerPool.hostsOffline, r.workerPool.hostsGoodForRenew, r.workerPool.hosts)
+	r.workerPool.mu.RUnlock()
+	return infos, err
 }
 
 // File returns file from siaPath queried by user.
-// Update based on FileList
 func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 	if err := r.tg.Add(); err != nil {
 		return modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
-	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileInfo(siaPath, offline, goodForRenew, contracts)
+
+	r.workerPool.mu.RLock()
+	infos, err := r.staticFileSet.FileInfo(siaPath, r.workerPool.hostsOffline, r.workerPool.hostsGoodForRenew, r.workerPool.hosts)
+	r.workerPool.mu.RUnlock()
+	return infos, err
 }
 
 // RenameFile takes an existing file and changes the nickname. The original

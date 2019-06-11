@@ -82,9 +82,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath) error {
 	defer sf.Close()
 	// Add stuck chunks from file to repair heap
 	files := []*siafile.SiaFileSetEntry{sf}
-	hosts := r.managedRefreshHostsAndWorkers()
-	offline, goodForRenew, _ := r.managedContractUtilityMaps()
-	r.managedBuildAndPushChunks(files, hosts, targetStuckChunks, offline, goodForRenew)
+	r.managedBuildAndPushChunks(files, targetStuckChunks)
 	return nil
 }
 
@@ -309,10 +307,10 @@ func (r *Renter) threadedStuckFileLoop() {
 				// The renter has shut down.
 				return
 			case <-r.uploadHeap.stuckChunkFound:
-				// Health Loop found stuck chunk
+				// The health loop found a stuck chunk.
 			case siaPath := <-r.uploadHeap.stuckChunkSuccess:
-				// Stuck chunk was successfully repaired. Add the rest of the file
-				// to the heap
+				// A stuck chunk was successfully repaired. Add the rest of the
+				// file to the heap.
 				err := r.managedAddStuckChunksToHeap(siaPath)
 				if err != nil {
 					r.log.Debugln("WARN: unable to add stuck chunks from file", siaPath.String(), "to heap:", err)
@@ -321,12 +319,8 @@ func (r *Renter) threadedStuckFileLoop() {
 			continue
 		}
 
-		// Refresh the worker pool and get the set of hosts that are currently
-		// useful for uploading.
-		hosts := r.managedRefreshHostsAndWorkers()
-
 		// Add stuck chunk to upload heap and signal repair needed
-		r.managedBuildChunkHeap(dirSiaPath, hosts, targetStuckChunks)
+		r.managedBuildChunkHeap(dirSiaPath, targetStuckChunks)
 		r.log.Debugf("Attempting to repair stuck chunks from directory `%s`", dirSiaPath.String())
 		select {
 		case r.uploadHeap.repairNeeded <- struct{}{}:

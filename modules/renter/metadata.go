@@ -221,18 +221,17 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	}
 	defer sf.Close()
 
-	// Get offline and goodforrenew maps
-	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
-
-	// Calculate file health
-	health, stuckHealth, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	// Calculate file health.
+	r.workerPool.mu.RLock()
+	health, stuckHealth, numStuckChunks := sf.Health(r.workerPool.hostsOffline, r.workerPool.hostsGoodForRenew)
+	redundancy := sf.Redundancy(r.workerPool.hostsOffline, r.workerPool.hostsGoodForRenew)
+	r.workerPool.mu.RUnlock()
 
 	// Set the LastHealthCheckTime
 	sf.SetLastHealthCheckTime()
 
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
-	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
 	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
 	}

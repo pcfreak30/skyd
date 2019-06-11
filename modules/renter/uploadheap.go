@@ -12,7 +12,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -190,18 +189,21 @@ func (uh *uploadHeap) managedReset() error {
 	return uh.heap.reset()
 }
 
-// buildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool) (*unfinishedUploadChunk, error) {
-	// Copy entry
+// managedBuildUnfinishedChunk will pull out a single unfinished chunk of a
+// file.
+func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex uint64, priority bool) (*unfinishedUploadChunk, error) {
+	// Copy the file entry so that each chunk has it's own version of the file
+	// entry. This makes cleanup easier because each chunk can individuall call
+	// Close() on the file entry instead of needing to coordinate. The Copy()
+	// function of the file entry does not substantially increase the amount of
+	// memory being used, the chunk itself is larger.
 	entryCopy, err := entry.CopyEntry()
 	if err != nil {
 		r.log.Println("WARN: unable to copy siafile entry:", err)
 		return nil, errors.AddContext(err, "unable to copy file entry when trying to build the unfinished chunk")
 	}
-	if entryCopy == nil {
-		build.Critical("nil file entry return from CopyEntry, and no error should have been returned")
-		return nil, errors.New("CopyEntry returned a nil copy")
-	}
+
+	// Build the unfinished chunk.
 	uuc := &unfinishedUploadChunk{
 		fileEntry: entryCopy,
 
@@ -218,9 +220,6 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 		// memoryNeeded has to also include the logical data, and also
 		// include the overhead for encryption.
 		//
-		// TODO / NOTE: If we adjust the file to have a flexible encryption
-		// scheme, we'll need to adjust the overhead stuff too.
-		//
 		// TODO: Currently we request memory for all of the pieces as well
 		// as the minimum pieces, but we perhaps don't need to request all
 		// of that.
@@ -235,11 +234,6 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 		unusedHosts: make(map[string]struct{}),
 	}
 
-	// Every chunk can have a different set of unused hosts.
-	for host := range hosts {
-		uuc.unusedHosts[host] = struct{}{}
-	}
-
 	// Iterate through the pieces of all chunks of the file and mark which
 	// hosts are already in use for a particular chunk. As you delete hosts
 	// from the 'unusedHosts' map, also increment the 'piecesCompleted' value.
@@ -251,51 +245,57 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 		}
 		return nil, errors.AddContext(err, "error trying to get the pieces for the chunk")
 	}
+
+	// Fill out the unfinished chunk based on the host information from the
+	// worker pool.
+	r.workerPool.mu.RLock()
+	for host := range r.workerPool.hosts {
+		uuc.unusedHosts[host] = struct{}{}
+	}
 	for pieceIndex, pieceSet := range pieces {
 		for _, piece := range pieceSet {
-			// Get the contract for the piece.
-			contractUtility, exists := r.hostContractor.ContractUtility(piece.HostPubKey)
-			if !exists {
-				// File contract does not seem to be part of the host anymore.
-				continue
-			}
-			if !contractUtility.GoodForRenew {
-				// We are no longer renewing with this contract, so it does not
-				// count for redundancy.
-				continue
-			}
-			if r.hostContractor.IsOffline(piece.HostPubKey) {
-				// Do not count a host towards the good redundancy if the host
-				// is offline.
+			hpk := piece.HostPubKey.String()
+			goodForRenew, exists := r.workerPool.hostsGoodForRenew[hpk]
+			offline, exists2 := r.workerPool.hostsOffline[hpk]
+			if !exists || !exists2 || !goodForRenew || offline {
+				// Hosts that are not in the maps, that are not good for renew,
+				// and that are offline are not counted.
 				continue
 			}
 
-			// Mark the chunk set based on the pieces in this contract.
-			_, exists = uuc.unusedHosts[piece.HostPubKey.String()]
+			// Check for the host in the set of unused hosts. If the host is in
+			// the set of unused hosts, delete the host from the set. If this is
+			// the first time this piece has been processed, mark that the piece
+			// is complete.
+			_, exists = uuc.unusedHosts[hpk]
 			redundantPiece := uuc.pieceUsage[pieceIndex]
-			if exists && !redundantPiece {
-				uuc.pieceUsage[pieceIndex] = true
-				uuc.piecesCompleted++
-				delete(uuc.unusedHosts, piece.HostPubKey.String())
-			} else if exists {
-				// This host has a piece, but it is the same piece another
-				// host has. We should still remove the host from the
-				// unusedHosts since one host having multiple pieces of a
-				// chunk might lead to unexpected issues. e.g. if a host
-				// has multiple pieces and another host with redundant
-				// pieces goes offline, we end up with false redundancy
-				// reporting.
-				delete(uuc.unusedHosts, piece.HostPubKey.String())
+			if exists {
+				// Host is used, remove the host from the list of unused hosts.
+				delete(uuc.unusedHosts, hpk)
+
+				// Count novel (non-redundant) pieces towards the total number
+				// of pieces completed. Redundant pieces are not counted because
+				// the redundancy is not sound (having 'minPieces' of piece X is
+				// not sufficient to recover the file, but having 'minPieces'
+				// novel pieces is sufficient to recover the file for most
+				// erasure codes used in Sia).
+				if !redundantPiece {
+					uuc.pieceUsage[pieceIndex] = true
+					uuc.piecesCompleted++
+				}
 			}
 		}
 	}
+	r.workerPool.mu.RUnlock()
+
 	// Now that we have calculated the completed pieces for the chunk we can
 	// calculate the health of the chunk to avoid a call to ChunkHealth
 	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.minimumPieces) / float64(uuc.piecesNeeded-uuc.minimumPieces))
 	return uuc, nil
 }
 
-// buildUnfinishedChunks will pull all of the unfinished chunks out of a file.
+// managedBuildUnfinishedChunks will pull all of the unfinished chunks out of a
+// file.
 //
 // NOTE: each unfinishedUploadChunk needs its own SiaFileSetEntry. This is due
 // to the SiaFiles being removed from memory. Since the renter does not keep the
@@ -304,27 +304,29 @@ func (r *Renter) buildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chunkIndex
 // finish would then close the Entry and consequentially impact the remaining
 // chunks.
 //
-// TODO / NOTE: This code can be substantially simplified once the files store
-// the HostPubKey instead of the FileContractID, and can be simplified even
-// further once the layout is per-chunk instead of per-filecontract.
-func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
+// TODO: This function is currently named as though it needs a renter lock, and
+// it's being called always using a renter lock, but I don't believe that it
+// actually requires a renter lock.
+func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, target repairTarget) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
 	minPieces := entry.ErasureCode().MinPieces()
-	if len(r.workerPool) < minPieces {
+	r.workerPool.mu.RLock()
+	numWorkers := len(r.workerPool.workers)
+	r.workerPool.mu.RUnlock()
+	if numWorkers < minPieces {
 		// There are not enough workers for the chunk to reach minimum
-		// redundancy. Check if the allowance has enough hosts for the chunk to
-		// reach minimum redundancy
+		// redundancy.
 		r.log.Debugln("Not building any chunks from file as there are not enough workers")
-		allowance := r.hostContractor.Allowance()
-		// Only perform this check when we are looking for unstuck chunks. This
-		// will prevent log spam from repeatedly logging to the user the issue
-		// with the file after marking the chunks as stuck
-		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks {
-			// There are not enough hosts in the allowance for the file to reach
-			// minimum redundancy. Mark all chunks as stuck
-			r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for file %v", allowance.Hosts, minPieces, entry.SiaFilePath())
-			if err := entry.SetAllStuck(true); err != nil {
-				r.log.Println("WARN: unable to mark all chunks as stuck:", err)
+
+		// If we are looking for unstuck chunks, check whether this file can be
+		// recovered at all.
+		if target == targetUnstuckChunks {
+			allowance := r.hostContractor.Allowance()
+			if allowance.Hosts < uint64(minPieces) {
+				r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for file %v", allowance.Hosts, minPieces, entry.SiaFilePath())
+				if err := entry.SetAllStuck(true); err != nil {
+					r.log.Println("WARN: unable to mark all chunks as stuck:", err)
+				}
 			}
 		}
 		return nil
@@ -339,18 +341,6 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		}
 	}
 
-	// Sanity check that we have chunk indices to go through
-	if len(chunkIndexes) == 0 {
-		r.log.Println("WARN: no chunk indices gathered, can't add chunks to heap")
-		return nil
-	}
-
-	// Build a map of host public keys. We assume that all entrys are the same.
-	pks := make(map[string]types.SiaPublicKey)
-	for _, pk := range entry.HostPublicKeys() {
-		pks[string(pk.Key)] = pk
-	}
-
 	// Assemble the set of chunks.
 	newUnfinishedChunks := make([]*unfinishedUploadChunk, 0, len(chunkIndexes))
 	for _, index := range chunkIndexes {
@@ -360,7 +350,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		}
 
 		// Create unfinishedUploadChunk
-		chunk, err := r.buildUnfinishedChunk(entry, uint64(index), hosts, pks, false)
+		chunk, err := r.managedBuildUnfinishedChunk(entry, uint64(index), false)
 		if err != nil {
 			r.log.Debugln("Error when building an unfinished chunk:", err)
 			continue
@@ -390,7 +380,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		needsRepair := chunk.health >= RepairThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
-		// repairable or if we are targetting stuck chunks
+		// repairable or if we are targeting stuck chunks
 		if needsRepair && (repairable || target == targetStuckChunks) {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
@@ -420,7 +410,7 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 // this by popping directories off the directory heap and adding the chunks from
 // that directory to the upload heap. If the worst health directory found is
 // sufficiently healthy then we return.
-func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.SiaPath]struct{}, error) {
+func (r *Renter) managedAddChunksToHeap() (map[modules.SiaPath]struct{}, error) {
 	siaPaths := make(map[modules.SiaPath]struct{})
 	prevHeapLen := r.uploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
@@ -460,7 +450,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 		}
 
 		// Add chunks from the directory to the uploadHeap.
-		r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
+		r.managedBuildChunkHeap(dirSiaPath, targetUnstuckChunks)
 
 		// Check to see if we are still adding chunks
 		heapLen := r.uploadHeap.managedLen()
@@ -491,7 +481,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 
 // managedBuildAndPushRandomChunk randomly selects a file and builds the
 // unfinished chunks, then randomly adds chunksToAdd chunks to the upload heap
-func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry, chunksToAdd int, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
+func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry, chunksToAdd int, target repairTarget) {
 	// Sanity check that there are files
 	if len(files) == 0 {
 		return
@@ -504,9 +494,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry
 		file := files[p[i]]
 
 		// Build the unfinished stuck chunks from the file
-		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(file, hosts, target, offline, goodForRenew)
-		r.mu.Unlock(id)
+		unfinishedUploadChunks := r.managedBuildUnfinishedChunks(file, target)
 
 		// Sanity check that there are stuck chunks
 		if len(unfinishedUploadChunks) == 0 {
@@ -543,7 +531,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(files []*siafile.SiaFileSetEntry
 //
 // NOTE: the files submitted to this function should all be from the same
 // directory
-func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
+func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, target repairTarget) {
 	// Sanity check that at least one file was provided
 	if len(files) == 0 {
 		build.Critical("managedBuildAndPushChunks called without providing any files")
@@ -565,9 +553,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 
 		// Build unfinished chunks from file and add them to the temp heap if
 		// they are a worse health than the directory heap
-		id := r.mu.Lock()
-		unfinishedUploadChunks := r.buildUnfinishedChunks(file, hosts, target, offline, goodForRenew)
-		r.mu.Unlock(id)
+		unfinishedUploadChunks := r.managedBuildUnfinishedChunks(file, target)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			// Check if chunk has a worse health than the directory heap
 			chunk := unfinishedUploadChunks[i]
@@ -708,7 +694,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
 // construct a chunk heap.
-func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[string]struct{}, target repairTarget) {
+func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, target repairTarget) {
 	// Get Directory files
 	var fileinfos []os.FileInfo
 	var err error
@@ -783,17 +769,16 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	}
 
 	// Build the unfinished upload chunks and add them to the upload heap
-	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	switch target {
 	case targetBackupChunks:
 		r.log.Debugln("Attempting to add backup chunks to heap")
-		r.managedBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
+		r.managedBuildAndPushChunks(files, target)
 	case targetStuckChunks:
 		r.log.Debugln("Attempting to add stuck chunk to heap")
-		r.managedBuildAndPushRandomChunk(files, maxStuckChunksInHeap, hosts, target, offline, goodForRenew)
+		r.managedBuildAndPushRandomChunk(files, maxStuckChunksInHeap, target)
 	case targetUnstuckChunks:
 		r.log.Debugln("Attempting to add chunks to heap")
-		r.managedBuildAndPushChunks(files, hosts, target, offline, goodForRenew)
+		r.managedBuildAndPushChunks(files, target)
 	default:
 		r.log.Println("WARN: repair target not recognized", target)
 	}
@@ -812,7 +797,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // available, fetching the logical data for the chunk (either from the disk or
 // from the network), erasure coding the logical data into the physical data,
 // and then finally passing the work onto the workers.
-func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[string]struct{}) error {
+func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
@@ -825,29 +810,10 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	return nil
 }
 
-// managedRefreshHostsAndWorkers will reset the set of hosts and the set of
-// workers for the renter.
-func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
-	// Grab the current set of contracts and use them to build a list of hosts
-	// that are currently active. The hosts are assembled into a map where the
-	// key is the String() representation of the host's SiaPublicKey.
-	//
-	// TODO / NOTE: This code can be removed once files store the HostPubKey
-	// of the hosts they are using, instead of just the FileContractID.
-	currentContracts := r.hostContractor.Contracts()
-	hosts := make(map[string]struct{})
-	for _, contract := range currentContracts {
-		hosts[contract.HostPublicKey.String()] = struct{}{}
-	}
-	// Refresh the worker pool as well.
-	r.managedUpdateWorkerPool()
-	return hosts
-}
-
 // managedRepairLoop works through the uploadheap repairing chunks. The repair
 // loop will continue until the renter stops, there are no more chunks, or the
 // number of chunks in the uploadheap has dropped below the minUploadHeapSize
-func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
+func (r *Renter) managedRepairLoop() error {
 	// smallRepair indicates whether or not the repair loop should process all
 	// of the chunks in the heap instead of just processing down to the minimum
 	// heap size. We want to process all of the chunks if the rest of the
@@ -882,53 +848,50 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
-		id := r.mu.RLock()
-		availableWorkers := len(r.workerPool)
-		r.mu.RUnlock(id)
+		r.workerPool.mu.RLock()
+		availableWorkers := len(r.workerPool.workers)
+		r.workerPool.mu.RUnlock()
 		if availableWorkers < nextChunk.minimumPieces {
 			// There are not enough available workers for the chunk to reach
-			// minimum redundancy. Check if the allowance has enough hosts for
-			// the chunk to reach minimum redundancy
-			allowance := r.hostContractor.Allowance()
-			// Only perform this check on chunks that are not stuck to prevent
-			// log spam
-			if allowance.Hosts < uint64(nextChunk.minimumPieces) && !nextChunk.stuck {
-				// There are not enough hosts in the allowance for this chunk to
-				// reach minimum redundancy. Log an error, set the chunk as stuck,
-				// and close the file
-				r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for chunk %v", allowance.Hosts, nextChunk.minimumPieces, nextChunk.id)
-				err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
-				if err != nil {
-					r.log.Debugln("WARN: unable to mark chunk as stuck:", err, nextChunk.id)
+			// minimum redundancy. If the chunk is not stuck, check whether the
+			// allowance has enough host to support this chunk.
+			if !nextChunk.stuck {
+				allowance := r.hostContractor.Allowance()
+				if allowance.Hosts < uint64(nextChunk.minimumPieces) {
+					// There are not enough hosts in the allowance for this
+					// chunk to reach minimum redundancy. Log an error and set
+					// the chunk as stuck.
+					r.log.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for chunk %v", allowance.Hosts, nextChunk.minimumPieces, nextChunk.id)
+					err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
+					if err != nil {
+						r.log.Println("WARN: unable to mark chunk as stuck:", err, nextChunk.id)
+					}
 				}
 			}
-			// There are enough hosts set in the allowance so this is a
-			// temporary issue with available workers, just ignore the chunk
-			// for now and close the file
 			err := nextChunk.fileEntry.Close()
 			if err != nil {
-				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
+				r.log.Println("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
 			}
-			// Remove the chunk from the repairingChunks map
+			// Mark the repair as completed since no action is going to be
+			// taken.
 			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
 			continue
 		}
 
-		// Perform the work. managedPrepareNextChunk will block until
-		// enough memory is available to perform the work, slowing this
-		// thread down to using only the resources that are available.
-		err := r.managedPrepareNextChunk(nextChunk, hosts)
+		// managedPrepareNextChunk will block until enough memory is available
+		// to proceed, and then it will distribute the chunk to all of the
+		// workers.
+		err := r.managedPrepareNextChunk(nextChunk)
 		if err != nil {
-			// An error was return which means the renter was unable to allocate
-			// memory for the repair. Since that is not an issue with the file
-			// we will just close the chunk file entry instead of marking it as
-			// stuck
+			// An error here does not mean that the file is stuck, so the file
+			// entry is closed without logging any issues.
 			r.log.Debugln("WARN: unable to prepare next chunk without issues", err, nextChunk.id)
 			err = nextChunk.fileEntry.Close()
 			if err != nil {
 				r.log.Debugln("WARN: unable to close file:", err, nextChunk.fileEntry.SiaFilePath())
 			}
-			// Remove the chunk from the repairingChunks map
+			// Mark the repair as completed since no action is going to be
+			// taken.
 			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
 			continue
 		}
@@ -981,16 +944,31 @@ func (r *Renter) threadedUploadAndRepair() {
 		// storing system files and chunks such as those related to snapshot
 		// backups is different from the siafileset that stores non-system files
 		// and chunks.
+		r.workerPool.managedUpdate()
 		heapLen := r.uploadHeap.managedLen()
-		hosts := r.managedRefreshHostsAndWorkers()
-		r.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetBackupChunks)
-		numBackupchunks := r.uploadHeap.managedLen() - heapLen
-		if numBackupchunks > 0 {
-			r.log.Println("Added", numBackupchunks, "backup chunks to the upload heap")
+		r.managedBuildChunkHeap(modules.RootSiaPath(), targetBackupChunks)
+		numBackupChunks := r.uploadHeap.managedLen() - heapLen
+		if numBackupChunks > 0 {
+			r.log.Println("Added", numBackupChunks, "backup chunks to the upload heap")
 		}
 
-		// Check if the file system is healthy and the upload heap is empty
+		// Check if there is any work to do. If the upload heap is empty and the
+		// directory heap is healthy, then there is no work to do.
 		if r.directoryHeap.managedPeekHealth() < RepairThreshold && r.uploadHeap.managedLen() == 0 {
+			// Since the directory heap is healthy, reset it.
+			//
+			// TODO: Technically, to be perfectly race free, we need to double
+			// check the health and reset the heap under the same lock. Or we
+			// need to re-structure the directory heap to retain any unhealthy
+			// directories that are in it upon re-initialization. Either way the
+			// race really just impacts how quickly a file will begin to get
+			// repaired, it will not impact the long term correctness of the
+			// program.
+			err = r.managedInitDirectoryHeap()
+			if err != nil {
+				r.log.Println("WARN: error re-initializing the directory heap when going into standby:", err)
+			}
+
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.
 			select {
@@ -1015,36 +993,14 @@ func (r *Renter) threadedUploadAndRepair() {
 				return
 			}
 
-			// Wait until the renter is online to proceed. This function will return
-			// 'false' if the renter has shut down before being online.
-			if !r.managedBlockUntilOnline() {
-				return
-			}
-
-			// Reset directory heap by re-initializing it if the heap is still
-			// healthy. We do this check to make sure a directory wasn't added
-			// by another thread that needs to be repaired.
-			//
-			// TODO: This needs to be performed under a lock that wraps both the
-			// check and the init to be thread safe.
-			if r.directoryHeap.managedPeekHealth() < RepairThreshold {
-				err = r.managedInitDirectoryHeap()
-				if err != nil {
-					// If there is an error initializing the directory heap log
-					// the error. We don't want to sleep here as we were trigger
-					// to repair chunks so we don't want to delay the repair if
-					// there are chunks in the upload heap already.
-					r.log.Println("WARN: error re-initializing the directory heap:", err)
-				}
-			}
-			// Refresh the worker pool and get the set of hosts that are currently
-			// useful for uploading.
-			hosts = r.managedRefreshHostsAndWorkers()
+			// Continue here to force the code to re-check for backup chunks,
+			// and to force the worker pool to update.
+			continue
 		}
 
 		// Add chunks to heap.
 		dirSiaPaths := make(map[modules.SiaPath]struct{})
-		dirSiaPaths, err = r.managedAddChunksToHeap(hosts)
+		dirSiaPaths, err = r.managedAddChunksToHeap()
 		if err != nil {
 			// Log the error but don't sleep as there are potentially chunks in
 			// the heap from new uploads. If the heap is empty the next check
@@ -1059,7 +1015,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// the repair and move on to the next directories in the directory heap.
 
 		r.log.Debugln("Executing an upload and repair cycle, uploadHeap has", r.uploadHeap.managedLen(), "chunks in it")
-		err = r.managedRepairLoop(hosts)
+		err = r.managedRepairLoop()
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
 			// and then try again. Here we do not skip to the next iteration as

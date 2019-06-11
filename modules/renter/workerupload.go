@@ -78,7 +78,7 @@ func (w *worker) managedNextUploadChunk() (nextChunk *unfinishedUploadChunk, pie
 func (w *worker) managedQueueUploadChunk(uc *unfinishedUploadChunk) {
 	// Check that the worker is allowed to be uploading before grabbing the
 	// worker lock.
-	utility, exists := w.renter.hostContractor.ContractUtility(w.contract.HostPublicKey)
+	utility, exists := w.renter.hostContractor.ContractUtility(w.hostPubKey)
 	goodForUpload := exists && utility.GoodForUpload
 	w.mu.Lock()
 	onCooldown, _ := w.onUploadCooldown()
@@ -102,7 +102,7 @@ func (w *worker) managedQueueUploadChunk(uc *unfinishedUploadChunk) {
 // managedUpload will perform some upload work.
 func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 	// Open an editing connection to the host.
-	e, err := w.renter.hostContractor.Editor(w.contract.HostPublicKey, w.renter.tg.StopChan())
+	e, err := w.renter.hostContractor.Editor(w.hostPubKey, w.renter.tg.StopChan())
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to acquire an editor: %v", err)
 		w.renter.log.Debugln(failureErr)
@@ -125,16 +125,13 @@ func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 	w.mu.Unlock()
 
 	// Add piece to renterFile
-	err = uc.fileEntry.AddPiece(w.contract.HostPublicKey, uc.index, pieceIndex, root)
+	err = uc.fileEntry.AddPiece(w.hostPubKey, uc.index, pieceIndex, root)
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
 		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
-
-	id := w.renter.mu.Lock()
-	w.renter.mu.Unlock(id)
 
 	// Upload is complete. Update the state of the chunk and the renter's memory
 	// available to reflect the completed upload.
@@ -162,7 +159,7 @@ func (w *worker) onUploadCooldown() (bool, time.Duration) {
 // managedProcessUploadChunk will process a chunk from the worker chunk queue.
 func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk *unfinishedUploadChunk, pieceIndex uint64) {
 	// Determine the usability value of this worker.
-	utility, exists := w.renter.hostContractor.ContractUtility(w.contract.HostPublicKey)
+	utility, exists := w.renter.hostContractor.ContractUtility(w.hostPubKey)
 	goodForUpload := exists && utility.GoodForUpload
 	w.mu.Lock()
 	onCooldown, _ := w.onUploadCooldown()

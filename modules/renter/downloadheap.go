@@ -121,14 +121,14 @@ func (r *Renter) managedBlockUntilOnline() bool {
 func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownloadChunk) {
 	// Distribute the chunk to workers, marking the number of workers
 	// that have received the work.
-	id := r.mu.Lock()
+	r.workerPool.mu.RLock()
 	udc.mu.Lock()
-	udc.workersRemaining = len(r.workerPool)
+	udc.workersRemaining = len(r.workerPool.workers)
 	udc.mu.Unlock()
-	for _, worker := range r.workerPool {
+	for _, worker := range r.workerPool.workers {
 		worker.managedQueueDownloadChunk(udc)
 	}
-	r.mu.Unlock(id)
+	r.workerPool.mu.RUnlock()
 
 	// If there are no workers, there will be no workers to attempt to clean up
 	// the chunk, so we must make sure that managedCleanUp is called at least
@@ -155,6 +155,13 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 
 // threadedDownloadLoop utilizes the worker pool to make progress on any queued
 // downloads.
+//
+// This function will update the worker pool consistently after
+// workerPoolUpdateTimeout. Currently, this is the only place where the worker
+// pool is guaranteed to update every so often, all other updates are
+// conditionals. Some of the threads don't update the worker pool at all, and
+// instead depend on this periodic update, so this cannot be removed unless it
+// is replaced by another periodic update.
 func (r *Renter) threadedDownloadLoop() {
 	err := r.tg.Add()
 	if err != nil {
@@ -173,7 +180,7 @@ LOOP:
 
 		// Update the worker pool and fetch the current time. The loop will
 		// reset after a certain amount of time has passed.
-		r.managedUpdateWorkerPool()
+		r.workerPool.managedUpdate()
 		workerUpdateTime := time.Now()
 
 		// Pull downloads out of the heap. Will break if the heap is empty, and
