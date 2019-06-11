@@ -723,12 +723,14 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		tpool:            tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
-	r.workerPool = newWorkerPool(r)
 
 	// Load all saved data.
 	if err := r.managedInitPersist(); err != nil {
 		return nil, err
 	}
+
+	// Init the worker pool after loading the saved data.
+	r.workerPool = newWorkerPool(r)
 
 	// Load and execute bubble updates
 	if err := r.loadAndExecuteBubbleUpdates(); err != nil {

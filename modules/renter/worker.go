@@ -18,7 +18,7 @@ type workerPool struct {
 	hosts             map[string]modules.RenterContract // List of hosts in use by the renter, mapped to the most recent contract with the host.
 	hostsGoodForRenew map[string]bool                   // List of which hosts are GoodForRenew.
 	hostsOffline      map[string]bool                   // List of which hosts are offline.
-	workers           map[string]*worker  // All of the active workers in the renter.
+	workers           map[string]*worker                // All of the active workers in the renter.
 
 	// Utilities. The mutex is a RW mutex because the worker pool is going to be
 	// read very frequently and updated very infrequently.
