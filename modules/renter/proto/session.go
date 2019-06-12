@@ -17,6 +17,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
+	"lukechampine.com/us/merkle"
+	"lukechampine.com/us/renterhost"
 )
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
@@ -127,7 +129,7 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 // updated contract and the Merkle root of the appended sector.
 func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
 	rc, err := s.Write([]modules.LoopWriteAction{{Type: modules.WriteActionAppend, Data: data}})
-	return rc, crypto.MerkleRoot(data), err
+	return rc, sectorRoot(data), err
 }
 
 // Replace calls the Write RPC with a series of actions that replace the sector
@@ -153,7 +155,7 @@ func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ modules
 	}
 
 	rc, err := s.write(sc, actions)
-	return rc, crypto.MerkleRoot(data), err
+	return rc, sectorRoot(data), err
 }
 
 // Write implements the Write RPC, except for ActionUpdate. A Merkle proof is
@@ -518,7 +520,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 			if req.MerkleProof {
 				proofStart := int(sec.Offset) / crypto.SegmentSize
 				proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
-				if !crypto.VerifyRangeProof(resp.Data, resp.MerkleProof, proofStart, proofEnd, sec.MerkleRoot) {
+				if !merkle.VerifyProof(resp.MerkleProof, resp.Data, proofStart, proofEnd, sec.MerkleRoot) {
 					return modules.RenterContract{}, errors.New("host provided incorrect sector data or Merkle proof")
 				}
 			}
@@ -970,7 +972,7 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 	for _, action := range actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
-			leafHashes = append(leafHashes, crypto.MerkleRoot(action.Data))
+			leafHashes = append(leafHashes, sectorRoot(action.Data))
 
 		case modules.WriteActionTrim:
 			leafHashes = leafHashes[:uint64(len(leafHashes))-action.A]
@@ -984,4 +986,12 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 		}
 	}
 	return leafHashes
+}
+
+func sectorRoot(b []byte) crypto.Hash {
+	var sector [renterhost.SectorSize]byte
+	if copy(sector[:], b) != len(sector) {
+		panic(len(b))
+	}
+	return merkle.SectorRoot(&sector)
 }
