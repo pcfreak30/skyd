@@ -229,12 +229,34 @@ func MerkleRangeProof(b []byte, start, end int) []Hash {
 //
 // VerifyRangeProof for a single segment is NOT equivalent to VerifySegment.
 func VerifyRangeProof(segments []byte, proof []Hash, start, end int, root Hash) bool {
-	proofBytes := make([][]byte, len(proof))
-	for i := range proof {
-		proofBytes[i] = proof[i][:]
+	// define a helper function that "consumes" proof hashes until reaching a
+	// 'stop' index (or until the proof hashes run out)
+	var s merkleStack
+	var leafIndex int
+	consumeUntil := func(stop int) {
+		for leafIndex != stop && len(proof) > 0 {
+			// calculate height of next subtree
+			height := bits.TrailingZeros64(uint64(leafIndex))
+			if max := bits.Len64(uint64(stop-leafIndex)) - 1; height > max {
+				height = max
+			}
+			// insert next proof hash and advance leafIndex
+			s.insertNodeHash(proof[0], height)
+			proof = proof[1:]
+			leafIndex += 1 << uint(height)
+		}
 	}
-	result, _ := merkletree.VerifyRangeProof(merkletree.NewReaderLeafHasher(bytes.NewReader(segments), NewHash(), SegmentSize), NewHash(), start, end, proofBytes, root[:])
-	return result
+
+	// add proof hashes from [0, start)
+	consumeUntil(start)
+	// add leaf hashes from [start, end)
+	for buf := bytes.NewBuffer(segments); leafIndex < end; leafIndex++ {
+		s.appendLeaf(buf.Next(SegmentSize))
+	}
+	// add proof hashes from [end, ...)
+	consumeUntil(-1)
+
+	return s.root() == root
 }
 
 // MerkleSectorRangeProof builds a Merkle proof for the sector range [start,end).
