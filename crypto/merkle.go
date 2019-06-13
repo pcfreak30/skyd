@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"bytes"
+	"math/bits"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 
@@ -16,6 +17,60 @@ const (
 	// tradeoff was deemed to be more important, as blockchain space is scarce.
 	SegmentSize = 64
 )
+
+// A merkleStack is a compact (log(n)) representation of a Merkle tree.
+type merkleStack struct {
+	stack [64]Hash
+	used  uint64 // bit vector for stack (0 == empty)
+	buf   [65]byte
+}
+
+func (s *merkleStack) nodeHash(left, right Hash) Hash {
+	s.buf[0] = 1 // node hash prefix
+	copy(s.buf[1:], left[:])
+	copy(s.buf[1+len(left):], right[:])
+	return HashBytes(s.buf[:])
+}
+
+// insertNodeHash inserts a node hash into the stack at the specified height. If
+// a hash is already present at that height, the hashes are merged up the tree
+// until an empty slot is reached.
+func (s *merkleStack) insertNodeHash(h Hash, height int) {
+	// seek to first open slot, merging nodes as we go
+	i := uint64(height)
+	for ; s.used&(1<<i) != 0; i++ {
+		h = s.nodeHash(s.stack[i], h)
+	}
+	s.stack[i] = h
+	s.used += 1 << uint(height)
+}
+
+// appendLeaf inserts the hash of leaf at height 0.
+func (s *merkleStack) appendLeaf(leaf []byte) {
+	if len(leaf) > SegmentSize {
+		panic("appendLeaf: illegal leaf size")
+	}
+	s.buf[0] = 0 // leaf hash prefix
+	copy(s.buf[1:], leaf)
+	h := HashBytes(s.buf[:1+len(leaf)])
+	s.insertNodeHash(h, 0)
+}
+
+// root returns the root of the Merkle tree. It does not modify the stack. If
+// the stack is empty, root returns a zero-valued hash.
+func (s *merkleStack) root() Hash {
+	i := uint64(bits.TrailingZeros64(s.used))
+	if i == 64 {
+		return Hash{}
+	}
+	root := s.stack[i]
+	for i++; i < 64; i++ {
+		if s.used&(1<<i) != 0 {
+			root = s.nodeHash(s.stack[i], root)
+		}
+	}
+	return root
+}
 
 // MerkleTree wraps merkletree.Tree, changing some of the function definitions
 // to assume sia-specific constants and return sia-specific types.
@@ -107,12 +162,11 @@ func CalculateLeaves(dataSize uint64) uint64 {
 
 // MerkleRoot returns the Merkle root of the input data.
 func MerkleRoot(b []byte) Hash {
-	t := NewTree()
-	buf := bytes.NewBuffer(b)
-	for buf.Len() > 0 {
-		t.Push(buf.Next(SegmentSize))
+	var s merkleStack
+	for buf := bytes.NewBuffer(b); buf.Len() > 0; {
+		s.appendLeaf(buf.Next(SegmentSize))
 	}
-	return t.Root()
+	return s.root()
 }
 
 // MerkleProof builds a Merkle proof that the data at segment 'proofIndex' is a
