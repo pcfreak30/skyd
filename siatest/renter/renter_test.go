@@ -845,8 +845,8 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
 	dataPieces := uint64(2)
+	fileSize := int(modules.SectorSize*dataPieces) + fastrand.Intn(int(modules.SectorSize)) // at least 1 full chunk
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
