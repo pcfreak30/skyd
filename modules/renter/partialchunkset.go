@@ -11,6 +11,9 @@ package renter
 import (
 	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 
@@ -64,7 +67,7 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	// File has a combined chunk assigned to it. Load it from disk.
 	entry := chunk.fileEntry
 	if entry.CombinedChunkStatus() == siafile.CombinedChunkStatusCompleted {
-		return true, pcs.fetchLogicalCombinedChunk(entry.Metadata().CombinedChunkID)
+		return true, pcs.fetchLogicalCombinedChunk(entry.Metadata().CombinedChunkID, chunk)
 	}
 	// Add a request for the file if it doesn't exist yet.
 	ec := entry.ErasureCode()
@@ -104,12 +107,23 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 		return false, err
 	}
 	// Return the new combined chunk.
-	return true, pcs.fetchLogicalCombinedChunk(chunkID)
+	return true, pcs.fetchLogicalCombinedChunk(chunkID, chunk)
 }
 
 // loadCombinedChunk loads a CombinedChunk from disk using it's chunkID.
-func (pcs *partialChunkSet) fetchLogicalCombinedChunk(chunkID string) error {
-	panic("not implemented yet")
+func (pcs *partialChunkSet) fetchLogicalCombinedChunk(chunkID string, chunk *unfinishedUploadChunk) error {
+	path := filepath.Join(pcs.combinedChunkRoot, chunkID)
+	dds := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = dds.ReadFrom(f)
+	if err == nil || err == io.EOF {
+		chunk.logicalChunkData = dds.buf
+	}
+	return err
 }
 
 // buildChunk builds a chunk and returns it together with its ID.
