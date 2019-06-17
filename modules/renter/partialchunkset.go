@@ -48,7 +48,9 @@ type (
 // newPartialChunkSet creates a partial chunk set ready to combine partial
 // chunks.
 func newPartialChunkSet() *partialChunkSet {
-	return &partialChunkSet{}
+	return &partialChunkSet{
+		requests: make(map[modules.ErasureCoderIdentifier]chunkRequestSet),
+	}
 }
 
 // FetchLogicalCombinedChunk fetches the logical data for an
