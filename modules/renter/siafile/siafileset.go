@@ -95,16 +95,40 @@ func randomThreadUID() uint64 {
 }
 
 // CopyEntry returns a copy of the SiaFileSetEntry
-func (entry *SiaFileSetEntry) CopyEntry() *SiaFileSetEntry {
+func (entry *SiaFileSetEntry) CopyEntry() (*SiaFileSetEntry, error) {
+	// Grab siafile set lock
+	entry.staticSiaFileSet.mu.Lock()
+	defer entry.staticSiaFileSet.mu.Unlock()
+
+	// Check if entry is deleted, we will not make a copy of a deleted file.
+	if entry.Deleted() {
+		return nil, errors.New("can't make copy of deleted siafile entry")
+	}
+
+	// Sanity Check that the entry is currently in the SiaFileSet
+	_, exists := entry.staticSiaFileSet.siaFileMap[entry.UID()]
+	if !exists {
+		// If the file is deleted, it should be marked as delted. If the file is
+		// renamed, it should still have the same UID. The entry is coming from
+		// an existing entry, so the entry should still be in memory because not
+		// all of the entries have been closed. There shouldn't be a case where
+		// the entry does not exist in the siafile set for this code if it's not
+		// deleted.
+		build.Critical("provided entry does not exist in the SiaFileSet, but has not been marked as deleted")
+		return nil, errors.New("siafile entry not found in siafileset")
+	}
+
+	// Create the copy of the entry. Both the original entry and the copied
+	// entry will need to be closed.
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
 	threadUID := randomThreadUID()
-	copy := &SiaFileSetEntry{
+	entry.threadMap[threadUID] = newThreadInfo()
+	entryCopy := &SiaFileSetEntry{
 		siaFileSetEntry: entry.siaFileSetEntry,
 		threadUID:       threadUID,
 	}
-	entry.threadMap[threadUID] = newThreadInfo()
-	return copy
+	return entryCopy, nil
 }
 
 // Close will close the set entry, removing the entry from memory if there are
@@ -150,6 +174,10 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	// Lock the thread map mu and remove the threadUID from the entry.
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
+
+	if _, exists := entry.threadMap[entry.threadUID]; !exists {
+		build.Critical("threaduid doesn't exist in threadMap: ", entry.SiaFilePath(), len(entry.threadMap))
+	}
 	delete(entry.threadMap, entry.threadUID)
 
 	// The entry that exists in the siafile set may not be the same as the entry
@@ -204,7 +232,7 @@ func (sfs *SiaFileSet) createAndApplyTransaction(updates ...writeaheadlog.Update
 }
 
 // delete deletes the SiaFileSetEntry's SiaFile
-func (sfs *SiaFileSet) delete(siaPath modules.SiaPath) error {
+func (sfs *SiaFileSet) deleteFile(siaPath modules.SiaPath) error {
 	// Fetch the corresponding siafile and call delete.
 	//
 	// NOTE: since we are just accessing the entry directly from the map while
@@ -267,8 +295,14 @@ func (sfs *SiaFileSet) siaPathToEntryAndUID(siaPath modules.SiaPath) (*siaFileSe
 // the renter
 func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 	// Check for file in Memory
-	_, _, exists := sfs.siaPathToEntryAndUID(siaPath)
-	if exists {
+	_, UID, exists1 := sfs.siaPathToEntryAndUID(siaPath)
+	_, exists2 := sfs.siaFileMap[UID]
+	// Sanity check that the maps are consistent
+	if exists1 != exists2 {
+		build.Critical("SiaFileSet in memory maps are inconsistent", exists1, exists2)
+	}
+	// Since maps are consistent, only need to check one
+	if exists1 {
 		return true
 	}
 	// Check for file on disk
@@ -293,6 +327,7 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 		_, err = os.Stat(localPath)
 		onDisk = err == nil
 	}
+	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       md.AccessTime,
 		Available:        md.CachedRedundancy >= 1,
@@ -303,8 +338,8 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 		Filesize:         uint64(md.FileSize),
 		Health:           md.CachedHealth,
 		LocalPath:        localPath,
-		MaxHealth:        math.Max(md.CachedHealth, md.CachedStuckHealth),
-		MaxHealthPercent: healthPercentage(md.CachedHealth, md.CachedStuckHealth, md.staticErasureCode),
+		MaxHealth:        maxHealth,
+		MaxHealthPercent: siadir.HealthPercentage(maxHealth),
 		ModTime:          md.ModTime,
 		NumStuckChunks:   md.NumStuckChunks,
 		OnDisk:           onDisk,
@@ -328,13 +363,19 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) (*siaFileSetEntry, error)
 		staticSiaFileSet: sfs,
 		threadMap:        threads,
 	}
-	// Add entry to siaFileMap and siapathToUID map. Sanity check that the UID is
-	// in fact unique.
+	// Sanity check that the UID is in fact unique.
 	if _, exists := sfs.siaFileMap[entry.UID()]; exists {
 		err := fmt.Errorf("siafile '%v' with uid '%v' was already loaded", sfs.siaPath(entry), entry.UID())
 		build.Critical(err)
 		return nil, err
 	}
+	// Sanity check that there isn't a naming conflict
+	if _, exists := sfs.siapathToUID[sfs.siaPath(entry)]; exists {
+		err := errors.New("siapath already in map")
+		build.Critical(err)
+		return nil, err
+	}
+	// Add entry to siaFileMap and siapathToUID map.
 	sfs.siaFileMap[entry.UID()] = entry
 	sfs.siapathToUID[sfs.siaPath(entry)] = entry.UID()
 	return entry, nil
@@ -501,7 +542,7 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
 func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.delete(siaPath)
+	return sfs.deleteFile(siaPath)
 }
 
 // Exists checks to see if a file with the provided siaPath already exists in
@@ -532,6 +573,7 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
 	redundancy := entry.Redundancy(offline, goodForRenew)
 	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
+	maxHealth := math.Max(health, stuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
 		Available:        redundancy >= 1,
@@ -542,8 +584,8 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		Filesize:         entry.Size(),
 		Health:           health,
 		LocalPath:        localPath,
-		MaxHealth:        math.Max(health, stuckHealth),
-		MaxHealthPercent: healthPercentage(health, stuckHealth, entry.ErasureCode()),
+		MaxHealth:        maxHealth,
+		MaxHealthPercent: siadir.HealthPercentage(maxHealth),
 		ModTime:          entry.ModTime(),
 		NumStuckChunks:   numStuckChunks,
 		OnDisk:           onDisk,
@@ -749,16 +791,6 @@ func (sfs *SiaFileSet) Rename(siaPath, newSiaPath modules.SiaPath) error {
 
 	// Update the siafile to have a new name.
 	return entry.Rename(newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir))
-}
-
-// healthPercentage returns the health in a more human understandable format out
-// of 100%
-func healthPercentage(h, sh float64, ec modules.ErasureCoder) float64 {
-	health := math.Max(h, sh)
-	dataPieces := ec.MinPieces()
-	parityPieces := ec.NumPieces() - dataPieces
-	worstHealth := 1 + float64(dataPieces)/float64(parityPieces)
-	return 100 * ((worstHealth - health) / worstHealth)
 }
 
 // DeleteDir deletes a siadir and all the siadirs and siafiles within it

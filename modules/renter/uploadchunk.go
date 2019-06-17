@@ -211,10 +211,13 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 // managedStreamLogicalChunkData handles fetching logical chunk data from a
 // stream instead of downloading it or loading it from disk.
 func (r *Renter) managedStreamLogicalChunkData(chunk *unfinishedUploadChunk) (bool, error) {
-	// Read up to chunk.length bytes from the stream.
-	byteBuf := make([]byte, chunk.length)
-	n, err := io.ReadFull(chunk.sourceReader, byteBuf)
+	// Ensure that the source reader will be closed.
 	defer chunk.sourceReader.Close()
+	// Read the data from the source reader into a buffer.
+	// TODO: having both this buffer and the downloaddestination buffer might not
+	// be very efficient and can probably be optimized.
+	byteBuf := make([]byte, chunk.fileEntry.ChunkSize())
+	n, err := io.ReadFull(chunk.sourceReader, byteBuf)
 	// Adjust the fileSize. Since we don't know the length of the stream
 	// beforehand we simply assume that a whole chunk will be added to the
 	// file. That's why we subtract the difference between the size of a
@@ -376,11 +379,6 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 func (r *Renter) managedReadFullLogicalChunkData(chunk *unfinishedUploadChunk, download bool) (bool, error) {
 	// Try to read the data from disk. If that fails at any point, prefer to
 	// download the chunk.
-	//
-	// TODO: Might want to remove the file from the renter tracking if the disk
-	// loading fails. Should do this after we swap the file format, the tracking
-	// data for the file should reside in the file metadata and not in a
-	// separate struct.
 	osFile, err := os.Open(chunk.fileEntry.LocalPath())
 	if err != nil && download {
 		return true, r.managedDownloadLogicalChunkData(chunk)
@@ -394,7 +392,7 @@ func (r *Renter) managedReadFullLogicalChunkData(chunk *unfinishedUploadChunk, d
 	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
 	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	_, err = buf.ReadFrom(sr)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF && download {
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		r.log.Debugln("failed to read file, downloading instead:", err)
 		return true, r.managedDownloadLogicalChunkData(chunk)
 	} else if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
@@ -457,7 +455,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) (boo
 	// Only download this file if more than 25% of the redundancy is missing.
 	numParityPieces := float64(chunk.piecesNeeded - chunk.minimumPieces)
 	chunkHealth := 1 - (float64(chunk.piecesCompleted-chunk.minimumPieces) / numParityPieces)
-	download := chunkHealth >= siafile.RemoteRepairDownloadThreshold
+	download := chunkHealth >= RepairThreshold
 
 	// If a sourceReader is available, use it instead.
 	if chunk.sourceReader != nil {
@@ -583,13 +581,14 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	uc.mu.Lock()
 	index := uc.id.index
 	stuck := uc.stuck
+	minimumPieces := uc.minimumPieces
 	piecesCompleted := uc.piecesCompleted
 	piecesNeeded := uc.piecesNeeded
 	stuckRepair := uc.stuckRepair
 	uc.mu.Unlock()
 
-	// Determine if repair was successful
-	successfulRepair := (1-siafile.RemoteRepairDownloadThreshold)*float64(piecesNeeded) <= float64(piecesCompleted)
+	// Determine if repair was successful.
+	successfulRepair := float64(piecesNeeded-piecesCompleted)/float64(piecesNeeded-minimumPieces) < RepairThreshold
 
 	// Check if renter is shutting down
 	var renterError bool
@@ -616,7 +615,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	}
 	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
-		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, r.staticFileSet.SiaPath(uc.fileEntry), err)
+		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
 	}
 
 	// Check to see if the chunk was stuck and now is successfully repaired by

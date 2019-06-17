@@ -224,8 +224,8 @@ func (sf *SiaFile) ChunkSize() uint64 {
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
 func (sf *SiaFile) LastHealthCheckTime() time.Time {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
 	return sf.staticMetadata.LastHealthCheckTime
 }
 
@@ -473,44 +473,6 @@ func (sf *SiaFile) UpdateAccessTime() error {
 	defer sf.mu.Unlock()
 	sf.staticMetadata.AccessTime = time.Now()
 
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// UpdateLastHealthCheckTime updates the LastHealthCheckTime timestamp to the
-// current time.
-func (sf *SiaFile) UpdateLastHealthCheckTime() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	sf.staticMetadata.LastHealthCheckTime = time.Now()
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
-}
-
-// UpdateCachedHealthMetadata updates the siafile metadata fields that are the
-// cached health values
-func (sf *SiaFile) UpdateCachedHealthMetadata(metadata CachedHealthMetadata) error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// Update the number of stuck chunks
-	var numStuckChunks uint64
-	for _, chunk := range sf.fullChunks {
-		if chunk.Stuck {
-			numStuckChunks++
-		}
-	}
-	sf.staticMetadata.Health = metadata.Health
-	sf.staticMetadata.NumStuckChunks = numStuckChunks
-	sf.staticMetadata.Redundancy = metadata.Redundancy
-	sf.staticMetadata.StuckHealth = metadata.StuckHealth
 	// Save changes to metadata to disk.
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {

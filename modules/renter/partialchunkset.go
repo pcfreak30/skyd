@@ -70,8 +70,12 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	if _, exists := pcs.requests[ecid]; !exists {
 		pcs.requests[ecid] = make(chunkRequestSet)
 	}
+	copy, err := chunk.fileEntry.CopyEntry()
+	if err != nil {
+		return false, err
+	}
 	pcs.requests[ecid][entry.UID()] = &chunkRequest{
-		sf: chunk.fileEntry.CopyEntry(), // Copy the SiaFileSetEntry for the request
+		sf: copy, // Copy the SiaFileSetEntry for the request
 	}
 	// See if we can combine multiple requests into a chunk.
 	crs := pcs.requests[ecid]

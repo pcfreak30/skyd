@@ -51,7 +51,18 @@ func (sfr *SnapshotReader) Stat() (os.FileInfo, error) {
 }
 
 // SnapshotReader creates a io.ReadCloser that can be used to read the raw
-// Siafile from disk.
+// Siafile from disk. Note that the underlying siafile holds a readlock until
+// the SnapshotReader is closed, which means that no operations can be called to
+// the underlying siafile which may cause it to grab a lock, because that will
+// cause a deadlock.
+//
+// Operations which require grabbing a readlock on the underlying siafile are
+// also not okay, because if some other thread has attempted to grab a writelock
+// on the siafile, the readlock will block and then the Close() statement may
+// never be reached for the SnapshotReader.
+//
+// TODO: Things upstream would be a lot easier if we could drop the requirement
+// to hold a lock for the duration of the life of the snapshot reader.
 func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 	// Lock the file.
 	sf.mu.RLock()
@@ -149,6 +160,11 @@ func (s *Snapshot) UID() SiafileUID {
 // Snapshot creates a snapshot of the SiaFile.
 func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	mk := sf.MasterKey()
+
+	//////////////////////////////////////////////////////////////////////////////
+	// RLock starts here. No way to exit the function until RUnlock is reached
+	// below.
+	//////////////////////////////////////////////////////////////////////////////
 	sf.mu.RLock()
 
 	// Copy PubKeyTable.
@@ -208,6 +224,9 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	mode := sf.staticMetadata.Mode
 	uid := sf.staticMetadata.UniqueID
 	sf.mu.RUnlock()
+	//////////////////////////////////////////////////////////////////////////////
+	// RLock ends here.
+	//////////////////////////////////////////////////////////////////////////////
 
 	sf.staticSiaFileSet.mu.Lock()
 	sp := sf.staticSiaFileSet.siaPath(sf)

@@ -344,7 +344,6 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if chunkSize > maxChunkSize {
 		return fmt.Errorf("chunk doesn't fit into allocated space %v > %v", chunkSize, maxChunkSize)
 	}
-
 	// Update the file atomically.
 	var updates []writeaheadlog.Update
 	var err error
@@ -518,7 +517,6 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-
 	// Update the cache.
 	defer func() {
 		sf.staticMetadata.CachedHealth = h
@@ -597,60 +595,6 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 		keys = append(keys, key.PublicKey)
 	}
 	return keys
-}
-
-// MarkAllUnhealthyChunksAsStuck marks all unhealthy chunks as stuck in the
-// siafile
-func (sf *SiaFile) MarkAllUnhealthyChunksAsStuck(offline map[string]bool, goodForRenew map[string]bool) (err error) {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// If the file has been deleted we can't mark a chunk as stuck.
-	if sf.deleted {
-		return errors.New("can't call SetStuck on deleted file")
-	}
-	var updates []writeaheadlog.Update
-	for chunkIndex := range sf.fullChunks {
-		// Check if chunk is already stuck
-		if sf.fullChunks[chunkIndex].Stuck {
-			continue
-		}
-		// Check health of chunk
-		chunkHealth := sf.chunkHealth(chunkIndex, offline, goodForRenew)
-		// If chunk is healthy then we don't need to mark it as stuck
-		if chunkHealth < RemoteRepairDownloadThreshold {
-			continue
-		}
-		// In case an error happens we need to revert the changes we are going
-		// to make.
-		defer func() {
-			if err != nil {
-				sf.fullChunks[chunkIndex].Stuck = false
-				sf.staticMetadata.NumStuckChunks--
-			}
-		}()
-		// Update chunk and NumStuckChunks in siafile metadata
-		sf.fullChunks[chunkIndex].Stuck = true
-		sf.staticMetadata.NumStuckChunks++
-		// Create chunk update
-		update := sf.saveChunkUpdate(chunkIndex)
-		updates = append(updates, update)
-	}
-	// Set partial chunk too if necessary.
-	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
-		chunkHealth := sf.partialsSiaFile.ChunkHealth(int(sf.staticMetadata.CombinedChunkIndex), offline, goodForRenew)
-		if chunkHealth >= RemoteRepairDownloadThreshold {
-			if err := sf.partialsSiaFile.SetStuck(sf.staticMetadata.CombinedChunkIndex, true); err != nil {
-				return err
-			}
-		}
-	}
-	// Create metadata update and apply updates on disk
-	metadataUpdates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	updates = append(updates, metadataUpdates...)
-	return sf.createAndApplyTransaction(updates...)
 }
 
 // NumChunks returns the number of chunks the file consists of. This will
@@ -759,7 +703,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 }
 
 // SetAllStuck sets the Stuck field of all chunks to stuck.
-func (sf *SiaFile) SetAllStuck(stuck bool) error {
+func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 
@@ -778,6 +722,12 @@ func (sf *SiaFile) SetAllStuck(stuck bool) error {
 		}
 	}
 	// Update NumStuckChunks in siafile metadata
+	nsc := sf.staticMetadata.NumStuckChunks
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.NumStuckChunks = nsc
+		}
+	}()
 	if stuck && sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusHasChunk ||
 		sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
 		sf.staticMetadata.NumStuckChunks = sf.numChunks() - 1 // partial chunk can't be stuck in this state
@@ -837,9 +787,14 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 			unusedHosts++
 		}
 	}
-	// Prune the pubKeyTable if necessary.
+	// Prune the pubKeyTable if necessary. If we have too many unused hosts we
+	// want to remove them from the table but only if we have enough used hosts.
+	// Otherwise we might be pruning hosts that could become used again since
+	// the file might be in flux while it uploads or repairs
 	pruned := false
-	if unusedHosts > pubKeyTablePruneThreshold {
+	tooManyUnusedHosts := unusedHosts > pubKeyTablePruneThreshold
+	enoughUsedHosts := len(usedMap) > sf.staticMetadata.staticErasureCode.NumPieces()
+	if tooManyUnusedHosts && enoughUsedHosts {
 		sf.pruneHosts()
 		pruned = true
 	}
@@ -900,7 +855,7 @@ func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
 	if offset >= uint32(len(sf.pubKeyTable)) {
 		// Causes tests to fail. The following for loop will try to fix the
 		// corruption on release builds.
-		build.Critical("piece.HostTableOffset >= len(sf.pubKeyTable)")
+		build.Critical("piece.HostTableOffset", offset, " >= len(sf.pubKeyTable)", len(sf.pubKeyTable))
 		for offset >= uint32(len(sf.pubKeyTable)) {
 			sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
 		}

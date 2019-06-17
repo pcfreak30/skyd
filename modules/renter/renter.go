@@ -567,19 +567,20 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 		return err
 	}
 
+	// Set IPViolationsCheck
+	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
+
 	// Set the bandwidth limits.
 	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
 	if err != nil {
 		return err
 	}
+	// Save the changes.
+	id := r.mu.Lock()
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-
-	// Set IPViolationsCheck
-	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
-
-	// Save the changes.
 	err = r.saveSync()
+	r.mu.Unlock(id)
 	if err != nil {
 		return err
 	}

@@ -254,14 +254,14 @@ func (c *Client) RenterRecoverLocalBackupPost(src string) (err error) {
 
 // RenterDownloadFullGet uses the /renter/download endpoint to download a full
 // file.
-func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async bool) (err error) {
+func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async bool) (string, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
 	values.Set("httpresp", fmt.Sprint(false))
 	values.Set("async", fmt.Sprint(async))
-	err = c.get(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()), nil)
-	return
+	h, _, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
+	return h.Get("ID"), err
 }
 
 // RenterClearAllDownloadsPost requests the /renter/downloads/clear resource
@@ -518,5 +518,15 @@ func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err e
 func (c *Client) RenterGetDir(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.get(fmt.Sprintf("/renter/dir/%s", sp), &rd)
+	return
+}
+
+// RenterValidateSiaPathPost uses the /renter/validatesiapath endpoint to
+// validate a potential siapath
+//
+// NOTE: This function specifically takes a string as an argument not a type
+// SiaPath
+func (c *Client) RenterValidateSiaPathPost(siaPathStr string) (err error) {
+	err = c.post(fmt.Sprintf("/renter/validatesiapath/%s", siaPathStr), "", nil)
 	return
 }
