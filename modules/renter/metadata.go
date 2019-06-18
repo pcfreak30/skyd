@@ -36,20 +36,29 @@ func (r *Renter) managedBubbleNeeded(siaPath modules.SiaPath) (bool, error) {
 
 	// Check for bubble in bubbleUpdate map
 	siaPathStr := siaPath.String()
-	status, ok := r.bubbleUpdates[siaPathStr]
+	update, ok := r.bubbleUpdates[siaPathStr]
 	if !ok {
-		status = bubbleInit
-		r.bubbleUpdates[siaPathStr] = status
+		// The initial done channel is closed right away since there are no ongoing
+		// bubbles yet.
+		done := make(chan struct{})
+		close(done)
+		update = bubbleUpdate{
+			status: bubbleInit,
+			done:   done,
+		}
+		r.bubbleUpdates[siaPathStr] = update
 	}
 
 	// Update the bubble status
 	var err error
-	switch status {
+	switch update.status {
 	case bubblePending:
 	case bubbleActive:
-		r.bubbleUpdates[siaPathStr] = bubblePending
+		update.status = bubblePending
+		r.bubbleUpdates[siaPathStr] = update
 	case bubbleInit:
-		r.bubbleUpdates[siaPathStr] = bubbleActive
+		update.status = bubbleActive
+		r.bubbleUpdates[siaPathStr] = update
 		return true, nil
 	default:
 		err = errors.New("WARN: invalid bubble status")
@@ -256,18 +265,33 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) error {
 
 	// Check current status
 	siaPathStr := siaPath.String()
-	status, ok := r.bubbleUpdates[siaPathStr]
+	update, ok := r.bubbleUpdates[siaPathStr]
 	if !ok {
 		// Bubble not found in map, nothing to do.
 		return nil
 	}
 
 	// Update status and call new bubble or remove from bubbleUpdates and save
-	switch status {
+	switch update.status {
 	case bubblePending:
-		r.bubbleUpdates[siaPathStr] = bubbleInit
+		// create a new done channel since we reset the update to bubbleInit.
+		done := make(chan struct{})
+		oldDone := update.done
+		update.done = done
+		update.status = bubbleInit
+		r.bubbleUpdates[siaPathStr] = update
 		defer func() {
-			go r.threadedBubbleMetadata(siaPath)
+			// Wait on oldDone to make sure the previous bubble is done before spawning a
+			// new goroutine.
+			select {
+			case <-oldDone:
+			case <-r.tg.StopChan():
+				return
+			}
+			go func() {
+				r.threadedBubbleMetadata(siaPath)
+				close(done)
+			}()
 		}()
 	case bubbleActive:
 		delete(r.bubbleUpdates, siaPathStr)

@@ -184,6 +184,11 @@ type hostContractor interface {
 	SetRateLimits(int64, int64, uint64)
 }
 
+type bubbleUpdate struct {
+	status bubbleStatus
+	done   <-chan struct{}
+}
+
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 //
@@ -236,7 +241,7 @@ type Renter struct {
 	// A bubble is the process of updating a directory's metadata and then
 	// moving on to its parent directory so that any changes in metadata are
 	// properly reflected throughout the filesystem.
-	bubbleUpdates   map[string]bubbleStatus
+	bubbleUpdates   map[string]bubbleUpdate
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
@@ -803,7 +808,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 		workerPool: make(map[types.FileContractID]*worker),
 
-		bubbleUpdates: make(map[string]bubbleStatus),
+		bubbleUpdates: make(map[string]bubbleUpdate),
 
 		cs:               cs,
 		deps:             deps,
