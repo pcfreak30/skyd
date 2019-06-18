@@ -629,6 +629,18 @@ func (r *Renter) ActiveHosts() []modules.HostDBEntry { return r.hostDB.ActiveHos
 // AllHosts returns an array of all hosts
 func (r *Renter) AllHosts() []modules.HostDBEntry { return r.hostDB.AllHosts() }
 
+// Filter returns the renter's hostdb's filterMode and filteredHosts
+func (r *Renter) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
+	var fm modules.FilterMode
+	hosts := make(map[string]types.SiaPublicKey)
+	if err := r.tg.Add(); err != nil {
+		return fm, hosts, err
+	}
+	defer r.tg.Done()
+	fm, hosts = r.hostDB.Filter()
+	return fm, hosts, nil
+}
+
 // SetFilterMode sets the renter's hostdb filter mode
 func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error {
 	if err := r.tg.Add(); err != nil {
@@ -815,6 +827,9 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	if err := r.managedInitPersist(); err != nil {
 		return nil, err
 	}
+	// After persist is initialized, push the root directory onto the directory
+	// heap for the repair process.
+	r.managedPushUnexploredDirectory(modules.RootSiaPath())
 
 	// Load and execute bubble updates
 	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
@@ -830,9 +845,11 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// Spin up the workers for the work pool.
 	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
-	go r.threadedUploadAndRepair()
-	go r.threadedUpdateRenterHealth()
-	go r.threadedStuckFileLoop()
+	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+		go r.threadedUploadAndRepair()
+		go r.threadedUpdateRenterHealth()
+		go r.threadedStuckFileLoop()
+	}
 
 	// Kill workers on shutdown.
 	r.tg.OnStop(func() error {
