@@ -2,7 +2,6 @@ package renter
 
 import (
 	"container/heap"
-	"fmt"
 	"io/ioutil"
 	"math"
 	"os"
@@ -383,7 +382,6 @@ func (r *Renter) buildUnfinishedChunks(entry *siafile.SiaFileSetEntry, hosts map
 		onDisk := err == nil
 		repairable := chunk.health <= 1 || onDisk
 		needsRepair := chunk.health >= RepairThreshold
-		fmt.Println("needs repair", needsRepair, chunk.health, chunk.stuck, repairable)
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
 		// repairable or if we are targetting stuck chunks
