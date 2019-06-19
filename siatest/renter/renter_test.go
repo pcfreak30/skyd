@@ -3418,6 +3418,7 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to create a new host", err)
 	}
 	// We should reach full health again.
+	fmt.Println("waiting for full health")
 	if err := renter.WaitForUploadHealth(remoteFile); err != nil {
 		t.Logf("numHosts: %v", len(tg.Hosts()))
 		t.Fatal("File wasn't repaired", err)
