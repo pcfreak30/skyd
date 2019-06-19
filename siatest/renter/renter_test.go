@@ -79,10 +79,10 @@ func TestRenterOne(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
+		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
-		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDirectories", testDirectories},
 	}
@@ -3388,7 +3388,7 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
-	// Delete all already existing files.
+	// Delete all already existing files to avoid NDFs related to stuck chunks.
 	files, err := renter.Files(false)
 	if err != nil {
 		t.Fatal(err)
