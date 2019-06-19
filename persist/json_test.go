@@ -136,17 +136,17 @@ func TestLoadJSONCorruptedFiles(t *testing.T) {
 	// Try loading a file where only the main has a bad checksum.
 	err = LoadJSON(testMeta, &obj2, filepath.Join("testdata", "badchecksummain.json"))
 	if err != nil {
-		t.Error("bad checksum main failed:", err)
+		t.Fatal("bad checksum main failed:", err)
 	}
 	// Verify equivalence.
 	if obj2.One != obj1.One {
-		t.Error("persist mismatch")
+		t.Error("persist mismatch", obj1.One, obj2.One)
 	}
 	if obj2.Two != obj1.Two {
-		t.Error("persist mismatch")
+		t.Error("persist mismatch", obj1.Two, obj2.Two)
 	}
 	if !bytes.Equal(obj2.Three, obj1.Three) {
-		t.Error("persist mismatch")
+		t.Error("persist mismatch", obj1.Three, obj2.Three)
 	}
 	if obj2.One != "dog" {
 		t.Error("persist mismatch")
@@ -161,7 +161,7 @@ func TestLoadJSONCorruptedFiles(t *testing.T) {
 	// Try loading a file with a manual checksum.
 	err = LoadJSON(testMeta, &obj2, filepath.Join("testdata", "manual.json"))
 	if err != nil {
-		t.Error("loading file with a manual checksum should have succeeded")
+		t.Fatal("loading file with a manual checksum should have succeeded")
 	}
 	// Verify equivalence.
 	if obj2.One != obj1.One {
@@ -186,11 +186,11 @@ func TestLoadJSONCorruptedFiles(t *testing.T) {
 	// Try loading a file with a bad manual checksum.
 	err = LoadJSON(testMeta, &obj2, filepath.Join("testdata", "manual_bad.json"))
 	if err == nil {
-		t.Error("bad manual checksum should not have resulted in loading correctly")
+		t.Fatal("bad manual checksum should not have resulted in loading correctly")
 	}
 	err = LoadJSON(testMeta, &obj2, filepath.Join("testdata", "manual_bad2.json"))
 	if err == nil {
-		t.Error("bad manual checksum should not have resulted in loading correctly")
+		t.Fatal("bad manual checksum should not have resulted in loading correctly")
 	}
 
 	// Try loading a file where the main has been corrupted in a way that makes

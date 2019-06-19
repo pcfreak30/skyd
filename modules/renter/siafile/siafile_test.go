@@ -951,7 +951,7 @@ func TestFileExpiration(t *testing.T) {
 	contracts[pk1.String()] = fc
 	_ = f.Expiration(contracts)
 	if f.staticMetadata.CachedExpiration != 100 {
-		t.Error("file did not report lowest WindowStart")
+		t.Error("file did not report lowest WindowStart", f.staticMetadata.CachedExpiration)
 	}
 
 	// Add a contract with a lower WindowStart.
@@ -959,7 +959,7 @@ func TestFileExpiration(t *testing.T) {
 	contracts[pk2.String()] = fc
 	_ = f.Expiration(contracts)
 	if f.staticMetadata.CachedExpiration != 50 {
-		t.Error("file did not report lowest WindowStart")
+		t.Error("file did not report lowest WindowStart", f.staticMetadata.CachedExpiration)
 	}
 
 	// Add a contract with a higher WindowStart.
@@ -967,6 +967,6 @@ func TestFileExpiration(t *testing.T) {
 	contracts[pk3.String()] = fc
 	_ = f.Expiration(contracts)
 	if f.staticMetadata.CachedExpiration != 50 {
-		t.Error("file did not report lowest WindowStart")
+		t.Error("file did not report lowest WindowStart", f.staticMetadata.CachedExpiration)
 	}
 }
