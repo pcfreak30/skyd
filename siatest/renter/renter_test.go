@@ -3388,6 +3388,17 @@ func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
+	// Delete all already existing files.
+	files, err := renter.Files(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if err := renter.RenterDeletePost(file.SiaPath); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// Upload file
 	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
