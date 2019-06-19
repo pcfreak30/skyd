@@ -1929,7 +1929,7 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// redundancy should reach 2
-	err = build.Retry(120, 250*time.Millisecond, func() error {
+	err = build.Retry(1000, 250*time.Millisecond, func() error {
 		var rf RenterFiles
 		st1.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
