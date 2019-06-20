@@ -537,6 +537,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		} else {
 			udc.staticFetchLength = params.file.ChunkSize() - udc.staticFetchOffset
 		}
+		// TODO: set the offset and length in case the last chunk is a combined chunk.
 		// Set the writeOffset within the destination for where the data should
 		// be written.
 		udc.staticWriteOffset = writeOffset
