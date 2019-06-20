@@ -922,7 +922,8 @@ func TestFileExpiration(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	f := newBlankTestFile()
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, false)
+	f, _, _ := customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 	contracts := make(map[string]modules.RenterContract)
 	_ = f.Expiration(contracts)
 	if f.staticMetadata.CachedExpiration != 0 {
