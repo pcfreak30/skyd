@@ -72,7 +72,7 @@ func TestRenterOne(t *testing.T) {
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
+		Hosts:   6,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -783,13 +783,26 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 	// parallelDownloads is the number of downloads that are run in parallel.
 	parallelDownloads := 10
 	// fileSize is the size of the downloaded file.
-	fileSize := int(10*modules.SectorSize) + siatest.Fuzz()
+	dataPieces := uint64(len(tg.Hosts())) - 1
+	parityPieces := uint64(1)
+	fileSize := int(modules.SectorSize*dataPieces - 1) //int(10*modules.SectorSize) + siatest.Fuzz() // TODO: change back
 	// set download limits and reset them after test.
 	// uniqueRemoteFiles is the number of files that will be uploaded to the
 	// network. Downloads will choose the remote file to download randomly.
 	uniqueRemoteFiles := 5
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
+
+	// Upload files
+	remoteFiles := make([]*siatest.RemoteFile, 0, uniqueRemoteFiles)
+	for i := 0; i < uniqueRemoteFiles; i++ {
+		_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+		if err != nil {
+			t.Fatal("Failed to upload a file for testing: ", err)
+		}
+		remoteFiles = append(remoteFiles, remoteFile)
+	}
+
 	// set download limits and reset them after test.
 	if err := renter.RenterPostRateLimit(int64(fileSize)*2, 0); err != nil {
 		t.Fatal("failed to set renter bandwidth limit", err)
@@ -799,18 +812,6 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 			t.Error("failed to reset renter bandwidth limit", err)
 		}
 	}()
-
-	// Upload files
-	dataPieces := uint64(len(tg.Hosts())) - 1
-	parityPieces := uint64(1)
-	remoteFiles := make([]*siatest.RemoteFile, 0, uniqueRemoteFiles)
-	for i := 0; i < uniqueRemoteFiles; i++ {
-		_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
-		if err != nil {
-			t.Fatal("Failed to upload a file for testing: ", err)
-		}
-		remoteFiles = append(remoteFiles, remoteFile)
-	}
 
 	// Randomly download using download to file and download to stream methods.
 	wg := new(sync.WaitGroup)

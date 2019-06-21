@@ -440,10 +440,7 @@ func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk
 	if err != nil {
 		return false, err
 	}
-	if !fetched {
-		return false, nil // Combined chunk not ready yet
-	}
-	return true, nil
+	return fetched, nil
 }
 
 // managedFetchLogicalChunkData will get the raw data for a chunk, pulling it from disk if

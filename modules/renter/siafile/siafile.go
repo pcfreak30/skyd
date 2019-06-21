@@ -280,8 +280,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	defer sf.uploadProgressAndBytes()
 
 	// Handle piece being added to the partial chunk.
-	if chunkIndex == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete &&
-		chunkIndex == uint64(len(sf.fullChunks)) {
+	if chunkIndex == sf.numChunks()-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
 		return sf.partialsSiaFile.AddPiece(pk, sf.staticMetadata.CombinedChunkIndex, pieceIndex, merkleRoot)
 	}
 	// Can't add a piece to a non-existent combined chunk. We could just return

@@ -419,7 +419,7 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 				goodHosts++
 			}
 		}
-		return errors.Compose(err, fmt.Errorf("%v available hosts", goodHosts))
+		return errors.Compose(err, fmt.Errorf("available hosts %v/%v", goodHosts, len(rc.Contracts)))
 	}
 	return nil
 }
