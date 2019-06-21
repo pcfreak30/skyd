@@ -525,19 +525,22 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 
 		// Set the fetchOffset - the offset within the chunk that we start
 		// downloading from.
-		if i == minChunk {
+		if i == udc.renterFile.NumChunks()-1 && udc.renterFile.CombinedChunkStatus() == siafile.CombinedChunkStatusCompleted {
+			panic("set staticFetchOffset")
+		} else if i == minChunk {
 			udc.staticFetchOffset = minChunkOffset
 		} else {
 			udc.staticFetchOffset = 0
 		}
 		// Set the fetchLength - the number of bytes to fetch within the chunk
 		// that we start downloading from.
-		if i == maxChunk && maxChunkOffset != 0 {
+		if i == udc.renterFile.NumChunks()-1 && udc.renterFile.CombinedChunkStatus() == siafile.CombinedChunkStatusCompleted {
+			panic("set staticFetchLength")
+		} else if i == maxChunk && maxChunkOffset != 0 {
 			udc.staticFetchLength = maxChunkOffset - udc.staticFetchOffset
 		} else {
 			udc.staticFetchLength = params.file.ChunkSize() - udc.staticFetchOffset
 		}
-		// TODO: set the offset and length in case the last chunk is a combined chunk.
 		// Set the writeOffset within the destination for where the data should
 		// be written.
 		udc.staticWriteOffset = writeOffset
