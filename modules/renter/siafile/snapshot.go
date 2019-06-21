@@ -22,6 +22,8 @@ type (
 		staticPubKeyTable         []HostPublicKey
 		staticSiaPath             modules.SiaPath
 		staticCombinedChunkStatus uint8
+		staticCombinedChunkOffset uint64
+		staticCombinedChunkLength uint64
 		staticUID                 SiafileUID
 		staticFileSet             *SiaFileSet
 	}
@@ -94,6 +96,16 @@ func (s *Snapshot) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uin
 // ChunkSize returns the size of a single chunk of the file.
 func (s *Snapshot) ChunkSize() uint64 {
 	return s.staticPieceSize * uint64(s.staticErasureCode.MinPieces())
+}
+
+// CombinedChunkLength returns the snapshot's CombinedChunkLength.
+func (s *Snapshot) CombinedChunkLength() uint64 {
+	return s.staticCombinedChunkLength
+}
+
+// CombinedChunkOffset returns the snapshot's CombinedChunkOffset.
+func (s *Snapshot) CombinedChunkOffset() uint64 {
+	return s.staticCombinedChunkOffset
 }
 
 // CombinedChunkStatus returns the combined chunk status of the file.
@@ -223,6 +235,8 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	fileSize := sf.staticMetadata.FileSize
 	mode := sf.staticMetadata.Mode
 	uid := sf.staticMetadata.UniqueID
+	cco := sf.staticMetadata.CombinedChunkOffset
+	ccl := sf.staticMetadata.CombinedChunkLength
 	sf.mu.RUnlock()
 	//////////////////////////////////////////////////////////////////////////////
 	// RLock ends here.
@@ -234,6 +248,8 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 
 	return &Snapshot{
 		staticChunks:              chunks,
+		staticCombinedChunkLength: ccl,
+		staticCombinedChunkOffset: cco,
 		staticCombinedChunkStatus: sf.staticMetadata.CombinedChunkStatus,
 		staticFileSize:            fileSize,
 		staticPieceSize:           sf.staticMetadata.StaticPieceSize,

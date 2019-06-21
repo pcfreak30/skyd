@@ -63,9 +63,6 @@ func newPartialChunkSet() *partialChunkSet {
 func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
-	if true {
-		return false, nil // TODO: remove this
-	}
 
 	// File has a combined chunk assigned to it. Load it from disk.
 	entry := chunk.fileEntry
