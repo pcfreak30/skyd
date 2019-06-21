@@ -43,7 +43,7 @@ var (
 	// DefaultAllowance is the allowance used for the group's renters
 	DefaultAllowance = modules.Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(1e3),
-		Hosts:       5,
+		Hosts:       6,
 		Period:      50,
 		RenewWindow: 24,
 

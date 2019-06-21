@@ -553,8 +553,6 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		}
 	}
 
-	// TODO: Handle partial chunk
-
 	// Check if all chunks are stuck, if so then set health to max health to
 	// avoid file being targetted for repair
 	if int(numStuckChunks) == len(allChunks) {
