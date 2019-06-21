@@ -17,11 +17,16 @@ import (
 	"sort"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
+
+// chunkCombinationThreshold is the percentage of "unused" space we tolerate in
+// a combined chunk.
+var chunkCombinationThreshold = 0.1 // 10%
 
 type (
 	// partialChunkSet is a set used by the repair code to combine partial chunks
@@ -64,8 +69,11 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
 
-	// File has a combined chunk assigned to it. Load it from disk.
 	entry := chunk.fileEntry
+	if entry.CombinedChunkStatus() < siafile.CombinedChunkStatusIncomplete {
+		return false, errors.New("status of file has to be either incomplete or complete")
+	}
+	// File has a combined chunk assigned to it. Load it from disk.
 	if entry.CombinedChunkStatus() == siafile.CombinedChunkStatusCompleted {
 		return true, pcs.fetchLogicalCombinedChunk(entry.Metadata().CombinedChunkID, chunk)
 	}
@@ -187,11 +195,11 @@ func (crs chunkRequestSet) combineRequests() []*chunkRequest {
 			}
 		}
 		// Check if the totalSize is within the acceptable threshold of 10%.
-		if chunkSize-totalSize > uint64(0.1*float64(chunkSize)) {
-			requests = requests[1:] // ignore the largest request on the next try
-			return nil              // not good enough
+		if chunkSize-totalSize > uint64(chunkCombinationThreshold*float64(chunkSize)) {
+			requests = requests[1:] // ignore the largest request on the next iteration
+			continue
 		}
-		// Remove the chose requests from the set.
+		// Remove the chosen requests from the set.
 		for _, request := range chosenRequests {
 			delete(crs, request.sf.UID())
 		}
