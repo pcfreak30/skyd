@@ -22,6 +22,7 @@ import (
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -182,7 +183,7 @@ func (ddw *downloadDestinationWriter) WritePieces(ec modules.ErasureCoder, piece
 		}
 		// Error if the stream has progressed beyond 'offset'.
 		if offset < ddw.progress {
-			ddw.mu.Unlock()
+			build.Critical(errOffsetAlreadyWritten)
 			return errOffsetAlreadyWritten
 		}
 

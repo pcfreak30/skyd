@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -240,11 +241,24 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 func (r *Renter) managedStreamLogicalChunkData(chunk *unfinishedUploadChunk) (bool, error) {
 	// Ensure that the source reader will be closed.
 	defer chunk.sourceReader.Close()
-	// Read the data from the source reader into a buffer.
-	// TODO: having both this buffer and the downloaddestination buffer might not
-	// be very efficient and can probably be optimized.
-	byteBuf := make([]byte, chunk.fileEntry.ChunkSize())
+	// Read the data from the source reader into the chunk's logical data.
 	n, err := chunk.readLogicalData(chunk.sourceReader)
+	if err != nil {
+		return false, err
+	}
+	// Turn the shards into a byte slice. This doubles memory but since we need to
+	// create the insert Update for the WAL anyway this can't be avoided right now.
+	shards := make([]io.Reader, 0, len(chunk.logicalChunkData))
+	for _, shard := range chunk.logicalChunkData {
+		shards = append(shards, bytes.NewReader(shard))
+	}
+	partialChunkReader := io.MultiReader(shards...)
+	// Fill a byte buffer with the contents of the partial chunk.
+	byteBuf := make([]byte, n)
+	_, err = io.ReadFull(partialChunkReader, byteBuf)
+	if err != nil {
+		return false, errors.AddContext(err, "failed to read partialChunk from multireader")
+	}
 	// Adjust the fileSize. Since we don't know the length of the stream
 	// beforehand we simply assume that a whole chunk will be added to the
 	// file. That's why we subtract the difference between the size of a
@@ -253,16 +267,13 @@ func (r *Renter) managedStreamLogicalChunkData(chunk *unfinishedUploadChunk) (bo
 	if errSize := chunk.fileEntry.SetFileSize(adjustedSize); errSize != nil {
 		return false, errors.AddContext(errSize, "failed to adjust FileSize")
 	}
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		return false, errors.AddContext(err, "failed to read chunk from sourceReader")
-	}
 	// Check if the last chunk was only uploaded partially.
-	if err == io.EOF {
+	if n == 0 {
 		return false, nil // no bytes were fetched
-	} else if err == io.ErrUnexpectedEOF && !chunk.fileEntry.Metadata().DisablePartialChunk {
-		return false, chunk.fileEntry.SavePartialChunk(byteBuf[:n]) // partial chunk was fetched
+	} else if n != chunk.fileEntry.ChunkSize() && !chunk.fileEntry.Metadata().DisablePartialChunk {
+		return false, chunk.fileEntry.SavePartialChunk(byteBuf) // partial chunk was fetched
 	}
-	return false, errors.AddContext(err, "failed to get logicalChunkData from stream")
+	return true, errors.AddContext(err, "failed to get logicalChunkData from stream")
 }
 
 // threadedFetchAndRepairChunk will fetch the logical data for a chunk, create

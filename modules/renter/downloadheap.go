@@ -193,7 +193,8 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 			r.log.Debugln(err)
 			return false
 		}
-		err = udc.destination.WritePieces(entry.ErasureCode(), shards, 0, int64(udc.staticFetchOffset), uint64(udc.staticFetchLength))
+		dataOffset := recoveredDataOffset(udc.staticFetchOffset, udc.erasureCode)
+		err = udc.destination.WritePieces(entry.ErasureCode(), shards, dataOffset, udc.staticWriteOffset, udc.staticFetchLength)
 		if err != nil {
 			r.log.Debugln(err)
 			return false
