@@ -79,12 +79,12 @@ func TestRenterOne(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
 		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDirectories", testDirectories},
+		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors}, // needs to be last
 	}
 
 	// Run tests
