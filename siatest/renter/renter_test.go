@@ -337,7 +337,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Test requires at least 1 renter")
 	}
 	// Create some random data to write.
-	fileSize := 5755 //fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 	data := fastrand.Bytes(fileSize)
 	d := bytes.NewReader(data)
 
@@ -1070,6 +1070,7 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	t.Logf("FileSize: '%v'", fileSize)
 	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
