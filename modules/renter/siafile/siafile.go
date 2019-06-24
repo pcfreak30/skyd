@@ -576,7 +576,7 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		expectedStuckChunks++
 	}
 	if numStuckChunks != expectedStuckChunks {
-		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, sf.staticMetadata.NumStuckChunks)
+		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, expectedStuckChunks)
 	}
 	return health, stuckHealth, numStuckChunks
 }
@@ -1037,7 +1037,7 @@ func (sf *SiaFile) removeLastChunk() error {
 		return errors.New("can't remove last chunk if it is a partial chunk")
 	}
 	// Remove a chunk. If the removed chunk was stuck, update the metadata.
-	if sf.fullChunks[0].Stuck {
+	if sf.fullChunks[len(sf.fullChunks)-1].Stuck {
 		sf.staticMetadata.NumStuckChunks--
 	}
 	sf.fullChunks = sf.fullChunks[:len(sf.fullChunks)-1]
