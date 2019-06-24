@@ -124,6 +124,8 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 	return false
 }
 
+// readDataPieces reads dataPieces from a io.Reader and stores them in a
+// [][]byte ready to be encoded using an ErasureCoder.
 func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][]byte, uint64, error) {
 	dataPieces := make([][]byte, ec.MinPieces())
 	var total uint64
