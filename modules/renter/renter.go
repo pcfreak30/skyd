@@ -27,6 +27,10 @@ import (
 	"reflect"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
@@ -36,10 +40,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/writeaheadlog"
-
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 var (
@@ -186,21 +186,12 @@ type hostContractor interface {
 
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
-//
-// TODO: Separate the workerPool to have its own mutex. The workerPool doesn't
-// interfere with any of the other fields in the renter, should be fine for it
-// to have a separate mutex, that way operations on the worker pool don't block
-// operations on other parts of the struct. If we're going to do it that way,
-// might make sense to split the worker pool off into it's own struct entirely
-// the same way that we split of the memoryManager entirely.
 type Renter struct {
 	// File management.
-	//
 	staticFileSet       *siafile.SiaFileSet
 	staticBackupFileSet *siafile.SiaFileSet
 
 	// Directory Management
-	//
 	staticDirSet       *siadir.SiaDirSet
 	staticBackupDirSet *siadir.SiaDirSet
 
@@ -222,10 +213,6 @@ type Renter struct {
 	uploadHeap            uploadHeap
 	directoryHeap         directoryHeap
 	staticPartialChunkSet *partialChunkSet
-
-	// List of workers that can be used for uploading and/or downloading.
-	memoryManager *memoryManager
-	workerPool    map[types.FileContractID]*worker
 
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
@@ -253,10 +240,12 @@ type Renter struct {
 	staticFilesDir          string
 	staticBackupsDir        string
 	staticCombinedChunksDir string
+	memoryManager           *memoryManager
 	mu                      *siasync.RWMutex
 	tg                      threadgroup.ThreadGroup
 	tpool                   modules.TransactionPool
 	wal                     *writeaheadlog.WAL
+	staticWorkerPool        *workerPool
 }
 
 // Close closes the Renter and its dependencies
@@ -587,7 +576,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 
 	// Update the worker pool so that the changes are immediately apparent to
 	// users.
-	r.managedUpdateWorkerPool()
+	r.staticWorkerPool.managedUpdate()
 	return nil
 }
 
@@ -803,8 +792,6 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
-		workerPool: make(map[types.FileContractID]*worker),
-
 		bubbleUpdates: make(map[string]bubbleStatus),
 
 		cs:                      cs,
@@ -830,11 +817,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	// After persist is initialized, push the root directory onto the directory
 	// heap for the repair process.
 	r.managedPushUnexploredDirectory(modules.RootSiaPath())
-
-	// Load and execute bubble updates
-	if err := r.loadAndExecuteBubbleUpdates(); err != nil {
-		return nil, err
-	}
+	// After persist is initialized, create the worker pool.
+	r.staticWorkerPool = r.newWorkerPool()
 
 	// Subscribe to the consensus set.
 	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
@@ -843,23 +827,12 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 
 	// Spin up the workers for the work pool.
-	r.managedUpdateWorkerPool()
 	go r.threadedDownloadLoop()
 	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
 		go r.threadedUploadAndRepair()
 		go r.threadedUpdateRenterHealth()
 		go r.threadedStuckFileLoop()
 	}
-
-	// Kill workers on shutdown.
-	r.tg.OnStop(func() error {
-		id := r.mu.RLock()
-		for _, worker := range r.workerPool {
-			close(worker.killChan)
-		}
-		r.mu.RUnlock(id)
-		return nil
-	})
 
 	// Spin up the snapshot synchronization thread.
 	go r.threadedSynchronizeSnapshots()

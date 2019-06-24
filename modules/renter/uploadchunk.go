@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -126,6 +124,33 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 	return false
 }
 
+func encodeShards(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) (uint64, [][]byte, error) {
+	// Allocate data pieces and fill them with data from r.
+	dataPieces := make([][]byte, ec.MinPieces())
+	var total uint64
+	for i := range dataPieces {
+		dataPieces[i] = make([]byte, pieceSize)
+		n, err := io.ReadFull(r, dataPieces[i])
+		total += uint64(n)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return total, nil, errors.AddContext(err, "failed to read chunk from source reader")
+		}
+	}
+	return total, dataPieces, nil
+}
+
+// readLogicalData initializes the chunk's logicalChunkData using data read from
+// r, returning the number of bytes read.
+func (uc *unfinishedUploadChunk) readLogicalData(r io.Reader) (uint64, error) {
+	total, logicalChunkData, err := encodeShards(r, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
+	if err != nil {
+		return 0, err
+	}
+	// Encode the data pieces, forming the chunk's logical data.
+	uc.logicalChunkData = logicalChunkData
+	return total, nil
+}
+
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
@@ -133,13 +158,13 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// received the chunk. The workers cannot be interacted with while the
 	// renter is holding a lock, so we need to build a list of workers while
 	// under lock and then launch work jobs after that.
-	id := r.mu.RLock()
-	uc.workersRemaining += len(r.workerPool)
-	workers := make([]*worker, 0, len(r.workerPool))
-	for _, worker := range r.workerPool {
+	r.staticWorkerPool.mu.RLock()
+	uc.workersRemaining += len(r.staticWorkerPool.workers)
+	workers := make([]*worker, 0, len(r.staticWorkerPool.workers))
+	for _, worker := range r.staticWorkerPool.workers {
 		workers = append(workers, worker)
 	}
-	r.mu.RUnlock(id)
+	r.staticWorkerPool.mu.RUnlock()
 	for _, worker := range workers {
 		worker.managedQueueUploadChunk(uc)
 	}
@@ -165,7 +190,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		return err
 	}
 	// Create the download.
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
+	buf := NewDownloadDestinationBuffer()
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
@@ -201,10 +226,10 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		return errors.New("repair download interrupted by stop call")
 	}
 	if d.Err() != nil {
-		buf.buf = nil
+		buf.pieces = nil
 		return d.Err()
 	}
-	chunk.logicalChunkData = [][]byte(buf.buf)
+	chunk.logicalChunkData = buf.pieces
 	return nil
 }
 
@@ -217,7 +242,7 @@ func (r *Renter) managedStreamLogicalChunkData(chunk *unfinishedUploadChunk) (bo
 	// TODO: having both this buffer and the downloaddestination buffer might not
 	// be very efficient and can probably be optimized.
 	byteBuf := make([]byte, chunk.fileEntry.ChunkSize())
-	n, err := io.ReadFull(chunk.sourceReader, byteBuf)
+	n, err := chunk.readLogicalData(chunk.sourceReader)
 	// Adjust the fileSize. Since we don't know the length of the stream
 	// beforehand we simply assume that a whole chunk will be added to the
 	// file. That's why we subtract the difference between the size of a
@@ -234,13 +259,6 @@ func (r *Renter) managedStreamLogicalChunkData(chunk *unfinishedUploadChunk) (bo
 		return false, nil // no bytes were fetched
 	} else if err == io.ErrUnexpectedEOF && !chunk.fileEntry.Metadata().DisablePartialChunk {
 		return false, chunk.fileEntry.SavePartialChunk(byteBuf[:n]) // partial chunk was fetched
-	}
-	// Read the byteBuf into the sharded destination buffer.
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-	_, err = buf.ReadFrom(bytes.NewBuffer(byteBuf))
-	if err == nil || err == io.EOF || err == io.ErrUnexpectedEOF {
-		chunk.logicalChunkData = buf.buf
-		return true, nil
 	}
 	return false, errors.AddContext(err, "failed to get logicalChunkData from stream")
 }
@@ -317,7 +335,8 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// fact to reduce the total memory required to create the physical data.
 	// That will also change the amount of memory we need to allocate, and the
 	// number of times we need to return memory.
-	chunk.physicalChunkData, err = chunk.fileEntry.ErasureCode().EncodeShards(chunk.logicalChunkData)
+	err = chunk.fileEntry.ErasureCode().Reconstruct(chunk.logicalChunkData)
+	chunk.physicalChunkData = chunk.logicalChunkData
 	chunk.logicalChunkData = nil
 	r.memoryManager.Return(erasureCodingMemory)
 	chunk.memoryReleased += erasureCodingMemory
@@ -390,8 +409,7 @@ func (r *Renter) managedReadFullLogicalChunkData(chunk *unfinishedUploadChunk, d
 	// needing to ignore the EOF errors, because the chunk size should always
 	// match the tail end of the file. Until then, we ignore io.EOF.
 	sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
-	buf := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
-	_, err = buf.ReadFrom(sr)
+	_, err = chunk.readLogicalData(sr)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		r.log.Debugln("failed to read file, downloading instead:", err)
 		return true, r.managedDownloadLogicalChunkData(chunk)
@@ -399,7 +417,6 @@ func (r *Renter) managedReadFullLogicalChunkData(chunk *unfinishedUploadChunk, d
 		r.log.Debugln("failed to read file locally:", err)
 		return false, errors.Extend(err, errors.New("failed to read file locally"))
 	}
-	chunk.logicalChunkData = buf.buf
 
 	// Data successfully read from disk.
 	return true, nil

@@ -8,11 +8,13 @@ package renter
 // Download jobs are added to the heap via a function call.
 
 import (
+	"bytes"
 	"container/heap"
 	"errors"
 	"sync/atomic"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
@@ -124,14 +126,14 @@ func (r *Renter) managedBlockUntilOnline() bool {
 func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownloadChunk) {
 	// Distribute the chunk to workers, marking the number of workers
 	// that have received the work.
-	id := r.mu.Lock()
+	r.staticWorkerPool.mu.RLock()
 	udc.mu.Lock()
-	udc.workersRemaining = len(r.workerPool)
+	udc.workersRemaining = len(r.staticWorkerPool.workers)
 	udc.mu.Unlock()
-	for _, worker := range r.workerPool {
+	for _, worker := range r.staticWorkerPool.workers {
 		worker.managedQueueDownloadChunk(udc)
 	}
-	r.mu.Unlock(id)
+	r.staticWorkerPool.mu.RUnlock()
 
 	// If there are no workers, there will be no workers to attempt to clean up
 	// the chunk, so we must make sure that managedCleanUp is called at least
@@ -180,7 +182,15 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 			return false
 		}
 		// Write the partial chunk to the destination.
-		_, err = udc.destination.WriteAt(partialChunk[udc.staticFetchOffset:udc.staticFetchOffset+udc.staticFetchLength], udc.staticWriteOffset)
+		// TODO: Change this in a follow-up. No need to erasure code the data just to
+		// recover it again.
+		_, pieces, err := encodeShards(bytes.NewReader(partialChunk), entry.ErasureCode(), entry.PieceSize())
+		if err != nil {
+			build.Critical(err)
+			r.log.Debugln(err)
+			return false
+		}
+		err = udc.destination.WritePieces(entry.ErasureCode(), pieces, 0, int64(udc.staticFetchOffset), uint64(udc.staticFetchLength))
 		if err != nil {
 			r.log.Debugln(err)
 			return false
@@ -223,7 +233,7 @@ LOOP:
 
 		// Update the worker pool and fetch the current time. The loop will
 		// reset after a certain amount of time has passed.
-		r.managedUpdateWorkerPool()
+		r.staticWorkerPool.managedUpdate()
 		workerUpdateTime := time.Now()
 
 		// Pull downloads out of the heap. Will break if the heap is empty, and

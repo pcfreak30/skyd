@@ -11,7 +11,6 @@ package renter
 import (
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -121,16 +120,12 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 // loadCombinedChunk loads a CombinedChunk from disk using it's chunkID.
 func (pcs *partialChunkSet) fetchLogicalCombinedChunk(chunkID string, chunk *unfinishedUploadChunk) error {
 	path := filepath.Join(pcs.combinedChunkRoot, chunkID)
-	dds := NewDownloadDestinationBuffer(chunk.length, chunk.fileEntry.PieceSize())
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, err = dds.ReadFrom(f)
-	if err == nil || err == io.EOF {
-		chunk.logicalChunkData = dds.buf
-	}
+	_, err = chunk.readLogicalData(f)
 	return err
 }
 

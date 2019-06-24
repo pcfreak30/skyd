@@ -8,11 +8,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // newTestingWal is a helper method to create a wal during testing.

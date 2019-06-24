@@ -10,7 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
-
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
