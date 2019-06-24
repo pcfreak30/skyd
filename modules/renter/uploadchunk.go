@@ -124,8 +124,7 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 	return false
 }
 
-func encodeShards(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) (uint64, [][]byte, error) {
-	// Allocate data pieces and fill them with data from r.
+func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][]byte, uint64, error) {
 	dataPieces := make([][]byte, ec.MinPieces())
 	var total uint64
 	for i := range dataPieces {
@@ -133,21 +132,22 @@ func encodeShards(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) (uint6
 		n, err := io.ReadFull(r, dataPieces[i])
 		total += uint64(n)
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return total, nil, errors.AddContext(err, "failed to read chunk from source reader")
+			return nil, 0, errors.AddContext(err, "failed to read chunk from source reader")
 		}
 	}
-	return total, dataPieces, nil
+	return dataPieces, total, nil
 }
 
 // readLogicalData initializes the chunk's logicalChunkData using data read from
 // r, returning the number of bytes read.
 func (uc *unfinishedUploadChunk) readLogicalData(r io.Reader) (uint64, error) {
-	total, logicalChunkData, err := encodeShards(r, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
+	// Allocate data pieces and fill them with data from r.
+	dataPieces, total, err := readDataPieces(r, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
 	if err != nil {
 		return 0, err
 	}
 	// Encode the data pieces, forming the chunk's logical data.
-	uc.logicalChunkData = logicalChunkData
+	uc.logicalChunkData, _ = uc.fileEntry.ErasureCode().EncodeShards(dataPieces)
 	return total, nil
 }
 

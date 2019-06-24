@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
@@ -184,13 +183,17 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 		// Write the partial chunk to the destination.
 		// TODO: Change this in a follow-up. No need to erasure code the data just to
 		// recover it again.
-		_, pieces, err := encodeShards(bytes.NewReader(partialChunk), entry.ErasureCode(), entry.PieceSize())
+		pieces, _, err := readDataPieces(bytes.NewReader(partialChunk), entry.ErasureCode(), entry.PieceSize())
 		if err != nil {
-			build.Critical(err)
 			r.log.Debugln(err)
 			return false
 		}
-		err = udc.destination.WritePieces(entry.ErasureCode(), pieces, 0, int64(udc.staticFetchOffset), uint64(udc.staticFetchLength))
+		shards, err := entry.ErasureCode().EncodeShards(pieces)
+		if err != nil {
+			r.log.Debugln(err)
+			return false
+		}
+		err = udc.destination.WritePieces(entry.ErasureCode(), shards, 0, int64(udc.staticFetchOffset), uint64(udc.staticFetchLength))
 		if err != nil {
 			r.log.Debugln(err)
 			return false
