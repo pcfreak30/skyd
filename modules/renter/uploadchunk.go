@@ -316,8 +316,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			r.log.Debugln("Error marking chunk", chunk.id, "as stuck:", err)
 		}
 		return
-	}
-	if err == nil && !fetched {
+	} else if !fetched {
 		// Logical data is not available but no error was returned. It's probably a
 		// partial chunk that hasn't been included in a combined chunk yet.
 		chunk.logicalChunkData = nil
