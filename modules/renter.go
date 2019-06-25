@@ -713,3 +713,17 @@ type RenterDownloadParameters struct {
 	SiaPath     SiaPath
 	Destination string
 }
+
+// CalculateHealth will determine the health of a file given the current number
+// of pieces, the number of data pieces, and the number of parity pieces.
+//
+// Plainly, health is equal to the percentage of parity pieces that are missing,
+// which means that perfect health is 0 and that if the file is unrecoverable
+// the health will be greater than 1. If there is too much redundancy (not
+// commonly used currently), the health will be less than 0.
+func CalculateHealth(availablePieces, dataPieces, parityPieces int) float64 {
+	apf := float64(availablePieces)
+	dpf := float64(dataPieces)
+	ppf := float64(parityPieces)
+	return (dpf + ppf - apf) / ppf
+}

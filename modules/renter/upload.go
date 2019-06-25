@@ -11,6 +11,7 @@ package renter
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -93,14 +94,33 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 	defer entry.Close()
 
+	// The health and redundancy for zero-byte files is already perfect.
+	health := modules.CalculateHealth(0, up.ErasureCode.MinPieces(), up.ErasureCode.NumPieces()-up.ErasureCode.MinPieces())
+	redundancy := 0.0
+	if sourceInfo.Size() == 0 {
+		health = 0
+		redundancy = float64(up.ErasureCode.NumPieces() / up.ErasureCode.MinPieces())
+	}
+
+	// Update the filesystem aggregate values with the new health.
+	err = r.managedRegressiveAggregateMetadataUpdate(dirSiaPath, siadir.MetadataAggregates{
+		AggregateHealth: health,
+		AggregateLastHealthCheckTime: time.Now(),
+		AggregateMinRedundancy: redundancy,
+		AggregateModTime: time.Now(),
+		AggregateNumFiles: 1,
+		AggregateNumStuckChunks: 0,
+		AggregateNumSubDirs: 0,
+		AggregateSize: uint64(sourceInfo.Size()),
+	})
+	if err != nil {
+		return errors.AddContext(err, "unable to perform regressive metadata update in call to r.Upload()")
+	}
+
 	// No need to upload zero-byte files.
 	if sourceInfo.Size() == 0 {
 		return nil
 	}
-
-	// Bubble the health of the SiaFile directory to ensure the health is
-	// updated with the new file
-	go r.threadedBubbleMetadata(dirSiaPath)
 
 	// Create nil maps for offline and goodForRenew to pass in to
 	// managedBuildAndPushChunks. These maps are used to determine the health of
