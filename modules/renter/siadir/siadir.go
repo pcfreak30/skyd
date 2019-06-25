@@ -95,7 +95,7 @@ type (
 		Size                uint64    `json:"size"`
 		StuckHealth         float64   `json:"stuckhealth"`
 
-		// The aggregate values for athe siadir.
+		// The aggregate values for the siadir.
 		MetadataAggregates
 	}
 

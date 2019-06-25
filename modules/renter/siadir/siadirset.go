@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -406,6 +407,63 @@ func (sds *SiaDirSet) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo,
 	close(loadChan)
 	wg.Wait()
 	return dirs, nil
+}
+
+// Merge compares and updates the SiaDir's Metadata for the provided siaPath. If
+// there is an update the changes will be saved to disk
+func (sds *SiaDirSet) Merge(siaPath modules.SiaPath, metadata MetadataAggregates) (MetadataAggregates, bool, error) {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	// Open siadir
+	siaDir, err := sds.open(siaPath)
+	if err != nil {
+		return MetadataAggregates{}, false, err
+	}
+	// Record starting metadata values
+	siaDirMetadata := siaDir.metadata
+
+	// Compare metadatas
+	// The worst Health is the highest Health and is what should be tracked
+	worstHealth := math.Max(metadata.AggregateHealth, siaDir.metadata.AggregateHealth)
+	metadata.AggregateHealth, siaDir.metadata.AggregateHealth = worstHealth, worstHealth
+
+	// The worst LastHealthCheckTime is the oldest time and is what should be
+	// tracked
+	if metadata.AggregateLastHealthCheckTime.Before(siaDir.metadata.AggregateLastHealthCheckTime) {
+		siaDir.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
+	} else {
+		metadata.AggregateLastHealthCheckTime = siaDir.metadata.AggregateLastHealthCheckTime
+	}
+
+	// The worst redundancy is the lowest redundancy and is what should be
+	// tracked
+	worstRedundancy := math.Min(metadata.AggregateMinRedundancy, siaDir.metadata.AggregateMinRedundancy)
+	metadata.AggregateMinRedundancy, siaDir.metadata.AggregateMinRedundancy = worstRedundancy, worstRedundancy
+
+	// The most recent ModTime should be tracked
+	if metadata.AggregateModTime.After(siaDir.metadata.AggregateModTime) {
+		siaDir.metadata.AggregateModTime = metadata.AggregateModTime
+	} else {
+		metadata.AggregateModTime = siaDir.metadata.AggregateModTime
+	}
+
+	// The following fields are counters and should always use the new values
+	siaDir.metadata.AggregateNumFiles = metadata.AggregateNumFiles
+	siaDir.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
+	siaDir.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
+	siaDir.metadata.AggregateSize = metadata.AggregateSize
+
+	// The worst StuckHealth is the highest StuckHealth and is what should be
+	// tracked
+	worstStuckHealth := math.Max(metadata.AggregateStuckHealth, siaDir.metadata.AggregateStuckHealth)
+	metadata.AggregateStuckHealth, siaDir.metadata.AggregateStuckHealth = worstStuckHealth, worstStuckHealth
+
+	// Check if there were updates
+	updated := !reflect.DeepEqual(siaDirMetadata.MetadataAggregates, siaDir.metadata.MetadataAggregates)
+	if updated {
+		return metadata, updated, siaDir.saveDir()
+	}
+	return metadata, updated, nil
 }
 
 // NewSiaDir creates a new SiaDir and returns a SiaDirSetEntry

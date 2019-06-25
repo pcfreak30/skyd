@@ -1,8 +1,10 @@
 package siadir
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -397,4 +399,131 @@ func TestHealthPercentage(t *testing.T) {
 			t.Fatalf("Expect %v got %v", test.healthPercentage, hp)
 		}
 	}
+}
+
+func TestSiaDirSetMerge(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create SiaDirSet with SiaDir
+	sd, sds, err := newTestSiaDirSetWithDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the aggregate metadata fields
+	md := MetadataAggregates{
+		AggregateHealth:              2.0,
+		AggregateLastHealthCheckTime: time.Now(),
+		AggregateMinRedundancy:       3.0,
+		AggregateModTime:             time.Now(),
+		AggregateNumFiles:            2,
+		AggregateNumStuckChunks:      3,
+		AggregateNumSubDirs:          2,
+		AggregateSize:                1000,
+		AggregateStuckHealth:         2.0,
+	}
+	sd.metadata.MetadataAggregates = md
+	err = sd.UpdateMetadata(sd.metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm submitting same metadata returns false
+	err = checkMerge(sds, sd.SiaPath(), md, md, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm submitting updates that would be ignored returns false
+	updatedMetadata := MetadataAggregates{
+		AggregateHealth:              1.0,
+		AggregateLastHealthCheckTime: time.Now().Add(time.Minute),
+		AggregateMinRedundancy:       4.0,
+		AggregateModTime:             time.Now().Add(-1 * time.Minute),
+		AggregateNumFiles:            2,
+		AggregateNumStuckChunks:      3,
+		AggregateNumSubDirs:          2,
+		AggregateSize:                1000,
+		AggregateStuckHealth:         1.0,
+	}
+	err = checkMerge(sds, sd.SiaPath(), md, updatedMetadata, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// update one field are a atime and confirm that merge returns false
+	updatedMetadata = md
+	updatedMetadata.AggregateHealth = 3.0
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMetadata.AggregateLastHealthCheckTime = time.Now().Add(-1 * time.Hour)
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMetadata.AggregateMinRedundancy = 0
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMetadata.AggregateModTime = time.Now().Add(time.Hour)
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMetadata.AggregateNumFiles++
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMetadata.AggregateNumStuckChunks++
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMetadata.AggregateNumStuckChunks++
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMetadata.AggregateNumSubDirs++
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMetadata.AggregateSize++
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMetadata.AggregateStuckHealth = 3.0
+	err = checkMerge(sds, sd.SiaPath(), updatedMetadata, updatedMetadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// checkMerge is a helper function to call Merge on the siadirset and check the
+// output
+func checkMerge(sds *SiaDirSet, siaPath modules.SiaPath, metadata, updatedMetadata MetadataAggregates, updateExpected bool) error {
+	delta, updated, err := sds.Merge(siaPath, updatedMetadata)
+	if err != nil {
+		return err
+	}
+	// Check if update
+	if updated != updateExpected {
+		return fmt.Errorf("metadata updated %v update expected %v", updated, updateExpected)
+	}
+	// Check delta
+	if !reflect.DeepEqual(delta, metadata) {
+		return fmt.Errorf(`expected metadatas to be equal
+		metadata: %v
+		delta: %v
+		`, metadata, delta)
+	}
+	return nil
 }
