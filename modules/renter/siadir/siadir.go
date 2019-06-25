@@ -83,19 +83,6 @@ type (
 		// StuckHealth is the health of the most in need siafile in the siadir,
 		// stuck or not stuck
 
-		// The following fields are aggregate values of the siadir. These values are
-		// the totals of the siadir and any sub siadirs, or are calculated based on
-		// all the values in the subtree
-		AggregateHealth              float64   `json:"aggregatehealth"`
-		AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
-		AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
-		AggregateModTime             time.Time `json:"aggregatemodtime"`
-		AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
-		AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
-		AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
-		AggregateSize                uint64    `json:"aggregatesize"`
-		AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
-
 		// The following fields are information specific to the siadir that is not
 		// an aggregate of the entire sub directory tree
 		Health              float64   `json:"health"`
@@ -107,6 +94,35 @@ type (
 		NumSubDirs          uint64    `json:"numsubdirs"`
 		Size                uint64    `json:"size"`
 		StuckHealth         float64   `json:"stuckhealth"`
+
+		// The aggregate values for athe siadir.
+		MetadataAggregates
+	}
+
+	// MetadataAggregates are the aggregate values of the siadir. These values
+	// include the values of every file and subdir within the subtree of
+	// directories of the current directory. Some aggregate values like
+	// 'NumFiles' are summed up, and some values like 'MinRedundancy' contain
+	// the minimum value of all of the values in the subtree.
+	//
+	// TODO (taek): perhaps too late now, but if we are going to use a name like
+	// 'AggregateMinRedundancy', we should also use names like
+	// 'AggregateMaxHealth' and 'AggregateOldestLastHealthCheckTime' so that the
+	// field indicates which direction the aggregate is taken. Fields like
+	// 'AggregateSize' would be implicitly a sum.
+	//
+	// TODO (taek): The values maybe should be ints instead of uints, so that
+	// the Merge function can accept negative values.
+	MetadataAggregates struct {
+		AggregateHealth              float64   `json:"aggregatehealth"`
+		AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
+		AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
+		AggregateModTime             time.Time `json:"aggregatemodtime"`
+		AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+		AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
+		AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+		AggregateSize                uint64    `json:"aggregatesize"`
+		AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 	}
 )
 
@@ -176,9 +192,11 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 	// empty directories won't be viewed as being the most in need. Initialize
 	// ModTimes.
 	md := Metadata{
-		AggregateHealth:      DefaultDirHealth,
-		AggregateModTime:     time.Now(),
-		AggregateStuckHealth: DefaultDirHealth,
+		MetadataAggregates: MetadataAggregates{
+			AggregateHealth:      DefaultDirHealth,
+			AggregateModTime:     time.Now(),
+			AggregateStuckHealth: DefaultDirHealth,
+		},
 
 		Health:      DefaultDirHealth,
 		ModTime:     time.Now(),

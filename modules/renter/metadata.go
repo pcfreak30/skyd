@@ -56,15 +56,17 @@ func (r *Renter) managedPrepareBubble(siaPath modules.SiaPath) bool {
 func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
 	// Set default metadata values to start
 	metadata := siadir.Metadata{
-		AggregateHealth:              siadir.DefaultDirHealth,
-		AggregateLastHealthCheckTime: time.Now(),
-		AggregateMinRedundancy:       math.MaxFloat64,
-		AggregateModTime:             time.Time{},
-		AggregateNumFiles:            uint64(0),
-		AggregateNumStuckChunks:      uint64(0),
-		AggregateNumSubDirs:          uint64(0),
-		AggregateSize:                uint64(0),
-		AggregateStuckHealth:         siadir.DefaultDirHealth,
+		MetadataAggregates: siadir.MetadataAggregates{
+			AggregateHealth:              siadir.DefaultDirHealth,
+			AggregateLastHealthCheckTime: time.Now(),
+			AggregateMinRedundancy:       math.MaxFloat64,
+			AggregateModTime:             time.Time{},
+			AggregateNumFiles:            uint64(0),
+			AggregateNumStuckChunks:      uint64(0),
+			AggregateNumSubDirs:          uint64(0),
+			AggregateSize:                uint64(0),
+			AggregateStuckHealth:         siadir.DefaultDirHealth,
+		},
 
 		Health:              siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
@@ -285,7 +287,7 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) {
 // managedDirectoryMetadata reads the directory metadata and returns the bubble
 // metadata
 func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
-	// Check for bad paths and files
+	// Check that the SiaPath is a known SiaDir.
 	fi, err := os.Stat(siaPath.SiaDirSysPath(r.staticFilesDir))
 	if err != nil {
 		return siadir.Metadata{}, err
@@ -294,7 +296,10 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 		return siadir.Metadata{}, fmt.Errorf("%v is not a directory", siaPath)
 	}
 
-	//  Open SiaDir
+	// Open the SiaDir.
+	//
+	// TODO (taek): currently we check here that the corresponding .siadir
+	// exists. This check should probably be moved to `staticDirSet.Open`.
 	siaDir, err := r.staticDirSet.Open(siaPath)
 	if err != nil && err.Error() == siadir.ErrUnknownPath.Error() {
 		// If siadir doesn't exist create one
@@ -405,4 +410,50 @@ func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
 		return entry.UpdateMetadata(md)
 	}
 	return r.managedPerformBubbleMetadata(siaPath)
+}
+
+// managedRegressiveAggregateMetadataUpdate will update the aggregate values of
+// a directory to be equal to the worse of the newMetadata values and the
+// existing metadata values. If the aggregate values of the directory change,
+// then the parent directories will be checked as well, recursing through the
+// parents until reaching a parent that does not need to have the aggregate
+// values updated, or until reaching root.
+//
+// As the function name implies, this function should be used to propagate a
+// regression in the health of a directory. The intended use case is for the
+// addition of new files or the discovery that existing files have lost health.
+// This function will quickly bubble up the newly discovered bad value through
+// the directory tree without needing to check or update the health and status
+// of every file and directory on the way.
+func (r *Renter) managedRegressiveAggregateMetadataUpdate(siaPath modules.SiaPath, aggregateDelta siadir.MetadataAggregates) error {
+	// TODO (taek): Drop this directory into the repair heap to ensure that the repair
+	// heap's aggregate values include this regression.
+
+	// Each iteration handles the next parent directory. The loop terminates at
+	// root.
+	for {
+		// Attempt to merge the new aggregates into the current siadir.
+		var mergeCausedUpdate bool
+		var err error
+		aggregateDelta, mergeCausedUpdate, err = r.staticDirSet.Merge(siaPath, aggregateDelta)
+		if err != nil {
+			return errors.AddContext(err, "unable to merge metadatas in regressive metadata update")
+		}
+		// If this merge did not cause any change to the current directory's
+		// aggregate values, it means that it will also not cause any change to
+		// any parent directory's aggregate values, so early termination is
+		// safe.
+		if !mergeCausedUpdate {
+			return nil
+		}
+		// If the current siaPath is root, the update is complete.
+		if siaPath.IsRoot() {
+			return nil
+		}
+		// Perform the same update on the parent directory.
+		siaPath, err = siaPath.Dir()
+		if err != nil {
+			return errors.AddContext(err, "could not fetch parent during regressive metadata update")
+		}
+	}
 }

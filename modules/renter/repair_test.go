@@ -91,7 +91,9 @@ func TestBubbleHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	defaultMetadata := siadir.Metadata{
-		AggregateHealth:     siadir.DefaultDirHealth,
+		MetadataAggregates: siadir.MetadataAggregates{
+			AggregateHealth: siadir.DefaultDirHealth,
+		},
 		Health:              siadir.DefaultDirHealth,
 		StuckHealth:         siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
@@ -151,7 +153,9 @@ func TestBubbleHealth(t *testing.T) {
 	var siaPath modules.SiaPath
 	checkTime := time.Now()
 	metadataUpdate := siadir.Metadata{
-		AggregateHealth:     1,
+		MetadataAggregates: siadir.MetadataAggregates{
+			AggregateHealth: 1,
+		},
 		Health:              1,
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
@@ -303,7 +307,9 @@ func TestBubbleHealth(t *testing.T) {
 	}
 	// Reset metadataUpdate with expected values
 	expectedHealth = siadir.Metadata{
-		AggregateHealth:     4,
+		MetadataAggregates: siadir.MetadataAggregates{
+			AggregateHealth: 4,
+		},
 		Health:              4,
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
