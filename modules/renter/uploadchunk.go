@@ -330,7 +330,11 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		} else {
 			// Encrypt the piece.
 			key := chunk.fileEntry.MasterKey().Derive(chunk.index, uint64(i))
+			oldSize := len(chunk.physicalChunkData[i])
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
+			if uint64(len(chunk.physicalChunkData)) != modules.SectorSize {
+				println("encrypt produced bad sector size:", oldSize, "->", len(chunk.physicalChunkData))
+			}
 		}
 	}
 	// Return the released memory.

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 )
 
@@ -113,6 +115,12 @@ func (w *worker) managedUpload(uc *unfinishedUploadChunk, pieceIndex uint64) {
 
 	// Perform the upload, and update the failure stats based on the success of
 	// the upload attempt.
+	if uint64(len(uc.physicalChunkData[pieceIndex])) != modules.SectorSize {
+		println("bad worker upload size:")
+		for i, p := range uc.physicalChunkData {
+			println(i, len(p))
+		}
+	}
 	root, err := e.Upload(uc.physicalChunkData[pieceIndex])
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to upload via the editor: %v", err)

@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/bits"
 	"net"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -160,6 +161,12 @@ func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ modules
 // Write implements the Write RPC, except for ActionUpdate. A Merkle proof is
 // always requested.
 func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterContract, err error) {
+	for _, a := range actions {
+		if a.Type == modules.WriteActionAppend && uint64(len(a.Data)) != modules.SectorSize {
+			println("Write called with wrong sector size:")
+			debug.PrintStack()
+		}
+	}
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return modules.RenterContract{}, errors.New("contract not present in contract set")
