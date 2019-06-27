@@ -24,10 +24,14 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	testdir := build.TempDir("renter", t.Name())
 	sourcesDir := filepath.Join(testdir, "sources")
 	filesDir := filepath.Join(testdir, "siafiles")
+	combinedChunkDir := filepath.Join(testdir, "combinedchunks")
 	if err := os.MkdirAll(sourcesDir, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filesDir, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(combinedChunkDir, 0600); err != nil {
 		t.Fatal(err)
 	}
 	// Create a wal.
@@ -48,7 +52,7 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	fm := os.FileMode(0600)
 	chunkSize := uint64(ec.MinPieces()) * modules.SectorSize
 	// Create the partialChunkSet.
-	pcs := newPartialChunkSet()
+	pcs := newPartialChunkSet(combinedChunkDir)
 	// Declare a helper function to create a siafile for testing already contained
 	// within a minimal unfinishedUploadChunk.
 	newFile := func(fileSize uint64) *unfinishedUploadChunk {

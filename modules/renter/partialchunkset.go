@@ -54,9 +54,10 @@ type (
 
 // newPartialChunkSet creates a partial chunk set ready to combine partial
 // chunks.
-func newPartialChunkSet() *partialChunkSet {
+func newPartialChunkSet(combinedChunkRoot string) *partialChunkSet {
 	return &partialChunkSet{
-		requests: make(map[modules.ErasureCoderIdentifier]chunkRequestSet),
+		combinedChunkRoot: combinedChunkRoot,
+		requests:          make(map[modules.ErasureCoderIdentifier]chunkRequestSet),
 	}
 }
 

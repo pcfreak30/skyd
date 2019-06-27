@@ -228,24 +228,23 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	cs                      modules.ConsensusSet
-	deps                    modules.Dependencies
-	g                       modules.Gateway
-	w                       modules.Wallet
-	hostContractor          hostContractor
-	hostDB                  hostDB
-	log                     *persist.Logger
-	persist                 persistence
-	persistDir              string
-	staticFilesDir          string
-	staticBackupsDir        string
-	staticCombinedChunksDir string
-	memoryManager           *memoryManager
-	mu                      *siasync.RWMutex
-	tg                      threadgroup.ThreadGroup
-	tpool                   modules.TransactionPool
-	wal                     *writeaheadlog.WAL
-	staticWorkerPool        *workerPool
+	cs               modules.ConsensusSet
+	deps             modules.Dependencies
+	g                modules.Gateway
+	w                modules.Wallet
+	hostContractor   hostContractor
+	hostDB           hostDB
+	log              *persist.Logger
+	persist          persistence
+	persistDir       string
+	staticFilesDir   string
+	staticBackupsDir string
+	memoryManager    *memoryManager
+	mu               *siasync.RWMutex
+	tg               threadgroup.ThreadGroup
+	tpool            modules.TransactionPool
+	wal              *writeaheadlog.WAL
+	staticWorkerPool *workerPool
 }
 
 // Close closes the Renter and its dependencies
@@ -794,19 +793,18 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 
 		bubbleUpdates: make(map[string]bubbleStatus),
 
-		cs:                      cs,
-		deps:                    deps,
-		g:                       g,
-		w:                       w,
-		hostDB:                  hdb,
-		hostContractor:          hc,
-		persistDir:              persistDir,
-		staticFilesDir:          filepath.Join(persistDir, modules.SiapathRoot),
-		staticBackupsDir:        filepath.Join(persistDir, modules.BackupRoot),
-		staticCombinedChunksDir: filepath.Join(persistDir, modules.CombinedChunksRoot),
-		staticPartialChunkSet:   newPartialChunkSet(),
-		mu:                      siasync.New(modules.SafeMutexDelay, 1),
-		tpool:                   tpool,
+		cs:                    cs,
+		deps:                  deps,
+		g:                     g,
+		w:                     w,
+		hostDB:                hdb,
+		hostContractor:        hc,
+		persistDir:            persistDir,
+		staticFilesDir:        filepath.Join(persistDir, modules.SiapathRoot),
+		staticBackupsDir:      filepath.Join(persistDir, modules.BackupRoot),
+		staticPartialChunkSet: newPartialChunkSet(filepath.Join(persistDir, modules.CombinedChunksRoot)),
+		mu:                    siasync.New(modules.SafeMutexDelay, 1),
+		tpool:                 tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 
