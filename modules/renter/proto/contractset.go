@@ -12,6 +12,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -225,6 +226,28 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 		if err := cs.loadSafeContract(path, walTxns); err != nil {
 			extErr := fmt.Errorf("failed to load safecontract %v", path)
 			return nil, errors.Compose(extErr, err)
+		}
+	}
+
+	// Drop any WAL txns not relevant to the current contract set.
+	for _, t := range walTxns {
+		if len(t.Updates) == 0 {
+			t.SignalUpdatesApplied()
+			continue
+		}
+		switch update := t.Updates[0]; update.Name {
+		case updateNameSetHeader:
+			var u updateSetHeader
+			unmarshalHeader(update.Instructions, &u)
+			if _, ok := cs.contracts[u.ID]; !ok {
+				t.SignalUpdatesApplied()
+			}
+		case updateNameSetRoot:
+			var u updateSetRoot
+			encoding.Unmarshal(update.Instructions, &u)
+			if _, ok := cs.contracts[u.ID]; !ok {
+				t.SignalUpdatesApplied()
+			}
 		}
 	}
 
