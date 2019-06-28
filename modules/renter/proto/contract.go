@@ -463,13 +463,6 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				if err := c.headerFile.Sync(); err != nil {
 					return err
 				}
-				// drop all unapplied transactions
-				for _, t := range c.unappliedTxns {
-					if err := t.SignalUpdatesApplied(); err != nil {
-						return err
-					}
-				}
-				c.unappliedTxns = nil
 				return nil
 			}
 		}
