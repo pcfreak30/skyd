@@ -265,6 +265,8 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	defer r.tg.Done()
 	// Use provide allowance. If no allowance provided use the existing
 	// allowance. If no allowance exists, use a sane default allowance.
+	fmt.Println("== Price Estimation")
+	fmt.Println("  Allowance before Check:", allowance)
 	if reflect.DeepEqual(allowance, modules.Allowance{}) {
 		rs := r.Settings()
 		allowance = rs.Allowance
@@ -272,7 +274,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 			allowance = modules.DefaultAllowance
 		}
 	}
-
+	fmt.Println("  Allowance After Check:", allowance)
 	// Get hosts for estimate
 	var hosts []modules.HostDBEntry
 	hostmap := make(map[string]struct{})
@@ -281,6 +283,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	// Get host pubkeys from contracts
 	contracts := r.Contracts()
 	var pks []types.SiaPublicKey
+	fmt.Println("  # Contracts", len(contracts))
 	for _, c := range contracts {
 		u, ok := r.ContractUtility(c.HostPublicKey)
 		if !ok {
@@ -293,6 +296,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 		pks = append(pks, c.HostPublicKey)
 	}
 	// Get hosts from pubkeys
+	fmt.Println("  # Pks", len(pks))
 	for _, pk := range pks {
 		host, ok := r.hostDB.Host(pk)
 		if !ok || host.Filtered {
@@ -306,7 +310,9 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 		hostmap[host.PublicKey.String()] = struct{}{}
 	}
 	// Add hosts from previous estimate cache if needed
+	fmt.Println("  # Hosts 1st check", len(hosts))
 	if len(hosts) < int(allowance.Hosts) {
+		fmt.Println("    Trying to add host from last estimate")
 		id := r.mu.Lock()
 		cachedHosts := r.lastEstimationHosts
 		r.mu.Unlock(id)
@@ -320,7 +326,9 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 		}
 	}
 	// Add random hosts if needed
+	fmt.Println("  # Hosts 2nd check", len(hosts))
 	if len(hosts) < int(allowance.Hosts) {
+		fmt.Println("    Trying to add random hosts")
 		// Re-initialize the list with SiaPublicKeys to hold the public keys from the current
 		// set of hosts. This list will be used as address filter when requesting random hosts.
 		var pks []types.SiaPublicKey
@@ -333,6 +341,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 		if err != nil {
 			return modules.RenterPriceEstimation{}, allowance, errors.AddContext(err, "could not generate estimate, could not get random hosts")
 		}
+		fmt.Println("    # Random host", len(randHosts))
 		// As the returned random hosts are checked for IP violations and double entries against the current
 		// slice of hosts, the returned hosts can be safely added to the current slice.
 		hosts = append(hosts, randHosts...)
