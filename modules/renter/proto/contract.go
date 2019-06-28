@@ -400,6 +400,15 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Once we're synced, there's no reason to keep storing any unapplied WAL
+	// transactions.
+	defer func() {
+		for _, t := range c.unappliedTxns {
+			t.SignalUpdatesApplied()
+		}
+		c.unappliedTxns = nil
+	}()
+
 	// Our current revision should always be signed. If it isn't, we have no
 	// choice but to accept the host's revision.
 	if len(c.header.Transaction.TransactionSignatures) == 0 {
@@ -474,13 +483,6 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// will be incorrect.
 	c.header.Transaction.FileContractRevisions[0] = rev
 	c.header.Transaction.TransactionSignatures = sigs
-	// Drop the WAL transactions, since they can't conceivably help us.
-	for _, t := range c.unappliedTxns {
-		if err := t.SignalUpdatesApplied(); err != nil {
-			return err
-		}
-	}
-	c.unappliedTxns = nil
 	return nil
 }
 
