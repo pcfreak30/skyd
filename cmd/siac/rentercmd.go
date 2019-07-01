@@ -164,7 +164,7 @@ and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w r
 
 If no flags are set you will be walked through the interactive allowance
 setting. To update only certain fields, pass in those values with the
-cooresponding field flag, for example '--amount 500SC'.
+corresponding field flag, for example '--amount 500SC'.
 
 Allowance can be automatically renewed periodically. If the current
 blockheight + the renew window >= the end height the contract,
@@ -782,7 +782,7 @@ uptime and age.
 
 Even when the user has a large allowance and a low amount of expected storage,
 siad will try to optimize for saving money; siad tries to meet the users storage
-and bandwith needs while spending significantly less than the overall allowance.`)
+and bandwidth needs while spending significantly less than the overall allowance.`)
 	fmt.Println()
 	fmt.Println("Current value:", filesizeUnits(allowance.ExpectedStorage))
 	fmt.Println("Default value:", filesizeUnits(modules.DefaultAllowance.ExpectedStorage))
@@ -828,7 +828,7 @@ consider repair bandwidth separately.`)
 		expectedUpload = modules.DefaultAllowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedUpload = allowance.ExpectedUpload
+		expectedUpload = allowance.ExpectedUpload * uint64(types.BlocksPerMonth)
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Upload: ")
@@ -864,7 +864,7 @@ consider repair bandwidth separately.`)
 		expectedDownload = modules.DefaultAllowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedDownload = allowance.ExpectedDownload
+		expectedDownload = allowance.ExpectedDownload * uint64(types.BlocksPerMonth)
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Download: ")
@@ -1454,7 +1454,7 @@ func renterdirdownload(path, destination string) {
 	start := time.Now()
 	tfs, skipped, totalSize, downloadErr := downloadDir(siaPath, destination)
 	if renterDownloadAsync && downloadErr != nil {
-		fmt.Println("At least one error occured when initializing the download:", downloadErr)
+		fmt.Println("At least one error occurred when initializing the download:", downloadErr)
 	}
 	// If the download is async, report success.
 	if renterDownloadAsync {
@@ -1474,7 +1474,7 @@ func renterdirdownload(path, destination string) {
 	}
 	// Print errors.
 	if downloadErr != nil {
-		fmt.Println("At least one error occured when initializing the download:", downloadErr)
+		fmt.Println("At least one error occurred when initializing the download:", downloadErr)
 	}
 	for _, fd := range failedDownloads {
 		fmt.Printf("Download of file '%v' to destination '%v' failed: %v\n", fd.SiaPath, fd.Destination, fd.Error)
