@@ -818,7 +818,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	// Grab initial metadata values
 	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
 	health, stuckHealth, numStuckChunks := sf.Health(offline, goodForRenew)
-	redundancy := sf.Redundancy(offline, goodForRenew)
+	redundancy, _ := sf.Redundancy(offline, goodForRenew)
 	lastHealthCheckTime := sf.LastHealthCheckTime()
 	modTime := sf.ModTime()
 

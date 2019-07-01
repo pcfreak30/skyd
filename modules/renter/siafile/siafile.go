@@ -156,6 +156,7 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 			CachedHealth:            zeroHealth,
 			CachedStuckHealth:       0,
 			CachedRedundancy:        0,
+			CachedUserRedundancy:    0,
 			CachedUploadProgress:    0,
 			DisablePartialChunk:     disablePartialUpload,
 			FileSize:                int64(fileSize),
@@ -196,6 +197,7 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 		file.staticMetadata.CachedHealth = 0
 		file.staticMetadata.CachedStuckHealth = 0
 		file.staticMetadata.CachedRedundancy = float64(erasureCode.NumPieces()) / float64(erasureCode.MinPieces())
+		file.staticMetadata.CachedUserRedundancy = file.staticMetadata.CachedRedundancy
 		file.staticMetadata.CachedUploadProgress = 100
 	}
 	// Save file.
@@ -640,63 +642,77 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 // becomes available when this redundancy is >= 1. Assumes that every piece is
 // unique within a file contract. -1 is returned if the file has size 0. It
 // takes two arguments, a map of offline contracts for this file and a map that
-// indicates if a contract is goodForRenew.
-func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r float64) {
+// indicates if a contract is goodForRenew. The first redundancy returned is the
+// one that should be used by the repair code and is more accurate. The other
+// one is the redundancy presented to users.
+func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r, ur float64) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// Update the cache.
 	defer func() {
 		sf.staticMetadata.CachedRedundancy = r
+		sf.staticMetadata.CachedUserRedundancy = ur
 	}()
 	allChunks := sf.allChunks()
 	if sf.staticMetadata.FileSize == 0 {
 		// TODO change this once tiny files are supported.
 		if len(allChunks) != 0 {
 			// should never happen
-			return -1
+			return -1, -1
 		}
 		ec := sf.staticMetadata.staticErasureCode
-		return float64(ec.NumPieces()) / float64(ec.MinPieces())
+		r = float64(ec.NumPieces()) / float64(ec.MinPieces())
+		ur = r
+		return
 	}
 
 	ec := sf.staticMetadata.staticErasureCode
 	minRedundancy := math.MaxFloat64
-	minRedundancyNoRenew := math.MaxFloat64
+	minRedundancyUser := minRedundancy
+	minRedundancyNoRenewUser := math.MaxFloat64
 	for chunkIndex := range allChunks {
 		// Loop over chunks and remember how many unique pieces of the chunk
 		// were goodForRenew and how many were not.
 		numPiecesRenew, numPiecesNoRenew := sf.goodPieces(chunkIndex, offlineMap, goodForRenewMap)
 		redundancy := float64(numPiecesRenew) / float64(sf.staticMetadata.staticErasureCode.MinPieces())
+		redundancyUser := redundancy
 		if chunkIndex == len(allChunks)-1 && sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
 			// If the partial chunk hasn't been included in a combined chunk yet it has
 			// full redundancy.
-			redundancy = float64(ec.NumPieces()) / float64(ec.MinPieces())
+			redundancyUser = float64(ec.NumPieces()) / float64(ec.MinPieces())
 		}
 		if redundancy < minRedundancy {
 			minRedundancy = redundancy
 		}
+		if redundancyUser < minRedundancyUser {
+			minRedundancyUser = redundancyUser
+		}
 		redundancyNoRenew := float64(numPiecesNoRenew) / float64(ec.MinPieces())
+		redundancyNoRenewUser := redundancyNoRenew
 		if chunkIndex == len(allChunks)-1 && sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
 			// If the partial chunk hasn't been included in a combined chunk yet it has
 			// full redundancy.
-			redundancyNoRenew = float64(ec.NumPieces()) / float64(ec.MinPieces())
+			redundancyNoRenewUser = float64(ec.NumPieces()) / float64(ec.MinPieces())
 		}
-		if redundancyNoRenew < minRedundancyNoRenew {
-			minRedundancyNoRenew = redundancyNoRenew
+		if redundancyNoRenewUser < minRedundancyNoRenewUser {
+			minRedundancyNoRenewUser = redundancyNoRenewUser
 		}
 	}
 
-	// If the redundancy is smaller than 1x we return the redundancy that
-	// includes contracts that are not good for renewal. The reason for this is
-	// a better user experience. If the renter operates correctly, redundancy
-	// should never go above numPieces / minPieces and redundancyNoRenew should
+	// If the redundancyUser is smaller than 1x we return the redundancy that
+	// includes contracts that are not good for renewal. The reason for this is a
+	// better user experience. If the renter operates correctly, redundancyUser
+	// should never go above numPieces / minPieces and redundancyNoRenewUser should
 	// never go below 1.
-	if minRedundancy < 1 && minRedundancyNoRenew >= 1 {
-		return 1
+	if minRedundancyUser < 1 && minRedundancyNoRenewUser >= 1 {
+		ur = 1
 	} else if minRedundancy < 1 {
-		return minRedundancyNoRenew
+		ur = minRedundancyNoRenewUser
+	} else {
+		ur = minRedundancyUser
 	}
-	return minRedundancy
+	r = minRedundancy
+	return
 }
 
 // SetAllStuck sets the Stuck field of all chunks to stuck.

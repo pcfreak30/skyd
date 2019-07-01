@@ -324,7 +324,7 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       md.AccessTime,
-		Available:        md.CachedRedundancy >= 1,
+		Available:        md.CachedUserRedundancy >= 1,
 		ChangeTime:       md.ChangeTime,
 		CipherType:       md.StaticMasterKeyType.String(),
 		CreateTime:       md.CreateTime,
@@ -337,8 +337,8 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 		ModTime:          md.ModTime,
 		NumStuckChunks:   md.NumStuckChunks,
 		OnDisk:           onDisk,
-		Recoverable:      onDisk || md.CachedRedundancy >= 1,
-		Redundancy:       md.CachedRedundancy,
+		Recoverable:      onDisk || md.CachedUserRedundancy >= 1,
+		Redundancy:       md.CachedUserRedundancy,
 		Renewing:         true,
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
@@ -565,7 +565,7 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		onDisk = err == nil
 	}
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
-	redundancy := entry.Redundancy(offline, goodForRenew)
+	_, redundancy := entry.Redundancy(offline, goodForRenew)
 	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
 	maxHealth := math.Max(health, stuckHealth)
 	fileInfo := modules.FileInfo{

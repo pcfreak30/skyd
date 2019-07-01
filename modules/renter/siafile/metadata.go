@@ -79,6 +79,10 @@ type (
 		// updated within the 'Redundancy' method which is periodically called by the
 		// repair code.
 		//
+		// CachedUserRedundancy is the redundancy of the file on the network as
+		// visible to the user and is updated within the 'Redundancy' method which is
+		// periodically called by the repair code.
+		//
 		// CachedHealth is the health of the file on the network and is also
 		// periodically updated by the health check loop whenever 'Health' is called.
 		//
@@ -95,6 +99,7 @@ type (
 		// every time a piece is added to the siafile.
 		//
 		CachedRedundancy     float64           `json:"cachedredundancy"`
+		CachedUserRedundancy float64           `json:"cacheduserredundancy"`
 		CachedHealth         float64           `json:"cachedhealth"`
 		CachedStuckHealth    float64           `json:"cachedstuckhealth"`
 		CachedExpiration     types.BlockHeight `json:"cachedexpiration"`

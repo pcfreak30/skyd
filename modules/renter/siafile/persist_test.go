@@ -496,6 +496,7 @@ func TestZeroByteFileCompat(t *testing.T) {
 	sf.staticMetadata.CachedHealth = 0
 	sf.staticMetadata.CachedStuckHealth = 0
 	sf.staticMetadata.CachedRedundancy = 0
+	sf.staticMetadata.CachedUserRedundancy = 0
 	sf.staticMetadata.CachedUploadProgress = 0
 	// Save the file and reload it.
 	if err := sf.Save(); err != nil {
@@ -515,6 +516,9 @@ func TestZeroByteFileCompat(t *testing.T) {
 	expectedRedundancy := float64(rc.NumPieces()) / float64(rc.MinPieces())
 	if sf.staticMetadata.CachedRedundancy != expectedRedundancy {
 		t.Fatalf("CachedRedundancy should be %v but was %v", expectedRedundancy, sf.staticMetadata.CachedRedundancy)
+	}
+	if sf.staticMetadata.CachedUserRedundancy != expectedRedundancy {
+		t.Fatalf("CachedRedundancy should be %v but was %v", expectedRedundancy, sf.staticMetadata.CachedUserRedundancy)
 	}
 	if sf.staticMetadata.CachedUploadProgress != 100 {
 		t.Fatalf("CachedUploadProgress should be 100 but was %v", sf.staticMetadata.CachedUploadProgress)

@@ -191,6 +191,7 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		sf.staticMetadata.CachedHealth = 0
 		sf.staticMetadata.CachedStuckHealth = 0
 		sf.staticMetadata.CachedRedundancy = float64(ec.NumPieces()) / float64(ec.MinPieces())
+		sf.staticMetadata.CachedUserRedundancy = sf.staticMetadata.CachedRedundancy
 		sf.staticMetadata.CachedUploadProgress = 100
 	}
 	// Load the pubKeyTable.

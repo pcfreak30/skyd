@@ -225,7 +225,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
-	redundancy := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
+	redundancy, _ := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
 	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
 	}

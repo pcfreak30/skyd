@@ -64,6 +64,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			CachedHealth:            zeroHealth,
 			CachedStuckHealth:       0,
 			CachedRedundancy:        0,
+			CachedUserRedundancy:    0,
 			CachedUploadProgress:    0,
 			FileSize:                int64(fd.FileSize),
 			LocalPath:               fd.RepairPath,
@@ -93,6 +94,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		file.staticMetadata.CachedHealth = 0
 		file.staticMetadata.CachedStuckHealth = 0
 		file.staticMetadata.CachedRedundancy = float64(fd.ErasureCode.NumPieces()) / float64(fd.ErasureCode.MinPieces())
+		file.staticMetadata.CachedUserRedundancy = file.staticMetadata.CachedRedundancy
 		file.staticMetadata.CachedUploadProgress = 100
 	}
 

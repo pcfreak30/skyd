@@ -553,9 +553,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 		// only appear as if it has full redundancy even though the actual redundancy
 		// would be 0 since the combined chunk wasn't uploaded yet.
 		fileHealth := file.Metadata().CachedHealth
-		forceRepair := file.CombinedChunkStatus() > siafile.CombinedChunkStatusNoChunk &&
-			file.CombinedChunkStatus() < siafile.CombinedChunkStatusCompleted
-		if fileHealth < dirHeapHealth && target == targetUnstuckChunks && !forceRepair {
+		if fileHealth < dirHeapHealth && target == targetUnstuckChunks {
 			worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
 			continue
 		}
