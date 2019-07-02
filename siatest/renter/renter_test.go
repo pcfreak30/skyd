@@ -4822,8 +4822,16 @@ func TestRemoteBackup(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	// Create a subdir in the renter's files folder.
+
+	// Set the renter's allowance to two hosts.
 	r := tg.Renters()[0]
+	allowance := siatest.DefaultAllowance
+	allowance.Hosts = 2
+	if err := r.RenterPostAllowance(allowance); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a subdir in the renter's files folder.
 	subDir, err := r.FilesDir().CreateDir("subDir")
 	if err != nil {
 		t.Fatal(err)
