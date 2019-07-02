@@ -581,7 +581,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				continue
 			}
 
-			if info.Health >= RepairThreshold {
+			if info.Health >= RepairThreshold || info.Stuck {
 				// not ready for upload yet
 				continue
 			}
