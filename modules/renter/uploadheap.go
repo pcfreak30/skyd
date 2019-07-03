@@ -391,7 +391,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, ho
 		}
 
 		// If a chunk is not able to be repaired, mark it as stuck.
-		if !repairable {
+		if !repairable && target != targetBackupChunks {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being repairable")
 			err = r.managedSetStuckAndClose(chunk, true)
 			if err != nil {
