@@ -505,6 +505,8 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 	hdb.mu.RUnlock()
 	// Create the weight function.
 	return func(entry modules.HostDBEntry) hosttree.ScoreBreakdown {
+		hdb.mu.RLock()
+		defer hdb.mu.RUnlock()
 		return hosttree.HostAdjustments{
 			BurnAdjustment:             1,
 			CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance),
