@@ -309,7 +309,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *siafile.SiaFileSetEntry, ho
 	r.staticWorkerPool.mu.RLock()
 	workerPoolLen := len(r.staticWorkerPool.workers)
 	r.staticWorkerPool.mu.RUnlock()
-	if workerPoolLen < minPieces {
+	if workerPoolLen < minPieces && build.Release != "testing" {
 		// There are not enough workers for the chunk to reach minimum
 		// redundancy. Check if the allowance has enough hosts for the chunk to
 		// reach minimum redundancy
