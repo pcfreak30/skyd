@@ -380,6 +380,117 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 	})
 }
 
+// managedUntarSiaDir untars a SiaDir from an archive and saves it to dst.
+func (r *Renter) managedUntarSiaDir(b []byte, dst string) error {
+	// Load the file as a .siadir
+	var md siadir.Metadata
+	err := json.Unmarshal(b, &md)
+	if err != nil {
+		return err
+	}
+	// Try creating a new SiaDir.
+	var siaPath modules.SiaPath
+	if err := siaPath.LoadSysPath(r.staticFilesDir, dst); err != nil {
+		return err
+	}
+	siaPath, err = siaPath.Dir()
+	if err != nil {
+		return err
+	}
+	dirEntry, err := r.staticDirSet.NewSiaDir(siaPath)
+	if err == siadir.ErrPathOverload {
+		// .siadir exists already
+		return nil
+	} else if err != nil {
+		return err // unexpected error
+	}
+	// Update the metadata.
+	if err := dirEntry.UpdateMetadata(md); err != nil {
+		dirEntry.Close()
+		return err
+	}
+	if err := dirEntry.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// managedUntarSiaFile untars a SiaFile from an archive and saves it to dst.
+func (r *Renter) managedUntarSiaFile(b []byte, dst string, idxConversionMaps map[modules.ErasureCoderIdentifier]map[uint64]uint64) error {
+	// Load the file as a SiaFile.
+	sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
+	if err != nil {
+		return err
+	}
+	// Use the conversion map to update the file's CombinedChunkIndex if
+	// necessary.
+	eci := sf.ErasureCode().Identifier()
+	indexMap := idxConversionMaps[eci]
+	if sf.CombinedChunkStatus() == siafile.CombinedChunkStatusCompleted {
+		if indexMap == nil {
+			return fmt.Errorf("expected indexMap for '%v' but couldn't find it", eci)
+		}
+		newIndex, ok := indexMap[sf.CombinedChunkIndex()]
+		if !ok {
+			return fmt.Errorf("missing mapping for identifier '%v' at index '%v'", eci, sf.CombinedChunkIndex())
+		}
+		sf.SetCombinedChunkIndex(newIndex)
+	}
+	// Add the file to the SiaFileSet.
+	err = r.staticFileSet.AddExistingSiaFile(sf)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// managedUntarPartialsSiaFile untars a PartialsSiaFile from an archive and
+// saves it to dst.
+func (r *Renter) managedUntarPartialsSiaFile(b []byte, dst string, idxConversionMaps map[modules.ErasureCoderIdentifier]map[uint64]uint64) error {
+	// Load the file as a SiaFile.
+	psf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
+	if err != nil {
+		return err
+	}
+	// Add partial siafile to set.
+	indexMap, err := r.staticFileSet.AddExistingPartialsSiaFile(psf)
+	if err != nil {
+		return err
+	}
+	// Remember indexMap to translate the combinedChunkIndex of imported
+	// SiaFiles.
+	eci := psf.ErasureCode().Identifier()
+	if _, exists := idxConversionMaps[eci]; exists {
+		return fmt.Errorf("idxConversionMaps already contains an entry for '%v' which shouldn't be the case", eci)
+	}
+	idxConversionMaps[eci] = indexMap
+	return nil
+}
+
+// managedUntarPartialChunk untars a partial chunk from an archive and saves it
+// to dst.
+func (r *Renter) managedUntarPartialChunk(b []byte, dst string) error {
+	// TODO: this is actually more tricky than this. There is a chance that the
+	// partial chunk belongs to a siafile with a suffix. We need to figure out
+	// how to handle that.
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if os.IsExist(err) {
+		return nil // partial chunk exists already
+	} else if err != nil {
+		return err
+	}
+	// Write partial chunk.
+	_, err = f.Write(b)
+	if err != nil {
+		return errors.Compose(err, f.Close())
+	}
+	// Close file again.
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
 func (r *Renter) managedUntarDir(tr *tar.Reader) error {
@@ -412,98 +523,16 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 
 		switch filepath.Ext(info.Name()) {
 		case modules.SiaDirExtension:
-			// Load the file as a .siadir
-			var md siadir.Metadata
-			err = json.Unmarshal(b, &md)
-			if err != nil {
-				return err
-			}
-			// Try creating a new SiaDir.
-			var siaPath modules.SiaPath
-			if err := siaPath.LoadSysPath(r.staticFilesDir, dst); err != nil {
-				return err
-			}
-			siaPath, err = siaPath.Dir()
-			if err != nil {
-				return err
-			}
-			dirEntry, err := r.staticDirSet.NewSiaDir(siaPath)
-			if err == siadir.ErrPathOverload {
-				// .siadir exists already
-				continue
-			} else if err != nil {
-				return err // unexpected error
-			}
-			// Update the metadata.
-			if err := dirEntry.UpdateMetadata(md); err != nil {
-				dirEntry.Close()
-				return err
-			}
-			if err := dirEntry.Close(); err != nil {
-				return err
-			}
+			err = r.managedUntarSiaDir(b, dst)
 		case modules.SiaFileExtension:
-			// Load the file as a SiaFile.
-			sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
-			if err != nil {
-				return err
-			}
-			// Use the conversion map to update the file's CombinedChunkIndex if
-			// necessary.
-			eci := sf.ErasureCode().Identifier()
-			indexMap := idxConversionMaps[eci]
-			if sf.CombinedChunkStatus() == siafile.CombinedChunkStatusCompleted {
-				if indexMap == nil {
-					return fmt.Errorf("expected indexMap for '%v' but couldn't find it", eci)
-				}
-				newIndex, ok := indexMap[sf.CombinedChunkIndex()]
-				if !ok {
-					return fmt.Errorf("missing mapping for identifier '%v' at index '%v'", eci, sf.CombinedChunkIndex())
-				}
-				sf.SetCombinedChunkIndex(newIndex)
-			}
-			// Add the file to the SiaFileSet.
-			err = r.staticFileSet.AddExistingSiaFile(sf)
-			if err != nil {
-				return err
-			}
+			err = r.managedUntarSiaFile(b, dst, idxConversionMaps)
 		case modules.PartialsSiaFileExtension:
-			// Load the file as a SiaFile.
-			psf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
-			if err != nil {
-				return err
-			}
-			// Add partial siafile to set.
-			indexMap, err := r.staticFileSet.AddExistingPartialsSiaFile(psf)
-			if err != nil {
-				return err
-			}
-			// Remember indexMap to translate the combinedChunkIndex of imported
-			// SiaFiles.
-			eci := psf.ErasureCode().Identifier()
-			if _, exists := idxConversionMaps[eci]; exists {
-				return fmt.Errorf("idxConversionMaps already contains an entry for '%v' which shouldn't be the case", eci)
-			}
-			idxConversionMaps[eci] = indexMap
+			err = r.managedUntarPartialsSiaFile(b, dst, idxConversionMaps)
 		case modules.PartialChunkExtension:
-			// TODO: this is actually more tricky than this. There is a chance that the
-			// partial chunk belongs to a siafile with a suffix. We need to figure out
-			// how to handle that.
-			f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-			if os.IsExist(err) {
-				continue // partial chunk exists already
-			} else if err != nil {
-				return err
-			}
-			// Write partial chunk.
-			_, err = f.Write(b)
-			if err != nil {
-				return errors.Compose(err, f.Close())
-			}
-			// Close file again.
-			if err := f.Close(); err != nil {
-				return err
-			}
+			err = r.managedUntarPartialChunk(b, dst)
+		}
+		if err != nil {
+			return err
 		}
 	}
 	return nil
