@@ -403,6 +403,9 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 		chunks = append(chunks, chunk)
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
 	// Update the ChangeTime because the metadata changed.
@@ -414,11 +417,9 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	}
 	updates = append(updates, headerUpdate...)
 	// Write the chunks to the new location.
-	chunksUpdates, err := sf.saveChunksUpdates()
-	if err != nil {
-		return err
+	for _, chunk := range chunks {
+		updates = append(updates, sf.saveChunkUpdate(chunk))
 	}
-	updates = append(updates, chunksUpdates...)
 	// Write a potential .partial file to the new location.
 	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
 		updates = append(updates, createInsertUpdate(sf.partialFilePath(), 0, partialChunk))
