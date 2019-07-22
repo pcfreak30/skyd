@@ -127,8 +127,8 @@ func TestFileNumChunks(t *testing.T) {
 		}
 		// Check that the number of chunks matches the expected number.
 		expectedNumChunks := test.fileSize / (f.PieceSize() * uint64(test.dataPieces))
-		if expectedNumChunks == 0 {
-			// There is at least 1 chunk.
+		if expectedNumChunks == 0 && test.fileSize > 0 {
+			// There is at least 1 chunk for non 0-byte files.
 			expectedNumChunks = 1
 		} else if expectedNumChunks%(f.PieceSize()*uint64(test.dataPieces)) != 0 {
 			// If it doesn't divide evenly there will be 1 chunk padding.
