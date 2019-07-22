@@ -498,9 +498,9 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
 		var c chunk
 		var err error
-		if sf.CombinedChunkStatus() >= CombinedChunkStatusCompleted && chunkIndex == sf.numChunks-1 {
+		if sf.staticMetadata.CombinedChunkStatus >= CombinedChunkStatusCompleted && chunkIndex == sf.numChunks-1 {
 			c, err = sf.partialsSiaFile.Chunk(sf.staticMetadata.CombinedChunkIndex)
-		} else if sf.CombinedChunkStatus() >= CombinedChunkStatusHasChunk && chunkIndex == sf.numChunks-1 {
+		} else if sf.staticMetadata.CombinedChunkStatus >= CombinedChunkStatusHasChunk && chunkIndex == sf.numChunks-1 {
 			c = chunk{Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces())}
 		} else {
 			if _, err := f.Read(chunkBytes); err != nil && err != io.EOF {
