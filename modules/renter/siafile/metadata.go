@@ -276,11 +276,11 @@ func SetCombinedChunk(cci CombinedChunkInfo, dir string) error {
 	// while we are modifying the SiaFiles in this function.
 	partialsSiaFile.mu.Lock()
 	defer partialsSiaFile.mu.Unlock()
+	chunkIndex := partialsSiaFile.numChunks
 	addCombinedChunkUpdates, err := partialsSiaFile.addCombinedChunk()
 	if err != nil {
 		return err
 	}
-	chunkIndex := partialsSiaFile.numChunks
 
 	// Get updates to delete all the .partial files and update all the siafiles.
 	identifier := partialsSiaFile.staticMetadata.staticErasureCode.Identifier()
