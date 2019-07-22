@@ -85,10 +85,6 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		siaFilePath:     siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
 		wal:             sfs.wal,
 	}
-	file.fullChunks = make([]chunk, len(fd.Chunks))
-	for i := range file.fullChunks {
-		file.fullChunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
-	}
 	// Update cached fields for 0-Byte files.
 	if file.staticMetadata.FileSize == 0 {
 		file.staticMetadata.CachedHealth = 0
@@ -96,6 +92,13 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		file.staticMetadata.CachedRedundancy = float64(fd.ErasureCode.NumPieces()) / float64(fd.ErasureCode.MinPieces())
 		file.staticMetadata.CachedUserRedundancy = file.staticMetadata.CachedRedundancy
 		file.staticMetadata.CachedUploadProgress = 100
+	}
+
+	// Create the chunks.
+	chunks := make([]chunk, len(fd.Chunks))
+	for i := range chunks {
+		chunks[i].Pieces = make([][]piece, file.staticMetadata.staticErasureCode.NumPieces())
+		chunks[i].Index = i
 	}
 
 	// Populate the pubKeyTable of the file and add the pieces.
@@ -114,7 +117,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 					})
 				}
 				// Add the piece to the SiaFile.
-				file.fullChunks[chunkIndex].Pieces[pieceIndex] = append(file.fullChunks[chunkIndex].Pieces[pieceIndex], piece{
+				chunks[chunkIndex].Pieces[pieceIndex] = append(chunks[chunkIndex].Pieces[pieceIndex], piece{
 					HostTableOffset: tableOffset,
 					MerkleRoot:      p.MerkleRoot,
 				})
@@ -132,8 +135,12 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 		threadUID:       threadUID,
 	}
 
-	// Update the cached fields for progress and uploaded bytes.
-	_, _ = file.UploadProgressAndBytes()
+	// Save file to disk.
+	if err := file.saveFile(chunks); err != nil {
+		return nil, errors.AddContext(err, "unable to save file")
+	}
 
-	return sfse, errors.AddContext(file.saveFile(), "unable to save file")
+	// Update the cached fields for progress and uploaded bytes.
+	_, _, err = file.UploadProgressAndBytes()
+	return sfse, err
 }

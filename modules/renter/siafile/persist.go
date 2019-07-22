@@ -42,6 +42,32 @@ func LoadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL)
 	return loadSiaFileFromReader(r, path, wal, modules.ProdDependencies)
 }
 
+// LoadSiaFileFromReaderWithChunks does not only read the header of the Siafile
+// from disk but also the chunks which it returns separately. This is useful if
+// the file is read from a buffer in-memory and the chunks can't be read from
+// disk later.
+func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeaheadlog.WAL) (*SiaFile, []chunk, error) {
+	sf, err := LoadSiaFileFromReader(r, path, wal)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Load chunks from reader.
+	var chunks []chunk
+	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
+	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
+		if _, err := r.Read(chunkBytes); err != nil && err != io.EOF {
+			return nil, nil, errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
+		}
+		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
+		if err != nil {
+			return nil, nil, errors.AddContext(err, fmt.Sprintf("failed to unmarshal chunk %v", chunkIndex))
+		}
+		chunk.Index = int(chunkIndex)
+		chunks = append(chunks, chunk)
+	}
+	return sf, chunks, nil
+}
+
 // LoadSiaFileMetadata is a wrapper for loadSiaFileMetadata that uses the
 // production dependencies.
 func LoadSiaFileMetadata(path string) (Metadata, error) {
@@ -225,21 +251,12 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 	if off%pageSize != 0 {
 		return nil, errors.New("chunkOff is not page aligned")
 	}
-	// Load the chunks.
-	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
-	for {
-		n, err := r.Read(chunkBytes)
-		if n == 0 && err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
-		if err != nil {
-			return nil, err
-		}
-		sf.fullChunks = append(sf.fullChunks, chunk)
+	// Set numChunks field.
+	numChunks := sf.staticMetadata.FileSize / int64(sf.staticChunkSize())
+	if sf.staticMetadata.FileSize%int64(sf.staticChunkSize()) != 0 || numChunks == 0 {
+		numChunks++
 	}
+	sf.numChunks = int(numChunks)
 	return sf, nil
 }
 
@@ -424,6 +441,76 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	return nil
 }
 
+// chunk reads the chunk with index chunkIndex from disk.
+func (sf *SiaFile) chunk(chunkIndex int) (chunk, error) {
+	chunkOffset := sf.chunkOffset(chunkIndex)
+	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
+	f, err := sf.deps.Open(sf.siaFilePath)
+	if err != nil {
+		return chunk{}, errors.AddContext(err, "failed to open file to read chunk")
+	}
+	defer f.Close()
+	if _, err := f.ReadAt(chunkBytes, chunkOffset); err != nil && err != io.EOF {
+		return chunk{}, errors.AddContext(err, "failed to read chunk from disk")
+	}
+	c, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
+	if err != nil {
+		return chunk{}, errors.AddContext(err, "failed to unmarshal chunk")
+	}
+	c.Index = chunkIndex // Set non-persisted field
+	return c, nil
+}
+
+// iterateChunks iterates over all the chunks on disk and create wal updates for
+// each chunk that was modified.
+func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]writeaheadlog.Update, error) {
+	var updates []writeaheadlog.Update
+	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+		modified, err := iterFunc(&chunk)
+		if err != nil {
+			return err
+		}
+		if modified {
+			updates = append(updates, sf.saveChunkUpdate(chunk))
+		}
+		return nil
+	})
+	return updates, err
+}
+
+// iterateChunksReadonly iterates over all the chunks on disk and calls iterFunc
+// on each one without modifying them.
+// TODO: This should also iterate over potential partial chunk
+func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error {
+	// Open the file.
+	f, err := os.Open(sf.siaFilePath)
+	if err != nil {
+		return errors.AddContext(err, "failed to open file")
+	}
+	defer f.Close()
+	// Seek to the first chunk.
+	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
+	if err != nil {
+		return errors.AddContext(err, "failed to seek to ChunkOffset")
+	}
+	// Read the chunks one-by-one.
+	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
+	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
+		if _, err := f.Read(chunkBytes); err != nil && err != io.EOF {
+			return errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
+		}
+		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
+		if err != nil {
+			return errors.AddContext(err, fmt.Sprintf("failed to unmarshal chunk %v", chunkIndex))
+		}
+		chunk.Index = int(chunkIndex)
+		if err := iterFunc(chunk); err != nil {
+			return errors.AddContext(err, fmt.Sprintf("failed to iterate over chunk %v", chunkIndex))
+		}
+	}
+	return nil
+}
+
 // chunkOffset returns the offset of a marshaled chunk withint the file.
 func (sf *SiaFile) chunkOffset(chunkIndex int) int64 {
 	if chunkIndex < 0 {
@@ -549,8 +636,8 @@ func (sf *SiaFile) readAndApplyInsertUpdate(f modules.File, update writeaheadlog
 	return nil
 }
 
-// saveFile saves the whole SiaFile atomically.
-func (sf *SiaFile) saveFile() error {
+// saveFile saves the SiaFile's header and the provided chunks atomically.
+func (sf *SiaFile) saveFile(chunks []chunk) error {
 	// Sanity check that file hasn't been deleted.
 	if sf.deleted {
 		return errors.New("can't call saveFile on deleted file")
@@ -559,29 +646,28 @@ func (sf *SiaFile) saveFile() error {
 	if err != nil {
 		return errors.AddContext(err, "failed to to create save header updates")
 	}
-	chunksUpdates := sf.saveChunksUpdates()
+	var chunksUpdates []writeaheadlog.Update
+	for _, chunk := range chunks {
+		chunksUpdates = append(chunksUpdates, sf.saveChunkUpdate(chunk))
+	}
 	err = sf.createAndApplyTransaction(append(headerUpdates, chunksUpdates...)...)
 	return errors.AddContext(err, "failed to apply saveFile updates")
 }
 
 // saveChunkUpdate creates a writeaheadlog update that saves a single marshaled chunk
 // to disk when applied.
-func (sf *SiaFile) saveChunkUpdate(chunkIndex int) writeaheadlog.Update {
-	offset := sf.chunkOffset(chunkIndex)
-	chunkBytes := marshalChunk(sf.fullChunks[chunkIndex])
+func (sf *SiaFile) saveChunkUpdate(chunk chunk) writeaheadlog.Update {
+	offset := sf.chunkOffset(chunk.Index)
+	chunkBytes := marshalChunk(chunk)
 	return sf.createInsertUpdate(offset, chunkBytes)
 }
 
 // saveChunksUpdates creates writeaheadlog updates which save the marshaled chunks of
 // the SiaFile to disk when applied.
-func (sf *SiaFile) saveChunksUpdates() []writeaheadlog.Update {
-	// Marshal all the chunks and create updates for them.
-	updates := make([]writeaheadlog.Update, 0, len(sf.fullChunks))
-	for chunkIndex := range sf.fullChunks {
-		update := sf.saveChunkUpdate(chunkIndex)
-		updates = append(updates, update)
-	}
-	return updates
+func (sf *SiaFile) saveChunksUpdates() ([]writeaheadlog.Update, error) {
+	return sf.iterateChunks(func(chunk *chunk) (bool, error) {
+		return true, nil
+	})
 }
 
 // saveHeaderUpdates creates writeaheadlog updates to saves the metadata and

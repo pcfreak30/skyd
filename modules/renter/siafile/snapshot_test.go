@@ -24,8 +24,8 @@ func TestSnapshot(t *testing.T) {
 	}
 
 	// Make sure the snapshot has the same fields as the SiaFile.
-	if sf.numChunks() != uint64(len(snap.staticChunks)) {
-		t.Errorf("expected %v chunks but got %v", sf.numChunks(), len(snap.staticChunks))
+	if sf.numChunks != len(snap.staticChunks) {
+		t.Errorf("expected %v chunks but got %v", sf.numChunks, len(snap.staticChunks))
 	}
 	if sf.staticMetadata.FileSize != snap.staticFileSize {
 		t.Errorf("staticFileSize was %v but should be %v",
@@ -66,15 +66,19 @@ func TestSnapshot(t *testing.T) {
 	}
 	sf.staticSiaFileSet.mu.Unlock()
 	// Compare the pieces.
-	for i := range sf.allChunks() {
-		sfPieces, err := sf.Pieces(uint64(i))
-		snapPieces := snap.Pieces(uint64(i))
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		sfPieces, err := sf.Pieces(uint64(chunk.Index))
 		if err != nil {
 			t.Fatal(err)
 		}
+		snapPieces := snap.Pieces(uint64(chunk.Index))
 		if !reflect.DeepEqual(sfPieces, snapPieces) {
 			t.Error("Pieces don't match")
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -108,18 +112,16 @@ func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 	// Create the file.
 	siafile := newBlankTestFile()
 	sf := dummyEntry(siafile)
+	rc := sf.staticMetadata.staticErasureCode
 	// Add a host key to the table.
 	sf.addRandomHostKeys(1)
 	// Add numPieces to each chunk.
 	for i := uint64(0); i < sf.NumChunks(); i++ {
-		for j := uint64(0); j < uint64(sf.ErasureCode().NumPieces()); j++ {
-			sf.AddPiece(types.SiaPublicKey{}, i, j, crypto.Hash{})
+		for j := uint64(0); j < uint64(rc.NumPieces()); j++ {
+			if err := sf.AddPiece(types.SiaPublicKey{}, i, j, crypto.Hash{}); err != nil {
+				b.Fatal(err)
+			}
 		}
-	}
-
-	// Save the file to disk.
-	if err := sf.saveFile(); err != nil {
-		b.Fatal(err)
 	}
 	// Reset the timer.
 	b.ResetTimer()

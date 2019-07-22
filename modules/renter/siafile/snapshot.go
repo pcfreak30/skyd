@@ -184,29 +184,32 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	pkt := make([]HostPublicKey, len(sf.pubKeyTable))
 	copy(pkt, sf.pubKeyTable)
 
-	chunks := make([]Chunk, 0, sf.numChunks())
+	chunks := make([]Chunk, 0, sf.numChunks)
 	// Figure out how much memory we need to allocate for the piece sets and
 	// pieces.
-	allChunks := sf.allChunks()
 	var numPieceSets, numPieces int
-	for chunkIndex := range allChunks {
-		numPieceSets += len(allChunks[chunkIndex].Pieces)
-		for pieceIndex := range allChunks[chunkIndex].Pieces {
-			numPieces += len(allChunks[chunkIndex].Pieces[pieceIndex])
+	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+		numPieceSets += len(chunk.Pieces)
+		for pieceIndex := range chunk.Pieces {
+			numPieces += len(chunk.Pieces[pieceIndex])
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	// Allocate all the piece sets and pieces at once.
 	allPieceSets := make([][]Piece, numPieceSets)
 	allPieces := make([]Piece, numPieces)
 
-	// Copy fullChunks. Partial chunk will be handled later.
-	for chunkIndex := range sf.fullChunks {
-		pieces := allPieceSets[:len(allChunks[chunkIndex].Pieces)]
-		allPieceSets = allPieceSets[len(allChunks[chunkIndex].Pieces):]
+	// Copy chunks.
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		pieces := allPieceSets[:len(chunk.Pieces)]
+		allPieceSets = allPieceSets[len(chunk.Pieces):]
 		for pieceIndex := range pieces {
-			pieces[pieceIndex] = allPieces[:len(allChunks[chunkIndex].Pieces[pieceIndex])]
-			allPieces = allPieces[len(allChunks[chunkIndex].Pieces[pieceIndex]):]
-			for i, piece := range allChunks[chunkIndex].Pieces[pieceIndex] {
+			pieces[pieceIndex] = allPieces[:len(chunk.Pieces[pieceIndex])]
+			allPieces = allPieces[len(chunk.Pieces[pieceIndex]):]
+			for i, piece := range chunk.Pieces[pieceIndex] {
 				pieces[pieceIndex][i] = Piece{
 					HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
 					MerkleRoot: piece.MerkleRoot,
@@ -216,6 +219,10 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 		chunks = append(chunks, Chunk{
 			Pieces: pieces,
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	// Handle potential partial chunk.
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {

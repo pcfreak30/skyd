@@ -133,11 +133,6 @@ type (
 		UserID  int         `json:"userid"`  // id of the user who owns the file
 		GroupID int         `json:"groupid"` // id of the group that owns the file
 
-		// staticChunkMetadataSize is the amount of space allocated within the
-		// siafile for the metadata of a single chunk. It allows us to do
-		// random access operations on the file in constant time.
-		StaticChunkMetadataSize uint64 `json:"chunkmetadatasize"`
-
 		// The following fields are the offsets for data that is written to disk
 		// after the pubKeyTable. We reserve a generous amount of space for the
 		// table and extra fields, but we need to remember those offsets in case we
@@ -281,10 +276,11 @@ func SetCombinedChunk(cci CombinedChunkInfo, dir string) error {
 	// while we are modifying the SiaFiles in this function.
 	partialsSiaFile.mu.Lock()
 	defer partialsSiaFile.mu.Unlock()
-	chunkIndex, addCombinedChunkUpdates, err := partialsSiaFile.addCombinedChunk()
+	addCombinedChunkUpdates, err := partialsSiaFile.addCombinedChunk()
 	if err != nil {
 		return err
 	}
+	chunkIndex := partialsSiaFile.numChunks
 
 	// Get updates to delete all the .partial files and update all the siafiles.
 	identifier := partialsSiaFile.staticMetadata.staticErasureCode.Identifier()
@@ -306,7 +302,7 @@ func SetCombinedChunk(cci CombinedChunkInfo, dir string) error {
 		// Get updates to add chunk to combined SiaFile.
 		sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
 		sf.staticMetadata.CombinedChunkID = combinedChunkID
-		sf.staticMetadata.CombinedChunkIndex = chunkIndex
+		sf.staticMetadata.CombinedChunkIndex = uint64(chunkIndex)
 		sf.staticMetadata.CombinedChunkLength = ci.length
 		sf.staticMetadata.CombinedChunkOffset = ci.offset
 		metadataUpdates, err := sf.saveMetadataUpdates()
@@ -378,7 +374,9 @@ func (sf *SiaFile) PieceSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize
 }
 
-// Rename changes the name of the file to a new one.
+// Rename changes the name of the file to a new one. To guarantee that renaming
+// the file is atomic across all operating systems, we create a wal transaction
+// that moves over all the chunks one-by-one and deletes the src file.
 func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -399,6 +397,12 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 			return err
 		}
 	}
+	// Load all the chunks.
+	chunks := make([]chunk, 0, sf.numChunks)
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		chunks = append(chunks, chunk)
+		return nil
+	})
 	// Rename file in memory.
 	sf.siaFilePath = newSiaFilePath
 	// Update the ChangeTime because the metadata changed.
@@ -410,11 +414,17 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	}
 	updates = append(updates, headerUpdate...)
 	// Write the chunks to the new location.
-	chunksUpdates := sf.saveChunksUpdates()
+	chunksUpdates, err := sf.saveChunksUpdates()
+	if err != nil {
+		return err
+	}
 	updates = append(updates, chunksUpdates...)
 	// Write a potential .partial file to the new location.
 	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
 		updates = append(updates, createInsertUpdate(sf.partialFilePath(), 0, partialChunk))
+	}
+	for _, chunk := range chunks {
+		updates = append(updates, sf.saveChunkUpdate(chunk))
 	}
 	// Apply updates.
 	return createAndApplyTransaction(sf.wal, updates...)

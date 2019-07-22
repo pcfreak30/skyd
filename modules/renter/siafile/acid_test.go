@@ -83,16 +83,17 @@ OUTER:
 			if fastrand.Intn(100) < 80 {
 				spk := hostkeys[fastrand.Intn(len(hostkeys))]
 				offset := uint64(fastrand.Intn(int(sf.staticMetadata.FileSize)))
-				snapshot, err := sf.Snapshot()
-				if err != nil && errors.Contains(err, errDiskFault) {
-					numRecoveries++
-					break
-				} else if err != nil {
+				snap, err := sf.Snapshot()
+				if err != nil {
+					if errors.Contains(err, errDiskFault) {
+						numRecoveries++
+						break
+					}
 					// If the error wasn't caused by the dependency, the test
 					// fails.
 					t.Fatal(err)
 				}
-				chunkIndex, _ := snapshot.ChunkIndexByOffset(offset)
+				chunkIndex, _ := snap.ChunkIndexByOffset(offset)
 				pieceIndex := uint64(fastrand.Intn(sf.staticMetadata.staticErasureCode.NumPieces()))
 				if err := sf.AddPiece(spk, chunkIndex, pieceIndex, crypto.Hash{}); err != nil {
 					if errors.Contains(err, errDiskFault) {

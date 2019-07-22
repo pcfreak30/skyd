@@ -18,17 +18,16 @@ func (sf *SiaFile) Merge(newFile *SiaFile) (map[uint64]uint64, error) {
 
 // addCombinedChunk adds a new combined chunk to a combined Siafile. This can't
 // be called on a regular SiaFile.
-func (sf *SiaFile) addCombinedChunk() (uint64, []writeaheadlog.Update, error) {
+func (sf *SiaFile) addCombinedChunk() ([]writeaheadlog.Update, error) {
 	if sf.deleted {
-		return 0, nil, errors.New("can't add combined chunk to deleted file")
+		return nil, errors.New("can't add combined chunk to deleted file")
 	}
 	if filepath.Ext(sf.siaFilePath) != modules.PartialsSiaFileExtension {
-		return 0, nil, errors.New("can only call addCombinedChunk on combined SiaFiles")
+		return nil, errors.New("can only call addCombinedChunk on combined SiaFiles")
 	}
 	// Create updates to add a chunk and return index of that new chunk.
-	numChunks := sf.numChunks()
-	updates, err := sf.growNumChunks(numChunks + 1)
-	return numChunks, updates, err
+	updates, err := sf.growNumChunks(uint64(sf.numChunks) + 1)
+	return updates, err
 }
 
 // merge merges two PartialsSiafiles into one, returning a map which translates
@@ -48,11 +47,19 @@ func (sf *SiaFile) merge(newFile *SiaFile) (map[uint64]uint64, error) {
 		return nil, errors.New("can't merge deleted file")
 	}
 	defer newFile.mu.Unlock()
+	var newChunks []chunk
 	indexMap := make(map[uint64]uint64)
-	for chunkIndex, chunk := range newFile.fullChunks {
-		newIndex := uint64(len(sf.fullChunks))
-		sf.fullChunks = append(sf.fullChunks, chunk)
-		indexMap[uint64(chunkIndex)] = newIndex
+	ncb := sf.numChunks
+	err := newFile.iterateChunksReadonly(func(chunk chunk) error {
+		newIndex := sf.numChunks
+		indexMap[uint64(chunk.Index)] = uint64(newIndex)
+		chunk.Index = newIndex
+		newChunks = append(newChunks, chunk)
+		return nil
+	})
+	if err != nil {
+		sf.numChunks = ncb
+		return nil, err
 	}
-	return indexMap, sf.saveFile()
+	return indexMap, sf.saveFile(newChunks)
 }

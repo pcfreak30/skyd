@@ -54,13 +54,13 @@ func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 		return nil, nil, err
 	}
 	// Check that the number of chunks in the files are correct.
-	if numChunks >= 0 && sf1.numChunks() != uint64(numChunks) {
+	if numChunks >= 0 && sf1.numChunks != numChunks {
 		return nil, nil, errors.New("createLinkedBlankSiafiles didn't create the expected number of chunks")
 	}
-	if numChunks >= 0 && sf2.numChunks() != uint64(numChunks) {
+	if numChunks >= 0 && sf2.numChunks != numChunks {
 		return nil, nil, errors.New("createLinkedBlankSiafiles didn't create the expected number of chunks")
 	}
-	if partialsSiaFile.numChunks() != 0 {
+	if partialsSiaFile.numChunks != 0 {
 		return nil, nil, errors.New("createLinkedBlankSiafiles didn't create an empty partialsSiaFile")
 	}
 	return sf1, sf2, nil

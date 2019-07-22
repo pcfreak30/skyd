@@ -167,7 +167,11 @@ func TestFileRedundancy(t *testing.T) {
 		rsc, _ := NewRSCode(nData, 10)
 		f, _, _ := newBlankTestFileAndWALWithEC(rsc)
 		// Test that an empty file has 0 redundancy.
-		if r, ur := f.Redundancy(neverOffline, goodForRenew); r != 0 || ur != 0 {
+		r, ur, err := f.Redundancy(neverOffline, goodForRenew)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r != 0 || ur != 0 {
 			t.Error("expected 0 redundancy, got", r, ur)
 		}
 		// Test that a file with 1 host that has a piece for every chunk but
@@ -178,7 +182,11 @@ func TestFileRedundancy(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if r, ur := f.Redundancy(neverOffline, goodForRenew); r != 0 || ur != 0 {
+		r, ur, err = f.Redundancy(neverOffline, goodForRenew)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r != 0 || ur != 0 {
 			t.Error("expected 0 redundancy, got", r, ur)
 		}
 		// Test that adding another host with a piece for every chunk but one
@@ -189,7 +197,11 @@ func TestFileRedundancy(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if r, ur := f.Redundancy(neverOffline, goodForRenew); r != 0 || ur != 0 {
+		r, ur, err = f.Redundancy(neverOffline, goodForRenew)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r != 0 || ur != 0 {
 			t.Error("expected 0 redundancy, got", r)
 		}
 		// If the file has a partial chunk, fake a combined chunk to make sure we can
@@ -199,13 +211,17 @@ func TestFileRedundancy(t *testing.T) {
 		}
 		// Test that adding a file contract with a piece for the missing chunk
 		// results in a file with redundancy > 0 && <= 1.
-		err := f.AddPiece(types.SiaPublicKey{Key: []byte{byte(2)}}, f.NumChunks()-1, 0, crypto.Hash{})
+		err = f.AddPiece(types.SiaPublicKey{Key: []byte{byte(2)}}, f.NumChunks()-1, 0, crypto.Hash{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		// 1.0 / MinPieces because the chunk with the least number of pieces has 1 piece.
 		expectedR := 1.0 / float64(f.ErasureCode().MinPieces())
-		if r, ur := f.Redundancy(neverOffline, goodForRenew); r != expectedR || ur != expectedR {
+		r, ur, err = f.Redundancy(neverOffline, goodForRenew)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r != expectedR || ur != expectedR {
 			t.Errorf("expected %f redundancy, got %f %f", expectedR, r, ur)
 		}
 		// Test that adding a file contract that has erasureCode.MinPieces() pieces
@@ -224,7 +240,11 @@ func TestFileRedundancy(t *testing.T) {
 		}
 		// 1+MinPieces / MinPieces because the chunk with the least number of pieces has 1+MinPieces pieces.
 		expectedR = float64(1+f.ErasureCode().MinPieces()) / float64(f.ErasureCode().MinPieces())
-		if r, ur := f.Redundancy(neverOffline, goodForRenew); r != expectedR || ur != expectedR {
+		r, ur, err = f.Redundancy(neverOffline, goodForRenew)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r != expectedR || ur != expectedR {
 			t.Errorf("expected %f redundancy, got %f", expectedR, r)
 		}
 
@@ -242,7 +262,11 @@ func TestFileRedundancy(t *testing.T) {
 			specificOffline[pk] = false
 		}
 		specificOffline[string(byte(5))] = true
-		if r, ur := f.Redundancy(specificOffline, goodForRenew); r != expectedR || ur != expectedR {
+		r, ur, err = f.Redundancy(specificOffline, goodForRenew)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r != expectedR || ur != expectedR {
 			t.Errorf("expected redundancy to ignore offline file contracts, wanted %f got %f", expectedR, r)
 		}
 	}
@@ -530,18 +554,26 @@ func TestPruneHosts(t *testing.T) {
 	sf.addRandomHostKeys(3)
 
 	// Save changes to disk.
-	if err := sf.saveFile(); err != nil {
+	updates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sf.createAndApplyTransaction(updates...); err != nil {
 		t.Fatal(err)
 	}
 
 	// Add one piece for every host to every pieceSet of the
 	for _, hk := range sf.HostPublicKeys() {
-		for chunkIndex, chunk := range sf.fullChunks {
+		err := sf.iterateChunksReadonly(func(chunk chunk) error {
 			for pieceIndex := range chunk.Pieces {
-				if err := sf.AddPiece(hk, uint64(chunkIndex), uint64(pieceIndex), crypto.Hash{}); err != nil {
+				if err := sf.AddPiece(hk, uint64(chunk.Index), uint64(pieceIndex), crypto.Hash{}); err != nil {
 					t.Fatal(err)
 				}
 			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 
@@ -551,7 +583,13 @@ func TestPruneHosts(t *testing.T) {
 	remainingKey := sf.pubKeyTable[1]
 
 	// Prune the file.
-	sf.pruneHosts()
+	updates, err = sf.pruneHosts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sf.createAndApplyTransaction(updates...); err != nil {
+		t.Fatal(err)
+	}
 
 	// Check that there is only a single key left.
 	if len(sf.pubKeyTable) != 1 {
@@ -564,8 +602,8 @@ func TestPruneHosts(t *testing.T) {
 	// Loop over all the pieces and make sure that the pieces with missing
 	// hosts were pruned and that the remaining pieces have the correct offset
 	// now.
-	for chunkIndex := range sf.fullChunks {
-		for _, pieceSet := range sf.fullChunks[chunkIndex].Pieces {
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		for _, pieceSet := range chunk.Pieces {
 			if len(pieceSet) != 1 {
 				t.Fatalf("Expected 1 piece in the set but was %v", len(pieceSet))
 			}
@@ -577,6 +615,10 @@ func TestPruneHosts(t *testing.T) {
 				}
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -608,7 +650,10 @@ func TestDefragChunk(t *testing.T) {
 	sf, _, _ := newBlankTestFileAndWAL(2) // make sure we have 1 full chunk at the beginning of sf.fullChunks
 
 	// Use the first chunk of the file for testing.
-	chunk := &sf.fullChunks[0]
+	chunk, err := sf.chunk(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Add 100 pieces to each set of pieces, all belonging to the same unused
 	// host.
@@ -621,7 +666,7 @@ func TestDefragChunk(t *testing.T) {
 
 	// Defrag the chunk. This should remove all the pieces since the host is
 	// unused.
-	sf.defragChunk(chunk)
+	sf.defragChunk(&chunk)
 	if chunk.numPieces() != 0 {
 		t.Fatalf("chunk should have 0 pieces after defrag but was %v", chunk.numPieces())
 	}
@@ -638,7 +683,7 @@ func TestDefragChunk(t *testing.T) {
 	maxChunkSize := int64(sf.staticMetadata.StaticPagesPerChunk) * pageSize
 	maxPieces := (maxChunkSize - marshaledChunkOverhead) / marshaledPieceSize
 	maxPiecesPerSet := maxPieces / int64(len(chunk.Pieces))
-	sf.defragChunk(chunk)
+	sf.defragChunk(&chunk)
 
 	// The chunk should be smaller than maxChunkSize.
 	if chunkSize := marshaledChunkSize(chunk.numPieces()); chunkSize > maxChunkSize {
@@ -674,8 +719,11 @@ func TestDefragChunk(t *testing.T) {
 
 	// Save the above changes to disk to avoid failing sanity checks when
 	// calling AddPiece.
-	err := sf.saveFile()
+	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sf.createAndApplyTransaction(updates...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -683,8 +731,12 @@ func TestDefragChunk(t *testing.T) {
 	// any of the 3 hosts. This should never produce an error.
 	var duration time.Duration
 	for i := 0; i < 50; i++ {
+		chunk, err := sf.chunk(0)
+		if err != nil {
+			t.Fatal(err)
+		}
 		pk := sf.pubKeyTable[fastrand.Intn(len(sf.pubKeyTable))].PublicKey
-		pieceIndex := fastrand.Intn(len(sf.fullChunks[0].Pieces))
+		pieceIndex := fastrand.Intn(len(chunk.Pieces))
 		before := time.Now()
 		if err := sf.AddPiece(pk, 0, uint64(pieceIndex), crypto.Hash{}); err != nil {
 			t.Fatal(err)
@@ -693,8 +745,11 @@ func TestDefragChunk(t *testing.T) {
 	}
 
 	// Save the file to disk again to make sure cached fields are persisted.
-	err = sf.saveFile()
+	updates, err = sf.saveHeaderUpdates()
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sf.createAndApplyTransaction(updates...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -732,13 +787,20 @@ func TestChunkHealth(t *testing.T) {
 
 	// Since we are using a pre set offlineMap, all the chunks should have the
 	// same health as the file
-	for i := range sf.fullChunks {
-		chunkHealth := sf.chunkHealth(i, offlineMap, goodForRenewMap)
+	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+		chunkHealth, err := sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+		if err != nil {
+			return err
+		}
 		if chunkHealth != fileHealth {
 			t.Log("ChunkHealth:", chunkHealth)
 			t.Log("FileHealth:", fileHealth)
 			t.Fatal("Expected file and chunk to have same health")
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Add good piece to first chunk
@@ -755,14 +817,30 @@ func TestChunkHealth(t *testing.T) {
 	}
 
 	// Chunk at index 0 should now have a health of 1 higher than before
+	chunk, err := sf.chunk(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	newHealth := float64(1) - (float64(1-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
-	if sf.chunkHealth(0, offlineMap, goodForRenewMap) != newHealth {
-		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, sf.chunkHealth(0, offlineMap, goodForRenewMap))
+	ch, err := sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch != newHealth {
+		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, ch)
 	}
 
 	// Chunk at index 1 should still have lower health
-	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != fileHealth {
-		t.Fatalf("Expected chunk health to be %v, got %v", fileHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
+	chunk, err = sf.chunk(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err = sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch != fileHealth {
+		t.Fatalf("Expected chunk health to be %v, got %v", fileHealth, ch)
 	}
 
 	// Add good piece to second chunk
@@ -776,15 +854,33 @@ func TestChunkHealth(t *testing.T) {
 	}
 
 	// Chunk at index 1 should now have a health of 1 higher than before
-	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
-		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
+	chunk, err = sf.chunk(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err = sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch != newHealth {
+		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, ch)
 	}
 
 	// Mark Chunk at index 1 as stuck and confirm that doesn't impact the result
 	// of chunkHealth
-	sf.fullChunks[1].Stuck = true
-	if sf.chunkHealth(1, offlineMap, goodForRenewMap) != newHealth {
-		t.Fatalf("Expected file to be %v, got %v", newHealth, sf.chunkHealth(1, offlineMap, goodForRenewMap))
+	if err := sf.SetStuck(1, true); err != nil {
+		t.Fatal(err)
+	}
+	chunk, err = sf.chunk(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err = sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch != newHealth {
+		t.Fatalf("Expected file to be %v, got %v", newHealth, ch)
 	}
 }
 
@@ -804,15 +900,15 @@ func TestStuckChunks(t *testing.T) {
 
 	// Mark every other chunk as stuck
 	expectedStuckChunks := 0
-	for i := range sf.allChunks() {
-		if (i % 2) != 0 {
+	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
+		if (chunkIndex % 2) != 0 {
 			continue
 		}
 		if sf.CombinedChunkStatus() == CombinedChunkStatusHasChunk &&
-			uint64(i) == sf.NumChunks()-1 {
+			uint64(chunkIndex) == sf.NumChunks()-1 {
 			continue // partial chunk at the end can't be stuck
 		}
-		if err := sf.SetStuck(uint64(i), true); err != nil {
+		if err := sf.SetStuck(uint64(chunkIndex), true); err != nil {
 			t.Fatal(err)
 		}
 		expectedStuckChunks++
@@ -848,20 +944,24 @@ func TestStuckChunks(t *testing.T) {
 	}
 
 	// Check chunks and Stuck Chunk Table
-	for i, chunk := range sf.allChunks() {
+	err = sf.iterateChunksReadonly(func(chunk chunk) error {
 		if sf.CombinedChunkStatus() == CombinedChunkStatusHasChunk &&
-			uint64(i) == sf.NumChunks()-1 {
-			continue // partial chunk at the end can't be stuck
+			uint64(chunk.Index) == sf.NumChunks()-1 {
+			return nil // partial chunk at the end can't be stuck
 		}
-		if i%2 != 0 {
+		if chunk.Index%2 != 0 {
 			if chunk.Stuck {
 				t.Fatal("Found stuck chunk when un-stuck chunk was expected")
 			}
-			continue
+			return nil
 		}
 		if !chunk.Stuck {
 			t.Fatal("Found un-stuck chunk when stuck chunk was expected")
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -884,7 +984,10 @@ func TestUploadedBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	totalBytes, uniqueBytes := f.uploadedBytes()
+	totalBytes, uniqueBytes, err := f.uploadedBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if totalBytes != 4*modules.SectorSize {
 		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, totalBytes)
 	}

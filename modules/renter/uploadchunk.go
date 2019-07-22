@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // uploadChunkID is a unique identifier for each chunk in the renter.
@@ -187,8 +188,9 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	if chunk.index == chunk.fileEntry.NumChunks()-1 && chunk.fileEntry.Size()%chunk.length != 0 {
 		downloadLength = chunk.fileEntry.Size() % chunk.length
 	}
-	// Create the snapshot.
-	snapshot, err := chunk.fileEntry.Snapshot()
+
+	// Prepare snapshot.
+	snap, err := chunk.fileEntry.Snapshot()
 	if err != nil {
 		return err
 	}
@@ -197,7 +199,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	d, err := r.managedNewDownload(downloadParams{
 		destination:     buf,
 		destinationType: "buffer",
-		file:            snapshot,
+		file:            snap,
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
 		length:        downloadLength,
@@ -393,6 +395,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			// Encrypt the piece.
 			key := chunk.fileEntry.MasterKey().Derive(chunk.index, uint64(i))
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
+			// If the piece was not a full sector, pad it accordingly with random bytes.
+			if short := int(modules.SectorSize) - len(chunk.physicalChunkData[i]); short > 0 {
+				// The form `append(obj, make([]T, n))` will be optimized by the
+				// compiler to eliminate unneeded allocations starting go 1.11.
+				chunk.physicalChunkData[i] = append(chunk.physicalChunkData[i], make([]byte, short)...)
+				fastrand.Read(chunk.physicalChunkData[i][len(chunk.physicalChunkData[i])-short:])
+			}
 		}
 	}
 	// Return the released memory.

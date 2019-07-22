@@ -418,7 +418,8 @@ func (r *Renter) managedUntarSiaDir(b []byte, dst string) error {
 // managedUntarSiaFile untars a SiaFile from an archive and saves it to dst.
 func (r *Renter) managedUntarSiaFile(b []byte, dst string, idxConversionMaps map[modules.ErasureCoderIdentifier]map[uint64]uint64) error {
 	// Load the file as a SiaFile.
-	sf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
+	reader := bytes.NewReader(b)
+	sf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(reader, dst, r.wal)
 	if err != nil {
 		return err
 	}
@@ -437,7 +438,7 @@ func (r *Renter) managedUntarSiaFile(b []byte, dst string, idxConversionMaps map
 		sf.SetCombinedChunkIndex(newIndex)
 	}
 	// Add the file to the SiaFileSet.
-	err = r.staticFileSet.AddExistingSiaFile(sf)
+	err = r.staticFileSet.AddExistingSiaFile(sf, chunks)
 	if err != nil {
 		return err
 	}
@@ -448,12 +449,12 @@ func (r *Renter) managedUntarSiaFile(b []byte, dst string, idxConversionMaps map
 // saves it to dst.
 func (r *Renter) managedUntarPartialsSiaFile(b []byte, dst string, idxConversionMaps map[modules.ErasureCoderIdentifier]map[uint64]uint64) error {
 	// Load the file as a SiaFile.
-	psf, err := siafile.LoadSiaFileFromReader(bytes.NewReader(b), dst, r.wal)
+	psf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(bytes.NewReader(b), dst, r.wal)
 	if err != nil {
 		return err
 	}
 	// Add partial siafile to set.
-	indexMap, err := r.staticFileSet.AddExistingPartialsSiaFile(psf)
+	indexMap, err := r.staticFileSet.AddExistingPartialsSiaFile(psf, chunks)
 	if err != nil {
 		return err
 	}

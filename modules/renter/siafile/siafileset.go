@@ -399,6 +399,12 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Check for duplicate uid.
+		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
+			err := fmt.Errorf("%v and %v share the same UID '%v'", sfs.siaPath(conflictingEntry), siaPath, sf.UID())
+			build.Critical(err)
+			return nil, err
+		}
 		// Create the entry for the SiaFile and assign the partials file.
 		entry, err = sfs.newSiaFileSetEntry(sf)
 		if err != nil {
@@ -446,10 +452,10 @@ func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, erro
 // AddExistingPartialsSiaFile adds an existing partial SiaFile to the set and
 // stores it on disk. If the file already exists this will produce an error
 // since we can't just add a suffix to it.
-func (sfs *SiaFileSet) AddExistingPartialsSiaFile(sf *SiaFile) (map[uint64]uint64, error) {
+func (sfs *SiaFileSet) AddExistingPartialsSiaFile(sf *SiaFile, chunks []chunk) (map[uint64]uint64, error) {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.addExistingPartialsSiaFile(sf)
+	return sfs.addExistingPartialsSiaFile(sf, chunks)
 }
 
 // AddExistingSiaFile adds an existing SiaFile to the set and stores it on disk.
@@ -457,16 +463,16 @@ func (sfs *SiaFileSet) AddExistingPartialsSiaFile(sf *SiaFile) (map[uint64]uint6
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile) error {
+func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile, chunks []chunk) error {
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
-	return sfs.addExistingSiaFile(sf, 0)
+	return sfs.addExistingSiaFile(sf, chunks, 0)
 }
 
 // addExistingPartialsSiaFile adds an existing partial SiaFile to the set and
 // stores it on disk. If the file already exists this will produce an error
 // since we can't just add a suffix to it.
-func (sfs *SiaFileSet) addExistingPartialsSiaFile(sf *SiaFile) (map[uint64]uint64, error) {
+func (sfs *SiaFileSet) addExistingPartialsSiaFile(sf *SiaFile, chunks []chunk) (map[uint64]uint64, error) {
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
@@ -478,7 +484,7 @@ func (sfs *SiaFileSet) addExistingPartialsSiaFile(sf *SiaFile) (map[uint64]uint6
 		defer sfs.closeEntry(oldFile)
 		return oldFile.Merge(sf)
 	} else if os.IsNotExist(err) {
-		return nil, sf.Save()
+		return nil, sf.SaveWithChunks(chunks)
 	}
 	return nil, err
 }
@@ -488,7 +494,7 @@ func (sfs *SiaFileSet) addExistingPartialsSiaFile(sf *SiaFile) (map[uint64]uint6
 // exists with a different UID, the UID will be updated and a unique path will
 // be chosen. If no file exists, the UID will be updated but the path remains
 // the same.
-func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
+func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, chunks []chunk, suffix uint) error {
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath
 	err := siaPath.LoadSysPath(sfs.staticSiaFileDir, sf.SiaFilePath())
@@ -523,13 +529,14 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, suffix uint) error {
 			return err
 		}
 		sf.SetPartialsSiaFile(psf)
-		return sf.Save()
+		return sf.SaveWithChunks(chunks)
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {
 		return nil
 	}
-	return sfs.addExistingSiaFile(sf, suffix+1)
+	// If it exists and the UIDs don't match, increment the suffix and try again.
+	return sfs.addExistingSiaFile(sf, chunks, suffix+1)
 }
 
 // Delete deletes the SiaFileSetEntry's SiaFile
@@ -565,8 +572,14 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		onDisk = err == nil
 	}
 	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
-	_, redundancy := entry.Redundancy(offline, goodForRenew)
-	uploadProgress, uploadedBytes := entry.UploadProgressAndBytes()
+	_, redundancy, err := entry.Redundancy(offline, goodForRenew)
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get file redundancy")
+	}
+	uploadProgress, uploadedBytes, err := entry.UploadProgressAndBytes()
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "failed to get upload progress and bytes")
+	}
 	maxHealth := math.Max(health, stuckHealth)
 	fileInfo := modules.FileInfo{
 		AccessTime:       entry.AccessTime(),
