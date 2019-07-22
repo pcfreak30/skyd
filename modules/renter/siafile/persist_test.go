@@ -140,7 +140,7 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 	}
 	// Check that the number of chunks in the file is correct.
 	if numChunks >= 0 && sf.numChunks != numChunks {
-		panic(fmt.Sprintf("newTestFile didn't create the expected number of chunks: %v", sf.numChunks))
+		panic(fmt.Sprintf("newTestFile didn't create the expected number of chunks: %v %v %v", sf.numChunks, numChunks, fileSize))
 	}
 	return sf, wal, walPath
 }
@@ -492,9 +492,9 @@ func TestZeroByteFileCompat(t *testing.T) {
 
 	// Create the file.
 	siaFilePath, _, source, rc, sk, _, _, fileMode := newTestFileParams(1, true)
-	sf, wal, _ := customTestFileAndWAL(siaFilePath, source, rc, sk, 0, 1, fileMode)
+	sf, wal, _ := customTestFileAndWAL(siaFilePath, source, rc, sk, 0, 0, fileMode)
 	// Check that the number of chunks in the file is correct.
-	if sf.numChunks != 1 {
+	if sf.numChunks != 0 {
 		panic(fmt.Sprintf("newTestFile didn't create the expected number of chunks: %v", sf.numChunks))
 	}
 	// Set the cached fields to 0 like they would be if the file was already
