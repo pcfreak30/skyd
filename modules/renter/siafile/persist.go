@@ -496,15 +496,23 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error
 	// Read the chunks one-by-one.
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
-		if _, err := f.Read(chunkBytes); err != nil && err != io.EOF {
-			return errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
+		var c chunk
+		var err error
+		if sf.CombinedChunkStatus() >= CombinedChunkStatusCompleted && chunkIndex == sf.numChunks-1 {
+			c, err = sf.partialsSiaFile.Chunk(sf.staticMetadata.CombinedChunkIndex)
+		} else if sf.CombinedChunkStatus() >= CombinedChunkStatusHasChunk && chunkIndex == sf.numChunks-1 {
+			c = chunk{Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces())}
+		} else {
+			if _, err := f.Read(chunkBytes); err != nil && err != io.EOF {
+				return errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
+			}
+			c, err = unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
+			if err != nil {
+				return errors.AddContext(err, fmt.Sprintf("failed to unmarshal chunk %v", chunkIndex))
+			}
 		}
-		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
-		if err != nil {
-			return errors.AddContext(err, fmt.Sprintf("failed to unmarshal chunk %v", chunkIndex))
-		}
-		chunk.Index = int(chunkIndex)
-		if err := iterFunc(chunk); err != nil {
+		c.Index = int(chunkIndex)
+		if err := iterFunc(c); err != nil {
 			return errors.AddContext(err, fmt.Sprintf("failed to iterate over chunk %v", chunkIndex))
 		}
 	}

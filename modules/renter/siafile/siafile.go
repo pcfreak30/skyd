@@ -183,6 +183,7 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 	if fileSize%file.staticChunkSize() != 0 && partialsSiaFile != nil && !disablePartialUpload {
 		// This file has a partial chunk
 		file.staticMetadata.CombinedChunkStatus = CombinedChunkStatusHasChunk
+		numChunks++
 	} else if fileSize%file.staticChunkSize() != 0 && disablePartialUpload {
 		// This file does have a partial chunk but we treat it as a full chunk.
 		numChunks++
