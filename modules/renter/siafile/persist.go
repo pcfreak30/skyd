@@ -477,7 +477,17 @@ func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]w
 		if err != nil {
 			return err
 		}
-		if modified {
+		partialChunk := false
+		if sf.staticMetadata.CombinedChunkStatus >= CombinedChunkStatusCompleted && chunk.Index == sf.numChunks-1 {
+			partialChunk = true
+		} else if sf.staticMetadata.CombinedChunkStatus >= CombinedChunkStatusHasChunk && chunk.Index == sf.numChunks-1 {
+			// Can't persist incomplete partial chunk. Make sure iterFunc doesn't try to.
+			return errors.New("can't persist incomplete partial chunk")
+		}
+		if modified && partialChunk {
+			chunk.Index = int(sf.staticMetadata.CombinedChunkIndex)
+			updates = append(updates, sf.partialsSiaFile.saveChunkUpdate(chunk))
+		} else if modified {
 			updates = append(updates, sf.saveChunkUpdate(chunk))
 		}
 		return nil
