@@ -965,12 +965,18 @@ func TestRenterParallelDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Only the second file should be present
-	err = st.getAPI("/renter/files", &rf)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		err := st.getAPI("/renter/files", &rf)
+		if err != nil {
+			return err
+		}
+		if len(rf.Files) != 1 || rf.Files[0].SiaPath.String() != "test2" {
+			return fmt.Errorf("file 'test' was not deleted properly: %v", rf.Files)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if len(rf.Files) != 1 || rf.Files[0].SiaPath.String() != "test2" {
-		t.Fatal("file 'test' was not deleted properly:", rf.Files)
 	}
 
 	// Wait for the second upload to complete.
