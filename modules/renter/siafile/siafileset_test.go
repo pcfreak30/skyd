@@ -354,13 +354,17 @@ func TestRenameFileInMemory(t *testing.T) {
 	if len(sfs.siaFileMap) != 2 {
 		t.Fatal("Expected 2 file in memory, got:", len(sfs.siaFileMap))
 	}
+	_, err = os.Stat(entry.SiaFilePath())
+	if err != nil {
+		println("err2", err.Error())
+	}
 	// Rename second instance
 	newSiaPath := modules.RandomSiaPath()
 	err = sfs.Rename(siaPath, newSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there are still only has 2 files in memory as renaming doesn't add
+	// Confirm there are still only 2 files in memory as renaming doesn't add
 	// the new name to memory
 	if len(sfs.siaFileMap) != 2 {
 		t.Fatal("Expected 2 files in memory, got:", len(sfs.siaFileMap))

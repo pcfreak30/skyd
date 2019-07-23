@@ -204,6 +204,25 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 
 	// Copy chunks.
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		// Handle complete partial chunk.
+		if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete && chunk.Index == sf.numChunks-1 {
+			pieces, err := sf.partialsSiaFile.Pieces(sf.staticMetadata.CombinedChunkIndex)
+			if err != nil {
+				return err
+			}
+			chunks = append(chunks, Chunk{
+				Pieces: pieces,
+			})
+			return nil
+		}
+		// Handle incomplete partial chunk.
+		if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk && chunk.Index == sf.numChunks-1 {
+			chunks = append(chunks, Chunk{
+				Pieces: make([][]Piece, sf.staticMetadata.staticErasureCode.NumPieces()),
+			})
+			return nil
+		}
+		// Handle full chunk
 		pieces := allPieceSets[:len(chunk.Pieces)]
 		allPieceSets = allPieceSets[len(chunk.Pieces):]
 		for pieceIndex := range pieces {
@@ -223,21 +242,6 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	})
 	if err != nil {
 		return nil, err
-	}
-	// Handle potential partial chunk.
-	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
-		partialChunkPieces, err := sf.partialsSiaFile.Pieces(sf.staticMetadata.CombinedChunkIndex)
-		if err != nil {
-			return nil, err
-		}
-		chunks = append(chunks, Chunk{
-			Pieces: partialChunkPieces,
-		})
-	} else if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
-		// Add empty chunk
-		chunks = append(chunks, Chunk{
-			Pieces: make([][]Piece, sf.staticMetadata.staticErasureCode.NumPieces()),
-		})
 	}
 	// Get non-static metadata fields under lock.
 	fileSize := sf.staticMetadata.FileSize
