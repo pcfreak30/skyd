@@ -445,9 +445,11 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 func (sf *SiaFile) chunk(chunkIndex int) (chunk, error) {
 	// Handle partial chunk.
 	if chunkIndex == sf.numChunks-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
-		return sf.partialsSiaFile.Chunk(sf.staticMetadata.CombinedChunkIndex)
+		c, err := sf.partialsSiaFile.Chunk(sf.staticMetadata.CombinedChunkIndex)
+		c.Index = chunkIndex // convert index within partials file to requested index
+		return c, err
 	} else if chunkIndex == sf.numChunks-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
-		return chunk{}, nil
+		return chunk{Index: chunkIndex}, nil
 	}
 	// Handle full chunk.
 	chunkOffset := sf.chunkOffset(chunkIndex)
