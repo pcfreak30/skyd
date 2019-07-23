@@ -55,11 +55,11 @@ type (
 
 // newPartialChunkSet creates a partial chunk set ready to combine partial
 // chunks.
-func newPartialChunkSet(combinedChunkRoot string) *partialChunkSet {
+func newPartialChunkSet(combinedChunkRoot string) (*partialChunkSet, error) {
 	return &partialChunkSet{
 		combinedChunkRoot: combinedChunkRoot,
 		requests:          make(map[modules.ErasureCoderIdentifier]chunkRequestSet),
-	}
+	}, os.MkdirAll(combinedChunkRoot, 0600)
 }
 
 // FetchLogicalCombinedChunk fetches the logical data for an

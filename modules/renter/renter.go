@@ -768,6 +768,11 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil, errNilWallet
 	}
 
+	pcs, err := newPartialChunkSet(filepath.Join(persistDir, modules.CombinedChunksRoot))
+	if err != nil {
+		return nil, err
+	}
+
 	r := &Renter{
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
@@ -802,7 +807,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		persistDir:            persistDir,
 		staticFilesDir:        filepath.Join(persistDir, modules.SiapathRoot),
 		staticBackupsDir:      filepath.Join(persistDir, modules.BackupRoot),
-		staticPartialChunkSet: newPartialChunkSet(filepath.Join(persistDir, modules.CombinedChunksRoot)),
+		staticPartialChunkSet: pcs,
 		mu:                    siasync.New(modules.SafeMutexDelay, 1),
 		tpool:                 tpool,
 	}
@@ -819,7 +824,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	r.staticWorkerPool = r.newWorkerPool()
 
 	// Subscribe to the consensus set.
-	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
+	err = cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
 	if err != nil {
 		return nil, err
 	}
