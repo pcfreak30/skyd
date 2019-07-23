@@ -284,7 +284,7 @@ func TestFileHealth(t *testing.T) {
 	// Create a Zero byte file
 	rsc, _ := NewRSCode(10, 20)
 	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
-	zeroFile, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, 0, 1, fileMode)
+	zeroFile, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, 0, 0, fileMode)
 
 	// Create offline map
 	offlineMap := make(map[string]bool)
