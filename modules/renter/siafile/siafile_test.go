@@ -548,7 +548,9 @@ func TestPruneHosts(t *testing.T) {
 	}
 	t.Parallel()
 
-	sf := newBlankTestFile()
+	// Create a siafile without partial chunk since partial chunk.
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, false)
+	sf, _, _ := customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 
 	// Add 3 random hostkeys to the file.
 	sf.addRandomHostKeys(3)
