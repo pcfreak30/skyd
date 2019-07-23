@@ -443,6 +443,13 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 
 // chunk reads the chunk with index chunkIndex from disk.
 func (sf *SiaFile) chunk(chunkIndex int) (chunk, error) {
+	// Handle partial chunk.
+	if chunkIndex == sf.numChunks-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
+		return sf.partialsSiaFile.Chunk(sf.staticMetadata.CombinedChunkIndex)
+	} else if chunkIndex == sf.numChunks-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusNoChunk {
+		return chunk{}, nil
+	}
+	// Handle full chunk.
 	chunkOffset := sf.chunkOffset(chunkIndex)
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	f, err := sf.deps.Open(sf.siaFilePath)
