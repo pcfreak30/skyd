@@ -313,7 +313,7 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline m
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
-	defer sf.Close()
+	defer sfs.closeEntry(sf)
 	md := sf.Metadata()
 
 	// Build the FileInfo
