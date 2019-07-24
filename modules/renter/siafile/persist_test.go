@@ -242,7 +242,25 @@ func TestNewFile(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	sf := newTestFile()
+
+	// Create a siafile without a partial chunk.
+	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, false)
+	sf, _, _ := customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
+
+	// Add pieces to each chunk.
+	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
+		for pieceIndex := 0; pieceIndex < sf.ErasureCode().NumPieces(); pieceIndex++ {
+			numPieces := fastrand.Intn(3) // up to 2 hosts for each piece
+			for i := 0; i < numPieces; i++ {
+				pk := types.SiaPublicKey{Key: fastrand.Bytes(crypto.EntropySize)}
+				mr := crypto.Hash{}
+				fastrand.Read(mr[:])
+				if err := sf.AddPiece(pk, uint64(chunkIndex), uint64(pieceIndex), mr); err != nil {
+					panic(err)
+				}
+			}
+		}
+	}
 
 	// Check that StaticPagesPerChunk was set correctly.
 	if sf.staticMetadata.StaticPagesPerChunk != numChunkPagesRequired(sf.staticMetadata.staticErasureCode.NumPieces()) {
