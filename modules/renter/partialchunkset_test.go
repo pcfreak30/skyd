@@ -52,7 +52,10 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	fm := os.FileMode(0600)
 	chunkSize := uint64(ec.MinPieces()) * modules.SectorSize
 	// Create the partialChunkSet.
-	pcs := newPartialChunkSet(combinedChunkDir)
+	pcs, err := newPartialChunkSet(combinedChunkDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Declare a helper function to create a siafile for testing already contained
 	// within a minimal unfinishedUploadChunk.
 	newFile := func(fileSize uint64) *unfinishedUploadChunk {

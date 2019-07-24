@@ -46,7 +46,8 @@ type (
 		// allows us to deduplicate the rather large public keys.
 		pubKeyTable []HostPublicKey
 
-		// numChunks is the number of chunks the file was split into.
+		// numChunks is the number of chunks the file was split into including a
+		// potential partial chunk at the end.
 		numChunks int
 
 		// utility fields. These are not persisted.
@@ -611,17 +612,7 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		stuckHealth = worstHealth
 	}
 	// Sanity Check that the number of stuck chunks makes sense
-	expectedStuckChunks := sf.staticMetadata.NumStuckChunks
-	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
-		chunk, err := sf.partialsSiaFile.Chunk(sf.staticMetadata.CombinedChunkIndex)
-		if err != nil {
-			build.Critical("failed to retrieve chunk: ", err)
-			return 0, 0, 0
-		}
-		if chunk.Stuck {
-			expectedStuckChunks++
-		}
-	}
+	expectedStuckChunks := sf.numStuckChunks()
 	if numStuckChunks != expectedStuckChunks {
 		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, expectedStuckChunks)
 	}
@@ -796,11 +787,8 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 			sf.staticMetadata.NumStuckChunks = nsc
 		}
 	}()
-	if stuck && sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusHasChunk ||
-		sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
-		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks) - 1 // partial chunk can't be stuck in this state
-	} else if stuck {
-		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks)
+	if stuck {
+		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks) - 1
 	} else {
 		sf.staticMetadata.NumStuckChunks = 0
 	}

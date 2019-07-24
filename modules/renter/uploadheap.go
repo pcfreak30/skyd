@@ -263,9 +263,8 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chu
 			goodForRenew, exists2 := goodForRenew[hpk]
 			offline, exists := offline[hpk]
 			if !exists || !exists2 || !goodForRenew || offline {
-				// This piece cannot be counted towards redudnacy if the host is
-				// offline, is marked no good for renew, or is not available in
-				// the lookup maps.
+				// This piece cannot be counted towards redundancy if the host is offline,
+				// is marked no good for renew, or is not available in the lookup maps.
 				continue
 			}
 

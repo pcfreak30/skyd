@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -115,7 +116,9 @@ type (
 		// health was checked by Health()
 		//
 		// NumStuckChunks is the number of all the SiaFile's chunks that have
-		// been marked as stuck by the repair loop
+		// been marked as stuck by the repair loop. This doesn't include a potential
+		// partial chunk at the end of the file though. Use 'numStuckChunks()' for
+		// that instead.
 		//
 		// Redundancy is the cached value of the last time the file's redundancy
 		// was checked
@@ -340,11 +343,14 @@ func (sf *SiaFile) MasterKey() crypto.CipherKey {
 	return sk
 }
 
-// Metadata returns the metadata of the SiaFile.
+// Metadata returns the SiaFile's metadata, resolving any fields related to
+// partial chunks.
 func (sf *SiaFile) Metadata() Metadata {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata
+	md := sf.staticMetadata
+	md.NumStuckChunks = sf.numStuckChunks()
+	return md
 }
 
 // Mode returns the FileMode of the SiaFile.
@@ -366,7 +372,7 @@ func (sf *SiaFile) ModTime() time.Time {
 func (sf *SiaFile) NumStuckChunks() uint64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.NumStuckChunks
+	return sf.numStuckChunks()
 }
 
 // PieceSize returns the size of a single piece of the file.
@@ -496,6 +502,22 @@ func (sf *SiaFile) UpdateAccessTime() error {
 		return err
 	}
 	return sf.createAndApplyTransaction(updates...)
+}
+
+// numStuckChunks returns the number of stuck chunks recorded in the file's
+// metadata.
+func (sf *SiaFile) numStuckChunks() uint64 {
+	numStuckChunks := sf.staticMetadata.NumStuckChunks
+	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
+		stuck, err := sf.partialsSiaFile.StuckChunkByIndex(sf.staticMetadata.CombinedChunkIndex)
+		if err != nil {
+			build.Critical("failed to get 'stuck' status of partial chunk")
+		}
+		if stuck {
+			numStuckChunks++
+		}
+	}
+	return numStuckChunks
 }
 
 // staticChunkSize returns the size of a single chunk of the file.
