@@ -406,6 +406,9 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	// Load all the chunks.
 	chunks := make([]chunk, 0, sf.numChunks)
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
+		if chunk.Index == sf.numChunks-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusHasChunk {
+			return nil // Ignore partial chunk
+		}
 		chunks = append(chunks, chunk)
 		return nil
 	})

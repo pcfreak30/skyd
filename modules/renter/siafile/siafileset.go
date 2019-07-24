@@ -309,16 +309,14 @@ func (sfs *SiaFileSet) exists(siaPath modules.SiaPath) bool {
 // renter.managedContractUtilityMaps for many files at once.
 func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Get the file's metadata and its contracts
-	sf, err := sfs.open(siaPath)
+	md, err := sfs.readLockMetadata(siaPath)
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
-	defer sfs.closeEntry(sf)
-	md := sf.Metadata()
 
 	// Build the FileInfo
 	var onDisk bool
-	localPath := sf.LocalPath()
+	localPath := md.LocalPath
 	if localPath != "" {
 		_, err = os.Stat(localPath)
 		onDisk = err == nil
@@ -435,6 +433,29 @@ func (sfs *SiaFileSet) AddExistingPartialsSiaFile(sf *SiaFile, chunks []chunk) (
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.addExistingPartialsSiaFile(sf, chunks)
+}
+
+// readLockMetadata returns the metadata of the SiaFile at siaPath. NOTE: The
+// 'readLock' prefix in this case is used to indicate that it's safe to call
+// this method with other 'readLock' methods without locking since is doesn't
+// write to any fields. This guarantee can be made by locking sfs.mu and then
+// spawning multiple threads which call 'readLock' methods in parallel.
+func (sfs *SiaFileSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, error) {
+	var entry *siaFileSetEntry
+	entry, _, exists := sfs.siaPathToEntryAndUID(siaPath)
+	if exists {
+		// Get metadata from entry.
+		return entry.Metadata(), nil
+	}
+	// Try and Load Metadata from disk
+	md, err := LoadSiaFileMetadata(siaPath.SiaFileSysPath(sfs.staticSiaFileDir))
+	if os.IsNotExist(err) {
+		return Metadata{}, ErrUnknownPath
+	}
+	if err != nil {
+		return Metadata{}, err
+	}
+	return md, nil
 }
 
 // AddExistingSiaFile adds an existing SiaFile to the set and stores it on disk.
