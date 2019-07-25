@@ -531,3 +531,29 @@ func (c *Client) RenterValidateSiaPathPost(siaPathStr string) (err error) {
 	err = c.post(fmt.Sprintf("/renter/validatesiapath/%s", siaPathStr), "", nil)
 	return
 }
+
+// RenterFUSE uses the /renter/fuse endpoint to return information about the
+// current FUSE mount point.
+func (c *Client) RenterFUSE() (fi api.RenterFUSEInfo, err error) {
+	err = c.get("/renter/fuse", &fi)
+	return
+}
+
+// RenterFUSEMount uses the /renter/fuse/mount endpoint to mount a FUSE
+// filesystem serving the provided siapath.
+func (c *Client) RenterFUSEMount(siaPath modules.SiaPath, mount string) (err error) {
+	sp := escapeSiaPath(siaPath)
+	values := url.Values{}
+	values.Set("siapath", sp)
+	values.Set("mount", mount)
+	err = c.post("/renter/fuse/mount", values.Encode(), nil)
+	return
+}
+
+// RenterFUSEUnmount uses the /renter/fuse/unmount endpoint to unmount the
+// currently-mounted FUSE filesystem.
+func (c *Client) RenterFUSEUnmount() (err error) {
+	values := url.Values{}
+	err = c.post("/renter/fuse/unmount", values.Encode(), nil)
+	return
+}
