@@ -102,7 +102,7 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 	if err := r.managedTarPartialsSiaFile(tw); err != nil {
 		twErr := tw.Close()
 		gzwErr := gzw.Close()
-		return errors.Compose(err, twErr, gzwErr)
+		return errors.AddContext(errors.Compose(err, twErr, gzwErr), "failed to tar partials sia file")
 	}
 	// Add the remaining files to the archive.
 	if err := r.managedTarSiaFiles(tw); err != nil {
@@ -209,7 +209,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 // managedTarPartialsSiaFile tars only partials Siafiles. This makes sure than
 // when untaring the archive, we read those files first.
 func (r *Renter) managedTarPartialsSiaFile(tw *tar.Writer) error {
-	// Walk over all the siafiles and add them to the tarball.
+	// Walk over all the partials siafiles and add them to the tarball.
 	return filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
