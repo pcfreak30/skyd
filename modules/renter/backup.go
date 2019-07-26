@@ -352,23 +352,6 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 				return err
 			}
 			header.Size = fi.Size()
-		case modules.PartialChunkExtension:
-			// Get the siafile.
-			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.PartialChunkExtension))
-			if err != nil {
-				return err
-			}
-			entry, err := r.staticFileSet.Open(siaPath)
-			if err != nil {
-				return err
-			}
-			defer entry.Close()
-			// Load the partial chunk.
-			partialChunk, err := entry.LoadPartialChunk()
-			if err != nil {
-				return err
-			}
-			file = bytes.NewReader(partialChunk)
 		}
 		// Write the header.
 		if err := tw.WriteHeader(header); err != nil {

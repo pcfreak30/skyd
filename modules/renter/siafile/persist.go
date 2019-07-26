@@ -100,18 +100,6 @@ func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
 	return createAndApplyTransaction(sf.wal, append(u, update)...)
 }
 
-// LoadPartialChunk loads the contents of a partial chunk from disk.
-func (sf *SiaFile) LoadPartialChunk() ([]byte, error) {
-	// LoadPartialChunk can only be called when there is no combined chunk yet.
-	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusIncomplete {
-		return nil, fmt.Errorf("Can't call LoadPartialChunk unless status is %v but was %v",
-			CombinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
-	}
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return ioutil.ReadFile(sf.partialFilePath())
-}
-
 // SetPartialsSiaFile sets the partialsSiaFile field of the SiaFile. This is
 // usually done for non-partials SiaFiles after loading them from disk.
 func (sf *SiaFile) SetPartialsSiaFile(partialsSiaFile *SiaFileSetEntry) {

@@ -175,11 +175,15 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 			return false
 		}
 		// Get partial chunk.
-		partialChunk, err := entry.LoadPartialChunk()
-		if err != nil {
-			r.log.Debugln(err)
-			return false
+		partialChunk := []byte{}
+		if true {
+			panic("not implemented yet")
 		}
+		//partialChunk, err := entry.LoadPartialChunk()
+		//if err != nil {
+		//	r.log.Debugln(err)
+		//	return false
+		//}
 		// Write the partial chunk to the destination.
 		// TODO: Change this in a follow-up. No need to erasure code the data just to
 		// recover it again.

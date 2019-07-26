@@ -14,52 +14,91 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"strings"
 	"sync"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
-// chunkCombinationThreshold is the percentage of "unused" space we tolerate in
-// a combined chunk.
-var chunkCombinationThreshold = 0.1 // 10%
-
 type (
+	combinedChunkID string
+
 	// partialChunkSet is a set used by the repair code to combine partial chunks
 	// into full chunks. Chunks won't be combined right away but instead the set
 	// waits for enough requests to build the best chunk and only then creates the
 	// full chunk on disk.
 	// NOTE: Currently the implementation assumes that every file will have at most
-	// 1 CombinedChunk and that's the chunk at the end.
+	// 1 partial chunk and that's the chunk at the end.
 	partialChunkSet struct {
-		mu                sync.Mutex
-		requests          map[modules.ErasureCoderIdentifier]chunkRequestSet
-		combinedChunkRoot string
+		mu                      sync.Mutex
+		combinedChunkRoot       string
+		unfinishedCombinedChunk map[modules.ErasureCoderIdentifier]combinedChunkID
 	}
 )
 
-type (
-	// chunkRequest is a request to include a certain chunk of a specific file into
-	// a combined chunk.
-	chunkRequest struct {
-		sf *siafile.SiaFileSetEntry
-	}
-
-	// chunkRequestSet is a map of chunkRequests to avoid duplicates.
-	chunkRequestSet map[siafile.SiafileUID]*chunkRequest
+var (
+	combinedChunkNameSeparator = "-"
+	unfinishedChunkExtension   = ".unfinished"
 )
 
 // newPartialChunkSet creates a partial chunk set ready to combine partial
 // chunks.
 func newPartialChunkSet(combinedChunkRoot string) (*partialChunkSet, error) {
+	// Create the root dir.
+	err := os.MkdirAll(combinedChunkRoot, 0600)
+	if err != nil {
+		return nil, err
+	}
+	// Search for unfinished combined chunks.
+	ucc := make(map[modules.ErasureCoderIdentifier]combinedChunkID)
+	err = filepath.Walk(combinedChunkRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if filepath.Ext(info.Name()) != unfinishedChunkExtension {
+			return nil
+		}
+		// Get the erasure code identifier and chunkID from the filename.
+		s := strings.Split(info.Name(), combinedChunkNameSeparator)
+		if len(s) != 2 {
+			return fmt.Errorf("filename '%v' was split in more than 2 halves", info.Name())
+		}
+		ecIdentifier := modules.ErasureCoderIdentifier(s[0])
+		chunkID := combinedChunkID(strings.TrimSuffix(s[1], unfinishedChunkExtension))
+		// Check for conflicts.
+		if conflictingID, exists := ucc[ecIdentifier]; exists {
+			return fmt.Errorf("found multiple unfinished chunks for the same erasure coding: '%v' '%v'",
+				chunkID, conflictingID)
+		}
+		ucc[ecIdentifier] = chunkID
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 	return &partialChunkSet{
-		combinedChunkRoot: combinedChunkRoot,
-		requests:          make(map[modules.ErasureCoderIdentifier]chunkRequestSet),
-	}, os.MkdirAll(combinedChunkRoot, 0600)
+		combinedChunkRoot:       combinedChunkRoot,
+		unfinishedCombinedChunk: ucc,
+	}, nil
+}
+
+// combinedChunkName returns the filename of a combined chunk.
+func combinedChunkName(ec modules.ErasureCoder, chunkID combinedChunkID) string {
+	return fmt.Sprintf("%v%v%v", ec.Identifier(), combinedChunkNameSeparator, chunkID)
+}
+
+// randomChunkID generates a new combinedChunkID.
+func randomChunkID() combinedChunkID {
+	return combinedChunkID(hex.EncodeToString(fastrand.Bytes(16)))
+}
+
+func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk []byte) error {
+	// TODO: create update to append partial chunk to combined chunk
+	// TODO:
+	panic("not implemented yet")
 }
 
 // FetchLogicalCombinedChunk fetches the logical data for an
@@ -69,138 +108,5 @@ func newPartialChunkSet(combinedChunkRoot string) (*partialChunkSet, error) {
 func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
-
-	entry := chunk.fileEntry
-	if entry.CombinedChunkStatus() < siafile.CombinedChunkStatusIncomplete {
-		return false, errors.New("status of file has to be either incomplete or complete")
-	}
-	// File has a combined chunk assigned to it. Load it from disk.
-	if entry.CombinedChunkStatus() == siafile.CombinedChunkStatusCompleted {
-		return true, pcs.fetchLogicalCombinedChunk(entry.Metadata().CombinedChunkID, chunk)
-	}
-	// Add a request for the file if it doesn't exist yet.
-	ec := entry.ErasureCode()
-	ecid := ec.Identifier()
-	if _, exists := pcs.requests[ecid]; !exists {
-		pcs.requests[ecid] = make(chunkRequestSet)
-	}
-	copy, err := chunk.fileEntry.CopyEntry()
-	if err != nil {
-		return false, err
-	}
-	pcs.requests[ecid][entry.UID()] = &chunkRequest{
-		sf: copy, // Copy the SiaFileSetEntry for the request
-	}
-	// See if we can combine multiple requests into a chunk.
-	crs := pcs.requests[ecid]
-	requests := crs.combineRequests()
-	if requests == nil {
-		return false, nil // not enough requests yet
-	}
-	// We removed the requests from the set of requests. We need to close them when
-	// done. If something goes wrong they will simply be added again by the repair
-	// code later.
-	defer func() {
-		for _, request := range requests {
-			_ = request.sf.Close()
-		}
-	}()
-	//	If we can, build combined chunk.
-	chunkID, chunkData, pci, err := pcs.buildChunk(requests)
-	if err != nil {
-		return false, err
-	}
-	cci := siafile.NewCombinedChunkInfo(chunkID, chunkData, pci)
-	// Let the SiaFile know about the combined chunk.
-	if err := siafile.SetCombinedChunk(cci, pcs.combinedChunkRoot); err != nil {
-		return false, err
-	}
-	// Return the new combined chunk.
-	return true, pcs.fetchLogicalCombinedChunk(chunkID, chunk)
-}
-
-// loadCombinedChunk loads a CombinedChunk from disk using it's chunkID.
-func (pcs *partialChunkSet) fetchLogicalCombinedChunk(chunkID string, chunk *unfinishedUploadChunk) error {
-	path := filepath.Join(pcs.combinedChunkRoot, chunkID)
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = chunk.readLogicalData(f)
-	return err
-}
-
-// buildChunk builds a chunk and returns it together with its ID.
-func (pcs *partialChunkSet) buildChunk(requests []*chunkRequest) (string, []byte, []siafile.PartialChunkInfo, error) {
-	var chunkInfos []siafile.PartialChunkInfo
-	chunkID := hex.EncodeToString(fastrand.Bytes(16))
-	chunkData := make([]byte, requests[0].sf.ChunkSize())
-	copiedData := 0
-	totalData := 0
-	for _, request := range requests {
-		partialChunk, err := request.sf.LoadPartialChunk()
-		if err != nil {
-			return "", nil, nil, err
-		}
-		totalData += len(partialChunk)
-		n := copy(chunkData[copiedData:], partialChunk)
-		chunkInfos = append(chunkInfos, siafile.NewPartialChunkInfo(uint64(len(partialChunk)), uint64(copiedData), request.sf.SiaFile))
-		copiedData += n
-	}
-	if totalData != copiedData {
-		return "", nil, nil, fmt.Errorf("only %v out of %v bytes were copied", copiedData, totalData)
-	}
-	return chunkID, chunkData, chunkInfos, nil
-}
-
-// combineRequests tries to combine multiple requests with the same erasure code
-// id into a full chunk.
-// TODO: This is a very trivial algorithm and can probably be improved a lot.
-// Right now it's greedy and might not perform well for large chunks. It also
-// won't consider the total size of all requests before starting. So even if all
-// the requests are below ChunkSize it will try to form a chunk.
-func (crs chunkRequestSet) combineRequests() []*chunkRequest {
-	// No requests yet.
-	if len(crs) == 0 {
-		return nil
-	}
-	// Get all the requests in a slice
-	requests := make([]*chunkRequest, 0, len(crs))
-	for _, cr := range crs {
-		requests = append(requests, cr)
-	}
-	// Sort the requests in decending order.
-	sort.Slice(requests, func(i, j int) bool {
-		sfi := requests[i].sf
-		sfj := requests[j].sf
-		sfiSize := sfi.Size() % sfi.ChunkSize()
-		sfjSize := sfj.Size() % sfj.ChunkSize()
-		return sfjSize < sfiSize
-	})
-	// Choose requests to fill up the combined chunk.
-	var chosenRequests []*chunkRequest
-	for len(requests) > 0 {
-		chosenRequests = []*chunkRequest{} // reset
-		chunkSize := requests[0].sf.ChunkSize()
-		totalSize := uint64(0)
-		for _, request := range requests {
-			size := request.sf.Size() % chunkSize
-			if totalSize+size <= chunkSize {
-				chosenRequests = append(chosenRequests, request)
-				totalSize += size
-			}
-		}
-		// Check if the totalSize is within the acceptable threshold of 10%.
-		if chunkSize-totalSize > uint64(chunkCombinationThreshold*float64(chunkSize)) {
-			requests = requests[1:] // ignore the largest request on the next iteration
-			continue
-		}
-		// Remove the chosen requests from the set.
-		for _, request := range chosenRequests {
-			delete(crs, request.sf.UID())
-		}
-		return chosenRequests
-	}
-	return nil
+	panic("todo not implemented yet")
 }
