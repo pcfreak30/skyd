@@ -56,12 +56,12 @@ type (
 		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
 
 		// Fields for partial uploads
-		DisablePartialChunk bool   `json:"disablepartialchunk"` // determines whether the file should be treated like legacy files
-		CombinedChunkID     string `json:"combinedchunkid"`     // id to find the combined chunk on disk
-		CombinedChunkIndex  uint64 `json:"combinedchunkindex"`  // index of the chunk in the combined chunks siafile
-		CombinedChunkStatus uint8  `json:"combinedchunkstatus"` // status of the file's partial chunk
-		CombinedChunkOffset uint64 `json:"combinedchunkoffset"` // offset of partial chunk within combined chunk
-		CombinedChunkLength uint64 `json:"combinedchunklength"` // length of partial chunk within combined chunk
+		DisablePartialChunk  bool                      `json:"disablepartialchunk"`  // determines whether the file should be treated like legacy files
+		CombinedChunkIDs     []modules.CombinedChunkID `json:"combinedchunkids"`     // ids to find the combined chunks on disk
+		CombinedChunkIndices []uint64                  `json:"combinedchunkindices"` // index of the chunk in the combined chunks siafile
+		CombinedChunkStatus  uint8                     `json:"combinedchunkstatus"`  // status of the file's partial chunk
+		CombinedChunkOffset  uint64                    `json:"combinedchunkoffset"`  // offset of partial chunk within combined chunk
+		CombinedChunkLength  uint64                    `json:"combinedchunklength"`  // length of partial chunk within combined chunk
 
 		// The following fields are the usual unix timestamps of files.
 		ModTime    time.Time `json:"modtime"`    // time of last content modification
@@ -304,7 +304,7 @@ func SetCombinedChunk(cci CombinedChunkInfo, dir string) error {
 		deleteUpdate := createDeletePartialUpdate(sf.partialFilePath())
 		// Get updates to add chunk to combined SiaFile.
 		sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
-		sf.staticMetadata.CombinedChunkID = combinedChunkID
+		sf.staticMetadata.CombinedChunkIDs = []modules.CombinedChunkID{modules.CombinedChunkID(combinedChunkID)}
 		sf.staticMetadata.CombinedChunkIndex = uint64(chunkIndex)
 		sf.staticMetadata.CombinedChunkLength = ci.length
 		sf.staticMetadata.CombinedChunkOffset = ci.offset

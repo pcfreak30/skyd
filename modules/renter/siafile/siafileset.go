@@ -906,6 +906,14 @@ func (sfs *SiaFileSet) RenameDir(oldPath, newPath modules.SiaPath, rename siadir
 	return nil
 }
 
+// OpenPartialsSiaFile opens a partials SiaFile and creates it if it doesn't
+// exist yet.
+func (sfs *SiaFileSet) OpenPartialsSiaFile(ec modules.ErasureCoder) (*SiaFileSetEntry, error) {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+	return sfs.openPartialsSiaFile(ec, true)
+}
+
 // openPartialsSiaFile opens a SiaFile which will be used to upload chunks
 // consisting of partial chunks. If the SiaFile doesn't exist, it will be
 // created.

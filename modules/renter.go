@@ -130,6 +130,18 @@ const (
 )
 
 type (
+	// CombinedChunkID is a unique identifier for a combined chunk which makes up
+	// part of its filename on disk.
+	CombinedChunkID string
+
+	// CombinedChunk holds some information about a combined chunk
+	CombinedChunk struct {
+		ChunkID          CombinedChunkID
+		HasPartialsChunk bool
+	}
+)
+
+type (
 	// ErasureCoderType is an identifier for the individual types of erasure
 	// coders.
 	ErasureCoderType [4]byte

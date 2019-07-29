@@ -502,17 +502,21 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 	// account.
 	lowest := ^types.BlockHeight(0)
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
-		pieceSets, err := sf.partialsSiaFile.Pieces(sf.staticMetadata.CombinedChunkIndex)
-		if err == nil {
-			for _, pieceSet := range pieceSets {
-				for _, piece := range pieceSet {
-					contract, exists := contracts[piece.HostPubKey.String()]
-					if !exists {
-						continue
-					}
-					if contract.EndHeight < lowest {
-						lowest = contract.EndHeight
-					}
+		var pieceSets [][]Piece
+		for _, cci := range sf.staticMetadata.CombinedChunkIndices {
+			ps, err := sf.partialsSiaFile.Pieces(cci)
+			if err == nil {
+				pieceSets = append(pieceSets, ps...)
+			}
+		}
+		for _, pieceSet := range pieceSets {
+			for _, piece := range pieceSet {
+				contract, exists := contracts[piece.HostPubKey.String()]
+				if !exists {
+					continue
+				}
+				if contract.EndHeight < lowest {
+					lowest = contract.EndHeight
 				}
 			}
 		}

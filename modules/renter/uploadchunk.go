@@ -273,7 +273,7 @@ func (r *Renter) managedStreamLogicalChunkData(chunk *unfinishedUploadChunk) (bo
 	if n == 0 {
 		return false, nil // no bytes were fetched
 	} else if n != chunk.fileEntry.ChunkSize() && !chunk.fileEntry.Metadata().DisablePartialChunk {
-		return false, chunk.fileEntry.SavePartialChunk(byteBuf) // partial chunk was fetched
+		return false, r.staticPartialChunkSet.SavePartialChunk(chunk.fileEntry.SiaFile, byteBuf) // partial chunk was fetched
 	}
 	return true, errors.AddContext(err, "failed to get logicalChunkData from stream")
 }
@@ -464,7 +464,7 @@ func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk
 			return true, err
 		}
 		// Save the partial chunk.
-		if err := chunk.fileEntry.SavePartialChunk(partialChunk[:n]); err != nil {
+		if err := r.staticPartialChunkSet.SavePartialChunk(chunk.fileEntry.SiaFile, partialChunk[:n]); err != nil {
 			return true, r.managedDownloadLogicalChunkData(chunk)
 		}
 	case siafile.CombinedChunkStatusIncomplete:

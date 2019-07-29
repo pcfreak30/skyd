@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -29,8 +30,49 @@ func TestCombinedChunkName(t *testing.T) {
 	}
 }
 
+// TestNewUnfinishedCombinedChunk tests the NewUnfinishedCombinedChunk method.
+func TestNewUnfinishedCombinedChunk(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a partial chunk set.
+	testDir := build.TempDir("renter", t.Name())
+	_ = os.RemoveAll(testDir)
+	pcs, err := newPartialChunkSet(testDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create the erasure coder.
+	ec, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Start a new unfinished combined chunk and apply the update.
+	ccid, err := pcs.newUnfinishedCombinedChunk(ec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the file exists at the right location.
+	fi, err := os.Stat(pcs.combinedChunkPath(ccid, ec, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != 0 {
+		t.Fatal("Expected new unfinished chunk to be empty")
+	}
+	// Check if the metadata is valid.
+	md, err := pcs.loadChunkMetadata(ccid, ec)
+	if err != nil {
+		t.Fatal("Failed to load metadata", err)
+	}
+	expectedMD := combinedChunkMetadata{}
+	if !reflect.DeepEqual(md, expectedMD) {
+		t.Fatal("Chunk's metadata should be the default metadata")
+	}
+}
+
 // TestNewPartialChunkSet tests that creating a new partial chunks set works as
-// expected.
+// expected for both fresh sets and loading existing ones.
 func TestNewPartialChunkSet(t *testing.T) {
 	// Create an empty testDir.
 	testDir := build.TempDir("renter", t.Name())

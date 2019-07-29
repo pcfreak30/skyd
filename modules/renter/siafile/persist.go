@@ -76,28 +76,53 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 
 // SavePartialChunk saves the binary data of the last chunk of the file in a
 // separate file in the same folder as the SiaFile.
-func (sf *SiaFile) SavePartialChunk(partialChunk []byte) error {
+func (sf *SiaFile) SavePartialChunk(offset, length int64, combinedChunks []modules.CombinedChunk, updates []writeaheadlog.Update) error {
 	// SavePartialChunk can only be called when there is no partial chunk yet.
 	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusHasChunk {
 		return fmt.Errorf("Can't call SavePartialChunk unless status is %v but was %v",
 			CombinedChunkStatusHasChunk, sf.staticMetadata.CombinedChunkStatus)
 	}
-	// Sanity check partial chunk size.
-	if uint64(len(partialChunk)) >= sf.staticChunkSize() || len(partialChunk) == 0 {
-		return fmt.Errorf("can't call SavePartialChunk with a partial chunk >= chunkSize (%v >= %v) or 0",
-			len(partialChunk), sf.staticChunkSize())
+	// Check the number of combinedChunks for sanity.
+	if len(combinedChunks) != 1 && len(combinedChunks) != 2 {
+		return fmt.Errorf("Should have 1 or 2 combined chunks but got %v", len(combinedChunks))
 	}
+	// Lock both the SiaFile and partials SiaFile. We need to atomically update
+	// both of them.
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	// Write the chunk to disk.
-	update := createInsertUpdate(sf.partialFilePath(), 0, partialChunk)
-	// Update the status of the combined chunk.
+	sf.partialsSiaFile.mu.Lock()
+	defer sf.partialsSiaFile.mu.Unlock()
+	// For each combined chunk that is not yet tracked within the partials sia
+	// file, add a chunk to the partials sia file.
+	var chunkIndices []uint64
+	var chunkIDs []modules.CombinedChunkID
+	for _, c := range combinedChunks {
+		chunkIndices = append(chunkIndices, uint64(sf.partialsSiaFile.numChunks))
+		chunkIDs = append(chunkIDs, c.ChunkID)
+		if !c.HasPartialsChunk {
+			continue
+		}
+		u, err := sf.partialsSiaFile.addCombinedChunk()
+		if err != nil {
+			return err
+		}
+		updates = append(updates, u...)
+	}
+
+	// Add one chunk to the partials chunk file for each combined chunk
+	sf.partialsSiaFile.addCombinedChunk()
+	// Update the combined chunk metadata.
 	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusIncomplete
+	sf.staticMetadata.CombinedChunkIndices = chunkIndices
+	sf.staticMetadata.CombinedChunkOffset = uint64(offset)
+	sf.staticMetadata.CombinedChunkLength = uint64(length)
+	sf.staticMetadata.CombinedChunkIDs = chunkIDs
 	u, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
 	}
-	return createAndApplyTransaction(sf.wal, append(u, update)...)
+	updates = append(updates, u...)
+	return createAndApplyTransaction(sf.wal, updates...)
 }
 
 // SetPartialsSiaFile sets the partialsSiaFile field of the SiaFile. This is
