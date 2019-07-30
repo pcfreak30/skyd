@@ -119,6 +119,17 @@ func (s *Snapshot) ErasureCode() modules.ErasureCoder {
 	return s.staticErasureCode
 }
 
+// IsIncompletePartialChunk returns 'true' if the provided index points to a
+// partial chunk which hasn't been added to a partials siafile yet.
+func (s *Snapshot) IsIncompletePartialChunk(chunkIndex uint64) bool {
+	if chunkIndex == uint64(len(s.staticChunks)-1) &&
+		s.staticCombinedChunkStatus >= CombinedChunkStatusHasChunk &&
+		s.staticCombinedChunkStatus < CombinedChunkStatusCompleted {
+		return true
+	}
+	return false
+}
+
 // MasterKey returns the masterkey used to encrypt the file.
 func (s *Snapshot) MasterKey() crypto.CipherKey {
 	return s.staticMasterKey

@@ -467,7 +467,6 @@ func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk
 		if err := r.staticPartialChunkSet.SavePartialChunk(chunk.fileEntry.SiaFile, partialChunk[:n]); err != nil {
 			return true, r.managedDownloadLogicalChunkData(chunk)
 		}
-	case siafile.CombinedChunkStatusIncomplete:
 	case siafile.CombinedChunkStatusCompleted:
 	default:
 		build.Critical("Unknown CombinedChunkStatus:", chunk.fileEntry.CombinedChunkStatus())

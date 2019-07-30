@@ -13,8 +13,6 @@ import (
 	"errors"
 	"sync/atomic"
 	"time"
-
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
 var (
@@ -160,8 +158,7 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 // managedTryLoadFromDisk will try to load a chunk from disk before trying to
 // download it from hosts.
 func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
-	if udc.staticChunkIndex == udc.renterFile.NumChunks()-1 &&
-		udc.renterFile.CombinedChunkStatus() == siafile.CombinedChunkStatusIncomplete {
+	if udc.renterFile.IsIncompletePartialChunk(udc.staticChunkIndex) {
 		// Open siafile since a snapshot isn't enough.
 		entry, err := udc.renterFile.FileSet().Open(udc.renterFile.SiaPath())
 		if err != nil {

@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"encoding/hex"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -329,15 +328,6 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	}
 	// Create the delete update before changing the path to the new one.
 	updates := []writeaheadlog.Update{sf.createDeleteUpdate()}
-	// If there is a .partial file, delete it too.
-	var partialChunk []byte
-	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
-		updates = append(updates, createDeletePartialUpdate(sf.partialFilePath()))
-		partialChunk, err = ioutil.ReadFile(sf.partialFilePath())
-		if err != nil {
-			return err
-		}
-	}
 	// Load all the chunks.
 	chunks := make([]chunk, 0, sf.numChunks)
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
@@ -361,13 +351,6 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	}
 	updates = append(updates, headerUpdate...)
 	// Write the chunks to the new location.
-	for _, chunk := range chunks {
-		updates = append(updates, sf.saveChunkUpdate(chunk))
-	}
-	// Write a potential .partial file to the new location.
-	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusIncomplete {
-		updates = append(updates, createInsertUpdate(sf.partialFilePath(), 0, partialChunk))
-	}
 	for _, chunk := range chunks {
 		updates = append(updates, sf.saveChunkUpdate(chunk))
 	}
@@ -446,7 +429,7 @@ func (sf *SiaFile) UpdateAccessTime() error {
 // metadata.
 func (sf *SiaFile) numStuckChunks() uint64 {
 	numStuckChunks := sf.staticMetadata.NumStuckChunks
-	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
+	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusCompleted {
 		for _, cci := range sf.staticMetadata.CombinedChunkIndices {
 			stuck, err := sf.partialsSiaFile.StuckChunkByIndex(cci)
 			if err != nil {
