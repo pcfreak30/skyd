@@ -74,13 +74,13 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 	return loadSiaFileMetadata(path, modules.ProdDependencies)
 }
 
-// SavePartialChunk informs the SiaFile about a partial chunk that has been
+// SetCombinedChunk informs the SiaFile about a partial chunk that has been
 // saved by the partial chunk set. As such it should be exclusively called by
 // the partial chunk set. It updates the metadata of the SiaFile and also adds a
 // new chunk to the partial SiaFile if necessary. At the end it applies the
 // updates of the partial chunk set, the SiaFile and the partial SiaFile
 // atomically.
-func (sf *SiaFile) SavePartialChunk(offset, length int64, combinedChunks []modules.CombinedChunk, updates []writeaheadlog.Update) error {
+func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modules.CombinedChunk, updates []writeaheadlog.Update) error {
 	// SavePartialChunk can only be called when there is no partial chunk yet.
 	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusHasChunk {
 		return fmt.Errorf("Can't call SavePartialChunk unless status is %v but was %v",
@@ -101,11 +101,12 @@ func (sf *SiaFile) SavePartialChunk(offset, length int64, combinedChunks []modul
 	var chunkIndices []uint64
 	var chunkIDs []modules.CombinedChunkID
 	for _, c := range combinedChunks {
-		chunkIndices = append(chunkIndices, uint64(sf.partialsSiaFile.numChunks))
 		chunkIDs = append(chunkIDs, c.ChunkID)
-		if !c.HasPartialsChunk {
+		if c.HasPartialsChunk {
+			chunkIndices = append(chunkIndices, uint64(sf.partialsSiaFile.numChunks-1))
 			continue
 		}
+		chunkIndices = append(chunkIndices, uint64(sf.partialsSiaFile.numChunks))
 		u, err := sf.partialsSiaFile.addCombinedChunk()
 		if err != nil {
 			return err

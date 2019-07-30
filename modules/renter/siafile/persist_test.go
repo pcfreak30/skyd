@@ -880,3 +880,132 @@ func TestUniqueIDMissing(t *testing.T) {
 		t.Fatal("unique ID wasn't set after loading file")
 	}
 }
+
+// TestSetCombinedChunkSingle tests SetCombinedChunk for a partial chunk with a
+// single combined chunk.
+func TestSetCombinedChunkSingle(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create two SiaFiles with partial chunks and link them by giving the second
+	// one the same partials siafile as the first one.
+	sf, _, _ := newBlankTestFileAndWAL(1)
+	sf2, _, _ := newBlankTestFileAndWAL(1)
+	sf2.SetPartialsSiaFile(sf.partialsSiaFile)
+
+	// Calculate the partial chunks' sizes.
+	partialChunkSize := int64(sf.Size() % sf.ChunkSize())
+	if partialChunkSize == 0 {
+		t.Fatal("no partial chunk at end of file")
+	}
+	partialChunkSize2 := int64(sf2.Size() % sf2.ChunkSize())
+	if partialChunkSize2 == 0 {
+		t.Fatal("no partial chunk at end of file2")
+	}
+
+	// Set the combined chunk of the first file to have offset 0.
+	cid := modules.CombinedChunkID("chunkid")
+	combinedChunks := []modules.CombinedChunk{
+		{
+			ChunkID:          cid,
+			HasPartialsChunk: false,
+		},
+	}
+	if err := sf.SetCombinedChunk(0, partialChunkSize, combinedChunks, nil); err != nil {
+		t.Fatal(err)
+	}
+	// The metadata of the siafile should be set correctly now.
+	if len(sf.staticMetadata.CombinedChunkIDs) != 1 {
+		t.Fatal("expected exactly 1 id but got",
+			len(sf.staticMetadata.CombinedChunkIDs))
+	}
+	if sf.staticMetadata.CombinedChunkIDs[0] != cid {
+		t.Fatal("combined chunk id doesn't match expected id",
+			sf.staticMetadata.CombinedChunkIDs[0], cid)
+	}
+	if len(sf.staticMetadata.CombinedChunkIndices) != 1 {
+		t.Fatal("expected exactly 1 idx but got",
+			len(sf.staticMetadata.CombinedChunkIndices))
+	}
+	if sf.staticMetadata.CombinedChunkIndices[0] != 0 {
+		t.Fatal("expected chunk index to be 0 but was",
+			sf.staticMetadata.CombinedChunkIndices[0])
+	}
+	if sf.staticMetadata.CombinedChunkLength != uint64(partialChunkSize) {
+		t.Fatal("wrong combinedchunklength",
+			sf.staticMetadata.CombinedChunkLength, partialChunkSize)
+	}
+	if sf.staticMetadata.CombinedChunkOffset != 0 {
+		t.Fatal("wrong combinedchunkoffset",
+			sf.staticMetadata.CombinedChunkOffset, 0)
+	}
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusCompleted {
+		t.Fatal("wrong combinedchunkstatus",
+			sf.staticMetadata.CombinedChunkStatus, CombinedChunkStatusCompleted)
+	}
+	// The partials siafile should have one chunk now.
+	if sf.partialsSiaFile.NumChunks() != 1 {
+		t.Fatal("expected partialsSiaFile to have one chunk but had", sf.partialsSiaFile.NumChunks())
+	}
+
+	// The first combined chunk's HasPartialsChunk can be set to 'true' now since
+	// it was added to the partials file.
+	combinedChunks[0].HasPartialsChunk = true
+	// The second chunk should start at an offset at the end of the combined chunk
+	// to force it to be spread across 2 combined chunks.
+	cid2 := modules.CombinedChunkID("chunkid2")
+	combinedChunks = append(combinedChunks, modules.CombinedChunk{
+		ChunkID:          cid2,
+		HasPartialsChunk: false,
+	})
+	// Set the combined chunk of the second file to have offset chunkSize-1.
+	if err := sf2.SetCombinedChunk(int64(sf2.ChunkSize()-1), partialChunkSize2, combinedChunks, nil); err != nil {
+		t.Fatal(err)
+	}
+	// The metadata of the second siafile should be set correctly now.
+	if len(sf2.staticMetadata.CombinedChunkIDs) != 2 {
+		t.Fatal("expected exactly 2 ids but got",
+			len(sf2.staticMetadata.CombinedChunkIDs))
+	}
+	if sf2.staticMetadata.CombinedChunkIDs[0] != cid {
+		t.Fatal("combined chunk id doesn't match expected id",
+			sf2.staticMetadata.CombinedChunkIDs[0], cid)
+	}
+	if sf2.staticMetadata.CombinedChunkIDs[1] != cid2 {
+		t.Fatal("combined chunk id doesn't match expected id",
+			sf2.staticMetadata.CombinedChunkIDs[1], cid)
+	}
+	if len(sf2.staticMetadata.CombinedChunkIndices) != 2 {
+		t.Fatal("expected exactly 2 idxs but got",
+			len(sf2.staticMetadata.CombinedChunkIndices))
+	}
+	if sf2.staticMetadata.CombinedChunkIndices[0] != 0 {
+		t.Fatal("expected chunk index to be 0 but was",
+			sf2.staticMetadata.CombinedChunkIndices[0])
+	}
+	if sf2.staticMetadata.CombinedChunkIndices[1] != 1 {
+		t.Fatal("expected chunk index to be 1 but was",
+			sf2.staticMetadata.CombinedChunkIndices[1])
+	}
+	if sf2.staticMetadata.CombinedChunkLength != uint64(partialChunkSize2) {
+		t.Fatal("wrong combinedchunklength",
+			sf2.staticMetadata.CombinedChunkLength, partialChunkSize)
+	}
+	if sf2.staticMetadata.CombinedChunkOffset != sf2.ChunkSize()-1 {
+		t.Fatal("wrong combinedchunkoffset",
+			sf2.staticMetadata.CombinedChunkOffset, 0)
+	}
+	if sf2.staticMetadata.CombinedChunkStatus != CombinedChunkStatusCompleted {
+		t.Fatal("wrong combinedchunkstatus",
+			sf2.staticMetadata.CombinedChunkStatus, CombinedChunkStatusCompleted)
+	}
+	// The partials siafile should have two chunks now.
+	if sf.partialsSiaFile.NumChunks() != 2 {
+		t.Fatal("expected partialsSiaFile to have two chunks but had", sf.partialsSiaFile.NumChunks())
+	}
+	if sf2.partialsSiaFile.NumChunks() != 2 {
+		t.Fatal("expected partialsSiaFile to have two chunks but had", sf.partialsSiaFile.NumChunks())
+	}
+}

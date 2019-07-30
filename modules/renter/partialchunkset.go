@@ -220,7 +220,7 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 
 	// Check if there is an existing incomplete chunk that matches the erasure
 	// coder of the sf. If there isn't, prepare a new one.
-	var ucids []modules.CombinedChunkID
+	var chunks []modules.CombinedChunk
 	var updates []writeaheadlog.Update
 	ec := sf.ErasureCode()
 	ucid, exists := pcs.unfinishedCombinedChunk[ec.Identifier()]
@@ -240,8 +240,13 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 			}
 		}()
 	}
-	// Remember the ID of the chunk.
-	ucids = append(ucids, ucid)
+	// Remember the ID of the chunk and whether it already exists in the partials
+	// SiaFile. The latter should be the case if the incomplete chunk already
+	// existed.
+	chunks = append(chunks, modules.CombinedChunk{
+		ChunkID:          ucid,
+		HasPartialsChunk: exists,
+	})
 
 	// Write as much data as possible to the incomplete chunk.
 	n, offset, appendUpdates, err := pcs.appendToIncompleteChunk(ucid, ec, partialChunk, int64(sf.ChunkSize()))
@@ -264,7 +269,10 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 			return errors.AddContext(err, "failed to create new unfinished combined chunk")
 		}
 		// Remember its ID and updates.
-		ucids = append(ucids, ucid2)
+		chunks = append(chunks, modules.CombinedChunk{
+			ChunkID:          ucid2,
+			HasPartialsChunk: false, // 'false' since it was just created
+		})
 		updates = append(updates, newChunkUpdates...)
 		// Append the remaining data to the new chunk.
 		_, _, appendUpdates, err := pcs.appendToIncompleteChunk(ucid2, ec, partialChunk[n:], int64(sf.ChunkSize()))
@@ -280,13 +288,7 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 			}
 		}()
 	}
-
-	// Let the siafile know about the index, offset, length and chunk ids
-	if true {
-		panic("TODO: not impelemented yet")
-	}
-	// TODO: update both partials siafile and siafile + apply 'updates'
-	return sf.SavePartialChunk(offset, int64(len(partialChunk)), nil, updates)
+	return sf.SetCombinedChunk(offset, int64(len(partialChunk)), chunks, updates)
 }
 
 // FetchLogicalCombinedChunk fetches the logical data for an
