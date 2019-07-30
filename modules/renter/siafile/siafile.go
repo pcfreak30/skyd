@@ -373,23 +373,26 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	return sf.createAndApplyTransaction(append(updates, chunkUpdate)...)
 }
 
-// chunkHealth returns the health of the chunk which is defined as the percent
-// of parity pieces remaining.
+// chunkHealth returns the health and user health of the chunk which is defined
+// as the percent of parity pieces remaining. When calculating the user health
+// we assume that an incomplete partial chunk has full health. For the regular
+// health we don't assume that.
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk or repair by upload streaming
-func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForRenewMap map[string]bool) (float64, error) {
-	// Handle returning health of partial chunk.
+func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForRenewMap map[string]bool) (h float64, uh float64, err error) {
+	// Handle returning health of complete partial chunk.
 	if cci, isPartial := sf.isCompletePartialChunk(uint64(chunk.Index)); isPartial {
 		return sf.partialsSiaFile.ChunkHealth(int(cci), offlineMap, goodForRenewMap)
-	}
-	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
-		return 0, nil // Partial chunk has full health if not yet included in combined chunk
 	}
 	// The max number of good pieces that a chunk can have is NumPieces()
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
 	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
 	targetPieces := float64(numPieces - minPieces)
+	// Handle health of incomplete partial chunk.
+	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+		return 1 + (float64(minPieces) / targetPieces), 0, nil // Partial chunk has full health if not yet included in combined chunk
+	}
 	// Find the good pieces that are good for renew
 	goodPieces, _ := sf.goodPieces(chunk, offlineMap, goodForRenewMap)
 	// Sanity Check, if something went wrong, default to minimum health
@@ -397,17 +400,17 @@ func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForR
 		build.Critical("unexpected number of goodPieces for chunkHealth")
 		goodPieces = 0
 	}
-	return 1 - (float64(int(goodPieces)-minPieces) / targetPieces), nil
+	return 0, 1 - (float64(int(goodPieces)-minPieces) / targetPieces), nil
 }
 
 // ChunkHealth returns the health of the chunk which is defined as the percent
 // of parity pieces remaining.
-func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (float64, error) {
+func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (float64, float64, error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	chunk, err := sf.chunk(index)
 	if err != nil {
-		return 0, errors.AddContext(err, "failed to read chunk")
+		return 0, 0, errors.AddContext(err, "failed to read chunk")
 	}
 	return sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 }
@@ -547,7 +550,7 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
-func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h float64, sh float64, nsc uint64) {
+func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h float64, sh float64, uh float64, ush float64, nsc uint64) {
 	numPieces := float64(sf.staticMetadata.staticErasureCode.NumPieces())
 	minPieces := float64(sf.staticMetadata.staticErasureCode.MinPieces())
 	worstHealth := 1 - ((0 - minPieces) / (numPieces - minPieces))
@@ -564,18 +567,18 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	if sf.deleted {
 		// Don't return health information of a deleted file to prevent
 		// misrepresenting the health information of a directory
-		return 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
 	// Check for Zero byte files
 	if sf.staticMetadata.FileSize == 0 {
 		// Return default health information for zero byte files to prevent
 		// misrepresenting the health information of a directory
-		return 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
-	var health, stuckHealth float64
+	var health, stuckHealth, userHealth, userStuckHealth float64
 	var numStuckChunks uint64
 	err := sf.iterateChunksReadonly(func(c chunk) error {
-		chunkHealth, err := sf.chunkHealth(c, offline, goodForRenew)
+		chunkHealth, userChunkHealth, err := sf.chunkHealth(c, offline, goodForRenew)
 		if err != nil {
 			return err
 		}
@@ -588,14 +591,22 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 			if chunkHealth > stuckHealth {
 				stuckHealth = chunkHealth
 			}
-		} else if chunkHealth > health {
-			health = chunkHealth
+			if userChunkHealth > userStuckHealth {
+				userStuckHealth = userChunkHealth
+			}
+		} else {
+			if chunkHealth > health {
+				health = chunkHealth
+			}
+			if userChunkHealth > userHealth {
+				userHealth = userChunkHealth
+			}
 		}
 		return nil
 	})
 	if err != nil {
 		build.Critical("failed to iterate over chunks: ", err)
-		return 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
 
 	// Check if all chunks are stuck, if so then set health to max health to
@@ -605,14 +616,14 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	}
 	// Sanity check, verify that the calculated health is not worse (greater)
 	// than the worst health.
-	if health > worstHealth {
-		build.Critical("WARN: health out of bounds. Max value, Min value, health found", worstHealth, 0, health)
+	if userHealth > worstHealth || health > worstHealth {
+		build.Critical("WARN: health out of bounds. Max value, Min value, health found", worstHealth, 0, health, userHealth)
 		health = worstHealth
 	}
 	// Sanity check, verify that the calculated stuck health is not worse
 	// (greater) than the worst health.
-	if stuckHealth > worstHealth {
-		build.Critical("WARN: stuckHealth out of bounds. Max value, Min value, stuckHealth found", worstHealth, 0, stuckHealth)
+	if userStuckHealth > worstHealth || stuckHealth > worstHealth {
+		build.Critical("WARN: stuckHealth out of bounds. Max value, Min value, stuckHealth found", worstHealth, 0, stuckHealth, userStuckHealth)
 		stuckHealth = worstHealth
 	}
 	// Sanity Check that the number of stuck chunks makes sense
@@ -620,7 +631,7 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	if numStuckChunks != expectedStuckChunks {
 		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, expectedStuckChunks, sf.staticMetadata.CombinedChunkStatus)
 	}
-	return health, stuckHealth, numStuckChunks
+	return health, stuckHealth, userHealth, userStuckHealth, numStuckChunks
 }
 
 // HostPublicKeys returns all the public keys of hosts the file has ever been

@@ -292,12 +292,18 @@ func TestFileHealth(t *testing.T) {
 	goodForRenewMap := make(map[string]bool)
 
 	// Confirm the health is correct
-	health, stuckHealth, numStuckChunks := zeroFile.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, userHealth, userStuckHealth, numStuckChunks := zeroFile.Health(offlineMap, goodForRenewMap)
 	if health != 0 {
 		t.Fatal("Expected health to be 0 but was", health)
 	}
 	if stuckHealth != 0 {
 		t.Fatal("Expected stuck health to be 0 but was", stuckHealth)
+	}
+	if userHealth != 0 {
+		t.Fatal("Expected userHealth to be 0 but was", health)
+	}
+	if userStuckHealth != 0 {
+		t.Fatal("Expected user stuck health to be 0 but was", stuckHealth)
 	}
 	if numStuckChunks != 0 {
 		t.Fatal("Expected no stuck chunks but found", numStuckChunks)
@@ -313,7 +319,7 @@ func TestFileHealth(t *testing.T) {
 	// file should be 0
 	//
 	// 1 - ((0 - 10) / 20)
-	health, stuckHealth, _ = f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, _, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -340,7 +346,7 @@ func TestFileHealth(t *testing.T) {
 	// since the two good pieces were added to the same pieceSet
 	//
 	// 1 - ((1 - 10) / 20)
-	health, _, _ = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.45 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.45", health)
 	}
@@ -354,7 +360,7 @@ func TestFileHealth(t *testing.T) {
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	health, _, _ = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
@@ -368,7 +374,7 @@ func TestFileHealth(t *testing.T) {
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	health, _, _ = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
@@ -378,7 +384,7 @@ func TestFileHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	health, stuckHealth, numStuckChunks = f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks = f.Health(offlineMap, goodForRenewMap)
 	// Health should now be 0 since there are no unstuck chunks
 	if health != 0 {
 		t.Fatalf("Health of file not as expected, got %v expected 0", health)
@@ -405,7 +411,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Check file health, since there are no pieces in the chunk yet no good
 	// pieces will be found resulting in a health of 1.5
-	health, _, _ = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -424,7 +430,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Check health, should still be 1.5 because other chunk doesn't have any
 	// good pieces
-	health, stuckHealth, _ = f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, _, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -444,7 +450,7 @@ func TestFileHealth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	health, _, _ = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _ = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
@@ -454,7 +460,7 @@ func TestFileHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	health, stuckHealth, numStuckChunks = f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks = f.Health(offlineMap, goodForRenewMap)
 	// Since both chunks have the same health, the file health and the file stuck health should be the same
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
@@ -782,7 +788,7 @@ func TestChunkHealth(t *testing.T) {
 	goodForRenewMap := make(map[string]bool)
 
 	// Check and Record file health of initialized file
-	fileHealth, _, _ := sf.Health(offlineMap, goodForRenewMap)
+	fileHealth, _, _, _, _ := sf.Health(offlineMap, goodForRenewMap)
 	initHealth := float64(1) - (float64(0-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
 	if fileHealth != initHealth {
 		t.Fatalf("Expected file to be %v, got %v", initHealth, fileHealth)
@@ -791,7 +797,7 @@ func TestChunkHealth(t *testing.T) {
 	// Since we are using a pre set offlineMap, all the chunks should have the
 	// same health as the file
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
-		chunkHealth, err := sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+		chunkHealth, _, err := sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 		if err != nil {
 			return err
 		}
@@ -825,7 +831,7 @@ func TestChunkHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	newHealth := float64(1) - (float64(1-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
-	ch, err := sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+	ch, _, err := sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -838,7 +844,7 @@ func TestChunkHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch, err = sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+	ch, _, err = sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -861,7 +867,7 @@ func TestChunkHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch, err = sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+	ch, _, err = sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -878,7 +884,7 @@ func TestChunkHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch, err = sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
+	ch, _, err = sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 	if err != nil {
 		t.Fatal(err)
 	}

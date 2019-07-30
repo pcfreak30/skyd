@@ -571,7 +571,7 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		_, err = os.Stat(localPath)
 		onDisk = err == nil
 	}
-	health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
+	_, _, health, stuckHealth, numStuckChunks := entry.Health(offline, goodForRenew)
 	_, redundancy, err := entry.Redundancy(offline, goodForRenew)
 	if err != nil {
 		return modules.FileInfo{}, errors.AddContext(err, "failed to get file redundancy")
