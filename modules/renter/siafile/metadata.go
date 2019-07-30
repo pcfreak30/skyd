@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"encoding/hex"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -200,11 +199,11 @@ func (sf *SiaFile) ChangeTime() time.Time {
 	return sf.staticMetadata.ChangeTime
 }
 
-// CombinedChunkIndex returns the CombinedChunkIndex of the file.
-func (sf *SiaFile) CombinedChunkIndex() uint64 {
+// CombinedChunkIndices returns the CombinedChunkIndices of the file.
+func (sf *SiaFile) CombinedChunkIndices() []uint64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.CombinedChunkIndex
+	return sf.staticMetadata.CombinedChunkIndices
 }
 
 // CombinedChunkStatus returns the CombinedChunkStatus of the file's metadata.
@@ -259,76 +258,12 @@ func NewPartialChunkInfo(length, offset uint64, sf *SiaFile) PartialChunkInfo {
 	}
 }
 
-// SetCombinedChunk adds a combined chunk to the SiaFiles, corresponding
-// combined SiaFile, and deletes the .partial file. All of that happens
-// atomically.
-func SetCombinedChunk(cci CombinedChunkInfo, dir string) error {
-	pci, combinedChunk, combinedChunkID := cci.partialChunks, cci.chunkData, cci.chunkID
-	sf0 := pci[0].sf
-	sf0.mu.RLock()
-	partialsSiaFile := sf0.partialsSiaFile
-	sf0.mu.RUnlock()
-
-	// Sanity check combined chunk length.
-	if uint64(len(combinedChunk)) != partialsSiaFile.ChunkSize() {
-		return fmt.Errorf("size of combined chunk should be %v but was %v",
-			partialsSiaFile.staticChunkSize(), len(combinedChunk))
-	}
-	// Get the wal updates to grow the partialsSiaFile by a chunk while holding its
-	// lock during the whole operation. We don't want other chunks to be added
-	// while we are modifying the SiaFiles in this function.
-	partialsSiaFile.mu.Lock()
-	defer partialsSiaFile.mu.Unlock()
-	chunkIndex := partialsSiaFile.numChunks
-	addCombinedChunkUpdates, err := partialsSiaFile.addCombinedChunk()
-	if err != nil {
-		return err
-	}
-
-	// Get updates to delete all the .partial files and update all the siafiles.
-	identifier := partialsSiaFile.staticMetadata.staticErasureCode.Identifier()
-	updates := addCombinedChunkUpdates
-	for _, ci := range pci {
-		sf := ci.sf
-		// Sanity check that all the SiaFile's have the same erasure code settings.
-		if sf.ErasureCode().Identifier() != identifier {
-			return errors.New("combined files don't have matching erasure coders")
-		}
-		sf.mu.Lock()
-		if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusIncomplete {
-			sf.mu.Unlock()
-			return fmt.Errorf("previous combined chunk status needs to be %v but was %v",
-				CombinedChunkStatusIncomplete, sf.staticMetadata.CombinedChunkStatus)
-		}
-		// Prepare delete update of .partial file.
-		deleteUpdate := createDeletePartialUpdate(sf.partialFilePath())
-		// Get updates to add chunk to combined SiaFile.
-		sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
-		sf.staticMetadata.CombinedChunkIDs = []modules.CombinedChunkID{modules.CombinedChunkID(combinedChunkID)}
-		sf.staticMetadata.CombinedChunkIndex = uint64(chunkIndex)
-		sf.staticMetadata.CombinedChunkLength = ci.length
-		sf.staticMetadata.CombinedChunkOffset = ci.offset
-		metadataUpdates, err := sf.saveMetadataUpdates()
-		if err != nil {
-			sf.mu.Unlock()
-			return err
-		}
-		// Append new updates.
-		updates = append(updates, deleteUpdate)
-		updates = append(updates, metadataUpdates...)
-		sf.mu.Unlock()
-	}
-	// Add update to write combined chunk to disk.
-	updates = append(updates, createInsertUpdate(filepath.Join(dir, combinedChunkID), 0, combinedChunk))
-	return createAndApplyTransaction(partialsSiaFile.wal, updates...)
-}
-
-// SetCombinedChunkIndex updates the CombinedChunkIndex field of the Siafile's
-// metadata in memory.
-func (sf *SiaFile) SetCombinedChunkIndex(chunkIndex uint64) {
+// SetCombinedChunkIndices updates the CombinedChunkIndices field of the
+// Siafile's metadata in memory.
+func (sf *SiaFile) SetCombinedChunkIndices(chunkIndices []uint64) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.CombinedChunkIndex = chunkIndex
+	sf.staticMetadata.CombinedChunkIndices = chunkIndices
 }
 
 // MasterKey returns the masterkey used to encrypt the file.
@@ -512,12 +447,14 @@ func (sf *SiaFile) UpdateAccessTime() error {
 func (sf *SiaFile) numStuckChunks() uint64 {
 	numStuckChunks := sf.staticMetadata.NumStuckChunks
 	if sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusIncomplete {
-		stuck, err := sf.partialsSiaFile.StuckChunkByIndex(sf.staticMetadata.CombinedChunkIndex)
-		if err != nil {
-			build.Critical("failed to get 'stuck' status of partial chunk")
-		}
-		if stuck {
-			numStuckChunks++
+		for _, cci := range sf.staticMetadata.CombinedChunkIndices {
+			stuck, err := sf.partialsSiaFile.StuckChunkByIndex(cci)
+			if err != nil {
+				build.Critical("failed to get 'stuck' status of partial chunk")
+			}
+			if stuck {
+				numStuckChunks++
+			}
 		}
 	}
 	return numStuckChunks

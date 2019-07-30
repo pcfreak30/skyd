@@ -169,7 +169,12 @@ func randomChunkID() modules.CombinedChunkID {
 	return modules.CombinedChunkID(hex.EncodeToString(fastrand.Bytes(16)))
 }
 
-func (pcs *partialChunkSet) appendToIncompleteChunk(chunkID modules.CombinedChunkID, ec modules.ErasureCoder, partialChunk []byte, chunkSize int64) (int, []writeaheadlog.Update, error) {
+// appendToIncompleteChunk will append as much data of partialChunk to the
+// incomplete chunk as possible and return how many bytes were apended. If the
+// chunk gets filled in the process, the chunk will be renamed accordingly. None
+// of the changes are written to disk right away. Instead the corresponding
+// writeaheadlog updates are returned.
+func (pcs *partialChunkSet) appendToIncompleteChunk(chunkID modules.CombinedChunkID, ec modules.ErasureCoder, partialChunk []byte, chunkSize int64) (int, int64, []writeaheadlog.Update, error) {
 	// Figure out how much data we can write to the incomplete chunk.
 	var updates []writeaheadlog.Update
 	chunkPath := pcs.combinedChunkPath(chunkID, ec, true)
@@ -180,7 +185,7 @@ func (pcs *partialChunkSet) appendToIncompleteChunk(chunkID modules.CombinedChun
 		maxLength = int(chunkSize - fi.Size())
 		offset = fi.Size()
 	} else if !os.IsNotExist(err) {
-		return 0, updates, errors.AddContext(err, "failed to determine size of incomplete combined chunk")
+		return 0, 0, updates, errors.AddContext(err, "failed to determine size of incomplete combined chunk")
 	}
 	// Write as much data as possible to the incomplete chunk. If we need to split
 	// the partial chunk over 2 combined chunks, we also need to rename the chunk
@@ -191,14 +196,14 @@ func (pcs *partialChunkSet) appendToIncompleteChunk(chunkID modules.CombinedChun
 		// Rename the existing incomplete chunk since it's going to be filled.
 		b, err := ioutil.ReadFile(chunkPath)
 		if err != nil {
-			return 0, updates, fmt.Errorf("failed to read incomplete chunk for renaming: %v", err)
+			return 0, 0, updates, fmt.Errorf("failed to read incomplete chunk for renaming: %v", err)
 		}
 		updates = append(updates, writeaheadlog.DeleteUpdate(chunkPath))
 		chunkPath = pcs.combinedChunkPath(chunkID, ec, false)
 		updates = append(updates, writeaheadlog.WriteAtUpdate(chunkPath, 0, b))
 	}
 	updates = append(updates, writeaheadlog.WriteAtUpdate(chunkPath, offset, partialChunk[:length]))
-	return int(length), updates, nil
+	return int(length), offset, updates, nil
 }
 
 // SavePartialChunk saves a siafile's partial chunk within one or two unfinished
@@ -239,7 +244,7 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 	ucids = append(ucids, ucid)
 
 	// Write as much data as possible to the incomplete chunk.
-	n, appendUpdates, err := pcs.appendToIncompleteChunk(ucid, ec, partialChunk, sf.ChunkSize())
+	n, offset, appendUpdates, err := pcs.appendToIncompleteChunk(ucid, ec, partialChunk, int64(sf.ChunkSize()))
 	if err != nil {
 		return err
 	}
@@ -262,10 +267,11 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 		ucids = append(ucids, ucid2)
 		updates = append(updates, newChunkUpdates...)
 		// Append the remaining data to the new chunk.
-		_, appendUpdates, err := pcs.appendToIncompleteChunk(ucid2, ec, partialChunk[n:], int64(sf.ChunkSize()))
+		_, _, appendUpdates, err := pcs.appendToIncompleteChunk(ucid2, ec, partialChunk[n:], int64(sf.ChunkSize()))
 		if err != nil {
 			return errors.AddContext(err, "failed to append second half of partial chunk to new incomplete combined chunk")
 		}
+		updates = append(updates, appendUpdates...)
 		// Only add the new unfinished chunk to the partial chunk set in case of a
 		// success.
 		defer func() {
@@ -280,7 +286,7 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 		panic("TODO: not impelemented yet")
 	}
 	// TODO: update both partials siafile and siafile + apply 'updates'
-	return sf.SavePartialChunk(offset, length, ucids, 0, updates)
+	return sf.SavePartialChunk(offset, int64(len(partialChunk)), nil, updates)
 }
 
 // FetchLogicalCombinedChunk fetches the logical data for an

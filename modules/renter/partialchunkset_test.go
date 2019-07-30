@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -48,8 +49,11 @@ func TestNewUnfinishedCombinedChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Start a new unfinished combined chunk and apply the update.
-	ccid, err := pcs.newUnfinishedCombinedChunk(ec)
+	ccid, updates, err := pcs.newUnfinishedCombinedChunk(ec)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeaheadlog.ApplyUpdates(updates...); err != nil {
 		t.Fatal(err)
 	}
 	// Make sure the file exists at the right location.

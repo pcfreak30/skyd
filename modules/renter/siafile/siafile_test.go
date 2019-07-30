@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,23 +64,8 @@ func randomPiece() piece {
 // combined chunk. If the SiaFile doesn't have a partial chunk, this is a no-op.
 // The combined chunk will be stored in the provided 'dir'.
 func setCombinedChunkOfTestFile(sf *SiaFile) error {
-	// If the file has a partial chunk, fake a combined chunk to make sure we can
-	// add a piece to it.
-	dir := filepath.Dir(sf.SiaFilePath())
-	if sf.CombinedChunkStatus() > CombinedChunkStatusNoChunk {
-		partialChunk := fastrand.Bytes(int(sf.Size()) % int(sf.ChunkSize()))
-		if sf.CombinedChunkStatus() > CombinedChunkStatusNoChunk {
-			if err := sf.SavePartialChunk(partialChunk); err != nil {
-				return err
-			}
-		}
-		pci := NewPartialChunkInfo(uint64(len(partialChunk)), 0, sf)
-		padding := make([]byte, sf.ChunkSize()-uint64(len(partialChunk)))
-		cci := NewCombinedChunkInfo(hex.EncodeToString(fastrand.Bytes(16)), append(partialChunk, padding...), []PartialChunkInfo{pci})
-		err := SetCombinedChunk(cci, dir)
-		if err != nil {
-			return err
-		}
+	if true {
+		panic("not implemented yet")
 	}
 	return nil
 }
