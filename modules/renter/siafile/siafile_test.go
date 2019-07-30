@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,15 +60,31 @@ func randomPiece() piece {
 	return piece
 }
 
-// setCombinedChunkOfTestFile adds a Combined chunk to a SiaFile for tests to be
-// able to use a SiaFile that already has its partial chunk contained within a
-// combined chunk. If the SiaFile doesn't have a partial chunk, this is a no-op.
-// The combined chunk will be stored in the provided 'dir'.
+// setCombinedChunkOfTestFile adds one or two Combined chunks to a SiaFile for
+// tests to be able to use a SiaFile that already has its partial chunk
+// contained within a combined chunk. If the SiaFile doesn't have a partial
+// chunk, this is a no-op. The combined chunk will be stored in the provided
+// 'dir'.
 func setCombinedChunkOfTestFile(sf *SiaFile) error {
-	if true {
-		panic("not implemented yet")
+	partialChunkSize := sf.Size() % sf.ChunkSize()
+	if partialChunkSize == 0 {
+		// no partial chunk
+		return nil
 	}
-	return nil
+	numCombinedChunks := fastrand.Intn(2) + 1
+	var combinedChunks []modules.CombinedChunk
+	for i := 0; i < numCombinedChunks; i++ {
+		combinedChunks = append(combinedChunks, modules.CombinedChunk{
+			ChunkID:          modules.CombinedChunkID(hex.EncodeToString(fastrand.Bytes(16))),
+			HasPartialsChunk: false,
+		})
+	}
+	if numCombinedChunks == 1 {
+		return sf.SetCombinedChunk(0, int64(partialChunkSize), combinedChunks, nil)
+	} else if numCombinedChunks == 2 {
+		return sf.SetCombinedChunk(int64(sf.ChunkSize()-1), int64(partialChunkSize), combinedChunks, nil)
+	}
+	panic("this should never be reached")
 }
 
 // TestFileNumChunks checks the numChunks method of the file type.
