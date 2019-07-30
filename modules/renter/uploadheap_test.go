@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // setCombinedChunkOfTestFile adds a Combined chunk to a SiaFile for tests to be
@@ -19,32 +20,25 @@ import (
 // combined chunk. If the SiaFile doesn't have a partial chunk, this is a no-op.
 // The combined chunk will be stored in the provided 'dir'.
 func setCombinedChunkOfTestFile(sf *siafile.SiaFile) error {
-	if true {
-		panic("not implemented yet")
+	partialChunkSize := sf.Size() % sf.ChunkSize()
+	if partialChunkSize == 0 {
+		// no partial chunk
+		return nil
 	}
-	// If the file has a partial chunk, fake a combined chunk to make sure we can
-	// add a piece to it.
-	//	dir := filepath.Dir(sf.SiaFilePath())
-	//	if sf.CombinedChunkStatus() <= siafile.CombinedChunkStatusNoChunk {
-	//		return nil
-	//	}
-	//	partialChunk := fastrand.Bytes(int(sf.Size()) % int(sf.ChunkSize()))
-	//	if sf.CombinedChunkStatus() > siafile.CombinedChunkStatusNoChunk {
-	//		if err := sf.SavePartialChunk(partialChunk); err != nil {
-	//			return err
-	//		}
-	//	}
-	//	pci := siafile.NewPartialChunkInfo(uint64(len(partialChunk)), 0, sf)
-	//	padding := make([]byte, sf.ChunkSize()-uint64(len(partialChunk)))
-	//	cci := siafile.NewCombinedChunkInfo(hex.EncodeToString(fastrand.Bytes(16)), append(partialChunk, padding...), []siafile.PartialChunkInfo{pci})
-	//	err := siafile.SetCombinedChunk(cci, dir)
-	//	if err != nil {
-	//		return err
-	//	}
-	if sf.CombinedChunkStatus() != siafile.CombinedChunkStatusCompleted {
-		return errors.New("siafile should have status 'completed' now")
+	numCombinedChunks := fastrand.Intn(2) + 1
+	var combinedChunks []modules.CombinedChunk
+	for i := 0; i < numCombinedChunks; i++ {
+		combinedChunks = append(combinedChunks, modules.CombinedChunk{
+			ChunkID:          modules.CombinedChunkID(hex.EncodeToString(fastrand.Bytes(16))),
+			HasPartialsChunk: false,
+		})
 	}
-	return nil
+	if numCombinedChunks == 1 {
+		return sf.SetCombinedChunk(0, int64(partialChunkSize), combinedChunks, nil)
+	} else if numCombinedChunks == 2 {
+		return sf.SetCombinedChunk(int64(sf.ChunkSize()-1), int64(partialChunkSize), combinedChunks, nil)
+	}
+	panic("this should never be reached")
 }
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
