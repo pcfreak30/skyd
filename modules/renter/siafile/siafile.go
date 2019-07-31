@@ -283,6 +283,11 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if sf.deleted {
 		return errors.New("can't add piece to deleted file")
 	}
+	// Don't allow adding pieces to incomplete chunk which is not yet part of a
+	// combined chunk.
+	if sf.isIncompletePartialChunk(chunkIndex) {
+		return errors.New("can't add piece to incomplete partial chunk")
+	}
 
 	// Update cache.
 	defer sf.uploadProgressAndBytes()
@@ -730,7 +735,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 		numPiecesRenew, numPiecesNoRenew := sf.goodPieces(chunk, offlineMap, goodForRenewMap)
 		redundancy := float64(numPiecesRenew) / float64(sf.staticMetadata.staticErasureCode.MinPieces())
 		redundancyUser := redundancy
-		if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+		if _, isCompletePartial := sf.isCompletePartialChunk(uint64(chunk.Index)); isCompletePartial {
 			// If the partial chunk hasn't been included in a combined chunk yet it has
 			// full redundancy.
 			redundancyUser = float64(ec.NumPieces()) / float64(ec.MinPieces())
@@ -743,7 +748,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 		}
 		redundancyNoRenew := float64(numPiecesNoRenew) / float64(ec.MinPieces())
 		redundancyNoRenewUser := redundancyNoRenew
-		if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+		if _, isCompletePartial := sf.isCompletePartialChunk(uint64(chunk.Index)); isCompletePartial {
 			// If the partial chunk hasn't been included in a combined chunk yet it has
 			// full redundancy.
 			redundancyNoRenewUser = float64(ec.NumPieces()) / float64(ec.MinPieces())
@@ -1240,7 +1245,8 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		for _, pieceSet := range chunk.Pieces {
 			// Move onto the next pieceSet if nothing has been uploaded yet
-			if len(pieceSet) == 0 {
+			_, isPartial := sf.isCompletePartialChunk(uint64(chunk.Index))
+			if len(pieceSet) == 0 && !isPartial {
 				continue
 			}
 
