@@ -192,14 +192,20 @@ func newTestFile() *SiaFile {
 // newTestFileParams creates the required parameters for creating a siafile and
 // creates a directory for the file
 func newTestFileParams(minChunks int, partialChunk bool) (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
-	// Create arguments for new file.
-	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
-	pieceSize := modules.SectorSize - sk.Type().Overhead()
-	siaPath := modules.RandomSiaPath()
 	rc, err := NewRSCode(10, 20)
 	if err != nil {
 		panic(err)
 	}
+	return newTestFileParamsWithRC(minChunks, partialChunk, rc)
+}
+
+// newTestFileParamsWithRC creates the required parameters for creating a siafile and
+// creates a directory for the file.
+func newTestFileParamsWithRC(minChunks int, partialChunk bool, rc modules.ErasureCoder) (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
+	// Create arguments for new file.
+	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
+	pieceSize := modules.SectorSize - sk.Type().Overhead()
+	siaPath := modules.RandomSiaPath()
 	numChunks := fastrand.Intn(10) + minChunks
 	chunkSize := pieceSize * uint64(rc.MinPieces())
 	fileSize := chunkSize * uint64(numChunks)

@@ -166,7 +166,8 @@ func TestFileRedundancy(t *testing.T) {
 
 	for _, nData := range nDatas {
 		rsc, _ := NewRSCode(nData, 10)
-		f, _, _ := newBlankTestFileAndWALWithEC(rsc)
+		siaFilePath, _, source, _, sk, fileSize, numChunks, fileMode := newTestFileParamsWithRC(2, false, rsc)
+		f, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, fileSize, numChunks, fileMode)
 		// If the file has a partial chunk, fake a combined chunk to make sure we can
 		// add a piece to it.
 		if err := setCombinedChunkOfTestFile(f); err != nil {
@@ -178,7 +179,7 @@ func TestFileRedundancy(t *testing.T) {
 			t.Fatal(err)
 		}
 		if r != 0 || ur != 0 {
-			t.Error("expected 0 redundancy, got", r, ur)
+			t.Error("expected 0 and 0 redundancy, got", r, ur)
 		}
 		// Test that a file with 1 host that has a piece for every chunk but
 		// one chunk still has a redundancy of 0.
@@ -193,7 +194,7 @@ func TestFileRedundancy(t *testing.T) {
 			t.Fatal(err)
 		}
 		if r != 0 || ur != 0 {
-			t.Error("expected 0 redundancy, got", r, ur)
+			t.Error("expected 0 and 0 redundancy, got", r, ur)
 		}
 		// Test that adding another host with a piece for every chunk but one
 		// chunk still results in a file with redundancy 0.
@@ -208,7 +209,7 @@ func TestFileRedundancy(t *testing.T) {
 			t.Fatal(err)
 		}
 		if r != 0 || ur != 0 {
-			t.Error("expected 0 redundancy, got", r)
+			t.Error("expected 0 and 0 redundancy, got", r, ur)
 		}
 		// Test that adding a file contract with a piece for the missing chunk
 		// results in a file with redundancy > 0 && <= 1.
