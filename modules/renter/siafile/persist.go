@@ -83,7 +83,7 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modules.CombinedChunk, updates []writeaheadlog.Update) error {
 	// SavePartialChunk can only be called when there is no partial chunk yet.
 	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusHasChunk {
-		return fmt.Errorf("Can't call SavePartialChunk unless status is %v but was %v",
+		return fmt.Errorf("Can't call SetCombinedChunk unless status is %v but was %v",
 			CombinedChunkStatusHasChunk, sf.staticMetadata.CombinedChunkStatus)
 	}
 	// Check the number of combinedChunks for sanity.

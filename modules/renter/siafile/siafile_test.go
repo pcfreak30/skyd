@@ -167,6 +167,11 @@ func TestFileRedundancy(t *testing.T) {
 	for _, nData := range nDatas {
 		rsc, _ := NewRSCode(nData, 10)
 		f, _, _ := newBlankTestFileAndWALWithEC(rsc)
+		// If the file has a partial chunk, fake a combined chunk to make sure we can
+		// add a piece to it.
+		if err := setCombinedChunkOfTestFile(f); err != nil {
+			t.Fatal(err)
+		}
 		// Test that an empty file has 0 redundancy.
 		r, ur, err := f.Redundancy(neverOffline, goodForRenew)
 		if err != nil {
@@ -204,11 +209,6 @@ func TestFileRedundancy(t *testing.T) {
 		}
 		if r != 0 || ur != 0 {
 			t.Error("expected 0 redundancy, got", r)
-		}
-		// If the file has a partial chunk, fake a combined chunk to make sure we can
-		// add a piece to it.
-		if err := setCombinedChunkOfTestFile(f); err != nil {
-			t.Fatal(err)
 		}
 		// Test that adding a file contract with a piece for the missing chunk
 		// results in a file with redundancy > 0 && <= 1.

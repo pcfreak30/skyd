@@ -389,18 +389,19 @@ func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForR
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
 	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
 	targetPieces := float64(numPieces - minPieces)
-	// Handle health of incomplete partial chunk.
-	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
-		return 1 + (float64(minPieces) / targetPieces), 0, nil // Partial chunk has full health if not yet included in combined chunk
-	}
 	// Find the good pieces that are good for renew
 	goodPieces, _ := sf.goodPieces(chunk, offlineMap, goodForRenewMap)
+	chunkHealth := 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
+	// Handle health of incomplete partial chunk.
+	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+		return chunkHealth, 0, nil // Partial chunk has full health if not yet included in combined chunk
+	}
 	// Sanity Check, if something went wrong, default to minimum health
 	if int(goodPieces) > numPieces || goodPieces < 0 {
 		build.Critical("unexpected number of goodPieces for chunkHealth")
 		goodPieces = 0
 	}
-	return 0, 1 - (float64(int(goodPieces)-minPieces) / targetPieces), nil
+	return chunkHealth, chunkHealth, nil
 }
 
 // ChunkHealth returns the health of the chunk which is defined as the percent
