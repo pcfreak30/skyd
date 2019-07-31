@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -8,7 +9,10 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
@@ -28,6 +32,80 @@ func TestCombinedChunkName(t *testing.T) {
 	if chunkName != expectedName {
 		t.Fatalf("name doesn't match expected name: %v %v",
 			chunkName, expectedName)
+	}
+}
+
+// TestLoadPartialChunk tests the LoadPartialChunk method of the partial chunk
+// set.
+func TestLoadPartialChunk(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a partial chunk set.
+	testDir := build.TempDir("renter", t.Name())
+	_ = os.RemoveAll(testDir)
+	pcs, err := newPartialChunkSet(filepath.Join(testDir, "pcs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create the erasure coder.
+	ec, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunkSize := (modules.SectorSize - crypto.TypeDefaultRenter.Overhead()) * uint64(ec.MinPieces())
+
+	wal := newTestingWal()
+	sfs := siafile.NewSiaFileSet(filepath.Join(testDir, "siafiles"), wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	up1 := modules.FileUploadParams{
+		SiaPath:     modules.RandomSiaPath(),
+		ErasureCode: ec,
+	}
+	up2 := modules.FileUploadParams{
+		SiaPath:     modules.RandomSiaPath(),
+		ErasureCode: ec,
+	}
+	// Create two files with partial chunks that fill out 70% of a combined chunk
+	// each.
+	sf1, err1 := sfs.NewSiaFile(up1, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(0.7*float64(chunkSize)), 0600)
+	sf2, err2 := sfs.NewSiaFile(up2, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(0.7*float64(chunkSize)), 0600)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
+	// Save their partial chunks.
+	partialChunk1 := fastrand.Bytes(int(sf1.Size()))
+	if err := pcs.SavePartialChunk(sf1.SiaFile, partialChunk1); err != nil {
+		t.Fatal(err)
+	}
+	partialChunk2 := fastrand.Bytes(int(sf1.Size()))
+	if err := pcs.SavePartialChunk(sf2.SiaFile, partialChunk2); err != nil {
+		t.Fatal(err)
+	}
+	// Load their partial chunks and compare them.
+	snap1, err := sf1.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap2, err := sf2.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc1, err := pcs.LoadPartialChunk(&unfinishedDownloadChunk{renterFile: snap1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc2, err := pcs.LoadPartialChunk(&unfinishedDownloadChunk{renterFile: snap2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(partialChunk1, pc1) {
+		t.Fatal("loaded chunk doesn't match saved chunk")
+	}
+	if !bytes.Equal(partialChunk2, pc2) {
+		t.Fatal("loaded chunk doesn't match saved chunk")
 	}
 }
 

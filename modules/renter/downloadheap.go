@@ -158,43 +158,27 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 // managedTryLoadFromDisk will try to load a chunk from disk before trying to
 // download it from hosts.
 func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
-	if udc.renterFile.IsIncompletePartialChunk(udc.staticChunkIndex) {
-		// Open siafile since a snapshot isn't enough.
-		entry, err := udc.renterFile.FileSet().Open(udc.renterFile.SiaPath())
+	if _, isPartial := udc.renterFile.IsCompletePartialChunk(udc.staticChunkIndex); isPartial {
+		// Get partial chunk.
+		partialChunk, err := r.staticPartialChunkSet.LoadPartialChunk(udc)
 		if err != nil {
 			r.log.Debugln(err)
 			return false
 		}
-		defer entry.Close()
-		// Make sure the file is the same one as the one in the snapshot.
-		if entry.UID() != udc.renterFile.UID() {
-			r.log.Debugln("opened file's uid doesn't match the one in the snapshot")
-			return false
-		}
-		// Get partial chunk.
-		partialChunk := []byte{}
-		if true {
-			panic("not implemented yet")
-		}
-		//partialChunk, err := entry.LoadPartialChunk()
-		//if err != nil {
-		//	r.log.Debugln(err)
-		//	return false
-		//}
 		// Write the partial chunk to the destination.
 		// TODO: Change this in a follow-up. No need to erasure code the data just to
 		// recover it again.
-		pieces, _, err := readDataPieces(bytes.NewReader(partialChunk), entry.ErasureCode(), entry.PieceSize())
+		pieces, _, err := readDataPieces(bytes.NewReader(partialChunk), udc.renterFile.ErasureCode(), udc.renterFile.PieceSize())
 		if err != nil {
 			r.log.Debugln(err)
 			return false
 		}
-		shards, err := entry.ErasureCode().EncodeShards(pieces)
+		shards, err := udc.renterFile.ErasureCode().EncodeShards(pieces)
 		if err != nil {
 			r.log.Debugln(err)
 			return false
 		}
-		err = udc.destination.WritePieces(entry.ErasureCode(), shards, udc.staticFetchOffset, udc.staticWriteOffset, udc.staticFetchLength)
+		err = udc.destination.WritePieces(udc.renterFile.ErasureCode(), shards, udc.staticFetchOffset, udc.staticWriteOffset, udc.staticFetchLength)
 		if err != nil {
 			r.log.Debugln(err)
 			return false

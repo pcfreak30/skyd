@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -291,10 +292,55 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 	return sf.SetCombinedChunk(offset, int64(len(partialChunk)), chunks, updates)
 }
 
+// LoadPartialChunk loads a partial chunk from disk.
+func (pcs *partialChunkSet) LoadPartialChunk(chunk *unfinishedDownloadChunk) ([]byte, error) {
+	pcs.mu.Lock()
+	defer pcs.mu.Unlock()
+	snap := chunk.renterFile
+	if _, isPartial := snap.IsCompletePartialChunk(uint64(chunk.staticChunkIndex)); !isPartial {
+		return nil, errors.New("can only call LoadPartialChunk if partial chunk has been included in a combined chunk")
+	}
+	chunkIndices := snap.CombinedChunkIndices()
+	chunkIDs := snap.CombinedChunkIDs()
+	chunkOffset := snap.CombinedChunkOffset()
+	chunkLength := snap.CombinedChunkLength()
+	ec := snap.ErasureCode()
+	if len(chunkIndices) != 1 && len(chunkIndices) != 2 {
+		return nil, errors.New("file should contain one or two indices")
+	}
+	partialChunk := make([]byte, chunkLength)
+	remaining := chunkLength
+	offset := chunkOffset
+	for _, ci := range chunkIDs {
+		path := pcs.combinedChunkPath(ci, ec, pcs.isUnfinished(ci, ec))
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, errors.New("failed to open combined chunk")
+		}
+		defer f.Close()
+		n, err := f.ReadAt(partialChunk[chunkLength-remaining:], int64(offset))
+		if err != nil && err != io.EOF {
+			return nil, errors.New("failed to read partial chunk")
+		}
+		remaining -= uint64(n)
+		offset = 0
+	}
+	if remaining != 0 {
+		return nil, fmt.Errorf("expected 0 bytes to be remaining but was %v", remaining)
+	}
+	return partialChunk, nil
+}
+
+// isUnfinished returns true if the provided chunk id is an unfinished chunk.
+// 'true' means that it is but 'false' doesn't imply that the chunk is
+// completed. It might also be an invalid id.
+func (pcs *partialChunkSet) isUnfinished(cid modules.CombinedChunkID, ec modules.ErasureCoder) bool {
+	ucid, exists := pcs.unfinishedCombinedChunk[ec.Identifier()]
+	return exists && cid == ucid
+}
+
 // FetchLogicalCombinedChunk fetches the logical data for an
-// unfinishedUploadChunk. It does so by checking if enough partial chunks are
-// waiting to be repaired and combining them. If not enough partial chunks exist
-// at the moment, it remembers the request and returns 'false'.
+// unfinishedUploadChunk from a combined chunk.
 func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()

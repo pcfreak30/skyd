@@ -14,19 +14,21 @@ type (
 	// can be accessed without locking at the cost of being a frozen readonly
 	// representation of a siafile which only exists in memory.
 	Snapshot struct {
-		staticChunks              []Chunk
-		staticFileSize            int64
-		staticPieceSize           uint64
-		staticErasureCode         modules.ErasureCoder
-		staticMasterKey           crypto.CipherKey
-		staticMode                os.FileMode
-		staticPubKeyTable         []HostPublicKey
-		staticSiaPath             modules.SiaPath
-		staticCombinedChunkStatus uint8
-		staticCombinedChunkOffset uint64
-		staticCombinedChunkLength uint64
-		staticUID                 SiafileUID
-		staticFileSet             *SiaFileSet
+		staticChunks               []Chunk
+		staticFileSize             int64
+		staticPieceSize            uint64
+		staticErasureCode          modules.ErasureCoder
+		staticMasterKey            crypto.CipherKey
+		staticMode                 os.FileMode
+		staticPubKeyTable          []HostPublicKey
+		staticSiaPath              modules.SiaPath
+		staticCombinedChunkIDs     []modules.CombinedChunkID
+		staticCombinedChunkIndices []uint64
+		staticCombinedChunkStatus  uint8
+		staticCombinedChunkOffset  uint64
+		staticCombinedChunkLength  uint64
+		staticUID                  SiafileUID
+		staticFileSet              *SiaFileSet
 	}
 )
 
@@ -99,6 +101,16 @@ func (s *Snapshot) ChunkSize() uint64 {
 	return s.staticPieceSize * uint64(s.staticErasureCode.MinPieces())
 }
 
+// CombinedChunkIDs returns the snapshot's CombinedChunkIDs.
+func (s *Snapshot) CombinedChunkIDs() []modules.CombinedChunkID {
+	return s.staticCombinedChunkIDs
+}
+
+// CombinedChunkIndices returns the snapshot's CombinedChunkIndices.
+func (s *Snapshot) CombinedChunkIndices() []uint64 {
+	return s.staticCombinedChunkIndices
+}
+
 // CombinedChunkLength returns the snapshot's CombinedChunkLength.
 func (s *Snapshot) CombinedChunkLength() uint64 {
 	return s.staticCombinedChunkLength
@@ -117,6 +129,21 @@ func (s *Snapshot) CombinedChunkStatus() uint8 {
 // ErasureCode returns the erasure coder used by the file.
 func (s *Snapshot) ErasureCode() modules.ErasureCoder {
 	return s.staticErasureCode
+}
+
+// IsCompletePartialChunk returns 'true' if the provided index points to a
+// partial chunk which has been added to the partials sia file already.
+func (s *Snapshot) IsCompletePartialChunk(chunkIndex uint64) (uint64, bool) {
+	if s.staticCombinedChunkStatus <= CombinedChunkStatusHasChunk {
+		return 0, false
+	}
+	if chunkIndex == uint64(len(s.staticChunks)-1) {
+		return s.staticCombinedChunkIndices[0], true
+	}
+	if chunkIndex == uint64(len(s.staticChunks)) && len(s.staticCombinedChunkIndices) == 2 {
+		return s.staticCombinedChunkIndices[1], true
+	}
+	return 0, false
 }
 
 // IsIncompletePartialChunk returns 'true' if the provided index points to a
@@ -260,6 +287,8 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	uid := sf.staticMetadata.UniqueID
 	cco := sf.staticMetadata.CombinedChunkOffset
 	ccl := sf.staticMetadata.CombinedChunkLength
+	cci := sf.staticMetadata.CombinedChunkIndices
+	ccids := sf.staticMetadata.CombinedChunkIDs
 	sf.mu.RUnlock()
 	//////////////////////////////////////////////////////////////////////////////
 	// RLock ends here.
@@ -270,18 +299,20 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	sf.staticSiaFileSet.mu.Unlock()
 
 	return &Snapshot{
-		staticChunks:              chunks,
-		staticCombinedChunkLength: ccl,
-		staticCombinedChunkOffset: cco,
-		staticCombinedChunkStatus: sf.staticMetadata.CombinedChunkStatus,
-		staticFileSize:            fileSize,
-		staticPieceSize:           sf.staticMetadata.StaticPieceSize,
-		staticErasureCode:         sf.staticMetadata.staticErasureCode,
-		staticMasterKey:           mk,
-		staticMode:                mode,
-		staticPubKeyTable:         pkt,
-		staticSiaPath:             sp,
-		staticUID:                 uid,
-		staticFileSet:             sf.staticSiaFileSet,
+		staticChunks:               chunks,
+		staticCombinedChunkIDs:     ccids,
+		staticCombinedChunkIndices: cci,
+		staticCombinedChunkLength:  ccl,
+		staticCombinedChunkOffset:  cco,
+		staticCombinedChunkStatus:  sf.staticMetadata.CombinedChunkStatus,
+		staticFileSize:             fileSize,
+		staticPieceSize:            sf.staticMetadata.StaticPieceSize,
+		staticErasureCode:          sf.staticMetadata.staticErasureCode,
+		staticMasterKey:            mk,
+		staticMode:                 mode,
+		staticPubKeyTable:          pkt,
+		staticSiaPath:              sp,
+		staticUID:                  uid,
+		staticFileSet:              sf.staticSiaFileSet,
 	}, nil
 }
