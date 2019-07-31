@@ -344,5 +344,5 @@ func (pcs *partialChunkSet) isUnfinished(cid modules.CombinedChunkID, ec modules
 func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
-	panic("todo not implemented yet")
+	return false, nil
 }
