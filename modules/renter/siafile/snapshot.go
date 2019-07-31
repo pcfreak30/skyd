@@ -106,11 +106,6 @@ func (s *Snapshot) CombinedChunkIDs() []modules.CombinedChunkID {
 	return s.staticCombinedChunkIDs
 }
 
-// CombinedChunkIndices returns the snapshot's CombinedChunkIndices.
-func (s *Snapshot) CombinedChunkIndices() []uint64 {
-	return s.staticCombinedChunkIndices
-}
-
 // CombinedChunkLength returns the snapshot's CombinedChunkLength.
 func (s *Snapshot) CombinedChunkLength() uint64 {
 	return s.staticCombinedChunkLength

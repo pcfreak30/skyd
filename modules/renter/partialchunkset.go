@@ -300,12 +300,11 @@ func (pcs *partialChunkSet) LoadPartialChunk(chunk *unfinishedDownloadChunk) ([]
 	if _, isPartial := snap.IsCompletePartialChunk(uint64(chunk.staticChunkIndex)); !isPartial {
 		return nil, errors.New("can only call LoadPartialChunk if partial chunk has been included in a combined chunk")
 	}
-	chunkIndices := snap.CombinedChunkIndices()
 	chunkIDs := snap.CombinedChunkIDs()
 	chunkOffset := snap.CombinedChunkOffset()
 	chunkLength := snap.CombinedChunkLength()
 	ec := snap.ErasureCode()
-	if len(chunkIndices) != 1 && len(chunkIndices) != 2 {
+	if len(chunkIDs) != 1 && len(chunkIDs) != 2 {
 		return nil, errors.New("file should contain one or two indices")
 	}
 	partialChunk := make([]byte, chunkLength)
