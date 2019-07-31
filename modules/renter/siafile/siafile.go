@@ -1239,13 +1239,8 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 	var total, unique uint64
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		for _, pieceSet := range chunk.Pieces {
-			// If the file has a partial chunk, we assume that all bytes have been uploaded
-			// since it should at least be available on disk and because we only use the
-			// uploaded bytes as user info and not for the repair code.
-			_, completeChunk := sf.isCompletePartialChunk(uint64(chunk.Index))
-			partialChunk := completeChunk || sf.isIncompletePartialChunk(uint64(chunk.Index))
 			// Move onto the next pieceSet if nothing has been uploaded yet
-			if len(pieceSet) == 0 && !partialChunk {
+			if len(pieceSet) == 0 {
 				continue
 			}
 
