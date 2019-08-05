@@ -43,10 +43,10 @@ func (sf *SiaFile) merge(newFile *SiaFile) (map[uint64]uint64, error) {
 		return nil, errors.New("can only merge PartialsSiafiles into a PartialsSiaFile")
 	}
 	newFile.mu.Lock()
+	defer newFile.mu.Unlock()
 	if newFile.deleted {
 		return nil, errors.New("can't merge deleted file")
 	}
-	defer newFile.mu.Unlock()
 	var newChunks []chunk
 	indexMap := make(map[uint64]uint64)
 	ncb := sf.numChunks
