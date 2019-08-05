@@ -541,6 +541,7 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, chunks []chunk, suffix ui
 
 // Delete deletes the SiaFileSetEntry's SiaFile
 func (sfs *SiaFileSet) Delete(siaPath modules.SiaPath) error {
+	fmt.Println("deleting", siaPath.String())
 	sfs.mu.Lock()
 	defer sfs.mu.Unlock()
 	return sfs.deleteFile(siaPath)

@@ -101,6 +101,10 @@ func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modul
 	defer sf.mu.Unlock()
 	sf.partialsSiaFile.mu.Lock()
 	defer sf.partialsSiaFile.mu.Unlock()
+	// Check if siafile has been deleted.
+	if sf.deleted {
+		return errors.New("can't set combined chunk of deleted siafile")
+	}
 	// For each combined chunk that is not yet tracked within the partials sia
 	// file, add a chunk to the partials sia file.
 	var chunkIndices []uint64

@@ -320,6 +320,9 @@ func (sf *SiaFile) PieceSize() uint64 {
 func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	if sf.deleted {
+		return errors.New("can't rename deleted siafile")
+	}
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
 	err := os.MkdirAll(dir, 0700)

@@ -1005,8 +1005,11 @@ func TestRenterParallelDelete(t *testing.T) {
 
 	// No files should be present
 	wg.Wait()
-	st.getAPI("/renter/files", &rf)
+	if err := st.getAPI("/renter/files", &rf); err != nil {
+		t.Fatal(err)
+	}
 	if len(rf.Files) != 0 {
+		fmt.Println("file", rf.Files[0].SiaPath)
 		t.Fatal("file was not deleted properly:", rf.Files)
 	}
 }
