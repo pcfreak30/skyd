@@ -990,7 +990,12 @@ func TestRenterParallelDelete(t *testing.T) {
 	}
 
 	// In parallel, download and delete the second file.
-	go st.stdPostAPI("/renter/delete/test2", url.Values{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		st.stdPostAPI("/renter/delete/test2", url.Values{})
+		wg.Done()
+	}()
 	time.Sleep(100 * time.Millisecond)
 	downpath := filepath.Join(st.dir, "testdown.dat")
 	err = st.stdGetAPI("/renter/download/test2?destination=" + downpath)
@@ -999,6 +1004,7 @@ func TestRenterParallelDelete(t *testing.T) {
 	}
 
 	// No files should be present
+	wg.Wait()
 	st.getAPI("/renter/files", &rf)
 	if len(rf.Files) != 0 {
 		t.Fatal("file was not deleted properly:", rf.Files)
