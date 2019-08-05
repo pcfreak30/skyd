@@ -192,12 +192,6 @@ func (s *Snapshot) Size() uint64 {
 	return uint64(s.staticFileSize)
 }
 
-// FileSet returns the SiaFileSet that was used to open the SiaFile from which
-// this snapshot was created.
-func (s *Snapshot) FileSet() *SiaFileSet {
-	return s.staticFileSet
-}
-
 // UID returns the UID of the file.
 func (s *Snapshot) UID() SiafileUID {
 	return s.staticUID
@@ -208,8 +202,7 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	mk := sf.MasterKey()
 
 	//////////////////////////////////////////////////////////////////////////////
-	// RLock starts here. No way to exit the function until RUnlock is reached
-	// below.
+	// RLock starts here. Make sure to unlock if the method exits early.
 	//////////////////////////////////////////////////////////////////////////////
 	sf.mu.RLock()
 
@@ -229,6 +222,7 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 		return nil
 	})
 	if err != nil {
+		sf.mu.RUnlock()
 		return nil, err
 	}
 	// Allocate all the piece sets and pieces at once.
@@ -274,6 +268,7 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 		return nil
 	})
 	if err != nil {
+		sf.mu.RUnlock()
 		return nil, err
 	}
 	// Get non-static metadata fields under lock.
