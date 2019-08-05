@@ -895,7 +895,7 @@ func TestRenterParallelDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.server.panicClose()
-	fmt.Println("1")
+
 	// Announce the host and start accepting contracts.
 	err = st.setHostStorage()
 	if err != nil {
@@ -910,7 +910,6 @@ func TestRenterParallelDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println("2")
 	// Set an allowance for the renter, allowing a contract to be formed.
 	allowanceValues := url.Values{}
 	testFunds := "10000000000000000000000000000" // 10k SC
@@ -924,7 +923,6 @@ func TestRenterParallelDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println("3")
 	// Create two files.
 	path := filepath.Join(st.dir, "test.dat")
 	err = createRandFile(path, 1024)
@@ -938,7 +936,6 @@ func TestRenterParallelDelete(t *testing.T) {
 	}
 
 	// Upload the first file to host.
-	fmt.Println("4")
 	uploadValues := url.Values{}
 	uploadValues.Set("source", path)
 	err = st.stdPostAPI("/renter/upload/test", uploadValues)
@@ -956,7 +953,6 @@ func TestRenterParallelDelete(t *testing.T) {
 	}
 
 	// In parallel, start uploading the other file, and delete the first file.
-	fmt.Println("5")
 	uploadValues = url.Values{}
 	uploadValues.Set("source", path2)
 	err = st.stdPostAPI("/renter/upload/test2", uploadValues)
@@ -964,12 +960,11 @@ func TestRenterParallelDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println("6")
 	err = st.stdPostAPI("/renter/delete/test", url.Values{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("7")
+
 	// Only the second file should be present
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		err := st.getAPI("/renter/files", &rf)
@@ -985,7 +980,6 @@ func TestRenterParallelDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println("8")
 	// Wait for the second upload to complete.
 	var file RenterFile
 	for i := 0; i < 200 && file.File.UploadProgress < 10; i++ {
@@ -1000,27 +994,21 @@ func TestRenterParallelDelete(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		fmt.Println("9")
 		st.stdPostAPI("/renter/delete/test2", url.Values{})
-		fmt.Println("10")
 		wg.Done()
 	}()
 	time.Sleep(100 * time.Millisecond)
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	fmt.Println("11")
 	err = st.stdGetAPI("/renter/download/test2?destination=" + downpath)
 	if err == nil {
 		t.Fatal("download should fail after delete")
 	}
-	fmt.Println("12")
 
 	// No files should be present
 	wg.Wait()
-	fmt.Println("13")
 	if err := st.getAPI("/renter/files", &rf); err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("14")
 	if len(rf.Files) != 0 {
 		fmt.Println("file", rf.Files[0].SiaPath)
 		t.Fatal("file was not deleted properly:", rf.Files)
