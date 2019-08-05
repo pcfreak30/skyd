@@ -429,7 +429,7 @@ func (sf *SiaFile) UpdateAccessTime() error {
 // metadata.
 func (sf *SiaFile) numStuckChunks() uint64 {
 	numStuckChunks := sf.staticMetadata.NumStuckChunks
-	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusCompleted {
+	if sf.staticMetadata.CombinedChunkStatus >= CombinedChunkStatusInComplete {
 		for _, cci := range sf.staticMetadata.CombinedChunkIndices {
 			stuck, err := sf.partialsSiaFile.StuckChunkByIndex(cci)
 			if err != nil {

@@ -947,9 +947,9 @@ func TestSetCombinedChunkSingle(t *testing.T) {
 		t.Fatal("wrong combinedchunkoffset",
 			sf.staticMetadata.CombinedChunkOffset, 0)
 	}
-	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusCompleted {
+	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusInComplete {
 		t.Fatal("wrong combinedchunkstatus",
-			sf.staticMetadata.CombinedChunkStatus, CombinedChunkStatusCompleted)
+			sf.staticMetadata.CombinedChunkStatus, CombinedChunkStatusInComplete)
 	}
 	// The partials siafile should have one chunk now.
 	if sf.partialsSiaFile.NumChunks() != 1 {
@@ -1003,9 +1003,9 @@ func TestSetCombinedChunkSingle(t *testing.T) {
 		t.Fatal("wrong combinedchunkoffset",
 			sf2.staticMetadata.CombinedChunkOffset, 0)
 	}
-	if sf2.staticMetadata.CombinedChunkStatus != CombinedChunkStatusCompleted {
+	if sf2.staticMetadata.CombinedChunkStatus != CombinedChunkStatusInComplete {
 		t.Fatal("wrong combinedchunkstatus",
-			sf2.staticMetadata.CombinedChunkStatus, CombinedChunkStatusCompleted)
+			sf2.staticMetadata.CombinedChunkStatus, CombinedChunkStatusInComplete)
 	}
 	// The partials siafile should have two chunks now.
 	if sf.partialsSiaFile.NumChunks() != 2 {

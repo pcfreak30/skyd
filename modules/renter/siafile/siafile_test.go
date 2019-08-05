@@ -79,12 +79,17 @@ func setCombinedChunkOfTestFile(sf *SiaFile) error {
 			HasPartialsChunk: false,
 		})
 	}
+	var err error
 	if numCombinedChunks == 1 {
-		return sf.SetCombinedChunk(0, int64(partialChunkSize), combinedChunks, nil)
+		err = sf.SetCombinedChunk(0, int64(partialChunkSize), combinedChunks, nil)
 	} else if numCombinedChunks == 2 {
-		return sf.SetCombinedChunk(int64(sf.ChunkSize()-1), int64(partialChunkSize), combinedChunks, nil)
+		err = sf.SetCombinedChunk(int64(sf.ChunkSize()-1), int64(partialChunkSize), combinedChunks, nil)
 	}
-	panic("this should never be reached")
+	if err != nil {
+		return err
+	}
+	// Force the status to completed.
+	return sf.SetChunkStatusCompleted()
 }
 
 // TestFileNumChunks checks the numChunks method of the file type.
@@ -1002,7 +1007,7 @@ func TestUploadedBytes(t *testing.T) {
 		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, totalBytes)
 	}
 	if uniqueBytes != modules.SectorSize {
-		t.Errorf("expected uploadedBytes to be %v, got %v", modules.SectorSize, uniqueBytes)
+		t.Errorf("expected uniqueBytes to be %v, got %v", modules.SectorSize, uniqueBytes)
 	}
 }
 

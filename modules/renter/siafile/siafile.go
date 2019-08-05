@@ -653,6 +653,23 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 	return keys
 }
 
+// IsCompletePartialChunk returns 'true' if the provided index points to a
+// partial chunk which has been added to the partials sia file already.
+func (sf *SiaFile) IsCompletePartialChunk(chunkIndex uint64) bool {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	_, b := sf.isCompletePartialChunk(chunkIndex)
+	return b
+}
+
+// IsIncompletePartialChunk returns 'true' if the provided index points to a
+// partial chunk which hasn't been added to a partials siafile yet.
+func (sf *SiaFile) IsIncompletePartialChunk(chunkIndex uint64) bool {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.isIncompletePartialChunk(chunkIndex)
+}
+
 // NumChunks returns the number of chunks the file consists of. This will
 // return the number of chunks the file consists of even if the file is not
 // fully uploaded yet.
@@ -821,6 +838,19 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 		return err
 	}
 	updates = append(updates, metadataUpdates...)
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// SetChunkStatusCompleted sets the CombinedChunkStatus field of the metadata to
+// completed.
+func (sf *SiaFile) SetChunkStatusCompleted() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
 	return sf.createAndApplyTransaction(updates...)
 }
 
@@ -1245,8 +1275,7 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		for _, pieceSet := range chunk.Pieces {
 			// Move onto the next pieceSet if nothing has been uploaded yet
-			_, isPartial := sf.isCompletePartialChunk(uint64(chunk.Index))
-			if len(pieceSet) == 0 && !isPartial {
+			if len(pieceSet) == 0 && sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusInComplete {
 				continue
 			}
 

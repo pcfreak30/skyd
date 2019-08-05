@@ -467,6 +467,7 @@ func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk
 		if err := r.staticPartialChunkSet.SavePartialChunk(chunk.fileEntry.SiaFile, partialChunk[:n]); err != nil {
 			return true, r.managedDownloadLogicalChunkData(chunk)
 		}
+	case siafile.CombinedChunkStatusInComplete:
 	case siafile.CombinedChunkStatusCompleted:
 	default:
 		build.Critical("Unknown CombinedChunkStatus:", chunk.fileEntry.CombinedChunkStatus())
@@ -502,8 +503,8 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) (boo
 		return false, errors.New("file not available locally")
 	}
 	// Special handling for partial chunks.
-	if chunk.fileEntry.CombinedChunkStatus() > siafile.CombinedChunkStatusNoChunk &&
-		chunk.index == chunk.fileEntry.NumChunks()-1 {
+	if chunk.fileEntry.IsCompletePartialChunk(chunk.index) ||
+		chunk.fileEntry.IsIncompletePartialChunk(chunk.index) {
 		return r.managedReadPartialLogicalChunkData(chunk, download)
 	}
 	// Otherwise read full chunk from disk.

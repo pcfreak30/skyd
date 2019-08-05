@@ -120,7 +120,7 @@ func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modul
 	}
 
 	// Update the combined chunk metadata.
-	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusCompleted
+	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusInComplete
 	sf.staticMetadata.CombinedChunkIndices = chunkIndices
 	sf.staticMetadata.CombinedChunkOffset = uint64(offset)
 	sf.staticMetadata.CombinedChunkLength = uint64(length)
