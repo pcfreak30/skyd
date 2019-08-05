@@ -206,6 +206,65 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	return r.managedUntarDir(tr)
 }
 
+// managedTarPartialsSiaFile tars the files in the combined chunk folder.
+func (r *Renter) managedTarCombinedChunkDir(tw *tar.Writer) error {
+	if true {
+		return errors.New("not implemented yet")
+	}
+	// Walk over all the partials siafiles and add them to the tarball.
+	return filepath.Walk(r.staticPartialChunkSet.combinedChunkRoot, func(path string, info os.FileInfo, err error) error {
+		// This error is non-nil if filepath.Walk couldn't stat a file or
+		// folder.
+		if err != nil {
+			return err
+		}
+		// Nothing to do for files that are not PartialsSiaFiles
+		if filepath.Ext(path) != ".cc" && filepath.Ext(path) != ".unfinished" && filepath.Ext(path) != ".ccmd" {
+			return nil
+		}
+		fmt.Println("taring", path)
+		// Create the header for the file/dir.
+		header, err := tar.FileInfoHeader(info, info.Name())
+		if err != nil {
+			return err
+		}
+		relPath := strings.TrimPrefix(path, r.staticPartialChunkSet.combinedChunkRoot)
+		header.Name = relPath
+		// Get the siafile.
+		siaPathStr := strings.TrimSuffix(relPath, modules.SiaFileExtension)
+		siaPathStr = strings.TrimSuffix(siaPathStr, modules.PartialsSiaFileExtension)
+		siaPath, err := modules.NewSiaPath(siaPathStr)
+		if err != nil {
+			return err
+		}
+		entry, err := r.staticFileSet.LoadPartialSiaFile(siaPath)
+		if err != nil {
+			return err
+		}
+		defer entry.Close()
+		// Get a reader to read from the siafile.
+		sr, err := entry.SnapshotReader()
+		if err != nil {
+			return err
+		}
+		defer sr.Close()
+		// Update the size of the file within the header since it might have changed
+		// while we weren't holding the lock.
+		fi, err := sr.Stat()
+		if err != nil {
+			return err
+		}
+		header.Size = fi.Size()
+		// Write the header.
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		// Add the file to the archive.
+		_, err = io.Copy(tw, sr)
+		return err
+	})
+}
+
 // managedTarPartialsSiaFile tars only partials Siafiles. This makes sure than
 // when untaring the archive, we read those files first.
 func (r *Renter) managedTarPartialsSiaFile(tw *tar.Writer) error {

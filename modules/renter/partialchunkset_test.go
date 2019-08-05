@@ -28,7 +28,7 @@ func TestCombinedChunkName(t *testing.T) {
 	}
 	rcid := randomChunkID()
 	chunkName := combinedChunkName(rs, rcid)
-	expectedName := fmt.Sprintf("%v%v%v", rs.Identifier(), combinedChunkNameSeparator, rcid)
+	expectedName := fmt.Sprintf("%v%v%v%v", rs.Identifier(), combinedChunkNameSeparator, rcid, combinedChunkExtension)
 	if chunkName != expectedName {
 		t.Fatalf("name doesn't match expected name: %v %v",
 			chunkName, expectedName)

@@ -25,6 +25,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
@@ -55,9 +56,23 @@ type (
 
 var (
 	combinedChunkNameSeparator = "-"
+	combinedChunkExtension     = ".cc"
 	unfinishedChunkExtension   = ".unfinished"
-	chunkMetadataExtension     = ".md"
+	chunkMetadataExtension     = ".ccmd"
 )
+
+// splitCombinedChunkName splits the name of a combined chunk into the erasure
+// code identifier and combined chunk id.
+func splitCombinedChunkName(name string) (modules.ErasureCoderIdentifier, modules.CombinedChunkID, error) {
+	name = strings.TrimSuffix(name, unfinishedChunkExtension)
+	name = strings.TrimSuffix(name, combinedChunkExtension)
+	split := strings.Split(name, combinedChunkNameSeparator)
+	if len(split) != 2 {
+		build.Critical("filename should be split into exactly 2 halves but was", len(split))
+		return "", "", fmt.Errorf("filename should be split into exactly 2 halves but was %v", split)
+	}
+	return modules.ErasureCoderIdentifier(split[0]), modules.CombinedChunkID(split[1]), nil
+}
 
 // newPartialChunkSet creates a partial chunk set ready to combine partial
 // chunks.
@@ -77,12 +92,10 @@ func newPartialChunkSet(combinedChunkRoot string) (*partialChunkSet, error) {
 			return nil
 		}
 		// Get the erasure code identifier and chunkID from the filename.
-		s := strings.Split(info.Name(), combinedChunkNameSeparator)
-		if len(s) != 2 {
-			return fmt.Errorf("filename '%v' was split in more than 2 halves", info.Name())
+		ecIdentifier, chunkID, err := splitCombinedChunkName(info.Name())
+		if err != nil {
+			return err
 		}
-		ecIdentifier := modules.ErasureCoderIdentifier(s[0])
-		chunkID := modules.CombinedChunkID(strings.TrimSuffix(s[1], unfinishedChunkExtension))
 		// Check for conflicts.
 		if conflictingID, exists := ucc[ecIdentifier]; exists {
 			return fmt.Errorf("found multiple unfinished chunks for the same erasure coding: '%v' '%v'",
@@ -118,7 +131,7 @@ func (pcs *partialChunkSet) combinedChunkMDPath(chunkID modules.CombinedChunkID,
 
 // combinedChunkName returns the filename of a combined chunk.
 func combinedChunkName(ec modules.ErasureCoder, chunkID modules.CombinedChunkID) string {
-	return fmt.Sprintf("%v%v%v", ec.Identifier(), combinedChunkNameSeparator, chunkID)
+	return fmt.Sprintf("%v%v%v%v", ec.Identifier(), combinedChunkNameSeparator, chunkID, combinedChunkExtension)
 }
 
 // loadChunkMetadata loads the metadata for a combined chunk given its ID and
