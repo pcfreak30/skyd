@@ -387,7 +387,8 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 // to be repaired from disk or repair by upload streaming
 func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForRenewMap map[string]bool) (h float64, uh float64, err error) {
 	// Handle returning health of complete partial chunk.
-	if cci, isPartial := sf.isCompletePartialChunk(uint64(chunk.Index)); isPartial {
+	incomplete := sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusInComplete
+	if cci, isPartial := sf.isCompletePartialChunk(uint64(chunk.Index)); isPartial && !incomplete {
 		return sf.partialsSiaFile.ChunkHealth(int(cci), offlineMap, goodForRenewMap)
 	}
 	// The max number of good pieces that a chunk can have is NumPieces()
