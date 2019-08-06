@@ -198,6 +198,13 @@ func (sf *SiaFile) ChangeTime() time.Time {
 	return sf.staticMetadata.ChangeTime
 }
 
+// CombinedChunkIDs returns the CombinedChunkIDs of the file.
+func (sf *SiaFile) CombinedChunkIDs() []modules.CombinedChunkID {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.CombinedChunkIDs
+}
+
 // CombinedChunkIndices returns the CombinedChunkIndices of the file.
 func (sf *SiaFile) CombinedChunkIndices() []uint64 {
 	sf.mu.RLock()

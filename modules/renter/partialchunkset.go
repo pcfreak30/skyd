@@ -441,5 +441,43 @@ func (pcs *partialChunkSet) isUnfinished(cid modules.CombinedChunkID, ec modules
 func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChunk) (bool, error) {
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
-	return false, nil
+	// If the partial chunk is not yet part of a combined chunk regardless of
+	// whether it's a complete or incomplete one an error is returned.
+	if !chunk.fileEntry.IsCompletePartialChunk(chunk.index) {
+		return false, errors.New("can't fetch logical combined chunk for an incomplete partial chunk")
+	}
+	// Get the correct chunkID.
+	var chunkID modules.CombinedChunkID
+	chunkIDs := chunk.fileEntry.CombinedChunkIDs()
+	switch len(chunkIDs) {
+	case 1:
+		chunkID = chunkIDs[0]
+	case 2:
+		chunkID = chunkIDs[chunk.fileEntry.NumChunks()-chunk.index-1]
+	default:
+		return false, fmt.Errorf("invalid number of chunkIDs: '%v'", len(chunkIDs))
+	}
+	// If the chunk is incomplete there is nothing we can do right now.
+	if pcs.isUnfinished(chunkID, chunk.fileEntry.ErasureCode()) {
+		return false, nil
+	}
+	// If it is complete we load it and add it to the chunk.
+	f, err := os.Open(pcs.combinedChunkPath(chunkID, chunk.fileEntry.ErasureCode(), false))
+	if err != nil {
+		return false, errors.AddContext(err, "failed to open combined chunk file")
+	}
+	defer f.Close()
+	// If the chunk is complete and the siafile's status hasn't been updated yet do
+	// it now.
+	// TODO: this isn't quite true. Some partial chunks consist of 2 combined
+	// chunks which might not both be complete. We probably should only set this if
+	// both are complete and tracked by the renter.
+	if chunk.fileEntry.CombinedChunkStatus() < siafile.CombinedChunkStatusCompleted {
+		if err := chunk.fileEntry.SetChunkStatusCompleted(); err != nil {
+			return false, err
+		}
+	}
+	// Read the combined chunk.
+	_, err = chunk.readLogicalData(f)
+	return true, err
 }
