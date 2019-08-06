@@ -29,8 +29,14 @@ var (
 	// combined chunks.
 	PartialsSiaFileExtension = ".csia"
 
-	// PartialChunkExtension is the extension for a partial chunk on disk
-	PartialChunkExtension = ".partial"
+	// CombinedChunkExtension is the extension for a combined chunk on disk.
+	CombinedChunkExtension = ".cc"
+	// UnfinishedChunkExtension is the extension for an unfinished combined chunk
+	// and is appended to the file in addition to CombinedChunkExtension.
+	UnfinishedChunkExtension = ".unfinished"
+	// ChunkMetadataExtension is the extension of a metadata file for a combined
+	// chunk.
+	ChunkMetadataExtension = ".ccmd"
 )
 
 type (

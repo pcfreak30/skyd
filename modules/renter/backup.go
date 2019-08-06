@@ -104,6 +104,12 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 		gzwErr := gzw.Close()
 		return errors.AddContext(errors.Compose(err, twErr, gzwErr), "failed to tar partials sia file")
 	}
+	// Tar the combined chunks next.
+	if err := r.staticPartialChunkSet.TarCombinedChunks(tw); err != nil {
+		twErr := tw.Close()
+		gzwErr := gzw.Close()
+		return errors.Compose(err, twErr, gzwErr)
+	}
 	// Add the remaining files to the archive.
 	if err := r.managedTarSiaFiles(tw); err != nil {
 		twErr := tw.Close()
@@ -206,65 +212,6 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	return r.managedUntarDir(tr)
 }
 
-// managedTarPartialsSiaFile tars the files in the combined chunk folder.
-func (r *Renter) managedTarCombinedChunkDir(tw *tar.Writer) error {
-	if true {
-		return errors.New("not implemented yet")
-	}
-	// Walk over all the partials siafiles and add them to the tarball.
-	return filepath.Walk(r.staticPartialChunkSet.combinedChunkRoot, func(path string, info os.FileInfo, err error) error {
-		// This error is non-nil if filepath.Walk couldn't stat a file or
-		// folder.
-		if err != nil {
-			return err
-		}
-		// Nothing to do for files that are not PartialsSiaFiles
-		if filepath.Ext(path) != ".cc" && filepath.Ext(path) != ".unfinished" && filepath.Ext(path) != ".ccmd" {
-			return nil
-		}
-		fmt.Println("taring", path)
-		// Create the header for the file/dir.
-		header, err := tar.FileInfoHeader(info, info.Name())
-		if err != nil {
-			return err
-		}
-		relPath := strings.TrimPrefix(path, r.staticPartialChunkSet.combinedChunkRoot)
-		header.Name = relPath
-		// Get the siafile.
-		siaPathStr := strings.TrimSuffix(relPath, modules.SiaFileExtension)
-		siaPathStr = strings.TrimSuffix(siaPathStr, modules.PartialsSiaFileExtension)
-		siaPath, err := modules.NewSiaPath(siaPathStr)
-		if err != nil {
-			return err
-		}
-		entry, err := r.staticFileSet.LoadPartialSiaFile(siaPath)
-		if err != nil {
-			return err
-		}
-		defer entry.Close()
-		// Get a reader to read from the siafile.
-		sr, err := entry.SnapshotReader()
-		if err != nil {
-			return err
-		}
-		defer sr.Close()
-		// Update the size of the file within the header since it might have changed
-		// while we weren't holding the lock.
-		fi, err := sr.Stat()
-		if err != nil {
-			return err
-		}
-		header.Size = fi.Size()
-		// Write the header.
-		if err := tw.WriteHeader(header); err != nil {
-			return err
-		}
-		// Add the file to the archive.
-		_, err = io.Copy(tw, sr)
-		return err
-	})
-}
-
 // managedTarPartialsSiaFile tars only partials Siafiles. This makes sure than
 // when untaring the archive, we read those files first.
 func (r *Renter) managedTarPartialsSiaFile(tw *tar.Writer) error {
@@ -334,8 +281,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		// Nothing to do for files not relevant to Sia.
 		if !info.IsDir() &&
 			filepath.Ext(path) != modules.SiaFileExtension &&
-			filepath.Ext(path) != modules.SiaDirExtension &&
-			filepath.Ext(path) != modules.PartialChunkExtension {
+			filepath.Ext(path) != modules.SiaDirExtension {
 			return nil
 		}
 		// Create the header for the file/dir.
@@ -514,30 +460,6 @@ func (r *Renter) managedUntarPartialsSiaFile(b []byte, dst string, idxConversion
 	return nil
 }
 
-// managedUntarPartialChunk untars a partial chunk from an archive and saves it
-// to dst.
-func (r *Renter) managedUntarPartialChunk(b []byte, dst string) error {
-	// TODO: this is actually more tricky than this. There is a chance that the
-	// partial chunk belongs to a siafile with a suffix. We need to figure out
-	// how to handle that.
-	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if os.IsExist(err) {
-		return nil // partial chunk exists already
-	} else if err != nil {
-		return err
-	}
-	// Write partial chunk.
-	_, err = f.Write(b)
-	if err != nil {
-		return errors.Compose(err, f.Close())
-	}
-	// Close file again.
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return nil
-}
-
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
 func (r *Renter) managedUntarDir(tr *tar.Reader) error {
@@ -575,8 +497,12 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			err = r.managedUntarSiaFile(b, dst, idxConversionMaps)
 		case modules.PartialsSiaFileExtension:
 			err = r.managedUntarPartialsSiaFile(b, dst, idxConversionMaps)
-		case modules.PartialChunkExtension:
-			err = r.managedUntarPartialChunk(b, dst)
+		case modules.CombinedChunkExtension:
+			fallthrough // same as ChunkMetadataExtension
+		case modules.ChunkMetadataExtension:
+			fallthrough // same as UnfinishedChunkExtension
+		case modules.UnfinishedChunkExtension:
+			err = r.staticPartialChunkSet.UntarCombinedChunk(b, header.Name)
 		}
 		if err != nil {
 			return err

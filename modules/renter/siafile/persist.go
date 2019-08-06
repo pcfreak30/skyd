@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -660,12 +659,6 @@ func createInsertUpdate(path string, index int64, data []byte) writeaheadlog.Upd
 // specific part of the SiaFile. e.g. the metadata
 func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Update {
 	return createInsertUpdate(sf.siaFilePath, index, data)
-}
-
-// partialFilePath is a helper to return the path to the SiaFile's .partial
-// file.
-func (sf *SiaFile) partialFilePath() string {
-	return strings.TrimSuffix(sf.siaFilePath, modules.SiaFileExtension) + modules.PartialChunkExtension
 }
 
 // readAndApplyInsertUpdate reads the insert update for a SiaFile and then

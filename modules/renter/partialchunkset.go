@@ -7,9 +7,11 @@ package renter
 // TODO: how to prune the mega files?
 // TODO: force snapshots not to use partial uploads
 // TODO: make sure we don't push the same combined chunk into the repair heap multiple times in parallel
-// TODO: backup combined chunks
+// TODO: merge incomplete chunks on recovery
+// TODO: siafile batching
 
 import (
+	"archive/tar"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -56,16 +58,13 @@ type (
 
 var (
 	combinedChunkNameSeparator = "-"
-	combinedChunkExtension     = ".cc"
-	unfinishedChunkExtension   = ".unfinished"
-	chunkMetadataExtension     = ".ccmd"
 )
 
 // splitCombinedChunkName splits the name of a combined chunk into the erasure
 // code identifier and combined chunk id.
 func splitCombinedChunkName(name string) (modules.ErasureCoderIdentifier, modules.CombinedChunkID, error) {
-	name = strings.TrimSuffix(name, unfinishedChunkExtension)
-	name = strings.TrimSuffix(name, combinedChunkExtension)
+	name = strings.TrimSuffix(name, modules.UnfinishedChunkExtension)
+	name = strings.TrimSuffix(name, modules.CombinedChunkExtension)
 	split := strings.Split(name, combinedChunkNameSeparator)
 	if len(split) != 2 {
 		build.Critical("filename should be split into exactly 2 halves but was", len(split))
@@ -88,7 +87,7 @@ func newPartialChunkSet(combinedChunkRoot string) (*partialChunkSet, error) {
 		if err != nil {
 			return err
 		}
-		if filepath.Ext(info.Name()) != unfinishedChunkExtension {
+		if filepath.Ext(info.Name()) != modules.UnfinishedChunkExtension {
 			return nil
 		}
 		// Get the erasure code identifier and chunkID from the filename.
@@ -118,7 +117,7 @@ func newPartialChunkSet(combinedChunkRoot string) (*partialChunkSet, error) {
 func (pcs *partialChunkSet) combinedChunkPath(chunkID modules.CombinedChunkID, ec modules.ErasureCoder, unfinished bool) string {
 	path := filepath.Join(pcs.combinedChunkRoot, combinedChunkName(ec, chunkID))
 	if unfinished {
-		path += unfinishedChunkExtension
+		path += modules.UnfinishedChunkExtension
 	}
 	return path
 }
@@ -126,12 +125,12 @@ func (pcs *partialChunkSet) combinedChunkPath(chunkID modules.CombinedChunkID, e
 // combinedChunkMDPath returns the path for a given combined chunk's metadata
 // given its ID and erasure coder.
 func (pcs *partialChunkSet) combinedChunkMDPath(chunkID modules.CombinedChunkID, ec modules.ErasureCoder) string {
-	return filepath.Join(pcs.combinedChunkRoot, combinedChunkName(ec, chunkID)) + chunkMetadataExtension
+	return filepath.Join(pcs.combinedChunkRoot, combinedChunkName(ec, chunkID)) + modules.ChunkMetadataExtension
 }
 
 // combinedChunkName returns the filename of a combined chunk.
 func combinedChunkName(ec modules.ErasureCoder, chunkID modules.CombinedChunkID) string {
-	return fmt.Sprintf("%v%v%v%v", ec.Identifier(), combinedChunkNameSeparator, chunkID, combinedChunkExtension)
+	return fmt.Sprintf("%v%v%v%v", ec.Identifier(), combinedChunkNameSeparator, chunkID, modules.CombinedChunkExtension)
 }
 
 // loadChunkMetadata loads the metadata for a combined chunk given its ID and
@@ -305,6 +304,80 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 	return sf.SetCombinedChunk(offset, int64(len(partialChunk)), chunks, updates)
 }
 
+// UntarCombinedChunk untars a combined chunk or combined chunk related metadata
+// files.
+func (pcs *partialChunkSet) UntarCombinedChunk(b []byte, relPath string) error {
+	pcs.mu.Lock()
+	defer pcs.mu.Unlock()
+	// Sanity check file extension.
+	if !pcs.isPartialChunkSetFileExtension(relPath) {
+		return errors.New("unknown file extension")
+	}
+	// Open the file.
+	dst := filepath.Join(pcs.combinedChunkRoot, relPath)
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	// Write file.
+	_, err = f.Write(b)
+	if err != nil {
+		return errors.Compose(err, f.Close())
+	}
+	// Close file again.
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// TarCombinedChunks adds the combined chunks and their metadata to a tar
+// archive.
+func (pcs *partialChunkSet) TarCombinedChunks(tw *tar.Writer) error {
+	pcs.mu.Lock()
+	defer pcs.mu.Unlock()
+	// Walk over all the partials siafiles and add them to the tarball.
+	return filepath.Walk(pcs.combinedChunkRoot, func(path string, info os.FileInfo, err error) error {
+		// This error is non-nil if filepath.Walk couldn't stat a file or
+		// folder.
+		if err != nil {
+			return err
+		}
+		// Nothing to do for files that are not partial chunk set related.
+		if !pcs.isPartialChunkSetFileExtension(path) {
+			return nil
+		}
+		fmt.Println("taring", path)
+		// Create the header for the file/dir.
+		header, err := tar.FileInfoHeader(info, info.Name())
+		if err != nil {
+			return err
+		}
+		relPath := strings.TrimPrefix(path, pcs.combinedChunkRoot)
+		header.Name = relPath
+		// Open the file.
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		// Update the size of the file within the header since it might have changed
+		// while we weren't holding the lock.
+		fi, err := f.Stat()
+		if err != nil {
+			return err
+		}
+		header.Size = fi.Size()
+		// Write the header.
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		// Add the file to the archive.
+		_, err = io.Copy(tw, f)
+		return err
+	})
+}
+
 // LoadPartialChunk loads a partial chunk from disk.
 func (pcs *partialChunkSet) LoadPartialChunk(chunk *unfinishedDownloadChunk) ([]byte, error) {
 	pcs.mu.Lock()
@@ -341,6 +414,13 @@ func (pcs *partialChunkSet) LoadPartialChunk(chunk *unfinishedDownloadChunk) ([]
 		return nil, fmt.Errorf("expected 0 bytes to be remaining but was %v", remaining)
 	}
 	return partialChunk, nil
+}
+
+// isPartialChunkSetFileExtension returns true if the provided path points to a
+// file related to the partial chunk set.
+func (pcs *partialChunkSet) isPartialChunkSetFileExtension(path string) bool {
+	return filepath.Ext(path) == modules.CombinedChunkExtension || filepath.Ext(path) == modules.UnfinishedChunkExtension ||
+		filepath.Ext(path) == modules.ChunkMetadataExtension
 }
 
 // isUnfinished returns true if the provided chunk id is an unfinished chunk.
