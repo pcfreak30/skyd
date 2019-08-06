@@ -990,14 +990,15 @@ func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
 // isCompletePartialChunk returns 'true' if the provided index points to a
 // partial chunk which has been added to the partials sia file already.
 func (sf *SiaFile) isCompletePartialChunk(chunkIndex uint64) (uint64, bool) {
-	if sf.staticMetadata.CombinedChunkStatus <= CombinedChunkStatusHasChunk {
+	if sf.staticMetadata.CombinedChunkStatus < CombinedChunkStatusInComplete {
 		return 0, false
 	}
-	if chunkIndex == uint64(sf.numChunks-1) {
+	if len(sf.staticMetadata.CombinedChunkIDs) == 1 && chunkIndex == uint64(sf.numChunks)-1 {
 		return sf.staticMetadata.CombinedChunkIndices[0], true
 	}
-	if chunkIndex == uint64(sf.numChunks) && len(sf.staticMetadata.CombinedChunkIndices) == 2 {
-		return sf.staticMetadata.CombinedChunkIndices[1], true
+	if len(sf.staticMetadata.CombinedChunkIDs) == 2 && chunkIndex >= uint64(sf.numChunks)-2 {
+		idx := uint64(sf.numChunks) - chunkIndex - 1
+		return sf.staticMetadata.CombinedChunkIndices[idx], true
 	}
 	return 0, false
 }
