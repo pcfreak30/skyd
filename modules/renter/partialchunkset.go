@@ -115,7 +115,7 @@ func newPartialChunkSet(combinedChunkRoot string) (*partialChunkSet, error) {
 // combinedChunkPath returns the path for a given finished or unfinished
 // combined chunk given its ID and erasure coder.
 func (pcs *partialChunkSet) combinedChunkPath(chunkID modules.CombinedChunkID, ec modules.ErasureCoder, unfinished bool) string {
-	path := filepath.Join(pcs.combinedChunkRoot, combinedChunkName(ec, chunkID))
+	path := filepath.Join(pcs.combinedChunkRoot, combinedChunkName(ec, chunkID)+modules.CombinedChunkExtension)
 	if unfinished {
 		path += modules.UnfinishedChunkExtension
 	}
@@ -130,7 +130,7 @@ func (pcs *partialChunkSet) combinedChunkMDPath(chunkID modules.CombinedChunkID,
 
 // combinedChunkName returns the filename of a combined chunk.
 func combinedChunkName(ec modules.ErasureCoder, chunkID modules.CombinedChunkID) string {
-	return fmt.Sprintf("%v%v%v%v", ec.Identifier(), combinedChunkNameSeparator, chunkID, modules.CombinedChunkExtension)
+	return fmt.Sprintf("%v%v%v", ec.Identifier(), combinedChunkNameSeparator, chunkID)
 }
 
 // loadChunkMetadata loads the metadata for a combined chunk given its ID and
@@ -315,8 +315,13 @@ func (pcs *partialChunkSet) UntarCombinedChunk(b []byte, relPath string) error {
 	}
 	// Open the file.
 	dst := filepath.Join(pcs.combinedChunkRoot, relPath)
+	// Trim the "unfinished" suffix from the dst. Imported unfinished chunks become
+	// finished chunks.
+	dst = strings.TrimSuffix(dst, modules.UnfinishedChunkExtension)
 	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
+	if os.IsExist(err) {
+		return nil // importing in same renter
+	} else if err != nil {
 		return err
 	}
 	// Write file.
@@ -328,6 +333,7 @@ func (pcs *partialChunkSet) UntarCombinedChunk(b []byte, relPath string) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
+	// If the file was an unfinished combined chunk and we don't have one yet for that
 	return nil
 }
 
@@ -347,7 +353,6 @@ func (pcs *partialChunkSet) TarCombinedChunks(tw *tar.Writer) error {
 		if !pcs.isPartialChunkSetFileExtension(path) {
 			return nil
 		}
-		fmt.Println("taring", path)
 		// Create the header for the file/dir.
 		header, err := tar.FileInfoHeader(info, info.Name())
 		if err != nil {
@@ -400,7 +405,7 @@ func (pcs *partialChunkSet) LoadPartialChunk(chunk *unfinishedDownloadChunk) ([]
 		path := pcs.combinedChunkPath(ci, ec, pcs.isUnfinished(ci, ec))
 		f, err := os.Open(path)
 		if err != nil {
-			return nil, errors.New("failed to open combined chunk")
+			return nil, errors.AddContext(err, "failed to open combined chunk")
 		}
 		defer f.Close()
 		n, err := f.ReadAt(partialChunk[chunkLength-remaining:], int64(offset))

@@ -28,7 +28,7 @@ func TestCombinedChunkName(t *testing.T) {
 	}
 	rcid := randomChunkID()
 	chunkName := combinedChunkName(rs, rcid)
-	expectedName := fmt.Sprintf("%v%v%v%v", rs.Identifier(), combinedChunkNameSeparator, rcid, combinedChunkExtension)
+	expectedName := fmt.Sprintf("%v%v%v", rs.Identifier(), combinedChunkNameSeparator, rcid)
 	if chunkName != expectedName {
 		t.Fatalf("name doesn't match expected name: %v %v",
 			chunkName, expectedName)
@@ -189,10 +189,10 @@ func TestNewPartialChunkSet(t *testing.T) {
 	}
 	unfinishedChunkID1 := randomChunkID()
 	unfinishedChunkID2 := randomChunkID()
-	finishedChunk11 := combinedChunkName(ec11, randomChunkID())
-	unfinishedChunk11 := combinedChunkName(ec11, unfinishedChunkID1) + unfinishedChunkExtension
-	finishedChunk12 := combinedChunkName(ec12, randomChunkID())
-	unfinishedChunk31 := combinedChunkName(ec31, unfinishedChunkID2) + unfinishedChunkExtension
+	finishedChunk11 := combinedChunkName(ec11, randomChunkID()) + modules.CombinedChunkExtension
+	unfinishedChunk11 := combinedChunkName(ec11, unfinishedChunkID1) + modules.CombinedChunkExtension + modules.UnfinishedChunkExtension
+	finishedChunk12 := combinedChunkName(ec12, randomChunkID()) + modules.CombinedChunkExtension
+	unfinishedChunk31 := combinedChunkName(ec31, unfinishedChunkID2) + modules.CombinedChunkExtension + modules.UnfinishedChunkExtension
 	err = ioutil.WriteFile(filepath.Join(pcs.combinedChunkRoot, finishedChunk11), []byte{0}, 0600)
 	if err != nil {
 		t.Fatal(err)
@@ -228,7 +228,7 @@ func TestNewPartialChunkSet(t *testing.T) {
 	}
 	// Write another unfinished chunk to disk and reuse the erasure coder
 	// identifier to cause a conflict.
-	unfinishedChunkConflict := combinedChunkName(ec11, randomChunkID()) + unfinishedChunkExtension
+	unfinishedChunkConflict := combinedChunkName(ec11, randomChunkID()) + modules.CombinedChunkExtension + modules.UnfinishedChunkExtension
 	err = ioutil.WriteFile(filepath.Join(pcs.combinedChunkRoot, unfinishedChunkConflict), []byte{0}, 0600)
 	if err != nil {
 		t.Fatal(err)

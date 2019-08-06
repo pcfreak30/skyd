@@ -4273,7 +4273,10 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	// Delete the file locally.
-	if err := lf.Delete(); err != nil {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return lf.Delete()
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	// Create a backup.
