@@ -128,6 +128,7 @@ func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modul
 	sf.staticMetadata.CombinedChunkOffset = uint64(offset)
 	sf.staticMetadata.CombinedChunkLength = uint64(length)
 	sf.staticMetadata.CombinedChunkIDs = chunkIDs
+	sf.numChunks = sf.numChunks - 1 + len(combinedChunks)
 	u, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err

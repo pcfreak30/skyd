@@ -453,7 +453,7 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	case 1:
 		chunkID = chunkIDs[0]
 	case 2:
-		chunkID = chunkIDs[chunk.fileEntry.NumChunks()-chunk.index-1]
+		chunkID = chunkIDs[chunk.fileEntry.NumChunks()-chunk.index-2]
 	default:
 		return false, fmt.Errorf("invalid number of chunkIDs: '%v'", len(chunkIDs))
 	}

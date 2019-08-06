@@ -407,8 +407,7 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	if uuc30Three.fileEntry.CombinedChunkIndices()[0] != 0 || uuc30Three.fileEntry.CombinedChunkIndices()[1] != 1 {
 		t.Fatal("file should have chunk indices 0 and 1")
 	}
-	// Fetch the combined chunk for all files. This should return 'true' since we
-	// are within the threshold.
+	// Fetch the combined chunk for all files. This should return 'true'.
 	fetched, err = pcs.FetchLogicalCombinedChunk(uuc30One)
 	if err != nil {
 		t.Fatal(err)

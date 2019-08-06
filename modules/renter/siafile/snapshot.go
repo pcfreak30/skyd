@@ -129,14 +129,15 @@ func (s *Snapshot) ErasureCode() modules.ErasureCoder {
 // IsCompletePartialChunk returns 'true' if the provided index points to a
 // partial chunk which has been added to the partials sia file already.
 func (s *Snapshot) IsCompletePartialChunk(chunkIndex uint64) (uint64, bool) {
-	if s.staticCombinedChunkStatus <= CombinedChunkStatusHasChunk {
+	if s.CombinedChunkStatus() < CombinedChunkStatusInComplete {
 		return 0, false
 	}
-	if chunkIndex == uint64(len(s.staticChunks)-1) {
+	if len(s.CombinedChunkIDs()) == 1 && chunkIndex == uint64(s.NumChunks())-1 {
 		return s.staticCombinedChunkIndices[0], true
 	}
-	if chunkIndex == uint64(len(s.staticChunks)) && len(s.staticCombinedChunkIndices) == 2 {
-		return s.staticCombinedChunkIndices[1], true
+	if len(s.CombinedChunkIDs()) == 2 && chunkIndex >= uint64(s.NumChunks())-2 {
+		idx := uint64(s.NumChunks()) - chunkIndex - 1
+		return s.staticCombinedChunkIndices[idx], true
 	}
 	return 0, false
 }
