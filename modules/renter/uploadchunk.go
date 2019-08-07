@@ -655,8 +655,9 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		r.log.Debugln("SUCCESS: repair successful, marking chunk as non-stuck:", uc.id)
 	}
 	// Update chunk stuck status only if the chunk isn't an incomplete partial
-	// chunk.
-	if !incompletePartial {
+	// chunk. An incomplete partial chunk might not be repairable because we don't
+	// have a full combined chunk yet. That doesn't mean it's stuck.
+	if !incompletePartial || successfulRepair {
 		if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
 			r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
 		}
