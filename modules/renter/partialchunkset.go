@@ -402,7 +402,11 @@ func (pcs *partialChunkSet) LoadPartialChunk(chunk *unfinishedDownloadChunk) ([]
 	switch idx {
 	case 0:
 		offset = snap.CombinedChunkOffset()
-		length = snap.ChunkSize() - offset
+		if len(chunkIDs) == 1 {
+			length = snap.CombinedChunkLength()
+		} else {
+			length = snap.ChunkSize() - offset
+		}
 	case 1:
 		offset = 0
 		length = snap.CombinedChunkLength() - snap.ChunkSize() + snap.CombinedChunkOffset()

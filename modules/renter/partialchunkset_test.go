@@ -95,19 +95,24 @@ func TestLoadPartialChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pc1, err := pcs.LoadPartialChunk(&unfinishedDownloadChunk{renterFile: snap1})
+	pc1a, err := pcs.LoadPartialChunk(&unfinishedDownloadChunk{renterFile: snap1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pc2, err := pcs.LoadPartialChunk(&unfinishedDownloadChunk{renterFile: snap2})
+	println("asdf", snap1.NumChunks(), snap1.CombinedChunkStatus(), len(snap1.CombinedChunkIDs()))
+	pc2a, err := pcs.LoadPartialChunk(&unfinishedDownloadChunk{renterFile: snap2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(partialChunk1, pc1) {
-		t.Fatal("loaded chunk doesn't match saved chunk")
+	pc2b, err := pcs.LoadPartialChunk(&unfinishedDownloadChunk{renterFile: snap2, staticChunkIndex: 1})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !bytes.Equal(partialChunk2, pc2) {
-		t.Fatal("loaded chunk doesn't match saved chunk")
+	if !bytes.Equal(partialChunk1, pc1a) {
+		t.Error("loaded chunk doesn't match saved chunk", len(partialChunk1), len(pc1a))
+	}
+	if !bytes.Equal(partialChunk2, append(pc2a, pc2b...)) {
+		t.Error("loaded chunk doesn't match saved chunk", len(partialChunk2), len(pc2a), len(pc2b))
 	}
 }
 
