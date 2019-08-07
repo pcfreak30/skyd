@@ -66,12 +66,20 @@ func randomPiece() piece {
 // chunk, this is a no-op. The combined chunk will be stored in the provided
 // 'dir'.
 func setCombinedChunkOfTestFile(sf *SiaFile) error {
+	return setCustomCombinedChunkOfTestFile(sf, fastrand.Intn(2)+1)
+}
+
+// setCustomCombinedChunkOfTestFile sets either 1 or 2 combined chunks of a
+// SiaFile for testing and changes its status to completed.
+func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error {
+	if numCombinedChunks != 1 && numCombinedChunks != 2 {
+		return errors.New("numCombinedChunks should be 1 or 2")
+	}
 	partialChunkSize := sf.Size() % sf.ChunkSize()
 	if partialChunkSize == 0 {
 		// no partial chunk
 		return nil
 	}
-	numCombinedChunks := fastrand.Intn(2) + 1
 	var combinedChunks []modules.CombinedChunk
 	for i := 0; i < numCombinedChunks; i++ {
 		combinedChunks = append(combinedChunks, modules.CombinedChunk{
@@ -334,8 +342,11 @@ func TestFileHealth(t *testing.T) {
 	}
 
 	// Add good pieces to first Piece Set
-	if err := setCombinedChunkOfTestFile(f); err != nil {
+	if err := setCustomCombinedChunkOfTestFile(f, 1); err != nil {
 		t.Fatal(err)
+	}
+	if f.CombinedChunkStatus() != CombinedChunkStatusCompleted {
+		t.Fatal("File has wrong combined chunk status")
 	}
 	for i := 0; i < 2; i++ {
 		host := fmt.Sprintln("host", i)
@@ -443,7 +454,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Add good pieces to second chunk, confirm health is 1.40 since both chunks
 	// have 2 good pieces.
-	if err := setCombinedChunkOfTestFile(f); err != nil {
+	if err := setCustomCombinedChunkOfTestFile(f, 1); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 4; i++ {
