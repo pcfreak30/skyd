@@ -558,9 +558,7 @@ func (r *Renter) managedBuildAndPushChunks(files []*siafile.SiaFileSetEntry, hos
 	dirHeapHealth := r.directoryHeap.managedPeekHealth()
 	for _, file := range files {
 		// Check if file is a worse health than the directory heap or if it's simply
-		// incomplete due to a missing combined chunk. A file that is incomplete will
-		// only appear as if it has full redundancy even though the actual redundancy
-		// would be 0 since the combined chunk wasn't uploaded yet.
+		// incomplete due to a missing combined chunk.
 		fileHealth := file.Metadata().CachedHealth
 		if fileHealth < dirHeapHealth && target == targetUnstuckChunks {
 			worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)

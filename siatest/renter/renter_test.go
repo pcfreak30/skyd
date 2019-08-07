@@ -966,7 +966,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Check to see if a chunk got repaired and marked as unstuck
 	err = r.WaitForStuckChunksToRepair()
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 	// We should be able to download
 	if _, err := r.DownloadByStream(remoteFile); err != nil {

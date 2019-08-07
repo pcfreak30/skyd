@@ -642,6 +642,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		uc.fileEntry.CombinedChunkStatus() == siafile.CombinedChunkStatusInComplete {
 		incompletePartial = true
 	}
+	successfulRepair = successfulRepair || incompletePartial
 
 	// If the repair was unsuccessful and there was a renter error then return
 	if !successfulRepair && renterError {
@@ -657,7 +658,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	// Update chunk stuck status only if the chunk isn't an incomplete partial
 	// chunk. An incomplete partial chunk might not be repairable because we don't
 	// have a full combined chunk yet. That doesn't mean it's stuck.
-	if !incompletePartial || successfulRepair {
+	if successfulRepair {
 		if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
 			r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
 		}
