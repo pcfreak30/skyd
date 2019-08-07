@@ -93,6 +93,13 @@ func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 func (s *Snapshot) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
 	chunkIndex = offset / s.ChunkSize()
 	off = offset % s.ChunkSize()
+	// If the offset points within a partial chunk, we need to adjust our
+	// calculation to compensate for the potential offset within a combined chunk.
+	if _, isPartial := s.IsCompletePartialChunk(chunkIndex); isPartial {
+		offset += s.staticCombinedChunkOffset
+		chunkIndex = offset / s.ChunkSize()
+		off = offset % s.ChunkSize()
+	}
 	return
 }
 
@@ -132,14 +139,11 @@ func (s *Snapshot) IsCompletePartialChunk(chunkIndex uint64) (uint64, bool) {
 	if s.CombinedChunkStatus() < CombinedChunkStatusInComplete {
 		return 0, false
 	}
-	if len(s.CombinedChunkIDs()) == 1 && chunkIndex == uint64(s.NumChunks())-1 {
-		return s.staticCombinedChunkIndices[0], true
+	idx := CombinedChunkIndex(s.NumChunks(), chunkIndex, len(s.CombinedChunkIDs()))
+	if idx == -1 {
+		return 0, false
 	}
-	if len(s.CombinedChunkIDs()) == 2 && chunkIndex >= uint64(s.NumChunks())-2 {
-		idx := uint64(s.NumChunks()) - chunkIndex - 1
-		return s.staticCombinedChunkIndices[idx], true
-	}
-	return 0, false
+	return s.staticCombinedChunkIndices[idx], true
 }
 
 // IsIncompletePartialChunk returns 'true' if the provided index points to a
@@ -288,7 +292,6 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	sf.staticSiaFileSet.mu.Lock()
 	sp := sf.staticSiaFileSet.siaPath(sf)
 	sf.staticSiaFileSet.mu.Unlock()
-
 	return &Snapshot{
 		staticChunks:               chunks,
 		staticCombinedChunkIDs:     ccids,

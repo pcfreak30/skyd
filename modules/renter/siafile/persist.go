@@ -128,13 +128,17 @@ func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modul
 	sf.staticMetadata.CombinedChunkOffset = uint64(offset)
 	sf.staticMetadata.CombinedChunkLength = uint64(length)
 	sf.staticMetadata.CombinedChunkIDs = chunkIDs
-	sf.numChunks = sf.numChunks - 1 + len(combinedChunks)
 	u, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
 	}
 	updates = append(updates, u...)
-	return createAndApplyTransaction(sf.wal, updates...)
+	err = createAndApplyTransaction(sf.wal, updates...)
+	if err != nil {
+		return err
+	}
+	sf.numChunks = sf.numChunks - 1 + len(combinedChunks)
+	return nil
 }
 
 // SetPartialsSiaFile sets the partialsSiaFile field of the SiaFile. This is
@@ -288,6 +292,9 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		numChunks++
 	}
 	sf.numChunks = int(numChunks)
+	if len(sf.staticMetadata.CombinedChunkIDs) > 0 {
+		sf.numChunks = sf.numChunks - 1 + len(sf.staticMetadata.CombinedChunkIDs)
+	}
 	return sf, nil
 }
 

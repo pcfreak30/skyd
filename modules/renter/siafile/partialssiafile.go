@@ -8,6 +8,21 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
+// CombinedChunkIndex is a helper method which translates a chunk's index to the
+// corresponding combined chunk index dependng on the number of combined chunks.
+func CombinedChunkIndex(numChunks, chunkIndex uint64, numCombinedChunks int) int {
+	if numCombinedChunks == 1 && chunkIndex == numChunks-1 {
+		return 0
+	}
+	if numCombinedChunks == 2 && chunkIndex == numChunks-2 {
+		return 0
+	}
+	if numCombinedChunks == 2 && chunkIndex == numChunks-1 {
+		return 1
+	}
+	return -1
+}
+
 // Merge merges two PartialsSiafiles into one, returning a map which translates
 // chunk indices in newFile to indices in sf.
 func (sf *SiaFile) Merge(newFile *SiaFile) (map[uint64]uint64, error) {

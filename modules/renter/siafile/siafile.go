@@ -422,15 +422,6 @@ func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRen
 	return sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 }
 
-// ChunkIndexByOffset will return the chunkIndex that contains the provided
-// offset of a file and also the relative offset within the chunk. If the
-// offset is out of bounds, chunkIndex will be equal to NumChunk().
-func (sf *SiaFile) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
-	chunkIndex = offset / sf.staticChunkSize()
-	off = offset % sf.staticChunkSize()
-	return
-}
-
 // Delete removes the file from disk and marks it as deleted. Once the file is
 // deleted, certain methods should return an error.
 func (sf *SiaFile) Delete() error {
@@ -993,14 +984,11 @@ func (sf *SiaFile) isCompletePartialChunk(chunkIndex uint64) (uint64, bool) {
 	if sf.staticMetadata.CombinedChunkStatus < CombinedChunkStatusInComplete {
 		return 0, false
 	}
-	if len(sf.staticMetadata.CombinedChunkIDs) == 1 && chunkIndex == uint64(sf.numChunks)-1 {
-		return sf.staticMetadata.CombinedChunkIndices[0], true
+	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.CombinedChunkIndices))
+	if idx == -1 {
+		return 0, false
 	}
-	if len(sf.staticMetadata.CombinedChunkIDs) == 2 && chunkIndex >= uint64(sf.numChunks)-2 {
-		idx := uint64(sf.numChunks) - chunkIndex - 1
-		return sf.staticMetadata.CombinedChunkIndices[idx], true
-	}
-	return 0, false
+	return sf.staticMetadata.CombinedChunkIndices[idx], true
 }
 
 // isIncompletePartialChunk returns 'true' if the provided index points to a

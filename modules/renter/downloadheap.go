@@ -13,6 +13,8 @@ import (
 	"errors"
 	"sync/atomic"
 	"time"
+
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
 var (
@@ -178,7 +180,12 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 			r.log.Debugln(err)
 			return false
 		}
-		err = udc.destination.WritePieces(udc.renterFile.ErasureCode(), shards, udc.staticFetchOffset, udc.staticWriteOffset, udc.staticFetchLength)
+		sfo := udc.staticFetchOffset
+		numCombinedChunks := len(udc.renterFile.CombinedChunkIDs())
+		if idx := siafile.CombinedChunkIndex(udc.renterFile.NumChunks(), udc.staticChunkIndex, numCombinedChunks); idx == 0 {
+			sfo -= udc.renterFile.CombinedChunkOffset()
+		}
+		err = udc.destination.WritePieces(udc.renterFile.ErasureCode(), shards, sfo, udc.staticWriteOffset, udc.staticFetchLength)
 		if err != nil {
 			r.log.Debugln(err)
 			return false

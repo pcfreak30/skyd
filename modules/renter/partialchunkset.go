@@ -391,32 +391,40 @@ func (pcs *partialChunkSet) LoadPartialChunk(chunk *unfinishedDownloadChunk) ([]
 	if _, isPartial := snap.IsCompletePartialChunk(uint64(chunk.staticChunkIndex)); !isPartial {
 		return nil, errors.New("can only call LoadPartialChunk if partial chunk has been included in a combined chunk")
 	}
+	// Sanity check chunk ids.
 	chunkIDs := snap.CombinedChunkIDs()
-	chunkOffset := snap.CombinedChunkOffset()
-	chunkLength := snap.CombinedChunkLength()
-	ec := snap.ErasureCode()
 	if len(chunkIDs) != 1 && len(chunkIDs) != 2 {
 		return nil, errors.New("file should contain one or two indices")
 	}
-	partialChunk := make([]byte, chunkLength)
-	remaining := chunkLength
-	offset := chunkOffset
-	for _, ci := range chunkIDs {
-		path := pcs.combinedChunkPath(ci, ec, pcs.isUnfinished(ci, ec))
-		f, err := os.Open(path)
-		if err != nil {
-			return nil, errors.AddContext(err, "failed to open combined chunk")
-		}
-		defer f.Close()
-		n, err := f.ReadAt(partialChunk[chunkLength-remaining:], int64(offset))
-		if err != nil && err != io.EOF {
-			return nil, errors.New("failed to read partial chunk")
-		}
-		remaining -= uint64(n)
+	// Compute offset and length.
+	var offset, length uint64
+	idx := siafile.CombinedChunkIndex(snap.NumChunks(), chunk.staticChunkIndex, len(chunkIDs))
+	switch idx {
+	case 0:
+		offset = snap.CombinedChunkOffset()
+		length = snap.ChunkSize() - offset
+	case 1:
 		offset = 0
+		length = snap.CombinedChunkLength() - snap.ChunkSize() + snap.CombinedChunkOffset()
+	default:
+		return nil, errors.New("invalid idx")
 	}
-	if remaining != 0 {
-		return nil, fmt.Errorf("expected 0 bytes to be remaining but was %v", remaining)
+	// Open the file and read the chunk.
+	ec := snap.ErasureCode()
+	ci := snap.CombinedChunkIDs()[idx]
+	path := pcs.combinedChunkPath(ci, ec, pcs.isUnfinished(ci, ec))
+	partialChunk := make([]byte, length)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to open combined chunk")
+	}
+	defer f.Close()
+	n, err := f.ReadAt(partialChunk, int64(offset))
+	if err != nil {
+		return nil, errors.New("failed to read partial chunk")
+	}
+	if uint64(n) != length {
+		return nil, fmt.Errorf("expected to read %v bytes but read %v", length, n)
 	}
 	return partialChunk, nil
 }
@@ -453,7 +461,7 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	case 1:
 		chunkID = chunkIDs[0]
 	case 2:
-		chunkID = chunkIDs[chunk.fileEntry.NumChunks()-chunk.index-2]
+		chunkID = chunkIDs[siafile.CombinedChunkIndex(chunk.fileEntry.NumChunks(), chunk.index, 2)]
 	default:
 		return false, fmt.Errorf("invalid number of chunkIDs: '%v'", len(chunkIDs))
 	}
@@ -472,11 +480,11 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	// TODO: this isn't quite true. Some partial chunks consist of 2 combined
 	// chunks which might not both be complete. We probably should only set this if
 	// both are complete and tracked by the renter.
-	if chunk.fileEntry.CombinedChunkStatus() < siafile.CombinedChunkStatusCompleted {
-		if err := chunk.fileEntry.SetChunkStatusCompleted(); err != nil {
-			return false, err
-		}
-	}
+	//if chunk.fileEntry.CombinedChunkStatus() < siafile.CombinedChunkStatusCompleted {
+	//	if err := chunk.fileEntry.SetChunkStatusCompleted(); err != nil {
+	//		return false, err
+	//	}
+	//}
 	// Read the combined chunk.
 	_, err = chunk.readLogicalData(f)
 	return true, err
