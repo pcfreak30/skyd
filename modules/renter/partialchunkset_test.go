@@ -346,9 +346,9 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	if uuc30One.fileEntry.CombinedChunks()[0].Status != siafile.CombinedChunkStatusInComplete {
 		t.Fatal("status of file isn't 'incomplete'")
 	}
-	if len(uuc30One.fileEntry.CombinedChunks()[0].ID) != 1 {
+	if len(uuc30One.fileEntry.CombinedChunks()) != 1 {
 		t.Fatalf("expected file to have 1 combined chunk but got %v",
-			len(uuc30One.fileEntry.CombinedChunks()[0].ID))
+			len(uuc30One.fileEntry.CombinedChunks()))
 	}
 	if uuc30One.fileEntry.CombinedChunks()[0].Index != 0 {
 		t.Fatal("file should have chunk index 0")
@@ -463,7 +463,7 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	if files[1].Metadata().CombinedChunks[0].Length != files[1].Size() {
 		t.Fatal("second file doesn't have correct length")
 	}
-	if files[2].Metadata().CombinedChunks[0].Length != files[2].Size() {
+	if files[2].Metadata().CombinedChunks[0].Length+files[2].Metadata().CombinedChunks[1].Length != files[2].Size() {
 		t.Fatal("third file doesn't have correct length")
 	}
 }
