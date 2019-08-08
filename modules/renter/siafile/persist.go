@@ -137,6 +137,7 @@ func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modul
 		return err
 	}
 	sf.numChunks = sf.numChunks - 1 + len(combinedChunks)
+	sf.staticMetadata.CombinedChunks = ccs
 	return nil
 }
 
