@@ -7,7 +7,6 @@ import (
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
@@ -446,8 +445,7 @@ func (r *Renter) managedReadFullLogicalChunkData(chunk *unfinishedUploadChunk, d
 // managedReadPartialLogicalChunkData reads the logical data of a partial chunk from
 // disk.
 func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk, download bool) (bool, error) {
-	switch chunk.fileEntry.CombinedChunkStatus() {
-	case siafile.CombinedChunkStatusHasChunk:
+	if chunk.fileEntry.HasPartialChunk() && len(chunk.fileEntry.CombinedChunks()) == 0 {
 		// Load the partial chunk from disk.
 		osFile, err := os.Open(chunk.fileEntry.LocalPath())
 		if err != nil {
@@ -467,13 +465,8 @@ func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk
 		if err := r.staticPartialChunkSet.SavePartialChunk(chunk.fileEntry.SiaFile, partialChunk[:n]); err != nil {
 			return true, r.managedDownloadLogicalChunkData(chunk)
 		}
-	case siafile.CombinedChunkStatusInComplete:
-	case siafile.CombinedChunkStatusCompleted:
-	default:
-		build.Critical("Unknown CombinedChunkStatus:", chunk.fileEntry.CombinedChunkStatus())
-		return false, errors.New("Unknown CombinedChunkStatus")
 	}
-	// Fetch a combined chunk.
+	// Try fetching a combined chunk.
 	fetched, err := r.staticPartialChunkSet.FetchLogicalCombinedChunk(chunk)
 	if err != nil {
 		return false, err
@@ -503,7 +496,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) (boo
 		return false, errors.New("file not available locally")
 	}
 	// Special handling for partial chunks.
-	if chunk.fileEntry.IsCompletePartialChunk(chunk.index) ||
+	if chunk.fileEntry.IsIncludedPartialChunk(chunk.index) ||
 		chunk.fileEntry.IsIncompletePartialChunk(chunk.index) {
 		return r.managedReadPartialLogicalChunkData(chunk, download)
 	}
@@ -637,11 +630,8 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		}
 	}
 	// If the chunk is a partial chunk and the status is "incomplete" we don't consider the repair to be unsuccessful
-	incompletePartial := false
-	if uc.fileEntry.IsCompletePartialChunk(uc.index) &&
-		uc.fileEntry.CombinedChunkStatus() == siafile.CombinedChunkStatusInComplete {
-		incompletePartial = true
-	}
+	idx := siafile.CombinedChunkIndex(uc.fileEntry.NumChunks(), uc.index, len(uc.fileEntry.CombinedChunks()))
+	incompletePartial := idx != -1 && uc.fileEntry.CombinedChunks()[idx].Status == siafile.CombinedChunkStatusInComplete
 	successfulRepair = successfulRepair || incompletePartial
 
 	// If the repair was unsuccessful and there was a renter error then return

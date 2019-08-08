@@ -59,7 +59,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
-			CombinedChunkStatus:     CombinedChunkStatusNoChunk,
+			HasPartialChunk:         false,
 			CreateTime:              currentTime,
 			CachedHealth:            zeroHealth,
 			CachedStuckHealth:       0,

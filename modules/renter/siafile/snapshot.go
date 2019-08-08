@@ -14,21 +14,18 @@ type (
 	// can be accessed without locking at the cost of being a frozen readonly
 	// representation of a siafile which only exists in memory.
 	Snapshot struct {
-		staticChunks               []Chunk
-		staticFileSize             int64
-		staticPieceSize            uint64
-		staticErasureCode          modules.ErasureCoder
-		staticMasterKey            crypto.CipherKey
-		staticMode                 os.FileMode
-		staticPubKeyTable          []HostPublicKey
-		staticSiaPath              modules.SiaPath
-		staticCombinedChunkIDs     []modules.CombinedChunkID
-		staticCombinedChunkIndices []uint64
-		staticCombinedChunkStatus  uint8
-		staticCombinedChunkOffset  uint64
-		staticCombinedChunkLength  uint64
-		staticUID                  SiafileUID
-		staticFileSet              *SiaFileSet
+		staticChunks          []Chunk
+		staticFileSize        int64
+		staticPieceSize       uint64
+		staticErasureCode     modules.ErasureCoder
+		staticHasPartialChunk bool
+		staticMasterKey       crypto.CipherKey
+		staticMode            os.FileMode
+		staticPubKeyTable     []HostPublicKey
+		staticSiaPath         modules.SiaPath
+		staticCombinedChunks  []CombinedChunkInfo
+		staticUID             SiafileUID
+		staticFileSet         *SiaFileSet
 	}
 )
 
@@ -95,8 +92,12 @@ func (s *Snapshot) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uin
 	off = offset % s.ChunkSize()
 	// If the offset points within a partial chunk, we need to adjust our
 	// calculation to compensate for the potential offset within a combined chunk.
-	if _, isPartial := s.IsCompletePartialChunk(chunkIndex); isPartial {
-		offset += s.staticCombinedChunkOffset
+	var totalOffset uint64
+	for _, cc := range s.staticCombinedChunks {
+		totalOffset += cc.Offset
+	}
+	if _, ok := s.IsIncludedPartialChunk(chunkIndex); ok {
+		offset += totalOffset
 		chunkIndex = offset / s.ChunkSize()
 		off = offset % s.ChunkSize()
 	}
@@ -108,24 +109,9 @@ func (s *Snapshot) ChunkSize() uint64 {
 	return s.staticPieceSize * uint64(s.staticErasureCode.MinPieces())
 }
 
-// CombinedChunkIDs returns the snapshot's CombinedChunkIDs.
-func (s *Snapshot) CombinedChunkIDs() []modules.CombinedChunkID {
-	return s.staticCombinedChunkIDs
-}
-
-// CombinedChunkLength returns the snapshot's CombinedChunkLength.
-func (s *Snapshot) CombinedChunkLength() uint64 {
-	return s.staticCombinedChunkLength
-}
-
-// CombinedChunkOffset returns the snapshot's CombinedChunkOffset.
-func (s *Snapshot) CombinedChunkOffset() uint64 {
-	return s.staticCombinedChunkOffset
-}
-
-// CombinedChunkStatus returns the combined chunk status of the file.
-func (s *Snapshot) CombinedChunkStatus() uint8 {
-	return s.staticCombinedChunkStatus
+// CombinedChunks returns the snapshot's CombinedChunks.
+func (s *Snapshot) CombinedChunks() []CombinedChunkInfo {
+	return s.staticCombinedChunks
 }
 
 // ErasureCode returns the erasure coder used by the file.
@@ -133,28 +119,25 @@ func (s *Snapshot) ErasureCode() modules.ErasureCoder {
 	return s.staticErasureCode
 }
 
-// IsCompletePartialChunk returns 'true' if the provided index points to a
+// IsIncludedPartialChunk returns 'true' if the provided index points to a
 // partial chunk which has been added to the partials sia file already.
-func (s *Snapshot) IsCompletePartialChunk(chunkIndex uint64) (uint64, bool) {
-	if s.CombinedChunkStatus() < CombinedChunkStatusInComplete {
-		return 0, false
-	}
-	idx := CombinedChunkIndex(s.NumChunks(), chunkIndex, len(s.CombinedChunkIDs()))
+func (s *Snapshot) IsIncludedPartialChunk(chunkIndex uint64) (CombinedChunkInfo, bool) {
+	idx := CombinedChunkIndex(s.NumChunks(), chunkIndex, len(s.staticCombinedChunks))
 	if idx == -1 {
-		return 0, false
+		return CombinedChunkInfo{}, false
 	}
-	return s.staticCombinedChunkIndices[idx], true
+	cc := s.staticCombinedChunks[idx]
+	return cc, cc.Status >= CombinedChunkStatusInComplete
 }
 
 // IsIncompletePartialChunk returns 'true' if the provided index points to a
 // partial chunk which hasn't been added to a partials siafile yet.
 func (s *Snapshot) IsIncompletePartialChunk(chunkIndex uint64) bool {
-	if chunkIndex == uint64(len(s.staticChunks)-1) &&
-		s.staticCombinedChunkStatus >= CombinedChunkStatusHasChunk &&
-		s.staticCombinedChunkStatus < CombinedChunkStatusCompleted {
-		return true
+	idx := CombinedChunkIndex(s.NumChunks(), chunkIndex, len(s.staticCombinedChunks))
+	if idx == -1 {
+		return s.staticHasPartialChunk
 	}
-	return false
+	return s.staticCombinedChunks[idx].Status < CombinedChunkStatusCompleted
 }
 
 // MasterKey returns the masterkey used to encrypt the file.
@@ -237,8 +220,8 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	// Copy chunks.
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
 		// Handle complete partial chunk.
-		if cci, isPartial := sf.isCompletePartialChunk(uint64(chunk.Index)); isPartial {
-			pieces, err := sf.partialsSiaFile.Pieces(cci)
+		if cci, ok := sf.isIncludedPartialChunk(uint64(chunk.Index)); ok {
+			pieces, err := sf.partialsSiaFile.Pieces(cci.Index)
 			if err != nil {
 				return err
 			}
@@ -280,10 +263,8 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	fileSize := sf.staticMetadata.FileSize
 	mode := sf.staticMetadata.Mode
 	uid := sf.staticMetadata.UniqueID
-	cco := sf.staticMetadata.CombinedChunkOffset
-	ccl := sf.staticMetadata.CombinedChunkLength
-	cci := sf.staticMetadata.CombinedChunkIndices
-	ccids := sf.staticMetadata.CombinedChunkIDs
+	hasPartial := sf.staticMetadata.HasPartialChunk
+	ccs := sf.staticMetadata.CombinedChunks
 	sf.mu.RUnlock()
 	//////////////////////////////////////////////////////////////////////////////
 	// RLock ends here.
@@ -293,20 +274,17 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	sp := sf.staticSiaFileSet.siaPath(sf)
 	sf.staticSiaFileSet.mu.Unlock()
 	return &Snapshot{
-		staticChunks:               chunks,
-		staticCombinedChunkIDs:     ccids,
-		staticCombinedChunkIndices: cci,
-		staticCombinedChunkLength:  ccl,
-		staticCombinedChunkOffset:  cco,
-		staticCombinedChunkStatus:  sf.staticMetadata.CombinedChunkStatus,
-		staticFileSize:             fileSize,
-		staticPieceSize:            sf.staticMetadata.StaticPieceSize,
-		staticErasureCode:          sf.staticMetadata.staticErasureCode,
-		staticMasterKey:            mk,
-		staticMode:                 mode,
-		staticPubKeyTable:          pkt,
-		staticSiaPath:              sp,
-		staticUID:                  uid,
-		staticFileSet:              sf.staticSiaFileSet,
+		staticChunks:          chunks,
+		staticCombinedChunks:  ccs,
+		staticHasPartialChunk: hasPartial,
+		staticFileSize:        fileSize,
+		staticPieceSize:       sf.staticMetadata.StaticPieceSize,
+		staticErasureCode:     sf.staticMetadata.staticErasureCode,
+		staticMasterKey:       mk,
+		staticMode:            mode,
+		staticPubKeyTable:     pkt,
+		staticSiaPath:         sp,
+		staticUID:             uid,
+		staticFileSet:         sf.staticSiaFileSet,
 	}, nil
 }

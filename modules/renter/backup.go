@@ -415,20 +415,20 @@ func (r *Renter) managedUntarSiaFile(b []byte, dst string, idxConversionMaps map
 	// necessary.
 	eci := sf.ErasureCode().Identifier()
 	indexMap := idxConversionMaps[eci]
-	if sf.CombinedChunkStatus() == siafile.CombinedChunkStatusCompleted {
-		if indexMap == nil {
-			return fmt.Errorf("expected indexMap for '%v' but couldn't find it", eci)
-		}
-		var newIndices []uint64
-		for _, ci := range sf.CombinedChunkIndices() {
-			newIndex, ok := indexMap[ci]
-			if !ok {
-				return fmt.Errorf("missing mapping for identifier '%v' at index '%v'", eci, ci)
+	newChunks := sf.CombinedChunks()
+	for i, cc := range newChunks {
+		if cc.Status >= siafile.CombinedChunkStatusInComplete {
+			if indexMap == nil {
+				return fmt.Errorf("expected indexMap for '%v' but couldn't find it", eci)
 			}
-			newIndices = append(newIndices, newIndex)
+			newIndex, ok := indexMap[cc.Index]
+			if !ok {
+				return fmt.Errorf("missing mapping for identifier '%v' at index '%v'", eci, cc.Index)
+			}
+			newChunks[i].Index = newIndex
 		}
-		sf.SetCombinedChunkIndices(newIndices)
 	}
+	sf.SetCombinedChunks(newChunks)
 	// Add the file to the SiaFileSet.
 	err = r.staticFileSet.AddExistingSiaFile(sf, chunks)
 	if err != nil {

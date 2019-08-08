@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -43,7 +44,10 @@ func setCombinedChunkOfTestFile(sf *siafile.SiaFile) error {
 		return err
 	}
 	// Force the status to completed.
-	return sf.SetChunkStatusCompleted()
+	for i := 0; i < numCombinedChunks; i++ {
+		err = errors.Compose(err, sf.SetChunkStatusCompleted(uint64(i)))
+	}
+	return err
 }
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the

@@ -81,9 +81,9 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 // atomically.
 func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modules.CombinedChunk, updates []writeaheadlog.Update) error {
 	// SavePartialChunk can only be called when there is no partial chunk yet.
-	if sf.staticMetadata.CombinedChunkStatus != CombinedChunkStatusHasChunk {
-		return fmt.Errorf("can't call SetCombinedChunk unless status is %v but was %v",
-			CombinedChunkStatusHasChunk, sf.staticMetadata.CombinedChunkStatus)
+	if !sf.staticMetadata.HasPartialChunk || len(sf.staticMetadata.CombinedChunks) > 0 {
+		return fmt.Errorf("can't call SetCombinedChunk unless file has a partial chunk and doesn't have combined chunks assigned to it yet: %v %v",
+			sf.staticMetadata.HasPartialChunk, len(sf.staticMetadata.CombinedChunks))
 	}
 	// Check the number of combinedChunks for sanity.
 	if len(combinedChunks) != 1 && len(combinedChunks) != 2 {
@@ -106,28 +106,27 @@ func (sf *SiaFile) SetCombinedChunk(offset, length int64, combinedChunks []modul
 	defer sf.partialsSiaFile.mu.Unlock()
 	// For each combined chunk that is not yet tracked within the partials sia
 	// file, add a chunk to the partials sia file.
-	var chunkIndices []uint64
-	var chunkIDs []modules.CombinedChunkID
+	ccs := make([]CombinedChunkInfo, 0, len(combinedChunks))
 	for _, c := range combinedChunks {
-		chunkIDs = append(chunkIDs, c.ChunkID)
+		cc := CombinedChunkInfo{
+			ID:     c.ChunkID,
+			Length: c.Length,
+			Offset: c.Offset,
+			Status: CombinedChunkStatusInComplete,
+		}
 		if c.HasPartialsChunk {
-			chunkIndices = append(chunkIndices, uint64(sf.partialsSiaFile.numChunks-1))
-			continue
+			cc.Index = uint64(sf.partialsSiaFile.numChunks - 1)
+		} else {
+			cc.Index = uint64(sf.partialsSiaFile.numChunks)
+			u, err := sf.partialsSiaFile.addCombinedChunk()
+			if err != nil {
+				return err
+			}
+			updates = append(updates, u...)
 		}
-		chunkIndices = append(chunkIndices, uint64(sf.partialsSiaFile.numChunks))
-		u, err := sf.partialsSiaFile.addCombinedChunk()
-		if err != nil {
-			return err
-		}
-		updates = append(updates, u...)
+		ccs = append(ccs, cc)
 	}
-
-	// Update the combined chunk metadata.
-	sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusInComplete
-	sf.staticMetadata.CombinedChunkIndices = chunkIndices
-	sf.staticMetadata.CombinedChunkOffset = uint64(offset)
-	sf.staticMetadata.CombinedChunkLength = uint64(length)
-	sf.staticMetadata.CombinedChunkIDs = chunkIDs
+	// Update the combined chunk metadata on disk.
 	u, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
@@ -236,10 +235,6 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 	if sf.staticMetadata.UniqueID == "" {
 		sf.staticMetadata.UniqueID = uniqueID()
 	}
-	// COMPATv140 legacy files might not have the CombinedChunkStatus set.
-	if sf.staticMetadata.CombinedChunkStatus == CombinedChunkStatusInvalid {
-		sf.staticMetadata.CombinedChunkStatus = CombinedChunkStatusNoChunk
-	}
 	// Create the erasure coder.
 	sf.staticMetadata.staticErasureCode, err = unmarshalErasureCoder(sf.staticMetadata.StaticErasureCodeType, sf.staticMetadata.StaticErasureCodeParams)
 	if err != nil {
@@ -292,8 +287,8 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		numChunks++
 	}
 	sf.numChunks = int(numChunks)
-	if len(sf.staticMetadata.CombinedChunkIDs) > 0 {
-		sf.numChunks = sf.numChunks - 1 + len(sf.staticMetadata.CombinedChunkIDs)
+	if len(sf.staticMetadata.CombinedChunks) > 0 {
+		sf.numChunks = sf.numChunks - 1 + len(sf.staticMetadata.CombinedChunks)
 	}
 	return sf, nil
 }
@@ -482,8 +477,8 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 // chunk reads the chunk with index chunkIndex from disk.
 func (sf *SiaFile) chunk(chunkIndex int) (chunk, error) {
 	// Handle partial chunk.
-	if cci, isPartial := sf.isCompletePartialChunk(uint64(chunkIndex)); isPartial {
-		c, err := sf.partialsSiaFile.Chunk(cci)
+	if cci, ok := sf.isIncludedPartialChunk(uint64(chunkIndex)); ok {
+		c, err := sf.partialsSiaFile.Chunk(cci.Index)
 		c.Index = chunkIndex // convert index within partials file to requested index
 		return c, err
 	} else if sf.isIncompletePartialChunk(uint64(chunkIndex)) {
@@ -517,13 +512,13 @@ func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]w
 		if err != nil {
 			return err
 		}
-		cci, partialChunk := sf.isCompletePartialChunk(uint64(chunk.Index))
-		if !partialChunk && sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+		cci, ok := sf.isIncludedPartialChunk(uint64(chunk.Index))
+		if !ok && sf.isIncompletePartialChunk(uint64(chunk.Index)) {
 			// Can't persist incomplete partial chunk. Make sure iterFunc doesn't try to.
 			return errors.New("can't persist incomplete partial chunk")
 		}
-		if modified && partialChunk {
-			chunk.Index = int(cci)
+		if modified && ok {
+			chunk.Index = int(cci.Index)
 			updates = append(updates, sf.partialsSiaFile.saveChunkUpdate(chunk))
 		} else if modified {
 			updates = append(updates, sf.saveChunkUpdate(chunk))
@@ -553,8 +548,8 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
 		var c chunk
 		var err error
-		if cci, isPartial := sf.isCompletePartialChunk(uint64(chunkIndex)); isPartial {
-			c, err = sf.partialsSiaFile.Chunk(cci)
+		if cci, ok := sf.isIncludedPartialChunk(uint64(chunkIndex)); ok {
+			c, err = sf.partialsSiaFile.Chunk(cci.Index)
 		} else if sf.isIncompletePartialChunk(uint64(chunkIndex)) {
 			c = chunk{Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces())}
 		} else {

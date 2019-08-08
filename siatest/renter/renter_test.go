@@ -2624,13 +2624,6 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	}
 	_, rf3, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
-		t.Fatal("Failed to upload a file for testing: ", err)
-	}
-	// Delete the file locally.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		return lf.Delete()
-	})
-	if err != nil {
 		t.Fatal(err)
 	}
 	_, rf4, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)

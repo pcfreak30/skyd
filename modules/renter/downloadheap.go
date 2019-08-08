@@ -160,7 +160,7 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 // managedTryLoadFromDisk will try to load a chunk from disk before trying to
 // download it from hosts.
 func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
-	if _, isPartial := udc.renterFile.IsCompletePartialChunk(udc.staticChunkIndex); isPartial {
+	if _, ok := udc.renterFile.IsIncludedPartialChunk(udc.staticChunkIndex); ok {
 		// Get partial chunk.
 		partialChunk, err := r.staticPartialChunkSet.LoadPartialChunk(udc)
 		if err != nil {
@@ -181,9 +181,9 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 			return false
 		}
 		sfo := udc.staticFetchOffset
-		numCombinedChunks := len(udc.renterFile.CombinedChunkIDs())
-		if idx := siafile.CombinedChunkIndex(udc.renterFile.NumChunks(), udc.staticChunkIndex, numCombinedChunks); idx == 0 {
-			sfo -= udc.renterFile.CombinedChunkOffset()
+		numCombinedChunks := len(udc.renterFile.CombinedChunks())
+		if idx := siafile.CombinedChunkIndex(udc.renterFile.NumChunks(), udc.staticChunkIndex, numCombinedChunks); idx != -1 {
+			sfo -= udc.renterFile.CombinedChunks()[idx].Offset
 		}
 		err = udc.destination.WritePieces(udc.renterFile.ErasureCode(), shards, sfo, udc.staticWriteOffset, udc.staticFetchLength)
 		if err != nil {

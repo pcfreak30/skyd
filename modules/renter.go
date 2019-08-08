@@ -138,6 +138,8 @@ type (
 	CombinedChunk struct {
 		ChunkID          CombinedChunkID
 		HasPartialsChunk bool
+		Length           uint64
+		Offset           uint64
 	}
 )
 

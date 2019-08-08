@@ -456,12 +456,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 
 		// Set the fetchOffset - the offset within the chunk that we start
 		// downloading from.
-		numCombinedChunks := len(params.file.CombinedChunkIDs())
+		numCombinedChunks := len(params.file.CombinedChunks())
 		idx := siafile.CombinedChunkIndex(params.file.NumChunks(), i, numCombinedChunks)
 		if i == minChunk {
 			udc.staticFetchOffset = minChunkOffset
-		} else if numCombinedChunks == 2 && idx == 0 {
-			udc.staticFetchOffset = params.file.CombinedChunkOffset()
+		} else if idx != -1 {
+			udc.staticFetchOffset = params.file.CombinedChunks()[idx].Offset
 		} else {
 			udc.staticFetchOffset = 0
 		}

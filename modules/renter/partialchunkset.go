@@ -253,13 +253,6 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 			}
 		}()
 	}
-	// Remember the ID of the chunk and whether it already exists in the partials
-	// SiaFile. The latter should be the case if the incomplete chunk already
-	// existed.
-	chunks = append(chunks, modules.CombinedChunk{
-		ChunkID:          ucid,
-		HasPartialsChunk: exists,
-	})
 
 	// Write as much data as possible to the incomplete chunk.
 	n, offset, appendUpdates, err := pcs.appendToIncompleteChunk(ucid, ec, partialChunk, int64(sf.ChunkSize()))
@@ -268,6 +261,15 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 	}
 	updates = append(updates, appendUpdates...)
 	remaining := len(partialChunk) - n
+	// Remember the ID of the chunk and whether it already exists in the partials
+	// SiaFile. The latter should be the case if the incomplete chunk already
+	// existed.
+	chunks = append(chunks, modules.CombinedChunk{
+		ChunkID:          ucid,
+		HasPartialsChunk: exists,
+		Length:           uint64(n),
+		Offset:           uint64(offset),
+	})
 	// Sanity check that the remaining data fits within a chunk.
 	if remaining > int(sf.ChunkSize()) {
 		return fmt.Errorf("remaining data doesn't fit into chunk: %v > %v",
@@ -285,6 +287,8 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 		chunks = append(chunks, modules.CombinedChunk{
 			ChunkID:          ucid2,
 			HasPartialsChunk: false, // 'false' since it was just created
+			Length:           uint64(remaining),
+			Offset:           0,
 		})
 		updates = append(updates, newChunkUpdates...)
 		// Append the remaining data to the new chunk.
@@ -388,47 +392,35 @@ func (pcs *partialChunkSet) LoadPartialChunk(chunk *unfinishedDownloadChunk) ([]
 	pcs.mu.Lock()
 	defer pcs.mu.Unlock()
 	snap := chunk.renterFile
-	if _, isPartial := snap.IsCompletePartialChunk(uint64(chunk.staticChunkIndex)); !isPartial {
+	if _, ok := snap.IsIncludedPartialChunk(uint64(chunk.staticChunkIndex)); !ok {
 		return nil, errors.New("can only call LoadPartialChunk if partial chunk has been included in a combined chunk")
 	}
-	// Sanity check chunk ids.
-	chunkIDs := snap.CombinedChunkIDs()
-	if len(chunkIDs) != 1 && len(chunkIDs) != 2 {
-		return nil, errors.New("file should contain one or two indices")
+	// Sanity check chunks.
+	ccs := snap.CombinedChunks()
+	if len(ccs) != 1 && len(ccs) != 2 {
+		return nil, errors.New("file should contain one or two combined chunks")
 	}
 	// Compute offset and length.
-	var offset, length uint64
-	idx := siafile.CombinedChunkIndex(snap.NumChunks(), chunk.staticChunkIndex, len(chunkIDs))
-	switch idx {
-	case 0:
-		offset = snap.CombinedChunkOffset()
-		if len(chunkIDs) == 1 {
-			length = snap.CombinedChunkLength()
-		} else {
-			length = snap.ChunkSize() - offset
-		}
-	case 1:
-		offset = 0
-		length = snap.CombinedChunkLength() - snap.ChunkSize() + snap.CombinedChunkOffset()
-	default:
+	idx := siafile.CombinedChunkIndex(snap.NumChunks(), chunk.staticChunkIndex, len(ccs))
+	if idx == -1 {
 		return nil, errors.New("invalid idx")
 	}
+	cc := ccs[idx]
 	// Open the file and read the chunk.
 	ec := snap.ErasureCode()
-	ci := snap.CombinedChunkIDs()[idx]
-	path := pcs.combinedChunkPath(ci, ec, pcs.isUnfinished(ci, ec))
-	partialChunk := make([]byte, length)
+	path := pcs.combinedChunkPath(cc.ID, ec, pcs.isUnfinished(cc.ID, ec))
+	partialChunk := make([]byte, cc.Length)
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to open combined chunk")
 	}
 	defer f.Close()
-	n, err := f.ReadAt(partialChunk, int64(offset))
+	n, err := f.ReadAt(partialChunk, int64(cc.Offset))
 	if err != nil {
 		return nil, errors.New("failed to read partial chunk")
 	}
-	if uint64(n) != length {
-		return nil, fmt.Errorf("expected to read %v bytes but read %v", length, n)
+	if uint64(n) != cc.Length {
+		return nil, fmt.Errorf("expected to read %v bytes but read %v", cc.Length, n)
 	}
 	return partialChunk, nil
 }
@@ -455,20 +447,15 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	defer pcs.mu.Unlock()
 	// If the partial chunk is not yet part of a combined chunk regardless of
 	// whether it's a complete or incomplete one an error is returned.
-	if !chunk.fileEntry.IsCompletePartialChunk(chunk.index) {
+	if !chunk.fileEntry.IsIncludedPartialChunk(chunk.index) {
 		return false, errors.New("can't fetch logical combined chunk for an incomplete partial chunk")
 	}
 	// Get the correct chunkID.
-	var chunkID modules.CombinedChunkID
-	chunkIDs := chunk.fileEntry.CombinedChunkIDs()
-	switch len(chunkIDs) {
-	case 1:
-		chunkID = chunkIDs[0]
-	case 2:
-		chunkID = chunkIDs[siafile.CombinedChunkIndex(chunk.fileEntry.NumChunks(), chunk.index, 2)]
-	default:
-		return false, fmt.Errorf("invalid number of chunkIDs: '%v'", len(chunkIDs))
+	idx := siafile.CombinedChunkIndex(chunk.fileEntry.NumChunks(), chunk.index, len(chunk.fileEntry.CombinedChunks()))
+	if idx == -1 {
+		return false, errors.New("invalid index")
 	}
+	chunkID := chunk.fileEntry.CombinedChunks()[idx].ID
 	// If the chunk is incomplete there is nothing we can do right now.
 	if pcs.isUnfinished(chunkID, chunk.fileEntry.ErasureCode()) {
 		return false, nil

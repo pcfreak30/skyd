@@ -49,12 +49,10 @@ const (
 	fileListRoutines = 20
 )
 
-// Constants to indicate which part of the partial upload the file is currently
-// at.
+// Constants to indicate which part of the partial upload the combined chunk is
+// currently at.
 const (
 	CombinedChunkStatusInvalid    = iota // status wasn't initialized
-	CombinedChunkStatusNoChunk           // file has no partial chunk
-	CombinedChunkStatusHasChunk          // file has a partial chunk but it's not saved to disk yet
 	CombinedChunkStatusInComplete        // partial chunk is included in an incomplete combined chunk.
 	CombinedChunkStatusCompleted         // partial chunk is included in a completed combined chunk.
 )

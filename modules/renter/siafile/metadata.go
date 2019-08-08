@@ -20,17 +20,11 @@ type (
 	// CombinedChunkInfo contains all the essential information about a combined
 	// chunk relevant to SiaFiles.
 	CombinedChunkInfo struct {
-		chunkData     []byte
-		chunkID       string
-		partialChunks []PartialChunkInfo
-	}
-
-	// PartialChunkInfo contains information required to find a partial chunk
-	// within a combined chunk.
-	PartialChunkInfo struct {
-		length uint64
-		offset uint64
-		sf     *SiaFile
+		ID     modules.CombinedChunkID `json:"id"`     // ID of the combined chunk
+		Index  uint64                  `json:"index"`  // Index of the combined chunk within partialsSiaFile
+		Offset uint64                  `json:"offset"` // Offset of partial chunk within combined chunk
+		Length uint64                  `json:"length"` // Length of partial chunk within combined chunk
+		Status uint8                   `json:"status"` // Status of combined chunk
 	}
 
 	// SiafileUID is a unique identifier for siafile which is used to track
@@ -54,12 +48,9 @@ type (
 		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
 
 		// Fields for partial uploads
-		DisablePartialChunk  bool                      `json:"disablepartialchunk"`  // determines whether the file should be treated like legacy files
-		CombinedChunkIDs     []modules.CombinedChunkID `json:"combinedchunkids"`     // ids to find the combined chunks on disk
-		CombinedChunkIndices []uint64                  `json:"combinedchunkindices"` // index of the chunk in the combined chunks siafile
-		CombinedChunkStatus  uint8                     `json:"combinedchunkstatus"`  // status of the file's partial chunk
-		CombinedChunkOffset  uint64                    `json:"combinedchunkoffset"`  // offset of partial chunk within combined chunk
-		CombinedChunkLength  uint64                    `json:"combinedchunklength"`  // length of partial chunk within combined chunk
+		DisablePartialChunk bool                `json:"disablepartialchunk"` // determines whether the file should be treated like legacy files
+		CombinedChunks      []CombinedChunkInfo `json:"combinedchunks"`      // information about the individual combined chunks.
+		HasPartialChunk     bool                `json:"haspartialchunk"`     // indicates whether this file is supposed to have a partial chunk or not
 
 		// The following fields are the usual unix timestamps of files.
 		ModTime    time.Time `json:"modtime"`    // time of last content modification
@@ -198,25 +189,11 @@ func (sf *SiaFile) ChangeTime() time.Time {
 	return sf.staticMetadata.ChangeTime
 }
 
-// CombinedChunkIDs returns the CombinedChunkIDs of the file.
-func (sf *SiaFile) CombinedChunkIDs() []modules.CombinedChunkID {
+// CombinedChunks returns information about the combined chunks of the siafile.
+func (sf *SiaFile) CombinedChunks() []CombinedChunkInfo {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.CombinedChunkIDs
-}
-
-// CombinedChunkIndices returns the CombinedChunkIndices of the file.
-func (sf *SiaFile) CombinedChunkIndices() []uint64 {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return sf.staticMetadata.CombinedChunkIndices
-}
-
-// CombinedChunkStatus returns the CombinedChunkStatus of the file's metadata.
-func (sf *SiaFile) CombinedChunkStatus() uint8 {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return sf.staticMetadata.CombinedChunkStatus
+	return sf.staticMetadata.CombinedChunks
 }
 
 // CreateTime returns the CreateTime timestamp of the file.
@@ -229,6 +206,14 @@ func (sf *SiaFile) CreateTime() time.Time {
 // ChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) ChunkSize() uint64 {
 	return sf.staticChunkSize()
+}
+
+// HasPartialChunk returns whether this file is supposed to have a partial chunk
+// or not.
+func (sf *SiaFile) HasPartialChunk() bool {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.HasPartialChunk
 }
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
@@ -245,31 +230,12 @@ func (sf *SiaFile) LocalPath() string {
 	return sf.staticMetadata.LocalPath
 }
 
-// NewCombinedChunkInfo creates a new CombinedChunkInfo.
-func NewCombinedChunkInfo(chunkID string, chunkData []byte, partialChunks []PartialChunkInfo) CombinedChunkInfo {
-	return CombinedChunkInfo{
-		chunkID:       chunkID,
-		chunkData:     chunkData,
-		partialChunks: partialChunks,
-	}
-}
-
-// NewPartialChunkInfo creates a new PartialChunkInfo from a given length,
-// offset and SiaFile.
-func NewPartialChunkInfo(length, offset uint64, sf *SiaFile) PartialChunkInfo {
-	return PartialChunkInfo{
-		length: length,
-		offset: offset,
-		sf:     sf,
-	}
-}
-
-// SetCombinedChunkIndices updates the CombinedChunkIndices field of the
-// Siafile's metadata in memory.
-func (sf *SiaFile) SetCombinedChunkIndices(chunkIndices []uint64) {
+// SetCombinedChunks updates the CombinedChunks field of the Siafile's metadata
+// in memory.
+func (sf *SiaFile) SetCombinedChunks(chunks []CombinedChunkInfo) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.CombinedChunkIndices = chunkIndices
+	sf.staticMetadata.CombinedChunks = chunks
 }
 
 // MasterKey returns the masterkey used to encrypt the file.
@@ -341,7 +307,7 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	// Load all the chunks.
 	chunks := make([]chunk, 0, sf.numChunks)
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
-		if chunk.Index == sf.numChunks-1 && sf.staticMetadata.CombinedChunkStatus > CombinedChunkStatusHasChunk {
+		if _, ok := sf.isIncludedPartialChunk(uint64(chunk.Index)); ok {
 			return nil // Ignore partial chunk
 		}
 		chunks = append(chunks, chunk)
@@ -439,15 +405,13 @@ func (sf *SiaFile) UpdateAccessTime() error {
 // metadata.
 func (sf *SiaFile) numStuckChunks() uint64 {
 	numStuckChunks := sf.staticMetadata.NumStuckChunks
-	if sf.staticMetadata.CombinedChunkStatus >= CombinedChunkStatusInComplete {
-		for _, cci := range sf.staticMetadata.CombinedChunkIndices {
-			stuck, err := sf.partialsSiaFile.StuckChunkByIndex(cci)
-			if err != nil {
-				build.Critical("failed to get 'stuck' status of partial chunk")
-			}
-			if stuck {
-				numStuckChunks++
-			}
+	for _, cc := range sf.staticMetadata.CombinedChunks {
+		stuck, err := sf.partialsSiaFile.StuckChunkByIndex(cc.Index)
+		if err != nil {
+			build.Critical("failed to get 'stuck' status of partial chunk")
+		}
+		if stuck {
+			numStuckChunks++
 		}
 	}
 	return numStuckChunks

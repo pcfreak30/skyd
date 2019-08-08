@@ -99,7 +99,10 @@ func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error 
 		return err
 	}
 	// Force the status to completed.
-	return sf.SetChunkStatusCompleted()
+	for i := 0; i < numCombinedChunks; i++ {
+		err = errors.Compose(err, sf.SetChunkStatusCompleted(uint64(i)))
+	}
+	return err
 }
 
 // TestFileNumChunks checks the numChunks method of the file type.
@@ -347,7 +350,7 @@ func TestFileHealth(t *testing.T) {
 	if err := setCustomCombinedChunkOfTestFile(f, 1); err != nil {
 		t.Fatal(err)
 	}
-	if f.CombinedChunkStatus() != CombinedChunkStatusCompleted {
+	if f.CombinedChunks()[0].Status != CombinedChunkStatusCompleted {
 		t.Fatal("File has wrong combined chunk status")
 	}
 	for i := 0; i < 2; i++ {
@@ -932,9 +935,8 @@ func TestStuckChunks(t *testing.T) {
 		if (chunkIndex % 2) != 0 {
 			continue
 		}
-		if sf.CombinedChunkStatus() == CombinedChunkStatusHasChunk &&
-			uint64(chunkIndex) == sf.NumChunks()-1 {
-			continue // partial chunk at the end can't be stuck
+		if sf.staticMetadata.HasPartialChunk && len(sf.CombinedChunks()) == 0 && chunkIndex == sf.numChunks-1 {
+			continue // not included partial chunk at the end can't be stuck
 		}
 		if err := sf.SetStuck(uint64(chunkIndex), true); err != nil {
 			t.Fatal(err)
@@ -973,7 +975,7 @@ func TestStuckChunks(t *testing.T) {
 
 	// Check chunks and Stuck Chunk Table
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
-		if sf.CombinedChunkStatus() == CombinedChunkStatusHasChunk &&
+		if sf.staticMetadata.HasPartialChunk && len(sf.staticMetadata.CombinedChunks) == 0 &&
 			uint64(chunk.Index) == sf.NumChunks()-1 {
 			return nil // partial chunk at the end can't be stuck
 		}
@@ -1108,7 +1110,7 @@ func TestFileExpiration(t *testing.T) {
 // memory.
 func BenchmarkLoadSiaFile(b *testing.B) {
 	// Get new file params
-	siaFilePath, siaPath, source, _, sk, _, _, fileMode := newTestFileParams()
+	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, false)
 	// Create the path to the file.
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -1120,7 +1122,7 @@ func BenchmarkLoadSiaFile(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
+	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode, nil, true) // 1 chunk file
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1160,7 +1162,7 @@ func BenchmarkRandomChunkWriteMultiThreaded(b *testing.B) {
 // siafile.
 func benchmarkRandomChunkWrite(numThreads int, b *testing.B) {
 	// Get new file params
-	siaFilePath, siaPath, source, _, sk, _, _, fileMode := newTestFileParams()
+	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, false)
 	// Create the path to the file.
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -1172,7 +1174,7 @@ func benchmarkRandomChunkWrite(numThreads int, b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
+	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode, nil, true) // 1 chunk file
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1223,7 +1225,7 @@ func benchmarkRandomChunkWrite(numThreads int, b *testing.B) {
 // a siafile.
 func BenchmarkRandomChunkRead(b *testing.B) {
 	// Get new file params
-	siaFilePath, siaPath, source, _, sk, _, _, fileMode := newTestFileParams()
+	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, false)
 	// Create the path to the file.
 	dir, _ := filepath.Split(siaFilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -1235,7 +1237,7 @@ func BenchmarkRandomChunkRead(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sf, err := New(siaPath, siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
+	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode, nil, true) // 1 chunk file
 	if err != nil {
 		b.Fatal(err)
 	}
