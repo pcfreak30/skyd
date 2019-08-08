@@ -267,7 +267,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		if err != nil {
 			return nil, err
 		}
-		dw = &downloadDestinationFile{f: osFile}
+		dw = &downloadDestinationFile{deps: r.deps, f: osFile, staticChunkSize: int64(entry.ChunkSize())}
 		destinationType = "file"
 	}
 
@@ -311,6 +311,10 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		// close the destination if possible.
 		if closer, ok := dw.(io.Closer); ok {
 			return closer.Close()
+		}
+		// sanity check that we close files.
+		if destinationType == "file" {
+			build.Critical("file wasn't closed after download")
 		}
 		return nil
 	})
