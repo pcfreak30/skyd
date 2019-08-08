@@ -305,7 +305,7 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 			}
 		}()
 	}
-	return sf.SetCombinedChunk(offset, int64(len(partialChunk)), chunks, updates)
+	return sf.SetCombinedChunk(chunks, updates)
 }
 
 // UntarCombinedChunk untars a combined chunk or combined chunk related metadata
