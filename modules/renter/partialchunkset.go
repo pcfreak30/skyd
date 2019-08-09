@@ -204,7 +204,7 @@ func (pcs *partialChunkSet) appendToIncompleteChunk(chunkID modules.CombinedChun
 	// the partial chunk over 2 combined chunks, we also need to rename the chunk
 	// that turned from incomplete to complete.
 	length := len(partialChunk)
-	if length > maxLength {
+	if length >= maxLength {
 		length = maxLength
 		// Rename the existing incomplete chunk since it's going to be filled.
 		b, err := ioutil.ReadFile(chunkPath)
@@ -305,6 +305,7 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 			}
 		}()
 	}
+	// Set the combined chunk on the siafile.
 	return sf.SetCombinedChunk(chunks, updates)
 }
 
@@ -468,14 +469,11 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	defer f.Close()
 	// If the chunk is complete and the siafile's status hasn't been updated yet do
 	// it now.
-	// TODO: this isn't quite true. Some partial chunks consist of 2 combined
-	// chunks which might not both be complete. We probably should only set this if
-	// both are complete and tracked by the renter.
-	//if chunk.fileEntry.CombinedChunkStatus() < siafile.CombinedChunkStatusCompleted {
-	//	if err := chunk.fileEntry.SetChunkStatusCompleted(); err != nil {
-	//		return false, err
-	//	}
-	//}
+	if chunk.fileEntry.CombinedChunks()[idx].Status < siafile.CombinedChunkStatusCompleted {
+		if err := chunk.fileEntry.SetChunkStatusCompleted(uint64(idx)); err != nil {
+			return false, err
+		}
+	}
 	// Read the combined chunk.
 	_, err = chunk.readLogicalData(f)
 	return true, err
