@@ -419,7 +419,7 @@ func (r *Renter) managedUntarSiaFile(b []byte, dst string, idxConversionMaps map
 	for i, cc := range newChunks {
 		if cc.Status >= siafile.CombinedChunkStatusInComplete {
 			if indexMap == nil {
-				return fmt.Errorf("expected indexMap for '%v' but couldn't find it", eci)
+				continue
 			}
 			newIndex, ok := indexMap[cc.Index]
 			if !ok {
@@ -463,6 +463,10 @@ func (r *Renter) managedUntarPartialsSiaFile(b []byte, dst string, idxConversion
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
 func (r *Renter) managedUntarDir(tr *tar.Reader) error {
+	// Save conversion maps required to map the CombinedChunkIndex of imported
+	// Siafiles to their new CombinedChunkIndex.
+	idxConversionMaps := make(map[modules.ErasureCoderIdentifier]map[uint64]uint64)
+
 	// Copy the files from the tarball to the new location.
 	for {
 		header, err := tr.Next()
@@ -486,10 +490,6 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		if err != nil {
 			return err
 		}
-		// Save conversion maps required to map the CombinedChunkIndex of imported
-		// Siafiles to their new CombinedChunkIndex.
-		idxConversionMaps := make(map[modules.ErasureCoderIdentifier]map[uint64]uint64)
-
 		switch filepath.Ext(info.Name()) {
 		case modules.SiaDirExtension:
 			err = r.managedUntarSiaDir(b, dst)

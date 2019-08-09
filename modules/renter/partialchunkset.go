@@ -77,7 +77,7 @@ func splitCombinedChunkName(name string) (modules.ErasureCoderIdentifier, module
 // chunks.
 func newPartialChunkSet(combinedChunkRoot string) (*partialChunkSet, error) {
 	// Create the root dir.
-	err := os.MkdirAll(combinedChunkRoot, 0600)
+	err := os.MkdirAll(combinedChunkRoot, 0700)
 	if err != nil {
 		return nil, err
 	}

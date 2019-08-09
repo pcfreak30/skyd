@@ -387,8 +387,9 @@ func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForR
 	// Find the good pieces that are good for renew
 	goodPieces, _ := sf.goodPieces(chunk, offlineMap, goodForRenewMap)
 	chunkHealth := 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
-	// Handle health of incomplete partial chunk.
-	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+	// Handle health of incomplete partial chunk. An partial chunk will report full
+	// health to the user if it has been assigned a combined chunk.
+	if sf.isIncompletePartialChunk(uint64(chunk.Index)) && len(sf.staticMetadata.CombinedChunks) > 0 {
 		return chunkHealth, 0, nil // Partial chunk has full health if not yet included in combined chunk
 	}
 	// Sanity Check, if something went wrong, default to minimum health
