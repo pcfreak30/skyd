@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
@@ -70,8 +72,22 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Remember the size of the partials file before the recovery.
+	siaFileRoot := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot)
+	ec, _ := siafile.NewRSSubCode(int(dataPieces), int(parityPieces), crypto.SegmentSize)
+	partialsSiaPath := modules.CombinedSiaFilePath(ec)
+	partialsSiaFilePath := partialsSiaPath.SiaPartialsFileSysPath(siaFileRoot)
+	fi, err := os.Stat(partialsSiaFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partialsSize := fi.Size()
 	// Recover the backup into the same renter. Nothing should change.
 	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	fi, err = os.Stat(partialsSiaFilePath)
+	if err != nil {
 		t.Fatal(err)
 	}
 	files, err := r.Files(false)
@@ -80,6 +96,9 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	if len(files) != 1 {
 		t.Fatal("expected 1 file but got", len(files))
+	}
+	if partialsSize != fi.Size() {
+		t.Fatalf("partials siafile size changed from %v to %v", partialsSize, fi.Size())
 	}
 	// Get the renter's seed.
 	wsg, err := r.WalletSeedsGet()
