@@ -1251,9 +1251,8 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		for _, pieceSet := range chunk.Pieces {
 			// Move onto the next pieceSet if nothing has been uploaded yet
-			idx := CombinedChunkIndex(uint64(sf.numChunks), uint64(chunk.Index), len(sf.staticMetadata.CombinedChunks))
-			if len(pieceSet) == 0 &&
-				(idx == -1 || sf.staticMetadata.CombinedChunks[idx].Status != CombinedChunkStatusInComplete) {
+			_, included := sf.isIncludedPartialChunk(uint64(chunk.Index))
+			if len(pieceSet) == 0 && !included {
 				continue
 			}
 

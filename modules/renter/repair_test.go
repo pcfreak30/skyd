@@ -928,6 +928,9 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := setCombinedChunkOfTestFile(f.SiaFile); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create maps for method inputs
 	hosts := make(map[string]struct{})
