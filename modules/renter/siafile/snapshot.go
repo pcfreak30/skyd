@@ -231,7 +231,7 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 			return nil
 		}
 		// Handle incomplete partial chunk.
-		if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+		if sf.isNotCompletedPartialChunk(uint64(chunk.Index)) {
 			chunks = append(chunks, Chunk{
 				Pieces: make([][]Piece, sf.staticMetadata.staticErasureCode.NumPieces()),
 			})

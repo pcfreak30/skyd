@@ -497,7 +497,7 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) (boo
 	}
 	// Special handling for partial chunks.
 	if chunk.fileEntry.IsIncludedPartialChunk(chunk.index) ||
-		chunk.fileEntry.IsIncompletePartialChunk(chunk.index) {
+		chunk.fileEntry.IsNotCompletedPartialChunk(chunk.index) {
 		return r.managedReadPartialLogicalChunkData(chunk, download)
 	}
 	// Otherwise read full chunk from disk.
