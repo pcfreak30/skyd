@@ -988,6 +988,19 @@ func (sf *SiaFile) isIncompletePartialChunk(chunkIndex uint64) bool {
 	return sf.staticMetadata.CombinedChunks[idx].Status < CombinedChunkStatusCompleted
 }
 
+// isUnfinishedPartialChunk returns 'true' if the provided index points to a
+// partial chunk which is not yet included in a completed combined chunk.
+// Basically when it points to a partial chunk which should appear healthy to a
+// user even though it's not uploaded yet.
+func (sf *SiaFile) isUnfinishedPartialChunk(chunkIndex uint64) bool {
+	// True if the status is "incomplete".
+	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.CombinedChunks))
+	if idx != -1 && sf.staticMetadata.CombinedChunks[idx].Status == CombinedChunkStatusInComplete {
+		return true
+	}
+	return false
+}
+
 // pruneHosts prunes the unused hostkeys from the file, updates the
 // HostTableOffset of the pieces and removes pieces which do no longer have a
 // host.
@@ -1250,9 +1263,11 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 	var total, unique uint64
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		for _, pieceSet := range chunk.Pieces {
-			// Move onto the next pieceSet if nothing has been uploaded yet
-			_, included := sf.isIncludedPartialChunk(uint64(chunk.Index))
-			if len(pieceSet) == 0 && !included {
+			// Move onto the next pieceSet if nothing has been uploaded yet. Only do this
+			// if the chunk is not the partial chunk that hasn't been included in a
+			// combined chunk yet.
+			unfinishedPartial := sf.isUnfinishedPartialChunk(uint64(chunk.Index))
+			if len(pieceSet) == 0 && !unfinishedPartial {
 				continue
 			}
 
