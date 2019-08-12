@@ -735,7 +735,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 		numPiecesRenew, numPiecesNoRenew := sf.goodPieces(chunk, offlineMap, goodForRenewMap)
 		redundancy := float64(numPiecesRenew) / float64(sf.staticMetadata.staticErasureCode.MinPieces())
 		redundancyUser := redundancy
-		if incomplete := sf.isNotCompletedPartialChunk(uint64(chunk.Index)); incomplete {
+		if incomplete := sf.isIncompletePartialChunk(uint64(chunk.Index)); incomplete {
 			// If the partial chunk is incomplete it has full redundancy.
 			redundancyUser = float64(ec.NumPieces()) / float64(ec.MinPieces())
 		}
@@ -747,7 +747,7 @@ func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 		}
 		redundancyNoRenew := float64(numPiecesNoRenew) / float64(ec.MinPieces())
 		redundancyNoRenewUser := redundancyNoRenew
-		if incomplete := sf.isNotCompletedPartialChunk(uint64(chunk.Index)); incomplete {
+		if incomplete := sf.isIncompletePartialChunk(uint64(chunk.Index)); incomplete {
 			// If the partial chunk is incomplete it has full redundancy.
 			redundancyNoRenewUser = float64(ec.NumPieces()) / float64(ec.MinPieces())
 		}
