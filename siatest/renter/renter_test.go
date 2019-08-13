@@ -3520,3 +3520,88 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestHostAndRentReload sets up an integration test where a host and renter
+// do basic uploads and downloads, with an intervening shutdown+startup.
+func TestHostAndRentReload(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group with 1 host, 1 renter and a miner.
+	gp := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Upload a file.
+	r := tg.Renters()[0]
+	h := tg.Hosts()[0]
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	cs := siatest.ChunkSize(dataPieces, crypto.TypeDefaultRenter)
+	_, rf, err := r.UploadNewFile(int(cs)+1, dataPieces, parityPieces, false) // 1 full + 1 partial chunk
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 75% because the incomplete partial chunk reports 2/2 complete pieces and the
+	// full chunk 1/2.
+	if err := r.WaitForUploadProgress(rf, 75); err != nil {
+		t.Fatal(err)
+	}
+	// Should be able to download file.
+	_, err = r.DownloadByStream(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Restart both host and renter at the same time.
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		if err := tg.RestartNode(h); err != nil {
+			t.Fatal(err)
+		}
+		wg.Done()
+	}()
+	go func() {
+		if err := tg.RestartNode(r); err != nil {
+			t.Fatal(err)
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+	// Reannounce the host.
+	err = h.HostAnnouncePost()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	// Should be able to download file once both are restarted.
+	numRetries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			err := tg.Miners()[0].MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		_, err := r.DownloadByStream(rf)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
