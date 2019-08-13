@@ -389,7 +389,7 @@ func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForR
 	chunkHealth := 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
 	// Handle health of incomplete partial chunk. An partial chunk will report full
 	// health to the user if it has been assigned a combined chunk.
-	if sf.isNotCompletedPartialChunk(uint64(chunk.Index)) && len(sf.staticMetadata.CombinedChunks) > 0 {
+	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
 		return chunkHealth, 0, nil // Partial chunk has full health if not yet included in combined chunk
 	}
 	// Sanity Check, if something went wrong, default to minimum health
@@ -1118,6 +1118,10 @@ func (sf *SiaFile) Chunk(chunkIndex uint64) (chunk, error) {
 func (sf *SiaFile) growNumChunks(numChunks uint64) (updates []writeaheadlog.Update, err error) {
 	if sf.deleted {
 		return nil, errors.New("can't grow number of chunks of deleted file")
+	}
+	// Check if growing the file is necessary.
+	if uint64(sf.numChunks) >= numChunks {
+		return nil, nil
 	}
 	// Don't allow a SiaFile with a partial chunk to grow.
 	if sf.staticMetadata.HasPartialChunk {

@@ -230,6 +230,11 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 		return fmt.Errorf("can't call SavePartialChunk with a partial chunk >= chunkSize (%v >= %v) or 0",
 			len(partialChunk), sf.ChunkSize())
 	}
+	if len(sf.CombinedChunks()) > 0 {
+		err = errors.New("can't call SavePartialChunk on file that already has a combined chunk assigned to it")
+		build.Critical(err)
+		return
+	}
 
 	// Check if there is an existing incomplete chunk that matches the erasure
 	// coder of the sf. If there isn't, prepare a new one.

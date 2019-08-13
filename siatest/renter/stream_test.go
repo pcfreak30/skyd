@@ -223,9 +223,10 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(5 * modules.SectorSize)
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	cs := siatest.ChunkSize(dataPieces, crypto.TypeDefaultRenter)
+	fileSize := int(2 * cs)
 
 	// Upload file
 	localFile, remoteFile, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
