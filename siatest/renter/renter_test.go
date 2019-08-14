@@ -946,24 +946,33 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 
-	// Get all files from Renter
-	files, err := renter.Files(false)
-	if err != nil {
-		t.Fatal("Failed to get renter files: ", err)
-	}
-
-	// Loop over files and compare against single file endpoint
-	for i := range files {
-		// Get Single File
-		rf, err := renter.RenterFileGet(files[i].SiaPath)
+	// Retry if the reason for the failure was that the fileinfos didn't match. The
+	// repair loop might have changed a field between fetching all the files and
+	// fetching the individual file.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get all files from Renter
+		files, err := renter.Files(false)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatal("Failed to get renter files: ", err)
 		}
 
-		// Compare File result and Files Results
-		if !reflect.DeepEqual(files[i], rf.File) {
-			t.Fatalf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
+		// Loop over files and compare against single file endpoint
+		for i := range files {
+			// Get Single File
+			rf, err := renter.RenterFileGet(files[i].SiaPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Compare File result and Files Results
+			if !reflect.DeepEqual(files[i], rf.File) {
+				return fmt.Errorf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
+			}
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
