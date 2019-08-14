@@ -3569,13 +3569,19 @@ func TestHostAndRentReload(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
-		if err := tg.RestartNode(h); err != nil {
+		if err := h.StopNode(); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.StartNode(); err != nil {
 			t.Fatal(err)
 		}
 		wg.Done()
 	}()
 	go func() {
-		if err := tg.RestartNode(r); err != nil {
+		if err := r.StopNode(); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.StartNode(); err != nil {
 			t.Fatal(err)
 		}
 		wg.Done()
