@@ -130,6 +130,7 @@ func (sf *SiaFile) SetCombinedChunk(combinedChunks []modules.CombinedChunk, upda
 		}
 		ccs = append(ccs, cc)
 	}
+	sf.staticMetadata.CombinedChunks = ccs
 	// Update the combined chunk metadata on disk.
 	u, err := sf.saveMetadataUpdates()
 	if err != nil {
@@ -141,7 +142,6 @@ func (sf *SiaFile) SetCombinedChunk(combinedChunks []modules.CombinedChunk, upda
 		return err
 	}
 	sf.numChunks = sf.numChunks - 1 + len(combinedChunks)
-	sf.staticMetadata.CombinedChunks = ccs
 	return nil
 }
 
