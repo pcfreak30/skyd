@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestTransactionPropagation will create a set of nodes and check that the
@@ -43,9 +44,75 @@ func TestTransactionPropagation(t *testing.T) {
 		}
 	}()
 
-	// TODO:
-	//
-	// Change the connection graph so it looks like:
+	// Get an address from the miner, the renter will send money to this
+	// address.
+	miner := tg.Miners()[0]
+	wag, err := miner.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	minerAddr := wag.Address
+
+	// Send money from the renter to the miner's address.
+	sendAmount := types.SiacoinPrecision.Mul64(200)
+	renter := tg.Renters()[0]
+	wsp, err := renter.WalletSiacoinsPost(sendAmount, minerAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	knownTxids := wsp.TransactionIDs
+
+	// TODO: Check if the transaction is present in every tpool, because every
+	// node is a part of the graph a healthy propagation process should mean
+	// that the transaction appears in every transaction pool.
+
+	// TODO: Send money from each of the hosts to the miner's address.
+
+	// TODO: Check that every transaction is present in every tpool.
+
+	// TODO: Send money again from the renter to the miner, this time making one
+	// hundred consecutive transactions that should chain together, or at least
+	// some value that will put a bit more strain on the tpool.
+
+	// Check that the miner has received the transaction in its unconfirmed set
+	// of transactions.
+	wg, err := miner.WalletGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// NOTE: UnconfirmedIncomingSiacoins will also include incoming siacoins
+	// from change addresses from the miner. This shouldn't be an issue here,
+	// because the miner hasn't made any transactions yet, but if the test is
+	// adjusted this check may also need to be adjusted.
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		if wg.UnconfirmedIncomingSiacoins.Cmp(sendAmount) != 0 {
+			return errors.New("The miner has not recognized the incoming transaction")
+		}
+		return nil
+	})
+
+	// Mine a block and see that all of the txids we've collected from the sends
+	// have made it into the blockchain.
+	err = miner.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(50, 200*time.Millisecond, func() error {
+		for _, txid := range knownTxids {
+			confirmed, err := miner.TransactionPoolConfirmedGet(txid)
+			if err != nil {
+				return err
+			}
+			if !confirmed.Confirmed {
+				return errors.New("txid does not seem to be confirmed on the blockchain")
+			}
+		}
+		return nil
+	})
+
+	// TODO: Change the connection graph so it looks like the below shape.
+	// Currently this isn't possible because the gateway will just reconnect as
+	// it tries to maintain its required outbound peers (set to 4 in testing).
 	//
 	// Miner 0
 	// |      \
@@ -64,34 +131,16 @@ func TestTransactionPropagation(t *testing.T) {
 	// Host 4 - Host 5
 	// |       /
 	// Renter 0
-	//
-	// This graph can be created by using the di
-
-	// Get an address from the miner, the renter will send money to this
-	// address.
-	miner := tg.Miners()[0]
-	wag, err := miner.WalletAddressGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	minerAddr := wag.Address
-
-	// Send money from the renter to the miner's address.
-	renter := tg.Renters()[0]
-	wsp, err := renter.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(200), minerAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// txids := wsp.TransactionIDs
-	_ = wsp.TransactionIDs
 
 	// Check the transaction pools of all of the nodes and see whether the nodes
 	// have the transaction.
 	nodes := tg.Nodes()
 	// for _, node := range nodes {
-	for _, _ = range nodes {
+	for range nodes {
 		err = build.Retry(50, 100*time.Millisecond, func() error {
-			// TODO: Check if the transaction is present in the tpool.
+			// TODO: Check if the transaction is present in the tpool. This will
+			// require adding support to query for the transactions that exist
+			// in the tpool.
 			return nil
 		})
 	}
