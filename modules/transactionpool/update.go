@@ -416,10 +416,8 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		}
 	}
 
-	// Log the size of the transaction pool following an integration of the
-	// block, this will tell us if all of the transactions have been consumed or
-	// not.
-	tp.log.Debugln("A new block has been found. After processing, the transaction pool has dropped from a size of", oldTxnListSize, "to a size of", tp.transactionListSize)
+	// Set the sync status of the tpool equal to the sync status of consensus.
+	tp.synced = cc.Synced
 
 	// Inform subscribers that an update has executed.
 	tp.mu.Demote()
