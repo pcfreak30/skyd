@@ -416,6 +416,11 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		}
 	}
 
+	// Commit the current transactions to the db.
+	tp.putTransactionSets(tp.dbTx, tp.transactionSets)
+	tp.putTransactionHeights(tp.dbTx, tp.transactionHeights)
+	tp.syncDB()
+
 	// Log the size of the transaction pool following an integration of the
 	// block, this will tell us if all of the transactions have been consumed or
 	// not.

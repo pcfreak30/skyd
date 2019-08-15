@@ -26,6 +26,16 @@ var (
 	// been confirmed on the blockchain.
 	bucketConfirmedTransactions = []byte("ConfirmedTransactions")
 
+	// bucketTransactionSets stores each transaction set currently present in
+	// the transaction pool. Its contents are identical to tp.transactionSets,
+	// except that they are only updated once per block.
+	bucketTransactionSets = []byte("TransactionSets")
+
+	// bucketTransactionHeights stores the "seen height" of each transaction
+	// currently present in the transaction pool. Its contents are identical to
+	// tp.transactionHeights, except that they are only updated once per block.
+	bucketTransactionHeights = []byte("TransactionHeights")
+
 	// bucketFeeMedian stores all of the persist data relating to the fee
 	// median.
 	bucketFeeMedian = []byte("FeeMedian")
@@ -131,6 +141,46 @@ func (tp *TransactionPool) getRecentConsensusChange(tx *bolt.Tx) (cc modules.Con
 	return cc, nil
 }
 
+// getTransactionSets returns the current set of transaction sets in the database.
+func (tp *TransactionPool) getTransactionSets(tx *bolt.Tx) (map[TransactionSetID][]types.Transaction, error) {
+	b, err := tx.CreateBucketIfNotExists(bucketTransactionSets)
+	if err != nil {
+		return nil, err
+	}
+	sets := make(map[TransactionSetID][]types.Transaction)
+	err = b.ForEach(func(k, v []byte) error {
+		var id TransactionSetID
+		copy(id[:], k)
+		var set []types.Transaction
+		if err := encoding.Unmarshal(v, &set); err != nil {
+			return err
+		}
+		sets[id] = set
+		return nil
+	})
+	return sets, err
+}
+
+// getTransactionHeights returns the current set of transaction heights in the database.
+func (tp *TransactionPool) getTransactionHeights(tx *bolt.Tx) (map[types.TransactionID]types.BlockHeight, error) {
+	b, err := tx.CreateBucketIfNotExists(bucketTransactionHeights)
+	if err != nil {
+		return nil, err
+	}
+	heights := make(map[types.TransactionID]types.BlockHeight)
+	err = b.ForEach(func(k, v []byte) error {
+		var id types.TransactionID
+		copy(id[:], k)
+		var height types.BlockHeight
+		if err := encoding.Unmarshal(v, &height); err != nil {
+			return err
+		}
+		heights[id] = height
+		return nil
+	})
+	return heights, err
+}
+
 // putBlockHeight updates the transaction pool's block height.
 func (tp *TransactionPool) putBlockHeight(tx *bolt.Tx, height types.BlockHeight) error {
 	tp.blockHeight = height
@@ -161,4 +211,34 @@ func (tp *TransactionPool) putRecentConsensusChange(tx *bolt.Tx, cc modules.Cons
 // putTransaction adds a transaction to the list of confirmed transactions.
 func (tp *TransactionPool) putTransaction(tx *bolt.Tx, id types.TransactionID) error {
 	return tx.Bucket(bucketConfirmedTransactions).Put(id[:], []byte{})
+}
+
+// putTransactionSets stores the current set of transaction sets in the database.
+func (tp *TransactionPool) putTransactionSets(tx *bolt.Tx, sets map[TransactionSetID][]types.Transaction) error {
+	_ = tx.DeleteBucket(bucketTransactionSets)
+	b, err := tx.CreateBucket(bucketTransactionSets)
+	if err != nil {
+		return err
+	}
+	for id, set := range sets {
+		if err := b.Put(id[:], encoding.Marshal(set)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// putTransactionHeights stores the current set of transaction heights in the database.
+func (tp *TransactionPool) putTransactionHeights(tx *bolt.Tx, heights map[types.TransactionID]types.BlockHeight) error {
+	_ = tx.DeleteBucket(bucketTransactionHeights)
+	b, err := tx.CreateBucket(bucketTransactionHeights)
+	if err != nil {
+		return err
+	}
+	for id, height := range heights {
+		if err := b.Put(id[:], encoding.Marshal(height)); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -129,6 +129,8 @@ func (tp *TransactionPool) initPersist() error {
 		bucketBlockHeight,
 		bucketRecentConsensusChange,
 		bucketConfirmedTransactions,
+		bucketTransactionSets,
+		bucketTransactionHeights,
 		bucketFeeMedian,
 	}
 	for _, bucket := range buckets {
@@ -174,6 +176,16 @@ func (tp *TransactionPool) initPersist() error {
 	if err != errNilFeeMedian {
 		tp.recentMedians = mp.RecentMedians
 		tp.recentMedianFee = mp.RecentMedianFee
+	}
+
+	// Get the most recent set of transaction sets and heights.
+	tp.transactionSets, err = tp.getTransactionSets(tp.dbTx)
+	if err != nil {
+		return build.ExtendErr("unable to load the most recent transaction sets", err)
+	}
+	tp.transactionHeights, err = tp.getTransactionHeights(tp.dbTx)
+	if err != nil {
+		return build.ExtendErr("unable to load the most recent transaction heights", err)
 	}
 
 	// Subscribe to the consensus set using the most recent consensus change.
