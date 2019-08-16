@@ -140,6 +140,8 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 	if err != nil {
 		return err
 	}
+	println("outputs")
+	println(len(so.outputs))
 	// Add all of the unconfirmed outputs as well.
 	for _, upt := range tb.wallet.unconfirmedProcessedTransactions {
 		for i, sco := range upt.Transaction.SiacoinOutputs {
@@ -152,6 +154,8 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 			so.outputs = append(so.outputs, sco)
 		}
 	}
+	println("uc outputs")
+	println(len(so.outputs))
 	sort.Sort(sort.Reverse(so))
 
 	// Create and fund a parent transaction that will add the correct amount of
@@ -174,6 +178,8 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 			}
 			continue
 		}
+		println("spend conditions")
+		println(i)
 
 		// Add a siacoin input for this output.
 		sci := types.SiacoinInput{
