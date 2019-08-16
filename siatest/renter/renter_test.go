@@ -3596,11 +3596,6 @@ func TestHostAndRentReload(t *testing.T) {
 		wg.Done()
 	}()
 	wg.Wait()
-	// Reannounce the host.
-	err = h.HostAnnouncePost()
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := tg.Sync(); err != nil {
 		t.Fatal(err)
 	}
@@ -3608,6 +3603,12 @@ func TestHostAndRentReload(t *testing.T) {
 	numRetries := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
+			// Reannounce the host.
+			err = h.HostAnnouncePost()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Mine a block for the announcement
 			err := tg.Miners()[0].MineBlock()
 			if err != nil {
 				return err
