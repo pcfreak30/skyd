@@ -65,20 +65,24 @@ func TestTransactionPropagation(t *testing.T) {
 
 	// Check that the miner has received the transaction in its unconfirmed set
 	// of transactions.
-	wg, err := miner.WalletGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = build.Retry(50, 100*time.Millisecond, func() error {
-		// Check that outgoing siacoins is zero.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		wg, err := miner.WalletGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Miner has not made any transactions, outgoing should be zero.
 		if !wg.UnconfirmedOutgoingSiacoins.IsZero() {
 			t.Fatal("outgoing siacoins expected to be zero for miner")
 		}
+		// Incoming should be equal to the amount that was sent.
 		if wg.UnconfirmedIncomingSiacoins.Cmp(sendAmount) != 0 {
 			return errors.New("The miner has not recognized the incoming transaction")
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// TODO: Check if the transaction is present in every tpool, because every
 	// node is a part of the graph a healthy propagation process should mean
@@ -96,26 +100,26 @@ func TestTransactionPropagation(t *testing.T) {
 
 	// TODO: Check that every transaction is present in every tpool.
 
-	// TODO: Send money again from the renter to the miner, this time making one
-	// hundred consecutive transactions that should chain together, or at least
-	// some value that will put a bit more strain on the tpool.
-
 	// Check that the miner has received the transactions in its unconfirmed set
 	// of transactions.
-	wg, err = miner.WalletGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = build.Retry(50, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		wg, err := miner.WalletGet()
+		if err != nil {
+			t.Fatal(err)
+		}
 		// Check that outgoing siacoins is zero.
 		if !wg.UnconfirmedOutgoingSiacoins.IsZero() {
 			t.Fatal("outgoing siacoins expected to be zero for miner")
 		}
-		if wg.UnconfirmedIncomingSiacoins.Cmp(sendAmount.Mul64(uint64(len(hosts)+1))) != 0 {
-			return errors.New("The miner has not recognized the incoming transaction")
+		expectedBal := sendAmount.Mul64(uint64(len(hosts) + 1))
+		if wg.UnconfirmedIncomingSiacoins.Cmp(expectedBal) != 0 {
+			return errors.New("The miner has not recognized the incoming transaction\n" + wg.UnconfirmedIncomingSiacoins.Div(types.SiacoinPrecision).String() + "\n" + expectedBal.Div(types.SiacoinPrecision).String())
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Disconnect the miner from the renter to force some relay propagation.
 	//
@@ -137,7 +141,7 @@ func TestTransactionPropagation(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		gg, err = miner.GatewayGet()
+		gg, err := miner.GatewayGet()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,6 +157,9 @@ func TestTransactionPropagation(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Send a transaction from the miner to the renter.
 	wag, err = renter.WalletAddressGet()
@@ -168,20 +175,33 @@ func TestTransactionPropagation(t *testing.T) {
 
 	// TODO: Check that all of the tpools are in sync at this point.
 
-	// Check that the renter has received the transaction in its unconfirmed set
-	// of transactions.
-	wg, err = renter.WalletGet()
-	if err != nil {
-		t.Fatal(err)
-	}
 	// At this point, the renter has both sent and received 200 siacoins, so the
 	// incoming and outgoing siacoins should be equal.
-	err = build.Retry(50, 100*time.Millisecond, func() error {
-		if wg.UnconfirmedIncomingSiacoins.Cmp(wg.UnconfirmedOutgoingSiacoins) != 0 {
-			return errors.New("The renter has not recognized the incoming transaction " + wg.UnconfirmedIncomingSiacoins.String() + " " + wg.UnconfirmedOutgoingSiacoins.String())
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Check that the renter has received the transaction in its unconfirmed set
+		// of transactions.
+		wg, err := renter.WalletGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The balance will not be perfect becuase of miner fees that the renter
+		// has paid, but it should be within 10 siacoins, and the renter should
+		// be net negative.
+		uis := wg.UnconfirmedIncomingSiacoins
+		uos := wg.UnconfirmedOutgoingSiacoins
+		if uis.Cmp(uos) > 0 {
+			return errors.New("the renter is net positive, but should be down miner fees")
+		}
+		outgoingTotal := uos.Sub(uis)
+		tenSC := types.SiacoinPrecision.Mul64(10)
+		if outgoingTotal.Cmp(tenSC) > 0 {
+			return errors.New("the renter has more than 10 siacoins outgoing on net " + outgoingTotal.Div(types.SiacoinPrecision).String())
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Send several more transactions from the renter to the miner. When this
 	// code was written, the renter would start with 25 outputs in its database,
@@ -190,7 +210,6 @@ func TestTransactionPropagation(t *testing.T) {
 	// the defrag limit.
 	sends := 60
 	for i := 0; i < sends; i++ {
-		println("outputs in renter wallet db")
 		wsp, err := renter.WalletSiacoinsPost(sendAmount, minerAddr)
 		if err != nil {
 			t.Fatal(err)
@@ -198,28 +217,38 @@ func TestTransactionPropagation(t *testing.T) {
 		knownTxids = append(knownTxids, wsp.TransactionIDs...)
 	}
 
-	// Check that the miner has received the transaction in its unconfirmed set
+	// Check that the miner has received the transactions in its unconfirmed set
 	// of transactions.
-	wg, err = miner.WalletGet()
-	if err != nil {
-		t.Fatal(err)
-	}
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		// Check that outgoing siacoins is zero.
+		wg, err := miner.WalletGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Check that outgoing siacoins is smaller than incoming siacoins.
 		if wg.UnconfirmedOutgoingSiacoins.Cmp(wg.UnconfirmedIncomingSiacoins) > 0 {
 			t.Fatal("the miner should have more incoming siacoins than outgoing siacoins")
 		}
 		minerBal := wg.UnconfirmedIncomingSiacoins.Sub(wg.UnconfirmedOutgoingSiacoins)
 		expectedMinerBal := sendAmount.Mul64(uint64(len(hosts) + sends))
-		if minerBal.Cmp(expectedMinerBal) != 0 {
-			return errors.New("The miner has not recognized the incoming transaction")
+		// Check that the miner has no more than the expected bal.
+		if minerBal.Cmp(expectedMinerBal) > 0 {
+			return errors.New("the miner has more siacoins than expected")
+		}
+		// Check that the miner has no less than the expected balance. Add some
+		// wiggle room for fees.
+		tenSC := types.SiacoinPrecision.Mul64(10)
+		if minerBal.Add(tenSC).Cmp(expectedMinerBal) < 0 {
+			return errors.New("the miner has fewer siacoins than expected")
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify that the miner and renter are still disconnected from eachother.
 	err = build.Retry(50, 100*time.Millisecond, func() error {
-		gg, err = miner.GatewayGet()
+		gg, err := miner.GatewayGet()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -235,6 +264,9 @@ func TestTransactionPropagation(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// TODO: Check that all of the tpools are still synced.
 
@@ -242,8 +274,8 @@ func TestTransactionPropagation(t *testing.T) {
 	// their mempools, and test how the nodes behave when the mempools are not
 	// equal.
 	//
-	// TODO: This won't always dump out the mempool, not after persistence has
-	// been added.
+	// TODO: Once purge is added to the api, replace this with a call to purge
+	// transaction pool.
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(len(hosts))
 	for i := 0; i < len(hosts); i++ {
@@ -260,7 +292,6 @@ func TestTransactionPropagation(t *testing.T) {
 		}(i)
 	}
 	waitGroup.Wait()
-
 	// During the restarting of the hosts, it's highly likely that the miner and
 	// renter connected to eachother again. Once a proper blacklist for peers is
 	// created, this step won't be necessary but in the meantime we need to
@@ -278,13 +309,59 @@ func TestTransactionPropagation(t *testing.T) {
 	// TODO: This won't always dump out the mempool, not after persistence has
 	// been added.
 	for i := 0; i < sends; i++ {
-		println("outputs in renter wallet db")
 		wsp, err := renter.WalletSiacoinsPost(sendAmount, minerAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
 		knownTxids = append(knownTxids, wsp.TransactionIDs...)
 	}
+
+	// Check that the miner has received the transactions in its unconfirmed set
+	// of transactions.
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		wg, err := miner.WalletGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Check that outgoing siacoins is smaller than incoming siacoins.
+		if wg.UnconfirmedOutgoingSiacoins.Cmp(wg.UnconfirmedIncomingSiacoins) > 0 {
+			t.Fatal("the miner should have more incoming siacoins than outgoing siacoins")
+		}
+		minerBal := wg.UnconfirmedIncomingSiacoins.Sub(wg.UnconfirmedOutgoingSiacoins)
+		expectedMinerBal := sendAmount.Mul64(uint64(len(hosts) + sends*2))
+		// Check that the miner has no more than the expected bal.
+		if minerBal.Cmp(expectedMinerBal) > 0 {
+			return errors.New("the miner has more siacoins than expected")
+		}
+		// Check that the miner has no less than the expected balance. Add some
+		// wiggle room for fees.
+		tenSC := types.SiacoinPrecision.Mul64(20)
+		if minerBal.Add(tenSC).Cmp(expectedMinerBal) < 0 {
+			return errors.New("the miner has fewer siacoins than expected")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Shut down all of the nodes except the miner, so that only the miner sees
+	// the block that is mined.
+	err = renter.StopNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, host := range hosts {
+		err = host.StopNode()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// TODO: Send a large number of transactions from the miner to the renter.
+	// Save the transactions so we can broadcast them later. These will be
+	// created before the block, so that they get confirmed in the block that
+	// the other nodes can't see.
 
 	// Mine a block and see that all of the txids we've collected from the sends
 	// have made it into the blockchain.
@@ -304,6 +381,63 @@ func TestTransactionPropagation(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO: Send a large number of transactions from the miner to the renter.
+	// Save the transactions so we can broadcast them later. These are
+	// transactions which are uncomfirmed even after the block was created.
+
+	// Shut down the miner. This will allow us to bring back up the renter and
+	// hosts without them seeing the block.
+	err = miner.StopNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Bring back up the renter and hosts and wait for them to reconnect.
+	err = renter.StartNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, host := range hosts {
+		err = host.StartNode()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		gg, err := renter.GatewayGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(gg.Peers) < 4 {
+			return errors.New("renter has not reconnected")
+		}
+		for _, host := range hosts {
+			gg, err = host.GatewayGet()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(gg.Peers) < 4 {
+				return errors.New("renter has not reconnected")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO: Send more transactions from the renter to the miner. These will
+	// happen outside of the block because the miner is offline. So the renter
+	// and hosts will get transactions in their tpools that will be part of sets
+	// that will get partially confirmed when the miner comes back online.
+
+	// TODO: Broadcast the transactions from the miner to the renter and the
+	// hosts. These transactions will be building on top of a block that is
+	// already confirmed, which can cause issues.
 
 	// TODO: Change the connection graph so it looks like the below shape.
 	// Currently this isn't possible because the gateway will just reconnect as
@@ -326,17 +460,4 @@ func TestTransactionPropagation(t *testing.T) {
 	// Host 4 - Host 5
 	// |       /
 	// Renter 0
-
-	// Check the transaction pools of all of the nodes and see whether the nodes
-	// have the transaction.
-	nodes := tg.Nodes()
-	// for _, node := range nodes {
-	for range nodes {
-		err = build.Retry(50, 100*time.Millisecond, func() error {
-			// TODO: Check if the transaction is present in the tpool. This will
-			// require adding support to query for the transactions that exist
-			// in the tpool.
-			return nil
-		})
-	}
 }
