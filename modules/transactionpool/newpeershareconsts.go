@@ -17,5 +17,5 @@ const (
 
 	// newPeerBroadcastRatelimit is the amount of time per byte that we wait
 	// between sending each of our transaction sets to a new peer.
-	newPeerBroadcastRateLimit = 100 * time.Nanosecond // 100 nanoseconds per byte is 10 mbps per peer
+	newPeerBroadcastRateLimit = 1000 * time.Nanosecond // 1000 nanoseconds per byte is 1 mbps per peer
 )

@@ -1,7 +1,7 @@
 package transactionpool
 
-// sharetxns.go is a file that ensures all of the transactions that we have are
-// getting shared with all of our peers. If a new peer connects to the
+// newpeershare.go is a file that ensures all of the transactions that we have
+// are getting shared with all of our peers. If a new peer connects to the
 // transaction pool, we should send them all of our transactions to ensure that
 // they have a similar view of the network that we do. The expectation is that
 // the peer will do the same, meaning that the transaction pools should quickly
@@ -20,6 +20,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// newPeerShare contains a list of peers that we haven't finished sending
+// transactions to as well as the list of transactions that they haven't yet
+// seen.
+type newPeerShare struct {
+	workMap[modules.Peer]map[types.TransactionID]struct{}
+}
 
 // transactionSetSize will return the Sia encoding size of a transaction set.
 func transactionSetSize(set []types.Transaction) (size int) {

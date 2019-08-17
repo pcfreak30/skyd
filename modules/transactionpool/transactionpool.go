@@ -59,6 +59,8 @@ type (
 		// subscriber.
 		subscribers []modules.TransactionPoolSubscriber
 
+		// repeatBroadcastFilter repeatBroadcastFilter
+
 		// Utilities.
 		consensusSet modules.ConsensusSet
 		db           *persist.BoltDatabase
