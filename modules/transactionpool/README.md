@@ -64,39 +64,29 @@ pool, which needs to be updated every time a new `ConsensusChange` is received
 by `ProcessConsensusChange` in [update.go](./update.go).
 
 ##### TODOs
-```
-TODO: Instead of polling the gateway to see when peers are coming and going, the
+ - TODO: Instead of polling the gateway to see when peers are coming and going, the
 transaction pool should be getting some sort of subscription type notification
 from the gateway each time the peer set changes. This would allow the central
 goroutine to be removed and also allow transaction propagation to begin more
 quickly.
-```
-```
-TODO: The subsystem will not start sending transactions to a new peer until it
+ - TODO: The subsystem will not start sending transactions to a new peer until it
 knows that it has the most recent blocks on the network. This is to avoid
 sending the peer outdated transactions if the transaction pool is still catching
 up to the most recent block.
-```
-```
-TODO: To help mitigate the DoS vector where an attacker is having the peer
+ - TODO: To help mitigate the DoS vector where an attacker is having the peer
 continually resync the attacker, we can remember which IPs we've synced even
 after the node has disconnected, and refuse to re-send a transaction set to the
 same IP or IP range multiple times. This set will be cleared out after a peer
 from an IP range has been gone for a sufficient amount of time (likely several
 hours).
-```
-```
-TODO: The new peer share subsystem ideally sends transaction sets to peers
+ - TODO: The new peer share subsystem ideally sends transaction sets to peers
 roughly in order of fee rate. This ensures that new peers get the most valuable
 transactions first and have the best idea for what sorts of fees are required to
 get into blocks.
-
-The new peer share subsystem also ideally sends transactions in a semi-random
+  The new peer share subsystem also ideally sends transactions in a semi-random
 order so that a new peer to the network is receiving different transactions from
 all of its peers instead of the same information over and over from each peer.
-```
-```
-TODO: The new peer share subsystem should have lowest priority when bumping up
+ - TODO: The new peer share subsystem should have lowest priority when bumping up
 against the ratelimits on the gateway, other bandwidth such as new transaction
 broadcasting is more important.
 ```
@@ -136,16 +126,12 @@ transaction.
 	 be missing.
 
 ##### TODOs
-```
-TODO: Eventually we will be able to catalog incoming transactions. If a peer
+ - TODO: Eventually we will be able to catalog incoming transactions. If a peer
 tells us about a transaction, they obviously have that transaction and we do not
 need to receive it again.
-```
-```
-TODO: Splitting off this filter into its own subsystem makes it easy to split
+ - TODO: Splitting off this filter into its own subsystem makes it easy to split
 broadcasting strategy when we upgrade to broadcasting txids only instead of full
 transactions. The new broadcast strategy will send peers a list of txids and
 then the peer can determine whether or not to request the full transactions,
 saving network bandwidth. Or we can jump straight to erlay style set
 reconciliation.
-```
