@@ -96,7 +96,9 @@ by `ProcessConsensusChange` in [update.go](./update.go).
 
 The repeat broadcast filter will track each transaction in the transaction pool,
 remembering which peers have received that transaction before. This will prevent
-the transaction pool from sending redundant information around the network.
+the transaction pool from sending redundant information around the network. All
+transactions broadcast from the tpool will first pass through the repeat
+broadcast filter.
 
 The main mechanism of action is to have a map that links from transaction id to
 a map of peers. So for each transaction, we have a map of which peers have
@@ -108,7 +110,9 @@ deleted.
 `map[types.TransactionID]map[modules.NetAddress]struct{}`
 
 When choosing to broadcast a transaction set to a peer, we will check what
-transactions of that set we have already sent to that peer
+transactions of that set we have already sent to that peer, and exclude any
+transactions that the peer already knows about, sending them only the new
+information.
 
 There's a special case for inserting transactions that are added to the pool
 from reverted blocks. If a block is reverted, we assume that all of our peers
@@ -134,3 +138,13 @@ transaction.
    and then the peer can determine whether or not to request the full
    transactions, saving network bandwidth. Or we can jump straight to erlay
    style set reconciliation.
+ - TODO: The repeat broadcast filter suffers from shortcomings if peers are
+   evicting transactions or rejecting transactions for having low fee rates,
+   because they may evict what will eventually become ancestors, and then no
+   longer be able to receive updates on that set. This could be problematic for
+   child-pays-for-parent transactions. We need some way for a peer to realize
+   that there are ancestors it can request without also opening up a DoS. The
+   solution might be to send the fee rate and size of the whole set at the same
+   time that we send the transactions that we believe the peer is missing. This
+   will allow the peer to evaluate how much work they have to do to fetch the
+   full set, and determine whether this is worthwhile based on the new fees.
