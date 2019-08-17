@@ -54,9 +54,9 @@ This DoS isn't so bad because the bandwidth ratio for an attacker to the node is
 1:1.
 
 ##### Outbound Complexities
- - The [Repeat Broadcast Filter](#repeat-broadcast-filter) subsystem's
-   `callBroadcastTransactionSet` will be used to send transaction sets to new
-   peers.
+ - `callBroadcastTransactionSet` from the [Repeat Broadcast
+   Filter](#repeat-broadcast-filter) subsystem will be used to send transaction
+   sets to new peers.
 
 ##### State Complexities
 The new peer share subsystem depends on the `synced` value of the transaction
@@ -89,7 +89,6 @@ all of its peers instead of the same information over and over from each peer.
  - TODO: The new peer share subsystem should have lowest priority when bumping up
 against the ratelimits on the gateway, other bandwidth such as new transaction
 broadcasting is more important.
-```
 
 ### Repeat Broadcast Filter
 **Key Files**
