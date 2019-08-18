@@ -20,8 +20,8 @@ The transaction pool has the following subsystems.
  - [update.go](./update.go)
 
 The core subsystem contains all of the code that existed in the transaction pool
-before we started breaking packages down into subsystems. The core subsystem
-should be broken down and separated out into new subsystems.
+before modules were being broken down into subsystems. The core subsystem should
+be broken down and separated out into new subsystems.
 
 ### New Peer Share
 **Key Files**
@@ -74,11 +74,11 @@ by `ProcessConsensusChange` in [update.go](./update.go).
    sending the peer outdated transactions if the transaction pool is still
    catching up to the most recent block.
  - TODO: To help mitigate the DoS vector where an attacker is having the peer
-   continually resync the attacker, we can remember which IPs we've synced even
-   after the node has disconnected, and refuse to re-send a transaction set to
-   the same IP or IP range multiple times. This set will be cleared out after a
-   peer from an IP range has been gone for a sufficient amount of time (likely
-   several hours).
+   continually resync the attacker, the subsystem can remember which IPs it has
+   synced even after the node has disconnected, and refuse to re-send a
+   transaction set to the same IP or IP range multiple times. This set will be
+   cleared out after a peer from an IP range has been gone for a sufficient
+   amount of time (likely several hours).
  - TODO: The new peer share subsystem ideally sends transaction sets to peers
    roughly in order of fee rate. This ensures that new peers get the most
    valuable transactions first and have the best idea for what sorts of fees are
@@ -101,24 +101,22 @@ transactions broadcast from the tpool will first pass through the repeat
 broadcast filter.
 
 The main mechanism of action is to have a map that links from transaction id to
-a map of peers. So for each transaction, we have a map of which peers have
+a map of peers. For each transaction, there is a map of which peers have
 received that transaction already. When a new transaction is entered into the
 transaction pool, a corresponding map is created for that transaction. And when
 a transaction is removed from the transaction pool, the corresponding map is
 deleted.
 
-`map[types.TransactionID]map[modules.NetAddress]struct{}`
-
-When choosing to broadcast a transaction set to a peer, we will check what
-transactions of that set we have already sent to that peer, and exclude any
-transactions that the peer already knows about, sending them only the new
+When choosing to broadcast a transaction set to a peer, the subsystem will check
+what transactions of that set have already been sent to that peer, and exclude
+any transactions that the peer already knows about, sending them only the new
 information.
 
 There's a special case for inserting transactions that are added to the pool
-from reverted blocks. If a block is reverted, we assume that all of our peers
-already have that transaction since it was in a block that was propagated, so
-we'll add those transactions assuming that all peers already have the
-transaction.
+from reverted blocks. If a block is reverted, the subsystem will assume that all
+of its peers already have that transaction since it was in a block that was
+propagated, so it'll add those transactions assuming that all peers already have
+the transaction.
 
 ##### Inbound Complexities
  - `callBroadcastTransactionSet` can be used to send transactions to peers.
@@ -129,22 +127,20 @@ transaction.
 	 be missing.
 
 ##### TODOs
- - TODO: Eventually we will be able to catalog incoming transactions. If a peer
-   tells us about a transaction, they obviously have that transaction and we do
-   not need to receive it again.
+ - TODO: Eventually the subsystem will be able to catalog incoming transactions.
+   If a peer tells us about a transaction, they obviously have that transaction
+   and it doesn't need to be broadcast to them again.
  - TODO: Splitting off this filter into its own subsystem makes it easy to split
-   broadcasting strategy when we upgrade to broadcasting txids only instead of
-   full transactions. The new broadcast strategy will send peers a list of txids
-   and then the peer can determine whether or not to request the full
-   transactions, saving network bandwidth. Or we can jump straight to erlay
-   style set reconciliation.
+   broadcasting strategy when the tpool is upgraded to broadcasting txids only
+   instead of full transactions. The new broadcast strategy will send peers a
+   list of txids and then the peer can determine whether or not to request the
+   full transactions, saving network bandwidth.
  - TODO: The repeat broadcast filter suffers from shortcomings if peers are
    evicting transactions or rejecting transactions for having low fee rates,
    because they may evict what will eventually become ancestors, and then no
    longer be able to receive updates on that set. This could be problematic for
    child-pays-for-parent transactions. We need some way for a peer to realize
-   that there are ancestors it can request without also opening up a DoS. The
-   solution might be to send the fee rate and size of the whole set at the same
-   time that we send the transactions that we believe the peer is missing. This
-   will allow the peer to evaluate how much work they have to do to fetch the
-   full set, and determine whether this is worthwhile based on the new fees.
+   that there are ancestors it can request without also opening up a DoS. I
+   believe the solution would be to send peers the fee rate and full transaction
+   size for both the new transactions and the set as a whole, which will allow
+   the peer to evaluate whether the transaction set is worth requesting in full.
