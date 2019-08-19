@@ -61,17 +61,27 @@ type (
 		// subscriber.
 		subscribers []modules.TransactionPoolSubscriber
 
-		// repeatBroadcastFilter repeatBroadcastFilter
+		// Subsystems.
+		staticPeerShareLimiter *peerShareLimiter
 
-		// Utilities.
+		// Misc state.
+		db         *persist.BoltDatabase
+		dbTx       *bolt.Tx
+		mu         demotemutex.DemoteMutex
+		persistDir string
+
+		// Utilities
+		*TransactionPoolUtils
+	}
+
+	// TransactionPoolUtils are a set of utilities that are made available to
+	// all transaction pool subsystems. All utilities are threadsafe and
+	// independent, subsystems do not need to be aware of eachother's usage of
+	// the utils.
+	TransactionPoolUtils struct {
 		consensusSet modules.ConsensusSet
-		db           *persist.BoltDatabase
-		dbTx         *bolt.Tx
 		gateway      modules.Gateway
 		log          *persist.Logger
-		mu           demotemutex.DemoteMutex
-		persistDir   string
-		synced       bool
 		tg           sync.ThreadGroup
 	}
 )
@@ -88,9 +98,6 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 
 	// Initialize a transaction pool.
 	tp := &TransactionPool{
-		consensusSet: cs,
-		gateway:      g,
-
 		knownObjects:        make(map[ObjectID]TransactionSetID),
 		subscriberSets:      make(map[TransactionSetID]*modules.UnconfirmedTransactionSet),
 		transactionHeights:  make(map[types.TransactionID]types.BlockHeight),
@@ -98,7 +105,14 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 		transactionSetDiffs: make(map[TransactionSetID]*modules.ConsensusChange),
 
 		persistDir: persistDir,
+
+		TransactionPoolUtils: &TransactionPoolUtils{
+			consensusSet: cs,
+			gateway:      g,
+		},
 	}
+	// Create the subsystems.
+	tp.staticPeerShareLimiter = tp.newPeerShareLimiter()
 
 	// Open the tpool database.
 	err := tp.initPersist()

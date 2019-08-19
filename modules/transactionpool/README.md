@@ -33,62 +33,112 @@ connected to and sharing the transactions in the transaction pool with that
 peer.
 
 The subsystem has an independent thread which monitors the peers in the gateway
-and adds work to a queue. The work is a map of transactions that the tpool knows
-the peer hasn't seen yet. The transactions will be listed one by one, but will
-be broadcast one set at a time. When a full set is broadcast, all transactions
-in that set will be removed from the work map. We track by transaction instead
-of by transaction set because the transaction sets are constantly changing as
-new transactions are broadcast and as new blocks are found. Storing by
-transaction enables the new peer share submodule to handle the constantly
-changing transaction sets without much internal complexity and without needing
-to interact with other subsystems. It also allows for significant changes to the
-structure of the core submodule without breaking the new peer share subsystem.
+and spins up a new thread for each new peer that appears. That thread will take
+a snapshot of all of the transaction objects currently in the tpool and queue
+them up to be sent to the peer.
 
-The subsystem will self-ratelimit when sending new transactions to peers. It
-will send each transaction set at full speed, but then sleep for some time
-between the sending of each set to ensure that the overall data rate for that
-peer is reasonable. There is a concern that a node could be DoS'd by a high
-bandwidth peer who is continuously connecting, disconnecting, and re-connecting,
-causing the host peer to continually send that peer the whole transaction pool.
-This DoS isn't so bad because the bandwidth ratio for an attacker to the node is
-1:1.
+The transaction objects are tracked independently, however they are sent as
+sets. An object is selected, and then the transaction set which contains that
+object is sent to the peer. All of the objects in that transaction set will be
+removed from the queue for the peer to receive. Objects are tracked instead of
+transaction sets because the transaction sets in the pool are constantly
+changing as blocks are found and as new transactions arrive. Tracking by
+transaction object ensures that the peer receives all data, and that the peer is
+also receiving up to date data. Transaction objects are used instead of
+transactions or transaction IDs because the transaction pool has a direct
+mapping from object ID to transaction, but does not have a mapping from
+transaction to transaction set.
+
+The new peer share subsystem will call `callBlockForShareTSet` before sharing a
+transaction set with a new peer. This will allow the peer share limiter
+subsystem to block for conditions such as waiting for the transaction pool to be
+synced, and also will allow the peer share limiter to enforce a ratelimit on
+sending transactions to new peers that prioritizes older peers over newer peers.
 
 ##### Outbound Complexities
- - `callBroadcastTransactionSet` from the [Repeat Broadcast
+ - `callBlockForShareTSet` from the [Peer Share Limiter](#peer-share-limiter)
+   will be used to ensure that a transaction set is not sent until the limiter
+   believes that it is okay to send that transaction set.
+ - `callRelayTransactionSet` from the [Repeat Broadcast
    Filter](#repeat-broadcast-filter) subsystem will be used to send transaction
    sets to new peers.
 
+##### TODOs
+ - TODO: The subsystem should not start sending transactions to a new peer until
+   it knows that the peer has the most recent blocks on the network. This is to
+   avoid sending the peer outdated transactions if the transaction pool is still
+   catching up to the most recent block.
+ - TODO: The subsystem ideally sends transaction sets to peers roughly in order
+   of fee rate. This ensures that new peers get the most valuable transactions
+   first and have the best idea for what sorts of fees are required to get into
+   blocks. The peer share subsystem also ideally sends transactions in a
+   semi-random order so that a new peer to the network is receiving different
+   transactions from all of its peers instead of the same information over and
+   over from each peer. Some amount of randomness is still desirable, so that
+   redundant shares from peers will initially likely cover different
+   transactions.
+ - TODO: The peer share subsystem should have lowest priority when bumping up
+   against the ratelimits on the gateway, other bandwidth such as new
+   transaction broadcasting is more important. Also important is host and renter
+   bandwidth. Once a good QoS strategy is implemented to prioritize different
+   types of bandwidth, the ratelimit that is applied on sending new transactions
+   to peers can be removed.
+
+### Peer Share Limiter
+**Key Files**
+ - [peersharelimiter.go](./peersharelimiter.go)
+
+The peer share limiter is responsible for limiting when the new peer share
+subsystem is allowed to send transaction sets to peers. The limiter will gate
+for factors such as the transaction pool being online and synced, and the
+limiter will also enforce a ratelimit on sharing new transactions with peers.
+
+The new peer share subsystem should call `callBlockForShareTSet`, which takes as
+input the timestamp when the peer was discovered, and returns a channel that
+must be used to report the size of the transaction set being sent.
+
+The peer share limiter attempts to enforce a global ratelimit on sharing
+pre-existing transactions with new peers. Ideally, transaction sets can be
+shared with new peers at full speed, but then an amount of time is allowed to
+pass between sending transaction sets to ensure that the long term average
+bandwidth consumption is below the peer share ratelimit. If some peers are
+particularly slow in receiving transactions, the peer share limiter would like
+to unblock threads that are trying to send to other peers, so that slow peers
+cannot suffocate other peers. Using a heap to select which peers to unblock
+achieves these goals.
+
+##### Inbound Complexities
+ - `callBlockForShareTSet` is used by the [New Peer Share](#new-peer-share)
+   subsystem to limit transactions being shared with new peers.
+
 ##### State Complexities
-The new peer share subsystem depends on the `synced` value of the transaction
-pool, which needs to be updated every time a new `ConsensusChange` is received
-by `ProcessConsensusChange` in [update.go](./update.go).
+There is a subtle state complexity with the core transaction pool fields which
+complicates the implementation of the peer share limiter. The transaction sets
+in the transaction pool are constantly changing and adjusting as new blocks are
+found and as new transactions are received, which means if any period of time
+elapses between choosing to send a transaction set and actually sending the
+transaction set, the size of the data being sent may change.
+
+This creates a complexity with the peer share limiter because the peer share
+limiter cares about the volume of data being sent out of the transaction pool.
+Because the exact relay size of a transaction set cannot be known until right
+before the relay, the peer share limiter needs to be told how many bytes a relay
+operation used after the limiter unblocks that operation.
+
+This implementation detail for the peer share limiter allows a thread to defer
+choosing a transaction set to relay until after it has been unblocked by the
+limiter. If it finds after being unblocked that there are no transaction sets to
+send, it can tell the limiter that 0 bytes were used in relay operations.
 
 ##### TODOs
+ - TODO: Currently the ratelimit that the peer share limiter uses is a const
+   that cannot be changed at runtime. An export should be created that allows
+   the user to configure this value through the transaction pool API.
  - TODO: Instead of polling the gateway to see when peers are coming and going,
    the transaction pool should be getting some sort of subscription type
    notification from the gateway each time the peer set changes. This would
    allow the central goroutine to be removed and also allow transaction
    propagation to begin more quickly.
- - TODO: The subsystem will not start sending transactions to a new peer until
-   it knows that it has the most recent blocks on the network. This is to avoid
-   sending the peer outdated transactions if the transaction pool is still
-   catching up to the most recent block.
- - TODO: To help mitigate the DoS vector where an attacker is having the peer
-   continually resync the attacker, the subsystem can remember which IPs it has
-   synced even after the node has disconnected, and refuse to re-send a
-   transaction set to the same IP or IP range multiple times. This set will be
-   cleared out after a peer from an IP range has been gone for a sufficient
-   amount of time (likely several hours).
- - TODO: The new peer share subsystem ideally sends transaction sets to peers
-   roughly in order of fee rate. This ensures that new peers get the most
-   valuable transactions first and have the best idea for what sorts of fees are
-   required to get into blocks. The new peer share subsystem also ideally sends
-   transactions in a semi-random order so that a new peer to the network is
-   receiving different transactions from all of its peers instead of the same
-   information over and over from each peer.
- - TODO: The new peer share subsystem should have lowest priority when bumping
-   up against the ratelimits on the gateway, other bandwidth such as new
-   transaction broadcasting is more important.
 
 ### Repeat Broadcast Filter
 **Key Files**
@@ -122,7 +172,7 @@ the transaction.
  - `callBroadcastTransactionSet` can be used to send transactions to peers.
    - The [Core](#core) subsystem will use `callBroadcastTransactionSet` for
 	 general purpose transaction broadcasting and relaying
-   - The [New Peer Share](#new-peer-share) subsystem will use
+   - The [New Peer Share](#peer-share) subsystem will use
 	 `callBroadcastTransactionSet` to send new peers transactions that they may
 	 be missing.
 
