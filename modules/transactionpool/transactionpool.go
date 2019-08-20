@@ -61,24 +61,33 @@ type (
 		// subscriber.
 		subscribers []modules.TransactionPoolSubscriber
 
-		// Subsystems.
-		staticPeerShareLimiter *peerShareLimiter
-
 		// Misc state.
 		db         *persist.BoltDatabase
 		dbTx       *bolt.Tx
 		mu         demotemutex.DemoteMutex
 		persistDir string
+		synced     bool
 
-		// Utilities
-		*TransactionPoolUtils
+		*transactionPoolUtils
 	}
 
 	// TransactionPoolUtils are a set of utilities that are made available to
 	// all transaction pool subsystems. All utilities are threadsafe and
 	// independent, subsystems do not need to be aware of eachother's usage of
 	// the utils.
-	TransactionPoolUtils struct {
+	//
+	// TODO: Rename all of these fields to have the static prefix.
+	transactionPoolUtils struct {
+		// Subsystems.
+		//
+		// TODO: Including the whole transaction pool as a subsystem is a
+		// temporary hack because one of the proper subsystems needs a callout
+		// to a field that's part of the core transaction subsystem. This seemed
+		// like the least painful way to get that implemented.
+		staticPeerShareLimiter *peerShareLimiter
+		staticCore             *TransactionPool
+
+		// Utils.
 		consensusSet modules.ConsensusSet
 		gateway      modules.Gateway
 		log          *persist.Logger
@@ -106,13 +115,14 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 
 		persistDir: persistDir,
 
-		TransactionPoolUtils: &TransactionPoolUtils{
+		transactionPoolUtils: &transactionPoolUtils{
 			consensusSet: cs,
 			gateway:      g,
 		},
 	}
 	// Create the subsystems.
 	tp.staticPeerShareLimiter = tp.newPeerShareLimiter()
+	tp.staticCore = tp
 
 	// Open the tpool database.
 	err := tp.initPersist()

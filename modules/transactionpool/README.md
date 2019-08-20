@@ -97,38 +97,33 @@ The new peer share subsystem should call `callBlockForShareTSet`, which takes as
 input the timestamp when the peer was discovered, and returns a channel that
 must be used to report the size of the transaction set being sent.
 
-The peer share limiter attempts to enforce a global ratelimit on sharing
-pre-existing transactions with new peers. Ideally, transaction sets can be
-shared with new peers at full speed, but then an amount of time is allowed to
-pass between sending transaction sets to ensure that the long term average
-bandwidth consumption is below the peer share ratelimit. If some peers are
-particularly slow in receiving transactions, the peer share limiter would like
-to unblock threads that are trying to send to other peers, so that slow peers
-cannot suffocate other peers. Using a heap to select which peers to unblock
-achieves these goals.
+The peer share limiter attempts to enforce a global, long term and burst
+agnostic ratelimit on the new peer share subsystem. Ideally, transaction sets
+can be shared with new peers at full speed, but then an amount of time is
+allowed to pass between sending transaction sets to ensure that the long term
+average bandwidth consumption is below the peer share ratelimit. If some peers
+are particularly slow in receiving transactions, the peer share limiter would
+like to unblock threads that are trying to send to other peers, so that slow
+peers cannot suffocate other peers. Using a heap to select which peers to
+unblock achieves these goals.
 
 ##### Inbound Complexities
  - `callBlockForShareTSet` is used by the [New Peer Share](#new-peer-share)
    subsystem to limit transactions being shared with new peers.
 
-##### State Complexities
-There is a subtle state complexity with the core transaction pool fields which
-complicates the implementation of the peer share limiter. The transaction sets
-in the transaction pool are constantly changing and adjusting as new blocks are
-found and as new transactions are received, which means if any period of time
-elapses between choosing to send a transaction set and actually sending the
-transaction set, the size of the data being sent may change.
+##### Outbound Complexities
+ - `callTpoolSynced` is called from the [Core](#core) subsystem to determine
+   whether or not the transaction pool is currently synced.
 
-This creates a complexity with the peer share limiter because the peer share
-limiter cares about the volume of data being sent out of the transaction pool.
-Because the exact relay size of a transaction set cannot be known until right
-before the relay, the peer share limiter needs to be told how many bytes a relay
-operation used after the limiter unblocks that operation.
-
-This implementation detail for the peer share limiter allows a thread to defer
-choosing a transaction set to relay until after it has been unblocked by the
-limiter. If it finds after being unblocked that there are no transaction sets to
-send, it can tell the limiter that 0 bytes were used in relay operations.
+##### Other Complexities
+ - The core subsystem has a dynamic set of transactions which changes as new
+   blocks are found and new transactions are added. When the new peer share
+   subsystem blocks before sending a transaction set to a peer, the ideal
+   transaction set to send can change during the block. For that reason, the
+   transaction set to send is not chosen until after the blocking is complete.
+   The peer share limiter needs to know the size of the object that gets sent,
+   this therefore needs to be communicated after the blocking is complete. This
+   communication is performed using channels.
 
 ##### TODOs
  - TODO: Currently the ratelimit that the peer share limiter uses is a const

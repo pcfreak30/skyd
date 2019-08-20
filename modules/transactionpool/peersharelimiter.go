@@ -3,27 +3,29 @@ package transactionpool
 import (
 	"container/heap"
 	"sync"
+	"time"
 )
 
-// blockingPeer is a thread that is being blocked by the transaction pool
-// ratelimit.
+// blockingPeer represents a thread that is being blocked by the peer share
+// limiter. Closing unblockChan will unblock the thread. The timeConnected field
+// indicates what time we connected with this peer. Peers that were connected
+// earlier are given priority.
 type blockingPeer struct {
-	timeDiscovered int64
-	sizeChan       chan int
-	unblockChan    chan struct{}
+	timeConnected int64
+	sizeChan      chan int
+	unblockChan   chan struct{}
 }
 
-// peerHeap is a heap of peers that are blocking to sent a transaction set,
-// sorted by their timeDiscovered. Peers that were discovered sooner will be
-// popped off of the heap first.
+// peerHeap is a heap of blocking peers that is sorted by timeConnected, with
+// the earliest timeConnected value being the first to be popped off of the
+// heap.
 type peerHeap []*blockingPeer
 
 // Implmentation of heap.Interface for peerHeap.
 func (ph peerHeap) Len() int           { return len(ph) }
-func (ph peerHeap) Less(i, j int) bool { return ph[i].timeDiscovered < ph[j].timeDiscovered }
+func (ph peerHeap) Less(i, j int) bool { return ph[i].timeConnected < ph[j].timeConnected }
 func (ph peerHeap) Swap(i, j int)      { ph[i], ph[j] = ph[j], ph[i] }
 func (ph *peerHeap) Push(x interface{}) {
-	// Add the element to the heap.
 	bp := x.(*blockingPeer)
 	*ph = append(*ph, bp)
 }
@@ -35,107 +37,146 @@ func (ph *peerHeap) Pop() interface{} {
 	return bp
 }
 
-// peerShareLimiter will ratelimit the new peer share action of the
-// transaction pool, ensuring that new peers can only consume so much bandwidth.
+// peerShareLimiter determines when a pre-existing transaction set can be shared
+// with a new peer. The peer share limiter watches for conditions such as the
+// transaction pool being online and synced, and also enforces a long term
+// ratelimit that prevents the new peer share subsystem from consuming too much
+// bandwidth.
 type peerShareLimiter struct {
 	peerHeap   peerHeap
 	pushNotify chan struct{}
 	mu         sync.Mutex
 
-	*TransactionPoolUtils
+	*transactionPoolUtils
 }
 
-// callBlockForShareTset will block until the transaction pool is ready to share
-// a transaction set with a new peer. This method is intended to be called only
-// by the new peer share subsystem.
+// callBlockForShareTSet is called by the new peer share subsystem when a thread
+// wishes to send a pre-existing transaction set to a peer that has not yet seen
+// that transaction set. This call will block until the limiter is ready to
+// allow the thread to send a transaction set.
 //
-// A channel is returned which MUST be used to report the size of the
-// transaction set being broadcast. The size of the requested broadcast is
-// reported after-the-fact because the broadcast is not allowed to be sent right
-// away, and factors such as the repeat broadcast filter can change how large a
-// broadcast may be while the broadcast is being blocked.
+// The thread is expected to pick which transaction set after being unblocked,
+// because the set of transactions in the tpool can change substantially while
+// the thread is blocked. Because of this, the size of the transaction set that
+// will be sent cannot be known until after the thread is unblocked. A channel
+// is returned by this call to allow the thread to communicate back to the peer
+// share limiter how large the chosen transaction set ended up being. This
+// channel MUST be used, or the peer share limiter will deadlock.
 //
-// Once callBlockForShareTset unblocks, the transaction set can be shared at
-// full speed. The ratelimit enforced by the peer share limiter is intended to
-// be an average ratelimit over longer periods of time, as opposed to a
-// continuous ratelimit inteded to throttle bursts of activity.
+// Once the thread has been unblocked, the transaction set can be shared at full
+// speed, regardless of how large it is. The ratelimit enforced by the peer
+// share limiter is intended to manage the long term average bandwidth
+// consumption of the new peer share subsystem, and is not concerned with bursts
+// of bandwidth.
 //
-// The input to this method, 'timeDiscovered', is used to give priority to peers
-// that have been around longer. If multiple threads are trying to send
-// transaction sets to peers at once, the threads that provide an older/smaller
-// 'timeDiscovered' input will be given priority.
-func (psrl *peerShareLimiter) callBlockForShareTSet(timeDiscovered int64) (chan int, bool) {
+// The input 'timeConnected' is meant to be the time that the peer who will be
+// receiving the transaction set connected to the transaction pool. This time
+// will be used to give priority to peers that connected earlier when the peer
+// share limiter is choosing which threads to unblock.
+func (psl *peerShareLimiter) callBlockForShareTSet(timeConnected int64) (chan int, bool) {
 	// Create a blocked peer object to represent this blocked thread and push it
 	// to the peer heap.
 	bp := &blockingPeer{
-		timeDiscovered: timeDiscovered,
+		timeConnected: timeConnected,
 		sizeChan:       make(chan int),
 		unblockChan:    make(chan struct{}),
 	}
-	psrl.managedPush(bp)
+	psl.managedPush(bp)
 
 	// Block until the ratelimiter releases the object.
 	select {
-	case <-psrl.tg.StopChan():
+	case <-psl.tg.StopChan():
 		return nil, false
 	case <-bp.unblockChan:
 		return bp.sizeChan, true
 	}
 }
 
+// managedBlockUntilOnlineAndSynced will block until siad is both online and
+// synced. The function will return false if shutdown occurs before both
+// conditions are met.
+func (psl *peerShareLimiter) managedBlockUntilOnlineAndSynced() bool {
+	// Infinite loop to keep checking online and synced status.
+	for {
+		tpoolSynced := psl.staticCore.callTpoolSynced()
+		online := psl.gateway.Online()
+		if tpoolSynced && online {
+			return true
+		}
+
+		// Sleep for a bit before trying again, exit early if the transaction
+		// pool is shutting down.
+		select {
+		case <-psl.tg.StopChan():
+			return false
+		case <-time.After(onlineSyncedLoopSleepTime):
+			continue
+		}
+	}
+}
+
 // managedPush will push a blockingPeer onto the heap of the
-// peerShareLimiter
-func (psrl *peerShareLimiter) managedPush(bp *blockingPeer) {
-	psrl.mu.Lock()
-	heap.Push(&psrl.peerHeap, bp)
-	psrl.mu.Unlock()
+// peerShareLimiter.
+func (psl *peerShareLimiter) managedPush(bp *blockingPeer) {
+	psl.mu.Lock()
+	heap.Push(&psl.peerHeap, bp)
+	psl.mu.Unlock()
 
 	// Notify the unblocker thread that there is a new element in the heap.
 	select {
-	case psrl.pushNotify <- struct{}{}:
+	case psl.pushNotify <- struct{}{}:
 	default:
 	}
 }
 
 // managedPop will pop a blockingPeer off of the peer heap.
-func (psrl *peerShareLimiter) managedPop() *blockingPeer {
-	psrl.mu.Lock()
-	bp := heap.Pop(&psrl.peerHeap).(*blockingPeer)
-	psrl.mu.Unlock()
+func (psl *peerShareLimiter) managedPop() *blockingPeer {
+	psl.mu.Lock()
+	bp := heap.Pop(&psl.peerHeap).(*blockingPeer)
+	psl.mu.Unlock()
 	return bp
 }
 
 // threadedUnblockSharingThreads wlll unblock sharing threads that are waiting
-// to be released by the peer heap.
-func (psrl *peerShareLimiter) threadedUnblockSharingThreads() {
+// to be released by the peer heap as the conditions for unblocking them are
+// met.
+func (psl *peerShareLimiter) threadedUnblockSharingThreads() {
 	for {
-		// TODO: Block until online and synced.
+		// The transaction pool should not be sharing transaction sets with
+		// peers unless the transaction pool is synced to the currenct consensus
+		// of the network. The transaction pool should also be online.
+		//
+		// If false is returned, the transaction pool was shutdown before it
+		// could satisfy the conditions of being online and synced.
+		if !psl.managedBlockUntilOnlineAndSynced() {
+			return
+		}
 
 		// Check the length of the heap. If there is nothing in the heap, block
 		// until there is something in the heap.
-		psrl.mu.Lock()
-		heapLen := len(psrl.peerHeap)
-		psrl.mu.Unlock()
+		psl.mu.Lock()
+		heapLen := len(psl.peerHeap)
+		psl.mu.Unlock()
 		if heapLen == 0 {
 			select{
-			case <-psrl.tg.StopChan():
+			case <-psl.tg.StopChan():
 				return
-			case <-psrl.pushNotify():
+			case <-psl.pushNotify:
 			}
 		}
 
 		// Pop an element off of the heap and release the object. After the
 		// object is released, its sizeChan should be used to send a transaction
-		// size to the psrl. This size will tell the psrl how long to wait
+		// size to the psl. This size will tell the psl how long to wait
 		// before popping off another peer.
-		bp := psrl.managedPop()
+		bp := psl.managedPop()
 		close(bp.unblockChan)
-		size := <-bp.sizechan
+		size := <-bp.sizeChan
 
 		// Sleep based on the size and the ratelimit.
 		sleepDuration := time.Duration(size) * peerShareRateLimit
 		select {
-		case <-psrl.tg.StopChan():
+		case <-psl.tg.StopChan():
 			return
 		case <-time.After(sleepDuration):
 		}
@@ -148,6 +189,6 @@ func (tp *TransactionPool) newPeerShareLimiter() *peerShareLimiter {
 	return &peerShareLimiter{
 		pushNotify: make(chan struct{}, 1),
 
-		TransactionPoolUtils: tp.TransactionPoolUtils,
+		transactionPoolUtils: tp.transactionPoolUtils,
 	}
 }

@@ -24,22 +24,22 @@ func TestPeerHeap(t *testing.T) {
 
 	// Create a few peers to push.
 	bp1 := &blockingPeer{
-		timeDiscovered: 10,
+		timeConnected: 10,
 		sizeChan:       make(chan int),
 		unblockChan:    make(chan struct{}),
 	}
 	bp2 := &blockingPeer{
-		timeDiscovered: 20,
+		timeConnected: 20,
 		sizeChan:       make(chan int),
 		unblockChan:    make(chan struct{}),
 	}
 	bp3 := &blockingPeer{
-		timeDiscovered: 30,
+		timeConnected: 30,
 		sizeChan:       make(chan int),
 		unblockChan:    make(chan struct{}),
 	}
 	bp4 := &blockingPeer{
-		timeDiscovered: 40,
+		timeConnected: 40,
 		sizeChan:       make(chan int),
 		unblockChan:    make(chan struct{}),
 	}
@@ -47,7 +47,7 @@ func TestPeerHeap(t *testing.T) {
 
 	// Create a peerShareRateLimiter that will be used to interact with the
 	// heap.
-	psrl := tp.newPeerShareRateLimiter()
+	psrl := tp.newPeerShareLimiter()
 
 	// Push each of the blocking peers into the heap, in a random order.
 	perm := fastrand.Perm(len(bps))
@@ -57,19 +57,19 @@ func TestPeerHeap(t *testing.T) {
 
 	// Pop the peers one at a time, and ensure that we get the right peers.
 	p1 := psrl.managedPop()
-	if p1.timeDiscovered != bp1.timeDiscovered {
+	if p1.timeConnected != bp1.timeConnected {
 		t.Error("Heap seems to be popping in the wrong order")
 	}
 	p2 := psrl.managedPop()
-	if p2.timeDiscovered != bp2.timeDiscovered {
+	if p2.timeConnected != bp2.timeConnected {
 		t.Error("Heap seems to be popping in the wrong order")
 	}
 	p3 := psrl.managedPop()
-	if p3.timeDiscovered != bp3.timeDiscovered {
+	if p3.timeConnected != bp3.timeConnected {
 		t.Error("Heap seems to be popping in the wrong order")
 	}
 	p4 := psrl.managedPop()
-	if p4.timeDiscovered != bp4.timeDiscovered {
+	if p4.timeConnected != bp4.timeConnected {
 		t.Error("Heap seems to be popping in the wrong order")
 	}
 }
