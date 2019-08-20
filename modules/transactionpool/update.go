@@ -163,7 +163,7 @@ func findSets(ts []types.Transaction) [][]types.Transaction {
 // callTpoolSynced will return whether or not the transaction pool is currently
 // synced. The transaction pool initializes to 'not synced', and will not
 // establish itself as synced until the first call to ProcessConsensusChange
-// from consensus, which may not happen until a block is found.
+// from consensus.
 func (tp *TransactionPool) callTpoolSynced() bool {
 	tp.mu.Lock()
 	synced := tp.synced

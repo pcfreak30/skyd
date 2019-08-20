@@ -60,8 +60,8 @@ type peerShareLimiter struct {
 // the thread is blocked. Because of this, the size of the transaction set that
 // will be sent cannot be known until after the thread is unblocked. A channel
 // is returned by this call to allow the thread to communicate back to the peer
-// share limiter how large the chosen transaction set ended up being. This
-// channel MUST be used, or the peer share limiter will deadlock.
+// share limiter how much bandwidth will be used to relay the chosen transaction
+// set. This channel MUST be used, or the peer share limiter will deadlock.
 //
 // Once the thread has been unblocked, the transaction set can be shared at full
 // speed, regardless of how large it is. The ratelimit enforced by the peer

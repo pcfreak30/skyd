@@ -85,6 +85,7 @@ type (
 		// to a field that's part of the core transaction subsystem. This seemed
 		// like the least painful way to get that implemented.
 		staticPeerShareLimiter *peerShareLimiter
+		staticNewPeerShare     *newPeerShare
 		staticCore             *TransactionPool
 
 		// Utils.
@@ -122,6 +123,7 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 	}
 	// Create the subsystems.
 	tp.staticPeerShareLimiter = tp.newPeerShareLimiter()
+	tp.staticNewPeerShare = tp.newNewPeerShare()
 	tp.staticCore = tp
 
 	// Open the tpool database.
@@ -135,6 +137,10 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 	tp.tg.OnStop(func() {
 		tp.gateway.UnregisterRPC("RelayTransactionSet")
 	})
+
+	// Start up all subsystem background threads.
+	go tp.staticPeerShareLimiter.threadedUnblockSharingThreads()
+	go tp.staticNewPeerShare.threadedPollForPeers()
 
 	// Spin up a thread to periodically dump the tpool size. (debug mode)
 	if build.DEBUG {

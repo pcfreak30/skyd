@@ -1,7 +1,5 @@
 package transactionpool
 
-// shartxnsconsts.go contains the constants for the sharetxns subsystem.
-
 import (
 	"time"
 )

@@ -95,7 +95,7 @@ limiter will also enforce a ratelimit on sharing new transactions with peers.
 
 The new peer share subsystem should call `callBlockForShareTSet`, which takes as
 input the timestamp when the peer was discovered, and returns a channel that
-must be used to report the size of the transaction set being sent.
+must be used to report the size of the transaction set that will be sent.
 
 The peer share limiter attempts to enforce a global, long term and burst
 agnostic ratelimit on the new peer share subsystem. Ideally, transaction sets
