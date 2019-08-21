@@ -125,26 +125,30 @@ func New(cs modules.ConsensusSet, g modules.Gateway, persistDir string) (*Transa
 			gateway:      g,
 		},
 	}
-	// Create the subsystems.
-	tp.staticPeerShareLimiter = tp.newPeerShareLimiter()
-	tp.staticNewPeerShare = tp.newNewPeerShare()
-	tp.staticCore = tp
-
 	// Open the tpool database.
+	//
+	// TODO: Move this into a subsystem and make a note that the persist
+	// subsystem needs to come up before anything else does, with a possible
+	// exception for staticCore for as long as staticCore exists.
 	err := tp.initPersist()
 	if err != nil {
 		return nil, err
 	}
 
 	// Register RPCs
+	//
+	// TODO: Move this into a subsystem, needs to be started before any
+	// subsystem that does any sort of relaying or broadcasting.
 	g.RegisterRPC("RelayTransactionSet", tp.relayTransactionSet)
 	tp.tg.OnStop(func() {
 		tp.gateway.UnregisterRPC("RelayTransactionSet")
 	})
 
-	// Start up all subsystem background threads.
-	go tp.staticPeerShareLimiter.threadedUnblockSharingThreads()
-	go tp.staticNewPeerShare.threadedPollForPeers()
+	// Create the subsystems.
+	tp.staticCore = tp
+	tp.staticRepeatBroadcastFilter = tp.newRepeatBroadcastFilter()
+	tp.staticPeerShareLimiter = tp.newPeerShareLimiter()
+	tp.staticNewPeerShare = tp.newNewPeerShare()
 
 	// Spin up a thread to periodically dump the tpool size. (debug mode)
 	if build.DEBUG {

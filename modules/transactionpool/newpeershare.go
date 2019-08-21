@@ -162,7 +162,7 @@ func (nps *newPeerShare) threadedSyncPeer(peer modules.Peer) {
 		// Relay the transaction using the repeat broadcast filter. The action
 		// is a non-blocking call that will return the number of bytes that will
 		// actually be relayed.
-		bytesToRelay := nps.staticRepeatBroadcastFilter.callRelayTransactionSet
+		bytesToRelay := nps.staticRepeatBroadcastFilter.callRelayTransactionSet(tset, []modules.Peer{peer})
 		bytesToRelayFeedback <- bytesToRelay
 	}
 }
@@ -170,7 +170,25 @@ func (nps *newPeerShare) threadedSyncPeer(peer modules.Peer) {
 // newNewPeerShare will return a newPeerShare object that is ready for use by
 // the tpool.
 func (tp *TransactionPool) newNewPeerShare() *newPeerShare {
-	return &newPeerShare{
+	// Check that the dependencies are in place.
+	//
+	// TODO: Swap out the check for staticCore with a check for the transaction
+	// manager once the transaction management is broken out into its own
+	// subsystem.
+	if tp.staticCore == nil {
+		panic("cannot launch new peer share subsystem without the core")
+	}
+	if tp.staticPeerShareLimiter == nil {
+		panic("cannot launch new peer share subsystem without the peer share limiter")
+	}
+	if tp.staticRepeatBroadcastFilter == nil {
+		panic("cannot launch new peer share subsystem without the repeat broadcast filter")
+	}
+
+	// Create the new peer share subsystem and launch its background thread.
+	nps := &newPeerShare{
 		transactionPoolUtils: tp.transactionPoolUtils,
 	}
+	go nps.threadedPollForNewPeers()
+	return nps
 }

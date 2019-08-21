@@ -185,9 +185,21 @@ func (psl *peerShareLimiter) threadedUnblockSharingThreads() {
 // newPeerShareLimiter will return a new peerShareLimiter that is ready for use
 // by the tpool.
 func (tp *TransactionPool) newPeerShareLimiter() *peerShareLimiter {
-	return &peerShareLimiter{
+	// Check that the dependencies are in place.
+	//
+	// TODO: Swap out the check for the core subsystem with a check for the
+	// update/sync subsystem once the update subsystem has been broken out of
+	// the core.
+	if tp.staticCore == nil {
+		panic("cannot launch the peer share limiter without the core")
+	}
+
+	// Create the peer share limiter subsystem and launch its background thread.
+	psl := &peerShareLimiter{
 		pushNotify: make(chan struct{}, 1),
 
 		transactionPoolUtils: tp.transactionPoolUtils,
 	}
+	go psl.threadedUnblockSharingThreads()
+	return psl
 }
