@@ -1,9 +1,5 @@
 package transactionpool
 
-// TODO: Need to write a sanity check within the transaction pool that checks
-// that all of the tsets are complete and independent, because this is an
-// assumption that we depend on during broadcast.
-
 import (
 	"time"
 
@@ -15,6 +11,39 @@ import (
 // peers all pre-existing transactions in the transction pool.
 type newPeerShare struct{
 	*transactionPoolUtils
+}
+
+// staticNextTSet will return the next tranasction set that should be sent to a
+// peer given the set of objects that the peer has not yet been told about.
+func (nps *newPeerShare) staticNextTSet(remainingObjects map[ObjectID]struct{}) (map[ObjectID]struct{}, []types.Transaction, bool) {
+	// Loop through the set of remaining objects until a suitable transaction
+	// set is found.
+	for len(remainingObjects) > 0 {
+		// Pick the next object to send.
+		var nextObject ObjectID
+		for obj, _ := range remainingObjects {
+			nextObject = obj
+			break
+		}
+
+		// Determine what transaction set to send based on the selected object.
+		transactionSet, exists := nps.staticCore.callTSetByObjectID(nextObject)
+		if !exists {
+			delete(remainingObjects, nextObject)
+			continue
+		}
+
+		// If a corresponding transaction set does exist, remove all related
+		// objects because they will all be sent along with the transaction set.
+		oids := relatedObjectIDs(tset)
+		for _, oid := range oids {
+			delete(remainingObjects, oid)
+		}
+		return remainingObjects, transactionSet, true
+	}
+
+	// There are no more objects to try, nothing to return.
+	return nil, nil, false
 }
 
 // threadedPollForPeers will repeatedly check the gateway for new peers.
@@ -65,10 +94,10 @@ func (nps *newPeerShare) threadedSyncPeer(peer modules.Peer) {
 	// peers, and earlier peers are given priority over more recent peers.
 	timeConnected := time.Now().Unix()
 
-	// Take a snapshot (remainingObjects) of the current transaction pool's
-	// object IDs. Object IDs are used to determine which transaction sets have
-	// not been sent to the peer yet. When a transaction set is broadcast to a
-	// new peer, all of the objects in that transaction set are removed from the
+	// Grab a list of objects that are currently present in the transaction
+	// pool. Object IDs are used to determine which transaction sets have not
+	// been sent to the peer yet. When a transaction set is broadcast to a new
+	// peer, all of the objects in that transaction set are removed from the
 	// snapshot.
 	//
 	// Object IDs are used instead of transaction set IDs because the
@@ -78,14 +107,7 @@ func (nps *newPeerShare) threadedSyncPeer(peer modules.Peer) {
 	// in the transaction pool from transaction ID to transaction set, only a
 	// mapping from object ID to transaction set. For that reason, object IDs
 	// are used instead.
-	//
-	// TODO: Convert state complexity into an outbound complexity.
-	remainingObjects := make(map[ObjectID]struct{})
-	tp.mu.Lock()
-	for oid, _ := range tp.knownObjects {
-		remainingObjects[oid] = struct{}{}
-	}
-	tp.mu.Unlock()
+	remainingObjects := nps.staticCore.callRemainingObjectsList()
 
 	// Grab one object at a time and send the corresponding transaction set
 	// until all objects have been sent.
@@ -99,6 +121,14 @@ func (nps *newPeerShare) threadedSyncPeer(peer modules.Peer) {
 			// this thread.
 			return
 		}
+		// NOTE: Convention requires that a resource be closed out immediately
+		// after acquiring the resource. In this case, the
+		// 'bytesToRelayFeedback' channel is something that has a required
+		// action, and should techincally be closed immediately in some sort of
+		// defer here. However, we want a defer that operates on just the scope
+		// of this iteration of the loop, and there was no clean way I could
+		// find to accomplish this. Instead, convention is violated in favor of
+		// readability.
 
 		// Check that the peer is still available in the gateway. If the peer is
 		// no longer listed in the gateway, this thread can exit.
@@ -115,62 +145,25 @@ func (nps *newPeerShare) threadedSyncPeer(peer modules.Peer) {
 			}
 		}
 		if !found {
+			bytesToRelayFeedback <- 0
 			return
 		}
 
-		// Loop through the set of remaining objects until a suitable
-		// transaction set is found.
-		//
-		// TODO: Break this out into a helper function.
+		// Grab the next transaction set to send to the peer. If there is no
+		// next transaction set, all work is complete and the thread can exit.
 		var tset []types.Transaction
-		for {
-			// If there are no remaining objects, the peer syncing task has been
-			// fully successful, and there is no more work to do.
-			if len(remainingObjects) == 0 {
-				bytesToRelayFeedback <- 0
-				return
-			}
-
-			// Pick the next object to send.
-			var nextObject ObjectID
-			for obj, _ := range remainingObjects {
-				nextObject = obj
-				break
-			}
-
-			// Determine what transaction set to send based on the selected object.
-			//
-			// TODO: Replace this state complexity with outbound complexity.
-			tp.mu.Lock()
-			tsetID, exists := tp.knownObjects[nextObject]
-			if exists {
-				tset = tp.transactionSets[tsetID]
-			}
-			tp.mu.Unlock()
-			// If the tset does not exist, this object is not needed anymore. Tell
-			// the ratelimiter that no action was taken.
-			if exists {
-				break
-			} else {
-				delete(remainingObjects, nextObject)
-				continue
-			}
-		}
-
-		// If a corresponding transaction set does exist, remove all related
-		// objects because they will all be sent along with the transaction set.
-		oids := relatedObjectIDs(tset)
-		for _, oid := range oids {
-			delete(remainingObjects, oid)
+		var exists bool
+		remainingObjects, tset, exists = nps.staticNextTSet(remainingObjects)
+		if !exists {
+			bytesToRelayFeedback <- 0
+			return
 		}
 
 		// Relay the transaction using the repeat broadcast filter. The action
 		// is a non-blocking call that will return the number of bytes that will
 		// actually be relayed.
-		//
-		// TODO: Implement.
-		// bytesToRelay, err := nps.staticRepeatBroadcastFilter.callRelayTransactionSet
-		// bytesToRelayFeedback <- bytesToRelay
+		bytesToRelay := nps.staticRepeatBroadcastFilter.callRelayTransactionSet
+		bytesToRelayFeedback <- bytesToRelay
 	}
 }
 

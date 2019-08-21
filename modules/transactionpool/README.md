@@ -56,6 +56,13 @@ synced, and also will allow the peer share limiter to enforce a ratelimit on
 sending transactions to new peers that prioritizes older peers over newer peers.
 
 ##### Outbound Complexities
+ - `callRemainingObjectsList` from the [Core](#core) is used to fetch a snapshot
+   of objects in the transaction pool after a new peer connects to the
+   transaction pool. This list of objects is used to determine what pre-existing
+   transaction sets the peer is potentially missing.
+ - `callTSetByObjectID` from the [Core](#core) is used to fetch the transaction
+   set associated with a particular object id while looking for pre-existing
+   transaction sets to send to a new peer.
  - `callBlockForShareTSet` from the [Peer Share Limiter](#peer-share-limiter)
    will be used to ensure that a transaction set is not sent until the limiter
    believes that it is okay to send that transaction set.
@@ -175,11 +182,6 @@ the transaction.
  - TODO: Eventually the subsystem will be able to catalog incoming transactions.
    If a peer tells us about a transaction, they obviously have that transaction
    and it doesn't need to be broadcast to them again.
- - TODO: Splitting off this filter into its own subsystem makes it easy to split
-   broadcasting strategy when the tpool is upgraded to broadcasting txids only
-   instead of full transactions. The new broadcast strategy will send peers a
-   list of txids and then the peer can determine whether or not to request the
-   full transactions, saving network bandwidth.
  - TODO: The repeat broadcast filter suffers from shortcomings if peers are
    evicting transactions or rejecting transactions for having low fee rates,
    because they may evict what will eventually become ancestors, and then no

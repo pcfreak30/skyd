@@ -77,6 +77,10 @@ type (
 	// the utils.
 	//
 	// TODO: Rename all of these fields to have the static prefix.
+	//
+	// TODO: Once the transaction pool has been more fully broken out into
+	// subsystems, this object will probably become the new transaction pool,
+	// having just the set of utils and the set of subsystems.
 	transactionPoolUtils struct {
 		// Subsystems.
 		//
@@ -317,6 +321,32 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 // peers.
 func (tp *TransactionPool) Broadcast(ts []types.Transaction) {
 	go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
+}
+
+// callRemainingObjectsList will return the list of all objects in the
+// transaction pool.
+func (tp *TransactionPool) callRemainingObjectsList() map[ObjectID]struct{} {
+	oids := make(map[ObjectID]struct{})
+	tp.mu.Lock()
+	for oid, _ := range tp.knownObjects {
+		oids[oid] = struct{}{}
+	}
+	tp.mu.Unlock()
+	return oids
+}
+
+// callTSetByObjectID will return the transaction set that the provided object
+// ID appears in. If the object is not found in the transaction pool, 'false'
+// will be returned.
+func (tp *TransactionPool) callTSetByObjectID(oid ObjectID) ([]types.Transaction, bool) {
+	var tset []types.Transaction
+	tp.mu.Lock()
+	tsetID, exists := tp.knownObjects[nextObject]
+	if exists {
+		tset = tp.transactionSets[tsetID]
+	}
+	tp.mu.Unlock()
+	return tset, exists
 }
 
 // threadedLogListSize will periodically log the current size of the transaction

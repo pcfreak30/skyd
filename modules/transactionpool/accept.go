@@ -14,6 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -301,6 +303,21 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	for _, txn := range ts {
 		if _, exists := tp.transactionHeights[txn.ID()]; !exists {
 			tp.transactionHeights[txn.ID()] = tp.blockHeight
+		}
+	}
+
+	// In debug mode, probabilistically verify whether the transaction pool's
+	// transaction sets are fully independent. One in 20 chance because this
+	// check is quite expensive.
+	if build.DEBUG {
+		checkConsistency := fastrand.Intn(20)
+		if checkConsistency == 1 {
+			for _, set := range tp.transactionSets {
+				_, err := txnFn(set)
+				if err != nil {
+					tp.log.Critical("Transaction set does not have fully independent transactions", err)
+				}
+			}
 		}
 	}
 

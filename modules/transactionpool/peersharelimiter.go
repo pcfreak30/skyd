@@ -69,7 +69,6 @@ type peerShareLimiter struct {
 // consumption of the new peer share subsystem, and is not concerned with bursts
 // of bandwidth.
 //
-// The input 'timeConnected' is meant to be the time that the peer who will be
 // receiving the transaction set connected to the transaction pool. This time
 // will be used to give priority to peers that connected earlier when the peer
 // share limiter is choosing which threads to unblock.
