@@ -202,7 +202,7 @@ func TestIntegrationFormContract(t *testing.T) {
 	defer c.Close()
 
 	// acquire the contract maintenance lock for the duration of the test. This
-	// prevents theadedContractMaintenance from running.
+	// prevents threadedContractMaintenance from running.
 	c.maintenanceLock.Lock()
 	defer c.maintenanceLock.Unlock()
 
@@ -278,7 +278,7 @@ func TestIntegrationReviseContract(t *testing.T) {
 	defer c.Close()
 
 	// acquire the contract maintenance lock for the duration of the test. This
-	// prevents theadedContractMaintenance from running.
+	// prevents threadedContractMaintenance from running.
 	c.maintenanceLock.Lock()
 	defer c.maintenanceLock.Unlock()
 

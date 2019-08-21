@@ -13,11 +13,15 @@ import (
 
 var (
 	// Set the default test allowance
+	//
+	// TODO - Update
 	DefaultTestAllowance = modules.Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(500),
 		Hosts:       uint64(50),
-		Period:      types.BlockHeight(12096),
-		RenewWindow: types.BlockHeight(4032),
+		Period:      types.BlockHeight(types.BlocksPerMonth),
+		RenewWindow: types.BlockHeight(2 * types.BlocksPerMonth),
+		// Period:      types.BlockHeight(12096),
+		// RenewWindow: types.BlockHeight(4032),
 
 		ExpectedStorage:    1e12,                                 // 1 TB
 		ExpectedUpload:     uint64(200e9) / types.BlocksPerMonth, // 200 GB per month

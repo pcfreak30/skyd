@@ -881,6 +881,9 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 // given a host, the available renter funding, the expected txnFee for the
 // transaction and an optional basePrice in case this helper is used for a
 // renewal. It also returns the hostCollateral.
+//
+// NOTE: This only considers the period, which with the new allowance does not
+// include the renew window. Is that ok?
 func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseCollateral types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency, err error) {
 	// Divide by zero check.
 	if host.StoragePrice.IsZero() {
@@ -896,12 +899,14 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 	renterPayout = funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice)
 	// Calculate hostCollateral by calculating the maximum amount of storage
 	// the renter can afford with 'funding' and calculating how much collateral
-	// the host wouldl have to put into the contract for that. We also add a
+	// the host would have to put into the contract for that. We also add a
 	// potential baseCollateral.
 	maxStorageSizeTime := renterPayout.Div(host.StoragePrice)
 	hostCollateral = maxStorageSizeTime.Mul(host.Collateral).Add(baseCollateral)
 	// Don't add more collateral than 10x the collateral for the expected
 	// storage to save on fees.
+	//
+	// Comment says 10x but code is Mul64(5)?
 	maxRenterCollateral := host.Collateral.Mul64(uint64(period)).Mul64(expectedStorage).Mul64(5)
 	if hostCollateral.Cmp(maxRenterCollateral) > 0 {
 		hostCollateral = maxRenterCollateral

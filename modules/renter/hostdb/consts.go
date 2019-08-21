@@ -85,7 +85,7 @@ const (
 	// penalty. If the host has half as much storage as we would like and the
 	// storagePenaltyExponentiation is 2, then the final score for the host
 	// would be (0.5)^2 = 0.25.
-	storagePenaltyExponentitaion = 2.0
+	storagePenaltyExponentiation = 2.0
 
 	// storageSkewMultiplier is a factor that we multiply with a host's ideal
 	// storage. The ideal storage is the amount of data that would be stored on

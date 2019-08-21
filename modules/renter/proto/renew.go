@@ -332,6 +332,9 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the payouts for the renter, host, and whole contract.
+	//
+	// TODO - either period should be renamed to contractDuration or we need to
+	// recalculate the actually period
 	period := endHeight - startHeight
 	renterPayout, hostPayout, hostCollateral, err := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, allowance.ExpectedStorage/allowance.Hosts)
 	if err != nil {

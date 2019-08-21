@@ -156,6 +156,11 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 
 // TestRenterContracts tests the formation of the contracts, the contracts
 // endpoint, and canceling a contract
+//
+// TODO - Update with new allowance
+//
+// TODO - test edge cases where renew window is greater than period and renew
+// window smaller that period
 func TestRenterContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

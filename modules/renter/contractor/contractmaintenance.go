@@ -53,7 +53,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			} else {
 				newContract, oldContract = contract, rc
 			}
-			c.log.Printf("Duplicate contract found. New conract is %x and old contract is %v", newContract.ID, oldContract.ID)
+			c.log.Printf("Duplicate contract found. New contract is %x and old contract is %v", newContract.ID, oldContract.ID)
 
 			// Get SafeContract
 			oldSC, ok := c.staticContracts.Acquire(oldContract.ID)
@@ -111,8 +111,13 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 
 	// Estimate the amount of money that's going to be needed for existing
 	// storage.
+	//
+	// Period or new contract + (BlockHeight - Period of Old Contract - StartHeight of old contract)
+	//
+	// Simplified to BH - SH
+	maintenancePeriod := blockHeight - contract.StartHeight
 	dataStored := contract.Transaction.FileContractRevisions[0].NewFileSize
-	maintenanceCost := types.NewCurrency64(dataStored).Mul64(uint64(allowance.Period)).Mul(host.StoragePrice)
+	maintenanceCost := types.NewCurrency64(dataStored).Mul64(uint64(maintenancePeriod)).Mul(host.StoragePrice)
 
 	// For the upload and download estimates, we're going to need to know the
 	// amount of money that was spent on upload and download by this contract
@@ -334,7 +339,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				return u, nil
 			}
 
-			// Contract should not be used for uplodaing if the score is poor.
+			// Contract should not be used for uploading if the score is poor.
 			if !minScoreGFU.IsZero() && sb.Score.Cmp(minScoreGFU) < 0 {
 				if u.GoodForUpload {
 					c.log.Println("Marking contract as not good for upload because of a poor score", contract.ID)
@@ -437,16 +442,16 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return types.ZeroCurrency, modules.RenterContract{}, errTooExpensive
 	}
-	// Determine if host settings align with allowance period
+	// Determine if host settings align with contract duration
 	c.mu.Lock()
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.mu.Unlock()
 		return types.ZeroCurrency, modules.RenterContract{}, errors.New("called managedNewContract but allowance wasn't set")
 	}
-	period := c.allowance.Period
+	contractDuration := c.allowance.Period + c.allowance.RenewWindow
 	c.mu.Unlock()
 
-	if host.MaxDuration < period {
+	if host.MaxDuration < contractDuration {
 		err := errors.New("unable to form contract with host due to insufficient MaxDuration of host")
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
@@ -585,7 +590,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 		c.mu.Unlock()
 		return modules.RenterContract{}, errors.New("called managedRenew but allowance isn't set")
 	}
-	period := c.allowance.Period
+	contractDuration := c.allowance.Period + c.allowance.RenewWindow
 	c.mu.Unlock()
 	if !ok {
 		return modules.RenterContract{}, errors.New("no record of that host")
@@ -593,7 +598,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 		return modules.RenterContract{}, errors.New("host is blacklisted")
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return modules.RenterContract{}, errTooExpensive
-	} else if host.MaxDuration < period {
+	} else if host.MaxDuration < contractDuration {
 		return modules.RenterContract{}, errors.New("insufficient MaxDuration of host")
 	}
 

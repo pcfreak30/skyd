@@ -19,8 +19,10 @@ var (
 	DefaultAllowance = Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(500),
 		Hosts:       uint64(PriceEstimationScope),
-		Period:      types.BlockHeight(3 * types.BlocksPerMonth),
-		RenewWindow: types.BlockHeight(types.BlocksPerMonth),
+		Period:      types.BlockHeight(types.BlocksPerMonth),
+		RenewWindow: types.BlockHeight(2 * types.BlocksPerMonth),
+		// Period:      types.BlockHeight(3 * types.BlocksPerMonth),
+		// RenewWindow: types.BlockHeight(types.BlocksPerMonth),
 
 		ExpectedStorage:    1e12,                                 // 1 TB
 		ExpectedUpload:     uint64(200e9) / types.BlocksPerMonth, // 200 GB per month

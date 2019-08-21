@@ -114,7 +114,11 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 
 	// If we have entered the next period, update currentPeriod
 	if c.blockHeight >= c.currentPeriod+c.allowance.Period {
-		c.currentPeriod += c.allowance.Period
+		// To protect against more than 1 period passing continue incrementing
+		// the current period until we are in the latest period
+		for c.blockHeight >= c.currentPeriod+c.allowance.Period {
+			c.currentPeriod += c.allowance.Period
+		}
 		// COMPATv1.0.4-lts
 		// if we were storing a special metrics contract, it will be invalid
 		// after we enter the next period.

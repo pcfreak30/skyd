@@ -42,7 +42,7 @@ const (
 	// collateral floor of 0.5 means that once the host is offering a collateral
 	// that is more than 50% of what the renter would expect given the amount of
 	// storage being used, the host switching to a scoring strategy which less
-	// intensly favors adding more collateral. As long as the host has provided
+	// intensely favors adding more collateral. As long as the host has provided
 	// sufficient skin-in-the-game, enormous amounts of extra collateral are
 	// less important.
 	//
@@ -110,7 +110,8 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	// expect to use in this contract.
 	contractExpectedFunds := allowance.Funds.Div64(allowance.Hosts)
 	contractExpectedStorage := uint64(float64(allowance.ExpectedStorage) * allowance.ExpectedRedundancy / float64(allowance.Hosts))
-	contractExpectedStorageTime := types.NewCurrency64(contractExpectedStorage).Mul64(uint64(allowance.Period))
+	contractDuration := allowance.Period + allowance.RenewWindow
+	contractExpectedStorageTime := types.NewCurrency64(contractExpectedStorage).Mul64(uint64(contractDuration))
 
 	// Ensure that the allowance and expected storage will not brush up against
 	// the max collateral. If the allowance comes within half of the max
@@ -177,7 +178,8 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 // than the period of the allowance. The host's score is heavily minimized if
 // not.
 func (hdb *HostDB) durationAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
-	if entry.MaxDuration < allowance.Period {
+	contractDuration := allowance.Period + allowance.RenewWindow
+	if entry.MaxDuration < contractDuration {
 		return math.SmallestNonzeroFloat64
 	}
 	return 1
@@ -234,7 +236,8 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	contractExpectedDownload := types.NewCurrency64(allowance.ExpectedDownload).Mul64(uint64(allowance.Period)).Div64(allowance.Hosts)
 	contractExpectedFunds := allowance.Funds.Div64(allowance.Hosts)
 	contractExpectedStorage := uint64(float64(allowance.ExpectedStorage) * allowance.ExpectedRedundancy / float64(allowance.Hosts))
-	contractExpectedStorageTime := types.NewCurrency64(contractExpectedStorage).Mul64(uint64(allowance.Period))
+	contractDuration := allowance.Period + allowance.RenewWindow
+	contractExpectedStorageTime := types.NewCurrency64(contractExpectedStorage).Mul64(uint64(contractDuration))
 	contractExpectedUpload := types.NewCurrency64(allowance.ExpectedUpload).Mul64(uint64(allowance.Period)).MulFloat(allowance.ExpectedRedundancy).Div64(allowance.Hosts)
 
 	// Calculate the hostCollateral the renter would expect the host to put
@@ -338,7 +341,7 @@ func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowa
 	// Otherwise, the score of the host is the fraction of the data we expect
 	// raised to the storage penalty exponentiation.
 	storageRatio := hostExpectedStorage / allocationPerHost
-	return math.Pow(storageRatio, storagePenaltyExponentitaion)
+	return math.Pow(storageRatio, storagePenaltyExponentiation)
 }
 
 // versionAdjustments will adjust the weight of the entry according to the siad

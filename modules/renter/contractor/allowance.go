@@ -28,9 +28,9 @@ var (
 // specified. Note that Contractor can start forming contracts as soon as
 // SetAllowance is called; that is, it may block.
 //
-// In most cases, SetAllowance will renew existing contracts instead of
-// forming new ones. This preserves the data on those hosts. When this occurs,
-// the renewed contracts will atomically replace their previous versions. If
+// In most cases, SetAllowance will renew existing contracts instead of forming
+// new ones. This preserves the data on those hosts. When this occurs, the
+// renewed contracts will atomically replace their previous versions. If
 // SetAllowance is interrupted, renewed contracts may be lost, though the
 // allocated funds will eventually be returned.
 //
@@ -40,6 +40,9 @@ var (
 //
 // NOTE: At this time, transaction fees are not counted towards the allowance.
 // This means the contractor may spend more than allowance.Funds.
+//
+// Is the above note still true? We have a test that probes overspending the
+// allowance?
 func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	if reflect.DeepEqual(a, modules.Allowance{}) {
 		return c.managedCancelAllowance()
@@ -71,15 +74,12 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 
 	c.log.Println("INFO: setting allowance to", a)
 	c.mu.Lock()
-	// set the current period to the blockheight if the existing allowance is
-	// empty. the current period is set in the past by the renew window to make sure
-	// the first period aligns with the first period contracts in the same way
-	// that future periods align with contracts
-	// Also remember that we might have to unlock our contracts if the
+	// Set the current period to the blockheight if the existing allowance is
+	// empty. Also remember that we might have to unlock our contracts if the
 	// allowance was set to the empty allowance before.
 	unlockContracts := false
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
-		c.currentPeriod = c.blockHeight - a.RenewWindow
+		c.currentPeriod = c.blockHeight
 		unlockContracts = true
 	}
 	c.allowance = a
