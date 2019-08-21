@@ -359,6 +359,9 @@ func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 			tp.log.Debugln("Transaction set will not be broadcast due to an error:", err)
 			return err
 		}
+		// TODO: Re-rig 'acceptTransactionSet' to return the superset of the txn
+		// set that gets submitted, and then we'll send the entire superset
+		// through the repeat broadcast filter.
 		go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
 		// Notify subscribers of an accepted transaction set
 		tp.updateSubscribersTransactions()
