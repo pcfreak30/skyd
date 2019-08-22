@@ -88,9 +88,10 @@ type (
 		// temporary hack because one of the proper subsystems needs a callout
 		// to a field that's part of the core transaction subsystem. This seemed
 		// like the least painful way to get that implemented.
-		staticPeerShareLimiter *peerShareLimiter
-		staticNewPeerShare     *newPeerShare
-		staticCore             *TransactionPool
+		staticCore                  *TransactionPool
+		staticNewPeerShare          *newPeerShare
+		staticPeerShareLimiter      *peerShareLimiter
+		staticRepeatBroadcastFilter *repeatBroadcastFilter
 
 		// Utils.
 		consensusSet modules.ConsensusSet
@@ -322,7 +323,12 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 }
 
 // Broadcast broadcasts a transaction set to all of the transaction pool's
-// peers.
+// peers. This broadcast will be unconditional, sending the full transaction set
+// to every peer, which means this broadcast will bypass the repeat broadcast
+// filter.
+//
+// TODO: Switch to using the repeat broadcast filter over an unconditional
+// relay.
 func (tp *TransactionPool) Broadcast(ts []types.Transaction) {
 	go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
 }
@@ -345,7 +351,7 @@ func (tp *TransactionPool) callRemainingObjectsList() map[ObjectID]struct{} {
 func (tp *TransactionPool) callTSetByObjectID(oid ObjectID) ([]types.Transaction, bool) {
 	var tset []types.Transaction
 	tp.mu.Lock()
-	tsetID, exists := tp.knownObjects[nextObject]
+	tsetID, exists := tp.knownObjects[oid]
 	if exists {
 		tset = tp.transactionSets[tsetID]
 	}

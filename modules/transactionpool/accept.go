@@ -103,8 +103,11 @@ func (tp *TransactionPool) checkTransactionSetComposition(ts []types.Transaction
 }
 
 // handleConflicts detects whether the conflicts in the transaction pool are
-// legal children of the new transaction pool set or not.
-func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []TransactionSetID, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) error {
+// legal children of the new transaction pool set or not. After the conflicts
+// have been handled, a new transaction set will be returned which contains all
+// of the ancestors and descendents required to complete the originally provided
+// transaction set.
+func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []TransactionSetID, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) ([]types.Transaction, error) {
 	// Create a list of all the transaction ids that compose the set of
 	// conflicts.
 	conflictMap := make(map[types.TransactionID]TransactionSetID)
@@ -125,7 +128,7 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 		dedupSet = append(dedupSet, t)
 	}
 	if len(dedupSet) == 0 {
-		return modules.ErrDuplicateTransactionSet
+		return nil, modules.ErrDuplicateTransactionSet
 	}
 	// If transactions were pruned, it's possible that the set of
 	// dependencies/conflicts has also reduced. To minimize computational load
@@ -167,7 +170,7 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	// IsStandard rules (this is a new set, the rules must be rechecked).
 	setSize, err := tp.checkTransactionSetComposition(superset)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Check that the transaction set has enough fees to justify adding it to
@@ -182,13 +185,13 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	if requiredFees.Cmp(setFees) > 0 {
 		// TODO: check if there is an existing set with lower fees that we can
 		// kick out.
-		return errLowMinerFees
+		return nil, errLowMinerFees
 	}
 
 	// Check that the transaction set is valid.
 	cc, err := txnFn(superset)
 	if err != nil {
-		return modules.NewConsensusConflict("provided transaction set has prereqs, but is still invalid: " + err.Error())
+		return nil, modules.NewConsensusConflict("provided transaction set has prereqs, but is still invalid: " + err.Error())
 	}
 
 	// Remove the conflicts from the transaction pool.
@@ -224,14 +227,16 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 		tp.log.Debugf("accepted transaction superset %v, size: %vB\ntpool size is %vB after accpeting transaction superset\ntransactions: \n%v\n", setID, tsetSize, tp.transactionListSize, txLogs)
 	}
 
-	return nil
+	return superset, nil
 }
 
 // acceptTransactionSet verifies that a transaction set is allowed to be in the
-// transaction pool, and then adds it to the transaction pool.
-func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) error {
+// transaction pool, and then adds it to the transaction pool. A transaction set
+// will be returned which contains all of the ancestors and descendants required
+// to complete the transaction set for the provided transaction.
+func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) ([]types.Transaction, error) {
 	if len(ts) == 0 {
-		return errEmptySet
+		return nil, errEmptySet
 	}
 
 	// Remove all transactions that have been confirmed in the transaction set.
@@ -244,13 +249,13 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	}
 	// If no transactions remain, return a dublicate error.
 	if len(ts) == 0 {
-		return modules.ErrDuplicateTransactionSet
+		return nil, modules.ErrDuplicateTransactionSet
 	}
 
 	// Check the composition of the transaction set.
 	setSize, err := tp.checkTransactionSetComposition(ts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Check that the transaction set has enough fees to justify adding it to
@@ -269,7 +274,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 		for _, txn := range ts {
 			tp.log.Debugln(txn.ID())
 		}
-		return errLowMinerFees
+		return nil, errLowMinerFees
 	}
 
 	// Check for conflicts with other transactions, which would indicate a
@@ -288,7 +293,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	}
 	cc, err := txnFn(ts)
 	if err != nil {
-		return modules.NewConsensusConflict("provided transaction set is standalone and invalid: " + err.Error())
+		return nil, modules.NewConsensusConflict("provided transaction set is standalone and invalid: " + err.Error())
 	}
 
 	// Add the transaction set to the pool.
@@ -329,7 +334,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 		}
 		tp.log.Debugf("accepted transaction set %v, size: %vB\ntpool size is %vB after accpeting transaction set\ntransactions: \n%v\n", setID, tsetSize, tp.transactionListSize, txLogs)
 	}
-	return nil
+	return ts, nil
 }
 
 // AcceptTransactionSet adds a transaction to the unconfirmed set of
@@ -350,7 +355,7 @@ func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 		tp.log.Debugln("Beginning broadcast of transaction set")
 		tp.mu.Lock()
 		defer tp.mu.Unlock()
-		err := tp.acceptTransactionSet(ts, txnFn)
+		superset, err := tp.acceptTransactionSet(ts, txnFn)
 		if err == modules.ErrDuplicateTransactionSet {
 			tp.log.Debugln("Transaction set is a duplicate:", err)
 			return err
@@ -359,10 +364,7 @@ func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 			tp.log.Debugln("Transaction set will not be broadcast due to an error:", err)
 			return err
 		}
-		// TODO: Re-rig 'acceptTransactionSet' to return the superset of the txn
-		// set that gets submitted, and then we'll send the entire superset
-		// through the repeat broadcast filter.
-		go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
+		tp.staticRepeatBroadcastFilter.callRelayTransactionSet(superset, tp.gateway.Peers())
 		// Notify subscribers of an accepted transaction set
 		tp.updateSubscribersTransactions()
 		tp.log.Debugln("Transaction set broadcast appears to have succeeded")

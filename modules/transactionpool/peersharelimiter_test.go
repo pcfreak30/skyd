@@ -25,23 +25,23 @@ func TestPeerHeap(t *testing.T) {
 	// Create a few peers to push.
 	bp1 := &blockingPeer{
 		timeConnected: 10,
-		sizeChan:       make(chan int),
-		unblockChan:    make(chan struct{}),
+		sizeChan:      make(chan int),
+		unblockChan:   make(chan struct{}),
 	}
 	bp2 := &blockingPeer{
 		timeConnected: 20,
-		sizeChan:       make(chan int),
-		unblockChan:    make(chan struct{}),
+		sizeChan:      make(chan int),
+		unblockChan:   make(chan struct{}),
 	}
 	bp3 := &blockingPeer{
 		timeConnected: 30,
-		sizeChan:       make(chan int),
-		unblockChan:    make(chan struct{}),
+		sizeChan:      make(chan int),
+		unblockChan:   make(chan struct{}),
 	}
 	bp4 := &blockingPeer{
 		timeConnected: 40,
-		sizeChan:       make(chan int),
-		unblockChan:    make(chan struct{}),
+		sizeChan:      make(chan int),
+		unblockChan:   make(chan struct{}),
 	}
 	bps := []*blockingPeer{bp1, bp2, bp3, bp4}
 

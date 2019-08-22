@@ -146,29 +146,23 @@ unblock achieves these goals.
 **Key Files**
  - [repeatbroadcastfilter.go](./repeatbroadcastfilter.go)
 
-The repeat broadcast filter will track each transaction in the transaction pool,
-remembering which peers have received that transaction before. This will prevent
-the transaction pool from sending redundant information around the network. All
-transactions broadcast from the tpool will first pass through the repeat
-broadcast filter.
+The repeat broadcast filter prevents the same transaction from being relayed
+multiple times to the same peer. This allows other subsystems and modules to
+always attempt to broadcast a full transaction set, ensuring new peers will get
+the full set, while also ensuring that only the necessary bandwidth is used to
+communicate with peers.
 
-The main mechanism of action is to have a map that links from transaction id to
-a map of peers. For each transaction, there is a map of which peers have
-received that transaction already. When a new transaction is entered into the
-transaction pool, a corresponding map is created for that transaction. And when
-a transaction is removed from the transaction pool, the corresponding map is
-deleted.
+The repeat broadcast filter works by keeping an in-memory map from transaction
+ID to a list of peers that have received that transaction already. This map is
+not reset if a peer disconnects, which prevents the same peer from receiving the
+same transaction multiple times even if the connectivity status is changing.
 
-When choosing to broadcast a transaction set to a peer, the subsystem will check
-what transactions of that set have already been sent to that peer, and exclude
-any transactions that the peer already knows about, sending them only the new
-information.
-
-There's a special case for inserting transactions that are added to the pool
-from reverted blocks. If a block is reverted, the subsystem will assume that all
-of its peers already have that transaction since it was in a block that was
-propagated, so it'll add those transactions assuming that all peers already have
-the transaction.
+To prevent the repeat broadcast filter from consuming too much memory,
+transactions are removed from the repeat broadcast filter when they are either
+confirmed in blocks or evicted from the transaction pool. When a block is
+reverted and all of the transactions in that block are added back into the
+transaction pool, the repeat broadcast filter will assume that all peers already
+have those transactions, and will add those transactions to the filter.
 
 ##### Inbound Complexities
  - `callBroadcastTransactionSet` can be used to send transactions to peers.

@@ -77,8 +77,8 @@ func (psl *peerShareLimiter) callBlockForShareTSet(timeConnected int64) (chan in
 	// to the peer heap.
 	bp := &blockingPeer{
 		timeConnected: timeConnected,
-		sizeChan:       make(chan int),
-		unblockChan:    make(chan struct{}),
+		sizeChan:      make(chan int),
+		unblockChan:   make(chan struct{}),
 	}
 	psl.managedPush(bp)
 
@@ -157,7 +157,7 @@ func (psl *peerShareLimiter) threadedUnblockSharingThreads() {
 		heapLen := len(psl.peerHeap)
 		psl.mu.Unlock()
 		if heapLen == 0 {
-			select{
+			select {
 			case <-psl.tg.StopChan():
 				return
 			case <-psl.pushNotify:

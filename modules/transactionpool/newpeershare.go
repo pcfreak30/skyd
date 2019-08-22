@@ -9,7 +9,7 @@ import (
 
 // newPeerShare tracks the peers of the transaction pool and then sends new
 // peers all pre-existing transactions in the transction pool.
-type newPeerShare struct{
+type newPeerShare struct {
 	*transactionPoolUtils
 }
 
@@ -35,7 +35,7 @@ func (nps *newPeerShare) staticNextTSet(remainingObjects map[ObjectID]struct{}) 
 
 		// If a corresponding transaction set does exist, remove all related
 		// objects because they will all be sent along with the transaction set.
-		oids := relatedObjectIDs(tset)
+		oids := relatedObjectIDs(transactionSet)
 		for _, oid := range oids {
 			delete(remainingObjects, oid)
 		}
@@ -46,8 +46,8 @@ func (nps *newPeerShare) staticNextTSet(remainingObjects map[ObjectID]struct{}) 
 	return nil, nil, false
 }
 
-// threadedPollForPeers will repeatedly check the gateway for new peers.
-func (nps *newPeerShare) threadedPollForPeers() {
+// threadedPollForNewPeers will repeatedly check the gateway for new peers.
+func (nps *newPeerShare) threadedPollForNewPeers() {
 	err := nps.tg.Add()
 	if err != nil {
 		return
@@ -115,7 +115,7 @@ func (nps *newPeerShare) threadedSyncPeer(peer modules.Peer) {
 		// Block until the ratelimiter says this thread can send a transaction
 		// set. The ratelimiter will return a channel which will be used to tell
 		// the ratelimiter how big the send was.
-		bytesToRelayFeedback, success := nps.staticPeerShareLimiter.callBlockForShareTSet(timeDiscovered)
+		bytesToRelayFeedback, success := nps.staticPeerShareLimiter.callBlockForShareTSet(timeConnected)
 		if !success {
 			// The transaction pool was shut down before the ratelimit reached
 			// this thread.
