@@ -171,6 +171,15 @@ have those transactions, and will add those transactions to the filter.
    - The [New Peer Share](#peer-share) subsystem will use
 	 `callBroadcastTransactionSet` to send new peers transactions that they may
 	 be missing.
+ - `callUnconditionalBroadcast` can be used to send a transaction to a peer,
+   bypassing the filter. The transactions will be sent even if they are in the
+   filter, and then the transactions will be added to the filter to guard
+   against future automated broadcasts.
+   - [Core](#core) uses `callUnconditionalBroadcast` to expose an export to the
+	 user that allows them to broadcast a transaction explicitly. This call is
+	 unconditional because it will typically be used during debugging and
+	 troubleshooting, and therefore should be stronger than the automated
+	 actions.
 
 ##### TODOs
  - TODO: Eventually the subsystem will be able to catalog incoming transactions.

@@ -325,12 +325,10 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 // Broadcast broadcasts a transaction set to all of the transaction pool's
 // peers. This broadcast will be unconditional, sending the full transaction set
 // to every peer, which means this broadcast will bypass the repeat broadcast
-// filter.
-//
-// TODO: Switch to using the repeat broadcast filter over an unconditional
-// relay.
+// filter. The transactions will still be added to the filter so that future
+// automated sends of these transactions will be filtered.
 func (tp *TransactionPool) Broadcast(ts []types.Transaction) {
-	go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
+	tp.staticRepeatBroadcastFilter.callUnconditionalBroadcast(ts)
 }
 
 // callRemainingObjectsList will return the list of all objects in the

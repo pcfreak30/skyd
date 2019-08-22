@@ -102,6 +102,30 @@ func (rbf *repeatBroadcastFilter) callRelayTransactionSet(tset []types.Transacti
 	return totalSize
 }
 
+// callUnconditionalBroadcast will unconditionally broadcast a transaction set
+// to all peers. The filter that is typically applied will be ignored, hoewver
+// the transactions will be added to the filter for all peers.
+func (rbf *repeatBroadcastFilter) callUnconditionalBroadcast(tset []types.Transaction) {
+	// Have the broadcast run right away.
+	peers := rbf.gateway.Peers()
+	go rbf.gateway.Broadcast("RelayTransactionSet", tset, peers)
+
+	// Fill out the history to indicate that all peers have received all of
+	// these transactions.
+	rbf.mu.Lock()
+	defer rbf.mu.Unlock()
+	for _, txn := range tset {
+		txid := txn.ID()
+		_, exists := rbf.transactionHistory[txid]
+		if !exists {
+			rbf.transactionHistory[txid] = make(map[modules.NetAddress]struct{})
+		}
+		for _, peer := range peers {
+			rbf.transactionHistory[txid][peer.NetAddress] = struct{}{}
+		}
+	}
+}
+
 // newRepeatBroadcastFilter will return a new repeat broadcast filter that is
 // ready for use by the tpool.
 func (tp *TransactionPool) newRepeatBroadcastFilter() *repeatBroadcastFilter {
