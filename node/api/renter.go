@@ -213,6 +213,44 @@ type (
 	}
 )
 
+// renterSendSharedFile prepares a SiaFile for sharing and writes it to dst.
+func (api *API) renterSendSharedFile(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	sp := req.FormValue("siapath")
+	dst := req.FormValue("dst")
+	if sp == "" || dst == "" {
+		WriteError(w, Error{"siapath and dst need to be set"}, http.StatusBadRequest)
+		return
+	}
+	siaPath, err := modules.NewSiaPath(sp)
+	if err != nil {
+		WriteError(w, Error{"provided siapath was invalid: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	snap, err := api.renter.Snapshot(siaPath)
+	if err != nil {
+		WriteError(w, Error{"failed to get snapshot: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	err = ioutil.WriteFile(dst, snap, 0600)
+	if err != nil {
+		WriteError(w, Error{"failed to write shared file to disk: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterReceiveSharedFile adds a shared siafile to the renter.
+func (api *API) renterReceiveSharedFile(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	sp := req.FormValue("siapath")
+	src := req.FormValue("src")
+	if sp == "" || src == "" {
+		WriteError(w, Error{"siapath and src need to be set"}, http.StatusBadRequest)
+		return
+	}
+	// TODO: Import shared file.
+	WriteError(w, Error{"not implemented yet"}, http.StatusInternalServerError)
+}
+
 // renterBackupsHandlerGET handles the API calls to /renter/backups.
 func (api *API) renterBackupsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	backups, syncedHosts, err := api.renter.UploadedBackups()

@@ -593,6 +593,9 @@ type Renter interface {
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
+	// Snapshot returns a snapshot of the file with the specified siapath.
+	Snapshot(siaPath SiaPath) ([]byte, error)
+
 	// UploadBackup uploads a backup to hosts, such that it can be retrieved
 	// using only the seed.
 	UploadBackup(src string, name string) error

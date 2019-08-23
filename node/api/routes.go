@@ -113,6 +113,9 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 
+		router.GET("/renter/share/send", RequirePassword(api.renterSendSharedFile, requiredPassword))
+		router.POST("/renter/share/receive", RequirePassword(api.renterReceiveSharedFile, requiredPassword))
+
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))
 		router.GET("/renter/dir/*siapath", api.renterDirHandlerGET)
