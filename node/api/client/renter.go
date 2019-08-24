@@ -556,7 +556,7 @@ func (c *Client) RenterSendSharedFile(siaPath modules.SiaPath, dst string) (err 
 func (c *Client) RenterReceiveSharedFile(siaPath modules.SiaPath, src string) (err error) {
 	values := url.Values{}
 	values.Set("siapath", escapeSiaPath(siaPath))
-	values.Set("dst", src)
+	values.Set("src", src)
 	err = c.post("/renter/share/receive", values.Encode(), nil)
 	return
 }

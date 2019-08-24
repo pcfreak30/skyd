@@ -255,8 +255,16 @@ func (api *API) renterReceiveSharedFile(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{"src needs to be an absolut path"}, http.StatusBadRequest)
 		return
 	}
-	// TODO: Import shared file.
-	WriteError(w, Error{"not implemented yet"}, http.StatusInternalServerError)
+	// Load shared file.
+	siaPath, err := modules.NewSiaPath(sp)
+	if err != nil {
+		WriteError(w, Error{"provided siapath was invalid: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	if err := api.renter.LoadSharedFile(src, siaPath); err != nil {
+		WriteError(w, Error{"failed to load shared file: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 }
 
 // renterBackupsHandlerGET handles the API calls to /renter/backups.

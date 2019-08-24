@@ -573,6 +573,9 @@ type Renter interface {
 	// began.
 	CurrentPeriod() types.BlockHeight
 
+	// LoadSharedFile loads a shared siafile from src into the renter.
+	LoadSharedFile(src string, siaPath SiaPath) error
+
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
 	PeriodSpending() ContractorSpending
