@@ -116,6 +116,7 @@ func (r *Renter) createSharedFile(w *tar.Writer, siaPath modules.SiaPath) error 
 	siaFilePath := siaPath.SiaFileSysPath(r.staticFilesDir)
 	siaDirSysPath := siaDirPath.SiaDirSysPath(r.staticFilesDir)
 	header.Name = strings.TrimPrefix(siaFilePath, siaDirSysPath)
+	header.Name = strings.TrimPrefix(header.Name, string(filepath.Separator))
 	// Write the header first.
 	if err := w.WriteHeader(header); err != nil {
 		return err
@@ -129,7 +130,6 @@ func (r *Renter) createSharedDir(w *tar.Writer, siaPath modules.SiaPath) error {
 	// Walk over all the siafiles and add them to the tarball.
 	root := siaPath.SiaDirSysPath(r.staticFilesDir)
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		println("")
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
@@ -145,8 +145,8 @@ func (r *Renter) createSharedDir(w *tar.Writer, siaPath modules.SiaPath) error {
 			return err
 		}
 		relPath := strings.TrimPrefix(path, root)
+		relPath = strings.TrimPrefix(relPath, string(filepath.Separator))
 		header.Name = relPath
-		println("header.Name", header.Name)
 		// If the info is a dir there is nothing more to do besides writing the
 		// header.
 		if info.IsDir() {
@@ -161,7 +161,6 @@ func (r *Renter) createSharedDir(w *tar.Writer, siaPath modules.SiaPath) error {
 		}
 		entry, err := r.staticFileSet.Open(siaPath)
 		if err != nil {
-			println("here")
 			return err
 		}
 		defer entry.Close()

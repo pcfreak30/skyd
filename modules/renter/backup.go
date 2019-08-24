@@ -220,6 +220,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			return err
 		}
 		relPath := strings.TrimPrefix(path, r.staticFilesDir)
+		relPath = strings.TrimPrefix(relPath, string(filepath.Separator))
 		header.Name = relPath
 		// If the info is a dir there is nothing more to do besides writing the
 		// header.
