@@ -230,12 +230,12 @@ func (api *API) renterSendSharedFile(w http.ResponseWriter, req *http.Request, _
 		WriteError(w, Error{"provided siapath was invalid: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	snap, err := api.renter.Snapshot(siaPath)
+	data, err := api.renter.Share(siaPath)
 	if err != nil {
-		WriteError(w, Error{"failed to get snapshot: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to create shared file: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	err = ioutil.WriteFile(dst, snap, 0600)
+	err = ioutil.WriteFile(dst, data, 0600)
 	if err != nil {
 		WriteError(w, Error{"failed to write shared file to disk: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -261,7 +261,7 @@ func (api *API) renterReceiveSharedFile(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{"provided siapath was invalid: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	if err := api.renter.LoadSharedFile(src, siaPath); err != nil {
+	if err := api.renter.LoadShare(src, siaPath); err != nil {
 		WriteError(w, Error{"failed to load shared file: " + err.Error()}, http.StatusBadRequest)
 		return
 	}

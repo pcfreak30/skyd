@@ -46,27 +46,6 @@ func calcSnapshotUploadProgress(fileUploadProgress float64, dotSiaUploadProgress
 	return 0.8*fileUploadProgress + 0.2*dotSiaUploadProgress
 }
 
-// Snapshot returns a snapshot of the file with the specified siapath.
-func (r *Renter) Snapshot(siaPath modules.SiaPath) ([]byte, error) {
-	if err := r.tg.Add(); err != nil {
-		return nil, err
-	}
-	defer r.tg.Done()
-	// Open SiaFile.
-	entry, err := r.staticFileSet.Open(siaPath)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to open siafile for snapshotting")
-	}
-	defer entry.Close()
-	// Read snapshot.
-	sr, err := entry.SnapshotReader()
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to get snapshot reader")
-	}
-	defer sr.Close()
-	return ioutil.ReadAll(sr)
-}
-
 // UploadedBackups returns the backups that the renter can download, along with
 // a list of which contracts are storing all known backups.
 func (r *Renter) UploadedBackups() ([]modules.UploadedBackup, []types.SiaPublicKey, error) {
