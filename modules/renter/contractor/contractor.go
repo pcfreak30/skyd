@@ -334,6 +334,7 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
+		sharedHosts:          make(map[string]bool),
 	}
 
 	// Close the contract set and logger upon shutdown.
