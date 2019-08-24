@@ -221,6 +221,10 @@ func (api *API) renterSendSharedFile(w http.ResponseWriter, req *http.Request, _
 		WriteError(w, Error{"siapath and dst need to be set"}, http.StatusBadRequest)
 		return
 	}
+	if !filepath.IsAbs(dst) {
+		WriteError(w, Error{"dst needs to be an absolut path"}, http.StatusBadRequest)
+		return
+	}
 	siaPath, err := modules.NewSiaPath(sp)
 	if err != nil {
 		WriteError(w, Error{"provided siapath was invalid: " + err.Error()}, http.StatusBadRequest)
@@ -245,6 +249,10 @@ func (api *API) renterReceiveSharedFile(w http.ResponseWriter, req *http.Request
 	src := req.FormValue("src")
 	if sp == "" || src == "" {
 		WriteError(w, Error{"siapath and src need to be set"}, http.StatusBadRequest)
+		return
+	}
+	if !filepath.IsAbs(src) {
+		WriteError(w, Error{"src needs to be an absolut path"}, http.StatusBadRequest)
 		return
 	}
 	// TODO: Import shared file.

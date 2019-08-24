@@ -540,3 +540,23 @@ func (c *Client) RenterValidateSiaPathPost(siaPathStr string) (err error) {
 	err = c.post(fmt.Sprintf("/renter/validatesiapath/%s", siaPathStr), "", nil)
 	return
 }
+
+// RenterSendSharedFile uses the /renter/share/send endpoint to create a shared
+// siafile at dst.
+func (c *Client) RenterSendSharedFile(siaPath modules.SiaPath, dst string) (err error) {
+	values := url.Values{}
+	values.Set("siapath", escapeSiaPath(siaPath))
+	values.Set("dst", dst)
+	err = c.get(fmt.Sprintf("/renter/share/send?%s", values.Encode()), nil)
+	return
+}
+
+// RenterReceiveSharedFile uses the /renter/share/receive endpoint to load a
+// shared siafile from src into the renter.
+func (c *Client) RenterReceiveSharedFile(siaPath modules.SiaPath, src string) (err error) {
+	values := url.Values{}
+	values.Set("siapath", escapeSiaPath(siaPath))
+	values.Set("dst", src)
+	err = c.post("/renter/share/receive", values.Encode(), nil)
+	return
+}

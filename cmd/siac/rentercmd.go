@@ -68,6 +68,12 @@ var (
 		Run:   wrap(rentercmd),
 	}
 
+	renterShareCmd = &cobra.Command{
+		Use:   "share",
+		Short: "Perform actions related to sharing files",
+		Long:  "Create shared files or load them.",
+	}
+
 	renterContractsCmd = &cobra.Command{
 		Use:   "contracts",
 		Short: "View the Renter's contracts",
@@ -183,6 +189,20 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Run:   wrap(rentertriggercontractrecoveryrescancmd),
 	}
 
+	renterShareSendCmd = &cobra.Command{
+		Use:   "send [siaPath] [dst]",
+		Short: "Create a shared siafile.",
+		Long:  "Create a shared siafile at the specified destination path.",
+		Run:   wrap(rentersendsharedfilecmd),
+	}
+
+	renterShareReceiveCmd = &cobra.Command{
+		Use:   "receive [src] [siaPath]",
+		Short: "Load a shared siafile.",
+		Long:  "Load a shared siafile from the specified source path.",
+		Run:   wrap(renterreceivesharedfilecmd),
+	}
+
 	renterUploadsCmd = &cobra.Command{
 		Use:   "uploads",
 		Short: "View the upload queue",
@@ -255,6 +275,36 @@ func renterFilesAndContractSummary() error {
 `, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
 
 	return nil
+}
+
+// rentersendsharedfilecmd writes a shared siafile to the specified dst.
+func rentersendsharedfilecmd(sp, dst string) {
+	siaPath, err := modules.NewSiaPath(sp)
+	if err != nil {
+		die("failed to parse siapath", err)
+	}
+	dst, err = filepath.Abs(dst)
+	if err != nil {
+		die("failed to convert dst to absolute path", err)
+	}
+	if err := httpClient.RenterSendSharedFile(siaPath, dst); err != nil {
+		die("failed to send shared file", err)
+	}
+}
+
+// renterreceivesharedfilecmd loads a shared siafile from the specified src.
+func renterreceivesharedfilecmd(src, sp string) {
+	siaPath, err := modules.NewSiaPath(sp)
+	if err != nil {
+		die("failed to parse siapath", err)
+	}
+	src, err = filepath.Abs(src)
+	if err != nil {
+		die("failed to convert src to absolute path", err)
+	}
+	if err := httpClient.RenterReceiveSharedFile(siaPath, src); err != nil {
+		die("failed to receive shared file", err)
+	}
 }
 
 // renteruploadscmd is the handler for the command `siac renter uploads`.
