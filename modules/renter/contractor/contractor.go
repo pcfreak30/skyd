@@ -69,6 +69,14 @@ type Contractor struct {
 	pubKeysToContractID map[string]types.FileContractID
 	renewing            map[types.FileContractID]bool // prevent revising during renewal
 
+	// sharedHosts is a map from host public keys to a bool indicating the hosts
+	// that are necessary for participating in the user's sharing communities.
+	// The bool indicates whether that contract is also naturally a part of the
+	// user's contract set. "true" indicates that the host is only necessary for
+	// being part of a sharing community, and "false" indicates that the host is
+	// also natrually appearing in the user's contract set.
+	sharedHosts map[string]bool // if the bool had a name, it would be `sharedOnly`
+
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
 	staticContracts      *proto.ContractSet
