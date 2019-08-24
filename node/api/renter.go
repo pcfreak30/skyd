@@ -217,27 +217,34 @@ type (
 func (api *API) renterSendSharedFile(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	sp := req.FormValue("siapath")
 	dst := req.FormValue("dst")
-	if sp == "" || dst == "" {
-		WriteError(w, Error{"siapath and dst need to be set"}, http.StatusBadRequest)
+	if dst == "" {
+		WriteError(w, Error{"dst needs to be set"}, http.StatusBadRequest)
 		return
 	}
 	if !filepath.IsAbs(dst) {
 		WriteError(w, Error{"dst needs to be an absolut path"}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err := modules.NewSiaPath(sp)
+	var siaPath modules.SiaPath
+	var err error
+	if sp == "" {
+		siaPath = modules.RootSiaPath()
+	} else {
+		siaPath, err = modules.NewSiaPath(sp)
+		if err != nil {
+			WriteError(w, Error{"provided siapath was invalid: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	f, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		WriteError(w, Error{"provided siapath was invalid: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to open shared file: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	data, err := api.renter.Share(siaPath)
+	defer f.Close()
+	err = api.renter.Share(f, siaPath)
 	if err != nil {
 		WriteError(w, Error{"failed to create shared file: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	err = ioutil.WriteFile(dst, data, 0600)
-	if err != nil {
-		WriteError(w, Error{"failed to write shared file to disk: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
@@ -247,8 +254,8 @@ func (api *API) renterSendSharedFile(w http.ResponseWriter, req *http.Request, _
 func (api *API) renterReceiveSharedFile(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	sp := req.FormValue("siapath")
 	src := req.FormValue("src")
-	if sp == "" || src == "" {
-		WriteError(w, Error{"siapath and src need to be set"}, http.StatusBadRequest)
+	if src == "" {
+		WriteError(w, Error{"src needs to be set"}, http.StatusBadRequest)
 		return
 	}
 	if !filepath.IsAbs(src) {
@@ -256,10 +263,16 @@ func (api *API) renterReceiveSharedFile(w http.ResponseWriter, req *http.Request
 		return
 	}
 	// Load shared file.
-	siaPath, err := modules.NewSiaPath(sp)
-	if err != nil {
-		WriteError(w, Error{"provided siapath was invalid: " + err.Error()}, http.StatusBadRequest)
-		return
+	var siaPath modules.SiaPath
+	var err error
+	if sp == "" {
+		siaPath = modules.RootSiaPath()
+	} else {
+		siaPath, err = modules.NewSiaPath(sp)
+		if err != nil {
+			WriteError(w, Error{"provided siapath was invalid: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
 	if err := api.renter.LoadShare(src, siaPath); err != nil {
 		WriteError(w, Error{"failed to load shared file: " + err.Error()}, http.StatusBadRequest)

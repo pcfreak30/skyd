@@ -222,6 +222,20 @@ func abs(path string) string {
 	return abspath
 }
 
+// parseDirSiaPath parses a SiaPath which is meant to point to a dir into a
+// SiaPath object.
+func parseDirSiaPath(sp string) (modules.SiaPath, error) {
+	// Parse the input siapath.
+	var siaPath modules.SiaPath
+	var err error
+	if sp == "." || sp == "" || sp == "/" {
+		siaPath = modules.RootSiaPath()
+	} else {
+		siaPath, err = modules.NewSiaPath(sp)
+	}
+	return siaPath, err
+}
+
 // rentercmd displays the renter's financial metrics and high level renter info
 func rentercmd() {
 	// Get Renter
@@ -279,7 +293,7 @@ func renterFilesAndContractSummary() error {
 
 // rentersendsharedfilecmd writes a shared siafile to the specified dst.
 func rentersendsharedfilecmd(sp, dst string) {
-	siaPath, err := modules.NewSiaPath(sp)
+	siaPath, err := parseDirSiaPath(sp)
 	if err != nil {
 		die("failed to parse siapath", err)
 	}
@@ -294,7 +308,7 @@ func rentersendsharedfilecmd(sp, dst string) {
 
 // renterreceivesharedfilecmd loads a shared siafile from the specified src.
 func renterreceivesharedfilecmd(src, sp string) {
-	siaPath, err := modules.NewSiaPath(sp)
+	siaPath, err := parseDirSiaPath(sp)
 	if err != nil {
 		die("failed to parse siapath", err)
 	}
@@ -1890,15 +1904,9 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		os.Exit(exitCodeUsage)
 	}
 	// Parse the input siapath.
-	var sp modules.SiaPath
-	var err error
-	if path == "." || path == "" || path == "/" {
-		sp = modules.RootSiaPath()
-	} else {
-		sp, err = modules.NewSiaPath(path)
-		if err != nil {
-			die("could not parse siapath:", err)
-		}
+	sp, err := parseDirSiaPath(path)
+	if err != nil {
+		die("could not parse siapath:", err)
 	}
 
 	// TODO: Currently the list command can only look at directories. We

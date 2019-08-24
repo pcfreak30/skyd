@@ -113,8 +113,9 @@ func (r *Renter) createSharedFile(w *tar.Writer, siaPath modules.SiaPath) error 
 	if err != nil {
 		return err
 	}
+	siaFilePath := siaPath.SiaFileSysPath(r.staticFilesDir)
 	siaDirSysPath := siaDirPath.SiaDirSysPath(r.staticFilesDir)
-	header.Name = strings.TrimPrefix(info.Name(), siaDirSysPath)
+	header.Name = strings.TrimPrefix(siaFilePath, siaDirSysPath)
 	// Write the header first.
 	if err := w.WriteHeader(header); err != nil {
 		return err
@@ -128,6 +129,7 @@ func (r *Renter) createSharedDir(w *tar.Writer, siaPath modules.SiaPath) error {
 	// Walk over all the siafiles and add them to the tarball.
 	root := siaPath.SiaDirSysPath(r.staticFilesDir)
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		println("")
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
@@ -144,18 +146,22 @@ func (r *Renter) createSharedDir(w *tar.Writer, siaPath modules.SiaPath) error {
 		}
 		relPath := strings.TrimPrefix(path, root)
 		header.Name = relPath
+		println("header.Name", header.Name)
 		// If the info is a dir there is nothing more to do besides writing the
 		// header.
 		if info.IsDir() {
 			return w.WriteHeader(header)
 		}
 		// Get the siafile.
-		siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
+		sp := strings.TrimPrefix(path, r.staticFilesDir)
+		sp = strings.TrimSuffix(sp, modules.SiaFileExtension)
+		siaPath, err := modules.NewSiaPath(sp)
 		if err != nil {
 			return err
 		}
 		entry, err := r.staticFileSet.Open(siaPath)
 		if err != nil {
+			println("here")
 			return err
 		}
 		defer entry.Close()
@@ -191,10 +197,12 @@ func (r *Renter) Share(w io.Writer, siaPath modules.SiaPath) error {
 	defer r.tg.Done()
 
 	gzw := gzip.NewWriter(w)
+	defer gzw.Close()
 	tw := tar.NewWriter(gzw)
+	defer tw.Close()
 
 	if r.staticFileSet.Exists(siaPath) {
-		return r.createSharedFile(tw, siaPath)
+		return errors.AddContext(r.createSharedFile(tw, siaPath), "createSharedFile failed")
 	}
-	return r.createSharedDir(tw, siaPath)
+	return errors.AddContext(r.createSharedDir(tw, siaPath), "createSharedDir failed")
 }

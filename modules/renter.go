@@ -596,8 +596,9 @@ type Renter interface {
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
-	// Snapshot returns a snapshot of the file with the specified siapath.
-	Snapshot(siaPath SiaPath) ([]byte, error)
+	// Share creates a shared file or folder of the file or folder at the specified
+	// path.
+	Share(w io.Writer, siaPath SiaPath) error
 
 	// UploadBackup uploads a backup to hosts, such that it can be retrieved
 	// using only the seed.

@@ -139,10 +139,6 @@ type hostContractor interface {
 	// with a bool indicating if it exists.
 	ContractUtility(types.SiaPublicKey) (modules.ContractUtility, bool)
 
-	// Share creates a shared file or folder of the file or folder at the specified
-	// path.
-	Share(siaPath modules.SiaPath) ([]byte, error)
-
 	// CurrentPeriod returns the height at which the current allowance period
 	// began.
 	CurrentPeriod() types.BlockHeight
