@@ -93,6 +93,34 @@ func (c *Contractor) Allowance() modules.Allowance {
 	return c.allowance
 }
 
+// AddSharedHostKeys informs the contractor about hosts used by a shared file.
+func (c *Contractor) AddSharedHostKeys(keys []types.SiaPublicKey) error {
+	if err := c.tg.Add(); err != nil {
+		return err
+	}
+	defer c.tg.Done()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	contractMap := make(map[string]struct{})
+	contracts := c.staticContracts.ViewAll()
+	for _, contract := range contracts {
+		contractMap[contract.HostPublicKey.String()] = struct{}{}
+	}
+	for _, key := range keys {
+		if _, exists := c.sharedHosts[key.String()]; exists {
+			continue
+		}
+		if _, exists := contractMap[key.String()]; exists {
+			c.sharedHosts[key.String()] = false
+		} else {
+			c.sharedHosts[key.String()] = true
+		}
+	}
+	go c.threadedContractMaintenance()
+	return c.save()
+}
+
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
 // contracts within a separate thread.
 func (c *Contractor) InitRecoveryScan() (err error) {

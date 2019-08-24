@@ -30,10 +30,14 @@ func (r *Renter) LoadSharedFile(src string, siaPath modules.SiaPath) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to read chunks of shared file")
 	}
+	// Inform contractor about shared hosts.
+	err = r.hostContractor.AddSharedHostKeys(sf.HostPublicKeys())
+	if err != nil {
+		return errors.AddContext(err, "failed to add shared hosts to contractor")
+	}
 	// Add the siafile to the renter.
 	if err := r.staticFileSet.AddExistingSiaFile(sf, chunks); err != nil {
 		return errors.AddContext(err, "failed to add siafile to set")
 	}
-	// TODO: form missing contracts.
 	return nil
 }

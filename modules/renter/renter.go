@@ -111,6 +111,9 @@ type hostDB interface {
 // A hostContractor negotiates, revises, renews, and provides access to file
 // contracts.
 type hostContractor interface {
+	// AddSharedHostKeys informs the contractor about hosts used by a shared file.
+	AddSharedHostKeys([]types.SiaPublicKey) error
+
 	// SetAllowance sets the amount of money the contractor is allowed to
 	// spend on contracts over a given time period, divided among the number
 	// of hosts specified. Note that contractor can start forming contracts as
