@@ -3,6 +3,9 @@ package contractor
 // contractmaintenance.go handles forming and renewing contracts for the
 // contractor. This includes deciding when new contracts need to be formed, when
 // contracts need to be renewed, and if contracts need to be blacklisted.
+//
+// TODO: Need to add some method for renewing contracts which are used only for
+// sharing.
 
 import (
 	"fmt"
@@ -281,6 +284,15 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 			// If the utility is locked, do nothing.
 			if u.Locked {
+				return u, nil
+			}
+
+			// If the contract exists only for downloading from shared hosts,
+			// skip utility updates.
+			c.mu.RLock()
+			sharedOnly, exists := c.sharedHosts[contract.HostPublicKey.String()]
+			c.mu.RUnlock()
+			if exists && sharedOnly {
 				return u, nil
 			}
 
@@ -1200,7 +1212,16 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("Failed to update the contract utilities", err)
 			return
 		}
+		// Under lock, check if this host is a shared host and if so, indicate
+		// that this host is now naturally appearing in the user's set of
+		// contracts. Then also save the contractor, which is necessary to close
+		// out all of the above steps as well.
+		hpk := host.PublicKey.String()
 		c.mu.Lock()
+		_, exists := c.sharedHosts[hpk]
+		if exists {
+			c.sharedHosts[hpk] = false // host is no longer used exclusively for sharing files.
+		}
 		err = c.save()
 		c.mu.Unlock()
 		if err != nil {
@@ -1211,6 +1232,102 @@ func (c *Contractor) threadedContractMaintenance() {
 		neededContracts--
 		if neededContracts <= 0 {
 			break
+		}
+
+		// Soft sleep before making the next contract.
+		select {
+		case <-c.tg.StopChan():
+			return
+		case <-c.interruptMaintenance:
+			return
+		default:
+		}
+	}
+
+	// Go through the contracts again, see if we need to form any contracts to
+	// participate in our sharing community.
+	c.mu.RLock()
+	neededHostsForShare := make(map[string]struct{})
+	for host := range c.sharedHosts {
+		neededHostsForShare[host] = struct{}{}
+	}
+	c.mu.RUnlock()
+
+	allContracts = c.staticContracts.ViewAll()
+	for _, contract := range allContracts {
+		delete(neededHostsForShare, contract.HostPublicKey.String())
+	}
+
+	// Any hosts that remain need to have a contract formed where the utilities
+	// are set to bad.
+	for hostPK, _ := range neededHostsForShare {
+		var spk types.SiaPublicKey
+		spk.LoadString(hostPK)
+		host, exists := c.hdb.Host(spk)
+		if !exists {
+			c.log.Println("unable to form shared contract because it was not found in the hostdb")
+			continue
+		}
+		unlocked, err := c.wallet.Unlocked()
+		if !unlocked || err != nil {
+			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
+			return
+		}
+
+		// Determine if we have enough money to form a new contract.
+		if fundsRemaining.Cmp(initialContractFunds) < 0 {
+			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
+			break
+		}
+
+		// If we are using a custom resolver we need to replace the domain name
+		// with 127.0.0.1 to be able to form contracts.
+		if c.staticDeps.Disrupt("customResolver") {
+			port := host.NetAddress.Port()
+			host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+		}
+
+		// Attempt forming a contract with this host.
+		//
+		// TODO: Should add sanity chekcing / safety checking here that the host
+		// is not being unreasonably abusive.
+		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
+		if err != nil {
+			c.log.Printf("Attempted to form a contract with %v, but negotiation failed: %v\n", host.NetAddress, err)
+			continue
+		}
+		fundsRemaining = fundsRemaining.Sub(fundsSpent)
+
+		sb, err := c.hdb.ScoreBreakdown(host)
+		if err == nil {
+			c.log.Println("A new contract has been formed with a host for the purposes of filesharing:", newContract.ID)
+			c.log.Println("Score:    ", sb.Score)
+			c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+			c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+			c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+			c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+			c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+			c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
+			c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+			c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+			c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
+		}
+
+		// Add this contract to the contractor and save. Utilities are set to
+		// false since this host only exists for the purposes of sharing.
+		err = c.managedUpdateContractUtility(newContract.ID, modules.ContractUtility{
+			GoodForUpload: false,
+			GoodForRenew:  false,
+		})
+		if err != nil {
+			c.log.Println("Failed to update the contract utilities", err)
+			return
+		}
+		c.mu.Lock()
+		err = c.save()
+		c.mu.Unlock()
+		if err != nil {
+			c.log.Println("Unable to save the contractor:", err)
 		}
 
 		// Soft sleep before making the next contract.

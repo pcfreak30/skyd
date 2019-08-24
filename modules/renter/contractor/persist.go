@@ -19,11 +19,12 @@ type contractorPersist struct {
 	BlockHeight          types.BlockHeight               `json:"blockheight"`
 	CurrentPeriod        types.BlockHeight               `json:"currentperiod"`
 	LastChange           modules.ConsensusChangeID       `json:"lastchange"`
-	RecentRecoveryChange modules.ConsensusChangeID       `json:"recentrecoverychange"`
 	OldContracts         []modules.RenterContract        `json:"oldcontracts"`
+	RecentRecoveryChange modules.ConsensusChangeID       `json:"recentrecoverychange"`
 	RecoverableContracts []modules.RecoverableContract   `json:"recoverablecontracts"`
 	RenewedFrom          map[string]types.FileContractID `json:"renewedfrom"`
 	RenewedTo            map[string]types.FileContractID `json:"renewedto"`
+	SharedHosts          map[string]bool                 `json:"sharedhosts"`
 }
 
 // persistData returns the data in the Contractor that will be saved to disk.
@@ -36,12 +37,16 @@ func (c *Contractor) persistData() contractorPersist {
 		RecentRecoveryChange: c.recentRecoveryChange,
 		RenewedFrom:          make(map[string]types.FileContractID),
 		RenewedTo:            make(map[string]types.FileContractID),
+		SharedHosts:          make(map[string]bool),
 	}
 	for k, v := range c.renewedFrom {
 		data.RenewedFrom[k.String()] = v
 	}
 	for k, v := range c.renewedTo {
 		data.RenewedTo[k.String()] = v
+	}
+	for k, v := range c.sharedHosts {
+		data.SharedHosts[k] = v
 	}
 	for _, contract := range c.oldContracts {
 		data.OldContracts = append(data.OldContracts, contract)
@@ -90,6 +95,9 @@ func (c *Contractor) load() error {
 			return err
 		}
 		c.renewedTo[fcid] = v
+	}
+	for k, v := range data.SharedHosts {
+		c.sharedHosts[k] = v
 	}
 	for _, contract := range data.OldContracts {
 		c.oldContracts[contract.ID] = contract
