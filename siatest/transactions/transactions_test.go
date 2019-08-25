@@ -235,7 +235,7 @@ func TestTransactionPropagation(t *testing.T) {
 	// Send several more transactions from the renter to the miner, enough to
 	// ensure that some transactions are dependent on other unconfirmed
 	// transactions.
-	sends := uint64(siatest.TransactionsPerNode + 10)
+	sends := uint64(siatest.OutputsPerNode + 10)
 	for i := uint64(0); i < sends; i++ {
 		wsp, err := renter.WalletSiacoinsPost(sendAmount, minerAddr)
 		if err != nil {

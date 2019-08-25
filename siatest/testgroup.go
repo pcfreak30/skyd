@@ -53,7 +53,9 @@ var (
 		ExpectedRedundancy: 5.0,
 	}
 
-	TransactionsPerNode = 25
+	// OutputsPerNode indicates how many outputs each new node is given to spend
+	// from at creation time.
+	OutputsPerNode = 25
 
 	// testGroupBuffer is a buffer channel to control the number of testgroups
 	// and nodes created at once
@@ -224,7 +226,7 @@ func fundNodes(miner *TestNode, nodes map[*TestNode]struct{}) error {
 		return errors.AddContext(err, "failed to get miner's balance")
 	}
 	// Send txnsPerNode outputs to each node
-	txnsPerNode := uint64(TransactionsPerNode)
+	txnsPerNode := uint64(OutputsPerNode)
 	scos := make([]types.SiacoinOutput, 0, uint64(len(nodes))*txnsPerNode)
 	funding := wg.ConfirmedSiacoinBalance.Div64(uint64(len(nodes))).Div64(txnsPerNode + 1)
 	for node := range nodes {

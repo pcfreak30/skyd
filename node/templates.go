@@ -109,7 +109,7 @@ func Renter(dir string) NodeParams {
 }
 
 // Relay returns a RelayTemplate filled out with the provided dir.
-func Wallet(dir string) NodeParams {
+func Relay(dir string) NodeParams {
 	template := RelayTemplate
 	template.Dir = dir
 	return template
