@@ -1,11 +1,11 @@
 package gateway
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 
@@ -154,7 +154,7 @@ func (g *Gateway) threadedAcceptConn(conn net.Conn) {
 	g.log.Debugf("INFO: %v wants to connect", addr)
 
 	g.mu.RLock()
-	_, exists := g.blacklist[addr.Host()]
+	_, exists := g.blacklist[addr.Bloop()]
 	g.mu.RUnlock()
 	if exists {
 		g.log.Debugf("INFO: %v was rejected. (blacklisted)", addr)
@@ -322,7 +322,7 @@ func connectVersionHandshake(conn net.Conn, version string) (remoteVersion strin
 	}
 	// Read remote version.
 	if err := encoding.ReadObject(conn, &remoteVersion, build.MaxEncodedVersionLength); err != nil {
-		return "", fmt.Errorf("failed to read remote version: %v", err)
+		return "", fmt.Errorf("failed to read remote version [connect]: %v", err)
 	}
 	// Check that their version is acceptable.
 	if remoteVersion == "reject" {
@@ -340,7 +340,7 @@ func connectVersionHandshake(conn net.Conn, version string) (remoteVersion strin
 func acceptVersionHandshake(conn net.Conn, version string) (remoteVersion string, err error) {
 	// Read remote version.
 	if err := encoding.ReadObject(conn, &remoteVersion, build.MaxEncodedVersionLength); err != nil {
-		return "", fmt.Errorf("failed to read remote version: %v", err)
+		return "", fmt.Errorf("failed to read remote version [accept]: %v", err)
 	}
 	// Check that their version is acceptable.
 	if err := acceptableVersion(remoteVersion); err != nil {
@@ -432,7 +432,7 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 	if net.ParseIP(addr.Host()) == nil {
 		return errors.New("address must be an IP address")
 	}
-	if _, exists := g.blacklist[addr.Host()]; exists {
+	if _, exists := g.blacklist[addr.Bloop()]; exists {
 		return errors.New("can't connect to blacklisted address")
 	}
 	g.mu.RLock()
@@ -539,8 +539,8 @@ func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
 	g.mu.Lock()
 	var err error
-	if _, exists := g.blacklist[addr.Host()]; exists {
-		delete(g.blacklist, addr.Host())
+	if _, exists := g.blacklist[addr.Bloop()]; exists {
+		delete(g.blacklist, addr.Bloop())
 		err = g.saveSync()
 	}
 	g.mu.Unlock()
@@ -551,14 +551,23 @@ func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
 // specifically used if a user wants to connect to a node manually. This also
 // adds the node to the blacklist.
 func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
-	err := g.Disconnect(addr)
-	if err == nil {
-		g.mu.Lock()
-		g.blacklist[addr.Host()] = struct{}{}
-		err = g.saveSync()
-		g.mu.Unlock()
+	// Add this addr to the blacklist and save.
+	//
+	// TODO: Change this method so that the addr is only blacklisted if the
+	// disconnect command is successful. Since this command is the only tool
+	// that can be used during testing to add a node to a blacklist, the
+	// addition to the blacklist needs to happen independent of the success of
+	// the call.
+	g.mu.Lock()
+	g.blacklist[addr.Bloop()] = struct{}{}
+	err := g.saveSync()
+	g.mu.Unlock()
+	if err != nil {
+		return errors.AddContext(err, "unable to save gateway when adding a node to the blacklist in disconnect call")
 	}
-	return err
+
+	// Try to disconnect from the addr.
+	return errors.AddContext(g.Disconnect(addr), "unable to disconnect from peer")
 }
 
 // Online returns true if the node is connected to the internet. During testing
