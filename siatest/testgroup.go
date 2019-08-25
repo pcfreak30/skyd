@@ -53,6 +53,8 @@ var (
 		ExpectedRedundancy: 5.0,
 	}
 
+	TransactionsPerNode = 25
+
 	// testGroupBuffer is a buffer channel to control the number of testgroups
 	// and nodes created at once
 	testGroupBuffer = NewGroupBuffer(NumberOfParallelGroups)
@@ -132,17 +134,17 @@ func NewGroupFromTemplate(groupDir string, groupParams GroupParams) (*TestGroup,
 	// Create host params
 	for i := 0; i < groupParams.Hosts; i++ {
 		params = append(params, node.HostTemplate)
-		randomNodeDir(groupDir, &params[len(params)-1])
+		RandomNodeDir(groupDir, &params[len(params)-1])
 	}
 	// Create renter params
 	for i := 0; i < groupParams.Renters; i++ {
 		params = append(params, node.RenterTemplate)
-		randomNodeDir(groupDir, &params[len(params)-1])
+		RandomNodeDir(groupDir, &params[len(params)-1])
 	}
 	// Create miner params
 	for i := 0; i < groupParams.Miners; i++ {
 		params = append(params, MinerTemplate)
-		randomNodeDir(groupDir, &params[len(params)-1])
+		RandomNodeDir(groupDir, &params[len(params)-1])
 	}
 	return NewGroup(groupDir, params...)
 }
@@ -222,7 +224,7 @@ func fundNodes(miner *TestNode, nodes map[*TestNode]struct{}) error {
 		return errors.AddContext(err, "failed to get miner's balance")
 	}
 	// Send txnsPerNode outputs to each node
-	txnsPerNode := uint64(25)
+	txnsPerNode := uint64(TransactionsPerNode)
 	scos := make([]types.SiacoinOutput, 0, uint64(len(nodes))*txnsPerNode)
 	funding := wg.ConfirmedSiacoinBalance.Div64(uint64(len(nodes))).Div64(txnsPerNode + 1)
 	for node := range nodes {
@@ -310,9 +312,9 @@ func mapToSlice(m map[*TestNode]struct{}) []*TestNode {
 	return tns
 }
 
-// randomNodeDir generates a random directory for the provided node params if
+// RandomNodeDir generates a random directory for the provided node params if
 // Dir wasn't set using the provided parentDir and a randomized suffix.
-func randomNodeDir(parentDir string, nodeParams *node.NodeParams) {
+func RandomNodeDir(parentDir string, nodeParams *node.NodeParams) {
 	if nodeParams.Dir != "" {
 		return
 	}
@@ -501,7 +503,7 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 	newMiners := make(map[*TestNode]struct{})
 	for _, np := range nps {
 		// Create the nodes and add them to the group.
-		randomNodeDir(tg.dir, &np)
+		RandomNodeDir(tg.dir, &np)
 		node, err := NewCleanNode(np)
 		if err != nil {
 			return mapToSlice(newNodes), build.ExtendErr("failed to create new clean node", err)
@@ -694,14 +696,19 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 	return tn.StopNode()
 }
 
-// Sync syncs the node of the test group
-func (tg *TestGroup) Sync() error {
-	return synchronizationCheck(tg.nodes)
+// Dir returns the group dir for the test group.
+func (tg *TestGroup) Dir() string {
+	return tg.dir
 }
 
 // Nodes returns all the nodes of the group
 func (tg *TestGroup) Nodes() []*TestNode {
 	return mapToSlice(tg.nodes)
+}
+
+// Sync syncs the node of the test group
+func (tg *TestGroup) Sync() error {
+	return synchronizationCheck(tg.nodes)
 }
 
 // Hosts returns all the hosts of the group

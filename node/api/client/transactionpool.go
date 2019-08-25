@@ -24,3 +24,10 @@ func (c *Client) TransactionPoolRawPost(txn types.Transaction, parents []types.T
 	err = c.post("/tpool/raw", values.Encode(), nil)
 	return
 }
+
+// TransactionPoolConfirmed uses the /tpool/confirmed/:id endpoint and returns
+// whether a transaction is confirmed or not.
+func (c *Client) TransactionPoolConfirmedGet(id types.TransactionID) (tcg api.TpoolConfirmedGET, err error) {
+	err = c.get("/tpool/confirmed/"+id.String(), &tcg)
+	return
+}

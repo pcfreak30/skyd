@@ -40,6 +40,18 @@ var (
 		CreateTransactionPool: true,
 		CreateWallet:          true,
 	}
+	// RelayTemplate is a template for a Sia node that can relay blocks and
+	// transactions across the network.
+	RelayTemplate = NodeParams{
+		CreateConsensusSet:    true,
+		CreateExplorer:        false,
+		CreateGateway:         true,
+		CreateHost:            false,
+		CreateMiner:           false,
+		CreateRenter:          false,
+		CreateTransactionPool: true,
+		CreateWallet:          false,
+	}
 	// RenterTemplate is a template for a Sia node that has a functioning
 	// renter. The node has a renter and all dependencies, but no other
 	// modules.

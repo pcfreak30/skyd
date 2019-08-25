@@ -591,6 +591,12 @@ func (w *Wallet) ReceiveUpdatedUnconfirmedTransactions(diff *modules.Transaction
 			}
 		}
 
+		// Log the number of transactions that have been dropped.
+		numDropped := len(w.unconfirmedProcessedTransactions) - len(newUPT)
+		if numDropped > 0 {
+			w.log.Debugln("The wallet is dropping some unconfirmed transactions, because the transaction pool dropped them:", numDropped)
+		}
+
 		// Set the unconfirmed preocessed transactions to the pruned set.
 		w.unconfirmedProcessedTransactions = newUPT
 	}
@@ -661,6 +667,7 @@ func (w *Wallet) ReceiveUpdatedUnconfirmedTransactions(diff *modules.Transaction
 				})
 			}
 			w.unconfirmedProcessedTransactions = append(w.unconfirmedProcessedTransactions, pt)
+			w.log.Println("Received a new unconfirmed transaction:", pt.TransactionID)
 		}
 	}
 }
