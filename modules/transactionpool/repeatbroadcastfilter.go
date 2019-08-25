@@ -1,25 +1,5 @@
 package transactionpool
 
-// TODO: Tell Marcin to test his watchdog by doing a transaction chain, mining
-// it into a block, then reorging the block with a longer chain of empty blocks,
-// and then ensuring that the transaction can still be broadcast to different
-// types of miners (brand new miner, miner with existing tpool).
-//
-// TODO: Need to figure out how the broadcast happens. This subsystem shouldn't
-// be reponsible for network communication, should call out to some external
-// subsystem. In the short term, that's probably the core.
-//
-// TODO: Need to hook into the block rewinder and add transactions to the repeat
-// broadcast filter based on transactions that get added to the tpool because
-// they were in a block that got reverted.
-//
-// TODO: Handle removing transactions from the rbf upon eviction from the tpool
-// (both because blocks are found and becuase of transaction age issues, and any
-// other eviction issues).
-//
-// TODO: Add a sanity check that the transactions in the transaction pool match
-// the transactions in the rbf.
-
 import (
 	"sync"
 
@@ -34,9 +14,38 @@ type repeatBroadcastFilter struct {
 	// transactionHistory contains a list of every peer that has received every
 	// transaction, which can be looked up on a per-transaction basis.
 	transactionHistory map[types.TransactionID]map[modules.NetAddress]struct{}
+	transactionsSinceEviction uint64
 	mu                 sync.Mutex
 
 	*transactionPoolUtils
+}
+
+// managedPrune will delete transactions from the repeat broadcast filter that
+// are no longer in the transaction pool.
+func (rbf *repeatBroadcastFilter) managedPrune() {
+	// Get the list of transactions from the transaction pool.
+	txns := rbf.staticCore.TransactionList()
+
+	// Reset the counter for transactions since eviction, and then perform the
+	// eviction. To perform the eviction, a copy of the existing transaction
+	// history map is made, and then the rbf's history map is replaced with a
+	// new one. For each transaction in the transaction pool, the history for
+	// that transaction is copied into the new map.
+	//
+	// This method ensures that only transactions which still exist in the
+	// transaction pool will survive the eviction.
+	rbf.mu.Lock()
+	rbf.transactionsSinceEviction = 0
+	oldHistory := rbf.transactionHistory
+	rbf.transactionHistory = make(map[types.TransactionID]map[modules.NetAddress]struct{})
+	for _, txn := range txns {
+		id := txn.ID()
+		history, exists := oldHistory[id]
+		if exists {
+			rbf.transactionHistory[id] = history
+		}
+	}
+	rbf.mu.Unlock()
 }
 
 // callRelayTransactionSet will run the input tset through the broadcast filter,
@@ -81,6 +90,7 @@ func (rbf *repeatBroadcastFilter) callRelayTransactionSet(tset []types.Transacti
 				peerTxnList = append(peerTxnList, tset[i])
 				txnMap[peer.NetAddress] = struct{}{}
 				rbf.transactionHistory[txid] = txnMap
+				rbf.transactionsSinceEviction++
 			}
 		}
 
@@ -99,6 +109,12 @@ func (rbf *repeatBroadcastFilter) callRelayTransactionSet(tset []types.Transacti
 		totalSize += types.TransactionSetSize(peerTxnList)
 		go rbf.gateway.Broadcast("RelayTransactionSet", peerTxnList, []modules.Peer{peer})
 	}
+
+	// Create a thread to perform an eviction if necessary.
+	if rbf.transactionsSinceEviction > repeatBroadcastFilterEvictionFrequency {
+		go rbf.managedPrune()
+	}
+
 	return totalSize
 }
 
@@ -122,7 +138,13 @@ func (rbf *repeatBroadcastFilter) callUnconditionalBroadcast(tset []types.Transa
 		}
 		for _, peer := range peers {
 			rbf.transactionHistory[txid][peer.NetAddress] = struct{}{}
+			rbf.transactionsSinceEviction++
 		}
+	}
+
+	// Create a thread to perform an eviction if necessary.
+	if rbf.transactionsSinceEviction > repeatBroadcastFilterEvictionFrequency {
+		go rbf.managedPrune()
 	}
 }
 

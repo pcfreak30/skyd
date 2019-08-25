@@ -157,12 +157,15 @@ ID to a list of peers that have received that transaction already. This map is
 not reset if a peer disconnects, which prevents the same peer from receiving the
 same transaction multiple times even if the connectivity status is changing.
 
-To prevent the repeat broadcast filter from consuming too much memory,
-transactions are removed from the repeat broadcast filter when they are either
-confirmed in blocks or evicted from the transaction pool. When a block is
-reverted and all of the transactions in that block are added back into the
-transaction pool, the repeat broadcast filter will assume that all peers already
-have those transactions, and will add those transactions to the filter.
+The repeat broadcast filter will count the total number of transaction sends
+that get performed. Every `repeatBroadcastFilterEvictionFrequency` sends, an
+eviction will be performed. During an eviction, all transactions that are not
+currently in the transaction pool will be thrown out from the filter as well.
+
+Eviction in the repeat broadcast filter is tricky because an eviction strategy
+needs to consider how likely a transaction is to still be held by a peer, who
+may or may not be following similar eviction strategies. The current eviction
+strategy is simple and likely sufficient, however it is unlikely to be optimal.
 
 ##### Inbound Complexities
  - `callBroadcastTransactionSet` can be used to send transactions to peers.

@@ -340,8 +340,6 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 // AcceptTransactionSet adds a transaction to the unconfirmed set of
 // transactions. If the transaction is accepted, it will be relayed to
 // connected peers.
-//
-// TODO: Break into component sets when the set gets accepted.
 func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 	// assert on consensus set to get special method
 	cs, ok := tp.consensusSet.(interface {
