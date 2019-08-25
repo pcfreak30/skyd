@@ -57,7 +57,7 @@ func TestPeerHeap(t *testing.T) {
 			if recentlyFinished != -1 && timeSinceUnblock*2 < desiredTimeSinceUnblock {
 				t.Error("unblocker does not seem to be waiting long enough between unblocks", timeSinceUnblock, desiredTimeSinceUnblock)
 			}
-			longestAcceptableBlock := peerShareRateLimit * (time.Duration(recentSize)+500)
+			longestAcceptableBlock := peerShareRateLimit * (time.Duration(recentSize) + 500)
 			if recentlyFinished != -1 && timeSinceUnblock > longestAcceptableBlock {
 				// This check is only performed if recentSize is relatively
 				// large, otherwise machine jitter and such could cause the
