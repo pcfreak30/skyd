@@ -13,9 +13,9 @@ import (
 type repeatBroadcastFilter struct {
 	// transactionHistory contains a list of every peer that has received every
 	// transaction, which can be looked up on a per-transaction basis.
-	transactionHistory map[types.TransactionID]map[modules.NetAddress]struct{}
+	transactionHistory        map[types.TransactionID]map[modules.NetAddress]struct{}
 	transactionsSinceEviction uint64
-	mu                 sync.Mutex
+	mu                        sync.Mutex
 
 	*transactionPoolUtils
 }
