@@ -118,8 +118,8 @@ func (psl *peerShareLimiter) managedBlockUntilOnlineAndSynced() bool {
 // peerShareLimiter.
 func (psl *peerShareLimiter) managedPush(bp *blockingPeer) {
 	psl.mu.Lock()
+	defer psl.mu.Unlock()
 	heap.Push(&psl.peerHeap, bp)
-	psl.mu.Unlock()
 
 	// Notify the unblocker thread that there is a new element in the heap.
 	select {
@@ -153,8 +153,16 @@ func (psl *peerShareLimiter) threadedUnblockSharingThreads() {
 
 		// Check the length of the heap. If there is nothing in the heap, block
 		// until there is something in the heap.
+		//
+		// After checking the heap but while still holding the lock, drain the
+		// notify channel of any notification, ensuring that any wake up signal
+		// which exists was placed after the heapLen was checked.
 		psl.mu.Lock()
 		heapLen := len(psl.peerHeap)
+		select {
+		case <-psl.pushNotify:
+		default:
+		}
 		psl.mu.Unlock()
 		if heapLen == 0 {
 			select {
@@ -186,10 +194,6 @@ func (psl *peerShareLimiter) threadedUnblockSharingThreads() {
 // by the tpool.
 func (tp *TransactionPool) newPeerShareLimiter() *peerShareLimiter {
 	// Check that the dependencies are in place.
-	//
-	// TODO: Swap out the check for the core subsystem with a check for the
-	// update/sync subsystem once the update subsystem has been broken out of
-	// the core.
 	if tp.staticCore == nil {
 		panic("cannot launch the peer share limiter without the core")
 	}

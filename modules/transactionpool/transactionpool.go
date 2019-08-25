@@ -329,7 +329,7 @@ func (tp *TransactionPool) Broadcast(ts []types.Transaction) {
 func (tp *TransactionPool) callRemainingObjectsList() map[ObjectID]struct{} {
 	oids := make(map[ObjectID]struct{})
 	tp.mu.Lock()
-	for oid, _ := range tp.knownObjects {
+	for oid := range tp.knownObjects {
 		oids[oid] = struct{}{}
 	}
 	tp.mu.Unlock()

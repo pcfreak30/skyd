@@ -164,8 +164,7 @@ currently in the transaction pool will be thrown out from the filter as well.
 
 Eviction in the repeat broadcast filter is tricky because an eviction strategy
 needs to consider how likely a transaction is to still be held by a peer, who
-may or may not be following similar eviction strategies. The current eviction
-strategy is simple and likely sufficient, however it is unlikely to be optimal.
+may or may not be following similar eviction strategies.
 
 ##### Inbound Complexities
  - `callBroadcastTransactionSet` can be used to send transactions to peers.
@@ -178,11 +177,11 @@ strategy is simple and likely sufficient, however it is unlikely to be optimal.
    bypassing the filter. The transactions will be sent even if they are in the
    filter, and then the transactions will be added to the filter to guard
    against future automated broadcasts.
-   - [Core](#core) uses `callUnconditionalBroadcast` to expose an export to the
-	 user that allows them to broadcast a transaction explicitly. This call is
-	 unconditional because it will typically be used during debugging and
-	 troubleshooting, and therefore should be stronger than the automated
-	 actions.
+   - [Core](#core) uses `callUnconditionalBroadcast` to expose the export
+	 `Broadcast` to the user that allows them to broadcast a transaction
+	 explicitly. This call is unconditional because it will typically be used
+	 during debugging and troubleshooting, and therefore should be stronger than
+	 the automated actions.
 
 ##### TODOs
  - TODO: Eventually the subsystem will be able to catalog incoming transactions.

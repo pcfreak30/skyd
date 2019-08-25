@@ -21,7 +21,7 @@ func (nps *newPeerShare) staticNextTSet(remainingObjects map[ObjectID]struct{}) 
 	for len(remainingObjects) > 0 {
 		// Pick the next object to send.
 		var nextObject ObjectID
-		for obj, _ := range remainingObjects {
+		for obj := range remainingObjects {
 			nextObject = obj
 			break
 		}
@@ -171,10 +171,6 @@ func (nps *newPeerShare) threadedSyncPeer(peer modules.Peer) {
 // the tpool.
 func (tp *TransactionPool) newNewPeerShare() *newPeerShare {
 	// Check that the dependencies are in place.
-	//
-	// TODO: Swap out the check for staticCore with a check for the transaction
-	// manager once the transaction management is broken out into its own
-	// subsystem.
 	if tp.staticCore == nil {
 		panic("cannot launch new peer share subsystem without the core")
 	}
