@@ -7,6 +7,7 @@ import (
 	bolt "github.com/coreos/bbolt"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // mockSubscriber receives and holds changes to the consensus set, remembering
@@ -237,4 +238,42 @@ func TestModuleDesync(t *testing.T) {
 	if updates[len(updates)-1].ID != recentChangeID {
 		t.Fatal("last update doesn't equal recentChangeID")
 	}
+}
+
+// a consensus set subscriber that tries.
+type tryingSubscriber struct {
+	cs *ConsensusSet
+}
+
+func (ts *tryingSubscriber) ProcessConsensusChange(cc modules.ConsensusChange) {
+	ts.cs.TryTransactionSet([]types.Transaction{})
+}
+
+func TestTryTransactionSetDeadlock(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cst, err := createConsensusSetTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cst.Close()
+
+	ts := tryingSubscriber{cst.cs}
+
+	// Perform a correct subscribe.
+	err = cst.cs.ConsensusSetSubscribe(&ts, modules.ConsensusChangeBeginning, cst.cs.tg.StopChan())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine a block and deadlock.
+	_, err = cst.miner.AddBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// This test is never done tho.
+	t.Log("DONE")
 }
