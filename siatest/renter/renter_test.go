@@ -3523,3 +3523,179 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestFileSharing tests sharing folders and files using the API endpoints.
+func TestFileSharing(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Prepare the paths we are going to use in the test.
+	dirSiaPath, err1 := modules.NewSiaPath("dir")    // dir
+	file1SiaPath, err2 := dirSiaPath.Join("foo1")    // dir/foo1
+	subDirSiaPath, err3 := dirSiaPath.Join("subDir") // dir/subDir
+	file2SiaPath, err4 := subDirSiaPath.Join("foo2") // dir/subDir/foo2
+	file3SiaPath, err5 := subDirSiaPath.Join("foo3") // dir/subDir/foo3
+	if err := errors.Compose(err1, err2, err3, err4, err5); err != nil {
+		t.Fatal(err)
+	}
+	// Upload the files in parallel.
+	var wg sync.WaitGroup
+	var lf1, lf2, lf3 *siatest.LocalFile
+	var rf1, rf2, rf3 *siatest.RemoteFile
+	renter := tg.Renters()[0]
+	fileSize := int(modules.SectorSize)
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		lf1, err = renter.FilesDir().NewFile(fileSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rf1, err = renter.UploadToSiaPathBlocking(lf1, file1SiaPath, dataPieces, parityPieces, false); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		lf2, err = renter.FilesDir().NewFile(fileSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rf2, err = renter.UploadToSiaPathBlocking(lf2, file2SiaPath, dataPieces, parityPieces, false); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		lf3, err = renter.FilesDir().NewFile(fileSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rf3, err = renter.UploadToSiaPathBlocking(lf3, file3SiaPath, dataPieces, parityPieces, false); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	wg.Wait()
+	// Add a few new renters.
+	renterParams1 := node.Renter(filepath.Join(testDir, "renter1"))
+	renterParams2 := node.Renter(filepath.Join(testDir, "renter2"))
+	renterParams3 := node.Renter(filepath.Join(testDir, "renter3"))
+	newNodes, err := tg.AddNodes(renterParams1, renterParams2, renterParams3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRenter1, newRenter2, newRenter3 := newNodes[0], newNodes[1], newNodes[2]
+
+	// Test sharing the root with newRenter1.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Share the root dir with the new renter.
+		sharePath := filepath.Join(testDir, "root.share")
+		if err := renter.RenterSendSharedFile(modules.RootSiaPath(), sharePath); err != nil {
+			t.Fatal(err)
+		}
+		// Import the share.
+		if err := newRenter1.RenterReceiveSharedFile(modules.RootSiaPath(), sharePath); err != nil {
+			t.Fatal(err)
+		}
+		// Make sure the files can be downloaded.
+		if _, err := newRenter1.DownloadToDisk(rf1, false); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := newRenter1.DownloadToDisk(rf2, false); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := newRenter1.DownloadToDisk(rf3, false); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Test sharing the dir with newRenter2.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Share the root dir with the new renter.
+		sharePath := filepath.Join(testDir, "dir.share")
+		if err := renter.RenterSendSharedFile(dirSiaPath, sharePath); err != nil {
+			t.Fatal(err)
+		}
+		// Import the share.
+		if err := newRenter2.RenterReceiveSharedFile(dirSiaPath, sharePath); err != nil {
+			t.Fatal(err)
+		}
+		// Make sure the files can be downloaded.
+		if _, err := newRenter2.DownloadToDisk(rf1, false); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := newRenter2.DownloadToDisk(rf2, false); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := newRenter2.DownloadToDisk(rf3, false); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Test sharing the files individually with newRenter3.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Share the root dir with the new renter.
+		sharePath1 := filepath.Join(testDir, "file1.share")
+		sharePath2 := filepath.Join(testDir, "file2.share")
+		sharePath3 := filepath.Join(testDir, "file3.share")
+		if err := renter.RenterSendSharedFile(file1SiaPath, sharePath1); err != nil {
+			t.Fatal(err)
+		}
+		if err := renter.RenterSendSharedFile(file2SiaPath, sharePath2); err != nil {
+			t.Fatal(err)
+		}
+		if err := renter.RenterSendSharedFile(file3SiaPath, sharePath3); err != nil {
+			t.Fatal(err)
+		}
+		// Import the shares.
+		if err := newRenter3.RenterReceiveSharedFile(dirSiaPath, sharePath1); err != nil {
+			t.Fatal(err)
+		}
+		if err := newRenter3.RenterReceiveSharedFile(subDirSiaPath, sharePath2); err != nil {
+			t.Fatal(err)
+		}
+		if err := newRenter3.RenterReceiveSharedFile(subDirSiaPath, sharePath3); err != nil {
+			t.Fatal(err)
+		}
+		// Make sure the files can be downloaded.
+		if _, err := newRenter3.DownloadToDisk(rf1, false); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := newRenter3.DownloadToDisk(rf2, false); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := newRenter3.DownloadToDisk(rf3, false); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	wg.Wait()
+}

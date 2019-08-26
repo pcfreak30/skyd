@@ -35,7 +35,7 @@ func (r *Renter) LoadShare(src string, siaPath modules.SiaPath) error {
 	defer gzr.Close()
 	tr := tar.NewReader(gzr)
 	// Get the destination path.
-	dstDir := siaPath.SiaFileSysPath(r.staticFilesDir)
+	dstDir := siaPath.SiaDirSysPath(r.staticFilesDir)
 
 	// Copy the files from the tarball to the new location.
 	for {

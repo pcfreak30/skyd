@@ -325,8 +325,14 @@ func (tn *TestNode) Dirs() ([]modules.SiaPath, error) {
 // UploadBlocking attempts to upload an existing file with the option to overwrite if exists
 // and waits for the upload to reach 100% progress and redundancy.
 func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
+	return tn.UploadToSiaPathBlocking(localFile, tn.SiaPath(localFile.path), dataPieces, parityPieces, force)
+}
+
+// UploadToSiaPathBlocking attempts to upload an existing file with the option to overwrite if exists
+// and waits for the upload to reach 100% progress and redundancy.
+func (tn *TestNode) UploadToSiaPathBlocking(localFile *LocalFile, siaPath modules.SiaPath, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file, creating a parity piece for each host in the group
-	remoteFile, err := tn.Upload(localFile, tn.SiaPath(localFile.path), dataPieces, parityPieces, force)
+	remoteFile, err := tn.Upload(localFile, siaPath, dataPieces, parityPieces, force)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to start upload")
 	}
