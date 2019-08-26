@@ -1260,7 +1260,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 	// Any hosts that remain need to have a contract formed where the utilities
 	// are set to bad.
-	for hostPK, _ := range neededHostsForShare {
+	for hostPK := range neededHostsForShare {
 		var spk types.SiaPublicKey
 		spk.LoadString(hostPK)
 		host, exists := c.hdb.Host(spk)
