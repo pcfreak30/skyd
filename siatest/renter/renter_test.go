@@ -3192,7 +3192,8 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	// Set fileSize and redundancy for upload
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(modules.SectorSize * dataPieces) // file without partial chunk
+	cs := siatest.ChunkSize(dataPieces, crypto.TypeDefaultRenter)
+	fileSize := int(cs * dataPieces) // file without partial chunk
 
 	// Upload file
 	_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
