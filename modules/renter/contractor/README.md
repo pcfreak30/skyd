@@ -7,18 +7,10 @@ abstraction. Ideally, the renter should be mostly ignorant of the Sia protocol,
 instead focusing on file management, redundancy, and upload/download algorithms.
 
 The Contractor is also responsible for various forms of contract maintenance
-including contract recovery, utility checking, archiving, and watchdogging.
+including contract recovery, utility checking, archiving, and monitoring its own
+contracts using the watchdog subsystem.
 
-## Subsystems
-The Contractor is split up into the following subsystems:
-- [Contract Maintenance Subsystem](#contract-maintenance-subsystem)
-- [Recovery Subsystem](#recovery-subsystem)
-- [Session Subsystem](#session-subsystem)
-- [Persistence Subsystem](#persistence-subsystem)
-- [Watchdog Subsystem](#watchdog-subsystem)
-
-
-### Design Challenges
+## Design Challenges
 
 The primary challenge of the Contractor is that it must be smart enough for the
 user to feel comfortable allowing it to spend their money. Because contract
@@ -46,9 +38,19 @@ but it does not know the decryption keys or erasure coding metadata required to
 reconstruct the original data. It follows that these responsibilities must be
 delegated to the renter.
 
+
+## Subsystems
+The Contractor is split up into the following subsystems:
+- [Contract Maintenance Subsystem](#contract-maintenance-subsystem)
+- [Recovery Subsystem](#recovery-subsystem)
+- [Session Subsystem](#session-subsystem)
+- [Persistence Subsystem](#persistence-subsystem)
+- [Watchdog Subsystem](#watchdog-subsystem)
+
+
 ## Contract Maintenance Subsystem
 **Key Files**
-- [contract\_maintenance.go](./contract\_maintenance.go)
+- [contractmaintenance.go](./contract_maintenance.go)
 - [allowance.go](./allowance.go)
 
 The contract maintenance subsystem is responsible for forming and renewing
