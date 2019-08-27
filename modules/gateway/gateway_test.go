@@ -232,6 +232,7 @@ func TestParallelClose(t *testing.T) {
 // TestManualConnectDisconnect checks if a user initiated connect and
 // disconnect works as expected.
 func TestManualConnectDisconnect(t *testing.T) {
+	t.Skip("Test will be brought back after first class blacklisting is implemented")
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -285,6 +286,7 @@ func TestManualConnectDisconnect(t *testing.T) {
 // TestManualConnectDisconnectPersist checks if the blacklist is persistet on
 // disk
 func TestManualConnectDisconnectPersist(t *testing.T) {
+	t.Skip("Test will be brought back after first class blacklisting is implemented")
 	if testing.Short() {
 		t.SkipNow()
 	}
