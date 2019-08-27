@@ -26,31 +26,31 @@ func setCombinedChunkOfTestFile(sf *siafile.SiaFile) error {
 		// no partial chunk
 		return nil
 	}
-	numCombinedChunks := fastrand.Intn(2) + 1
-	var combinedChunks []modules.CombinedChunk
-	for i := 0; i < numCombinedChunks; i++ {
-		combinedChunks = append(combinedChunks, modules.CombinedChunk{
-			ChunkID:          modules.CombinedChunkID(hex.EncodeToString(fastrand.Bytes(16))),
-			HasPartialsChunk: false,
+	numPartialChunks := fastrand.Intn(2) + 1
+	var partialChunks []modules.PartialChunk
+	for i := 0; i < numPartialChunks; i++ {
+		partialChunks = append(partialChunks, modules.PartialChunk{
+			ChunkID:        modules.CombinedChunkID(hex.EncodeToString(fastrand.Bytes(16))),
+			InPartialsFile: false,
 		})
 	}
 	var err error
-	if numCombinedChunks == 1 {
-		combinedChunks[0].Offset = 0
-		combinedChunks[0].Length = partialChunkSize
-		err = sf.SetCombinedChunk(combinedChunks, nil)
-	} else if numCombinedChunks == 2 {
-		combinedChunks[0].Offset = sf.ChunkSize() - 1
-		combinedChunks[0].Length = 1
-		combinedChunks[1].Offset = 0
-		combinedChunks[1].Length = partialChunkSize - 1
-		err = sf.SetCombinedChunk(combinedChunks, nil)
+	if numPartialChunks == 1 {
+		partialChunks[0].Offset = 0
+		partialChunks[0].Length = partialChunkSize
+		err = sf.SetPartialChunks(partialChunks, nil)
+	} else if numPartialChunks == 2 {
+		partialChunks[0].Offset = sf.ChunkSize() - 1
+		partialChunks[0].Length = 1
+		partialChunks[1].Offset = 0
+		partialChunks[1].Length = partialChunkSize - 1
+		err = sf.SetPartialChunks(partialChunks, nil)
 	}
 	if err != nil {
 		return err
 	}
 	// Force the status to completed.
-	for i := 0; i < numCombinedChunks; i++ {
+	for i := 0; i < numPartialChunks; i++ {
 		err = errors.Compose(err, sf.SetChunkStatusCompleted(uint64(i)))
 	}
 	return err

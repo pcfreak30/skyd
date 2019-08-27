@@ -185,9 +185,9 @@ func (r *Renter) managedTryLoadFromDisk(udc *unfinishedDownloadChunk) bool {
 			return false
 		}
 		sfo := udc.staticFetchOffset
-		numCombinedChunks := len(udc.renterFile.CombinedChunks())
-		if idx := siafile.CombinedChunkIndex(udc.renterFile.NumChunks(), udc.staticChunkIndex, numCombinedChunks); idx != -1 {
-			sfo -= udc.renterFile.CombinedChunks()[idx].Offset
+		numPartialChunks := len(udc.renterFile.PartialChunks())
+		if idx := siafile.CombinedChunkIndex(udc.renterFile.NumChunks(), udc.staticChunkIndex, numPartialChunks); idx != -1 {
+			sfo -= udc.renterFile.PartialChunks()[idx].Offset
 		}
 		err = udc.destination.WritePieces(udc.renterFile.ErasureCode(), shards, sfo, udc.staticWriteOffset, udc.staticFetchLength)
 		if err != nil {

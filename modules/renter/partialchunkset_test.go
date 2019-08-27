@@ -323,9 +323,9 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	defer uuc30Two.fileEntry.Close()
 	defer uuc30Three.fileEntry.Close()
 	// The status should be "hasChunk"
-	if !uuc30One.fileEntry.HasPartialChunk() || len(uuc30One.fileEntry.CombinedChunks()) != 0 ||
-		!uuc30Two.fileEntry.HasPartialChunk() || len(uuc30Two.fileEntry.CombinedChunks()) != 0 ||
-		!uuc30Three.fileEntry.HasPartialChunk() || len(uuc30Three.fileEntry.CombinedChunks()) != 0 {
+	if !uuc30One.fileEntry.HasPartialChunk() || len(uuc30One.fileEntry.PartialChunks()) != 0 ||
+		!uuc30Two.fileEntry.HasPartialChunk() || len(uuc30Two.fileEntry.PartialChunks()) != 0 ||
+		!uuc30Three.fileEntry.HasPartialChunk() || len(uuc30Three.fileEntry.PartialChunks()) != 0 {
 		t.Fatal("files should have partial chunk but no combined chunks yet")
 	}
 	// Try to get combined chunks of those files. This should fail as they have the
@@ -343,14 +343,14 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	if err := pcs.SavePartialChunk(uuc30One.fileEntry.SiaFile, uuc30OnePartialChunk); err != nil {
 		t.Fatal(err)
 	}
-	if uuc30One.fileEntry.CombinedChunks()[0].Status != siafile.CombinedChunkStatusInComplete {
+	if uuc30One.fileEntry.PartialChunks()[0].Status != siafile.CombinedChunkStatusInComplete {
 		t.Fatal("status of file isn't 'incomplete'")
 	}
-	if len(uuc30One.fileEntry.CombinedChunks()) != 1 {
+	if len(uuc30One.fileEntry.PartialChunks()) != 1 {
 		t.Fatalf("expected file to have 1 combined chunk but got %v",
-			len(uuc30One.fileEntry.CombinedChunks()))
+			len(uuc30One.fileEntry.PartialChunks()))
 	}
-	if uuc30One.fileEntry.CombinedChunks()[0].Index != 0 {
+	if uuc30One.fileEntry.PartialChunks()[0].Index != 0 {
 		t.Fatal("file should have chunk index 0")
 	}
 	// Fetch the combined chunk for the first file. This should return 'false'
@@ -366,14 +366,14 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	if err := pcs.SavePartialChunk(uuc30Two.fileEntry.SiaFile, uuc30TwoPartialChunk); err != nil {
 		t.Fatal(err)
 	}
-	if uuc30Two.fileEntry.CombinedChunks()[0].Status != siafile.CombinedChunkStatusInComplete {
+	if uuc30Two.fileEntry.PartialChunks()[0].Status != siafile.CombinedChunkStatusInComplete {
 		t.Fatal("status of file isn't 'incomplete'")
 	}
-	if len(uuc30Two.fileEntry.CombinedChunks()) != 1 {
+	if len(uuc30Two.fileEntry.PartialChunks()) != 1 {
 		t.Fatalf("expected file to have 1 combined chunk but got %v",
-			len(uuc30Two.fileEntry.CombinedChunks()))
+			len(uuc30Two.fileEntry.PartialChunks()))
 	}
-	if uuc30Two.fileEntry.CombinedChunks()[0].Index != 0 {
+	if uuc30Two.fileEntry.PartialChunks()[0].Index != 0 {
 		t.Fatal("file should have chunk index 0")
 	}
 	// Fetch the combined chunk for the second file. This should still return
@@ -389,17 +389,17 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	if err := pcs.SavePartialChunk(uuc30Three.fileEntry.SiaFile, uuc30ThreePartialChunk); err != nil {
 		t.Fatal(err)
 	}
-	if uuc30Three.fileEntry.CombinedChunks()[0].Status != siafile.CombinedChunkStatusInComplete {
+	if uuc30Three.fileEntry.PartialChunks()[0].Status != siafile.CombinedChunkStatusInComplete {
 		t.Fatal("status of file isn't 'incomplete'")
 	}
-	if uuc30Three.fileEntry.CombinedChunks()[1].Status != siafile.CombinedChunkStatusInComplete {
+	if uuc30Three.fileEntry.PartialChunks()[1].Status != siafile.CombinedChunkStatusInComplete {
 		t.Fatal("status of file isn't 'incomplete'")
 	}
-	if len(uuc30Three.fileEntry.CombinedChunks()) != 2 {
+	if len(uuc30Three.fileEntry.PartialChunks()) != 2 {
 		t.Fatalf("expected file to have 2 combined chunks but got %v",
-			len(uuc30Three.fileEntry.CombinedChunks()))
+			len(uuc30Three.fileEntry.PartialChunks()))
 	}
-	if uuc30Three.fileEntry.CombinedChunks()[0].Index != 0 || uuc30Three.fileEntry.CombinedChunks()[1].Index != 1 {
+	if uuc30Three.fileEntry.PartialChunks()[0].Index != 0 || uuc30Three.fileEntry.PartialChunks()[1].Index != 1 {
 		t.Fatal("file should have chunk indices 0 and 1")
 	}
 	// Fetch the combined chunk for all files. This should return 'true'.
@@ -444,26 +444,26 @@ func TestFetchLogicalCombinedChunk(t *testing.T) {
 	// All files should have their offsets and lengths set correctly.
 	files := []*siafile.SiaFile{uuc30One.fileEntry.SiaFile, uuc30Two.fileEntry.SiaFile, uuc30Three.fileEntry.SiaFile}
 	sort.Slice(files, func(i, j int) bool {
-		return files[i].Metadata().CombinedChunks[0].Offset < files[j].Metadata().CombinedChunks[0].Offset
+		return files[i].Metadata().PartialChunks[0].Offset < files[j].Metadata().PartialChunks[0].Offset
 	})
 	// Check the offsets of the files.
-	if files[0].Metadata().CombinedChunks[0].Offset != 0 {
+	if files[0].Metadata().PartialChunks[0].Offset != 0 {
 		t.Fatal("first file doesn't have correct offset")
 	}
-	if files[1].Metadata().CombinedChunks[0].Offset != files[0].Size() {
+	if files[1].Metadata().PartialChunks[0].Offset != files[0].Size() {
 		t.Fatal("second file doesn't have correct offset")
 	}
-	if files[2].Metadata().CombinedChunks[0].Offset != files[0].Size()+files[1].Size() {
+	if files[2].Metadata().PartialChunks[0].Offset != files[0].Size()+files[1].Size() {
 		t.Fatal("third file doesn't have correct offset")
 	}
 	// Check the lengths of the files.
-	if files[0].Metadata().CombinedChunks[0].Length != files[0].Size() {
+	if files[0].Metadata().PartialChunks[0].Length != files[0].Size() {
 		t.Fatal("first file doesn't have correct length")
 	}
-	if files[1].Metadata().CombinedChunks[0].Length != files[1].Size() {
+	if files[1].Metadata().PartialChunks[0].Length != files[1].Size() {
 		t.Fatal("second file doesn't have correct length")
 	}
-	if files[2].Metadata().CombinedChunks[0].Length+files[2].Metadata().CombinedChunks[1].Length != files[2].Size() {
+	if files[2].Metadata().PartialChunks[0].Length+files[2].Metadata().PartialChunks[1].Length != files[2].Size() {
 		t.Fatal("third file doesn't have correct length")
 	}
 }

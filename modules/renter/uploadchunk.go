@@ -276,7 +276,7 @@ func (r *Renter) managedStreamLogicalChunkData(chunk *unfinishedUploadChunk) (bo
 	if n == 0 {
 		return false, nil // no bytes were fetched
 	} else if n != chunk.fileEntry.ChunkSize() && !chunk.fileEntry.Metadata().DisablePartialChunk {
-		if len(chunk.fileEntry.CombinedChunks()) > 0 {
+		if len(chunk.fileEntry.PartialChunks()) > 0 {
 			// can't use stream repairs on partial chunks so we try to force a regular
 			// chunk repair.
 			chunk.sourceReader = nil
@@ -455,7 +455,7 @@ func (r *Renter) managedReadFullLogicalChunkData(chunk *unfinishedUploadChunk, d
 // managedReadPartialLogicalChunkData reads the logical data of a partial chunk from
 // disk.
 func (r *Renter) managedReadPartialLogicalChunkData(chunk *unfinishedUploadChunk, download bool) (bool, error) {
-	if chunk.fileEntry.HasPartialChunk() && len(chunk.fileEntry.CombinedChunks()) == 0 {
+	if chunk.fileEntry.HasPartialChunk() && len(chunk.fileEntry.PartialChunks()) == 0 {
 		// Load the partial chunk from disk.
 		osFile, err := os.Open(chunk.fileEntry.LocalPath())
 		if err != nil {
@@ -640,8 +640,8 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		}
 	}
 	// If the chunk is a partial chunk and the status is "incomplete" we don't consider the repair to be unsuccessful
-	idx := siafile.CombinedChunkIndex(uc.fileEntry.NumChunks(), uc.index, len(uc.fileEntry.CombinedChunks()))
-	incompletePartial := idx != -1 && uc.fileEntry.CombinedChunks()[idx].Status == siafile.CombinedChunkStatusInComplete
+	idx := siafile.CombinedChunkIndex(uc.fileEntry.NumChunks(), uc.index, len(uc.fileEntry.PartialChunks()))
+	incompletePartial := idx != -1 && uc.fileEntry.PartialChunks()[idx].Status == siafile.CombinedChunkStatusInComplete
 	successfulRepair = successfulRepair || incompletePartial
 
 	// If the repair was unsuccessful and there was a renter error then return

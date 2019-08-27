@@ -230,7 +230,7 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 		return fmt.Errorf("can't call SavePartialChunk with a partial chunk >= chunkSize (%v >= %v) or 0",
 			len(partialChunk), sf.ChunkSize())
 	}
-	if len(sf.CombinedChunks()) > 0 {
+	if len(sf.PartialChunks()) > 0 {
 		err = errors.New("can't call SavePartialChunk on file that already has a combined chunk assigned to it")
 		build.Critical(err)
 		return
@@ -238,7 +238,7 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 
 	// Check if there is an existing incomplete chunk that matches the erasure
 	// coder of the sf. If there isn't, prepare a new one.
-	var chunks []modules.CombinedChunk
+	var chunks []modules.PartialChunk
 	var updates []writeaheadlog.Update
 	ec := sf.ErasureCode()
 	ucid, exists := pcs.unfinishedCombinedChunk[ec.Identifier()]
@@ -269,11 +269,11 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 	// Remember the ID of the chunk and whether it already exists in the partials
 	// SiaFile. The latter should be the case if the incomplete chunk already
 	// existed.
-	chunks = append(chunks, modules.CombinedChunk{
-		ChunkID:          ucid,
-		HasPartialsChunk: exists,
-		Length:           uint64(n),
-		Offset:           uint64(offset),
+	chunks = append(chunks, modules.PartialChunk{
+		ChunkID:        ucid,
+		InPartialsFile: exists,
+		Length:         uint64(n),
+		Offset:         uint64(offset),
 	})
 	// Sanity check that the remaining data fits within a chunk.
 	if remaining > int(sf.ChunkSize()) {
@@ -289,11 +289,11 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 			return errors.AddContext(err, "failed to create new unfinished combined chunk")
 		}
 		// Remember its ID and updates.
-		chunks = append(chunks, modules.CombinedChunk{
-			ChunkID:          ucid2,
-			HasPartialsChunk: false, // 'false' since it was just created
-			Length:           uint64(remaining),
-			Offset:           0,
+		chunks = append(chunks, modules.PartialChunk{
+			ChunkID:        ucid2,
+			InPartialsFile: false, // 'false' since it was just created
+			Length:         uint64(remaining),
+			Offset:         0,
 		})
 		updates = append(updates, newChunkUpdates...)
 		// Append the remaining data to the new chunk.
@@ -311,7 +311,7 @@ func (pcs *partialChunkSet) SavePartialChunk(sf *siafile.SiaFile, partialChunk [
 		}()
 	}
 	// Set the combined chunk on the siafile.
-	return sf.SetCombinedChunk(chunks, updates)
+	return sf.SetPartialChunks(chunks, updates)
 }
 
 // UntarCombinedChunk untars a combined chunk or combined chunk related metadata
@@ -402,7 +402,7 @@ func (pcs *partialChunkSet) LoadPartialChunk(chunk *unfinishedDownloadChunk) ([]
 		return nil, errors.New("can only call LoadPartialChunk if partial chunk has been included in a combined chunk")
 	}
 	// Sanity check chunks.
-	ccs := snap.CombinedChunks()
+	ccs := snap.PartialChunks()
 	if len(ccs) != 1 && len(ccs) != 2 {
 		return nil, errors.New("file should contain one or two combined chunks")
 	}
@@ -457,11 +457,11 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 		return false, errors.New("can't fetch logical combined chunk for an incomplete partial chunk")
 	}
 	// Get the correct chunkID.
-	idx := siafile.CombinedChunkIndex(chunk.fileEntry.NumChunks(), chunk.index, len(chunk.fileEntry.CombinedChunks()))
+	idx := siafile.CombinedChunkIndex(chunk.fileEntry.NumChunks(), chunk.index, len(chunk.fileEntry.PartialChunks()))
 	if idx == -1 {
 		return false, errors.New("invalid index")
 	}
-	chunkID := chunk.fileEntry.CombinedChunks()[idx].ID
+	chunkID := chunk.fileEntry.PartialChunks()[idx].ID
 	// If the chunk is incomplete there is nothing we can do right now.
 	if pcs.isUnfinished(chunkID, chunk.fileEntry.ErasureCode()) {
 		return false, nil
@@ -474,7 +474,7 @@ func (pcs *partialChunkSet) FetchLogicalCombinedChunk(chunk *unfinishedUploadChu
 	defer f.Close()
 	// If the chunk is complete and the siafile's status hasn't been updated yet do
 	// it now.
-	if chunk.fileEntry.CombinedChunks()[idx].Status < siafile.CombinedChunkStatusCompleted {
+	if chunk.fileEntry.PartialChunks()[idx].Status < siafile.CombinedChunkStatusCompleted {
 		if err := chunk.fileEntry.SetChunkStatusCompleted(uint64(idx)); err != nil {
 			return false, err
 		}

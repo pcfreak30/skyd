@@ -415,7 +415,7 @@ func (r *Renter) managedUntarSiaFile(b []byte, dst string, idxConversionMaps map
 	// necessary.
 	eci := sf.ErasureCode().Identifier()
 	indexMap := idxConversionMaps[eci]
-	newChunks := sf.CombinedChunks()
+	newChunks := sf.PartialChunks()
 	for i, cc := range newChunks {
 		if cc.Status >= siafile.CombinedChunkStatusInComplete {
 			if indexMap == nil {
@@ -428,7 +428,7 @@ func (r *Renter) managedUntarSiaFile(b []byte, dst string, idxConversionMaps map
 			newChunks[i].Index = newIndex
 		}
 	}
-	sf.SetCombinedChunks(newChunks)
+	sf.SetPartialChunksInMemory(newChunks)
 	// Add the file to the SiaFileSet.
 	err = r.staticFileSet.AddExistingSiaFile(sf, chunks)
 	if err != nil {

@@ -389,7 +389,7 @@ func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForR
 	chunkHealth := 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
 	// Handle health of incomplete partial chunk. An partial chunk will report full
 	// health to the user if it has been assigned a combined chunk.
-	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+	if incomplete {
 		return chunkHealth, 0, nil // Partial chunk has full health if not yet included in combined chunk
 	}
 	// Sanity Check, if something went wrong, default to minimum health
@@ -493,11 +493,11 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 	// account.
 	lowest := ^types.BlockHeight(0)
 	var pieceSets [][]Piece
-	for _, cc := range sf.staticMetadata.CombinedChunks {
-		if cc.Status != CombinedChunkStatusCompleted {
+	for _, pc := range sf.staticMetadata.PartialChunks {
+		if pc.Status != CombinedChunkStatusCompleted {
 			continue
 		}
-		ps, err := sf.partialsSiaFile.Pieces(cc.Index)
+		ps, err := sf.partialsSiaFile.Pieces(pc.Index)
 		if err == nil {
 			pieceSets = append(pieceSets, ps...)
 		}
@@ -806,7 +806,7 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 			sf.staticMetadata.NumStuckChunks = nsc
 		}
 	}()
-	if stuck && sf.staticMetadata.HasPartialChunk && len(sf.staticMetadata.CombinedChunks) == 0 {
+	if stuck && sf.staticMetadata.HasPartialChunk && len(sf.staticMetadata.PartialChunks) == 0 {
 		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks) - 1 // partial chunk can't be stuck in this state
 	} else if stuck {
 		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks)
@@ -824,10 +824,10 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 
 // SetChunkStatusCompleted sets the CombinedChunkStatus field of the metadata to
 // completed.
-func (sf *SiaFile) SetChunkStatusCompleted(cci uint64) error {
+func (sf *SiaFile) SetChunkStatusCompleted(pci uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.CombinedChunks[cci].Status = CombinedChunkStatusCompleted
+	sf.staticMetadata.PartialChunks[pci].Status = CombinedChunkStatusCompleted
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
@@ -969,23 +969,23 @@ func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
 
 // isIncludedPartialChunk returns 'true' if the provided index points to a
 // partial chunk which has been added to the partials sia file already.
-func (sf *SiaFile) isIncludedPartialChunk(chunkIndex uint64) (CombinedChunkInfo, bool) {
-	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.CombinedChunks))
+func (sf *SiaFile) isIncludedPartialChunk(chunkIndex uint64) (PartialChunkInfo, bool) {
+	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.PartialChunks))
 	if idx == -1 {
-		return CombinedChunkInfo{}, false
+		return PartialChunkInfo{}, false
 	}
-	cc := sf.staticMetadata.CombinedChunks[idx]
+	cc := sf.staticMetadata.PartialChunks[idx]
 	return cc, cc.Status >= CombinedChunkStatusInComplete
 }
 
 // isNotCompletedPartialChunk returns 'true' if the provided index points to a
 // partial chunk which hasn't been added to a partials siafile yet.
 func (sf *SiaFile) isNotCompletedPartialChunk(chunkIndex uint64) bool {
-	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.CombinedChunks))
+	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.PartialChunks))
 	if idx == -1 {
 		return sf.staticMetadata.HasPartialChunk && chunkIndex == uint64(sf.numChunks-1)
 	}
-	return sf.staticMetadata.CombinedChunks[idx].Status < CombinedChunkStatusCompleted
+	return sf.staticMetadata.PartialChunks[idx].Status < CombinedChunkStatusCompleted
 }
 
 // isIncompletePartialChunk returns 'true' if the provided index points to a
@@ -994,8 +994,8 @@ func (sf *SiaFile) isNotCompletedPartialChunk(chunkIndex uint64) bool {
 // user even though it's not uploaded yet.
 func (sf *SiaFile) isIncompletePartialChunk(chunkIndex uint64) bool {
 	// True if the status is "incomplete".
-	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.CombinedChunks))
-	if idx != -1 && sf.staticMetadata.CombinedChunks[idx].Status == CombinedChunkStatusInComplete {
+	idx := CombinedChunkIndex(uint64(sf.numChunks), chunkIndex, len(sf.staticMetadata.PartialChunks))
+	if idx != -1 && sf.staticMetadata.PartialChunks[idx].Status == CombinedChunkStatusInComplete {
 		return true
 	}
 	return false

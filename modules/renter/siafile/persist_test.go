@@ -913,22 +913,22 @@ func TestSetCombinedChunkSingle(t *testing.T) {
 
 	// Set the combined chunk of the first file to have offset 0.
 	cid := modules.CombinedChunkID("chunkid")
-	combinedChunks := []modules.CombinedChunk{
+	partialChunks := []modules.PartialChunk{
 		{
-			ChunkID:          cid,
-			HasPartialsChunk: false,
-			Length:           uint64(partialChunkSize),
-			Offset:           0,
+			ChunkID:        cid,
+			InPartialsFile: false,
+			Length:         uint64(partialChunkSize),
+			Offset:         0,
 		},
 	}
-	if err := sf.SetCombinedChunk(combinedChunks, nil); err != nil {
+	if err := sf.SetPartialChunks(partialChunks, nil); err != nil {
 		t.Fatal(err)
 	}
 	// The metadata of the siafile should be set correctly now.
-	ccs := sf.staticMetadata.CombinedChunks
-	if len(sf.staticMetadata.CombinedChunks) != 1 {
+	ccs := sf.staticMetadata.PartialChunks
+	if len(sf.staticMetadata.PartialChunks) != 1 {
 		t.Fatal("expected exactly 1 combined chunk but got",
-			len(sf.staticMetadata.CombinedChunks))
+			len(sf.staticMetadata.PartialChunks))
 	}
 	if ccs[0].ID != cid {
 		t.Fatal("combined chunk id doesn't match expected id",
@@ -957,30 +957,30 @@ func TestSetCombinedChunkSingle(t *testing.T) {
 
 	// The first combined chunk's HasPartialsChunk can be set to 'true' now since
 	// it was added to the partials file.
-	combinedChunks[0].HasPartialsChunk = true
+	partialChunks[0].InPartialsFile = true
 	// The second chunk should start at an offset at the end of the combined chunk
 	// to force it to be spread across 2 combined chunks.
 	cid2 := modules.CombinedChunkID("chunkid2")
-	combinedChunks = []modules.CombinedChunk{
+	partialChunks = []modules.PartialChunk{
 		{
-			ChunkID:          cid,
-			HasPartialsChunk: true,
-			Length:           1,
-			Offset:           uint64(sf2.ChunkSize() - 1),
+			ChunkID:        cid,
+			InPartialsFile: true,
+			Length:         1,
+			Offset:         uint64(sf2.ChunkSize() - 1),
 		},
 		{
-			ChunkID:          cid2,
-			HasPartialsChunk: false,
-			Length:           uint64(partialChunkSize2) - 1,
-			Offset:           0,
+			ChunkID:        cid2,
+			InPartialsFile: false,
+			Length:         uint64(partialChunkSize2) - 1,
+			Offset:         0,
 		},
 	}
 	// Set the combined chunk of the second file to have offset chunkSize-1.
-	if err := sf2.SetCombinedChunk(combinedChunks, nil); err != nil {
+	if err := sf2.SetPartialChunks(partialChunks, nil); err != nil {
 		t.Fatal(err)
 	}
 	// The metadata of the second siafile should be set correctly now.
-	ccs2 := sf2.staticMetadata.CombinedChunks
+	ccs2 := sf2.staticMetadata.PartialChunks
 	if len(ccs2) != 2 {
 		t.Fatal("expected exactly 2 combined chunks but got",
 			len(ccs2))

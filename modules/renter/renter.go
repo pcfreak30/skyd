@@ -772,7 +772,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		return nil, errNilWallet
 	}
 
-	pcs, err := newPartialChunkSet(filepath.Join(persistDir, modules.CombinedChunksRoot))
+	siaFilesRoot := filepath.Join(persistDir, modules.SiapathRoot)
+	pcs, err := newPartialChunkSet(filepath.Join(siaFilesRoot, modules.CombinedChunksRoot)) // [siaroot]/renter/siafiles/combinedchunks
 	if err != nil {
 		return nil, err
 	}
@@ -809,8 +810,8 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 		hostDB:                hdb,
 		hostContractor:        hc,
 		persistDir:            persistDir,
-		staticFilesDir:        filepath.Join(persistDir, modules.SiapathRoot),
-		staticBackupsDir:      filepath.Join(persistDir, modules.BackupRoot),
+		staticFilesDir:        filepath.Join(siaFilesRoot),                   // [siaroot]/renter/siafiles
+		staticBackupsDir:      filepath.Join(persistDir, modules.BackupRoot), // [siaroot]/renter/snapshots
 		staticPartialChunkSet: pcs,
 		mu:                    siasync.New(modules.SafeMutexDelay, 1),
 		tpool:                 tpool,

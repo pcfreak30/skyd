@@ -196,6 +196,10 @@ func (sfs *SiaFileSet) closeEntry(entry *SiaFileSetEntry) {
 	if len(currentEntry.threadMap) == 0 {
 		delete(sfs.siaFileMap, entry.UID())
 		delete(sfs.siapathToUID, sfs.siaPath(entry.siaFileSetEntry))
+		// If the entry had a partialSiaFile, close that as well.
+		if entry.partialsSiaFile != nil {
+			sfs.closeEntry(entry.partialsSiaFile)
+		}
 	}
 	// If the entry had a partialSiaFile, close that as well.
 	// TODO: Closing it like this is not working. Maybe we just never close partial
@@ -416,6 +420,13 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
 	}
+	// Load the corresponding partialsSiaFile.
+	partialsSiaFile, err := sfs.openPartialsSiaFile(entry.ErasureCode(), true)
+	if err != nil {
+		return nil, err
+	}
+	entry.SetPartialsSiaFile(partialsSiaFile)
+
 	threadUID := randomThreadUID()
 	entry.threadMapMu.Lock()
 	defer entry.threadMapMu.Unlock()
@@ -522,14 +533,19 @@ func (sfs *SiaFileSet) addExistingSiaFile(sf *SiaFile, chunks []chunk, suffix ui
 			siaFilePath := siaPath.AddSuffix(suffix).SiaFileSysPath(sfs.staticSiaFileDir)
 			sf.SetSiaFilePath(siaFilePath)
 		}
-		// Set the correct partials SiaFile.
+		// Set the correct partials SiaFile since the file we are adding wasn't part
+		// of a SiaFileSet before and therefore doesn't have one yet.
 		ec := sf.ErasureCode()
 		psf, err := sfs.openPartialsSiaFile(ec, true)
 		if err != nil {
 			return err
 		}
 		sf.SetPartialsSiaFile(psf)
-		return sf.SaveWithChunks(chunks)
+		err = sf.SaveWithChunks(chunks)
+		if err != nil {
+			sfs.closeEntry(psf)
+		}
+		return err
 	}
 	// If it exists and the UID matches too, skip the file.
 	if sf.UID() == oldFile.UID() {
@@ -721,7 +737,9 @@ func (sfs *SiaFileSet) newSiaFile(up modules.FileUploadParams, masterKey crypto.
 	}
 	// Make sure there are no leading slashes
 	siaFilePath := up.SiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
-	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, partialsSiaFile, up.DisablePartialChunk)
+	// TODO: replace 'true' with up.DisablePartialChunk once partial chunk support
+	// is fully implemented.
+	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, partialsSiaFile, true)
 	if err != nil {
 		return nil, err
 	}
