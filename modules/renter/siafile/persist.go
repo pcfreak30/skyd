@@ -130,6 +130,7 @@ func (sf *SiaFile) SetPartialChunks(combinedChunks []modules.PartialChunk, updat
 		}
 		pcs = append(pcs, pc)
 	}
+	sf.staticMetadata.PartialChunks = pcs
 	// Update the combined chunk metadata on disk.
 	u, err := sf.saveMetadataUpdates()
 	if err != nil {
@@ -141,7 +142,6 @@ func (sf *SiaFile) SetPartialChunks(combinedChunks []modules.PartialChunk, updat
 		return err
 	}
 	sf.numChunks = sf.numChunks - 1 + len(combinedChunks)
-	sf.staticMetadata.PartialChunks = pcs
 	return nil
 }
 
@@ -486,7 +486,7 @@ func (sf *SiaFile) chunk(chunkIndex int) (chunk, error) {
 		c, err := sf.partialsSiaFile.Chunk(cci.Index)
 		c.Index = chunkIndex // convert index within partials file to requested index
 		return c, err
-	} else if sf.isIncompletePartialChunk(uint64(chunkIndex)) {
+	} else if sf.isNotCompletedPartialChunk(uint64(chunkIndex)) {
 		return chunk{Index: chunkIndex}, nil
 	}
 	// Handle full chunk.
@@ -518,7 +518,7 @@ func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]w
 			return err
 		}
 		cci, ok := sf.isIncludedPartialChunk(uint64(chunk.Index))
-		if !ok && sf.isIncompletePartialChunk(uint64(chunk.Index)) {
+		if !ok && sf.isNotCompletedPartialChunk(uint64(chunk.Index)) {
 			// Can't persist incomplete partial chunk. Make sure iterFunc doesn't try to.
 			return errors.New("can't persist incomplete partial chunk")
 		}
@@ -554,7 +554,7 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error
 		var err error
 		if cci, ok := sf.isIncludedPartialChunk(uint64(chunkIndex)); ok {
 			c, err = sf.partialsSiaFile.Chunk(cci.Index)
-		} else if sf.isIncompletePartialChunk(uint64(chunkIndex)) {
+		} else if sf.isNotCompletedPartialChunk(uint64(chunkIndex)) {
 			c = chunk{Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces())}
 		} else {
 			if _, err := f.Read(chunkBytes); err != nil && err != io.EOF {

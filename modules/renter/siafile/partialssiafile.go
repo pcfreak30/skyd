@@ -48,6 +48,9 @@ func (sf *SiaFile) addCombinedChunk() ([]writeaheadlog.Update, error) {
 // merge merges two PartialsSiafiles into one, returning a map which translates
 // chunk indices in newFile to indices in sf.
 func (sf *SiaFile) merge(newFile *SiaFile) (map[uint64]uint64, error) {
+	if sf.staticMetadata.UniqueID == newFile.UID() {
+		return nil, nil // Same file. No need to merge.
+	}
 	if sf.deleted {
 		return nil, errors.New("can't merge into deleted file")
 	}

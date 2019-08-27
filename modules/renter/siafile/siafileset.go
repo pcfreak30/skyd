@@ -392,6 +392,11 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Load the corresponding partialsSiaFile.
+		partialsSiaFile, err := sfs.openPartialsSiaFile(sf.ErasureCode(), true)
+		if err != nil {
+			return nil, err
+		}
 		// Check for duplicate uid.
 		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
 			err := fmt.Errorf("%v and %v share the same UID '%v'", sfs.siaPath(conflictingEntry), siaPath, sf.UID())
@@ -401,8 +406,10 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 		// Create the entry for the SiaFile and assign the partials file.
 		entry, err = sfs.newSiaFileSetEntry(sf)
 		if err != nil {
+			sfs.closeEntry(partialsSiaFile)
 			return nil, err
 		}
+		entry.SetPartialsSiaFile(partialsSiaFile)
 	}
 	if entry.Deleted() {
 		return nil, ErrUnknownPath
@@ -468,8 +475,8 @@ func (sfs *SiaFileSet) AddExistingSiaFile(sf *SiaFile, chunks []chunk) error {
 }
 
 // addExistingPartialsSiaFile adds an existing partial SiaFile to the set and
-// stores it on disk. If the file already exists this will produce an error
-// since we can't just add a suffix to it.
+// stores it on disk. If the file already exists, sf will be merged into the
+// existing file.
 func (sfs *SiaFileSet) addExistingPartialsSiaFile(sf *SiaFile, chunks []chunk) (map[uint64]uint64, error) {
 	// Check if a file with that path exists already.
 	var siaPath modules.SiaPath

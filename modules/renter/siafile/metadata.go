@@ -369,6 +369,14 @@ func (sf *SiaFile) SetLocalPath(path string) error {
 	return sf.createAndApplyTransaction(updates...)
 }
 
+// SetPartialChunksInMemory sets the PartialChunks field of the metadata in
+// memory.
+func (sf *SiaFile) SetPartialChunksInMemory(pcs []PartialChunkInfo) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.PartialChunks = pcs
+}
+
 // Size returns the file's size.
 func (sf *SiaFile) Size() uint64 {
 	sf.mu.RLock()

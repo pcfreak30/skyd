@@ -269,11 +269,9 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there are no files in memory
 	if len(sfs.siaFileMap) != 0 {
 		t.Fatal("Expected 0 files in memory, got:", len(sfs.siaFileMap))
 	}
-
 	// Test accessing the same file from two separate threads
 	//
 	// Open file
