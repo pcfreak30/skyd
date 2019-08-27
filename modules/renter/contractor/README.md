@@ -56,6 +56,9 @@ The Contractor is split up into the following subsystems:
 The contract maintenance subsystem is responsible for forming and renewing
 contracts, managing allowances, and for other general maintenance tasks.
 
+### Outbound Complexities
+### Inbound Complexities
+
 ### Contract Formation
 
 Contract formation does not begin until the user first calls `SetAllowance`. An
@@ -118,6 +121,9 @@ only take effect upon the next renewal.
 **Key Files**
 - [recovery.go](./recovery.go)
 
+### Outbound Complexities
+### Inbound Complexities
+
 The Contractor is also responsible for scanning the Sia blockchain and
 recovering all unexpired contracts which belong to the current wallet seed. The
 relevant contracts are found by examining the contract identifier attached to
@@ -133,6 +139,8 @@ host and by getting the most recent revision from the host using this session.
 - [downloader.go](./downloader.go)
 - [editor.go](./editor.go)
 
+### Outbound Complexities
+### Inbound Complexities
 
 The Session subsystem provides an interface for communication with hosts. It
 allows the contractor to modify its contracts through the renter-host protocol.
@@ -154,6 +162,9 @@ Editor revises the underlying file contract and saves it to disk.
 - [persist.go](./persist.go)
 - [persist\_journal.go](./persist_journal.go)
 
+
+### Outbound Complexities
+### Inbound Complexities
 
 The Persistence subsystem is used to persist Contractor data across sessions.
 Currently it uses the Sia persist package. Prior to v1.3.0 the persistence
