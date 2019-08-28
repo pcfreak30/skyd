@@ -46,7 +46,7 @@ func (h *Host) managedAddCollateral(settings modules.HostExternalSettings, txnSe
 		// We don't need to add anything to the transaction.
 		return builder, nil, nil, nil, nil
 	}
-	err = builder.FundSiacoins(hostPortion)
+	err = builder.FundConfirmedSiacoins(hostPortion)
 	if err != nil {
 		builder.Drop()
 		return nil, nil, nil, nil, extendErr("could not add collateral: ", ErrorInternal(err.Error()))

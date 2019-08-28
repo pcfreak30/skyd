@@ -148,6 +148,15 @@ type (
 		// transaction failed.
 		FundSiacoins(amount types.Currency) error
 
+		// FundConfirmedSiacoins will add a siacoin input of exactly 'amount' to
+		// the transaction. A parent transaction may be needed to achieve an
+		// input with the correct value. The siacoin input will not be signed
+		// until 'Sign' is called on the transaction builder. The expectation is
+		// that the transaction will be completed and broadcast within a few
+		// hours. Longer risks double-spends, as the wallet will assume that the
+		// transaction failed. This call will only use confirmed outputs.
+		FundConfirmedSiacoins(amount types.Currency) error
+
 		// FundSiafunds will add a siafund input of exactly 'amount' to the
 		// transaction. A parent transaction may be needed to achieve an input
 		// with the correct value. The siafund input will not be signed until
