@@ -65,12 +65,12 @@ func TestLoadPartialChunk(t *testing.T) {
 	up1 := modules.FileUploadParams{
 		SiaPath:             modules.RandomSiaPath(),
 		ErasureCode:         ec,
-		DisablePartialChunk: true,
+		DisablePartialChunk: false,
 	}
 	up2 := modules.FileUploadParams{
 		SiaPath:             modules.RandomSiaPath(),
 		ErasureCode:         ec,
-		DisablePartialChunk: true,
+		DisablePartialChunk: false,
 	}
 	// Create two files with partial chunks that fill out 70% of a combined chunk
 	// each.
