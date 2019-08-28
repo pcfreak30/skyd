@@ -40,9 +40,10 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 	up := modules.FileUploadParams{
-		Source:      path,
-		SiaPath:     siaPath,
-		ErasureCode: rsc,
+		Source:              path,
+		SiaPath:             siaPath,
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
 	if err != nil {
@@ -137,9 +138,10 @@ func TestBuildChunkHeap(t *testing.T) {
 	// Create 2 files
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: rsc,
+		Source:              "",
+		SiaPath:             modules.RandomSiaPath(),
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	f1, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
 	if err != nil {
@@ -303,8 +305,9 @@ func TestAddChunksToHeap(t *testing.T) {
 		t.Fatal(err)
 	}
 	up := modules.FileUploadParams{
-		Source:      source,
-		ErasureCode: rsc,
+		Source:              source,
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 
 	// Create files in multiple directories
@@ -400,9 +403,10 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 		t.Fatal(err)
 	}
 	up := modules.FileUploadParams{
-		Source:      source,
-		SiaPath:     siaPath,
-		ErasureCode: rsc,
+		Source:              source,
+		SiaPath:             siaPath,
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, 0777)
 	if err != nil {

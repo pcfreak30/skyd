@@ -44,9 +44,10 @@ func (r *Renter) newRenterTestFile() (*siafile.SiaFileSetEntry, error) {
 	}
 	// Create File
 	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     siaPath,
-		ErasureCode: rsc,
+		Source:              "",
+		SiaPath:             siaPath,
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	entry, err := r.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, 0777)
 	if err != nil {
@@ -399,9 +400,10 @@ func TestRenterFileDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	params := modules.FileUploadParams{
-		Source:      source,
-		SiaPath:     siaPath,
-		ErasureCode: ec,
+		Source:              source,
+		SiaPath:             siaPath,
+		ErasureCode:         ec,
+		DisablePartialChunk: true,
 	}
 	err = rt.renter.Upload(params)
 	if err != nil {

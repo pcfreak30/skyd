@@ -211,9 +211,10 @@ func TestBubbleHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     siaPath,
-		ErasureCode: rsc,
+		Source:              "",
+		SiaPath:             siaPath,
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
 	if err != nil {
@@ -449,9 +450,10 @@ func TestNumFiles(t *testing.T) {
 	// Add files
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: rsc,
+		Source:              "",
+		SiaPath:             modules.RandomSiaPath(),
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
 	if err != nil {
@@ -530,9 +532,10 @@ func TestDirectorySize(t *testing.T) {
 	// Add files
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: rsc,
+		Source:              "",
+		SiaPath:             modules.RandomSiaPath(),
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	fileSize := uint64(100)
 	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
@@ -608,9 +611,10 @@ func TestDirectoryModTime(t *testing.T) {
 	// Add files
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: rsc,
+		Source:              "",
+		SiaPath:             modules.RandomSiaPath(),
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	fileSize := uint64(100)
 	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
@@ -694,9 +698,10 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// directory has no files only directories
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: rsc,
+		Source:              "",
+		SiaPath:             modules.RandomSiaPath(),
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
 	if err != nil {
@@ -797,9 +802,10 @@ func TestCalculateFileMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     siaPath,
-		ErasureCode: rsc,
+		Source:              "",
+		SiaPath:             siaPath,
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	fileSize := uint64(100)
 	sf, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
@@ -914,9 +920,10 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	// create file with no stuck chunks
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
-		Source:      "",
-		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: rsc,
+		Source:              "",
+		SiaPath:             modules.RandomSiaPath(),
+		ErasureCode:         rsc,
+		DisablePartialChunk: true,
 	}
 	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
 	if err != nil {

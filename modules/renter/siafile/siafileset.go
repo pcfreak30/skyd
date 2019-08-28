@@ -731,7 +731,7 @@ func (sfs *SiaFileSet) newSiaFile(up modules.FileUploadParams, masterKey crypto.
 	}
 	// Make sure there are no leading slashes
 	siaFilePath := up.SiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
-	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, partialsSiaFile, true)
+	sf, err := New(siaFilePath, up.Source, sfs.wal, up.ErasureCode, masterKey, fileSize, fileMode, partialsSiaFile, up.DisablePartialChunk)
 	if err != nil {
 		return nil, err
 	}

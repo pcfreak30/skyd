@@ -135,9 +135,10 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return err
 	}
 	up := modules.FileUploadParams{
-		SiaPath:     sp,
-		ErasureCode: ec,
-		Force:       false,
+		SiaPath:             sp,
+		ErasureCode:         ec,
+		Force:               false,
+		DisablePartialChunk: true,
 	}
 	// Begin uploading the backup. When the upload finishes, the backup .sia
 	// file will be uploaded by r.threadedSynchronizeSnapshots and then deleted.

@@ -30,9 +30,10 @@ func newTestSiaFileSetWithFile() (*SiaFileSetEntry, *SiaFileSet, error) {
 	sfs := NewSiaFileSet(dir, wal)
 	// Create SiaFile
 	up := modules.FileUploadParams{
-		Source:      source,
-		SiaPath:     siaPath,
-		ErasureCode: rc,
+		Source:              source,
+		SiaPath:             siaPath,
+		ErasureCode:         rc,
+		DisablePartialChunk: true,
 	}
 	entry, err := sfs.NewSiaFile(up, sk, fileSize, fileMode)
 	if err != nil {
@@ -151,9 +152,10 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		// Create SiaFile
 		up := modules.FileUploadParams{
-			Source:      source,
-			SiaPath:     siaPath,
-			ErasureCode: rc,
+			Source:              source,
+			SiaPath:             siaPath,
+			ErasureCode:         rc,
+			DisablePartialChunk: true,
 		}
 		entry, err := sfs.NewSiaFile(up, sk, fileSize, fileMode)
 		if err != nil {
@@ -570,7 +572,7 @@ func TestSiaDirDelete(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1, true)
-		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc}, sk, fileSize, fileMode)
+		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc, DisablePartialChunk: true}, sk, fileSize, fileMode)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -690,7 +692,7 @@ func TestSiaDirRename(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, _, source, rc, sk, fileSize, _, fileMode := newTestFileParams(1, true)
-		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc}, sk, fileSize, fileMode)
+		sf, err := sfs.NewSiaFile(modules.FileUploadParams{Source: source, SiaPath: fileSP, ErasureCode: rc, DisablePartialChunk: true}, sk, fileSize, fileMode)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -32,9 +32,10 @@ func TestRenterUploadDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	params := modules.FileUploadParams{
-		Source:      testUploadPath,
-		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: ec,
+		Source:              testUploadPath,
+		SiaPath:             modules.RandomSiaPath(),
+		ErasureCode:         ec,
+		DisablePartialChunk: true,
 	}
 	err = rt.renter.Upload(params)
 	if err == nil {
