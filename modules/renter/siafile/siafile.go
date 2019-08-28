@@ -1119,10 +1119,6 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) (updates []writeaheadlog.Upda
 	if sf.deleted {
 		return nil, errors.New("can't grow number of chunks of deleted file")
 	}
-	// Check if growing the file is necessary.
-	if uint64(sf.numChunks) >= numChunks {
-		return nil, nil
-	}
 	// Don't allow a SiaFile with a partial chunk to grow.
 	if sf.staticMetadata.HasPartialChunk {
 		return nil, errors.New("can't grow a siafile with a partial chunk")
