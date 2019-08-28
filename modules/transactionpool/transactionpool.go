@@ -2,6 +2,7 @@ package transactionpool
 
 import (
 	"errors"
+	"strings"
 
 	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/demotemutex"
@@ -277,4 +278,39 @@ func (tp *TransactionPool) TransactionSet(oid crypto.Hash) []types.Transaction {
 // peers.
 func (tp *TransactionPool) Broadcast(ts []types.Transaction) {
 	go tp.gateway.Broadcast("RelayTransactionSet", ts, tp.gateway.Peers())
+}
+
+func (tp *TransactionPool) printConflicts(ts []types.Transaction) {
+	relatedObjects := relatedObjectIDs(ts)
+	var conflictSets []TransactionSetID
+	for _, oid := range relatedObjects {
+		conflict, exists := tp.knownObjects[oid]
+		if exists {
+			conflictSets = append(conflictSets, conflict)
+		}
+	}
+
+	logStr := "Rejected transaction set with conflicts"
+	for i, txn := range ts {
+		if i != 0 {
+			logStr += "\n"
+		}
+		logStr += txn.PrettyString()
+	}
+
+	logStr += "\n\nPrinting conflict transaction sets:\n\n"
+	for i, conflictSetID := range conflictSets {
+		if i != 0 {
+			logStr += "\n\n"
+		}
+		logStr += "ConflictSetID: " + crypto.Hash(conflictSetID).String()
+
+		for j, txn := range tp.transactionSets[conflictSetID] {
+			if j != 0 {
+				logStr += "\n"
+			}
+			logStr += strings.Replace(txn.PrettyString(), "\n", "\n\t", -1)
+		}
+	}
+	tp.log.Println(logStr)
 }
