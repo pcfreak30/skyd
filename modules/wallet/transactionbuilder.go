@@ -282,10 +282,11 @@ func (tb *transactionBuilder) FundConfirmedSiacoins(amount types.Currency) error
 		if checkErr == errSpendHeightTooHigh {
 			spentOutputs++
 		}
-		if checkErr == nil {
-			so.ids = append(so.ids, scoid)
-			so.outputs = append(so.outputs, sco)
+		if checkErr != nil {
+			return
 		}
+		so.ids = append(so.ids, scoid)
+		so.outputs = append(so.outputs, sco)
 	})
 	if err != nil {
 		return err
