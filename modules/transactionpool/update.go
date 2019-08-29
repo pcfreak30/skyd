@@ -35,16 +35,6 @@ import (
 // together and the transaction gets added to the result. One of the sets is
 // nominated (arbitrarily) as the official set, and the integer id of the other
 // set and the new transaction get forwarded to the official set.
-//
-// TODO: Set merging currently occurs any time that there is a child. But
-// really, it should only occur if the child increases the average fee value of
-// the set that it is merging with (which it will if and only if it has a higher
-// average fee than that set). If the child has multiple parent sets, it should
-// be compared with the parent set that has the lowest fee value. Then, after it
-// is merged with that parent, the result should be merged with the next
-// lowest-fee parent set if and only if the new set has a higher average fee
-// than the parent set. And this continues until either all of the sets have
-// been merged, or until the remaining parent sets have higher values.
 func findSets(ts []types.Transaction) [][]types.Transaction {
 	// txMap marks what set each transaction is in. If two sets get combined,
 	// this number will not be updated. The 'forwards' map defined further on
