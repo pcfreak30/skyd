@@ -1,6 +1,7 @@
 package transactionpool
 
 import (
+	"fmt"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -773,6 +774,163 @@ func TestPartialConfirmationWeave(t *testing.T) {
 	// Try to get the set of txn1, txn2, and child accepted into the
 	// transaction pool.
 	err = tpt.tpool.AcceptTransactionSet([]types.Transaction{txn1, txn2, child})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPartiallyConflictedTransactionSet will test that a partially conflicted
+// transaction set will still be able to get the important transactions into the
+// transaction pool.
+func TestPartiallyConflictedTransactionSet(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a transaction pool.
+	tpt, err := createTpoolTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tpt.Close()
+
+	// Create the source output for the transaction graph that we will be
+	// submitting to the tpool.
+	funds := types.SiacoinPrecision.Mul64(4e3)
+	outputs := []types.SiacoinOutput{
+		{
+			UnlockHash: types.UnlockConditions{}.UnlockHash(),
+			Value:      funds,
+		},
+	}
+	txns, err := tpt.wallet.SendSiacoinsMulti(outputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalTxn := txns[len(txns)-1]
+	source := finalTxn.SiacoinOutputID(0)
+
+	// Mine the genesis output into a block.
+	_, err = tpt.miner.AddBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Use the source outputs to create the following graph of transactions.
+	//
+	//
+	//     - - - - - - S - - - -
+	//     |       |   |   |   |
+	//     |       |   |   |   |
+	//     1       2   3   4   3
+	//     |       |   |   |   |
+	//     5 - 7 - 6   |   |   |
+	//     |           |   |   |
+	//     8 - 10 - -  9   |   X // This txn is a double spend of txn 8
+	//     |               |
+	//    11 - 13 - - - - 12
+	//
+	fee := types.SiacoinPrecision
+	var edges []types.TransactionGraphEdge
+	// Create the 4 initial outputs, Oa, Ob, Oc, and Od
+	for i := 0; i < 4; i++ {
+		edges = append(edges, types.TransactionGraphEdge{
+			Dest:   i + 1,
+			Fee:    fee,
+			Source: 0,
+			Value:  types.SiacoinPrecision.Mul64(999),
+		})
+	}
+	// Create transactions 5, 6, 7
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   5,
+		Fee:    fee,
+		Source: 1,
+		Value:  types.SiacoinPrecision.Mul64(998),
+	})
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   6,
+		Fee:    fee,
+		Source: 2,
+		Value:  types.SiacoinPrecision.Mul64(998),
+	})
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   7,
+		Fee:    fee,
+		Source: 5,
+		Value:  types.SiacoinPrecision.Mul64(998),
+	})
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   7,
+		Fee:    fee,
+		Source: 6,
+		Value:  types.SiacoinPrecision.Mul64(998),
+	})
+	graph, err := types.TransactionGraph(source, edges)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(len(graph))
+	for _, txn := range graph {
+		fmt.Println()
+		fmt.Println()
+		fmt.Println()
+		fmt.Println(txn)
+		// fmt.Println(txn.SiacoinOutputs, "::", txn.MinerFees)
+	}
+	// Create transactions 8, 9, 10.
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   8,
+		Fee:    fee,
+		Source: 5,
+		Value:  types.SiacoinPrecision.Mul64(998),
+	})
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   9,
+		Fee:    fee,
+		Source: 3,
+		Value:  types.SiacoinPrecision.Mul64(998),
+	})
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   10,
+		Fee:    fee,
+		Source: 8,
+		Value:  types.SiacoinPrecision.Mul64(997),
+	})
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   10,
+		Fee:    fee,
+		Source: 9,
+		Value:  types.SiacoinPrecision.Mul64(997),
+	})
+	// Create transactions 11, 12, 13
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   11,
+		Fee:    fee,
+		Source: 8,
+		Value:  types.SiacoinPrecision.Mul64(998),
+	})
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   12,
+		Fee:    fee,
+		Source: 4,
+		Value:  types.SiacoinPrecision.Mul64(998),
+	})
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   13,
+		Fee:    fee,
+		Source: 11,
+		Value:  types.SiacoinPrecision.Mul64(997),
+	})
+	edges = append(edges, types.TransactionGraphEdge{
+		Dest:   13,
+		Fee:    fee,
+		Source: 12,
+		Value:  types.SiacoinPrecision.Mul64(997),
+	})
+
+	// Temp - test this graph is right.
+	err = tpt.tpool.AcceptTransactionSet(graph)
 	if err != nil {
 		t.Fatal(err)
 	}

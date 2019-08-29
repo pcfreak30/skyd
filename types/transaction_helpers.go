@@ -47,20 +47,38 @@ func TransactionGraph(sourceOutput SiacoinOutputID, edges []TransactionGraphEdge
 		return nil, errors.New("no graph specificed")
 	}
 
-	// Check that the first value of 'sources' is zero, and that the rest of the
-	// array is sorted.
+	// Check that the first value of 'sources' is zero and pays the first node.
 	if edges[0].Source != 0 {
 		return nil, errors.New("first edge must speficy node 0 as the parent")
 	}
 	if edges[0].Dest != 1 {
 		return nil, errors.New("first edge must speficy node 1 as the child")
 	}
-	latest := edges[0].Source
+
+	// Begin building the transactions.
+	//
+	// An edge is an output that goes from the source output to the destination
+	// output in a transaction. All outgoing edges from an output are created in
+	// the same transaction, and all incoming edges from an output are created
+	// in the same transaction.
+	//
+	// To capture this correctly, we need a map that connects both the source
+	// output to the transaction that spends from the source output, and also a
+	// map that connects the destination output to the transaction that connects
+	// the destination output.
+	sourceOutputs := make(map[int]*types.Transaction)
+	destOutputs := make(map[int]*types.Transaction)
+
+	// Build out the transactions one edge at a time.
 	for _, edge := range edges {
-		if edge.Source < latest {
-			return nil, errors.New("'sources' input is not sorted")
-		}
-		latest = edge.Source
+		// Check if there's already a transaction that this edge fits into. If
+		// so, make sure the source and dest are linked into the same
+		// transaction. If not, make a transaction and link in both the source
+		// and destination.
+		sourceTxn, sourceTxnExists := sourceOutputs[edge.Source]
+		destTxn, destTxnExists := destOutputs[edge.Dest]
+
+		// 
 	}
 
 	// Create the set of output ids, and fill out the input ids for the source
