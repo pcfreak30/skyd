@@ -41,23 +41,49 @@ delegated to the renter.
 
 ## Subsystems
 The Contractor is split up into the following subsystems:
+- [Allowance](#allowance-subsystem)
 - [Contract Maintenance Subsystem](#contract-maintenance-subsystem)
 - [Recovery Subsystem](#recovery-subsystem)
 - [Session Subsystem](#session-subsystem)
 - [Persistence Subsystem](#persistence-subsystem)
 - [Watchdog Subsystem](#watchdog-subsystem)
 
+## Allowance Subsystem
+**Key Files**
+- [allowance.go](./allowance.go)
+
+The allowance subsystem is used for setting and cancelling allowances.
+
+### Inbound Complexities
+- `SetAllowance` is exported by the `Contractor` and allows the caller to
+  dictate the contract spendings of the `Renter`.
+
+### Outbound Complexities
+- `managedInterruptContractMaintenance` is used when setting the allowance to
+  stop and restart contract maintenance with the new allowance settings in
+  place.
+
+
 
 ## Contract Maintenance Subsystem
 **Key Files**
-- [contractmaintenance.go](./contract_maintenance.go)
 - [allowance.go](./allowance.go)
 
 The contract maintenance subsystem is responsible for forming and renewing
-contracts, managing allowances, and for other general maintenance tasks.
+contracts, and for other general maintenance tasks.
 
 ### Outbound Complexities
+
 ### Inbound Complexities
+- `threadedContractMaintenance` is called by the
+  [Allowance subsystem](#allowance-subsystem) when setting allowances, when `CancelContract`
+  is called from the `Contractor`, and also with every `ConsensusChange` by the
+  `Contractor` in the `ProcessConsensusChange` when the `Contractor` is synced.
+- `managedInterruptContractMaintenance` is used by [Allowance
+  subsystem](#allowance-subsystem) when setting the allowance to
+  stop and restart contract maintenance with the new allowance settings in
+  place.
+
 
 ### Contract Formation
 
