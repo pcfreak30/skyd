@@ -73,6 +73,12 @@ The contract maintenance subsystem is responsible for forming and renewing
 contracts, and for other general maintenance tasks.
 
 ### Outbound Complexities
+- `managedInitRecoveryScan` in the [Recovery subsystem](#recovery-subsystem) is
+  called to scan blocks for recoverable contracts.
+- `save` is called to persist the contractor whenever the `Contractor's` state
+  is updated during maintenance.
+- Funds established by the [Allowance subsystem](#allowance-subsystem) are used
+  and deducted appropriately during maintenance to form and renew contracts.
 
 ### Inbound Complexities
 - `threadedContractMaintenance` is called by the
