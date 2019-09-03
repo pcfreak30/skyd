@@ -72,25 +72,6 @@ The allowance subsystem is used for setting and cancelling allowances.
 The contract maintenance subsystem is responsible for forming and renewing
 contracts, and for other general maintenance tasks.
 
-### Outbound Complexities
-- `managedInitRecoveryScan` in the [Recovery subsystem](#recovery-subsystem) is
-  called to scan blocks for recoverable contracts.
-- `save` is called to persist the contractor whenever the `Contractor's` state
-  is updated during maintenance.
-- Funds established by the [Allowance subsystem](#allowance-subsystem) are used
-  and deducted appropriately during maintenance to form and renew contracts.
-
-### Inbound Complexities
-- `threadedContractMaintenance` is called by the
-  [Allowance subsystem](#allowance-subsystem) when setting allowances, when `CancelContract`
-  is called from the `Contractor`, and also with every `ConsensusChange` by the
-  `Contractor` in the `ProcessConsensusChange` when the `Contractor` is synced.
-- `managedInterruptContractMaintenance` is used by [Allowance
-  subsystem](#allowance-subsystem) when setting the allowance to
-  stop and restart contract maintenance with the new allowance settings in
-  place.
-
-
 ### Contract Formation
 
 Contract formation does not begin until the user first calls `SetAllowance`. An
@@ -148,13 +129,28 @@ only take effect upon the next renewal.
 - **Check the utility of opened contracts** by figuring out which contracts are still useful for uploading or for renewing
 - **Archive contracts** which have expired by placing them in a historic contract set.
 
+### Outbound Complexities
+- `managedInitRecoveryScan` in the [Recovery subsystem](#recovery-subsystem) is
+  called to scan blocks for recoverable contracts.
+- `save` is called to persist the contractor whenever the `Contractor's` state
+  is updated during maintenance.
+- Funds established by the [Allowance subsystem](#allowance-subsystem) are used
+  and deducted appropriately during maintenance to form and renew contracts.
+
+### Inbound Complexities
+- `threadedContractMaintenance` is called by the
+  [Allowance subsystem](#allowance-subsystem) when setting allowances, when `CancelContract`
+  is called from the `Contractor`, and also with every `ConsensusChange` by the
+  `Contractor` in the `ProcessConsensusChange` when the `Contractor` is synced.
+- `managedInterruptContractMaintenance` is used by [Allowance
+  subsystem](#allowance-subsystem) when setting the allowance to
+  stop and restart contract maintenance with the new allowance settings in
+  place.
+
 
 ## Recovery Subsystem
 **Key Files**
 - [recovery.go](./recovery.go)
-
-### Outbound Complexities
-### Inbound Complexities
 
 The Contractor is also responsible for scanning the Sia blockchain and
 recovering all unexpired contracts which belong to the current wallet seed. The
@@ -165,14 +161,20 @@ unlocked or when a new seed is imported.
 A recoverable contract is recovered by reinitiating a session with the relevant
 host and by getting the most recent revision from the host using this session.
 
+### Inbound Complexities
+- `managedInitRecoveryScan` is called in the [Maintenance
+  subsystem](#contract-maintenance-subsystem) to initiate recovery scans.
+- `managedRecoverContracts` is called in the [Maintenance
+  subsystem](#contract-maintenance-subsystem) to recover contracts found in a
+  recovery scan.
+
+### Outbound Complexities
+
 ## Session Subsystem
 **Key Files**
 - [session.go](./session.go)
 - [downloader.go](./downloader.go)
 - [editor.go](./editor.go)
-
-### Outbound Complexities
-### Inbound Complexities
 
 The Session subsystem provides an interface for communication with hosts. It
 allows the contractor to modify its contracts through the renter-host protocol.
@@ -188,6 +190,9 @@ Editor maintains a network connection to a host, over which is sends
 modification requests, such as "delete sector 12." After each modification, the
 Editor revises the underlying file contract and saves it to disk.
 
+### Outbound Complexities
+### Inbound Complexities
+
 
 ## Persistence Subsystem
 **Key Files**
@@ -195,15 +200,14 @@ Editor revises the underlying file contract and saves it to disk.
 - [persist\_journal.go](./persist_journal.go)
 
 
-### Outbound Complexities
-### Inbound Complexities
-
 The Persistence subsystem is used to persist Contractor data across sessions.
 Currently it uses the Sia persist package. Prior to v1.3.0 the persistence
 subsystem used a journal system which is no longer used. If, on startup, this
 old journal system is found, the Contractor will convert it into the new
 Persistence subsytem.
 
+### Outbound Complexities
+### Inbound Complexities
 
 ## Watchdog Subsystem
 **Key Files**
