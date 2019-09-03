@@ -76,27 +76,29 @@ contracts, and for other general maintenance tasks.
 
 Contract formation does not begin until the user first calls `SetAllowance`. An
 allowance dictates how much money the Contractor is allowed to spend on file
-contracts during a given period. When the user calls `SetAllowance` for the
-first time, the call will block until contracts have been negotiated with the
-specified number of hosts. Upon subsequent calls, new contracts will only be
-formed if the allowance is sufficiently greater than the previous allowance,
-where "sufficiently greater" currently means "enough money to pay for at least
-one additional sector on every host." This allows the user to increase the
-amount of available storage immediately, at the cost of some complexity.
+contracts during a given period. When the user calls `SetAllowance` the
+[Allowance subsystem](#allowance-subsytem) updates the allowance and restarts the
+Maintenance subsystem so that it will form new contracts with the changes
+settings. New contracts will only be formed if needed and if the allowance is
+sufficiently greater than the previous allowance, where "sufficiently greater"
+currently means "enough money to pay for at least one additional sector on every
+host." This allows the user to increase the amount of available storage
+immediately, at the cost of some complexity.
 
 The Contractor forms many contracts in parallel with different host, and tries
 to keep all the contracts "consistent" -- that is, they should all have the same
 storage capacity, and they should all end at the same height. Hosts are selected
-from the HostDB; there is no support for manually specifying hosts.
+from the HostDB. There is no support for manually specifying hosts, but the
+Contractor will not form contracts with multiple hosts within the same subnet.
 
 ### Contract Renewal
 
 Contracts are automatically renewed by the Contractor at a safe threshold before
-they are set to expire. When contracts are renewed, they are renewed with the
-current allowance, which may differ from the allowance that was used to form the
-initial contracts. In general, this means that allowance modifications only take
-effect upon the next "contract cycle" (the exception being "sufficiently
-greater" modifications, as defined above).
+they are set to expire. This value is set in the allowance. When contracts are
+renewed, they are renewed with the current allowance, which may differ from the
+allowance that was used to form the initial contracts. In general, this means
+that allowance modifications only take effect upon the next "contract cycle"
+(the exception being "sufficiently greater" modifications, as defined above).
 
 As an example, imagine that the user first sets an allowance that will cover 10
 contracts of 10 sectors each for 100 blocks. The Contractor will immediately
