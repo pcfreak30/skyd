@@ -54,12 +54,12 @@ type (
 		// to ensure that only one instance of 'threadedFillCache' is running at
 		// a time. If another instance of 'threadedFillCache' is active, the new
 		// call will immediately return.
-		cache           []byte
-		activateCache   chan struct{}
-		cacheOffset     int64
-		cacheReady      chan struct{}
-		readErr         error
-		targetCacheSize int64
+		cache           []byte        // The cache itself.
+		activateCache   chan struct{} // Send signal to cache after values have been read.
+		cacheOffset     int64         // Offset within the file that the cache starts at.
+		cacheReady      chan struct{} // Signal sent to reader when the cache has data in it.
+		readErr         error         // Error that prevented the cache from loading if there was an issue.
+		targetCacheSize int64         // How much data should be in the cache.
 
 		// Mutex to protect the offset variable, and all of the cacheing
 		// variables.
@@ -70,12 +70,9 @@ type (
 // managedFillCache will determine whether or not the cache of the streamer
 // needs to be filled, and if it does it will add data to the streamer.
 func (s *streamer) managedFillCache() bool {
-	// Before creating a download request to fill out the cache, check whether
-	// the cache is actually in need of being filled. The cache will only fill
-	// if the current reader approaching the point of running out of data.
+	// This first section determines whether or not the cache is in need of
+	// being filled.
 	s.mu.Lock()
-	partialDownloadsSupported := s.staticFile.ErasureCode().SupportsPartialEncoding()
-	chunkSize := s.staticFile.ChunkSize()
 	cacheOffset := int64(s.cacheOffset)
 	streamOffset := s.offset
 	cacheLen := int64(len(s.cache))
@@ -97,17 +94,7 @@ func (s *streamer) managedFillCache() bool {
 	//
 	// An extra check that there is any data in the cache needs to be made so
 	// that the cache fill function runs immediately after initialization.
-	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen/2 {
-		return false
-	}
-	// If partial downloads are not supported, the full chunk containing the
-	// current offset should be the cache. If the cache is the full chunk that
-	// contains current offset, then nothing needs to be done as the cache is
-	// already prepared.
-	//
-	// This should be functionally nearly identical to the previous cache that
-	// we were using which has since been disabled.
-	if !partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < cacheOffset+cacheLen && cacheLen > 0 {
+	if cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen/2 {
 		return false
 	}
 
@@ -141,12 +128,7 @@ func (s *streamer) managedFillCache() bool {
 	// means that we need to drop all of the bytes prior to the stream offset
 	// and then more bytes so that the cache remains the same size.
 	var fetchOffset, fetchLen int64
-	if !partialDownloadsSupported {
-		// Request a full chunk of data.
-		chunkIndex, _ := s.staticFile.ChunkIndexByOffset(uint64(streamOffset))
-		fetchOffset = int64(chunkIndex * chunkSize)
-		fetchLen = int64(chunkSize)
-	} else if streamOffset < cacheOffset || streamOffset >= cacheOffset+cacheLen {
+	if streamOffset < cacheOffset || streamOffset >= cacheOffset+cacheLen {
 		// Grab enough data to fill the cache entirely starting from the current
 		// stream offset.
 		fetchOffset = streamOffset
@@ -158,6 +140,9 @@ func (s *streamer) managedFillCache() bool {
 		// of the consumed bytes and extend the cache with new data.
 		fetchOffset = cacheOffset + cacheLen
 		fetchLen = targetCacheSize - (streamOffset - cacheOffset)
+		// TODO: Cut this into a smaller piece if there's a lot of data to
+		// fetch, allow the further pieces to be fetched concurrently by
+		// multiple downloads.
 	}
 
 	// Finally, check if the fetchOffset and fetchLen goes beyond the boundaries
@@ -197,11 +182,15 @@ func (s *streamer) managedFillCache() bool {
 		// close the destination buffer to avoid deadlocks.
 		return ddw.Close()
 	})
-	// Set the in-memory buffer to nil just to be safe in case of a memory
-	// leak.
-	defer func() {
-		d.destination = nil
-	}()
+
+	// TODO: Instead of blocking until the download has completed, update a
+	// second variable in the structure that indicates which data is actively
+	// being fetched, then return early with 'fetch more' set to true, so that
+	// we know to set off another download. The downloads will need to
+	// coordinate to ensure they are writing to the correct parts of the cache.
+	// Finally, we need to make the downloads robust to a cancel signal, so that
+	// we can propagate the cancel / download fail back to the workers.
+
 	// Block until the download has completed.
 	select {
 	case <-d.completeChan:
@@ -245,7 +234,7 @@ func (s *streamer) managedFillCache() bool {
 	streamOffsetInTail := streamOffsetInCache && s.offset >= s.cacheOffset+(cacheLen/4)+(cacheLen/2)
 	targetCacheUnderLimit := s.targetCacheSize < maxStreamerCacheSize
 	cacheExists := cacheLen > 0
-	if cacheExists && partialDownloadsSupported && targetCacheUnderLimit && streamOffsetInTail {
+	if cacheExists && targetCacheUnderLimit && streamOffsetInTail {
 		if s.targetCacheSize*2 > maxStreamerCacheSize {
 			s.targetCacheSize = maxStreamerCacheSize
 		} else {
@@ -258,7 +247,8 @@ func (s *streamer) managedFillCache() bool {
 	// needs to be replaced in the even that partial downloads are not
 	// supported, and also in the event that the stream offset is complete
 	// outside the previous cache.
-	if !partialDownloadsSupported || streamOffset >= cacheOffset+cacheLen || streamOffset < cacheOffset {
+	if streamOffset >= cacheOffset+cacheLen || streamOffset < cacheOffset {
+		// TODO: This resets our nice ring buffer, perhaps not what we want.
 		s.cache = buffer.Bytes()
 		s.cacheOffset = fetchOffset
 	} else {
@@ -332,8 +322,8 @@ func (s *streamer) Read(p []byte) (int, error) {
 		// cache does have data that we want, we will keep the lock and exit the
 		// loop. If there's an error, we will drop the lock and return the
 		// error. If the cache does not have the data we want but there is no
-		// error, we will drop the lock and spin up a thread to fill the cache,
-		// and then block until the cache has been updated.
+		// error, we will fetch a channel that reports when the cache has more
+		// data.
 		s.mu.Lock()
 		// Get the file's size and check for EOF.
 		fileSize := int64(s.staticFile.Size())
@@ -483,7 +473,13 @@ func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, er
 	if err != nil {
 		return "", nil, err
 	}
-	s := r.managedStreamer(snap)
+	partialDownloadsSupported := snap.ErasureCode().SupportsPartialEncoding()
+	var s modules.Streamer
+	if partialDownloadsSupported {
+		s = r.managedStreamer(snap)
+	} else {
+		s = r.managedStreamerLegacy(snap)
+	}
 	return r.staticFileSet.SiaPath(entry).String(), s, nil
 }
 

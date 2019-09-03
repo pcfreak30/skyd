@@ -261,7 +261,6 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	piecesInProgress := udc.piecesRegistered + udc.piecesCompleted
 	desiredPiecesInProgress := udc.erasureCode.MinPieces() + udc.staticOverdrive
 	workersDesired := piecesInProgress < desiredPiecesInProgress && !pieceTaken
-
 	if workersDesired && meetsExtraCriteria {
 		// Worker can be useful. Register the worker and return the chunk for
 		// downloading.
