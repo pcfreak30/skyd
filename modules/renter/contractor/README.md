@@ -178,10 +178,13 @@ host and by getting the most recent revision from the host using this session.
 
 The Session subsystem provides an interface for communication with hosts. It
 allows the contractor to modify its contracts through the renter-host protocol.
-Sessions are used to initiate uploads, downloads, and file modifications.
+Sessions are used to initiate uploads, downloads, and file modifications. This
+subsystem exports several methods used outside of the `Contractor` for this
+purpose.
 
 Pre-v1.4.0 contracts using an older version of the renter-host protocol use the
 Editor and Downloader interfaces to interact with hosts.
+
 
 ### Pre-v1.4.0 Contract Modification
 
@@ -190,8 +193,18 @@ Editor maintains a network connection to a host, over which is sends
 modification requests, such as "delete sector 12." After each modification, the
 Editor revises the underlying file contract and saves it to disk.
 
-### Outbound Complexities
 ### Inbound Complexities
+The following `Session` functions are all exported by the contractor:
+- `Address`
+- `Close`
+- `ContractID`
+- `Download`
+- `DownloadIndex`
+- `EndHeight`
+- `Upload`
+- `Replace`
+
+### Outbound Complexities
 
 
 ## Persistence Subsystem
@@ -206,8 +219,14 @@ subsystem used a journal system which is no longer used. If, on startup, this
 old journal system is found, the Contractor will convert it into the new
 Persistence subsytem.
 
-### Outbound Complexities
 ### Inbound Complexities
+- `save` is called from the [Allowance](#allowance-subsystem), and
+  [Maintenance](#contract-maintenance-subsystem) subsystems to persist the
+  `Contractor` when its internal state is updated.
+### Outbound Complexities
+The persist system is also responsible for persisting the [Watchdog
+subsystem](#watchdog-subsystem).
+
 
 ## Watchdog Subsystem
 **Key Files**
