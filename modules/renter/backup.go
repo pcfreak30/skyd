@@ -258,7 +258,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			// Get the siadir.
 			var siaPath modules.SiaPath
 			siaPathStr := strings.TrimSuffix(relPath, modules.SiaDirExtension)
-			if siaPathStr == string(filepath.Separator) {
+			if siaPathStr == string(filepath.Separator) || siaPathStr == "" {
 				siaPath = modules.RootSiaPath()
 			} else {
 				siaPath, err = modules.NewSiaPath(siaPathStr)
