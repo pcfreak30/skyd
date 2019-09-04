@@ -72,6 +72,8 @@ func (r *Renter) LoadShare(src string, siaPath modules.SiaPath) error {
 			if err != nil {
 				return err
 			}
+			// Remove the repair path since we won't have the file locally.
+			sf.SetLocalPath("")
 			// Mark the hosts as shared.
 			sf.MarkHostsShared()
 			// Inform contractor about shared hosts.

@@ -74,7 +74,7 @@ type Contractor struct {
 	// The bool indicates whether that contract is also naturally a part of the
 	// user's contract set. "true" indicates that the host is only necessary for
 	// being part of a sharing community, and "false" indicates that the host is
-	// also natrually appearing in the user's contract set.
+	// also naturally appearing in the user's contract set.
 	sharedHosts map[string]bool // if the bool had a name, it would be `sharedOnly`
 
 	// renewedFrom links the new contract's ID to the old contract's ID

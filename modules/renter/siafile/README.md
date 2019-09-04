@@ -49,6 +49,20 @@ table ever overlap, a new page will be allocated for the header. The host
 public key table is a table of all the hosts that contain pieces of the
 corresponding SiaFile.
 
+Each key in the host public key table also has two fields in addition to the
+public key itself. One of them is the `used` field and the other one the
+`shared` field. The former indicates whether we currently have a contract
+with the host that the public key belongs to and is used for pruning the file
+of unneeded piece metadata, while the latter is used to indicate whether we
+are the owners of the contract with that host or if the piece was uploaded by
+a person who merely shared the file with us. 
+
+A host's key can potentially appear twice within the public key table. Once
+as `shared=true` and once as `shared=false`. That way we know if we can count
+a piece towards the redundancy of the file or if we need to repair it using
+our own contracts to make sure the previously shared file remains available
+to us.
+
 ### Chunks
 The chunks are written to disk starting at the first 4kib page after the
 header. For each chunk, the SiaFile reserves a full page on disk. That way

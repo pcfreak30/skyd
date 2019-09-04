@@ -1289,7 +1289,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 		// Attempt forming a contract with this host.
 		//
-		// TODO: Should add sanity chekcing / safety checking here that the host
+		// TODO: Should add sanity checking / safety checking here that the host
 		// is not being unreasonably abusive.
 		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
 		if err != nil {
