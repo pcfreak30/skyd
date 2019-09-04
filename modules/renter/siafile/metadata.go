@@ -166,6 +166,13 @@ func (sf *SiaFile) ChangeTime() time.Time {
 	return sf.staticMetadata.ChangeTime
 }
 
+// ClearLocalPath replaces the local path in memory with an empty string.
+func (sf *SiaFile) ClearLocalPath() {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.LocalPath = ""
+}
+
 // CreateTime returns the CreateTime timestamp of the file.
 func (sf *SiaFile) CreateTime() time.Time {
 	sf.mu.RLock()
