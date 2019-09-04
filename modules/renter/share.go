@@ -72,6 +72,8 @@ func (r *Renter) LoadShare(src string, siaPath modules.SiaPath) error {
 			if err != nil {
 				return err
 			}
+			// Mark the hosts as shared.
+			sf.MarkHostsShared()
 			// Inform contractor about shared hosts.
 			err = r.hostContractor.AddSharedHostKeys(sf.HostPublicKeys())
 			if err != nil {

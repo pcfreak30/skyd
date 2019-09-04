@@ -179,9 +179,11 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 			pieces[pieceIndex] = allPieces[:len(chunk.Pieces[pieceIndex])]
 			allPieces = allPieces[len(chunk.Pieces[pieceIndex]):]
 			for i, piece := range chunk.Pieces[pieceIndex] {
+				hk := sf.pubKeyTable[piece.HostTableOffset]
 				pieces[pieceIndex][i] = Piece{
-					HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
+					HostPubKey: hk.PublicKey,
 					MerkleRoot: piece.MerkleRoot,
+					Shared:     hk.Shared,
 				}
 			}
 		}

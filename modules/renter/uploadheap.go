@@ -301,10 +301,10 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chu
 			hpk := piece.HostPubKey.String()
 			goodForRenew, exists2 := goodForRenew[hpk]
 			offline, exists := offline[hpk]
-			if !exists || !exists2 || !goodForRenew || offline {
-				// This piece cannot be counted towards redudnacy if the host is
-				// offline, is marked no good for renew, or is not available in
-				// the lookup maps.
+			if !exists || !exists2 || !goodForRenew || offline || piece.Shared {
+				// This piece cannot be counted towards redundancy if the host is offline,
+				// is marked no good for renew, is not available in the lookup maps or was
+				// uploaded to a contract which we don't control.
 				continue
 			}
 
@@ -316,13 +316,11 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *siafile.SiaFileSetEntry, chu
 				uuc.piecesCompleted++
 				delete(uuc.unusedHosts, piece.HostPubKey.String())
 			} else if exists {
-				// This host has a piece, but it is the same piece another
-				// host has. We should still remove the host from the
-				// unusedHosts since one host having multiple pieces of a
-				// chunk might lead to unexpected issues. e.g. if a host
-				// has multiple pieces and another host with redundant
-				// pieces goes offline, we end up with false redundancy
-				// reporting.
+				// This host has a piece, but it is the same piece another host has. We
+				// should still remove the host from the unusedHosts since one host having
+				// multiple pieces of a chunk might lead to unexpected issues. e.g. if a
+				// host has multiple pieces and another host with redundant pieces goes
+				// offline, we end up with false redundancy reporting.
 				delete(uuc.unusedHosts, piece.HostPubKey.String())
 			}
 		}

@@ -215,6 +215,113 @@ func TestPruneHosts(t *testing.T) {
 	}
 }
 
+// TestMarkHostsShared tests if setting the hosts to shared works, that the
+// pieces are correctly reported as shared as well and that the Redundancy will
+// also adjust accordingly.
+func TestMarkHostsShared(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Declare some variables which are going to be used in the test.
+	sharingHostKey := types.SiaPublicKey{Key: []byte{0}}
+	sharingHostOffline := make(map[string]bool)
+	sharingHostGoodForRenew := make(map[string]bool)
+	sharingHostOffline[sharingHostKey.String()] = false     // sharingHost is not offline
+	sharingHostGoodForRenew[sharingHostKey.String()] = true // sharingHost is good for renew
+	// Get a blank siafile.
+	sf := newBlankTestFile()
+	ec := sf.ErasureCode()
+	// Add enough pieces to reach full redundancy.
+	for chunkIndex := uint64(0); chunkIndex < sf.NumChunks(); chunkIndex++ {
+		for pieceIndex := uint64(0); pieceIndex < uint64(ec.NumPieces()); pieceIndex++ {
+			err := sf.AddPiece(sharingHostKey, chunkIndex, pieceIndex, crypto.Hash{})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// The file should have full redundancy.
+	maxRedundancy := float64(ec.NumPieces() / ec.MinPieces())
+	r, err := sf.Redundancy(sharingHostOffline, sharingHostGoodForRenew)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r != maxRedundancy {
+		t.Fatalf("Redundancy should be %v but was %v", maxRedundancy, r)
+	}
+	// Check that all pieces are marked as not shared when calling Pieces.
+	for chunkIndex := uint64(0); chunkIndex < sf.NumChunks(); chunkIndex++ {
+		pieceSets, err := sf.Pieces(chunkIndex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for pieceIndex, pieceSet := range pieceSets {
+			for _, piece := range pieceSet {
+				if piece.Shared {
+					t.Fatalf("Piece at index %v/%v shouldn't be shared but was", chunkIndex, pieceIndex)
+				}
+			}
+		}
+	}
+	// Mark the hosts as shared.
+	sf.MarkHostsShared()
+	// The redundancy should be 0 now.
+	r, err = sf.Redundancy(sharingHostOffline, sharingHostGoodForRenew)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r != 0 {
+		t.Fatalf("Redundancy should be 0 but was %v", r)
+	}
+	// Check that all pieces are marked as shared when calling Pieces.
+	for chunkIndex := uint64(0); chunkIndex < sf.NumChunks(); chunkIndex++ {
+		pieceSets, err := sf.Pieces(chunkIndex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pieceSet := range pieceSets {
+			for pieceIndex, piece := range pieceSet {
+				if !piece.Shared {
+					t.Fatalf("Piece at index %v/%v should be shared but wasn't", chunkIndex, pieceIndex)
+				}
+			}
+		}
+	}
+	// Add enough pieces to reach full redundancy again. Do so for the same host.
+	for chunkIndex := uint64(0); chunkIndex < sf.NumChunks(); chunkIndex++ {
+		for pieceIndex := uint64(0); pieceIndex < uint64(ec.NumPieces()); pieceIndex++ {
+			err := sf.AddPiece(sharingHostKey, chunkIndex, pieceIndex, crypto.Hash{})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// The file should have full redundancy.
+	r, err = sf.Redundancy(sharingHostOffline, sharingHostGoodForRenew)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r != maxRedundancy {
+		t.Fatalf("Redundancy should be %v but was %v", maxRedundancy, r)
+	}
+	// Each pieceSet should have 2 pieces now. One that is shared and one that isn't.
+	for chunkIndex := uint64(0); chunkIndex < sf.NumChunks(); chunkIndex++ {
+		pieceSets, err := sf.Pieces(chunkIndex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for pieceIndex, pieceSet := range pieceSets {
+			if len(pieceSet) != 2 {
+				t.Fatalf("pieceset at %v %v should have 2 pieces but got %v", chunkIndex, pieceIndex, len(pieceSet))
+			}
+			if pieceSet[0].Shared == pieceSet[1].Shared {
+				t.Fatalf("'shared' status of pieces for set %v %v shouldn't match", chunkIndex, pieceIndex)
+			}
+		}
+	}
+}
+
 // TestNumPieces tests the chunk's numPieces method.
 func TestNumPieces(t *testing.T) {
 	// create a random chunk.

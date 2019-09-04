@@ -92,12 +92,14 @@ type (
 	Piece struct {
 		HostPubKey types.SiaPublicKey // public key of the host
 		MerkleRoot crypto.Hash        // merkle root of the piece
+		Shared     bool               // indicates whether this piece was uploaded to a someone else's contract or our own.
 	}
 
 	// HostPublicKey is an entry in the HostPubKey table.
 	HostPublicKey struct {
 		PublicKey types.SiaPublicKey // public key of host
 		Used      bool               // indicates if we currently use this host
+		Shared    bool               // indicates whether the host was shared with us by someone who owns the contract or if we own it ourselves
 	}
 )
 
@@ -106,6 +108,7 @@ func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)
 	e.Encode(hpk.PublicKey)
 	e.WriteBool(hpk.Used)
+	e.WriteBool(hpk.Shared)
 	return e.Err()
 }
 
@@ -121,6 +124,7 @@ func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
 	d.Decode(&hpk.PublicKey)
 	hpk.Used = d.NextBool()
+	hpk.Shared = d.NextBool()
 	return d.Err()
 }
 
@@ -257,7 +261,10 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// Get the index of the host in the public key table.
 	tableIndex := -1
 	for i, hpk := range sf.pubKeyTable {
-		if hpk.PublicKey.Algorithm == pk.Algorithm && bytes.Equal(hpk.PublicKey.Key, pk.Key) {
+		// We are going to add a key with key.Shared == false so we explicitly check
+		// if such a key exists.
+		if hpk.PublicKey.Algorithm == pk.Algorithm && bytes.Equal(hpk.PublicKey.Key, pk.Key) &&
+			hpk.Shared == false {
 			tableIndex = i
 			break
 		}
@@ -268,6 +275,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{
 			PublicKey: pk,
 			Used:      true,
+			Shared:    false,
 		})
 		tableIndex = len(sf.pubKeyTable) - 1
 		tableChanged = true
@@ -550,6 +558,14 @@ func (sf *SiaFile) HostPublicKeys() (spks []types.SiaPublicKey) {
 	return keys
 }
 
+// MarkHostsShared marks all of the hosts of the SiaFile's pubKeyTable as shared
+// in memory.
+func (sf *SiaFile) MarkHostsShared() {
+	for i := range sf.pubKeyTable {
+		sf.pubKeyTable[i].Shared = true
+	}
+}
+
 // NumChunks returns the number of chunks the file consists of. This will
 // return the number of chunks the file consists of even if the file is not
 // fully uploaded yet.
@@ -578,9 +594,11 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 	for pieceIndex := range pieces {
 		pieces[pieceIndex] = make([]Piece, len(chunk.Pieces[pieceIndex]))
 		for i, piece := range chunk.Pieces[pieceIndex] {
+			hk := sf.hostKey(piece.HostTableOffset)
 			pieces[pieceIndex][i] = Piece{
-				HostPubKey: sf.hostKey(piece.HostTableOffset).PublicKey,
+				HostPubKey: hk.PublicKey,
 				MerkleRoot: piece.MerkleRoot,
+				Shared:     hk.Shared,
 			}
 		}
 	}
@@ -889,12 +907,17 @@ func (sf *SiaFile) goodPieces(chunk chunk, offlineMap map[string]bool, goodForRe
 		foundGoodForRenew := false
 		foundOnline := false
 		for _, piece := range pieceSet {
-			offline, exists1 := offlineMap[sf.hostKey(piece.HostTableOffset).PublicKey.String()]
-			goodForRenew, exists2 := goodForRenewMap[sf.hostKey(piece.HostTableOffset).PublicKey.String()]
+			hk := sf.hostKey(piece.HostTableOffset)
+			offline, exists1 := offlineMap[hk.PublicKey.String()]
+			goodForRenew, exists2 := goodForRenewMap[hk.PublicKey.String()]
 			if exists1 != exists2 {
 				build.Critical("contract can't be in one map but not in the other")
 			}
 			if !exists1 || offline {
+				continue
+			}
+			if hk.Shared {
+				// If the piece is a shared one we can't count it as good.
 				continue
 			}
 			// If we found a goodForRenew piece we can stop.
