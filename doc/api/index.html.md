@@ -2815,6 +2815,46 @@ Delete potential existing file at siapath.
 
 standard success or error response. See [standard responses](#standard-responses).
 
+## /renter/share/send [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/share/send?siapath=myfileorfolder&dst=mydestination"
+```
+
+Create a sharable file out of an uploaded file or folder.
+
+### Query String Parameters
+#### REQUIRED
+**siapath** | string
+Siapath of file or folder to share.
+
+**dst** | string
+Path at which to create the sharable file. Must be absolute.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+## /renter/share/receive [POST]
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "siapath=somefolder&src=mysource" "localhost:9980/renter/share/receive"
+```
+
+Import a shared file into a Sia folder.
+
+### Query String Parameters
+#### REQUIRED
+**siapath** | string
+SiaPath of a folder on the network in which the contents of the sharable file are placed.
+
+**src** | string
+Path to the sharable file on disk. Must be absolute.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
 ## /renter/uploadstream/*siapath* [POST]
 > curl example  
 
