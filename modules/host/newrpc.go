@@ -284,9 +284,11 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		for i, r := range proofRanges {
 			leafHashes[i] = s.so.SectorRoots[r.Start]
 		}
+		segmentRanges := make(map[uint64][]crypto.ProofRange)
+		segmentHashes := make(map[uint64][]crypto.Hash)
 		// Construct the Merkle proof.
 		merkleResp = modules.LoopWriteMerkleProof{
-			OldSubtreeHashes: crypto.MerkleDiffProof(proofRanges, oldNumSectors, nil, s.so.SectorRoots),
+			OldSubtreeHashes: crypto.MerkleDiffProof(proofRanges, s.so.SectorRoots, segmentRanges, segmentHashes),
 			OldLeafHashes:    leafHashes,
 			NewMerkleRoot:    newMerkleRoot,
 		}
