@@ -3,6 +3,7 @@ package host
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/bits"
 	"sort"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -268,6 +270,12 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			return err
 		}
 	}
+	// Sanity check segmentProofRanges and segmentHashes are consistent.
+	if len(segmentProofRanges) != len(segmentHashes) {
+		err := fmt.Errorf("got %v segment proof ranges %v segment hashes", len(segmentProofRanges), len(segmentHashes))
+		build.Critical(err)
+		return err
+	}
 
 	// Update finances.
 	var storageRevenue, newCollateral types.Currency
@@ -304,18 +312,27 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			})
 		}
 		// Record old hashes for all changed sectors.
-		oldSectorHashes := make([]crypto.Hash, len(sectorProofRanges))
-		for i, r := range sectorProofRanges {
-			oldSectorHashes[i] = s.so.SectorRoots[r.Start]
+		oldLeafHashes := make([]crypto.Hash, 0, len(sectorProofRanges))
+		for _, r := range sectorProofRanges {
+			if sprs, exists := segmentProofRanges[r.Start]; exists {
+				// If segmentProofRanges contains ranges for sector at index r.Start, we
+				// need to add the segment hashes instead.
+				for _, spr := range sprs {
+					oldLeafHashes = append(oldLeafHashes, segmentHashes[r.Start][spr.Start])
+				}
+			} else {
+				// Otherwise use the sector root.
+				oldLeafHashes = append(oldLeafHashes, s.so.SectorRoots[r.Start])
+			}
 		}
 		// Construct the Merkle proof.
 		merkleResp = modules.LoopWriteMerkleProof{
 			OldSubtreeHashes: crypto.MerkleDiffProof(sectorProofRanges, s.so.SectorRoots, segmentProofRanges, segmentHashes),
-			OldLeafHashes:    oldSectorHashes,
+			OldLeafHashes:    oldLeafHashes,
 			NewMerkleRoot:    newMerkleRoot,
 		}
 		// Calculate bandwidth cost of proof.
-		proofSize := crypto.HashSize * (len(merkleResp.OldSubtreeHashes) + len(oldSectorHashes) + 1)
+		proofSize := crypto.HashSize * (len(merkleResp.OldSubtreeHashes) + len(oldLeafHashes) + 1)
 		if proofSize < modules.RPCMinLen {
 			proofSize = modules.RPCMinLen
 		}
