@@ -54,7 +54,7 @@ The Contractor is split up into the following subsystems:
 
 The allowance subsystem is used for setting and cancelling allowances.
 
-### Inbound Complexities
+### Exports
 - `SetAllowance` is exported by the `Contractor` and allows the caller to
   dictate the contract spendings of the `Renter`.
 
@@ -62,7 +62,6 @@ The allowance subsystem is used for setting and cancelling allowances.
 - `managedInterruptContractMaintenance` is used when setting the allowance to
   stop and restart contract maintenance with the new allowance settings in
   place.
-
 
 
 ## Contract Maintenance Subsystem
@@ -131,14 +130,6 @@ only take effect upon the next renewal.
 - **Check the utility of opened contracts** by figuring out which contracts are still useful for uploading or for renewing
 - **Archive contracts** which have expired by placing them in a historic contract set.
 
-### Outbound Complexities
-- `managedInitRecoveryScan` in the [Recovery subsystem](#recovery-subsystem) is
-  called to scan blocks for recoverable contracts.
-- `save` is called to persist the contractor whenever the `Contractor's` state
-  is updated during maintenance.
-- Funds established by the [Allowance subsystem](#allowance-subsystem) are used
-  and deducted appropriately during maintenance to form and renew contracts.
-
 ### Inbound Complexities
 - `threadedContractMaintenance` is called by the
   [Allowance subsystem](#allowance-subsystem) when setting allowances, when `CancelContract`
@@ -148,6 +139,14 @@ only take effect upon the next renewal.
   subsystem](#allowance-subsystem) when setting the allowance to
   stop and restart contract maintenance with the new allowance settings in
   place.
+
+### Outbound Complexities
+- `managedInitRecoveryScan` in the [Recovery subsystem](#recovery-subsystem) is
+  called to scan blocks for recoverable contracts.
+- `save` is called to persist the contractor whenever the `Contractor's` state
+  is updated during maintenance.
+- Funds established by the [Allowance subsystem](#allowance-subsystem) are used
+  and deducted appropriately during maintenance to form and renew contracts.
 
 
 ## Recovery Subsystem
@@ -170,7 +169,6 @@ host and by getting the most recent revision from the host using this session.
   subsystem](#contract-maintenance-subsystem) to recover contracts found in a
   recovery scan.
 
-### Outbound Complexities
 
 ## Session Subsystem
 **Key Files**
@@ -195,8 +193,8 @@ Editor maintains a network connection to a host, over which is sends
 modification requests, such as "delete sector 12." After each modification, the
 Editor revises the underlying file contract and saves it to disk.
 
-### Inbound Complexities
-The following `Session` functions are all exported by the contractor:
+### Exports
+The following `Session` methods are all exported by the Contractor:
 - `Address`
 - `Close`
 - `ContractID`
@@ -206,7 +204,6 @@ The following `Session` functions are all exported by the contractor:
 - `Upload`
 - `Replace`
 
-### Outbound Complexities
 
 
 ## Persistence Subsystem
@@ -225,6 +222,7 @@ Persistence subsytem.
 - `save` is called from the [Allowance](#allowance-subsystem), and
   [Maintenance](#contract-maintenance-subsystem) subsystems to persist the
   `Contractor` when its internal state is updated.
+
 ### Outbound Complexities
 The persist system is also responsible for persisting the [Watchdog
 subsystem](#watchdog-subsystem).
