@@ -884,22 +884,39 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint64) []crypto.ProofRange {
 	newNumSectors := oldNumSectors
 	sectorsChanged := make(map[uint64]struct{})
+	fullSectorsChanged := make(map[uint64]struct{})
+	segmentsChanged := make(map[uint64]map[uint64]struct{})
 	for _, action := range actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
+			fullSectorsChanged[newNumSectors] = struct{}{}
 			sectorsChanged[newNumSectors] = struct{}{}
 			newNumSectors++
 
 		case modules.WriteActionTrim:
 			newNumSectors--
+			fullSectorsChanged[newNumSectors] = struct{}{}
 			sectorsChanged[newNumSectors] = struct{}{}
 
 		case modules.WriteActionSwap:
-			sectorsChanged[action.A] = struct{}{}
-			sectorsChanged[action.B] = struct{}{}
+			fullSectorsChanged[action.A] = struct{}{}
+			fullSectorsChanged[action.B] = struct{}{}
+			sectorsChanged[newNumSectors] = struct{}{}
 
 		case modules.WriteActionUpdate:
-			panic("update not supported")
+			sectorIndex, offset, length := action.A, action.B, uint64(len(action.Data))
+			sectorsChanged[newNumSectors] = struct{}{}
+
+			start := offset / crypto.SegmentSize
+			end := offset + length/crypto.SegmentSize
+			for segmentIndex := start; segmentIndex <= end; segmentIndex++ {
+				if _, exists := segmentsChanged[sectorIndex]; !exists {
+					segmentsChanged[sectorIndex] = make(map[uint64]struct{})
+				}
+				if _, exists := segmentsChanged[sectorIndex][segmentIndex]; !exists {
+					segmentsChanged[sectorIndex][segmentIndex] = struct{}{}
+				}
+			}
 		}
 	}
 
