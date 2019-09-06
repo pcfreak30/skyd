@@ -77,7 +77,7 @@ Contract formation does not begin until the user first calls `SetAllowance`. An
 allowance dictates how much money the Contractor is allowed to spend on file
 contracts during a given period. When the user calls `SetAllowance` the
 [Allowance subsystem](#allowance-subsytem) updates the allowance and restarts the
-Maintenance subsystem so that it will form new contracts with the changes
+Maintenance subsystem so that it will form new contracts with the changed
 settings. New contracts will only be formed if needed and if the allowance is
 sufficiently greater than the previous allowance, where "sufficiently greater"
 currently means "enough money to pay for at least one additional sector on every
@@ -203,7 +203,6 @@ The following `Session` methods are all exported by the Contractor:
 - `EndHeight`
 - `Upload`
 - `Replace`
-
 
 
 ## Persistence Subsystem
