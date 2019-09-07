@@ -18,19 +18,6 @@ const MaxEncodedNetAddressLength = 266
 // A NetAddress contains the information needed to contact a peer.
 type NetAddress string
 
-// Bloop returns the Host of the NetAddress, except that during testing it
-// returns the whole netaddress. This is specifically to handle blacklisting
-// during testing, to allow automated local tests to construct very specific
-// network topologies between peers.
-//
-// TODO: Find a better name.
-func (na NetAddress) Bloop() string {
-	if build.Release == "testing" {
-		return string(na)
-	}
-	return na.Host()
-}
-
 // Host removes the port from a NetAddress, returning just the host. If the
 // address is not of the form "host:port" the empty string is returned. The
 // port will still be returned for invalid NetAddresses (e.g. "unqualified:0"

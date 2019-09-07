@@ -154,7 +154,7 @@ func (g *Gateway) threadedAcceptConn(conn net.Conn) {
 	g.log.Debugf("INFO: %v wants to connect", addr)
 
 	g.mu.RLock()
-	_, exists := g.blacklist[addr.Bloop()]
+	_, exists := g.blacklist[addr.Host()]
 	g.mu.RUnlock()
 	if exists {
 		g.log.Debugf("INFO: %v was rejected. (blacklisted)", addr)
@@ -432,7 +432,7 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 	if net.ParseIP(addr.Host()) == nil {
 		return errors.New("address must be an IP address")
 	}
-	if _, exists := g.blacklist[addr.Bloop()]; exists {
+	if _, exists := g.blacklist[addr.Host()]; exists {
 		return errors.New("can't connect to blacklisted address")
 	}
 	g.mu.RLock()
@@ -539,8 +539,8 @@ func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
 	g.mu.Lock()
 	var err error
-	if _, exists := g.blacklist[addr.Bloop()]; exists {
-		delete(g.blacklist, addr.Bloop())
+	if _, exists := g.blacklist[addr.Host()]; exists {
+		delete(g.blacklist, addr.Host())
 		err = g.saveSync()
 	}
 	g.mu.Unlock()
@@ -551,23 +551,21 @@ func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
 // specifically used if a user wants to connect to a node manually. This also
 // adds the node to the blacklist.
 func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
-	// Add this addr to the blacklist and save.
-	//
-	// TODO: Change this method so that the addr is only blacklisted if the
-	// disconnect command is successful. Since this command is the only tool
-	// that can be used during testing to add a node to a blacklist, the
-	// addition to the blacklist needs to happen independent of the success of
-	// the call.
+	err := g.Disconnect(addr)
+	if err != nil {
+		return errors.AddContext(err, "manual disconnect failed")
+	}
+
+	// A manual disconnect should result in a peer being blacklisted, so that
+	// the gateway will not reconnect to the peer.
 	g.mu.Lock()
-	g.blacklist[addr.Bloop()] = struct{}{}
+	g.blacklist[addr.Host()] = struct{}{}
 	err := g.saveSync()
 	g.mu.Unlock()
 	if err != nil {
 		return errors.AddContext(err, "unable to save gateway when adding a node to the blacklist in disconnect call")
 	}
-
-	// Try to disconnect from the addr.
-	return errors.AddContext(g.Disconnect(addr), "unable to disconnect from peer")
+	return nil
 }
 
 // Online returns true if the node is connected to the internet. During testing
