@@ -3,6 +3,43 @@ The transaction pool is responsible for tracking the set of unconfirmed
 transactions on the network and for broadcasting new transactions out to the
 network.
 
+When a new peer connects to the transaction pool, that peer will be
+progressively sent a full list of transactions that are available in the
+transaction pool. The peer is expected to do the same, this will ensure that the
+transactoin pools are largely synchronized across the network. This process is
+handled by the new peer share subsystem.
+
+The repeat broadcast filter of the transaction pool will ensure that each peer
+receives each transaction only once. This is important for blocking denial of
+service attacks that could otherwise cause the same transaction to be broadcast
+many times throughout the network. This also generally preserves bandwidth.
+
+The only eviction policy in the transaction pool is that a transaction will be
+evicted 24 blocks after the most recent relative to the transaction has been
+added to the transactionpool. Currently, there is no eviction for replace-by-fee
+nor is there any eviction for having low fees.
+
+TODO: The transaction pool currently sends full transactions to peers. Instead,
+a short ID can be used to tell peers which transactions are avaialble and a fee
+rate can be provided, then peers can determine whether or not they want to
+request the transactions.
+
+TODO: The transaction pool will currently outright reject any orphan
+transactions which are sent. This, when combined with an eviction policy, the
+repeat broadcast filter, and the lack of ability to request orphans means that
+transactions can slip through the cracks and fail to propagate the network under
+special circumstances. These circumstances are rare in practice, and transaction
+creators can avoid these circumstances by acting carefully, which means this is
+not a critical issue. But it should be addressed at some point nonetheless.
+
+TODO: The current trasaction pool uses a flawed paradigm of clumping together
+sets of transactions that are in some way unconfirmed relatives. This causes
+transactions that aren't strictly dependent on eachother to be combined into a
+single ball that's treated as a unit, which is suboptimal. The core should be
+rebuilt so that transactions are more comfortably sorted by fee rate, and are
+also sorted by required ancenstry instead of putting all relatives together
+blindly.
+
 ## Subsystems
 The transaction pool has the following subsystems.
  - [Core](#core)
