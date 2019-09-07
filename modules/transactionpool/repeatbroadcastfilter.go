@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 )
 
 // repeatBroadcastFilter keeps a map of all the transactions that have been sent
@@ -106,7 +107,7 @@ func (rbf *repeatBroadcastFilter) callRelayTransactionSet(tset []types.Transacti
 		// wire because we aren't accounting for things like protocol overhead,
 		// but this is close enough for the system to behave how the user would
 		// expect.
-		totalSize += types.TransactionSetSize(peerTxnList)
+		totalSize += typesutil.TransactionSetSize(peerTxnList)
 		go rbf.gateway.Broadcast("RelayTransactionSet", peerTxnList, []modules.Peer{peer})
 	}
 

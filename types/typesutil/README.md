@@ -8,6 +8,7 @@ especially during testing and debugging.
 Typesutils has the following subsystems:
  - [Minimum Transaction Set](#minimum-transaction-set)
  - [Transaction Graph](#transaction-graph)
+ - [Transaction Utils](#transaction-utils)
 
 ### Minimum Transaction Set
 **Key Files**
@@ -64,3 +65,14 @@ subsystem is exported.
    - `TransactionGraph.Transactions` will return all of the transactions that
 	 have been built to be a part of the transaction graph.
 - `NewTransactionGraph` will initialize and return a `TransactionGraph`.
+
+### Transaction Utils
+
+Transaction utils is a subsystem which exports helper functions on the
+transaction type.
+
+##### Exports
+
+ - `TransactionSetSize` returns the marshalled size of a transaction set. This
+   function is more computationally efficient than marshalling the transaction
+   set and then checking the length.
