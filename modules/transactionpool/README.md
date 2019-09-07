@@ -93,10 +93,10 @@ synced, and also will allow the peer share limiter to enforce a ratelimit on
 sending transactions to new peers that prioritizes older peers over newer peers.
 
 ##### Outbound Complexities
- - `callRemainingObjectsList` from the [Core](#core) is used to fetch a snapshot
-   of objects in the transaction pool after a new peer connects to the
-   transaction pool. This list of objects is used to determine what pre-existing
-   transaction sets the peer is potentially missing.
+ - `callKnownObjects` from the [Core](#core) is used to fetch a snapshot of
+   objects in the transaction pool after a new peer connects to the transaction
+   pool. This list of objects is used to determine what pre-existing transaction
+   sets the peer is potentially missing.
  - `callTSetByObjectID` from the [Core](#core) is used to fetch the transaction
    set associated with a particular object id while looking for pre-existing
    transaction sets to send to a new peer.

@@ -339,9 +339,8 @@ func (tp *TransactionPool) Broadcast(ts []types.Transaction) {
 	tp.staticRepeatBroadcastFilter.callUnconditionalBroadcast(ts)
 }
 
-// callRemainingObjectsList will return the list of all objects in the
-// transaction pool.
-func (tp *TransactionPool) callRemainingObjectsList() map[ObjectID]struct{} {
+// callKnownObjects will return the list of all objects in the transaction pool.
+func (tp *TransactionPool) callKnownObjects() map[ObjectID]struct{} {
 	oids := make(map[ObjectID]struct{})
 	tp.mu.Lock()
 	for oid := range tp.knownObjects {

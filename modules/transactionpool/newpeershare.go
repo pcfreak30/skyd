@@ -107,7 +107,7 @@ func (nps *newPeerShare) threadedSyncPeer(peer modules.Peer) {
 	// in the transaction pool from transaction ID to transaction set, only a
 	// mapping from object ID to transaction set. For that reason, object IDs
 	// are used instead.
-	remainingObjects := nps.staticCore.callRemainingObjectsList()
+	remainingObjects := nps.staticCore.callKnownObjects()
 
 	// Grab one object at a time and send the corresponding transaction set
 	// until all objects have been sent.
