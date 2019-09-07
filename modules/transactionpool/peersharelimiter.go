@@ -21,7 +21,7 @@ type blockingPeer struct {
 // heap.
 type peerHeap []*blockingPeer
 
-// Implmentation of heap.Interface for peerHeap.
+// Implementation of heap.Interface for peerHeap.
 func (ph peerHeap) Len() int           { return len(ph) }
 func (ph peerHeap) Less(i, j int) bool { return ph[i].timeConnected < ph[j].timeConnected }
 func (ph peerHeap) Swap(i, j int)      { ph[i], ph[j] = ph[j], ph[i] }
