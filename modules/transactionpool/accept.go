@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -59,6 +60,18 @@ func relatedObjectIDs(ts []types.Transaction) []ObjectID {
 	return oids
 }
 
+// requiredFeesToExtendTpoolAtSize returns the fees that should be required to
+// extend the transaction pool for a given size of transaction pool.
+//
+// NOTE: This function ignores the minimum transaction pool size required for a
+// fee.
+func requiredFeesToExtendTpoolAtSize(size int) types.Currency {
+	// Calculate the fee required to bump out the size of the transaction pool.
+	ratioToTarget := float64(size) / TransactionPoolSizeTarget
+	feeFactor := math.Pow(ratioToTarget, TransactionPoolExponentiation)
+	return types.SiacoinPrecision.MulFloat(feeFactor).Div64(1000) // Divide by 1000 to get SC / kb
+}
+
 // requiredFeesToExtendTpool returns the amount of fees required to extend the
 // transaction pool to fit another transaction set. The amount returned has the
 // unit 'currency per byte'.
@@ -69,10 +82,7 @@ func (tp *TransactionPool) requiredFeesToExtendTpool() types.Currency {
 		return types.ZeroCurrency
 	}
 
-	// Calculate the fee required to bump out the size of the transaction pool.
-	ratioToTarget := float64(tp.transactionListSize) / TransactionPoolSizeTarget
-	feeFactor := math.Pow(ratioToTarget, TransactionPoolExponentiation)
-	return types.SiacoinPrecision.MulFloat(feeFactor).Div64(1000) // Divide by 1000 to get SC / kb
+	return requiredFeesToExtendTpoolAtSize(tp.transactionListSize)
 }
 
 // checkTransactionSetComposition checks if the transaction set is valid given
@@ -81,7 +91,7 @@ func (tp *TransactionPool) requiredFeesToExtendTpool() types.Currency {
 // IsStandard.
 func (tp *TransactionPool) checkTransactionSetComposition(ts []types.Transaction) (uint64, error) {
 	// Check that the transaction set is not already known.
-	setID := TransactionSetID(crypto.HashObject(ts))
+	setID := modules.TransactionSetID(crypto.HashObject(ts))
 	_, exists := tp.transactionSets[setID]
 	if exists {
 		return 0, modules.ErrDuplicateTransactionSet
@@ -102,15 +112,13 @@ func (tp *TransactionPool) checkTransactionSetComposition(ts []types.Transaction
 	return setSize, nil
 }
 
-// handleConflicts detects whether the conflicts in the transaction pool are
-// legal children of the new transaction pool set or not. After the conflicts
-// have been handled, a new transaction set will be returned which contains all
-// of the ancestors and descendents required to complete the originally provided
-// transaction set.
-func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []TransactionSetID, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) ([]types.Transaction, error) {
+// handleConflicts will return a transaction set which contains all unconfirmed
+// transactions which are related (descendent or ancestor) in some way to any of
+// the input transaction set.
+func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []modules.TransactionSetID, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) ([]types.Transaction, error) {
 	// Create a list of all the transaction ids that compose the set of
 	// conflicts.
-	conflictMap := make(map[types.TransactionID]TransactionSetID)
+	conflictMap := make(map[types.TransactionID]modules.TransactionSetID)
 	for _, conflict := range conflicts {
 		conflictSet := tp.transactionSets[conflict]
 		for _, conflictTxn := range conflictSet {
@@ -140,7 +148,7 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	// deduplication is guaranteed to be complete.
 	if len(dedupSet) < len(ts) {
 		oids := relatedObjectIDs(dedupSet)
-		var conflicts []TransactionSetID
+		var conflicts []modules.TransactionSetID
 		for _, oid := range oids {
 			conflict, exists := tp.knownObjects[oid]
 			if exists {
@@ -157,7 +165,7 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	// diff objects can be repeated, (no need to remove those). Just need to
 	// remove the conflicts from tp.transactionSets.
 	var superset []types.Transaction
-	supersetMap := make(map[TransactionSetID]struct{})
+	supersetMap := make(map[modules.TransactionSetID]struct{})
 	for _, conflict := range conflictMap {
 		supersetMap[conflict] = struct{}{}
 	}
@@ -203,7 +211,7 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	}
 
 	// Add the transaction set to the pool.
-	setID := TransactionSetID(crypto.HashObject(superset))
+	setID := modules.TransactionSetID(crypto.HashObject(superset))
 	tp.transactionSets[setID] = superset
 	for _, diff := range cc.SiacoinOutputDiffs {
 		tp.knownObjects[ObjectID(diff.ID)] = setID
@@ -217,6 +225,11 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 	tp.transactionSetDiffs[setID] = &cc
 	tsetSize := len(encoding.Marshal(superset))
 	tp.transactionListSize += tsetSize
+	for _, txn := range superset {
+		if _, exists := tp.transactionHeights[txn.ID()]; !exists {
+			tp.transactionHeights[txn.ID()] = tp.blockHeight
+		}
+	}
 
 	// debug logging
 	if build.DEBUG {
@@ -234,7 +247,7 @@ func (tp *TransactionPool) handleConflicts(ts []types.Transaction, conflicts []T
 // transaction pool, and then adds it to the transaction pool. A transaction set
 // will be returned which contains all of the ancestors and descendants required
 // to complete the transaction set for the provided transaction.
-func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) ([]types.Transaction, error) {
+func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn func([]types.Transaction) (modules.ConsensusChange, error)) (superset []types.Transaction, err error) {
 	if len(ts) == 0 {
 		return nil, errEmptySet
 	}
@@ -281,7 +294,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	// double-spend. Legal children of a transaction set will also trigger the
 	// conflict-detector.
 	oids := relatedObjectIDs(ts)
-	var conflicts []TransactionSetID
+	var conflicts []modules.TransactionSetID
 	for _, oid := range oids {
 		conflict, exists := tp.knownObjects[oid]
 		if exists {
@@ -297,7 +310,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	}
 
 	// Add the transaction set to the pool.
-	setID := TransactionSetID(crypto.HashObject(ts))
+	setID := modules.TransactionSetID(crypto.HashObject(ts))
 	tp.transactionSets[setID] = ts
 	for _, oid := range oids {
 		tp.knownObjects[oid] = setID
@@ -337,37 +350,58 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	return ts, nil
 }
 
-// AcceptTransactionSet adds a transaction to the unconfirmed set of
-// transactions. If the transaction is accepted, it will be relayed to
-// connected peers.
-func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
+// submitTransactionSet will submit a transaction set to the transaction pool
+// and return the minimum superset for that transaction set.
+func (tp *TransactionPool) submitTransactionSet(ts []types.Transaction) ([]types.Transaction, error) {
 	// assert on consensus set to get special method
 	cs, ok := tp.consensusSet.(interface {
 		LockedTryTransactionSet(fn func(func(txns []types.Transaction) (modules.ConsensusChange, error)) error) error
 	})
 	if !ok {
-		return errors.New("consensus set does not support LockedTryTransactionSet method")
+		return nil, errors.New("consensus set does not support LockedTryTransactionSet method")
 	}
 
-	return cs.LockedTryTransactionSet(func(txnFn func(txns []types.Transaction) (modules.ConsensusChange, error)) error {
-		tp.log.Debugln("Beginning broadcast of transaction set")
+	var superset []types.Transaction
+	var acceptErr error
+	err := cs.LockedTryTransactionSet(func(txnFn func(txns []types.Transaction) (modules.ConsensusChange, error)) error {
 		tp.mu.Lock()
 		defer tp.mu.Unlock()
-		superset, err := tp.acceptTransactionSet(ts, txnFn)
-		if err == modules.ErrDuplicateTransactionSet {
-			tp.log.Debugln("Transaction set is a duplicate:", err)
-			return err
+
+		// Attempt to get the transaction set into the transaction pool.
+		superset, acceptErr = tp.acceptTransactionSet(ts, txnFn)
+		if acceptErr != nil {
+			return acceptErr
 		}
-		if err != nil {
-			tp.log.Debugln("Transaction set will not be broadcast due to an error:", err)
-			return err
-		}
-		tp.staticRepeatBroadcastFilter.callRelayTransactionSet(superset, tp.gateway.Peers())
 		// Notify subscribers of an accepted transaction set
 		tp.updateSubscribersTransactions()
-		tp.log.Debugln("Transaction set broadcast appears to have succeeded")
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the minimum required set from the superset for the input transaction
+	// set.
+	minSuperSet := typesutil.MinimumTransactionSet(ts, superset)
+	return minSuperSet, nil
+}
+
+// AcceptTransactionSet adds a transaction to the unconfirmed set of
+// transactions. If the transaction is accepted, it will be relayed to
+// connected peers.
+func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
+	tp.log.Debugln("Received a transaction (internal or external), attempting to broadcast")
+	minSuperSet, err := tp.submitTransactionSet(ts)
+	if err == modules.ErrDuplicateTransactionSet {
+		return err
+	}
+	if err != nil {
+		tp.log.Debugln("Transaction set will not be broadcast due to an error:", err)
+		return err
+	}
+	go tp.gateway.Broadcast("RelayTransactionSet", minSuperSet, tp.gateway.Peers())
+	tp.log.Debugln("Transaction set broadcast appears to have succeeded")
+	return nil
 }
 
 // relayTransactionSet is an RPC that accepts a transaction set from a peer. If
@@ -378,6 +412,8 @@ func (tp *TransactionPool) relayTransactionSet(conn modules.PeerConn) error {
 		return err
 	}
 	defer tp.tg.Done()
+
+	// Connection stability and cleanup code.
 	err := conn.SetDeadline(time.Now().Add(relayTransactionSetTimeout))
 	if err != nil {
 		return err
@@ -393,11 +429,11 @@ func (tp *TransactionPool) relayTransactionSet(conn modules.PeerConn) error {
 		conn.Close()
 	}()
 
+	// Read the transaction.
 	var ts []types.Transaction
 	err = encoding.ReadObject(conn, &ts, types.BlockSizeLimit)
 	if err != nil {
 		return err
 	}
-
 	return tp.AcceptTransactionSet(ts)
 }

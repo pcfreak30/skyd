@@ -365,9 +365,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		memoryManager: r.memoryManager,
 	}
 
-	// Update the endTime of the download when it's done.
+	// Update the endTime of the download when it's done. Also nil out the
+	// destination pointer so that the garbage collector does not think any
+	// memory is still being used.
 	d.onComplete(func(_ error) error {
 		d.endTime = time.Now()
+		d.destination = nil
 		return nil
 	})
 
@@ -399,10 +402,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		// Create the map.
 		chunkMaps[chunkIndex-minChunk] = make(map[string]downloadPieceInfo)
 		// Get the pieces for the chunk.
-		pieces, err := params.file.Pieces(uint64(chunkIndex))
-		if err != nil {
-			return nil, err
-		}
+		pieces := params.file.Pieces(uint64(chunkIndex))
 		for pieceIndex, pieceSet := range pieces {
 			for _, piece := range pieceSet {
 				// Sanity check - the same worker should not have two pieces for

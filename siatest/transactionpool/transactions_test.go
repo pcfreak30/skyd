@@ -1,4 +1,4 @@
-package transactions
+package transactionpool
 
 // TODO: Integrate the ability to check which transactions are in the
 // transaction pool with this test to have better testing coverage of
@@ -33,7 +33,7 @@ func TestTransactionPropagation(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := transactionsTestDir(t.Name())
+	testDir := tpoolTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, gp)
 	if err != nil {
 		t.Fatal(err)

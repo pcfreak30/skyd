@@ -31,3 +31,10 @@ func (c *Client) TransactionPoolConfirmedGet(id types.TransactionID) (tcg api.Tp
 	err = c.get("/tpool/confirmed/"+id.String(), &tcg)
 	return
 }
+
+// TransactionPoolTransactionsGet uses the /tpool/transactions endpoint to get the
+// transactions of the tpool
+func (c *Client) TransactionPoolTransactionsGet() (tptg api.TpoolTxnsGET, err error) {
+	err = c.get("/tpool/transactions", &tptg)
+	return
+}
