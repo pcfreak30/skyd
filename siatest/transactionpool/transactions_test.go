@@ -124,7 +124,7 @@ func TestTransactionPropagation(t *testing.T) {
 
 	// Bring up a new node, gateway only, that sits between the renter and the
 	// miner.
-	relay1Params := node.RelayTemplate
+	relay1Params := node.TransactionPoolTemplate
 	siatest.RandomNodeDir(tg.Dir(), &relay1Params)
 	relay1, err := siatest.NewCleanNode(relay1Params)
 	if err != nil {
@@ -289,7 +289,7 @@ func TestTransactionPropagation(t *testing.T) {
 	}
 
 	// Bring up another node to sit between the renter and relay1.
-	relay2Params := node.RelayTemplate
+	relay2Params := node.TransactionPoolTemplate
 	siatest.RandomNodeDir(tg.Dir(), &relay2Params)
 	relay2, err := siatest.NewCleanNode(relay2Params)
 	if err != nil {

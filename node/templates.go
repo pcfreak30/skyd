@@ -40,9 +40,9 @@ var (
 		CreateTransactionPool: true,
 		CreateWallet:          true,
 	}
-	// RelayTemplate is a template for a Sia node that can relay blocks and
-	// transactions across the network.
-	RelayTemplate = NodeParams{
+	// TransactionPoolTemplate is a template for a Sia node that can relay
+	// blocks and transactions across the network.
+	TransactionPoolTemplate = NodeParams{
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
 		CreateGateway:         true,
@@ -108,9 +108,10 @@ func Renter(dir string) NodeParams {
 	return template
 }
 
-// Relay returns a RelayTemplate filled out with the provided dir.
-func Relay(dir string) NodeParams {
-	template := RelayTemplate
+// TransactionPool returns a TransactionPoolTemplate filled out with the
+// provided dir.
+func TransactionPool(dir string) NodeParams {
+	template := TransactionPoolTemplate
 	template.Dir = dir
 	return template
 }

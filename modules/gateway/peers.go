@@ -560,7 +560,7 @@ func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
 	// the gateway will not reconnect to the peer.
 	g.mu.Lock()
 	g.blacklist[addr.Host()] = struct{}{}
-	err := g.saveSync()
+	err = g.saveSync()
 	g.mu.Unlock()
 	if err != nil {
 		return errors.AddContext(err, "unable to save gateway when adding a node to the blacklist in disconnect call")
