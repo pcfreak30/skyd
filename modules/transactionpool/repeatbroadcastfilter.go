@@ -119,7 +119,7 @@ func (rbf *repeatBroadcastFilter) callRelayTransactionSet(tset []types.Transacti
 }
 
 // callUnconditionalBroadcast will unconditionally broadcast a transaction set
-// to all peers. The filter that is typically applied will be ignored, hoewver
+// to all peers. The filter that is typically applied will be ignored, however
 // the transactions will be added to the filter for all peers.
 func (rbf *repeatBroadcastFilter) callUnconditionalBroadcast(tset []types.Transaction) {
 	// Have the broadcast run right away.
