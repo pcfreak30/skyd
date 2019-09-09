@@ -783,9 +783,16 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	var unusedHosts uint
 	for i, entry := range sf.pubKeyTable {
 		_, used := usedMap[entry.PublicKey.String()]
+		oldUsed := sf.pubKeyTable[i].Used
 		sf.pubKeyTable[i].Used = used
 		if !used {
 			unusedHosts++
+		}
+		// If a host changed from used to not used it means that we no longer have a
+		// contract with that host. Mark it as 'Shared' to no longer count it towards
+		// redundancy.
+		if oldUsed == true && used == false {
+			sf.pubKeyTable[i].Shared = true
 		}
 	}
 	// Prune the pubKeyTable if necessary. If we have too many unused hosts we
@@ -826,17 +833,30 @@ func (sf *SiaFile) defragChunk(chunk *chunk) {
 	maxPieces := (maxChunkSize - marshaledChunkOverhead) / marshaledPieceSize
 	maxPiecesPerSet := maxPieces / int64(len(chunk.Pieces))
 
-	// Filter out pieces with unused hosts since we don't have contracts with
-	// those anymore.
+	// Filter out pieces with unused hosts since we don't have contracts with those
+	// anymore. Pieces which are not shared get prioritized over shared pieces.
 	for i, pieceSet := range chunk.Pieces {
-		var newPieceSet []piece
+		var newPieceSet, usedSharedPieces []piece
+		// Add used, unshared pieces to the new piece set right away but remember
+		// shared pieces in case we still need more pieces.
 		for _, piece := range pieceSet {
 			if int64(len(newPieceSet)) == maxPiecesPerSet {
 				break
 			}
-			if sf.hostKey(piece.HostTableOffset).Used {
-				newPieceSet = append(newPieceSet, piece)
+			if hk := sf.hostKey(piece.HostTableOffset); hk.Used {
+				if hk.Shared {
+					usedSharedPieces = append(usedSharedPieces, piece)
+				} else {
+					newPieceSet = append(newPieceSet, piece)
+				}
 			}
+		}
+		// Add shared pieces if necessary.
+		for _, sharedPiece := range usedSharedPieces {
+			if int64(len(newPieceSet)) == maxPiecesPerSet {
+				break
+			}
+			newPieceSet = append(newPieceSet, sharedPiece)
 		}
 		chunk.Pieces[i] = newPieceSet
 	}
