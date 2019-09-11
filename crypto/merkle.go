@@ -2,11 +2,10 @@ package crypto
 
 import (
 	"bytes"
-	"errors"
+	"io"
 
 	"gitlab.com/NebulousLabs/merkletree"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 )
 
@@ -191,7 +190,7 @@ func MerkleSectorRangeProof(roots []Hash, start, end int) []Hash {
 	for i := range leafHashes {
 		leafHashes[i] = roots[i][:]
 	}
-	sh := merkletree.NewCachedSubtreeHasher(leafHashes, NewHash(), nil)
+	sh := merkletree.NewCachedSubtreeHasher(leafHashes, NewHash())
 	proof, _ := merkletree.BuildRangeProof(start, end, sh)
 	proofHashes := make([]Hash, len(proof))
 	for i := range proofHashes {
@@ -219,42 +218,13 @@ func VerifySectorRangeProof(roots []Hash, proof []Hash, start, end int, root Has
 type ProofRange = merkletree.LeafRange
 
 // MerkleDiffProof builds a Merkle proof for multiple segment ranges.
-func MerkleDiffProof(sectorRanges []ProofRange, sectorRoots []Hash, segmentRanges map[uint64][]ProofRange, segmentHashes map[uint64][]Hash) []Hash {
-	// Convenience method to build a sub-sector proof.
-	buildSubSectorProof := func(segmentHashes []Hash, segmentRanges []ProofRange) ([][]byte, error) {
-		sth := merkletree.NewCachedSubtreeHasher(hashesToSlices(segmentHashes), NewHash(), nil)
-		proof, err := merkletree.BuildDiffProof(segmentRanges, sth, uint64(len(segmentHashes)))
-		if err != nil {
-			return nil, errors.New("failed to build sub-sector proof")
-		}
-		return proof, nil
-	}
-
-	// Build all the required sub-sector proofs first.
-	slps := make(map[uint64]merkletree.SubLeafProof)
-	for sectorIndex := range sectorRoots {
-		segmentRanges, exists1 := segmentRanges[uint64(sectorIndex)]
-		segmentHashes, exists2 := segmentHashes[uint64(sectorIndex)]
-		if exists1 != exists2 {
-			build.Critical(errors.New("inconsistent sectorRoots, segmentRanges and segmentHashes"))
-			return nil
-		}
-		if !exists1 {
-			continue // no subproof required
-		}
-		proof, err := buildSubSectorProof(segmentHashes, segmentRanges)
-		if err != nil {
-			build.Critical(err)
-			return nil
-		}
-		// The proof is standalone valid but we need to append the root to produce a
-		// valid combined proof.
-		proof = append(proof, sectorRoots[sectorIndex][:])
-		// Add the proof to the map of sub-sector proofs.
-		slps[uint64(sectorIndex)] = proof
+func MerkleDiffProof(sectorRanges []ProofRange, sectorRoots []Hash, modifiedSegments [][]byte, leavesPerSector int) []Hash {
+	segmentReaders := make([]io.Reader, 0, len(modifiedSegments))
+	for _, s := range modifiedSegments {
+		segmentReaders = append(segmentReaders, bytes.NewReader(s))
 	}
 	// Next build the proofs for the sectors.
-	sh := merkletree.NewCachedSubtreeHasher(hashesToSlices(sectorRoots), NewHash(), slps) // TODO: needs to include updatedSectors somehow
+	sh := merkletree.NewMixedSubtreeHasher(hashesToSlices(sectorRoots), io.MultiReader(segmentReaders...), leavesPerSector, SegmentSize, NewHash())
 	proof, _ := merkletree.BuildDiffProof(sectorRanges, sh, uint64(len(sectorRoots)))
 	proofHashes := make([]Hash, len(proof))
 	for i := range proofHashes {
@@ -277,8 +247,8 @@ func VerifyDiffProof(ranges []ProofRange, numLeaves uint64, proofHashes, leafHas
 	if root == (Hash{}) {
 		rootBytes = nil // empty trees hash to nil, not 32 zeros
 	}
-	lh := merkletree.NewCachedLeafHasher(leafBytes)
-	ok, _ := merkletree.VerifyDiffProof(lh, numLeaves, NewHash(), ranges, proofBytes, rootBytes)
+	sth := merkletree.NewCachedSubtreeHasher(leafBytes, NewHash())
+	ok, _ := merkletree.VerifyDiffProof(sth, numLeaves, NewHash(), ranges, proofBytes, rootBytes)
 	return ok
 }
 

@@ -169,8 +169,9 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 
 	// Process each action.
 	newRoots := append([]crypto.Hash(nil), s.so.SectorRoots...)
-	sectorsChanged := make(map[uint64]struct{})                // for construct Merkle proof
-	segmentsChanged := make(map[uint64]map[uint64]crypto.Hash) // sectorIndex -> segmentIndex -> segmentHash
+	sectorsChanged := make(map[uint64]struct{})           // indicates if a sector was modified in any way
+	wholeSectorsChanged := make(map[uint64]struct{})      // indicates if a whole sector was modified
+	segmentsChanged := make(map[uint64]map[uint64][]byte) // indicates if a partial sector was modified
 	var bandwidthRevenue types.Currency
 	var sectorsRemoved []crypto.Hash
 	var sectorsGained []crypto.Hash
@@ -189,6 +190,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			gainedSectorData = append(gainedSectorData, action.Data)
 
 			sectorsChanged[uint64(len(newRoots))-1] = struct{}{}
+			wholeSectorsChanged[uint64(len(newRoots))-1] = struct{}{}
 
 			// Update finances
 			bandwidthRevenue = bandwidthRevenue.Add(settings.UploadBandwidthPrice.Mul64(modules.SectorSize))
@@ -205,6 +207,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			newRoots = newRoots[:uint64(len(newRoots))-numSectors]
 
 			sectorsChanged[uint64(len(newRoots))] = struct{}{}
+			wholeSectorsChanged[uint64(len(newRoots))] = struct{}{}
 
 		case modules.WriteActionSwap:
 			i, j := action.A, action.B
@@ -218,6 +221,8 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 
 			sectorsChanged[i] = struct{}{}
 			sectorsChanged[j] = struct{}{}
+			wholeSectorsChanged[i] = struct{}{}
+			wholeSectorsChanged[j] = struct{}{}
 
 		case modules.WriteActionUpdate:
 			sectorIndex, offset := action.A, action.B
@@ -236,18 +241,18 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 				return err
 			}
 			// Remember which sector and segments changed.
-			sectorsChanged[sectorIndex] = struct{}{}
 			start := offset / crypto.SegmentSize
 			end := offset + uint64(len(action.Data))/crypto.SegmentSize
 			for segmentIndex := start; segmentIndex <= end; segmentIndex++ {
 				if _, exists := segmentsChanged[sectorIndex]; !exists {
-					segmentsChanged[sectorIndex] = make(map[uint64]crypto.Hash)
+					segmentsChanged[sectorIndex] = make(map[uint64][]byte)
 				}
 				if _, exists := segmentsChanged[sectorIndex][segmentIndex]; !exists {
-					// Add the segment's hash to the segmentsChanged map.
-					segmentsChanged[sectorIndex][segmentIndex] = crypto.MerkleRoot(sector[segmentIndex*crypto.SegmentSize:][:crypto.SegmentSize])
+					// Add the segment to the segmentsChanged map.
+					segmentsChanged[sectorIndex][segmentIndex] = append([]byte{}, sector[segmentIndex*crypto.SegmentSize:][:crypto.SegmentSize]...)
 				}
 			}
+			sectorsChanged[sectorIndex] = struct{}{}
 			// Update the sector
 			copy(sector[offset:], action.Data)
 			newRoot := crypto.MerkleRoot(sector)
@@ -282,20 +287,25 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	if req.MerkleProof {
 		// Calculate which sectors changed.
 		oldNumSectors := uint64(len(s.so.SectorRoots))
-		sectorProofRanges := make([]crypto.ProofRange, 0, len(sectorsChanged))
+		segmentProofRanges := make([]crypto.ProofRange, 0, len(wholeSectorsChanged)+len(segmentsChanged))
+		segmentsPerSector := modules.SectorSize / crypto.SegmentSize
 		for index := range sectorsChanged {
-			if index < oldNumSectors {
-				sectorProofRanges = append(sectorProofRanges, crypto.ProofRange{
-					Start: index,
-					End:   index + 1,
-				})
+			// Ignore changes out of range of our pre-modification sectors.
+			if index >= oldNumSectors {
+				continue
 			}
-		}
-		segmentProofRanges := make(map[uint64][]crypto.ProofRange)
-		for sectorIndex := range segmentsChanged {
-			for segmentIndex := range segmentsChanged[sectorIndex] {
-				if sectorIndex < oldNumSectors {
-					segmentProofRanges[sectorIndex] = append(segmentProofRanges[sectorIndex], crypto.ProofRange{
+			// If the whole sector changed we add a range for the whole thing.
+			if _, exists := wholeSectorsChanged[index]; exists {
+				segmentProofRanges = append(segmentProofRanges, crypto.ProofRange{
+					Start: index * segmentsPerSector,
+					End:   index*segmentsPerSector + segmentsPerSector,
+				})
+				continue // No need to add sub ranges if the whole sector changed
+			}
+			// Otherwise we add the sub-sector ranges if there are any.
+			if segments, exists := segmentsChanged[index]; exists {
+				for segmentIndex := range segments {
+					segmentProofRanges = append(segmentProofRanges, crypto.ProofRange{
 						Start: segmentIndex,
 						End:   segmentIndex + 1,
 					})
@@ -303,34 +313,29 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			}
 		}
 		// Sort the ranges for the sectors and segments.
-		sort.Slice(sectorProofRanges, func(i, j int) bool {
-			return sectorProofRanges[i].Start < sectorProofRanges[j].Start
+		sort.Slice(segmentProofRanges, func(i, j int) bool {
+			return segmentProofRanges[i].Start < segmentProofRanges[j].Start
 		})
-		for _, ranges := range segmentProofRanges {
-			sort.Slice(ranges, func(i, j int) bool {
-				return ranges[i].Start < ranges[j].Start
-			})
-		}
 		// Record old hashes for all changed sectors.
-		oldLeafHashes := make([]crypto.Hash, 0, len(sectorProofRanges))
-		segmentHashes := make(map[uint64][]crypto.Hash)
-		for _, r := range sectorProofRanges {
-			if sprs, exists := segmentProofRanges[r.Start]; exists {
-				// If segmentProofRanges contains ranges for sector at index r.Start, we
-				// need to add the segment hashes instead.
-				for _, spr := range sprs {
-					segmentHash := segmentsChanged[r.Start][spr.Start]
-					oldLeafHashes = append(oldLeafHashes, segmentHash)
-					segmentHashes[r.Start] = append(segmentHashes[r.Start], segmentHash)
-				}
-			} else {
-				// Otherwise use the sector root.
-				oldLeafHashes = append(oldLeafHashes, s.so.SectorRoots[r.Start])
+		oldLeafHashes := make([]crypto.Hash, 0, len(segmentProofRanges)-len(wholeSectorsChanged))
+		var oldSectorRoots []crypto.Hash
+		var modifiedSegments [][]byte
+		for _, r := range segmentProofRanges {
+			sectorIndex := r.Start / segmentsPerSector
+			// add sector hash
+			if r.End-r.Start == segmentsPerSector {
+				oldSectorRoots = append(oldSectorRoots, s.so.SectorRoots[sectorIndex])
+				continue
+			}
+			// add segments
+			for _, segment := range segmentsChanged[sectorIndex] {
+				oldLeafHashes = append(oldLeafHashes, crypto.MerkleRoot(segment))
+				modifiedSegments = append(modifiedSegments, segment)
 			}
 		}
 		// Construct the Merkle proof.
 		merkleResp = modules.LoopWriteMerkleProof{
-			OldSubtreeHashes: crypto.MerkleDiffProof(sectorProofRanges, s.so.SectorRoots, segmentProofRanges, segmentHashes),
+			OldSubtreeHashes: crypto.MerkleDiffProof(segmentProofRanges, oldSectorRoots, modifiedSegments, int(modules.SectorSize/crypto.SegmentSize)),
 			OldLeafHashes:    oldLeafHashes,
 			NewMerkleRoot:    newMerkleRoot,
 		}
