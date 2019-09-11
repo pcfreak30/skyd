@@ -133,6 +133,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateNumFiles++
 			metadata.AggregateNumStuckChunks += fileMetadata.NumStuckChunks
 			metadata.AggregateSize += fileMetadata.Size
+			metadata.AggregateUploadedBytes += fileMetadata.UploadedBytes
 
 			// Update siadir fields.
 			metadata.Health = math.Max(metadata.Health, fileMetadata.Health)
@@ -170,6 +171,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateSize += dirMetadata.AggregateSize
+			metadata.AggregateUploadedBytes += dirMetadata.AggregateUploadedBytes
 
 			// Update siadir fields
 			metadata.NumSubDirs++
@@ -210,6 +212,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		metadata.MinRedundancy = 0
 	}
 
+	if metadata.AggregateSize != 0 {
+		metadata.AggregateUploadProgress = float64(metadata.AggregateUploadedBytes) / float64(metadata.AggregateSize)
+	}
+
 	return metadata, nil
 }
 
@@ -243,6 +249,12 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
 	}
 
+	// Get number of uploaded bytes and upload progress for the siafile.
+	uploadProgress, uploadedBytes, err := sf.UploadProgressAndBytes()
+	if err != nil {
+		r.log.Debugln("UploadProgressAndBytes error: ", err)
+	}
+
 	return siafile.BubbledMetadata{
 		Health:              health,
 		LastHealthCheckTime: sf.LastHealthCheckTime(),
@@ -252,6 +264,8 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 		Size:                sf.Size(),
 		StuckHealth:         stuckHealth,
 		UID:                 sf.UID(),
+		UploadProgress:      uploadProgress,
+		UploadedBytes:       uploadedBytes,
 	}, sf.SaveMetadata()
 }
 
