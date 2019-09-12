@@ -65,6 +65,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		AggregateNumSubDirs:          uint64(0),
 		AggregateSize:                uint64(0),
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
+		AggregateUploadProgress:      0.0,
+		AggregateUploadedBytes:       uint64(0),
 
 		Health:              siadir.DefaultDirHealth,
 		LastHealthCheckTime: time.Now(),
