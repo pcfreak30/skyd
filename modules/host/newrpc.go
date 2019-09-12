@@ -310,6 +310,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 						End:   segmentIndex + 1,
 					})
 				}
+				continue
 			}
 		}
 		// Sort the ranges for the sectors and segments.
@@ -317,13 +318,20 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			return segmentProofRanges[i].Start < segmentProofRanges[j].Start
 		})
 		// Record old hashes for all changed sectors.
-		oldLeafHashes := make([]crypto.Hash, 0, len(segmentProofRanges)-len(wholeSectorsChanged))
+		var oldLeafHashes []crypto.Hash
 		var oldSectorRoots []crypto.Hash
 		var modifiedSegments [][]byte
+		currentSector := uint64(0)
 		for _, r := range segmentProofRanges {
+			// add sector hashes for the gaps that are not covered by proof ranges.
 			sectorIndex := r.Start / segmentsPerSector
+			for index := currentSector; index < sectorIndex; index++ {
+				oldSectorRoots = append(oldSectorRoots, s.so.SectorRoots[index])
+			}
+			currentSector = r.End
 			// add sector hash
 			if r.End-r.Start == segmentsPerSector {
+				oldLeafHashes = append(oldLeafHashes, s.so.SectorRoots[sectorIndex])
 				oldSectorRoots = append(oldSectorRoots, s.so.SectorRoots[sectorIndex])
 				continue
 			}
@@ -332,6 +340,10 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 				oldLeafHashes = append(oldLeafHashes, crypto.MerkleRoot(segment))
 				modifiedSegments = append(modifiedSegments, segment)
 			}
+		}
+		// If there are no proof ranges, oldSectorRoots consists only of sector roots.
+		if len(segmentProofRanges) == 0 {
+			oldSectorRoots = s.so.SectorRoots
 		}
 		// Construct the Merkle proof.
 		merkleResp = modules.LoopWriteMerkleProof{

@@ -192,7 +192,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 		case modules.WriteActionSwap:
 
 		case modules.WriteActionUpdate:
-			return modules.RenterContract{}, errors.New("update not supported")
+			bandwidthPrice = s.host.UploadBandwidthPrice.Mul64(uint64(len(action.Data)))
 
 		default:
 			build.Critical("unknown action type", action.Type)
@@ -305,7 +305,13 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	proofHashes := merkleResp.OldSubtreeHashes
 	leafHashes := merkleResp.OldLeafHashes
 	oldRoot, newRoot := contract.LastRevision().NewFileMerkleRoot, merkleResp.NewMerkleRoot
-	if !crypto.VerifyDiffProof(proofRanges, numSectors, proofHashes, leafHashes, oldRoot) {
+	if !crypto.VerifyDiffProof(proofRanges, numSectors*(modules.SectorSize/crypto.SegmentSize), proofHashes, leafHashes, oldRoot) {
+		if true {
+			println("leafhashes", len(leafHashes))
+			println("proofranges", len(proofRanges))
+			println("proofranges", len(proofRanges))
+			panic("proof failed")
+		}
 		return modules.RenterContract{}, errors.New("invalid Merkle proof for old root")
 	}
 	// ...then by modifying the leaves and verifying the new Merkle root
@@ -901,11 +907,12 @@ func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint6
 		case modules.WriteActionSwap:
 			fullSectorsChanged[action.A] = struct{}{}
 			fullSectorsChanged[action.B] = struct{}{}
-			sectorsChanged[newNumSectors] = struct{}{}
+			sectorsChanged[action.A] = struct{}{}
+			sectorsChanged[action.B] = struct{}{}
 
 		case modules.WriteActionUpdate:
 			sectorIndex, offset, length := action.A, action.B, uint64(len(action.Data))
-			sectorsChanged[newNumSectors] = struct{}{}
+			sectorsChanged[sectorIndex] = struct{}{}
 
 			start := offset / crypto.SegmentSize
 			end := offset + length/crypto.SegmentSize
@@ -921,18 +928,32 @@ func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint6
 	}
 
 	oldRanges := make([]crypto.ProofRange, 0, len(sectorsChanged))
+	segmentsPerSector := modules.SectorSize / crypto.SegmentSize
 	for index := range sectorsChanged {
-		if index < oldNumSectors {
+		if index >= oldNumSectors {
+			continue
+		}
+		// If the whole sector changed we expect a range for the whole thing.
+		if _, exists := fullSectorsChanged[index]; exists {
 			oldRanges = append(oldRanges, crypto.ProofRange{
-				Start: index,
-				End:   index + 1,
+				Start: index * segmentsPerSector,
+				End:   index*segmentsPerSector + segmentsPerSector,
 			})
+			continue // No need to add sub ranges if the whole sector changed
+		}
+		// Otherwise we add the sub-sector ranges if there are any.
+		if segments, exists := segmentsChanged[index]; exists {
+			for segmentIndex := range segments {
+				oldRanges = append(oldRanges, crypto.ProofRange{
+					Start: segmentIndex,
+					End:   segmentIndex + 1,
+				})
+			}
 		}
 	}
 	sort.Slice(oldRanges, func(i, j int) bool {
 		return oldRanges[i].Start < oldRanges[j].Start
 	})
-
 	return oldRanges
 }
 
