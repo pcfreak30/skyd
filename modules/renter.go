@@ -245,6 +245,8 @@ type DirectoryInfo struct {
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
+	AggregateUploadProgress      float64   `json:"aggregateuploadprogress"`
+	AggregateUploadedBytes       uint64    `json:"agreggateuploadedbytes"`
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree

@@ -297,6 +297,8 @@ func (sds *SiaDirSet) readLockDirInfo(siaPath modules.SiaPath) (modules.Director
 		AggregateNumSubDirs:          metadata.AggregateNumSubDirs,
 		AggregateSize:                metadata.AggregateSize,
 		AggregateStuckHealth:         metadata.AggregateStuckHealth,
+		AggregateUploadProgress:      metadata.AggregateUploadProgress,
+		AggregateUploadedBytes:       metadata.AggregateUploadedBytes,
 
 		// SiaDir Fields
 		Health:              metadata.Health,
