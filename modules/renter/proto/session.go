@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math/bits"
 	"net"
@@ -307,9 +308,9 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	oldRoot, newRoot := contract.LastRevision().NewFileMerkleRoot, merkleResp.NewMerkleRoot
 	if !crypto.VerifyDiffProof(proofRanges, numSectors*(modules.SectorSize/crypto.SegmentSize), proofHashes, leafHashes, oldRoot) {
 		if true {
-			println("leafhashes", len(leafHashes))
-			println("proofranges", len(proofRanges))
-			println("proofranges", len(proofRanges))
+			fmt.Println("leafhashes", leafHashes)
+			fmt.Println("proofHashes", proofHashes)
+			fmt.Println("proofranges", proofRanges)
 			panic("proof failed")
 		}
 		return modules.RenterContract{}, errors.New("invalid Merkle proof for old root")

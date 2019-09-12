@@ -3,6 +3,7 @@ package host
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/bits"
 	"sort"
 	"sync/atomic"
@@ -345,12 +346,19 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		if len(segmentProofRanges) == 0 {
 			oldSectorRoots = s.so.SectorRoots
 		}
+		println("  segmentProofRanges", len(segmentProofRanges))
+		println("  oldSectorRoots", len(oldSectorRoots))
+		println("  modifiedSegments", len(modifiedSegments))
+		println("  oldNumSectors", oldNumSectors)
+		println("  newNumSectors", len(sectorsGained))
 		// Construct the Merkle proof.
 		merkleResp = modules.LoopWriteMerkleProof{
 			OldSubtreeHashes: crypto.MerkleDiffProof(segmentProofRanges, oldSectorRoots, modifiedSegments, int(modules.SectorSize/crypto.SegmentSize)),
 			OldLeafHashes:    oldLeafHashes,
 			NewMerkleRoot:    newMerkleRoot,
 		}
+		fmt.Println("    OldSubtreeHashes", merkleResp.OldSubtreeHashes)
+		fmt.Println("    OldLeafHashes", merkleResp.OldLeafHashes)
 		// Calculate bandwidth cost of proof.
 		proofSize := crypto.HashSize * (len(merkleResp.OldSubtreeHashes) + len(oldLeafHashes) + 1)
 		if proofSize < modules.RPCMinLen {
