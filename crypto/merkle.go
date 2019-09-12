@@ -225,7 +225,7 @@ func MerkleDiffProof(sectorRanges []ProofRange, sectorRoots []Hash, modifiedSegm
 	}
 	// Next build the proofs for the sectors.
 	sh := merkletree.NewMixedSubtreeHasher(hashesToSlices(sectorRoots), io.MultiReader(segmentReaders...), leavesPerSector, SegmentSize, NewHash())
-	proof, _ := merkletree.BuildDiffProof(sectorRanges, sh, uint64(len(sectorRoots)))
+	proof, _ := merkletree.BuildDiffProof(sectorRanges, sh, uint64(len(sectorRoots)*leavesPerSector))
 	proofHashes := make([]Hash, len(proof))
 	for i := range proofHashes {
 		copy(proofHashes[i][:], proof[i])
