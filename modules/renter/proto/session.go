@@ -318,7 +318,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// ...then by modifying the leaves and verifying the new Merkle root
 	leafHashes = modifyLeaves(leafHashes, actions, numSectors)
 	proofRanges = modifyProofRanges(proofRanges, actions, numSectors)
-	if !crypto.VerifyDiffProof(proofRanges, numSectors, proofHashes, leafHashes, newRoot) {
+	if !crypto.VerifyDiffProof(proofRanges, numSectors*(modules.SectorSize/crypto.SegmentSize), proofHashes, leafHashes, newRoot) {
 		return modules.RenterContract{}, errors.New("invalid Merkle proof for new root")
 	}
 
