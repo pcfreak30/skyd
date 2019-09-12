@@ -961,12 +961,13 @@ func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint6
 // modifyProofRanges modifies the proof ranges produced by calculateProofRanges
 // to verify a post-modification Merkle diff proof for the specified actions.
 func modifyProofRanges(proofRanges []crypto.ProofRange, actions []modules.LoopWriteAction, numSectors uint64) []crypto.ProofRange {
+	leavesPerSector := modules.SectorSize / crypto.SegmentSize
 	for _, action := range actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
 			proofRanges = append(proofRanges, crypto.ProofRange{
-				Start: numSectors,
-				End:   numSectors + 1,
+				Start: numSectors * leavesPerSector,
+				End:   numSectors*leavesPerSector + leavesPerSector,
 			})
 			numSectors++
 

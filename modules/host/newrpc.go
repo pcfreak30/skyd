@@ -3,7 +3,6 @@ package host
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/bits"
 	"sort"
 	"sync/atomic"
@@ -329,7 +328,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			for index := currentSector; index < sectorIndex; index++ {
 				oldSectorRoots = append(oldSectorRoots, s.so.SectorRoots[index])
 			}
-			currentSector = r.End
+			currentSector = r.End / segmentsPerSector
 			// add sector hash
 			if r.End-r.Start == segmentsPerSector {
 				oldLeafHashes = append(oldLeafHashes, s.so.SectorRoots[sectorIndex])
@@ -342,23 +341,15 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 				modifiedSegments = append(modifiedSegments, segment)
 			}
 		}
-		// If there are no proof ranges, oldSectorRoots consists only of sector roots.
-		if len(segmentProofRanges) == 0 {
-			oldSectorRoots = s.so.SectorRoots
+		for index := currentSector; index < oldNumSectors; index++ {
+			oldSectorRoots = append(oldSectorRoots, s.so.SectorRoots[index])
 		}
-		println("  segmentProofRanges", len(segmentProofRanges))
-		println("  oldSectorRoots", len(oldSectorRoots))
-		println("  modifiedSegments", len(modifiedSegments))
-		println("  oldNumSectors", oldNumSectors)
-		println("  newNumSectors", len(sectorsGained))
 		// Construct the Merkle proof.
 		merkleResp = modules.LoopWriteMerkleProof{
 			OldSubtreeHashes: crypto.MerkleDiffProof(segmentProofRanges, oldSectorRoots, modifiedSegments, int(modules.SectorSize/crypto.SegmentSize)),
 			OldLeafHashes:    oldLeafHashes,
 			NewMerkleRoot:    newMerkleRoot,
 		}
-		fmt.Println("    OldSubtreeHashes", merkleResp.OldSubtreeHashes)
-		fmt.Println("    OldLeafHashes", merkleResp.OldLeafHashes)
 		// Calculate bandwidth cost of proof.
 		proofSize := crypto.HashSize * (len(merkleResp.OldSubtreeHashes) + len(oldLeafHashes) + 1)
 		if proofSize < modules.RPCMinLen {
