@@ -911,8 +911,11 @@ func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint6
 			sectorsChanged[sectorIndex] = struct{}{}
 
 			start := offset / crypto.SegmentSize
-			end := offset + length/crypto.SegmentSize
-			for segmentIndex := start; segmentIndex <= end; segmentIndex++ {
+			end := (offset + length) / crypto.SegmentSize
+			if (offset+length)%crypto.SegmentSize != 0 {
+				end++
+			}
+			for segmentIndex := start; segmentIndex < end; segmentIndex++ {
 				if _, exists := segmentsChanged[sectorIndex]; !exists {
 					segmentsChanged[sectorIndex] = make(map[uint64]struct{})
 				}
@@ -941,8 +944,8 @@ func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint6
 		if segments, exists := segmentsChanged[index]; exists {
 			for segmentIndex := range segments {
 				oldRanges = append(oldRanges, crypto.ProofRange{
-					Start: segmentIndex,
-					End:   segmentIndex + 1,
+					Start: index*(modules.SectorSize/crypto.SegmentSize) + segmentIndex,
+					End:   index*(modules.SectorSize/crypto.SegmentSize) + segmentIndex + 1,
 				})
 			}
 		}

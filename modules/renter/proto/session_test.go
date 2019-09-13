@@ -46,14 +46,42 @@ func TestCalculateProofRanges(t *testing.T) {
 			},
 		},
 		{
-			desc:       "AppendSwapTrim",
+			desc:       "Update",
+			numSectors: 4,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionUpdate, A: 0, B: 0, Data: make([]byte, crypto.SegmentSize)},
+				{Type: modules.WriteActionUpdate, A: 1, B: crypto.SegmentSize, Data: make([]byte, crypto.SegmentSize)},
+
+				{Type: modules.WriteActionUpdate, A: 0, B: 1, Data: make([]byte, crypto.SegmentSize)},
+				{Type: modules.WriteActionUpdate, A: 1, B: 1 + crypto.SegmentSize, Data: make([]byte, crypto.SegmentSize)},
+
+				{Type: modules.WriteActionUpdate, A: 2, B: 0, Data: make([]byte, crypto.SegmentSize+1)},
+				{Type: modules.WriteActionUpdate, A: 3, B: crypto.SegmentSize, Data: make([]byte, crypto.SegmentSize+1)},
+			},
+			exp: []crypto.ProofRange{
+				{Start: 0, End: 1},
+				{Start: 1, End: 2},
+				{Start: 1*leavesPerSector + 1, End: 1*leavesPerSector + 2},
+				{Start: 1*leavesPerSector + 2, End: 1*leavesPerSector + 3},
+				{Start: 2 * leavesPerSector, End: 2*leavesPerSector + 1},
+				{Start: 2*leavesPerSector + 1, End: 2*leavesPerSector + 2},
+				{Start: 3*leavesPerSector + 1, End: 3*leavesPerSector + 2},
+				{Start: 3*leavesPerSector + 2, End: 3*leavesPerSector + 3},
+			},
+		},
+		{
+			desc:       "AppendSwapTrimUpdate",
 			numSectors: 12,
 			actions: []modules.LoopWriteAction{
 				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
 				{Type: modules.WriteActionSwap, A: 5, B: 12},
 				{Type: modules.WriteActionTrim, A: 1},
+				{Type: modules.WriteActionUpdate, A: 1, B: 1, Data: make([]byte, 2*crypto.SegmentSize)},
 			},
 			exp: []crypto.ProofRange{
+				{Start: 1 * leavesPerSector, End: 1*leavesPerSector + 1},
+				{Start: 1*leavesPerSector + 1, End: 1*leavesPerSector + 2},
+				{Start: 1*leavesPerSector + 2, End: 1*leavesPerSector + 3},
 				{Start: 5 * leavesPerSector, End: 6 * leavesPerSector},
 			},
 		},
@@ -65,6 +93,7 @@ func TestCalculateProofRanges(t *testing.T) {
 				{Type: modules.WriteActionTrim, A: 1},
 				{Type: modules.WriteActionSwap, A: 7, B: 10},
 				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
+				{Type: modules.WriteActionUpdate, A: 11, B: 0, Data: []byte{3, 2, 1}},
 				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
 			},
 			exp: []crypto.ProofRange{
