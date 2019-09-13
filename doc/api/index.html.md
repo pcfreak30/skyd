@@ -2321,7 +2321,9 @@ Path to the directory on the sia netork
       "aggregatenumfiles":        2,    // uint64
       "aggregatenumstuckchunks":  4,    // uint64
       "aggregatesize":            4096, // uint64
-      "heatlh":                   1.0,  // float64
+      "aggregateuploadprogress":  0.5,  // float64
+      "aggregateuploadedbytes":   2048, // uint64
+      "health":                   1.0,  // float64
       "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
       "maxhealth":                0.5,  // float64
       "minredundancy":            2.6,  // float64
@@ -2345,7 +2347,14 @@ the total number of files in the sub directory tree
 **aggregatenumstuckchunks** | uint64  
 the total number of stuck chunks in the sub directory tree
 
-**aggregatenumsize** | uint64  
+**aggregatesize** | uint64
+total size
+
+**aggregateuploadprogress** | float64
+the fraction of the total number of bytes in the sub directory tree that have been uploaded
+
+**aggregateuploadedbytes** | uint64
+the total number of bytes uploaded in this sub directory tree
 
 **health** | float64  
 This is the worst health of any of the files or subdirectories. Health is the percent of parity pieces missing.
