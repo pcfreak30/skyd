@@ -71,18 +71,18 @@ func TestSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	// modify a random part of the sectors.
-	offset := fastrand.Intn(len(sector)/crypto.SegmentSize-1) * crypto.SegmentSize
-	length := fastrand.Intn(len(sector)/crypto.SegmentSize-1-offset/crypto.SegmentSize) * crypto.SegmentSize
+	offset := 0  //fastrand.Intn(len(sector)/crypto.SegmentSize-1) * crypto.SegmentSize
+	length := 64 //fastrand.Intn(len(sector)/crypto.SegmentSize-1-offset/crypto.SegmentSize) * crypto.SegmentSize
 	data := fastrand.Bytes(length)
-	println("offset length", offset, length)
 	copy(sector[offset:offset+length], data)
+	root = crypto.MerkleRoot(sector)
 	_, err = s.Update(data, 0, uint64(offset))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to update sector %v at offset %v with data of length %v: %v", 0, offset, len(data), err)
 	}
 	_, err = s.Update(data, 1, uint64(offset))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to update sector %v at offset %v with data of length %v: %v", 1, offset, len(data), err)
 	}
 
 	// download the sector

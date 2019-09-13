@@ -234,16 +234,12 @@ func MerkleDiffProof(sectorRanges []ProofRange, sectorRoots []Hash, modifiedSegm
 }
 
 // VerifyDiffProof verifies a proof produced by MerkleDiffProof.
-func VerifyDiffProof(ranges []ProofRange, modifiedSegments [][]byte, numLeaves uint64, leavesPerNode int, proofHashes, leafHashes []Hash, root Hash) bool {
+func VerifyDiffProof(ranges []ProofRange, numLeaves uint64, leavesPerNode int, proofHashes, leafHashes []Hash, root Hash) bool {
 	rootBytes := root[:]
 	if root == (Hash{}) {
 		rootBytes = nil // empty trees hash to nil, not 32 zeros
 	}
-	segmentReaders := make([]io.Reader, 0, len(modifiedSegments))
-	for _, s := range modifiedSegments {
-		segmentReaders = append(segmentReaders, bytes.NewReader(s))
-	}
-	sth := merkletree.NewMixedSubtreeHasher(hashesToSlices(leafHashes), io.MultiReader(segmentReaders...), leavesPerNode, SegmentSize, NewHash())
+	sth := merkletree.NewMixedSubtreeHasherVerifier(hashesToSlices(leafHashes), leavesPerNode, NewHash())
 	ok, _ := merkletree.VerifyDiffProof(sth, numLeaves, NewHash(), ranges, hashesToSlices(proofHashes), rootBytes)
 	return ok
 }

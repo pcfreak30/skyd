@@ -202,7 +202,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 
 		case modules.WriteActionUpdate:
 			sectorIndex, offset, length, data := action.A, action.B, uint64(len(action.Data)), bytes.NewBuffer(action.Data)
-			bandwidthPrice = s.host.UploadBandwidthPrice.Mul64(uint64(len(action.Data)))
+			bandwidthPrice = bandwidthPrice.Add(s.host.UploadBandwidthPrice.Mul64(uint64(len(action.Data))))
 			start := (modules.SectorSize/crypto.SegmentSize)*sectorIndex + offset/crypto.SegmentSize
 			end := (modules.SectorSize/crypto.SegmentSize)*sectorIndex + (offset+length)/crypto.SegmentSize
 			if (offset+length)%crypto.SegmentSize != 0 {
@@ -214,24 +214,6 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 		default:
 			build.Critical("unknown action type", action.Type)
 		}
-	}
-
-	// Sort the modified segments by index.
-	type segment struct {
-		idx     uint64
-		segment []byte
-	}
-	sortedSegments := make([]segment, 0, len(modifiedSegments))
-	for idx, s := range modifiedSegments {
-		sortedSegments = append(sortedSegments, segment{idx: idx, segment: s})
-	}
-	sort.Slice(sortedSegments, func(i, j int) bool {
-		return sortedSegments[i].idx < sortedSegments[j].idx
-	})
-	// Convert the segments into a [][]byte.
-	segments := make([][]byte, 0, len(sortedSegments))
-	for _, ss := range sortedSegments {
-		segments = append(segments, ss.segment)
 	}
 
 	if newFileSize > contract.LastRevision().NewFileSize {
@@ -341,13 +323,13 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	leafHashes := merkleResp.OldLeafHashes
 	oldRoot, newRoot := contract.LastRevision().NewFileMerkleRoot, merkleResp.NewMerkleRoot
 	leavesPerSector := modules.SectorSize / crypto.SegmentSize
-	if !crypto.VerifyDiffProof(proofRanges, nil, numSectors*leavesPerSector, int(leavesPerSector), proofHashes, leafHashes, oldRoot) {
+	if !crypto.VerifyDiffProof(proofRanges, numSectors*leavesPerSector, int(leavesPerSector), proofHashes, leafHashes, oldRoot) {
 		return modules.RenterContract{}, errors.New("invalid Merkle proof for old root")
 	}
 	// ...then by modifying the leaves and verifying the new Merkle root
-	leafHashes = modifyLeaves(leafHashes, actions, numSectors, nil)
+	leafHashes = modifyLeaves(leafHashes, actions, numSectors, modifiedSegments)
 	proofRanges = modifyProofRanges(proofRanges, actions, numSectors)
-	if !crypto.VerifyDiffProof(proofRanges, segments, numSectors*leavesPerSector, int(leavesPerSector), proofHashes, leafHashes, newRoot) {
+	if !crypto.VerifyDiffProof(proofRanges, numSectors*leavesPerSector, int(leavesPerSector), proofHashes, leafHashes, newRoot) {
 		return modules.RenterContract{}, errors.New("invalid Merkle proof for new root")
 	}
 
@@ -982,6 +964,7 @@ func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint6
 					End:   index*(modules.SectorSize/crypto.SegmentSize) + segmentIndex + 1,
 				})
 			}
+			continue
 		}
 	}
 	sort.Slice(oldRanges, func(i, j int) bool {
