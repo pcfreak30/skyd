@@ -161,6 +161,40 @@ func TestModifyProofRanges(t *testing.T) {
 			exp: []crypto.ProofRange{},
 		},
 		{
+			desc:       "Update",
+			numSectors: 4,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionUpdate, A: 0, B: 0, Data: make([]byte, crypto.SegmentSize)},
+				{Type: modules.WriteActionUpdate, A: 1, B: crypto.SegmentSize, Data: make([]byte, crypto.SegmentSize)},
+
+				{Type: modules.WriteActionUpdate, A: 0, B: 1, Data: make([]byte, crypto.SegmentSize)},
+				{Type: modules.WriteActionUpdate, A: 1, B: 1 + crypto.SegmentSize, Data: make([]byte, crypto.SegmentSize)},
+
+				{Type: modules.WriteActionUpdate, A: 2, B: 0, Data: make([]byte, crypto.SegmentSize+1)},
+				{Type: modules.WriteActionUpdate, A: 3, B: crypto.SegmentSize, Data: make([]byte, crypto.SegmentSize+1)},
+			},
+			proofRanges: []crypto.ProofRange{
+				{Start: 0, End: 1},
+				{Start: 1, End: 2},
+				{Start: 1*leavesPerSector + 1, End: 1*leavesPerSector + 2},
+				{Start: 1*leavesPerSector + 2, End: 1*leavesPerSector + 3},
+				{Start: 2 * leavesPerSector, End: 2*leavesPerSector + 1},
+				{Start: 2*leavesPerSector + 1, End: 2*leavesPerSector + 2},
+				{Start: 3*leavesPerSector + 1, End: 3*leavesPerSector + 2},
+				{Start: 3*leavesPerSector + 2, End: 3*leavesPerSector + 3},
+			},
+			exp: []crypto.ProofRange{
+				{Start: 0, End: 1},
+				{Start: 1, End: 2},
+				{Start: 1*leavesPerSector + 1, End: 1*leavesPerSector + 2},
+				{Start: 1*leavesPerSector + 2, End: 1*leavesPerSector + 3},
+				{Start: 2 * leavesPerSector, End: 2*leavesPerSector + 1},
+				{Start: 2*leavesPerSector + 1, End: 2*leavesPerSector + 2},
+				{Start: 3*leavesPerSector + 1, End: 3*leavesPerSector + 2},
+				{Start: 3*leavesPerSector + 2, End: 3*leavesPerSector + 3},
+			},
+		},
+		{
 			desc:       "AppendSwapTrim",
 			numSectors: 12,
 			actions: []modules.LoopWriteAction{
@@ -179,6 +213,8 @@ func TestModifyProofRanges(t *testing.T) {
 			desc:       "SwapTrimSwapAppendAppend",
 			numSectors: 12,
 			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionUpdate, A: 0, B: 0, Data: make([]byte, crypto.SegmentSize)},
+				{Type: modules.WriteActionUpdate, A: 1, B: crypto.SegmentSize, Data: make([]byte, crypto.SegmentSize)},
 				{Type: modules.WriteActionSwap, A: 6, B: 11},
 				{Type: modules.WriteActionTrim, A: 1},
 				{Type: modules.WriteActionSwap, A: 7, B: 10},
@@ -186,12 +222,16 @@ func TestModifyProofRanges(t *testing.T) {
 				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
 			},
 			proofRanges: []crypto.ProofRange{
+				{Start: 0, End: 1},
+				{Start: 1, End: 2},
 				{Start: 6 * leavesPerSector, End: 7 * leavesPerSector},
 				{Start: 7 * leavesPerSector, End: 8 * leavesPerSector},
 				{Start: 10 * leavesPerSector, End: 11 * leavesPerSector},
 				{Start: 11 * leavesPerSector, End: 12 * leavesPerSector},
 			},
 			exp: []crypto.ProofRange{
+				{Start: 0, End: 1},
+				{Start: 1, End: 2},
 				{Start: 6 * leavesPerSector, End: 7 * leavesPerSector},
 				{Start: 7 * leavesPerSector, End: 8 * leavesPerSector},
 				{Start: 10 * leavesPerSector, End: 11 * leavesPerSector},
