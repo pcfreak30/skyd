@@ -307,7 +307,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	leafHashes := merkleResp.OldLeafHashes
 	oldRoot, newRoot := contract.LastRevision().NewFileMerkleRoot, merkleResp.NewMerkleRoot
 	leavesPerSector := modules.SectorSize / crypto.SegmentSize
-	if !crypto.VerifyDiffProof(proofRanges, numSectors*leavesPerSector, int(leavesPerSector) ,proofHashes, leafHashes, oldRoot) {
+	if !crypto.VerifyDiffProof(proofRanges, numSectors*leavesPerSector, int(leavesPerSector), proofHashes, leafHashes, oldRoot) {
 		return modules.RenterContract{}, errors.New("invalid Merkle proof for old root")
 	}
 	// ...then by modifying the leaves and verifying the new Merkle root

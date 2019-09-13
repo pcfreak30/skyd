@@ -9,6 +9,7 @@ import (
 )
 
 func TestCalculateProofRanges(t *testing.T) {
+	leavesPerSector := modules.SectorSize / crypto.SegmentSize
 	tests := []struct {
 		desc       string
 		numSectors uint64
@@ -30,8 +31,8 @@ func TestCalculateProofRanges(t *testing.T) {
 				{Type: modules.WriteActionSwap, A: 1, B: 2},
 			},
 			exp: []crypto.ProofRange{
-				{Start: 1, End: 2},
-				{Start: 2, End: 3},
+				{Start: 1 * leavesPerSector, End: 2 * leavesPerSector},
+				{Start: 2 * leavesPerSector, End: 3 * leavesPerSector},
 			},
 		},
 		{
@@ -41,7 +42,7 @@ func TestCalculateProofRanges(t *testing.T) {
 				{Type: modules.WriteActionTrim, A: 1},
 			},
 			exp: []crypto.ProofRange{
-				{Start: 2, End: 3},
+				{Start: 2 * leavesPerSector, End: 3 * leavesPerSector},
 			},
 		},
 		{
@@ -53,7 +54,7 @@ func TestCalculateProofRanges(t *testing.T) {
 				{Type: modules.WriteActionTrim, A: 1},
 			},
 			exp: []crypto.ProofRange{
-				{Start: 5, End: 6},
+				{Start: 5 * leavesPerSector, End: 6 * leavesPerSector},
 			},
 		},
 		{
@@ -67,10 +68,10 @@ func TestCalculateProofRanges(t *testing.T) {
 				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
 			},
 			exp: []crypto.ProofRange{
-				{Start: 6, End: 7},
-				{Start: 7, End: 8},
-				{Start: 10, End: 11},
-				{Start: 11, End: 12},
+				{Start: 6 * leavesPerSector, End: 7 * leavesPerSector},
+				{Start: 7 * leavesPerSector, End: 8 * leavesPerSector},
+				{Start: 10 * leavesPerSector, End: 11 * leavesPerSector},
+				{Start: 11 * leavesPerSector, End: 12 * leavesPerSector},
 			},
 		},
 	}
@@ -85,6 +86,7 @@ func TestCalculateProofRanges(t *testing.T) {
 }
 
 func TestModifyProofRanges(t *testing.T) {
+	leavesPerSector := modules.SectorSize / crypto.SegmentSize
 	tests := []struct {
 		desc        string
 		numSectors  uint64
@@ -100,7 +102,7 @@ func TestModifyProofRanges(t *testing.T) {
 			},
 			proofRanges: nil,
 			exp: []crypto.ProofRange{
-				{Start: 2, End: 3},
+				{Start: 2 * leavesPerSector, End: 3 * leavesPerSector},
 			},
 		},
 		{
@@ -110,12 +112,12 @@ func TestModifyProofRanges(t *testing.T) {
 				{Type: modules.WriteActionSwap, A: 1, B: 2},
 			},
 			proofRanges: []crypto.ProofRange{
-				{Start: 1, End: 2},
-				{Start: 2, End: 3},
+				{Start: 1 * leavesPerSector, End: 2 * leavesPerSector},
+				{Start: 2 * leavesPerSector, End: 3 * leavesPerSector},
 			},
 			exp: []crypto.ProofRange{
-				{Start: 1, End: 2},
-				{Start: 2, End: 3},
+				{Start: 1 * leavesPerSector, End: 2 * leavesPerSector},
+				{Start: 2 * leavesPerSector, End: 3 * leavesPerSector},
 			},
 		},
 		{
@@ -125,7 +127,7 @@ func TestModifyProofRanges(t *testing.T) {
 				{Type: modules.WriteActionTrim, A: 1},
 			},
 			proofRanges: []crypto.ProofRange{
-				{Start: 2, End: 3},
+				{Start: 2 * leavesPerSector, End: 3 * leavesPerSector},
 			},
 			exp: []crypto.ProofRange{},
 		},
@@ -138,10 +140,10 @@ func TestModifyProofRanges(t *testing.T) {
 				{Type: modules.WriteActionTrim, A: 1},
 			},
 			proofRanges: []crypto.ProofRange{
-				{Start: 5, End: 6},
+				{Start: 5 * leavesPerSector, End: 6 * leavesPerSector},
 			},
 			exp: []crypto.ProofRange{
-				{Start: 5, End: 6},
+				{Start: 5 * leavesPerSector, End: 6 * leavesPerSector},
 			},
 		},
 		{
@@ -155,17 +157,17 @@ func TestModifyProofRanges(t *testing.T) {
 				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
 			},
 			proofRanges: []crypto.ProofRange{
-				{Start: 6, End: 7},
-				{Start: 7, End: 8},
-				{Start: 10, End: 11},
-				{Start: 11, End: 12},
+				{Start: 6 * leavesPerSector, End: 7 * leavesPerSector},
+				{Start: 7 * leavesPerSector, End: 8 * leavesPerSector},
+				{Start: 10 * leavesPerSector, End: 11 * leavesPerSector},
+				{Start: 11 * leavesPerSector, End: 12 * leavesPerSector},
 			},
 			exp: []crypto.ProofRange{
-				{Start: 6, End: 7},
-				{Start: 7, End: 8},
-				{Start: 10, End: 11},
-				{Start: 11, End: 12},
-				{Start: 12, End: 13},
+				{Start: 6 * leavesPerSector, End: 7 * leavesPerSector},
+				{Start: 7 * leavesPerSector, End: 8 * leavesPerSector},
+				{Start: 10 * leavesPerSector, End: 11 * leavesPerSector},
+				{Start: 11 * leavesPerSector, End: 12 * leavesPerSector},
+				{Start: 12 * leavesPerSector, End: 13 * leavesPerSector},
 			},
 		},
 	}
