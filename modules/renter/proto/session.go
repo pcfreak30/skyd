@@ -132,6 +132,13 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	return rc, crypto.MerkleRoot(data), err
 }
 
+// Update calls the Write RPC with a single Update action, returning the updated
+// contract.
+func (s *Session) Update(data []byte, sectorIndex, sectorOffset uint64) (modules.RenterContract, error) {
+	rc, err := s.Write([]modules.LoopWriteAction{{Type: modules.WriteActionUpdate, Data: data, A: sectorIndex, B: sectorOffset}})
+	return rc, err
+}
+
 // Replace calls the Write RPC with a series of actions that replace the sector
 // at the specified index with data, returning the updated contract and the
 // Merkle root of the new sector.
@@ -181,6 +188,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// calculate the new Merkle root set and total cost/collateral
 	var bandwidthPrice, storagePrice, collateral types.Currency
 	newFileSize := contract.LastRevision().NewFileSize
+	modifiedSegments := make(map[uint64][]byte)
 	for _, action := range actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
@@ -193,11 +201,37 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 		case modules.WriteActionSwap:
 
 		case modules.WriteActionUpdate:
+			sectorIndex, offset, length, data := action.A, action.B, uint64(len(action.Data)), bytes.NewBuffer(action.Data)
 			bandwidthPrice = s.host.UploadBandwidthPrice.Mul64(uint64(len(action.Data)))
-
+			start := (modules.SectorSize/crypto.SegmentSize)*sectorIndex + offset/crypto.SegmentSize
+			end := (modules.SectorSize/crypto.SegmentSize)*sectorIndex + (offset+length)/crypto.SegmentSize
+			if (offset+length)%crypto.SegmentSize != 0 {
+				end++
+			}
+			for segmentIndex := start; segmentIndex < end; segmentIndex++ {
+				modifiedSegments[segmentIndex] = data.Next(crypto.SegmentSize)
+			}
 		default:
 			build.Critical("unknown action type", action.Type)
 		}
+	}
+
+	// Sort the modified segments by index.
+	type segment struct {
+		idx     uint64
+		segment []byte
+	}
+	sortedSegments := make([]segment, 0, len(modifiedSegments))
+	for idx, s := range modifiedSegments {
+		sortedSegments = append(sortedSegments, segment{idx: idx, segment: s})
+	}
+	sort.Slice(sortedSegments, func(i, j int) bool {
+		return sortedSegments[i].idx < sortedSegments[j].idx
+	})
+	// Convert the segments into a [][]byte.
+	segments := make([][]byte, 0, len(sortedSegments))
+	for _, ss := range sortedSegments {
+		segments = append(segments, ss.segment)
 	}
 
 	if newFileSize > contract.LastRevision().NewFileSize {
@@ -307,13 +341,13 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	leafHashes := merkleResp.OldLeafHashes
 	oldRoot, newRoot := contract.LastRevision().NewFileMerkleRoot, merkleResp.NewMerkleRoot
 	leavesPerSector := modules.SectorSize / crypto.SegmentSize
-	if !crypto.VerifyDiffProof(proofRanges, numSectors*leavesPerSector, int(leavesPerSector), proofHashes, leafHashes, oldRoot) {
+	if !crypto.VerifyDiffProof(proofRanges, nil, numSectors*leavesPerSector, int(leavesPerSector), proofHashes, leafHashes, oldRoot) {
 		return modules.RenterContract{}, errors.New("invalid Merkle proof for old root")
 	}
 	// ...then by modifying the leaves and verifying the new Merkle root
-	leafHashes = modifyLeaves(leafHashes, actions, numSectors)
+	leafHashes = modifyLeaves(leafHashes, actions, numSectors, nil)
 	proofRanges = modifyProofRanges(proofRanges, actions, numSectors)
-	if !crypto.VerifyDiffProof(proofRanges, numSectors*leavesPerSector, int(leavesPerSector), proofHashes, leafHashes, newRoot) {
+	if !crypto.VerifyDiffProof(proofRanges, segments, numSectors*leavesPerSector, int(leavesPerSector), proofHashes, leafHashes, newRoot) {
 		return modules.RenterContract{}, errors.New("invalid Merkle proof for new root")
 	}
 
@@ -979,21 +1013,37 @@ func modifyProofRanges(proofRanges []crypto.ProofRange, actions []modules.LoopWr
 
 // modifyLeaves modifies the leaf hashes of a Merkle diff proof to verify a
 // post-modification Merkle diff proof for the specified actions.
-func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, numSectors uint64) []crypto.Hash {
-	// determine which sector index corresponds to each leaf hash
+func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, numSectors uint64, modifiedSegments map[uint64][]byte) []crypto.Hash {
+	// determine which segment index corresponds to each leaf hash
+	leavesPerSector := modules.SectorSize / crypto.SegmentSize
 	var indices []uint64
+	fullSectorChanged := make(map[uint64]struct{})
 	for _, action := range actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
-			indices = append(indices, numSectors)
+			indices = append(indices, numSectors*leavesPerSector)
+			fullSectorChanged[numSectors] = struct{}{}
 			numSectors++
 		case modules.WriteActionTrim:
 			for j := uint64(0); j < action.A; j++ {
-				indices = append(indices, numSectors)
+				indices = append(indices, numSectors*leavesPerSector)
+				fullSectorChanged[numSectors] = struct{}{}
 				numSectors--
 			}
 		case modules.WriteActionSwap:
-			indices = append(indices, action.A, action.B)
+			indices = append(indices, action.A*leavesPerSector, action.B*leavesPerSector)
+			fullSectorChanged[action.A] = struct{}{}
+			fullSectorChanged[action.B] = struct{}{}
+		case modules.WriteActionUpdate:
+			sectorIndex, offset, length := action.A, action.B, uint64(len(action.Data))
+			start := sectorIndex*leavesPerSector + offset/crypto.SegmentSize
+			end := sectorIndex*leavesPerSector + (offset+length)/crypto.SegmentSize
+			if (offset+length)%crypto.SegmentSize != 0 {
+				end++
+			}
+			for segmentIndex := start; segmentIndex < end; segmentIndex++ {
+				indices = append(indices, segmentIndex)
+			}
 		}
 	}
 	sort.Slice(indices, func(i, j int) bool {
@@ -1003,6 +1053,9 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 	for i, index := range indices {
 		if i > 0 && index == indices[i-1] {
 			continue // remove duplicates
+		}
+		if _, ok := fullSectorChanged[index/leavesPerSector]; ok && index%leavesPerSector != 0 {
+			continue // skip partial sector updates if the whole sector was modified.
 		}
 		indexMap[index] = i
 	}
@@ -1016,11 +1069,20 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 			leafHashes = leafHashes[:uint64(len(leafHashes))-action.A]
 
 		case modules.WriteActionSwap:
-			i, j := indexMap[action.A], indexMap[action.B]
+			i, j := indexMap[action.A*leavesPerSector], indexMap[action.B*leavesPerSector]
 			leafHashes[i], leafHashes[j] = leafHashes[j], leafHashes[i]
 
 		case modules.WriteActionUpdate:
-			panic("update not supported")
+			sectorIndex, offset, length := action.A, action.B, uint64(len(action.Data))
+			start := sectorIndex*leavesPerSector + offset/crypto.SegmentSize
+			end := sectorIndex*leavesPerSector + (offset+length)/crypto.SegmentSize
+			if (offset+length)%crypto.SegmentSize != 0 {
+				end++
+			}
+			for segmentIndex := start; segmentIndex < end; segmentIndex++ {
+				fmt.Println("merkleroot", crypto.MerkleRoot(modifiedSegments[segmentIndex]))
+				leafHashes[indexMap[segmentIndex]] = crypto.MerkleRoot(modifiedSegments[segmentIndex])
+			}
 		}
 	}
 	return leafHashes

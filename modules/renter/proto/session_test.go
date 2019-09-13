@@ -252,11 +252,12 @@ func TestModifyProofRanges(t *testing.T) {
 
 func TestModifyLeafHashes(t *testing.T) {
 	tests := []struct {
-		desc       string
-		numSectors uint64
-		actions    []modules.LoopWriteAction
-		leaves     []crypto.Hash
-		exp        []crypto.Hash
+		desc             string
+		numSectors       uint64
+		actions          []modules.LoopWriteAction
+		leaves           []crypto.Hash
+		exp              []crypto.Hash
+		modifiedSegments map[uint64][]byte
 	}{
 		{
 			desc:       "Append",
@@ -286,6 +287,18 @@ func TestModifyLeafHashes(t *testing.T) {
 			exp:    []crypto.Hash{},
 		},
 		{
+			desc:       "Update",
+			numSectors: 3,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionUpdate, A: 0, B: 0, Data: make([]byte, crypto.SegmentSize)},
+			},
+			leaves: []crypto.Hash{{1}},
+			exp:    []crypto.Hash{crypto.MerkleRoot(make([]byte, crypto.SegmentSize))},
+			modifiedSegments: map[uint64][]byte{
+				0: make([]byte, crypto.SegmentSize),
+			},
+		},
+		{
 			desc:       "AppendSwapTrim",
 			numSectors: 12,
 			actions: []modules.LoopWriteAction{
@@ -312,7 +325,7 @@ func TestModifyLeafHashes(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
-			res := modifyLeaves(test.leaves, test.actions, test.numSectors)
+			res := modifyLeaves(test.leaves, test.actions, test.numSectors, test.modifiedSegments)
 			if !reflect.DeepEqual(res, test.exp) {
 				t.Errorf("incorrect modification: expected %v, got %v", test.exp, res)
 			}

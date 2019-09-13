@@ -225,7 +225,11 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			wholeSectorsChanged[j] = struct{}{}
 
 		case modules.WriteActionUpdate:
-			sectorIndex, offset := action.A, action.B
+			sectorIndex, offset, length := action.A, action.B, uint64(len(action.Data))
+			if uint64(len(action.Data)) > modules.SectorSize || len(action.Data) % crypto.SegmentSize != 0 {
+				s.writeError(errBadSectorSize)
+				return errBadSectorSize
+			}
 			if sectorIndex >= uint64(len(newRoots)) {
 				err := errors.New("illegal sector index or offset")
 				s.writeError(err)
@@ -242,13 +246,15 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			}
 			// Remember which sector and segments changed.
 			start := offset / crypto.SegmentSize
-			end := offset + uint64(len(action.Data))/crypto.SegmentSize
-			for segmentIndex := start; segmentIndex <= end; segmentIndex++ {
+			end := (offset + length) / crypto.SegmentSize
+			if (offset+length)%crypto.SegmentSize != 0 {
+				end++
+			}
+			for segmentIndex := start; segmentIndex < end; segmentIndex++ {
 				if _, exists := segmentsChanged[sectorIndex]; !exists {
 					segmentsChanged[sectorIndex] = make(map[uint64][]byte)
 				}
 				if _, exists := segmentsChanged[sectorIndex][segmentIndex]; !exists {
-					// Add the segment to the segmentsChanged map.
 					segmentsChanged[sectorIndex][segmentIndex] = append([]byte{}, sector[segmentIndex*crypto.SegmentSize:][:crypto.SegmentSize]...)
 				}
 			}

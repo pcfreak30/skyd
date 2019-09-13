@@ -70,6 +70,20 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// modify a random part of the sectors.
+	offset := fastrand.Intn(len(sector)/crypto.SegmentSize-1) * crypto.SegmentSize
+	length := fastrand.Intn(len(sector)/crypto.SegmentSize-1-offset/crypto.SegmentSize) * crypto.SegmentSize
+	data := fastrand.Bytes(length)
+	println("offset length", offset, length)
+	copy(sector[offset:offset+length], data)
+	_, err = s.Update(data, 0, uint64(offset))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Update(data, 1, uint64(offset))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// download the sector
 	_, dsector, err := s.ReadSection(root, 0, uint32(len(sector)))
