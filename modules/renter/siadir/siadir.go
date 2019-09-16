@@ -295,6 +295,8 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
 	sd.metadata.AggregateSize = metadata.AggregateSize
 	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
+	sd.metadata.AggregateUploadProgress = metadata.AggregateUploadProgress
+	sd.metadata.AggregateUploadedBytes = metadata.AggregateUploadedBytes
 
 	sd.metadata.Health = metadata.Health
 	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime

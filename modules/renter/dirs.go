@@ -34,6 +34,12 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, erro
 		return nil, err
 	}
 	defer r.tg.Done()
+
+	err := r.managedBubbleMetadata(siaPath)
+	if err != nil {
+		return nil, err
+	}
+
 	return r.staticDirSet.DirList(siaPath)
 }
 

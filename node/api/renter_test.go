@@ -71,7 +71,8 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 	}
 
 	// Create a file.
-	path := filepath.Join(build.SiaTestingDir, "api", t.Name(), name)
+	dirPath := filepath.Join(build.SiaTestingDir, "api", t.Name())
+	path := filepath.Join(dirPath, name)
 	err = createRandFile(path, size)
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +102,43 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		// Check the directory progress.
+		var rd RenterDirectory
+		st.getAPI("/renter/dir/", &rd)
+
+		if len(rd.Directories) != 1 {
+			t.Fatal("expected 1 dir", len(rd.Directories))
+		}
+		dirInfo := rd.Directories[0]
+
+		if dirInfo.AggregateUploadProgress < 0.9 {
+			t.Fatal("Expected file to be completely uploaded:", dirInfo.AggregateUploadProgress, dirInfo.AggregateUploadedBytes)
+		}
+		if dirInfo.AggregateSize != dirInfo.AggregateUploadedBytes {
+			t.Fatal("Expected all bytes to be uploaded: ", dirInfo.AggregateSize, dirInfo.AggregateUploadedBytes)
+		}
 	}
+
+	err = build.Retry(10, time.Second, func() error {
+		var rd RenterDirectory
+		st.getAPI("/renter/dir/", &rd)
+
+		if len(rd.Directories) != 1 {
+			return errors.New(fmt.Sprintf("expected 1 dir, got %d", len(rd.Directories)))
+		}
+		dirInfo := rd.Directories[0]
+
+		if dirInfo.AggregateUploadProgress < 0.9 {
+			errMsg := fmt.Sprintf("Expected file to be completely uploaded. Progress: %f UploadedBytes: %d", dirInfo.AggregateUploadProgress, dirInfo.AggregateUploadedBytes)
+			return errors.New(errMsg)
+		}
+		if dirInfo.AggregateSize != dirInfo.AggregateUploadedBytes {
+			errMsg := fmt.Sprintf("Expected all bytes to be uploaded: TotalSize: %d UploadedBytes: %d", dirInfo.AggregateSize, dirInfo.AggregateUploadedBytes)
+			return errors.New(errMsg)
+		}
+		return nil
+	})
 
 	return st, path
 }
