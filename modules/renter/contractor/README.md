@@ -52,7 +52,8 @@ The Contractor is split up into the following subsystems:
 **Key Files**
 - [allowance.go](./allowance.go)
 
-The allowance subsystem is used for setting and cancelling allowances.
+The allowance subsystem is used for setting and cancelling allowances. A change
+in allowance does not necessarily cause changes in contract formation.
 
 ### Exports
 - `SetAllowance` is exported by the `Contractor` and allows the caller to
@@ -90,38 +91,23 @@ storage capacity, and they should all end at the same height. Hosts are selected
 from the HostDB. There is no support for manually specifying hosts, but the
 Contractor will not form contracts with multiple hosts within the same subnet.
 
-### Contract Renewal
+**Contract Renewal**
 
 Contracts are automatically renewed by the Contractor at a safe threshold before
 they are set to expire. This value is set in the allowance. When contracts are
 renewed, they are renewed with the current allowance, which may differ from the
 allowance that was used to form the initial contracts. In general, this means
-that allowance modifications only take effect upon the next "contract cycle"
-(the exception being "sufficiently greater" modifications, as defined above).
+that allowance modifications only take effect upon the next "contract cycle".
 
-As an example, imagine that the user first sets an allowance that will cover 10
-contracts of 10 sectors each for 100 blocks. The Contractor will immediately
-form contracts with 10 hosts, paying each host enough to cover 10 sectors for
-100 blocks. Then, 20 blocks later, the user increases the allowance, such that
-it now covers 10 contracts of 20 sectors for 200 blocks.  The Contractor will
-immediately form contracts as follows:
+**Allowance-related Complexities**
+Changes in the allowance can cause changes in contract formation as follows:
+ - if the allowance is cancelled, than all contracts are cancelled
+ - if number of hosts is increased then more contracts will
+   be formed.
+ - if the period or renew window are changed such that some contracts expire
+   they will be renewed.
+ - if allowance funds are too low, new contracts will not be formed
 
-- 10 contracts will be formed with the current hosts, each covering 10 sectors
-  for 80 blocks.
-
-- 10 contracts will be formed with new hosts, each covering 20 sectors for 80
-  blocks.
-
-Note that these newly-formed contracts are timed to expire in sync with the
-existing contracts. This becomes the new "contract set," totaling 30 contracts,
-but only 20 hosts, with 20 sectors per host. When it comes time to renew these
-contracts, only one contract will be renewed per host, and the contracts will be
-renewed for the full 200-block duration. The new contract set will thus consist
-of 20 contracts, 20 hosts, 20 sectors, 200 blocks.
-
-On the other hand, if the allowance is decreased, no immediate action is taken.
-Why? Because the contracts have already been paid for. The new allowance will
-only take effect upon the next renewal.
 
 ### Other Maintenance Checks
 
