@@ -71,8 +71,8 @@ func TestSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	// modify a random part of the sectors.
-	offset := 0  //fastrand.Intn(len(sector)/crypto.SegmentSize-1) * crypto.SegmentSize
-	length := 64 //fastrand.Intn(len(sector)/crypto.SegmentSize-1-offset/crypto.SegmentSize) * crypto.SegmentSize
+	offset := fastrand.Intn(len(sector)/crypto.SegmentSize-1) * crypto.SegmentSize
+	length := fastrand.Intn(len(sector)/crypto.SegmentSize-1-offset/crypto.SegmentSize) * crypto.SegmentSize
 	data := fastrand.Bytes(length)
 	copy(sector[offset:offset+length], data)
 	root = crypto.MerkleRoot(sector)

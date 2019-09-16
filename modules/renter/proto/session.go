@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"encoding/json"
-	"fmt"
 	"io"
 	"math/bits"
 	"net"
@@ -189,6 +188,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	var bandwidthPrice, storagePrice, collateral types.Currency
 	newFileSize := contract.LastRevision().NewFileSize
 	modifiedSegments := make(map[uint64][]byte)
+	numSegmentProofs := 0
 	for _, action := range actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
@@ -209,6 +209,10 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 				end++
 			}
 			for segmentIndex := start; segmentIndex < end; segmentIndex++ {
+				_, exists := modifiedSegments[segmentIndex]
+				if !exists {
+					numSegmentProofs++
+				}
 				modifiedSegments[segmentIndex] = data.Next(crypto.SegmentSize)
 			}
 		default:
@@ -223,7 +227,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	}
 
 	// estimate cost of Merkle proof
-	proofSize := crypto.HashSize * (128 + len(actions))
+	proofSize := crypto.HashSize*(128+len(actions)) + crypto.HashSize*64*numSegmentProofs
 	bandwidthPrice = bandwidthPrice.Add(s.host.DownloadBandwidthPrice.Mul64(uint64(proofSize)))
 
 	// to mitigate small errors (e.g. differing block heights), fudge the
@@ -313,7 +317,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 
 	// read Merkle proof from host
 	var merkleResp modules.LoopWriteMerkleProof
-	if err := s.readResponse(&merkleResp, modules.RPCMinLen); err != nil {
+	if err := s.readResponse(&merkleResp, 32*modules.RPCMinLen); err != nil {
 		return modules.RenterContract{}, err
 	}
 	// verify the proof, first by verifying the old Merkle root...
@@ -1063,7 +1067,6 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 				end++
 			}
 			for segmentIndex := start; segmentIndex < end; segmentIndex++ {
-				fmt.Println("merkleroot", crypto.MerkleRoot(modifiedSegments[segmentIndex]))
 				leafHashes[indexMap[segmentIndex]] = crypto.MerkleRoot(modifiedSegments[segmentIndex])
 			}
 		}
