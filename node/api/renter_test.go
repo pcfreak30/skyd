@@ -102,22 +102,6 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		// Check the directory progress.
-		var rd RenterDirectory
-		st.getAPI("/renter/dir/", &rd)
-
-		if len(rd.Directories) != 1 {
-			t.Fatal("expected 1 dir", len(rd.Directories))
-		}
-		dirInfo := rd.Directories[0]
-
-		if dirInfo.AggregateUploadProgress < 0.9 {
-			t.Fatal("Expected file to be completely uploaded:", dirInfo.AggregateUploadProgress, dirInfo.AggregateUploadedBytes)
-		}
-		if dirInfo.AggregateSize != dirInfo.AggregateUploadedBytes {
-			t.Fatal("Expected all bytes to be uploaded: ", dirInfo.AggregateSize, dirInfo.AggregateUploadedBytes)
-		}
 	}
 
 	err = build.Retry(10, time.Second, func() error {
