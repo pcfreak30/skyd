@@ -122,6 +122,44 @@ func TestSession(t *testing.T) {
 	if droots[0] != crypto.MerkleRoot(sector2) {
 		t.Fatal("updated sector root does not match")
 	}
+	// Copy the second sector.
+	_, err = s.Copy(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Trim it again.
+	_, err = s.Write([]modules.LoopWriteAction{
+		{Type: modules.WriteActionTrim, A: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should still be able to download the sector.
+	_, dsector, err = s.ReadSection(crypto.MerkleRoot(sector), 0, uint32(len(sector)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Copy the sector again, append a new sector, swap the source out for the new
+	// sector and trim it.
+	sector0 := fastrand.Bytes(int(modules.SectorSize))
+	_, err = s.Write([]modules.LoopWriteAction{
+		{Type: modules.WriteActionCopy, A: 1},
+		{Type: modules.WriteActionAppend, Data: sector0},
+		{Type: modules.WriteActionSwap, A: 0, B: 3},
+		{Type: modules.WriteActionTrim, A: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should still be able to download the sector.
+	_, dsector, err = s.ReadSection(crypto.MerkleRoot(sector), 0, uint32(len(sector)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compare the downloaded sector to the expected data.
+	if !bytes.Equal(dsector, sector) {
+		t.Fatal("downloaded sector doesn't match copy")
+	}
 
 	// shut down and restart the host to ensure the sectors are durable
 	if err := s.Close(); err != nil {
@@ -142,10 +180,10 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, s2data, err := s.ReadSection(droots[0], 0, uint32(len(sector2)))
+	_, s0data, err := s.ReadSection(crypto.MerkleRoot(sector0), 0, uint32(len(sector0)))
 	if err != nil {
 		t.Fatal(err)
-	} else if !bytes.Equal(s2data, sector2) {
+	} else if !bytes.Equal(s0data, sector0) {
 		t.Fatal("downloaded data does not match")
 	}
 }

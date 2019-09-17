@@ -131,6 +131,13 @@ func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	return rc, crypto.MerkleRoot(data), err
 }
 
+// Copy calls the Write RPC with a single Copy action, returning the updated
+// contract.
+func (s *Session) Copy(sectorIndex uint64) (_ modules.RenterContract, err error) {
+	rc, err := s.Write([]modules.LoopWriteAction{{Type: modules.WriteActionCopy, A: sectorIndex}})
+	return rc, err
+}
+
 // Replace calls the Write RPC with a series of actions that replace the sector
 // at the specified index with data, returning the updated contract and the
 // Merkle root of the new sector.
@@ -193,6 +200,9 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 
 		case modules.WriteActionUpdate:
 			return modules.RenterContract{}, errors.New("update not supported")
+
+		case modules.WriteActionCopy:
+			newFileSize += modules.SectorSize
 
 		default:
 			build.Critical("unknown action type", action.Type)
@@ -900,6 +910,11 @@ func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint6
 
 		case modules.WriteActionUpdate:
 			panic("update not supported")
+
+		case modules.WriteActionCopy:
+			sectorsChanged[newNumSectors] = struct{}{}
+			sectorsChanged[action.A] = struct{}{}
+			newNumSectors++
 		}
 	}
 
@@ -925,12 +940,13 @@ func modifyProofRanges(proofRanges []crypto.ProofRange, actions []modules.LoopWr
 	for _, action := range actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
+			fallthrough
+		case modules.WriteActionCopy:
 			proofRanges = append(proofRanges, crypto.ProofRange{
 				Start: numSectors,
 				End:   numSectors + 1,
 			})
 			numSectors++
-
 		case modules.WriteActionTrim:
 			proofRanges = proofRanges[:uint64(len(proofRanges))-action.A]
 			numSectors--
@@ -956,6 +972,10 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 			}
 		case modules.WriteActionSwap:
 			indices = append(indices, action.A, action.B)
+		case modules.WriteActionCopy:
+			indices = append(indices, action.A)
+			indices = append(indices, numSectors)
+			numSectors++
 		}
 	}
 	sort.Slice(indices, func(i, j int) bool {
@@ -983,6 +1003,10 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 
 		case modules.WriteActionUpdate:
 			panic("update not supported")
+
+		case modules.WriteActionCopy:
+			i := indexMap[action.A]
+			leafHashes = append(leafHashes, leafHashes[i])
 		}
 	}
 	return leafHashes

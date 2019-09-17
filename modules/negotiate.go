@@ -362,6 +362,7 @@ var (
 	WriteActionTrim   = types.Specifier{'T', 'r', 'i', 'm'}
 	WriteActionSwap   = types.Specifier{'S', 'w', 'a', 'p'}
 	WriteActionUpdate = types.Specifier{'U', 'p', 'd', 'a', 't', 'e'}
+	WriteActionCopy   = types.Specifier{'C', 'o', 'p', 'y'}
 )
 
 // Read interrupt

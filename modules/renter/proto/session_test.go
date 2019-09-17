@@ -24,6 +24,16 @@ func TestCalculateProofRanges(t *testing.T) {
 			exp: []crypto.ProofRange{},
 		},
 		{
+			desc:       "Copy",
+			numSectors: 2,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionCopy, A: 1},
+			},
+			exp: []crypto.ProofRange{
+				{Start: 1, End: 2},
+			},
+		},
+		{
 			desc:       "Swap",
 			numSectors: 3,
 			actions: []modules.LoopWriteAction{
@@ -57,7 +67,7 @@ func TestCalculateProofRanges(t *testing.T) {
 			},
 		},
 		{
-			desc:       "SwapTrimSwapAppendAppend",
+			desc:       "SwapTrimSwapAppendAppendCopy",
 			numSectors: 12,
 			actions: []modules.LoopWriteAction{
 				{Type: modules.WriteActionSwap, A: 6, B: 11},
@@ -65,8 +75,10 @@ func TestCalculateProofRanges(t *testing.T) {
 				{Type: modules.WriteActionSwap, A: 7, B: 10},
 				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
 				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
+				{Type: modules.WriteActionCopy, A: 5},
 			},
 			exp: []crypto.ProofRange{
+				{Start: 5, End: 6},
 				{Start: 6, End: 7},
 				{Start: 7, End: 8},
 				{Start: 10, End: 11},
@@ -100,6 +112,20 @@ func TestModifyProofRanges(t *testing.T) {
 			},
 			proofRanges: nil,
 			exp: []crypto.ProofRange{
+				{Start: 2, End: 3},
+			},
+		},
+		{
+			desc:       "Copy",
+			numSectors: 2,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionCopy, A: 1},
+			},
+			proofRanges: []crypto.ProofRange{
+				{Start: 1, End: 2},
+			},
+			exp: []crypto.ProofRange{
+				{Start: 1, End: 2},
 				{Start: 2, End: 3},
 			},
 		},
@@ -145,7 +171,7 @@ func TestModifyProofRanges(t *testing.T) {
 			},
 		},
 		{
-			desc:       "SwapTrimSwapAppendAppend",
+			desc:       "SwapTrimSwapAppendAppendCopy",
 			numSectors: 12,
 			actions: []modules.LoopWriteAction{
 				{Type: modules.WriteActionSwap, A: 6, B: 11},
@@ -153,19 +179,23 @@ func TestModifyProofRanges(t *testing.T) {
 				{Type: modules.WriteActionSwap, A: 7, B: 10},
 				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
 				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
+				{Type: modules.WriteActionCopy, A: 2},
 			},
 			proofRanges: []crypto.ProofRange{
+				{Start: 2, End: 3},
 				{Start: 6, End: 7},
 				{Start: 7, End: 8},
 				{Start: 10, End: 11},
 				{Start: 11, End: 12},
 			},
 			exp: []crypto.ProofRange{
+				{Start: 2, End: 3},
 				{Start: 6, End: 7},
 				{Start: 7, End: 8},
 				{Start: 10, End: 11},
 				{Start: 11, End: 12},
 				{Start: 12, End: 13},
+				{Start: 13, End: 14},
 			},
 		},
 	}
@@ -197,6 +227,15 @@ func TestModifyLeafHashes(t *testing.T) {
 			exp:    []crypto.Hash{crypto.MerkleRoot([]byte{1, 2, 3})},
 		},
 		{
+			desc:       "Copy",
+			numSectors: 2,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionCopy, A: 1},
+			},
+			leaves: []crypto.Hash{{1}},
+			exp:    []crypto.Hash{{1}, {1}},
+		},
+		{
 			desc:       "Swap",
 			numSectors: 3,
 			actions: []modules.LoopWriteAction{
@@ -215,7 +254,17 @@ func TestModifyLeafHashes(t *testing.T) {
 			exp:    []crypto.Hash{},
 		},
 		{
-			desc:       "AppendSwapTrim",
+			desc:       "AppendCopy",
+			numSectors: 2,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
+				{Type: modules.WriteActionCopy, A: 0},
+			},
+			leaves: nil,
+			exp:    []crypto.Hash{crypto.MerkleRoot([]byte{1, 2, 3}), crypto.MerkleRoot([]byte{1, 2, 3})},
+		},
+		{
+			desc:       "CopyAppendSwapTrim",
 			numSectors: 12,
 			actions: []modules.LoopWriteAction{
 				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
@@ -226,17 +275,18 @@ func TestModifyLeafHashes(t *testing.T) {
 			exp:    []crypto.Hash{crypto.MerkleRoot([]byte{1, 2, 3})},
 		},
 		{
-			desc:       "SwapTrimSwapAppendAppend",
-			numSectors: 12,
+			desc:       "SwapTrimSwapAppendAppendCopy",
+			numSectors: 14,
 			actions: []modules.LoopWriteAction{
 				{Type: modules.WriteActionSwap, A: 6, B: 11},
 				{Type: modules.WriteActionTrim, A: 1},
 				{Type: modules.WriteActionSwap, A: 7, B: 10},
 				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
 				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
+				{Type: modules.WriteActionCopy, A: 13},
 			},
 			leaves: []crypto.Hash{{1}, {2}, {3}, {4}},
-			exp:    []crypto.Hash{{4}, {3}, {2}, crypto.MerkleRoot([]byte{1, 2, 3}), crypto.MerkleRoot([]byte{4, 5, 6})},
+			exp:    []crypto.Hash{{4}, {3}, {2}, crypto.MerkleRoot([]byte{1, 2, 3}), crypto.MerkleRoot([]byte{4, 5, 6}), crypto.MerkleRoot([]byte{4, 5, 6})},
 		},
 	}
 	for _, test := range tests {

@@ -243,6 +243,27 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 
 			// Update finances.
 			bandwidthRevenue = bandwidthRevenue.Add(settings.UploadBandwidthPrice.Mul64(uint64(len(action.Data))))
+		case modules.WriteActionCopy:
+			sectorIndex := action.A
+			if sectorIndex >= uint64(len(newRoots)) {
+				err := errors.New("illegal sector index")
+				s.writeError(err)
+				return err
+			}
+			// Gain the data of the source sector
+			sector, err := h.ReadSector(newRoots[sectorIndex])
+			if err != nil {
+				s.writeError(err)
+				return err
+			}
+			// Update sector roots.
+			newRoot := newRoots[sectorIndex]
+			newRoots = append(newRoots, newRoot)
+			sectorsGained = append(sectorsGained, newRoot)
+			gainedSectorData = append(gainedSectorData, sector)
+
+			sectorsChanged[sectorIndex] = struct{}{}
+			sectorsChanged[uint64(len(newRoots))-1] = struct{}{}
 
 		default:
 			err := errors.New("unknown action type " + action.Type.String())
@@ -302,7 +323,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	newRevision := currentRevision
 	newRevision.NewRevisionNumber = req.NewRevisionNumber
 	for _, action := range req.Actions {
-		if action.Type == modules.WriteActionAppend {
+		if action.Type == modules.WriteActionAppend || action.Type == modules.WriteActionCopy {
 			newRevision.NewFileSize += modules.SectorSize
 		} else if action.Type == modules.WriteActionTrim {
 			newRevision.NewFileSize -= modules.SectorSize * action.A
