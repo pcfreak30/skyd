@@ -103,7 +103,7 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 			t.Fatal(err)
 		}
 
-		err = build.Retry(10, time.Second, func() error {
+		err = build.Retry(80, time.Second, func() error {
 			var rd RenterDirectory
 			st.getAPI("/renter/dir/", &rd)
 
