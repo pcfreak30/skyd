@@ -236,6 +236,19 @@ func TestModifyLeafHashes(t *testing.T) {
 			exp:    []crypto.Hash{{2}, {1}},
 		},
 		{
+			desc:       "RSwap",
+			numSectors: 5,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionSwapRange, A: 1, B: 3, Data: swapRangeLength(2)},
+			},
+			leaves: []crypto.Hash{
+				{1}, {2}, {3}, {4},
+			},
+			exp: []crypto.Hash{
+				{3}, {4}, {1}, {2},
+			},
+		},
+		{
 			desc:       "Trim",
 			numSectors: 3,
 			actions: []modules.LoopWriteAction{
@@ -254,6 +267,18 @@ func TestModifyLeafHashes(t *testing.T) {
 			},
 			leaves: []crypto.Hash{{1}},
 			exp:    []crypto.Hash{crypto.MerkleRoot([]byte{1, 2, 3})},
+		},
+		{
+			desc:       "AppendAppendRSwapTrim",
+			numSectors: 12,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
+				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
+				{Type: modules.WriteActionSwapRange, A: 4, B: 11, Data: swapRangeLength(2)},
+				{Type: modules.WriteActionTrim, A: 1},
+			},
+			leaves: []crypto.Hash{{1}, {2}},
+			exp:    []crypto.Hash{crypto.MerkleRoot([]byte{1, 2, 3}), crypto.MerkleRoot(([]byte{4, 5, 6})), {1}},
 		},
 		{
 			desc:       "SwapTrimSwapAppendAppend",

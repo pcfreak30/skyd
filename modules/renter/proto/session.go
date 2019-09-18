@@ -904,11 +904,9 @@ func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint6
 
 		case modules.WriteActionSwapRange:
 			length := binary.LittleEndian.Uint64(action.Data)
-			for i := action.A; i < action.A+length; i++ {
-				sectorsChanged[i] = struct{}{}
-			}
-			for i := action.B; i < action.B+length; i++ {
-				sectorsChanged[i] = struct{}{}
+			for l := uint64(0); l < length; l++ {
+				sectorsChanged[action.A+l] = struct{}{}
+				sectorsChanged[action.B+l] = struct{}{}
 			}
 		}
 	}
@@ -966,6 +964,11 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 			}
 		case modules.WriteActionSwap:
 			indices = append(indices, action.A, action.B)
+		case modules.WriteActionSwapRange:
+			length := binary.LittleEndian.Uint64(action.Data)
+			for l := uint64(0); l < length; l++ {
+				indices = append(indices, action.A+l, action.B+l)
+			}
 		}
 	}
 	sort.Slice(indices, func(i, j int) bool {
@@ -978,7 +981,6 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 		}
 		indexMap[index] = i
 	}
-
 	for _, action := range actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
@@ -993,6 +995,13 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, n
 
 		case modules.WriteActionUpdate:
 			panic("update not supported")
+
+		case modules.WriteActionSwapRange:
+			length := binary.LittleEndian.Uint64(action.Data)
+			for l := 0; uint64(l) < length; l++ {
+				i, j := indexMap[action.A+uint64(l)], indexMap[action.B+uint64(l)]
+				leafHashes[i], leafHashes[j] = leafHashes[j], leafHashes[i]
+			}
 		}
 	}
 	return leafHashes
