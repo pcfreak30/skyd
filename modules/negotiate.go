@@ -358,10 +358,11 @@ var (
 
 // Write actions
 var (
-	WriteActionAppend = types.Specifier{'A', 'p', 'p', 'e', 'n', 'd'}
-	WriteActionTrim   = types.Specifier{'T', 'r', 'i', 'm'}
-	WriteActionSwap   = types.Specifier{'S', 'w', 'a', 'p'}
-	WriteActionUpdate = types.Specifier{'U', 'p', 'd', 'a', 't', 'e'}
+	WriteActionAppend    = types.Specifier{'A', 'p', 'p', 'e', 'n', 'd'}
+	WriteActionTrim      = types.Specifier{'T', 'r', 'i', 'm'}
+	WriteActionSwap      = types.Specifier{'S', 'w', 'a', 'p'}
+	WriteActionSwapRange = types.Specifier{'S', 'w', 'a', 'p', 'R', 'a', 'n', 'g', 'e'}
+	WriteActionUpdate    = types.Specifier{'U', 'p', 'd', 'a', 't', 'e'}
 )
 
 // Read interrupt
