@@ -345,3 +345,79 @@ func TestMultiRead(t *testing.T) {
 		t.Fatal("downloaded sector does not match")
 	}
 }
+
+// TestSwapRange tests the new swap-range rpc.
+func TestSwapRange(t *testing.T) {
+	gp := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterHostTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// manually grab a renter contract
+	renter := tg.Renters()[0]
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := cs.ViewAll()[0]
+
+	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// begin the RPC session
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// upload a few sectors.
+	numSectors := 10
+	var sectors [][]byte
+	var roots []crypto.Hash
+	var swaps []int
+	for i := 0; i < numSectors; i++ {
+		sector := fastrand.Bytes(int(modules.SectorSize))
+		_, root, err := s.Append(sector)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sectors = append(sectors, sector)
+		roots = append(roots, root)
+		swaps = append(swaps, i)
+	}
+
+	// Swap the first and the last sector.
+	_, err = s.SwapRange(0, uint64(len(sectors)-1), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	swaps[0], swaps[len(swaps)-1] = swaps[len(swaps)-1], swaps[0]
+	// Swap sector 3 to 5 and 6 - 8.
+	_, err = s.SwapRange(3, 6, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	swaps[3], swaps[4], swaps[5], swaps[6], swaps[7], swaps[8] = swaps[6], swaps[7], swaps[8], swaps[3], swaps[4], swaps[5]
+	// Get the new roots.
+	_, newRoots, err := s.SectorRoots(modules.LoopSectorRootsRequest{
+		RootOffset: 0,
+		NumRoots:   uint64(len(roots)),
+	})
+	for i := range newRoots {
+		if roots[i] != newRoots[swaps[i]] {
+			t.Fatal("wrong root at index", i)
+		}
+	}
+}

@@ -1,8 +1,10 @@
 package host
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/bits"
 	"sort"
 	"sync/atomic"
@@ -217,6 +219,32 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 
 			sectorsChanged[i] = struct{}{}
 			sectorsChanged[j] = struct{}{}
+
+		case modules.WriteActionSwapRange:
+			if len(action.Data) != 8 {
+				err := fmt.Errorf("data needs to have length of %v but had %v", 8, len(action.Data))
+				s.writeError(err)
+				return err
+			}
+			if action.A >= action.B {
+				err := fmt.Errorf("start index of lower range must be smaller than start index of higher range: %v >= %v", action.A, action.B)
+				s.writeError(err)
+				return err
+			}
+			length := binary.LittleEndian.Uint64(action.Data)
+			for l := uint64(0); l < length; l++ {
+				i, j := action.A+l, action.B+l
+				if i >= uint64(len(newRoots)) || j >= uint64(len(newRoots)) {
+					err := errors.New("illegal sector index")
+					s.writeError(err)
+					return err
+				}
+				// Update sector roots.
+				newRoots[i], newRoots[j] = newRoots[j], newRoots[i]
+
+				sectorsChanged[i] = struct{}{}
+				sectorsChanged[j] = struct{}{}
+			}
 
 		case modules.WriteActionUpdate:
 			sectorIndex, offset := action.A, action.B

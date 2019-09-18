@@ -158,6 +158,15 @@ func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ modules
 	return rc, crypto.MerkleRoot(data), err
 }
 
+// SwapRange calls the Write RPC with a single SwapRange action, returning the
+// updated contract.
+func (s *Session) SwapRange(offLower, offHigher, length uint64) (modules.RenterContract, error) {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, length)
+	rc, err := s.Write([]modules.LoopWriteAction{{Type: modules.WriteActionSwapRange, A: offLower, B: offHigher, Data: b}})
+	return rc, err
+}
+
 // Write implements the Write RPC, except for ActionUpdate. A Merkle proof is
 // always requested.
 func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterContract, err error) {
@@ -194,6 +203,8 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 
 		case modules.WriteActionUpdate:
 			return modules.RenterContract{}, errors.New("update not supported")
+
+		case modules.WriteActionSwapRange:
 
 		default:
 			build.Critical("unknown action type", action.Type)
