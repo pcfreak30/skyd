@@ -1,12 +1,21 @@
 package proto
 
 import (
+	"encoding/binary"
 	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
+
+// swapRangeLength is a convenience method which encodes a uint64 length into a
+// byte slice for testing.
+func swapRangeLength(length uint64) []byte {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, length)
+	return b
+}
 
 func TestCalculateProofRanges(t *testing.T) {
 	tests := []struct {
@@ -24,7 +33,7 @@ func TestCalculateProofRanges(t *testing.T) {
 			exp: []crypto.ProofRange{},
 		},
 		{
-			desc:       "Swap",
+			desc:       "RSwap",
 			numSectors: 3,
 			actions: []modules.LoopWriteAction{
 				{Type: modules.WriteActionSwap, A: 1, B: 2},
@@ -32,6 +41,19 @@ func TestCalculateProofRanges(t *testing.T) {
 			exp: []crypto.ProofRange{
 				{Start: 1, End: 2},
 				{Start: 2, End: 3},
+			},
+		},
+		{
+			desc:       "SwapRange",
+			numSectors: 4,
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionSwapRange, A: 0, B: 2, Data: swapRangeLength(2)},
+			},
+			exp: []crypto.ProofRange{
+				{Start: 0, End: 1},
+				{Start: 1, End: 2},
+				{Start: 2, End: 3},
+				{Start: 3, End: 4},
 			},
 		},
 		{
@@ -45,15 +67,23 @@ func TestCalculateProofRanges(t *testing.T) {
 			},
 		},
 		{
-			desc:       "AppendSwapTrim",
+			desc:       "AppendSwapTrimRSwap",
 			numSectors: 12,
 			actions: []modules.LoopWriteAction{
 				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
 				{Type: modules.WriteActionSwap, A: 5, B: 12},
 				{Type: modules.WriteActionTrim, A: 1},
+				{Type: modules.WriteActionSwapRange, A: 2, B: 6, Data: swapRangeLength(4)},
 			},
 			exp: []crypto.ProofRange{
+				{Start: 2, End: 3},
+				{Start: 3, End: 4},
+				{Start: 4, End: 5},
 				{Start: 5, End: 6},
+				{Start: 6, End: 7},
+				{Start: 7, End: 8},
+				{Start: 8, End: 9},
+				{Start: 9, End: 10},
 			},
 		},
 		{

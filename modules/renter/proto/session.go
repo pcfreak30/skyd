@@ -3,6 +3,7 @@ package proto
 import (
 	"bytes"
 	"crypto/cipher"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"math/bits"
@@ -900,6 +901,15 @@ func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint6
 
 		case modules.WriteActionUpdate:
 			panic("update not supported")
+
+		case modules.WriteActionSwapRange:
+			length := binary.LittleEndian.Uint64(action.Data)
+			for i := action.A; i < action.A+length; i++ {
+				sectorsChanged[i] = struct{}{}
+			}
+			for i := action.B; i < action.B+length; i++ {
+				sectorsChanged[i] = struct{}{}
+			}
 		}
 	}
 
