@@ -373,6 +373,11 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 
 // Modify updates a sectors data.
 func (s *Session) Modify(req modules.LoopUpdateRequest) (modules.RenterContract, error) {
+	// Download the section we want to change.
+	_, section, err := s.ReadSection(req.MerkleRoot, req.Offset, uint32(len(req.Data)))
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour)
 
@@ -484,10 +489,13 @@ func (s *Session) Modify(req modules.LoopUpdateRequest) (modules.RenterContract,
 		// Verify Merkle proof for old segments.
 		proofStart := int(req.Offset) / crypto.SegmentSize
 		proofEnd := int(req.Offset+uint32(len(req.Data))) / crypto.SegmentSize
-		if !crypto.VerifyRangeProof(req.Data, resp.MerkleProof, proofStart, proofEnd, req.MerkleRoot) { // TODO: fix this
-			return modules.RenterContract{}, errors.New("host provided incorrect sector data or Merkle proof")
+		if !crypto.VerifyRangeProof(section, resp.MerkleProof, proofStart, proofEnd, req.MerkleRoot) {
+			return modules.RenterContract{}, errors.New("verifying proof with old merkle root failed")
 		}
-		// TODO: Modify leaves and verify for new proof as well
+		// Verify Merkle proof for new segments.
+		if !crypto.VerifyRangeProof(req.Data, resp.MerkleProof, proofStart, proofEnd, resp.NewMerkleRoot) {
+			return modules.RenterContract{}, errors.New("verifying proof with new merkle root failed")
+		}
 	}
 	txn.TransactionSignatures[1].Signature = resp.Signature
 
