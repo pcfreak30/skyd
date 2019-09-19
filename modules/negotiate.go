@@ -347,6 +347,7 @@ var (
 	RPCLoopSectorRoots   = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
 	RPCLoopSettings      = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
 	RPCLoopUnlock        = types.Specifier{'L', 'o', 'o', 'p', 'U', 'n', 'l', 'o', 'c', 'k'}
+	RPCLoopUpdate        = types.Specifier{'L', 'o', 'o', 'p', 'U', 'p', 'd', 'a', 't', 'e'}
 	RPCLoopWrite         = types.Specifier{'L', 'o', 'o', 'p', 'W', 'r', 'i', 't', 'e'}
 )
 
@@ -458,11 +459,31 @@ type (
 		Signature            []byte
 	}
 
+	// LoopUpdateRequest contains the request parameters for RPCLoopUpdate.
+	LoopUpdateRequest struct {
+		MerkleProof bool
+		MerkleRoot  [32]byte
+		Offset      uint32
+		Data        []byte
+
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+		Signature            []byte
+	}
+
 	// LoopReadResponse contains the response data for RPCLoopRead.
 	LoopReadResponse struct {
 		Signature   []byte
 		Data        []byte
 		MerkleProof []crypto.Hash
+	}
+
+	// LoopUpdateResponse contains the response data for RPCLoopUpdate.
+	LoopUpdateResponse struct {
+		Signature     []byte
+		MerkleProof   []crypto.Hash
+		NewMerkleRoot crypto.Hash
 	}
 
 	// LoopSectorRootsRequest contains the request parameters for RPCLoopSectorRoots.

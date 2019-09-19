@@ -380,6 +380,157 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	return nil
 }
 
+// managedRPCLoopUpdate handles the RPC to update a sector by sector root.
+func (h *Host) managedRPCLoopUpdate(s *rpcSession) error {
+	s.extendDeadline(modules.NegotiateDownloadTime)
+
+	// Read the request.
+	var req modules.LoopUpdateRequest
+	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
+		// Reading may have failed due to a closed connection; regardless, it
+		// doesn't hurt to try and tell the renter about it.
+		s.writeError(err)
+		return err
+	}
+
+	// If no Merkle proof was requested, the renter's signature should be
+	// sent immediately.
+	var sigResponse modules.LoopWriteResponse
+	if !req.MerkleProof {
+		if err := s.readResponse(&sigResponse, modules.RPCMinLen); err != nil {
+			return err
+		}
+	}
+
+	// Check that a contract is locked.
+	if len(s.so.OriginTransactionSet) == 0 {
+		err := errors.New("no contract locked")
+		s.writeError(err)
+		return err
+	}
+
+	// Read some internal fields for later.
+	h.mu.Lock()
+	blockHeight := h.blockHeight
+	secretKey := h.secretKey
+	settings := h.externalSettings()
+	h.mu.Unlock()
+	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
+
+	// Sanity check request.
+	root, offset, data := req.MerkleRoot, req.Offset, req.Data
+	if offset+uint32(len(data)) >= uint32(len(s.so.SectorRoots)) {
+		err := errors.New("illegal section offset and/or length")
+		s.writeError(err)
+		return err
+	}
+
+	// Load sector.
+	sector, err := h.ReadSector(root)
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// Modify the sector.
+	newSector := append([]byte{}, sector...)
+	copy(newSector[offset:], req.Data)
+	newRoot := crypto.MerkleRoot(sector)
+
+	// Replace the sector root.
+	newRoots := append([]crypto.Hash(nil), s.so.SectorRoots...)
+	for i, r := range newRoots {
+		if r == root {
+			newRoots[i] = newRoot
+		}
+	}
+
+	// Update finances.
+	estBandwidth := uint64(len(req.Data))
+
+	// If a Merkle proof was requested, construct it.
+	newMerkleRoot := cachedMerkleRoot(newRoots)
+	var proof []crypto.Hash
+	if req.MerkleProof {
+		proofStart := int(req.Offset) / crypto.SegmentSize
+		proofEnd := int(req.Offset+uint32(len(req.Data))) / crypto.SegmentSize
+		proof = crypto.MerkleRangeProof(sector, proofStart, proofEnd)
+
+		// Calculate bandwidth cost of proof.
+		proofSize := crypto.HashSize * (len(proof) + 1)
+		if proofSize < modules.RPCMinLen {
+			proofSize = modules.RPCMinLen
+		}
+		estBandwidth += uint64(proofSize)
+	}
+
+	// construct the new revision
+	newRevision := currentRevision
+	newRevision.NewRevisionNumber = currentRevision.NewRevisionNumber + 1
+	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewValidProofValues[i],
+			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
+		}
+	}
+	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewMissedProofValues[i],
+			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
+		}
+	}
+
+	// calculate expected cost and verify against renter's revision
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
+	}
+	bandwidthCost := settings.DownloadBandwidthPrice.Mul64(estBandwidth)
+	sectorAccessCost := settings.SectorAccessPrice.Mul64(1)
+	totalCost := settings.BaseRPCPrice.Add(bandwidthCost).Add(sectorAccessCost)
+	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, totalCost)
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// Sign the new revision.
+	renterSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(newRevision.ParentID),
+		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		PublicKeyIndex: 0,
+		Signature:      req.Signature,
+	}
+	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+	hostSig := txn.TransactionSignatures[1].Signature
+
+	// Update the storage obligation.
+	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
+	s.so.PotentialUploadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
+	s.so.RevisionTransactionSet = []types.Transaction{txn}
+	s.so.SectorRoots = newRoots
+	h.mu.Lock()
+	err = h.modifyStorageObligation(s.so, nil, nil, nil)
+	h.mu.Unlock()
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// Write response.
+	resp := modules.LoopUpdateResponse{
+		Signature:     hostSig,
+		MerkleProof:   proof,
+		NewMerkleRoot: newMerkleRoot,
+	}
+	return s.writeResponse(resp)
+}
+
 // managedRPCLoopRead writes an RPC response containing the requested data
 // (along with signatures and an optional Merkle proof).
 func (h *Host) managedRPCLoopRead(s *rpcSession) error {
