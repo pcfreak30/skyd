@@ -337,10 +337,10 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != ErrAllowanceZeroWindow {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroWindow, err)
 	}
-	a.RenewWindow = 20
+	a.RenewWindow = 0
 	err = c.SetAllowance(a)
-	if err != errAllowanceWindowSize {
-		t.Errorf("expected %q, got %q", errAllowanceWindowSize, err)
+	if err != ErrAllowanceZeroWindow {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroWindow, err)
 	}
 	a.RenewWindow = 10
 	err = c.SetAllowance(a)
@@ -640,7 +640,7 @@ func TestLinkedContracts(t *testing.T) {
 	}
 
 	// Mine blocks to renew contract
-	for i := types.BlockHeight(0); i < c.allowance.Period-c.allowance.RenewWindow; i++ {
+	for i := types.BlockHeight(0); i <= c.allowance.Period; i++ {
 		_, err = m.AddBlock()
 		if err != nil {
 			t.Fatal(err)

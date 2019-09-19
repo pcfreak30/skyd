@@ -47,10 +47,12 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	allowanceValues := url.Values{}
+	period := 10
+	renewwindow := 5
 	allowanceValues.Set("funds", "50000000000000000000000000000") // 50k SC
 	allowanceValues.Set("hosts", "1")
-	allowanceValues.Set("period", "10")
-	allowanceValues.Set("renewwindow", "5")
+	allowanceValues.Set("period", strconv.FormatInt(int64(period), 10))
+	allowanceValues.Set("renewwindow", strconv.FormatInt(int64(renewwindow), 10))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +137,9 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 	}
 
 	// mine blocks to cause the host to submit storage proofs to the blockchain.
-	for i := 0; i < 15; i++ {
+	// Need to mine past the end of the contract which has a length of period +
+	// renewwindow
+	for i := 0; i <= period+renewwindow; i++ {
 		_, err := st.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)

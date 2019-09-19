@@ -10,7 +10,6 @@ import (
 var (
 	errAllowanceNoHosts                = errors.New("hosts must be non-zero")
 	errAllowanceNotSynced              = errors.New("you must be synced to set an allowance")
-	errAllowanceWindowSize             = errors.New("renew window must be less than period")
 	errAllowanceZeroPeriod             = errors.New("period must be non-zero")
 	errAllowanceZeroExpectedStorage    = errors.New("expected storage must be non-zero")
 	errAllowanceZeroExpectedUpload     = errors.New("expected upload  must be non-zero")
@@ -58,8 +57,6 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 		return errAllowanceZeroPeriod
 	} else if a.RenewWindow == 0 {
 		return ErrAllowanceZeroWindow
-	} else if a.RenewWindow >= a.Period {
-		return errAllowanceWindowSize
 	} else if a.ExpectedStorage == 0 {
 		return errAllowanceZeroExpectedStorage
 	} else if a.ExpectedUpload == 0 {

@@ -1893,8 +1893,14 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			return errors.New("Failed to get files")
 		}
-		if len(rf.Files) != 2 || rf.Files[0].Redundancy != 0 || rf.Files[1].Redundancy != 0 {
-			return errors.New("file redundancy should be 0 now")
+		if len(rf.Files) != 2 {
+			return fmt.Errorf("Expected 2 files got %v", len(rf.Files))
+		}
+		if rf.Files[0].Redundancy != 0 {
+			return fmt.Errorf("Expected redundancy of file 1 to be 0 got %v", rf.Files[0].Redundancy)
+		}
+		if rf.Files[1].Redundancy != 0 {
+			return fmt.Errorf("Expected redundancy of file 1 to be 0 got %v", rf.Files[1].Redundancy)
 		}
 		return nil
 	})
