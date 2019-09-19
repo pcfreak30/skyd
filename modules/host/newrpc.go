@@ -454,7 +454,7 @@ func (h *Host) managedRPCLoopUpdate(s *rpcSession) error {
 	if req.MerkleProof {
 		proofStart := int(req.Offset) / crypto.SegmentSize
 		proofEnd := int(req.Offset+uint32(len(req.Data))) / crypto.SegmentSize
-		proof = crypto.MerkleRangeProof(sector, proofStart, proofEnd)
+		proof = crypto.MerkleRangeProof(sector, proofStart, proofEnd) // TODO: fix this
 
 		// Calculate bandwidth cost of proof.
 		proofSize := crypto.HashSize * (len(proof) + 1)

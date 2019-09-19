@@ -232,6 +232,12 @@ func newDownloadRevision(current types.FileContractRevision, downloadCost types.
 	return newRevision(current, downloadCost)
 }
 
+// newUpdateRevision revises the current revision to cover the cost of
+// modifying data.
+func newUpdateRevision(current types.FileContractRevision, uploadCost types.Currency) types.FileContractRevision {
+	return newRevision(current, uploadCost)
+}
+
 // newUploadRevision revises the current revision to cover the cost of
 // uploading a sector.
 func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Hash, price, collateral types.Currency) types.FileContractRevision {

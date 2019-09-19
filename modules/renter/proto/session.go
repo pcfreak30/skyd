@@ -371,6 +371,138 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	return sc.Metadata(), nil
 }
 
+// Modify updates a sectors data.
+func (s *Session) Modify(req modules.LoopUpdateRequest) (modules.RenterContract, error) {
+	// Reset deadline when finished.
+	defer extendDeadline(s.conn, time.Hour)
+
+	// Sanity-check the request.
+	if uint64(req.Offset)+uint64(len(req.Data)) > modules.SectorSize {
+		return modules.RenterContract{}, errors.New("illegal offset and/or length")
+	}
+	if req.MerkleProof {
+		if req.Offset%crypto.SegmentSize != 0 || len(req.Data)%crypto.SegmentSize != 0 {
+			return modules.RenterContract{}, errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
+		}
+	}
+	// Acquire the contract.
+	sc, haveContract := s.contractSet.Acquire(s.contractID)
+	if !haveContract {
+		return modules.RenterContract{}, errors.New("contract not present in contract set")
+	}
+	defer s.contractSet.Return(sc)
+	contract := sc.header // for convenience
+
+	// calculate estimated bandwidth
+	totalLength := uint64(len(req.Data))
+	var estProofHashes uint64
+	if req.MerkleProof {
+		// use the worst-case proof size of 2*tree depth (this occurs when
+		// proving across the two leaves in the center of the tree)
+		estHashesPerProof := 2 * bits.Len64(modules.SectorSize/crypto.SegmentSize)
+		estProofHashes = uint64(estHashesPerProof)
+	}
+	estBandwidth := totalLength + estProofHashes*crypto.HashSize
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
+	}
+	// calculate price
+	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(estBandwidth)
+	sectorAccessPrice := s.host.SectorAccessPrice
+	price := s.host.BaseRPCPrice.Add(bandwidthPrice).Add(sectorAccessPrice)
+	if contract.RenterFunds().Cmp(price) < 0 {
+		return modules.RenterContract{}, errors.New("contract has insufficient funds to support download")
+	}
+	// To mitigate small errors (e.g. differing block heights), fudge the
+	// price and collateral by 0.2%.
+	price = price.MulFloat(1 + hostPriceLeeway)
+
+	// create the update revision and sign it
+	rev := newUpdateRevision(contract.LastRevision(), price)
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{rev},
+		TransactionSignatures: []types.TransactionSignature{
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				PublicKeyIndex: 0, // renter key is always first -- see formContract
+			},
+			{
+				ParentID:       crypto.Hash(rev.ParentID),
+				PublicKeyIndex: 1,
+				CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+				Signature:      nil, // to be provided by host
+			},
+		},
+	}
+	sig := crypto.SignHash(txn.SigHash(0, s.height), contract.SecretKey)
+	txn.TransactionSignatures[0].Signature = sig[:]
+
+	req.NewRevisionNumber = rev.NewRevisionNumber
+	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
+	for i, o := range rev.NewValidProofOutputs {
+		req.NewValidProofValues[i] = o.Value
+	}
+	req.NewMissedProofValues = make([]types.Currency, len(rev.NewMissedProofOutputs))
+	for i, o := range rev.NewMissedProofOutputs {
+		req.NewMissedProofValues[i] = o.Value
+	}
+	req.Signature = sig[:]
+
+	// record the change we are about to make to the contract. If we lose power
+	// mid-revision, this allows us to restore either the pre-revision or
+	// post-revision contract.
+	walTxn, err := sc.managedRecordUploadIntent(rev, crypto.Hash{}, types.ZeroCurrency, price)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+
+	// Increase Successful/Failed interactions accordingly
+	defer func() {
+		if err != nil {
+			s.hdb.IncrementFailedInteractions(contract.HostPublicKey())
+		} else {
+			s.hdb.IncrementSuccessfulInteractions(contract.HostPublicKey())
+		}
+	}()
+
+	// send request
+	extendDeadline(s.conn, modules.NegotiateDownloadTime)
+	err = s.writeRequest(modules.RPCLoopUpdate, req)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+
+	// read response
+	var resp modules.LoopUpdateResponse
+	err = s.readResponse(&resp, modules.RPCMinLen)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+
+	if req.MerkleProof {
+		// Verify Merkle proof for old segments.
+		proofStart := int(req.Offset) / crypto.SegmentSize
+		proofEnd := int(req.Offset+uint32(len(req.Data))) / crypto.SegmentSize
+		if !crypto.VerifyRangeProof(req.Data, resp.MerkleProof, proofStart, proofEnd, req.MerkleRoot) { // TODO: fix this
+			return modules.RenterContract{}, errors.New("host provided incorrect sector data or Merkle proof")
+		}
+		// TODO: Modify leaves and verify for new proof as well
+	}
+	txn.TransactionSignatures[1].Signature = resp.Signature
+
+	// Disrupt before committing.
+	if s.deps.Disrupt("InterruptDownloadAfterSendingRevision") {
+		return modules.RenterContract{}, errors.New("InterruptDownloadAfterSendingRevision disrupt")
+	}
+
+	// update contract and metrics
+	if err := sc.managedCommitDownload(walTxn, txn, price); err != nil {
+		return modules.RenterContract{}, err
+	}
+	return sc.Metadata(), nil
+}
+
 // Read calls the Read RPC, writing the requested data to w. The RPC can be
 // cancelled (with a granularity of one section) via the cancel channel.
 func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan struct{}) (_ modules.RenterContract, err error) {
