@@ -117,7 +117,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	if c.blockHeight >= c.currentPeriod+c.allowance.Period {
 		// To protect against more than 1 period passing continue incrementing
 		// the current period until we are in the latest period
-		for c.blockHeight >= c.currentPeriod+c.allowance.Period {
+		for c.blockHeight >= c.currentPeriod+c.allowance.Period && c.allowance.Period != 0 {
 			c.currentPeriod += c.allowance.Period
 		}
 		// COMPATv1.0.4-lts
