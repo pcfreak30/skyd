@@ -1902,21 +1902,15 @@ The period is equivalent to the billing cycle length. The renter will not spend
 more than the full balance of its funds every billing period. When the billing
 period is over, the contracts will be renewed and the spending will be reset.
 
-**renewwindow** | blocks  
-The renew window is how long the user has to renew their contracts. At the end
-of the period, all of the contracts expire. The contracts need to be renewewd
-before they expire, otherwise the user will lose all of their files. The renew
-window is the window of time at the end of the period during which the renter
-will renew the users contracts. For example, if the renew window is 1 week long,
-then during the final week of each period the user will renew their contracts.
-If the user is offline for that whole week, the user's data will be lost.
+Each billing period begins at the beginnig of each period.
 
-Each billing period begins at the beginning of the renew window for the previous
-period. For example, if the period is 12 weeks long and the renew window is 4
-weeks long, then the first billing period technically begins at -4 weeks, or 4
-weeks before the allowance is created. And the second billing period begins at
-week 8, or 8 weeks after the allowance is created. The third billing period will
-begin at week 20.
+**renewwindow** | blocks  
+The renew window is how long the user has to renew their contracts after the
+period is over. At the end of the renew window, all of the contracts expire. The
+contracts need to be renewewd before they expire, otherwise the user will lose
+all of their files. For example, if the renew window is 1 week long, then during
+the week after each period the user will renew their contracts. If the user is
+offline for that whole week, the user's data will be lost.
 
 **expectedstorage** | bytes  
 Expected storage is the amount of storage that the user expects to keep on the
