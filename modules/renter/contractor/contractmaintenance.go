@@ -852,6 +852,12 @@ func (c *Contractor) threadedContractMaintenance() {
 		return
 	}
 	defer c.tg.Done()
+
+	// No contract maintenance unless contractor is synced.
+	if !c.managedSynced() {
+		c.log.Debugln("Skipping contract maintenance since consensus isn't synced yet")
+		return
+	}
 	c.log.Debugln("starting contract maintenance")
 
 	// Only one instance of this thread should be running at a time. Under
@@ -947,7 +953,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// renewal.
 		utility, ok := c.managedContractUtility(contract.ID)
 		if !ok || !utility.GoodForRenew {
-			if uint64(blockHeight-contract.StartHeight) < types.BlocksPerWeek {
+			if blockHeight-contract.StartHeight < types.BlocksPerWeek {
 				c.log.Debugln("Contract did not last 1 week and is not being renewed", contract.ID)
 			}
 			c.log.Debugln("Contract skipped because it is not good for renew (utility.GoodForRenew, exists)", utility.GoodForRenew, ok)

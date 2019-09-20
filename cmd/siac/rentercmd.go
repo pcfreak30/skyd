@@ -1495,7 +1495,7 @@ func renterdirdownload(path, destination string) {
 
 // renterdownloadcancelcmd is the handler for the command `siac renter download cancel [cancelID]`
 // Cancels the ongoing download.
-func renterdownloadcancelcmd(cancelID string) {
+func renterdownloadcancelcmd(cancelID modules.DownloadID) {
 	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
 		die("Couldn't cancel download:", err)
 	}
@@ -2080,7 +2080,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	if err != nil {
 		die("Could not read the renter prices:", err)
 	}
-	periodFactor := uint64(rpg.Allowance.Period / types.BlockHeight(4032))
+	periodFactor := uint64(rpg.Allowance.Period / types.BlocksPerMonth)
 
 	// Display Estimate
 	fmt.Println("Renter Prices (estimated):")
