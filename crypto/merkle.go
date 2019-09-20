@@ -106,6 +106,19 @@ func CalculateLeaves(dataSize uint64) uint64 {
 	return numSegments
 }
 
+// CompressSegmentHashes takes the ranges of modified segments as an input
+// together with the hashes of the modified segments.
+func CompressSegmentHashes(segmentHashes []Hash, ranges []ProofRange) (hashes []Hash, _ error) {
+	clh := merkletree.NewCachedSubtreeHasher(hashesToSlices(segmentHashes), NewHash())
+	compressedHashes, err := merkletree.CompressLeafHashes(ranges, clh)
+	for _, ch := range compressedHashes {
+		var h Hash
+		copy(h[:], ch)
+		hashes = append(hashes, h)
+	}
+	return hashes, err
+}
+
 // MerkleRoot returns the Merkle root of the input data.
 func MerkleRoot(b []byte) Hash {
 	t := NewTree()

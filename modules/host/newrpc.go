@@ -425,10 +425,16 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		for index := currentSector; index < oldNumSectors; index++ {
 			oldSectorRoots = append(oldSectorRoots, s.so.SectorRoots[index])
 		}
+		// Compress the oldLeafHashes.
+		compressedHashes, err := crypto.CompressSegmentHashes(oldLeafHashes, segmentProofRanges)
+		if err != nil {
+			s.writeError(err)
+			return err
+		}
 		// Construct the Merkle proof.
 		merkleResp = modules.LoopWriteMerkleProof{
 			OldSubtreeHashes: crypto.MerkleDiffProof(segmentProofRanges, oldSectorRoots, modifiedSegments, int(segmentsPerSector)),
-			OldLeafHashes:    oldLeafHashes,
+			OldLeafHashes:    compressedHashes,
 			NewMerkleRoot:    newMerkleRoot,
 		}
 		// Calculate bandwidth cost of proof.
