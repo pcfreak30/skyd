@@ -239,8 +239,7 @@ func VerifyDiffProof(ranges []ProofRange, numLeaves uint64, leavesPerNode int, p
 	if root == (Hash{}) {
 		rootBytes = nil // empty trees hash to nil, not 32 zeros
 	}
-	sth := merkletree.NewMixedSubtreeHasherVerifier(hashesToSlices(leafHashes), leavesPerNode, NewHash())
-	ok, _ := merkletree.VerifyDiffProof(sth, numLeaves, NewHash(), ranges, hashesToSlices(proofHashes), rootBytes)
+	ok, _ := merkletree.VerifyDiffProof(hashesToSlices(leafHashes), numLeaves, NewHash(), ranges, hashesToSlices(proofHashes), rootBytes)
 	return ok
 }
 
