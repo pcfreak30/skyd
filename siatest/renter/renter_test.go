@@ -3883,8 +3883,8 @@ func testUploadDirStats(t *testing.T, tg *siatest.TestGroup) {
 		}
 		// Check that each dir has been fully uploaded.
 		for _, apiDir := range renterDir.Directories {
-			if apiDir.AggregateUploadProgress < 1.0 {
-				errMsg := fmt.Sprintf("Progess for %s too low. Got %f", apiDir.SiaPath, apiDir.AggregateUploadProgress)
+			if apiDir.AggregateUploadProgress != 1.0 {
+				errMsg := fmt.Sprintf("Progess for %s not 1.0. Got %f", apiDir.SiaPath, apiDir.AggregateUploadProgress)
 				return errors.New(errMsg)
 			}
 		}

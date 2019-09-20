@@ -112,7 +112,7 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 			}
 			dirInfo := rd.Directories[0]
 
-			if dirInfo.AggregateUploadProgress < 1.0 {
+			if dirInfo.AggregateUploadProgress != 1.0 {
 				errMsg := fmt.Sprintf("Expected file to be completely uploaded. Progress: %f UploadedBytes: %d", dirInfo.AggregateUploadProgress, dirInfo.AggregateUploadedBytes)
 				return errors.New(errMsg)
 			}
