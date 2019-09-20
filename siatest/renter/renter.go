@@ -374,17 +374,8 @@ func renewContractsByRenewWindow(renter *siatest.TestNode, tg *siatest.TestGroup
 	if err != nil {
 		return err
 	}
-	cg, err := renter.ConsensusGet()
-	if err != nil {
-		return err
-	}
-	rc, err := renter.RenterContractsGet()
-	if err != nil {
-		return err
-	}
-	blocksToMine := rc.ActiveContracts[0].EndHeight - rg.Settings.Allowance.RenewWindow - cg.Height
 	m := tg.Miners()[0]
-	for i := 0; i < int(blocksToMine); i++ {
+	for i := 0; i <= int(rg.Settings.Allowance.Period); i++ {
 		if err = m.MineBlock(); err != nil {
 			return err
 		}

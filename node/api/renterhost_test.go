@@ -190,12 +190,11 @@ func TestHostAndRentVanilla(t *testing.T) {
 	// Set an allowance for the renter, allowing a contract to be formed.
 	allowanceValues := url.Values{}
 	testFunds := "10000000000000000000000000000" // 10k SC
-	testPeriod := "20"
-	renewWindow := "10"
-	testPeriodInt := 20
+	testPeriod := 20
+	renewWindow := 10
 	allowanceValues.Set("funds", testFunds)
-	allowanceValues.Set("period", testPeriod)
-	allowanceValues.Set("renewwindow", renewWindow)
+	allowanceValues.Set("period", strconv.FormatInt(int64(testPeriod), 10))
+	allowanceValues.Set("renewwindow", strconv.FormatInt(int64(renewWindow), 10))
 	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
@@ -388,7 +387,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	}
 
 	// Mine blocks until the host should have submitted a storage proof.
-	for i := 0; i <= testPeriodInt+5; i++ {
+	for i := 0; i <= testPeriod+renewWindow+5; i++ {
 		_, err := st.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
@@ -1101,8 +1100,7 @@ func TestRenterRenew(t *testing.T) {
 	contractID := rc.Contracts[0].ID
 
 	// Mine enough blocks to enter the renewal window.
-	testWindow := testPeriod / 2
-	for i := 0; i < testWindow+1; i++ {
+	for i := 0; i <= testPeriod; i++ {
 		_, err = st.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)

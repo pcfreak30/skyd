@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -252,11 +253,6 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 
 // TestRenterContracts tests the formation of the contracts, the contracts
 // endpoint, and canceling a contract
-//
-// TODO - Update with new allowance
-//
-// TODO - test edge cases where renew window is greater than period and renew
-// window smaller that period
 func TestRenterContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -265,9 +261,8 @@ func TestRenterContracts(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Renters: 1,
-		Miners:  1,
+		Hosts:  2,
+		Miners: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -280,42 +275,69 @@ func TestRenterContracts(t *testing.T) {
 		}
 	}()
 
-	// Get Renter
-	r := tg.Renters()[0]
-	rg, err := r.RenterGet()
+	// Run test with renter that has a renew window that is larger than the
+	// period
+	renterParams := node.Renter(filepath.Join(testDir, "renter_large_renew"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Hosts = 2
+	renterParams.Allowance.Period = 10
+	renterParams.Allowance.RenewWindow = 20
+	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
 	}
+	renter := nodes[0]
+
+	// run test
+	testRenterContracts(tg, t, renter, testDir)
+	t.Log("TestRenterContracts Successful for Large renew window")
+
+	// Run test with renter that has a renew window that is smaller than the
+	// period
+	renterParams = node.Renter(filepath.Join(testDir, "renter_small_renew"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Hosts = 2
+	renterParams.Allowance.Period = 10
+	renterParams.Allowance.RenewWindow = 5
+	nodes, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter = nodes[0]
+
+	// run test
+	testRenterContracts(tg, t, renter, testDir)
+	t.Log("TestRenterContracts Successful for Small renew window")
+}
+
+// testRenterContracts tests the formation of the contracts, the contracts
+// endpoint, and canceling a contract
+func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.TestNode, testDir string) {
+	// Get Renter
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Record allowance hosts
+	numHosts := int(rg.Settings.Allowance.Hosts)
 
 	// Record the start period at the beginning of test
 	currentPeriodStart := rg.CurrentPeriod
 	period := rg.Settings.Allowance.Period
 	renewWindow := rg.Settings.Allowance.RenewWindow
 
-	// Check if the current period was set in the past
-	cg, err := r.ConsensusGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if currentPeriodStart > cg.Height-renewWindow {
-		t.Fatalf(`Current period not set in the past as expected.
-		CP: %v
-		BH: %v
-		RW: %v
-		`, currentPeriodStart, cg.Height, renewWindow)
-	}
-
 	// Confirm Contracts were created as expected.  There should only be active
 	// contracts and no passive,refreshed, disabled, or expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		return checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
+		return checkExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, 0, 0)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm contract end heights were set properly
-	rc, err := r.RenterContractsGet()
+	rc, err := renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +359,7 @@ func TestRenterContracts(t *testing.T) {
 	}
 
 	// Mine blocks to force contract renewal
-	if err = renewContractsByRenewWindow(r, tg); err != nil {
+	if err = renewContractsByRenewWindow(renter, tg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -348,12 +370,12 @@ func TestRenterContracts(t *testing.T) {
 	// active contracts.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		// Confirm we have the expected number of each type of contract
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(originalContracts), 0)
+		err := checkExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, len(originalContracts), 0)
 		if err != nil {
 			return err
 		}
 		// Confirm the IDs and hosts make sense
-		rc, err := r.RenterAllContractsGet()
+		rc, err := renter.RenterAllContractsGet()
 		if err != nil {
 			return err
 		}
@@ -373,7 +395,7 @@ func TestRenterContracts(t *testing.T) {
 	// Confirm contract end heights were set properly End height should be the
 	// end of the next period as the contracts are renewed due to reaching the
 	// renew window
-	rc, err = r.RenterAllContractsGet()
+	rc, err = renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +417,7 @@ func TestRenterContracts(t *testing.T) {
 	}
 
 	// Record current active contracts
-	rc, err = r.RenterContractsGet()
+	rc, err = renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,22 +427,22 @@ func TestRenterContracts(t *testing.T) {
 	endHeight := rc.ActiveContracts[0].EndHeight
 
 	// Renew contracts by running out of funds
-	startingUploadSpend, err := drainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
+	startingUploadSpend, err := drainContractsByUploading(renter, tg, contractor.MinContractFundRenewalThreshold)
 	if err != nil {
-		r.PrintDebugInfo(t, true, true, true)
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Confirm contracts were renewed as expected.  Active contracts prior to
 	// renewal should now be in the refreshed contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts()), 0)
+		err = checkExpectedNumberOfContracts(renter, numHosts, 0, numHosts, 0, numHosts, 0)
 		if err != nil {
 			return err
 		}
 
 		// Confirm active and refreshed contracts
-		rc, err := r.RenterAllContractsGet()
+		rc, err := renter.RenterAllContractsGet()
 		if err != nil {
 			return err
 		}
@@ -446,7 +468,7 @@ func TestRenterContracts(t *testing.T) {
 	// Confirm contract end heights were set properly
 	// End height should not have changed since the renewal
 	// was due to running out of funds
-	rc, err = r.RenterContractsGet()
+	rc, err = renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,18 +481,18 @@ func TestRenterContracts(t *testing.T) {
 	}
 
 	// Mine blocks to force contract renewal to start with fresh set of contracts
-	if err = renewContractsByRenewWindow(r, tg); err != nil {
+	if err = renewContractsByRenewWindow(renter, tg); err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
+		err = checkExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, numHosts*2, numHosts)
 		if err != nil {
 			return err
 		}
 		// checkContracts will confirm correct number of inactive and active contracts
-		rc, err := r.RenterAllContractsGet()
+		rc, err := renter.RenterAllContractsGet()
 		if err != nil {
 			return err
 		}
@@ -480,23 +502,24 @@ func TestRenterContracts(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Test canceling contract
 	// Grab contract to cancel
-	rc, err = r.RenterContractsGet()
+	rc, err = renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 	contract := rc.ActiveContracts[0]
 	// Cancel Contract
-	if err := r.RenterContractCancelPost(contract.ID); err != nil {
+	if err := renter.RenterContractCancelPost(contract.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	// Add a new host so new contract can be formed
-	hostParams := node.Host(testDir + "/host")
+	hostParams := node.Host(testDir + "/host" + persist.RandomSuffix())
 	_, err = tg.AddNodes(hostParams)
 	if err != nil {
 		t.Fatal(err)
@@ -510,13 +533,13 @@ func TestRenterContracts(t *testing.T) {
 	// Confirm contract is cancelled
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		// Check that Contract is now in disabled contracts and no longer in Active contracts
-		rc, err = r.RenterDisabledContractsGet()
+		rc, err = renter.RenterDisabledContractsGet()
 		if err != nil {
 			return err
 		}
 		// Confirm Renter has the expected number of contracts, meaning canceled contract should have been replaced.
-		if len(rc.ActiveContracts) < len(tg.Hosts())-1 {
-			return fmt.Errorf("Canceled contract was not replaced, only %v active contracts, expected at least %v", len(rc.ActiveContracts), len(tg.Hosts())-1)
+		if len(rc.ActiveContracts) < numHosts {
+			return fmt.Errorf("Canceled contract was not replaced, only %v active contracts, expected at least %v", len(rc.ActiveContracts), numHosts)
 		}
 		for _, c := range rc.ActiveContracts {
 			if c.ID == contract.ID {
@@ -537,6 +560,131 @@ func TestRenterContracts(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRenterSkipPeriodRenew probes the case when the renew window is larger
+// than the period that a long absence of the renter doesn't not create
+// excessive contracts
+func TestRenterSkipPeriodRenew(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create tg without renter
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// set allowance with very large renew window compared to the period
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Hosts = 2
+	renterParams.Allowance.Period = 5
+	renterParams.Allowance.RenewWindow = 20
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get Renter
+	renter := nodes[0]
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Record the start period at the beginning of test
+	currentPeriodStart := rg.CurrentPeriod
+	period := rg.Settings.Allowance.Period
+	renewWindow := rg.Settings.Allowance.RenewWindow
+
+	// Confirm Contracts were created as expected.  There should only be active
+	// contracts and no passive,refreshed, disabled, or expired contracts
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		return checkExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm contract end heights were set properly
+	rc, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range rc.ActiveContracts {
+		if c.EndHeight != currentPeriodStart+period+renewWindow {
+			t.Log("Endheight:", c.EndHeight)
+			t.Log("Allowance Period:", period)
+			t.Log("Renew Window:", renewWindow)
+			t.Log("Current Period:", currentPeriodStart)
+			t.Fatal("Contract endheight not set to Current period + Allowance Period + Renew Window")
+		}
+	}
+
+	// shut down renter
+	err = renter.StopNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// mine blocks to skip several periods
+	m := tg.Miners()[0]
+	numSkippedPeriods := types.BlockHeight(3)
+	// Add 1 to the skipped periods to account for mining through current period
+	for i := 0; i <= int(period*numSkippedPeriods); i++ {
+		err = m.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// start up renter
+	err = renter.StartNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// mine block and confirm contracts only renew once and do so with the correct
+	// start and end heights
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be the same number of active and expired contracts
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		return checkExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm contract end heights were set properly
+	rc, err = renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentPeriodStart = currentPeriodStart + (period * numSkippedPeriods)
+	for _, c := range rc.ActiveContracts {
+		if c.EndHeight != currentPeriodStart+period+renewWindow {
+			t.Log("Endheight:", c.EndHeight)
+			t.Log("Allowance Period:", period)
+			t.Log("Renew Window:", renewWindow)
+			t.Log("Current Period:", currentPeriodStart)
+			t.Fatal("Contract endheight not set to Current period + Allowance Period + Renew Window")
+		}
 	}
 }
 

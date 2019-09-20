@@ -47,9 +47,7 @@ var (
 		Funds:       types.SiacoinPrecision.Mul64(1e3),
 		Hosts:       5,
 		Period:      25,
-		RenewWindow: 25,
-		// Period:      50,
-		// RenewWindow: 24,
+		RenewWindow: 50,
 
 		ExpectedStorage:    modules.SectorSize * 50e3,
 		ExpectedUpload:     modules.SectorSize * 5e3,
