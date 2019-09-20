@@ -136,6 +136,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateNumStuckChunks += fileMetadata.NumStuckChunks
 			metadata.AggregateSize += fileMetadata.Size
 			metadata.AggregateUploadedBytes += fileMetadata.UploadedBytes
+			metadata.AddToAggregateExpectedUploadBytes(fileMetadata.TotalExpectedBytes)
 
 			// Update siadir fields.
 			metadata.Health = math.Max(metadata.Health, fileMetadata.Health)
@@ -173,7 +174,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateSize += dirMetadata.AggregateSize
-			metadata.AggregateUploadedBytes += dirMetadata.AggregateUploadedBytes
+			metadata.AddToAggregateExpectedUploadBytes(dirMetadata.AggregateExpectedUploadBytes())
 
 			// Update siadir fields
 			metadata.NumSubDirs++
@@ -214,8 +215,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		metadata.MinRedundancy = 0
 	}
 
-	if metadata.AggregateSize != 0 {
-		metadata.AggregateUploadProgress = float64(metadata.AggregateUploadedBytes) / float64(metadata.AggregateSize)
+	if metadata.AggregateExpectedUploadBytes() != 0 {
+		metadata.AggregateUploadProgress = float64(metadata.AggregateUploadedBytes) / float64(metadata.AggregateExpectedUploadBytes())
 	}
 
 	return metadata, nil
@@ -252,7 +253,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	}
 
 	// Get number of uploaded bytes and upload progress for the siafile.
-	uploadProgress, uploadedBytes, err := sf.UploadProgressAndBytes()
+	uploadProgress, uploadedBytes, totalExpectedBytes, err := sf.UploadProgressAndBytes()
 	if err != nil {
 		r.log.Debugln("UploadProgressAndBytes error: ", err)
 	}
@@ -268,6 +269,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 		UID:                 sf.UID(),
 		UploadProgress:      uploadProgress,
 		UploadedBytes:       uploadedBytes,
+		TotalExpectedBytes:  totalExpectedBytes,
 	}, sf.SaveMetadata()
 }
 

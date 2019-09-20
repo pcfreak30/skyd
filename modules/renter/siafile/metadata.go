@@ -169,6 +169,7 @@ type (
 		UID                 SiafileUID
 		UploadProgress      float64
 		UploadedBytes       uint64
+		TotalExpectedBytes  uint64
 	}
 
 	// CachedHealthMetadata is a healper struct that contains the siafile health

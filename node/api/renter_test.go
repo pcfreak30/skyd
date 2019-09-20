@@ -116,10 +116,6 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 				errMsg := fmt.Sprintf("Expected file to be completely uploaded. Progress: %f UploadedBytes: %d", dirInfo.AggregateUploadProgress, dirInfo.AggregateUploadedBytes)
 				return errors.New(errMsg)
 			}
-			if dirInfo.AggregateSize != dirInfo.AggregateUploadedBytes {
-				errMsg := fmt.Sprintf("Expected all bytes to be uploaded: TotalSize: %d UploadedBytes: %d", dirInfo.AggregateSize, dirInfo.AggregateUploadedBytes)
-				return errors.New(errMsg)
-			}
 			return nil
 		})
 	}

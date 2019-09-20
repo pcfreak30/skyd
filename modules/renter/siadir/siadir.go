@@ -97,6 +97,7 @@ type (
 		AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 		AggregateUploadProgress      float64   `json:"aggregateuploadprogress"`
 		AggregateUploadedBytes       uint64    `json:"agreggateuploadedbytes"`
+		aggregateExpectedUploadBytes uint64    // used only to calculate upload progress.
 
 		// The following fields are information specific to the siadir that is not
 		// an aggregate of the entire sub directory tree
@@ -111,6 +112,19 @@ type (
 		StuckHealth         float64   `json:"stuckhealth"`
 	}
 )
+
+// AggregateExpectedUploadBytes returns the total number of bytes that will be
+// uploaded in this directory (including all sub-directories and files contained
+// within) assuming that upload finished succesfully.
+func (md *Metadata) AggregateExpectedUploadBytes() uint64 {
+	return md.aggregateExpectedUploadBytes
+}
+
+// AddToAggregateExpectedUploadBytes adds val to the
+// aggregateExpectedUploadBytes field of md.
+func (md *Metadata) AddToAggregateExpectedUploadBytes(val uint64) {
+	md.aggregateExpectedUploadBytes += val
+}
 
 // DirReader is a helper type that allows reading a raw .siadir from disk while
 // keeping the file in memory locked.

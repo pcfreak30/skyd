@@ -296,6 +296,7 @@ func TestRenterFour(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
+		{"TestUploadDirStats", testUploadDirStats},
 		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
 	}
@@ -3838,5 +3839,58 @@ func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testUploadDownload is a subtest that uses an existing TestGroup to test
+// uploading for a directory and tests that directory progress is properly
+// updated.
+func testUploadDirStats(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+
+	// Create directory and upload a bunch of files under it.
+	dir := renter.NewLocalDir()
+	remoteDir, err := renter.UploadDirectory(dir)
+	if err != nil {
+		t.Fatal("Error uploading dir:", err)
+	}
+
+	filesize := 100
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	force := false
+	for i := 0; i < 20; i++ {
+		// Create file for upload
+		localFile, err := dir.NewFile(filesize)
+		if err != nil {
+			t.Fatal("failed to create file", err)
+		}
+		// Upload file, creating a parity piece for each host in the group
+		_, err = renter.Upload(localFile, renter.SiaPath(localFile.Path()), dataPieces, parityPieces, force)
+		if err != nil {
+			t.Fatal("failed to start upload", err)
+		}
+	}
+
+	err = build.Retry(200, time.Second, func() error {
+		renterDir, apiErr := renter.RenterGetDir(remoteDir.SiaPath())
+		if apiErr != nil {
+			return apiErr
+		}
+		if len(renterDir.Directories) == 0 {
+			return errors.New("Expected at leaast 1 dir")
+		}
+		// Check that each dir has been fully uploaded.
+		for _, apiDir := range renterDir.Directories {
+			if apiDir.AggregateUploadProgress < 1.0 {
+				errMsg := fmt.Sprintf("Progess for %s too low. Got %f", apiDir.SiaPath, apiDir.AggregateUploadProgress)
+				return errors.New(errMsg)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal("Expected complete directory download to show in dir metadata", err)
 	}
 }

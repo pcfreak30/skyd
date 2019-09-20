@@ -1086,7 +1086,7 @@ func (sf *SiaFile) goodPieces(chunk chunk, offlineMap map[string]bool, goodForRe
 }
 
 // UploadProgressAndBytes is the exported wrapped for uploadProgressAndBytes.
-func (sf *SiaFile) UploadProgressAndBytes() (float64, uint64, error) {
+func (sf *SiaFile) UploadProgressAndBytes() (float64, uint64, uint64, error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	return sf.uploadProgressAndBytes()
@@ -1223,22 +1223,24 @@ func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 // uploadProgressAndBytes updates the CachedUploadProgress and
 // CachedUploadedBytes fields to indicate what percentage of the file has been
 // uploaded based on the unique pieces that have been uploaded and also how many
-// bytes have been uploaded of that file in total. Note that a file may be
-// Available long before UploadProgress reaches 100%.
-func (sf *SiaFile) uploadProgressAndBytes() (float64, uint64, error) {
+// bytes have been uploaded of that file in total. It also returns the total
+// number of bytes that will be uploaded for this file assuming the upload is
+// completed succesfully. Note that a file may be Available long before
+// UploadProgress reaches 100%.
+func (sf *SiaFile) uploadProgressAndBytes() (float64, uint64, uint64, error) {
 	_, uploaded, err := sf.uploadedBytes()
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	if sf.staticMetadata.FileSize == 0 {
 		// Update cache.
 		sf.staticMetadata.CachedUploadProgress = 100
-		return 100, uploaded, nil
+		return 100, uploaded, uploaded, nil
 	}
 	desired := uint64(sf.numChunks) * modules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
 	// Update cache.
 	sf.staticMetadata.CachedUploadProgress = math.Min(100*(float64(uploaded)/float64(desired)), 100)
-	return sf.staticMetadata.CachedUploadProgress, uploaded, nil
+	return sf.staticMetadata.CachedUploadProgress, uploaded, desired, nil
 }
 
 // uploadedBytes indicates how many bytes of the file have been uploaded via

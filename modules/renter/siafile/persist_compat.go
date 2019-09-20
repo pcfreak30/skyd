@@ -141,6 +141,6 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	}
 
 	// Update the cached fields for progress and uploaded bytes.
-	_, _, err = file.UploadProgressAndBytes()
+	_, _, _, err = file.UploadProgressAndBytes()
 	return sfse, err
 }

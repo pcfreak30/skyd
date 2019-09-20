@@ -34,7 +34,6 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, erro
 		return nil, err
 	}
 	defer r.tg.Done()
-
 	return r.staticDirSet.DirList(siaPath)
 }
 

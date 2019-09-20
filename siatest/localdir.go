@@ -81,7 +81,7 @@ func (ld *LocalDir) NewFileWithName(name string, size int) (*LocalFile, error) {
 	}, err
 }
 
-// Path creates a new LocalFile in the current LocalDir
+// Path returns the path of the LocalDir.
 func (ld *LocalDir) Path() string {
 	return ld.path
 }
