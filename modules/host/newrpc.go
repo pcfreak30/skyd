@@ -10,11 +10,82 @@ import (
 
 	bolt "github.com/coreos/bbolt"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/merkletree"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// modifyLeafRanges sorts the input slice and resolves overlapping ranges.
+// Overlapping ranges won't be merged but instead they will be shortened and the
+// overlap will be turned into a new range.
+//
+// e.g. [1;3) and [2;4) will be turned into [1;2), [2;3), [3;4)
+func modifyLeafRanges(ranges []merkletree.LeafRange) []merkletree.LeafRange {
+	// Sort the ranges first.
+	sortRanges := func(ranges []merkletree.LeafRange) {
+		sort.Slice(ranges, func(i, j int) bool {
+			if ranges[i].Start != ranges[j].Start {
+				return ranges[i].Start < ranges[j].Start
+			}
+			return ranges[i].End < ranges[j].End
+		})
+	}
+	sortRanges(ranges)
+	// Nothing to do if there are not at least 2 ranges.
+	if len(ranges) <= 1 {
+		return ranges
+	}
+	// Merge overlapping ranges.
+	tmpRanges := make([]merkletree.LeafRange, len(ranges))
+	copy(tmpRanges, ranges)
+	ranges = ranges[:0]
+
+	curr := tmpRanges[0]
+	tmpRanges = tmpRanges[1:]
+	for {
+		// Check if we are done.
+		if len(tmpRanges) == 0 {
+			ranges = append(ranges, curr)
+			break
+		}
+		// Get next element to compare curr to.
+		next := tmpRanges[0]
+		tmpRanges = tmpRanges[1:]
+		// Check for duplicate.
+		if curr.Start == next.Start && curr.End == next.End {
+			continue // ignore
+		}
+		if len(ranges) > 0 && ranges[len(ranges)-1].Start == curr.Start && ranges[len(ranges)-1].End == curr.End {
+			curr = next
+			continue // ignore
+		}
+		// If they don't overlap there is nothing to do.
+		if curr.End <= next.Start {
+			ranges = append(ranges, curr)
+			curr = next
+			continue
+		}
+		// Resolve overlapping ranges and append them to tmpRanges.
+		if curr.Start != next.Start {
+			tmpRanges = append(tmpRanges, merkletree.LeafRange{Start: curr.Start, End: next.Start})
+		}
+		if curr.End < next.End {
+			tmpRanges = append(tmpRanges, merkletree.LeafRange{Start: next.Start, End: curr.End})
+			tmpRanges = append(tmpRanges, merkletree.LeafRange{Start: curr.End, End: next.End})
+		} else if curr.End > next.End {
+			tmpRanges = append(tmpRanges, merkletree.LeafRange{Start: next.Start, End: next.End})
+			tmpRanges = append(tmpRanges, merkletree.LeafRange{Start: next.End, End: curr.End})
+		} else if curr.End == next.End {
+			tmpRanges = append(tmpRanges, merkletree.LeafRange{Start: next.Start, End: curr.End})
+		}
+		sortRanges(tmpRanges)
+		curr = tmpRanges[0]
+		tmpRanges = tmpRanges[1:]
+	}
+	return ranges
+}
 
 // managedRPCLoopSettings writes an RPC response containing the host's
 // settings.
@@ -306,9 +377,8 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 					Start: index * segmentsPerSector,
 					End:   index*segmentsPerSector + segmentsPerSector,
 				})
-				continue // No need to add sub ranges if the whole sector changed
 			}
-			// Otherwise we add the sub-sector ranges if there are any.
+			// Add sub-sector ranges.
 			if segments, exists := segmentsChanged[index]; exists {
 				for segmentIndex := range segments {
 					segmentProofRanges = append(segmentProofRanges, crypto.ProofRange{
@@ -316,13 +386,10 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 						End:   index*segmentsPerSector + segmentIndex + 1,
 					})
 				}
-				continue
 			}
 		}
-		// Sort the ranges for the sectors and segments.
-		sort.Slice(segmentProofRanges, func(i, j int) bool {
-			return segmentProofRanges[i].Start < segmentProofRanges[j].Start
-		})
+		// Merge overlapping ranges.
+		segmentProofRanges = modifyLeafRanges(segmentProofRanges)
 		// Record old hashes for all changed sectors.
 		var oldLeafHashes []crypto.Hash
 		var oldSectorRoots []crypto.Hash
