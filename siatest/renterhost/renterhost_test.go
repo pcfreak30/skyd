@@ -345,3 +345,120 @@ func TestMultiRead(t *testing.T) {
 		t.Fatal("downloaded sector does not match")
 	}
 }
+
+// TestModifySectorsByRoot tests the Modify-by-sector-root RPC. At first it
+// modifies a full sector, then a single random segment and finally a random
+// range of segments.
+func TestModifySectorByRoot(t *testing.T) {
+	gp := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterHostTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// manually grab a renter contract
+	renter := tg.Renters()[0]
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := cs.ViewAll()[0]
+
+	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// begin the RPC session
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// upload a sector
+	sector := fastrand.Bytes(int(modules.SectorSize))
+	_, root, err := s.Append(sector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// modify the full sector
+	sector2 := fastrand.Bytes(int(modules.SectorSize))
+	_, err = s.Modify(modules.LoopUpdateRequest{
+		MerkleProof: true,
+		MerkleRoot:  root,
+		Offset:      0,
+		Data:        sector2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download sector and compare it.
+	_, dsector2, err := s.ReadSection(crypto.MerkleRoot(sector2), 0, uint32(modules.SectorSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dsector2, sector2) {
+		t.Fatal("downloaded sector 2 doesn't match actual sector 2")
+	}
+
+	// modify a single random segment
+	sector3 := append([]byte{}, sector2...)
+	numSegments := modules.SectorSize / crypto.SegmentSize
+	idx := uint32(fastrand.Intn(int(numSegments)))
+	segment := fastrand.Bytes(crypto.SegmentSize)
+	copy(sector3[idx*crypto.SegmentSize:][:crypto.SegmentSize], segment)
+	_, err = s.Modify(modules.LoopUpdateRequest{
+		MerkleProof: true,
+		MerkleRoot:  crypto.MerkleRoot(sector2),
+		Offset:      idx * crypto.SegmentSize,
+		Data:        segment,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download sector and compare it.
+	_, dsector3, err := s.ReadSection(crypto.MerkleRoot(sector3), 0, uint32(modules.SectorSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dsector3, sector3) {
+		t.Fatal("downloaded sector 3 doesn't match actual sector 3")
+	}
+
+	// Modify a random range.
+	sector4 := append([]byte{}, sector3...)
+	start := uint32(fastrand.Intn(int(numSegments)))
+	length := fastrand.Intn(int(numSegments) - int(start))
+	segments := fastrand.Bytes(crypto.SegmentSize * length)
+	copy(sector4[start*crypto.SegmentSize:][:length*crypto.SegmentSize], segments)
+	_, err = s.Modify(modules.LoopUpdateRequest{
+		MerkleProof: true,
+		MerkleRoot:  crypto.MerkleRoot(sector3),
+		Offset:      start * crypto.SegmentSize,
+		Data:        segments,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download sector and compare it.
+	_, dsector4, err := s.ReadSection(crypto.MerkleRoot(sector4), 0, uint32(modules.SectorSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dsector4, sector4) {
+		t.Fatal("downloaded sector 4 doesn't match actual sector 4")
+	}
+}

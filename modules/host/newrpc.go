@@ -386,7 +386,7 @@ func (h *Host) managedRPCLoopUpdate(s *rpcSession) error {
 
 	// Read the request.
 	var req modules.LoopUpdateRequest
-	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
+	if err := s.readRequest(&req, 2*modules.RPCMinLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
 		s.writeError(err)
@@ -419,7 +419,7 @@ func (h *Host) managedRPCLoopUpdate(s *rpcSession) error {
 
 	// Sanity check request.
 	root, offset, data := req.MerkleRoot, req.Offset, req.Data
-	if offset+uint32(len(data)) >= uint32(len(s.so.SectorRoots)) {
+	if offset+uint32(len(data)) > uint32(len(s.so.SectorRoots))*uint32(modules.SectorSize) {
 		err := errors.New("illegal section offset and/or length")
 		s.writeError(err)
 		return err
@@ -435,18 +435,30 @@ func (h *Host) managedRPCLoopUpdate(s *rpcSession) error {
 	// Modify the sector.
 	newSector := append([]byte{}, sector...)
 	copy(newSector[offset:], req.Data)
-	newRoot := crypto.MerkleRoot(sector)
+	newRoot := crypto.MerkleRoot(newSector)
 
 	// Replace the sector root.
 	newRoots := append([]crypto.Hash(nil), s.so.SectorRoots...)
+	sectorsGained := append([]crypto.Hash{}, newRoot)
+	gainedSectorData := append([][]byte{}, newSector)
+	sectorsRemoved := append([]crypto.Hash{}, root)
+	foundIdx := -1
 	for i, r := range newRoots {
 		if r == root {
 			newRoots[i] = newRoot
+			foundIdx = i
+			break
 		}
+	}
+	if foundIdx == -1 {
+		err := errors.New("trying to modify unknown root")
+		s.writeError(err)
+		return err
 	}
 
 	// Update finances.
-	estBandwidth := uint64(len(req.Data))
+	estDownloadBandwidth := uint64(0)
+	estUploadBandwidth := uint64(len(req.Data))
 
 	// If a Merkle proof was requested, construct it.
 	newMerkleRoot := cachedMerkleRoot(newRoots)
@@ -461,7 +473,7 @@ func (h *Host) managedRPCLoopUpdate(s *rpcSession) error {
 		if proofSize < modules.RPCMinLen {
 			proofSize = modules.RPCMinLen
 		}
-		estBandwidth += uint64(proofSize)
+		estDownloadBandwidth += uint64(proofSize)
 	}
 
 	// construct the new revision
@@ -483,10 +495,14 @@ func (h *Host) managedRPCLoopUpdate(s *rpcSession) error {
 	}
 
 	// calculate expected cost and verify against renter's revision
-	if estBandwidth < modules.RPCMinLen {
-		estBandwidth = modules.RPCMinLen
+	if estDownloadBandwidth < modules.RPCMinLen {
+		estDownloadBandwidth = modules.RPCMinLen
 	}
-	bandwidthCost := settings.DownloadBandwidthPrice.Mul64(estBandwidth)
+	if estUploadBandwidth < modules.RPCMinLen {
+		estUploadBandwidth = modules.RPCMinLen
+	}
+	estBandwidth := estDownloadBandwidth + estUploadBandwidth
+	bandwidthCost := settings.UploadBandwidthPrice.Mul64(estBandwidth)
 	sectorAccessCost := settings.SectorAccessPrice.Mul64(1)
 	totalCost := settings.BaseRPCPrice.Add(bandwidthCost).Add(sectorAccessCost)
 	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, totalCost)
@@ -515,7 +531,7 @@ func (h *Host) managedRPCLoopUpdate(s *rpcSession) error {
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
 	s.so.SectorRoots = newRoots
 	h.mu.Lock()
-	err = h.modifyStorageObligation(s.so, nil, nil, nil)
+	err = h.modifyStorageObligation(s.so, sectorsRemoved, sectorsGained, gainedSectorData)
 	h.mu.Unlock()
 	if err != nil {
 		s.writeError(err)

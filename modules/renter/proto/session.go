@@ -480,7 +480,7 @@ func (s *Session) Modify(req modules.LoopUpdateRequest) (modules.RenterContract,
 
 	// read response
 	var resp modules.LoopUpdateResponse
-	err = s.readResponse(&resp, modules.RPCMinLen)
+	err = s.readResponse(&resp, 2*estBandwidth)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
