@@ -18,6 +18,30 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// handleWriteActionSwapRange is a helper method used by managedRPCLoopWrite
+// which handles a SwapRange write action.
+func handleWriteActionSwapRange(sectorsChanged map[uint64]struct{}, newRoots []crypto.Hash, action modules.LoopWriteAction) error {
+	if len(action.Data) != 8 {
+		return fmt.Errorf("data needs to have length of %v but had %v", 8, len(action.Data))
+	}
+	if action.A >= action.B {
+		return fmt.Errorf("start index of lower range must be smaller than start index of higher range: %v >= %v", action.A, action.B)
+	}
+	length := binary.LittleEndian.Uint64(action.Data)
+	for l := uint64(0); l < length; l++ {
+		i, j := action.A+l, action.B+l
+		if i >= uint64(len(newRoots)) || j >= uint64(len(newRoots)) {
+			return errors.New("illegal sector index")
+		}
+		// Update sector roots.
+		newRoots[i], newRoots[j] = newRoots[j], newRoots[i]
+
+		sectorsChanged[i] = struct{}{}
+		sectorsChanged[j] = struct{}{}
+	}
+	return nil
+}
+
 // managedRPCLoopSettings writes an RPC response containing the host's
 // settings.
 func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
@@ -221,29 +245,9 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			sectorsChanged[j] = struct{}{}
 
 		case modules.WriteActionSwapRange:
-			if len(action.Data) != 8 {
-				err := fmt.Errorf("data needs to have length of %v but had %v", 8, len(action.Data))
+			if err := handleWriteActionSwapRange(sectorsChanged, newRoots, action); err != nil {
 				s.writeError(err)
 				return err
-			}
-			if action.A >= action.B {
-				err := fmt.Errorf("start index of lower range must be smaller than start index of higher range: %v >= %v", action.A, action.B)
-				s.writeError(err)
-				return err
-			}
-			length := binary.LittleEndian.Uint64(action.Data)
-			for l := uint64(0); l < length; l++ {
-				i, j := action.A+l, action.B+l
-				if i >= uint64(len(newRoots)) || j >= uint64(len(newRoots)) {
-					err := errors.New("illegal sector index")
-					s.writeError(err)
-					return err
-				}
-				// Update sector roots.
-				newRoots[i], newRoots[j] = newRoots[j], newRoots[i]
-
-				sectorsChanged[i] = struct{}{}
-				sectorsChanged[j] = struct{}{}
 			}
 
 		case modules.WriteActionUpdate:
