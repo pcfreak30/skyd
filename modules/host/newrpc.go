@@ -379,13 +379,15 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 				})
 			}
 			// Add sub-sector ranges.
-			if segments, exists := segmentsChanged[index]; exists {
-				for segmentIndex := range segments {
-					segmentProofRanges = append(segmentProofRanges, crypto.ProofRange{
-						Start: index*segmentsPerSector + segmentIndex,
-						End:   index*segmentsPerSector + segmentIndex + 1,
-					})
-				}
+			segments, exists := segmentsChanged[index]
+			if !exists {
+				continue
+			}
+			for segmentIndex := range segments {
+				segmentProofRanges = append(segmentProofRanges, crypto.ProofRange{
+					Start: index*segmentsPerSector + segmentIndex,
+					End:   index*segmentsPerSector + segmentIndex + 1,
+				})
 			}
 		}
 		// Merge overlapping ranges.
