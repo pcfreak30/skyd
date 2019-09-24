@@ -558,6 +558,190 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	return <-stopSignal
 }
 
+// managedRPCLoopIndexRead writes an RPC response containing the requested data
+// (along with signatures and an optional Merkle proof).
+func (h *Host) managedRPCLoopIndexRead(s *rpcSession) error {
+	s.extendDeadline(modules.NegotiateDownloadTime)
+
+	// Read the request.
+	var req modules.LoopReadIndexRequest
+	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
+		// Reading may have failed due to a closed connection; regardless, it
+		// doesn't hurt to try and tell the renter about it.
+		s.writeError(err)
+		return err
+	}
+
+	// As soon as we finish reading the request, we must begin listening for
+	// RPCLoopReadStop, which may arrive at any time, and must arrive before the
+	// RPC is considered complete.
+	stopSignal := make(chan error, 1)
+	go func() {
+		var id types.Specifier
+		err := s.readResponse(&id, modules.RPCMinLen)
+		if err != nil {
+			stopSignal <- err
+		} else if id != modules.RPCLoopReadStop {
+			stopSignal <- errors.New("expected 'stop' from renter, got " + id.String())
+		} else {
+			stopSignal <- nil
+		}
+	}()
+
+	// Check that a contract is locked.
+	if len(s.so.OriginTransactionSet) == 0 {
+		err := errors.New("no contract locked")
+		s.writeError(err)
+		<-stopSignal
+		return err
+	}
+
+	// Read some internal fields for later.
+	h.mu.Lock()
+	blockHeight := h.blockHeight
+	secretKey := h.secretKey
+	settings := h.externalSettings()
+	h.mu.Unlock()
+	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
+
+	// Validate the request.
+	for _, sec := range req.Sections {
+		var err error
+		switch {
+		case uint64(sec.Offset)+uint64(sec.Length) > modules.SectorSize:
+			err = errRequestOutOfBounds
+		case sec.Length == 0:
+			err = errors.New("length cannot be zero")
+		case req.MerkleProof && (sec.Offset%crypto.SegmentSize != 0 || sec.Length%crypto.SegmentSize != 0):
+			err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
+		case len(req.NewValidProofValues) != len(currentRevision.NewValidProofOutputs):
+			err = errors.New("wrong number of valid proof values")
+		case len(req.NewMissedProofValues) != len(currentRevision.NewMissedProofOutputs):
+			err = errors.New("wrong number of missed proof values")
+		case sec.Index >= uint64(len(s.so.SectorRoots)):
+			err = errors.New("sector index out of range")
+		}
+		if err != nil {
+			s.writeError(err)
+			return err
+		}
+	}
+
+	// construct the new revision
+	newRevision := currentRevision
+	newRevision.NewRevisionNumber = req.NewRevisionNumber
+	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewValidProofValues[i],
+			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
+		}
+	}
+	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
+			Value:      req.NewMissedProofValues[i],
+			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
+		}
+	}
+
+	// calculate expected cost and verify against renter's revision
+	var estBandwidth uint64
+	sectorAccesses := make(map[uint64]struct{})
+	for _, sec := range req.Sections {
+		// use the worst-case proof size of 2*tree depth (this occurs when
+		// proving across the two leaves in the center of the tree)
+		estHashesPerProof := 2 * bits.Len64(modules.SectorSize/crypto.SegmentSize)
+		estBandwidth += uint64(sec.Length) + uint64(estHashesPerProof*crypto.HashSize)
+		sectorAccesses[sec.Index] = struct{}{}
+	}
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
+	}
+	bandwidthCost := settings.DownloadBandwidthPrice.Mul64(estBandwidth)
+	sectorAccessCost := settings.SectorAccessPrice.Mul64(uint64(len(sectorAccesses)))
+	totalCost := settings.BaseRPCPrice.Add(bandwidthCost).Add(sectorAccessCost)
+	err := verifyPaymentRevision(currentRevision, newRevision, blockHeight, totalCost)
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// Sign the new revision.
+	renterSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(newRevision.ParentID),
+		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		PublicKeyIndex: 0,
+		Signature:      req.Signature,
+	}
+	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+	hostSig := txn.TransactionSignatures[1].Signature
+
+	// Update the storage obligation.
+	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
+	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
+	s.so.RevisionTransactionSet = []types.Transaction{txn}
+	h.mu.Lock()
+	err = h.modifyStorageObligation(s.so, nil, nil, nil)
+	h.mu.Unlock()
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// enter response loop
+	for i, sec := range req.Sections {
+		// get root of sector to fetch.
+		merkleRoot := s.so.SectorRoots[sec.Index]
+
+		// Fetch the requested data.
+		sectorData, err := h.ReadSector(merkleRoot)
+		if err != nil {
+			s.writeError(err)
+			return err
+		}
+		data := sectorData[sec.Offset : sec.Offset+sec.Length]
+
+		// Construct the Merkle proof, if requested.
+		var proof []crypto.Hash
+		if req.MerkleProof {
+			proofStart := int(sec.Offset) / crypto.SegmentSize
+			proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
+			proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+		}
+
+		// Send the response. If the renter sent a stop signal, or this is the
+		// final response, include our signature in the response.
+		resp := modules.LoopIndexReadResponse{
+			Signature:   nil,
+			Data:        data,
+			MerkleProof: proof,
+			MerkleRoot:  merkleRoot,
+		}
+		select {
+		case err := <-stopSignal:
+			if err != nil {
+				return err
+			}
+			resp.Signature = hostSig
+			return s.writeResponse(resp)
+		default:
+		}
+		if i == len(req.Sections)-1 {
+			resp.Signature = hostSig
+		}
+		if err := s.writeResponse(resp); err != nil {
+			return err
+		}
+	}
+	// The stop signal must arrive before RPC is complete.
+	return <-stopSignal
+}
+
 // managedRPCLoopFormContract handles the contract formation RPC.
 func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	// NOTE: this RPC contains two request/response exchanges.

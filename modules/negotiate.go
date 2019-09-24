@@ -343,6 +343,7 @@ var (
 	RPCLoopFormContract  = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
 	RPCLoopLock          = types.Specifier{'L', 'o', 'o', 'p', 'L', 'o', 'c', 'k'}
 	RPCLoopRead          = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
+	RPCLoopIndexRead     = types.Specifier{'L', 'o', 'o', 'p', 'I', 'n', 'd', 'e', 'x', 'R', 'e', 'a', 'd'}
 	RPCLoopRenewContract = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
 	RPCLoopSectorRoots   = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
 	RPCLoopSettings      = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
@@ -456,6 +457,32 @@ type (
 		NewValidProofValues  []types.Currency
 		NewMissedProofValues []types.Currency
 		Signature            []byte
+	}
+
+	// LoopReadRequestIndexSection is a section requested in LoopReadRequest.
+	LoopReadRequestIndexSection struct {
+		Index  uint64
+		Offset uint32
+		Length uint32
+	}
+
+	// LoopReadIndexRequest contains the request parameters for RPCLoopIndexRead.
+	LoopReadIndexRequest struct {
+		Sections    []LoopReadRequestIndexSection
+		MerkleProof bool
+
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+		Signature            []byte
+	}
+
+	// LoopIndexReadResponse contains the response data for RPCLoopIndexRead.
+	LoopIndexReadResponse struct {
+		Signature   []byte
+		Data        []byte
+		MerkleProof []crypto.Hash
+		MerkleRoot  crypto.Hash
 	}
 
 	// LoopReadResponse contains the response data for RPCLoopRead.
