@@ -1616,15 +1616,15 @@ func TestRenewFailing(t *testing.T) {
 	}
 	miner := tg.Miners()[0]
 	blockHeight := cg.Height
-	for blockHeight+rg.Settings.Allowance.RenewWindow < rcg.ActiveContracts[0].EndHeight {
+	for blockHeight < rcg.ActiveContracts[0].EndHeight-rg.Settings.Allowance.RenewWindow {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
 		blockHeight++
 	}
 
-	// there should be no inactive contracts, only active contracts.
-	rcg, err = renter.RenterInactiveContractsGet()
+	// there should be no expired contracts, only active contracts.
+	rcg, err = renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1635,51 +1635,39 @@ func TestRenewFailing(t *testing.T) {
 		t.Fatalf("renter had %v contracts but should have %v",
 			len(rcg.ActiveContracts), len(tg.Hosts()))
 	}
-	if len(rcg.InactiveContracts) != 0 {
-		t.Fatal("Renter should have 0 inactive contracts but has", len(rcg.InactiveContracts))
+	if len(rcg.ExpiredContracts) != 0 {
+		t.Fatal("Renter should have 0 expired contracts but has", len(rcg.ExpiredContracts))
 	}
 
-	// mine enough blocks to reach the second half of the renew window.
-	for ; blockHeight+rg.Settings.Allowance.RenewWindow/2 < rcg.ActiveContracts[0].EndHeight; blockHeight++ {
-		if err := miner.MineBlock(); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// We should be within the second half of the renew window now. We keep
-	// mining blocks until the host with the locked wallet has been replaced.
-	// This should happen before we reach the endHeight of the contracts. This
-	// means we should have number of hosts - 1 active contracts, number of
-	// hosts - 1 renewed contracts, and one of the disabled contract which will
-	// be the host that has the locked wallet
+	// We should be within the renew window now. We keep mining blocks until the
+	// host with the locked wallet has been replaced. This should happen before
+	// we reach the endHeight of the contracts. This means we should have number
+	// of hosts - 1 active contracts, number of hosts - 1 renewed contracts, and
+	// one passive contract which will be the host that has the locked wallet
 	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 1*time.Second, func() error {
 		if err := miner.MineBlock(); err != nil {
 			return err
 		}
 
 		// contract should be !goodForRenew now.
-		rc, err := renter.RenterDisabledContractsGet()
-		if err != nil {
-			return err
-		}
-		rce, err := renter.RenterExpiredContractsGet()
+		rc, err := renter.RenterAllContractsGet()
 		if err != nil {
 			return err
 		}
 		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
 			return fmt.Errorf("Expected %v active contracts, got %v", len(tg.Hosts())-1, len(rc.ActiveContracts))
 		}
-		if len(rc.DisabledContracts) != 1 {
-			return fmt.Errorf("Expected %v disabled contracts, got %v", 1, len(rc.DisabledContracts))
-		}
-		if len(rce.ExpiredContracts) != len(tg.Hosts())-1 {
-			return fmt.Errorf("Expected %v expired contracts, got %v", len(tg.Hosts())-1, len(rce.ExpiredContracts))
+		if len(rc.ExpiredContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("Expected %v expired contracts, got %v", len(tg.Hosts())-1, len(rc.ExpiredContracts))
 		}
 
-		// If the host is the host in the disabled contract, then the test has
+		// If the host is the host in the passive contract, then the test has
 		// passed.
-		if rc.DisabledContracts[0].HostPublicKey.String() != lockedHostPK.String() {
-			return errors.New("Disbled contract host not the locked host")
+		if len(rc.PassiveContracts) != 1 {
+			return fmt.Errorf("Expected %v passive contracts, got %v", 1, len(rc.PassiveContracts))
+		}
+		if rc.PassiveContracts[0].HostPublicKey.String() != lockedHostPK.String() {
+			return errors.New("Passive contract host not the locked host")
 		}
 		return nil
 	})
@@ -1851,32 +1839,25 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 
 	// Mine enough blocks for the period to pass and the contracts to expire.
 	miner := tg.Miners()[0]
-	for i := types.BlockHeight(0); i < siatest.DefaultAllowance.Period; i++ {
+	contractLength := siatest.DefaultAllowance.Period + siatest.DefaultAllowance.RenewWindow
+	for i := types.BlockHeight(0); i <= contractLength; i++ {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	// All contracts should be disabled.
+	// All contracts should be expired.
+	i := 0
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterDisabledContractsGet()
-		if err != nil {
-			return err
+		// Mine a block ever 10 iterations
+		if i%10 == 0 {
+			err = miner.MineBlock()
+			if err != nil {
+				return err
+			}
 		}
-		// Should now have num of hosts expired contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.PassiveContracts) != 0 {
-			return fmt.Errorf("expected 0 passive contracts, got %v", len(rc.PassiveContracts))
-		}
-		if len(rc.RefreshedContracts) != 0 {
-			return fmt.Errorf("expected 0 refreshed contracts, got %v", len(rc.RefreshedContracts))
-		}
-		if len(rc.DisabledContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v disabled contracts, got %v", len(tg.Hosts()), len(rc.DisabledContracts))
-		}
-		return nil
+		i++
+		return checkExpectedNumberOfContracts(renter, 0, 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
@@ -1898,7 +1879,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 			return fmt.Errorf("Expected 2 files got %v", len(rf.Files))
 		}
 		if rf.Files[0].Redundancy != 0 {
-			return fmt.Errorf("Expected redundancy of file 1 to be 0 got %v", rf.Files[0].Redundancy)
+			return fmt.Errorf("Expected redundancy of file 0 to be 0 got %v", rf.Files[0].Redundancy)
 		}
 		if rf.Files[1].Redundancy != 0 {
 			return fmt.Errorf("Expected redundancy of file 1 to be 0 got %v", rf.Files[1].Redundancy)
@@ -1906,6 +1887,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
@@ -2884,23 +2866,16 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	}
 	r := nodes[0]
 
-	rcg, err := r.RenterContractsGet()
+	// Get the renter and record the period
+	rg, err := r.RenterGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Get the endheight of the contracts.
-	eh := rcg.ActiveContracts[0].EndHeight
+	period := rg.Settings.Allowance.Period
 
-	// Get the blockheight.
-	cg, err := tg.Hosts()[0].ConsensusGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	bh := cg.Height
-
-	// Mine blocks until we reach the endheight
+	// Mine blocks until we reach the end of the period
 	m := tg.Miners()[0]
-	for i := 0; i < int(eh-bh); i++ {
+	for i := 0; i <= int(period)+5; i++ {
 		if err := m.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
@@ -2933,22 +2908,34 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get the transaction which are related to the renter since we started the
-	// renter.
-	txns, err := r.WalletTransactionsGet(0, ^types.BlockHeight(0))
+	// Confirm that the file contracts are reflected in the wallet transactions
+	var fcTxns []modules.ProcessedTransaction
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Mine a block.
+		if err := m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		// Get the transaction which are related to the renter since we started the
+		// renter.
+		txns, err := r.WalletTransactionsGet(0, ^types.BlockHeight(0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Filter out transactions without file contracts.
+		for _, txn := range txns.ConfirmedTransactions {
+			if len(txn.Transaction.FileContracts) > 0 {
+				fcTxns = append(fcTxns, txn)
+			}
+		}
+		// There should be twice as many transactions with contracts as there are hosts.
+		if len(fcTxns) != 2*len(tg.Hosts()) {
+			fcTxns = []modules.ProcessedTransaction{} // reset fcTxns if there was an error
+			return fmt.Errorf("Expected %v txns but got %v", 2*len(tg.Hosts()), len(fcTxns))
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	// Filter out transactions without file contracts.
-	var fcTxns []modules.ProcessedTransaction
-	for _, txn := range txns.ConfirmedTransactions {
-		if len(txn.Transaction.FileContracts) > 0 {
-			fcTxns = append(fcTxns, txn)
-		}
-	}
-	// There should be twice as many transactions with contracts as there are hosts.
-	if len(fcTxns) != 2*len(tg.Hosts()) {
-		t.Fatalf("Expected %v txns but got %v", 2*len(tg.Hosts()), len(fcTxns))
 	}
 
 	// Get the wallet seed of the renter.

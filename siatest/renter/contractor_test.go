@@ -643,7 +643,6 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 	// mine blocks to skip several periods
 	m := tg.Miners()[0]
 	numSkippedPeriods := types.BlockHeight(3)
-	// Add 1 to the skipped periods to account for mining through current period
 	for i := 0; i <= int(period*numSkippedPeriods); i++ {
 		err = m.MineBlock()
 		if err != nil {
@@ -657,14 +656,17 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// mine block and confirm contracts only renew once and do so with the correct
-	// start and end heights
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
 	// There should be the same number of active and expired contracts
+	i := 0
 	err = build.Retry(200, 100*time.Millisecond, func() error {
+		// Mine a block ever 10 iterations
+		if i%10 == 0 {
+			err = m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		i++
 		return checkExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {

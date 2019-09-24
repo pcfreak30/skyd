@@ -700,7 +700,8 @@ func (api *API) renterContractCancelHandler(w http.ResponseWriter, req *http.Req
 //
 // Inactive contracts are contracts that are not currently being used by the
 // renter because they are !goodForRenew, but have endheights that are in the
-// future so could potentially become active again
+// future so could potentially become active again. These are also returned for
+// compatibility
 //
 // Active contracts are contracts that the renter is actively using to store
 // data and can upload, download, and renew. These contracts are GoodForUpload
@@ -713,13 +714,12 @@ func (api *API) renterContractCancelHandler(w http.ResponseWriter, req *http.Req
 // contract.
 //
 // Disabled Contracts are contracts that are no longer active as there are Not
-// GoodForUpload and Not GoodForRenew but still have endheights in the current
-// period.
+// GoodForUpload and Not GoodForRenew but still in the current period.
 //
-// Expired contracts are contracts who's endheights are in the past.
+// Expired contracts are contracts there were formed in a past period.
 //
-// ExpiredRefreshed contracts are refreshed contracts who's endheights are in
-// the past.
+// ExpiredRefreshed contracts are refreshed contracts there were formed in a
+// past period.
 //
 // Recoverable contracts are contracts of the renter that are recovered from the
 // blockchain by using the renter's seed.
@@ -836,6 +836,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 	// Get current block height for reference
 	currentPeriod := api.renter.CurrentPeriod()
+	blockheight := api.cs.Height()
 	for _, c := range api.renter.OldContracts() {
 		var size uint64
 		if len(c.Transaction.FileContractRevisions) != 0 {
@@ -872,7 +873,18 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Determine contract status
 		refreshed := api.renter.RefreshedContract(c.ID)
-		currentPeriodContract := c.StartHeight >= currentPeriod
+		// If the currentPeriod is non zero then use it to determine if the
+		// contract is in the current period. If the current period is zero it
+		// means that there is not an allowance set, or the allowance was
+		// cancelled. In this case the best we can do is compare the current
+		// blockheight to the endheight of the contracts to determine if it was
+		// in the most recent current period
+		var currentPeriodContract bool
+		if currentPeriod > 0 {
+			currentPeriodContract = c.StartHeight >= currentPeriod
+		} else {
+			currentPeriodContract = c.EndHeight >= blockheight
+		}
 		expiredContract := expired && !currentPeriodContract && !refreshed
 		expiredRefreshed := expired && !currentPeriodContract && refreshed
 		refreshedContract := refreshed && currentPeriodContract
