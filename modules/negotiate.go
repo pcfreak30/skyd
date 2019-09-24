@@ -482,6 +482,7 @@ type (
 		Signature   []byte
 		Data        []byte
 		MerkleProof []crypto.Hash
+		SectorProof []crypto.Hash
 		MerkleRoot  crypto.Hash
 	}
 

@@ -707,6 +707,9 @@ func (s *Session) ReadByIndex(w io.Writer, req modules.LoopReadIndexRequest, can
 				return modules.RenterContract{}, errors.New("host did not send enough sector data")
 			}
 			if req.MerkleProof {
+				if !crypto.VerifySectorRangeProof([]crypto.Hash{resp.MerkleRoot}, resp.SectorProof, int(sec.Index), int(sec.Index)+1, rev.NewFileMerkleRoot) {
+					return modules.RenterContract{}, errors.New("host provided incorrect sector proof")
+				}
 				proofStart := int(sec.Offset) / crypto.SegmentSize
 				proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
 				if !crypto.VerifyRangeProof(resp.Data, resp.MerkleProof, proofStart, proofEnd, resp.MerkleRoot) {

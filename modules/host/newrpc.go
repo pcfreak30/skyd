@@ -708,10 +708,12 @@ func (h *Host) managedRPCLoopIndexRead(s *rpcSession) error {
 
 		// Construct the Merkle proof, if requested.
 		var proof []crypto.Hash
+		var sectorProof []crypto.Hash
 		if req.MerkleProof {
 			proofStart := int(sec.Offset) / crypto.SegmentSize
 			proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
 			proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+			sectorProof = crypto.MerkleSectorRangeProof(s.so.SectorRoots, int(sec.Index), int(sec.Index)+1)
 		}
 
 		// Send the response. If the renter sent a stop signal, or this is the
@@ -720,6 +722,7 @@ func (h *Host) managedRPCLoopIndexRead(s *rpcSession) error {
 			Signature:   nil,
 			Data:        data,
 			MerkleProof: proof,
+			SectorProof: sectorProof,
 			MerkleRoot:  merkleRoot,
 		}
 		select {
