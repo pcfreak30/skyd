@@ -675,7 +675,7 @@ func (s *Session) ReadByIndex(w io.Writer, req modules.LoopReadIndexRequest, can
 
 	// send request
 	extendDeadline(s.conn, modules.NegotiateDownloadTime)
-	err = s.writeRequest(modules.RPCLoopRead, req)
+	err = s.writeRequest(modules.RPCLoopIndexRead, req)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}

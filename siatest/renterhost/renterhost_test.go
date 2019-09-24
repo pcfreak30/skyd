@@ -71,8 +71,24 @@ func TestSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// download the sectors by index.
+	_, dsector, err := s.ReadSectionByIndex(0, 0, uint32(len(sector)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dsector, sector) {
+		t.Fatal("downloaded sector does not match")
+	}
+	_, dsector, err = s.ReadSectionByIndex(1, 0, uint32(len(sector)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dsector, sector) {
+		t.Fatal("downloaded sector does not match")
+	}
+
 	// download the sector
-	_, dsector, err := s.ReadSection(root, 0, uint32(len(sector)))
+	_, dsector, err = s.ReadSection(root, 0, uint32(len(sector)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,6 +98,15 @@ func TestSession(t *testing.T) {
 
 	// download less than a full sector
 	_, partialSector, err := s.ReadSection(root, crypto.SegmentSize*5, crypto.SegmentSize*12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(partialSector, sector[crypto.SegmentSize*5:crypto.SegmentSize*17]) {
+		t.Fatal("downloaded sector does not match")
+	}
+
+	// download the less thena full sector by index
+	_, partialSector, err = s.ReadSectionByIndex(0, crypto.SegmentSize*5, crypto.SegmentSize*12)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +168,12 @@ func TestSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, s2data, err := s.ReadSection(droots[0], 0, uint32(len(sector2)))
+	if err != nil {
+		t.Fatal(err)
+	} else if !bytes.Equal(s2data, sector2) {
+		t.Fatal("downloaded data does not match")
+	}
+	_, s2data, err = s.ReadSectionByIndex(0, 0, uint32(len(sector2)))
 	if err != nil {
 		t.Fatal(err)
 	} else if !bytes.Equal(s2data, sector2) {
