@@ -76,6 +76,11 @@ const (
 	// encoded HostExternalSettings.
 	NegotiateMaxHostExternalSettingsLen = 16000
 
+	// NegotiateMaxRenterCollatoralFactor is the factor increase to the expected
+	// storage that the renter should put up for collatoral. This should not
+	// exceed 10x to save on fees
+	NegotiateMaxRenterCollatoralFactor = 5
+
 	// NegotiateMaxSiaPubkeySize defines the maximum size that a SiaPubkey is
 	// allowed to be when being sent over the wire during negotiation.
 	NegotiateMaxSiaPubkeySize = 1e3
@@ -881,10 +886,7 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 // given a host, the available renter funding, the expected txnFee for the
 // transaction and an optional basePrice in case this helper is used for a
 // renewal. It also returns the hostCollateral.
-//
-// NOTE: This only considers the period, which with the new allowance does not
-// include the renew window. Is that ok?
-func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseCollateral types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency, err error) {
+func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseCollateral types.Currency, contractLength types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency, err error) {
 	// Divide by zero check.
 	if host.StoragePrice.IsZero() {
 		host.StoragePrice = types.NewCurrency64(1)
@@ -903,11 +905,7 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 	// potential baseCollateral.
 	maxStorageSizeTime := renterPayout.Div(host.StoragePrice)
 	hostCollateral = maxStorageSizeTime.Mul(host.Collateral).Add(baseCollateral)
-	// Don't add more collateral than 10x the collateral for the expected
-	// storage to save on fees.
-	//
-	// Comment says 10x but code is Mul64(5)?
-	maxRenterCollateral := host.Collateral.Mul64(uint64(period)).Mul64(expectedStorage).Mul64(5)
+	maxRenterCollateral := host.Collateral.Mul64(uint64(contractLength)).Mul64(expectedStorage).Mul64(NegotiateMaxRenterCollatoralFactor)
 	if hostCollateral.Cmp(maxRenterCollateral) > 0 {
 		hostCollateral = maxRenterCollateral
 	}

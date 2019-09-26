@@ -36,12 +36,6 @@ var (
 // If a is the empty allowance, SetAllowance will archive the current contract
 // set. The contracts cannot be used to create Editors or Downloads, and will
 // not be renewed.
-//
-// NOTE: At this time, transaction fees are not counted towards the allowance.
-// This means the contractor may spend more than allowance.Funds.
-//
-// Is the above note still true? We have a test that probes overspending the
-// allowance?
 func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	if reflect.DeepEqual(a, modules.Allowance{}) {
 		return c.managedCancelAllowance()

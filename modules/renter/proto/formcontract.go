@@ -35,9 +35,9 @@ func (cs *ContractSet) oldFormContract(params ContractParams, txnBuilder transac
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the payouts for the renter, host, and whole contract.
-	period := endHeight - startHeight
+	contractLength := endHeight - startHeight
 	expectedStorage := allowance.ExpectedStorage / allowance.Hosts
-	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, types.ZeroCurrency, period, expectedStorage)
+	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, types.ZeroCurrency, contractLength, expectedStorage)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -311,9 +311,9 @@ func (cs *ContractSet) newFormContract(params ContractParams, txnBuilder transac
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the payouts for the renter, host, and whole contract.
-	period := endHeight - startHeight
+	contractLength := endHeight - startHeight
 	expectedStorage := allowance.ExpectedStorage / allowance.Hosts
-	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, types.ZeroCurrency, period, expectedStorage)
+	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, types.ZeroCurrency, contractLength, expectedStorage)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}

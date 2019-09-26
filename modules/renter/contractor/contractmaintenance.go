@@ -111,14 +111,11 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	}
 
 	// Estimate the amount of money that's going to be needed for existing
-	// storage.
-	//
-	// Period or new contract + (BlockHeight - Period of Old Contract - StartHeight of old contract)
-	//
-	// Simplified to BH - SH
-	maintenancePeriod := blockHeight - contract.StartHeight
+	// storage. This is determined by looking at how much data is being stored
+	// and how long the contract it.
+	contractLength := contract.EndHeight - contract.StartHeight
 	dataStored := contract.Transaction.FileContractRevisions[0].NewFileSize
-	maintenanceCost := types.NewCurrency64(dataStored).Mul64(uint64(maintenancePeriod)).Mul(host.StoragePrice)
+	maintenanceCost := types.NewCurrency64(dataStored).Mul64(uint64(contractLength)).Mul(host.StoragePrice)
 
 	// For the upload and download estimates, we're going to need to know the
 	// amount of money that was spent on upload and download by this contract

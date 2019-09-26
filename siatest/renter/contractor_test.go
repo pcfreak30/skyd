@@ -660,7 +660,7 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 	i := 0
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		// Mine a block ever 10 iterations
-		if i%10 == 0 {
+		if i%20 == 0 {
 			err = m.MineBlock()
 			if err != nil {
 				return err

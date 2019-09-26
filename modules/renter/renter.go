@@ -405,13 +405,14 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	contractCostPerHost := totalContractCost.Div64(allowance.Hosts)
 	fundingPerHost := allowance.Funds.Div64(allowance.Hosts)
 	numHosts := uint64(0)
+	contractLength := allowance.Period + allowance.RenewWindow
 	for _, host := range hosts {
 		// Assume that the ContractPrice equals contractCostPerHost and that
 		// the txnFee was zero. It doesn't matter since RenterPayoutsPreTax
 		// simply subtracts both values from the funding.
 		host.ContractPrice = contractCostPerHost
 		expectedStorage := allowance.ExpectedStorage / uint64(len(hosts))
-		_, _, collateral, err := modules.RenterPayoutsPreTax(host, fundingPerHost, types.ZeroCurrency, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, expectedStorage)
+		_, _, collateral, err := modules.RenterPayoutsPreTax(host, fundingPerHost, types.ZeroCurrency, types.ZeroCurrency, types.ZeroCurrency, contractLength, expectedStorage)
 		if err != nil {
 			continue
 		}

@@ -13,8 +13,6 @@ import (
 
 var (
 	// Set the default test allowance
-	//
-	// TODO - Update
 	DefaultTestAllowance = modules.Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(500),
 		Hosts:       uint64(50),
