@@ -592,8 +592,8 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = 2
-	renterParams.Allowance.Period = 5
-	renterParams.Allowance.RenewWindow = 20
+	renterParams.Allowance.Period = 10
+	renterParams.Allowance.RenewWindow = 100
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -616,6 +616,7 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 		return checkExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, false, true)
 		t.Fatal(err)
 	}
 
@@ -626,6 +627,7 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 	}
 	for _, c := range rc.ActiveContracts {
 		if c.EndHeight != currentPeriodStart+period+renewWindow {
+			renter.PrintDebugInfo(t, true, false, true)
 			t.Log("Endheight:", c.EndHeight)
 			t.Log("Allowance Period:", period)
 			t.Log("Renew Window:", renewWindow)
@@ -643,7 +645,8 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 	// mine blocks to skip several periods
 	m := tg.Miners()[0]
 	numSkippedPeriods := types.BlockHeight(3)
-	for i := 0; i <= int(period*numSkippedPeriods); i++ {
+	blocksToMine := int(period * numSkippedPeriods)
+	for i := 0; i <= blocksToMine; i++ {
 		err = m.MineBlock()
 		if err != nil {
 			t.Fatal(err)
@@ -655,9 +658,13 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Wait for Renter to be synced
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
 
 	// There should be the same number of active and expired contracts
-	i := 0
+	i := 1
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		// Mine a block ever 10 iterations
 		if i%20 == 0 {
@@ -670,6 +677,7 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 		return checkExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, false, true)
 		t.Fatal(err)
 	}
 
@@ -681,6 +689,7 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 	currentPeriodStart = currentPeriodStart + (period * numSkippedPeriods)
 	for _, c := range rc.ActiveContracts {
 		if c.EndHeight != currentPeriodStart+period+renewWindow {
+			renter.PrintDebugInfo(t, true, false, true)
 			t.Log("Endheight:", c.EndHeight)
 			t.Log("Allowance Period:", period)
 			t.Log("Renew Window:", renewWindow)

@@ -42,6 +42,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
 			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    StartHeight", c.StartHeight)
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
@@ -51,6 +52,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
 			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    StartHeight", c.StartHeight)
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
@@ -60,6 +62,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
 			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    StartHeight", c.StartHeight)
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
@@ -69,6 +72,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
 			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    StartHeight", c.StartHeight)
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
@@ -78,6 +82,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
 			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    StartHeight", c.StartHeight)
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()
@@ -87,6 +92,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 			t.Log("    HostPublicKey", c.HostPublicKey)
 			t.Log("    GoodForUpload", c.GoodForUpload)
 			t.Log("    GoodForRenew", c.GoodForRenew)
+			t.Log("    StartHeight", c.StartHeight)
 			t.Log("    EndHeight", c.EndHeight)
 		}
 		t.Log()

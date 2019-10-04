@@ -150,7 +150,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Perform contract maintenance if our blockchain is synced. Use a separate
 	// goroutine so that the rest of the contractor is not blocked during
 	// maintenance.
-	if cc.Synced {
+	if synced && cc.Synced {
 		go c.threadedContractMaintenance()
 	}
 }
