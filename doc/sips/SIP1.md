@@ -35,6 +35,11 @@ disk access cost for the host (any seek counts as one access), disk read cost
 for the host, proof computation cost, and download bandwidth from the host. The
 host has the ability to set prices on all of these resoures.
 
+At any point in time between the renter sending the request and receiving a
+response, the renter can send an "abort" signal to the host. The renter will
+send the abort signal along with a signed contract that pays for the resources
+that were requested but does not otherwise contain any changes.
+
 Calling the machine at all consumes the following resources:
 
 Upload Bandwidth: 4 kib
