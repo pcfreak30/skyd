@@ -1,4 +1,4 @@
-package renter
+package contractor
 
 import (
 	"fmt"
@@ -35,7 +35,7 @@ func TestContractorIncompleteMaintenanceAlert(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -132,7 +132,7 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -264,7 +264,7 @@ func TestRenterContracts(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
@@ -330,7 +330,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	// Confirm Contracts were created as expected.  There should only be active
 	// contracts and no passive,refreshed, disabled, or expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		return checkExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, 0, 0)
+		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +359,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	}
 
 	// Mine blocks to force contract renewal
-	if err = renewContractsByRenewWindow(renter, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -370,7 +370,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	// active contracts.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		// Confirm we have the expected number of each type of contract
-		err := checkExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, len(originalContracts), 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(originalContracts), 0)
 		if err != nil {
 			return err
 		}
@@ -379,11 +379,11 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
 			return err
 		}
 		// Confirm the spending makes sense
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -427,7 +427,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	endHeight := rc.ActiveContracts[0].EndHeight
 
 	// Renew contracts by running out of funds
-	startingUploadSpend, err := drainContractsByUploading(renter, tg, contractor.MinContractFundRenewalThreshold)
+	startingUploadSpend, err := siatest.DrainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -436,7 +436,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	// Confirm contracts were renewed as expected.  Active contracts prior to
 	// renewal should now be in the refreshed contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkExpectedNumberOfContracts(renter, numHosts, 0, numHosts, 0, numHosts, 0)
+		err = siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts()), 0)
 		if err != nil {
 			return err
 		}
@@ -481,13 +481,13 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	}
 
 	// Mine blocks to force contract renewal to start with fresh set of contracts
-	if err = renewContractsByRenewWindow(renter, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, numHosts*2, numHosts)
+		err = siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
 		if err != nil {
 			return err
 		}
@@ -496,7 +496,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractIDs(rc.ExpiredContracts, rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -712,7 +712,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -845,7 +845,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -999,7 +999,7 @@ func TestRenterContractRecovery(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -1148,7 +1148,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
@@ -1170,7 +1170,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	miner := tg.Miners()[0]
 	// Drain the contracts until they are supposed to no longer be good for
 	// uploading.
-	_, err = drainContractsByUploading(renter, tg, contractor.MinContractFundUploadThreshold)
+	_, err = siatest.DrainContractsByUploading(renter, tg, contractor.MinContractFundUploadThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1225,7 +1225,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
