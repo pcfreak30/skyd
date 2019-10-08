@@ -330,7 +330,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	// Confirm Contracts were created as expected.  There should only be active
 	// contracts and no passive,refreshed, disabled, or expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
+		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +359,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	}
 
 	// Mine blocks to force contract renewal
-	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(renter, tg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -370,7 +370,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	// active contracts.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
 		// Confirm we have the expected number of each type of contract
-		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(originalContracts), 0)
+		err := siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(originalContracts), 0)
 		if err != nil {
 			return err
 		}
@@ -427,7 +427,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	endHeight := rc.ActiveContracts[0].EndHeight
 
 	// Renew contracts by running out of funds
-	startingUploadSpend, err := siatest.DrainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
+	startingUploadSpend, err := siatest.DrainContractsByUploading(renter, tg, contractor.MinContractFundRenewalThreshold)
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -436,7 +436,7 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	// Confirm contracts were renewed as expected.  Active contracts prior to
 	// renewal should now be in the refreshed contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts()), 0)
+		err = siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts()), 0)
 		if err != nil {
 			return err
 		}
@@ -481,13 +481,13 @@ func testRenterContracts(tg *siatest.TestGroup, t *testing.T, renter *siatest.Te
 	}
 
 	// Mine blocks to force contract renewal to start with fresh set of contracts
-	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(renter, tg); err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
+		err = siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
 		if err != nil {
 			return err
 		}
@@ -577,7 +577,7 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 		Hosts:  2,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := contractorTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal(err)
@@ -613,7 +613,7 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 	// Confirm Contracts were created as expected.  There should only be active
 	// contracts and no passive,refreshed, disabled, or expired contracts
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		return checkExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
+		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, false, true)
@@ -674,7 +674,7 @@ func TestRenterSkipPeriodRenew(t *testing.T) {
 			}
 		}
 		i++
-		return checkExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, false, true)

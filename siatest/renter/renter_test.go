@@ -1857,7 +1857,7 @@ func testRenterCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 			}
 		}
 		i++
-		return checkExpectedNumberOfContracts(renter, 0, 0, 0, 0, len(tg.Hosts()), 0)
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
