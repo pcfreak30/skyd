@@ -202,10 +202,10 @@ There is no payload for Read.
 The output of Read is the data that appears in the file starting from the
 provided offset and going for 'length' bytes.
 
-Disk Accesses: 1 + (length / sectorSize)
-Disk Read: 'length'
-Disk Write: 0
-Computation Cost: 2 * Log2(contractSize/64)
+Disk Accesses: `1 + (length / sectorSize)`
+Disk Read: `length`
+Disk Write: `0`
+Computation Cost: `2 * Log2(contractSize/64)`
 
 ### ReadRoot(root, offset, len)
 
