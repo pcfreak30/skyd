@@ -9,14 +9,14 @@ either entirely applied or not applied at all.
 ## Machine Specification
 
 The Merklized Data Machine is a virtual machine on a host that performs
-operations on a merklized data set. The dataset itself is 'N' bytes, broken up
+operations on a merklized file. The file itself is 'N' bytes, broken up
 into an array of 64 byte segments, where each segment forms a leaf of a Merkle
 tree. The final leaf may have fewer than 64 bytes if the data is not perfectly
 aligned to 64 bytes.
 
 The virtual machine has 'instructions' that can be executed, each instruction
 performing a distinct operation on the data. Every instruction starts with an
-initial dataset and produces an updated dataset. This updated dataset has a new
+initial file and produces an updated file. This updated file has a new
 Merkle root associated with it. Instructions can produce output data, and
 optionally also a Merkle proof that the update was performed honestly.
 
@@ -142,3 +142,5 @@ currently exists in offset1.
 ### Swap(size, offset1, offset2)
 
 ### Truncate(newSize)
+
+Truncate will change the size of the file to be equal to 
