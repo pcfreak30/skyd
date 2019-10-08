@@ -67,8 +67,6 @@ has a set of instructions followed by a corresponding set of inputs to each
 instruction. Each instruction will have its own semantics for interpreting
 input.
 
-// TODO: Cost eventually gets translated into 
-
 ```go
 type Instruction types.Specifier
 
@@ -97,7 +95,13 @@ type MDMBatchOutput struct {
 	InstructionProofs  []MerkleProof
 }
 
-func ComputeMDMCost(input MDMBatchInput) (diskAccesses, diskReadBytes, diskWriteBytes, computePower uint64)
+// TODO: Define a cost function on each instruction that takes as input the
+// proof required bool, the input for that instruction, and the initial merkle root
+// size. No other data should be required, no knowledge of the merkle root or
+// underlying data required.
+
+// TODO: Define a cost function on an MDM batch input which just adds up the
+// costs of each instruction.
 ```
 
 The MDM is always instantiated with a list of instructions followed by a list
