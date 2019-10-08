@@ -39,10 +39,10 @@ instruction. The instruction input is limited to 4 kib, but the instruction
 payload can be larger. The cost will always focus on the consumption of 4 major
 resources:
 
-	+ Disk Accesses
-	+ Disk Reads
-	+ Disk Writes
-	+ Compute Power
++ Disk Accesses
++ Disk Reads
++ Disk Writes
++ Compute Power
 
 Instructions can be batched together. A single batch of instructions will be
 applied atomically - either all instructions will be applied or none of the
