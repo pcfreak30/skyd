@@ -66,10 +66,10 @@ the batch is interrupted early.
 
 Instantiating the MDM has the following costs:
 
-Disk Access:   0 accesses
-Disk Read:     0 bytes
-Disk Write:    0 bytes
-Compute Power: 1 unit
+* Disk Access:   0 accesses
+* Disk Read:     0 bytes
+* Disk Write:    0 bytes
+* Compute Power: 1 unit
 
 ## Instruction Format
 
@@ -202,10 +202,10 @@ There is no payload for Read.
 The output of Read is the data that appears in the file starting from the
 provided offset and going for 'length' bytes.
 
-Disk Accesses: `1 + (length / sectorSize)`
-Disk Read: `length`
-Disk Write: `0`
-Computation Cost: `2 * Log2(contractSize/64)`
+* Disk Accesses: `1 + (length / sectorSize)`
+* Disk Read: `length`
+* Disk Write: `0`
+* Computation Cost: `2 * Log2(contractSize/64)`
 
 ### ReadRoot(root, offset, len)
 
