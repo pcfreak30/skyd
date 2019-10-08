@@ -70,7 +70,7 @@ input.
 // TODO: Cost eventually gets translated into 
 
 ```go
-type Instruction string
+type Instruction types.Specifier
 
 type MerkleRoot crypto.Hash
 
@@ -96,6 +96,8 @@ type MDMBatchOutput struct {
 	InstructionOutputs [][]byte
 	InstructionProofs  []MerkleProof
 }
+
+func ComputeMDMCost(input MDMBatchInput) (diskAccesses, diskReadBytes, diskWriteBytes, computePower uint64)
 ```
 
 The MDM is always instantiated with a list of instructions followed by a list
