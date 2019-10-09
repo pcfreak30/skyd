@@ -50,7 +50,7 @@ The Contractor is split up into the following subsystems:
 
 ## Allowance Subsystem
 **Key Files**
-- [allowance.go](./allowance.go)
+- [Allowance](./allowance.go)
 
 The allowance subsystem is used for setting and cancelling allowances. A change
 in allowance does not necessarily cause changes in contract formation.
@@ -67,7 +67,7 @@ in allowance does not necessarily cause changes in contract formation.
 
 ## Contract Maintenance Subsystem
 **Key Files**
-- [allowance.go](./allowance.go)
+- [contractmaintenance.go](./contractmaintenance.go)
 
 The contract maintenance subsystem is responsible for forming and renewing
 contracts, and for other general maintenance tasks.
@@ -98,16 +98,6 @@ they are set to expire. This value is set in the allowance. When contracts are
 renewed, they are renewed with the current allowance, which may differ from the
 allowance that was used to form the initial contracts. In general, this means
 that allowance modifications only take effect upon the next "contract cycle".
-
-**Allowance-related Complexities**
-Changes in the allowance can cause changes in contract formation as follows:
- - if the allowance is cancelled, than all contracts are cancelled
- - if number of hosts is increased then more contracts will
-   be formed.
- - if the period or renew window are changed such that some contracts expire
-   they will be renewed.
- - if allowance funds are too low, new contracts will not be formed
-
 
 ### Other Maintenance Checks
 
