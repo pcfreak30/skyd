@@ -1032,6 +1032,7 @@ func (api *API) renterFUSEMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 		}
 		opts.ReadOnly = readOnly
 	}
+	opts.CachePath = req.FormValue("cachepath")
 	if err := api.renter.Mount(mount, sp, opts); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

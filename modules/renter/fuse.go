@@ -4,8 +4,10 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -96,20 +98,36 @@ func (fm *fuseManager) mount(mountPoint string, sp modules.SiaPath, opts modules
 		FileSystem: pathfs.NewDefaultFileSystem(),
 		root:       sp,
 		renter:     fm.r,
+		opts:       opts,
+		cacheState: make(map[modules.SiaPath]cacheInfo),
+		shutdown:   make(chan struct{}),
+	}
+	if opts.CachePath != "" {
+		go fs.fillCache()
 	}
 	nfs := pathfs.NewPathNodeFs(fs, nil)
-	// we need to call `Mount` rather than `MountRoot` because we want to define
-	// the FUSE mount flag `AllowOther`, which enables non-permissioned users to
-	// access the FUSE mount. This makes life easier in Docker.
 	mountOpts := &fuse.MountOptions{
-		AllowOther:   true,
+		// Allow non-permissioned users to access the FUSE mount. This makes
+		// things easier when using Docker.
+		AllowOther: true,
+		// By default, the kernel will "helpfully" read additional data beyond
+		// what the syscall requested. This *might* be helpful, except that it
+		// does so by requesting multiple sections in parallel...which ends up
+		// invalidating the Streamer cache. Apparently the only way to disable
+		// this is to set a very small MaxReadAhead value. (We can't set it to
+		// 0, or the fuse package will assume we want the default; and we can't
+		// set it to -1, because the fuse package converts it to a uint32 before
+		// checking.)
 		MaxReadAhead: 1,
 	}
 	server, _, err := nodefs.Mount(mountPoint, nfs.Root(), mountOpts, nil)
 	if err != nil {
 		return err
 	}
-	go server.Serve()
+	go func() {
+		server.Serve()
+		close(fs.shutdown) // kills fillCache goroutine
+	}()
 	fs.srv = server
 
 	fm.mu.Lock()
@@ -136,12 +154,20 @@ func (fm *fuseManager) unmount(mountPoint string) error {
 	return errors.AddContext(f.srv.Unmount(), "failed to unmount filesystem")
 }
 
+type cacheInfo struct {
+	size int64 // TODO: split into multiple dynamic ranges
+}
+
 // fuseFS implements pathfs.FileSystem using a modules.Renter.
 type fuseFS struct {
 	pathfs.FileSystem
-	srv    *fuse.Server
-	renter *Renter
-	root   modules.SiaPath
+	srv        *fuse.Server
+	renter     *Renter
+	root       modules.SiaPath
+	opts       modules.MountOptions
+	cacheState map[modules.SiaPath]cacheInfo
+	shutdown   chan struct{}
+	mu         sync.Mutex
 }
 
 // path converts name to a siapath.
@@ -174,6 +200,91 @@ func (fs *fuseFS) stat(path modules.SiaPath) (os.FileInfo, error) {
 		return fs.renter.staticDirSet.DirInfo(path)
 	}
 	return fi, nil
+}
+
+// fillCache continuously fills the on-disk cache with file data.
+func (fs *fuseFS) fillCache() {
+	// ensure that cache dir exists
+	_ = os.MkdirAll(fs.opts.CachePath, 0700)
+
+	// determine initial cache state
+	err := filepath.Walk(fs.opts.CachePath, func(path string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			name := strings.TrimPrefix(path, fs.opts.CachePath+string(filepath.Separator))
+			sp, ok := fs.path(name)
+			if ok {
+				fs.mu.Lock()
+				fs.cacheState[sp] = cacheInfo{size: info.Size()}
+				fs.mu.Unlock()
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		fs.renter.log.Println("Failed to initialize cache:", err)
+		return
+	}
+
+	for {
+		// check for uncached files every 15 seconds
+		select {
+		case <-time.After(15 * time.Second):
+		case <-fs.shutdown:
+			return
+		}
+		infos, err := fs.renter.FileList(fs.root, true, false)
+		if err != nil {
+			fs.renter.log.Printf("Could not check cache: %v", err)
+			continue
+		}
+		for _, info := range infos {
+			err = func() error {
+				cacheTarget := int64(90e6 + 10e6) // 100 MB
+				if info.Size() < cacheTarget {
+					cacheTarget = info.Size()
+				}
+				fs.mu.Lock()
+				ci := fs.cacheState[info.SiaPath]
+				fs.mu.Unlock()
+				if ci.size >= cacheTarget {
+					return nil
+				}
+				fs.renter.log.Printf("Caching %v bytes of %v (%v bytes already cached)", cacheTarget-ci.size, info.SiaPath, ci.size)
+				cacheFilePath := filepath.Join(fs.opts.CachePath, info.SiaPath.String())
+				os.MkdirAll(filepath.Dir(cacheFilePath), 0700)
+				cacheFile, err := os.OpenFile(cacheFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+				if err != nil {
+					return err
+				}
+				defer cacheFile.Close()
+				_, s, err := fs.renter.Streamer(info.SiaPath)
+				if err != nil {
+					return err
+				}
+				defer s.Close()
+				if _, err := s.Seek(ci.size, io.SeekStart); err != nil {
+					return err
+				}
+				if _, err := io.CopyN(cacheFile, s, 90e6-ci.size); err != nil {
+					return err
+				}
+				if _, err := s.Seek(-10e6, io.SeekEnd); err != nil {
+					return err
+				}
+				if _, err := io.Copy(cacheFile, s); err != nil {
+					return err
+				}
+				ci.size = cacheTarget
+				fs.mu.Lock()
+				fs.cacheState[info.SiaPath] = ci
+				fs.mu.Unlock()
+				return nil
+			}()
+			if err != nil {
+				fs.renter.log.Printf("Failed to cache file %v: %v", info.SiaPath, err)
+			}
+		}
+	}
 }
 
 // GetAttr implements pathfs.FileSystem.
@@ -242,7 +353,8 @@ func (fs *fuseFS) Open(name string, flags uint32, _ *fuse.Context) (file nodefs.
 	if !ok {
 		return nil, fuse.ENOENT
 	}
-	if stat, err := fs.stat(sp); err != nil {
+	stat, err := fs.stat(sp)
+	if err != nil {
 		return nil, fs.errToStatus("Open", name, err)
 	} else if stat.IsDir() {
 		return nil, fuse.EISDIR
@@ -251,12 +363,69 @@ func (fs *fuseFS) Open(name string, flags uint32, _ *fuse.Context) (file nodefs.
 	if err != nil {
 		return nil, fs.errToStatus("Open", name, err)
 	}
-	return &fuseFile{
+	ff := &fuseFile{
 		File:   nodefs.NewDefaultFile(),
 		path:   sp,
 		fs:     fs,
 		stream: s,
-	}, fuse.OK
+	}
+	// add cache file, if it exists
+	if fs.opts.CachePath != "" {
+		fs.mu.Lock()
+		ci, ok := fs.cacheState[sp]
+		fs.mu.Unlock()
+		if ok {
+			f, err := os.Open(filepath.Join(fs.opts.CachePath, name))
+			if err == nil {
+				ff.cf = cacheFile{
+					f:    f,
+					ci:   ci,
+					size: stat.Size(),
+				}
+			}
+		}
+	}
+	return ff, fuse.OK
+}
+
+type cacheFile struct {
+	f    *os.File
+	ci   cacheInfo
+	size int64
+}
+
+func (cf *cacheFile) Close() error {
+	if cf.f == nil {
+		return nil
+	}
+	return cf.f.Close()
+}
+
+func (cf *cacheFile) ReadAt(p []byte, off int64) (int, error) {
+	if cf.f == nil {
+		return 0, errors.New("no cache file")
+	}
+	const cacheStartSize = 90e6
+	startCached := cf.ci.size
+	if startCached > cacheStartSize {
+		startCached = cacheStartSize
+	}
+	endCached := cf.ci.size - cacheStartSize
+	if endCached < 0 {
+		endCached = 0
+	}
+	endOff := cf.size - endCached
+	if off < startCached {
+		// start of file
+		if spill := off + int64(len(p)) - startCached; spill > 0 {
+			p = p[:len(p)-int(spill)]
+		}
+		return cf.f.ReadAt(p, off)
+	} else if off > endOff {
+		// end of file
+		return cf.f.ReadAt(p, cacheStartSize+(off-endOff))
+	}
+	return 0, errors.New("data not in cache")
 }
 
 // fuseFile implements nodefs.File using a modules.Renter.
@@ -265,6 +434,7 @@ type fuseFile struct {
 	path   modules.SiaPath
 	fs     *fuseFS
 	stream modules.Streamer
+	cf     cacheFile
 	mu     sync.Mutex
 }
 
@@ -272,6 +442,11 @@ type fuseFile struct {
 func (f *fuseFile) Read(p []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	// read from cache if possible
+	if n, _ := f.cf.ReadAt(p, off); n > 0 {
+		return fuse.ReadResultData(p[:n]), fuse.OK
+	}
+	// cache miss
 	if _, err := f.stream.Seek(off, io.SeekStart); err != nil {
 		return nil, f.fs.errToStatus("Read", f.path.String(), err)
 	}
@@ -280,4 +455,13 @@ func (f *fuseFile) Read(p []byte, off int64) (fuse.ReadResult, fuse.Status) {
 		return nil, f.fs.errToStatus("Read", f.path.String(), err)
 	}
 	return fuse.ReadResultData(p[:n]), fuse.OK
+}
+
+func (f *fuseFile) Release() {
+	if err := f.stream.Close(); err != nil {
+		_ = f.fs.errToStatus("Release", f.path.String(), err)
+	}
+	if err := f.cf.Close(); err != nil {
+		_ = f.fs.errToStatus("Release", f.path.String(), err)
+	}
 }
