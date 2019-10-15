@@ -1,6 +1,6 @@
-# SIP-0002 Payment Routing
+# SIP-TBD Payment Routing
 
-SIP-0002 is a description of a payment routing system between hosts in the Sia
+SIP-TBD is a description of a payment routing system between hosts in the Sia
 network. It outlines in detail the requirements for such a system and proposes a
 series of logical [steps](#implementation-steps) that can be implemented through
 separate MRs in order to successfully accomplish the goal outlined in the
