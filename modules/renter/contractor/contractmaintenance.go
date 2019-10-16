@@ -115,7 +115,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 
 	// Estimate the amount of money that's going to be needed for existing
 	// storage. This is determined by looking at how much data is being stored
-	// and how long the contract it.
+	// and how long the contract is.
 	contractLength := contract.EndHeight - contract.StartHeight
 	dataStored := contract.Transaction.FileContractRevisions[0].NewFileSize
 	maintenanceCost := types.NewCurrency64(dataStored).Mul64(uint64(contractLength)).Mul(host.StoragePrice)
