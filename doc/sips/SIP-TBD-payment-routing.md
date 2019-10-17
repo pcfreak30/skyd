@@ -200,6 +200,21 @@ algorithms like Dijkstra or Bellman-Ford. See
 
 ## Routing
 
+The most important part of a payment channel network is its routing algorithm.
+Existing payment channel routing protocols have two main hurdles to overcome.
+First, they attempt to route payment in an atomic fashion. Second, they fail to
+keep payment channels balanced.
+
+We plan to side-step these two main problems by having packetized payments, and
+keep the payments very small w/regards to average channel capacity. Further more
+we will not have atomic payments, in the sense that if one intermediary host
+drops out, the money is "stuck" at the hop prior to that one.
+
+At all times the money in transit is completely at stake. It is a trusted setup
+in that sense, as every node along the route can take the money and run. We
+trust hosts are incentivized not to do so, and they will get penalized for it if
+they do.
+
 ### Routing Algorithm
 
 In order to route a payment to a certain endpoint one must first find a route to
