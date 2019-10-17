@@ -1,7 +1,7 @@
 # SIP-TBD Payment Routing
 
-SIP-TBD is a description of a payment routing system between hosts in the Sia
-network. It outlines in detail the requirements for such a system and proposes a
+SIP-TBD is a description of a Payment Routing System between hosts in the Sia
+Network. It outlines in detail the requirements for such a system and proposes a
 series of logical [steps](#implementation-steps) that can be implemented through
 separate MRs in order to successfully accomplish the goal outlined in the
 description.
@@ -9,192 +9,222 @@ description.
 ## Description
 
 Payment routing is the act of routing a payment through potentially a series of
-interconnected payment hubs. This payment can originate from multiple types of
-sources, be it renters, hosts or eventually even non-Sia users. Routing payments
-effectively enables performing actions on hosts with which you don't necessarily
-share an immediate payment link.
+interconnected payment hubs. Routing payment effectively enables performing
+actions on hosts with which you don't necessarily share an immediate payment
+link. This opens up the door for hosts, renters, even non Sia users, to perform
+actions on hosts.
 
 ## Motivation
 
 Two of the most attractive use cases for Sia are filesharing and content
 distribution. For both cases, a user will often be required to make a
-micropayment to a host, where they don't have a pre-existing payment channel
+micro payment to a host, where they don't have a preexisting payment channel
 with that host. By implementing payment routing we enable anybody that has an
-existing payment channel with a host, to pay those hosts on behalf of somebody
-else. These pre-paid actions can then be reclaimed by anyone who has knowledge
-of the payment code. This way a user can fulfil an action on a host without
-necessarily paying for it in that same request.
+existing payment channel with a host, to make payment on behalf of somebody
+else.
 
-## Concepts
+## Payment Hubs
 
-### Payment Code
+A `PaymentHub` is a node that acts as a payment router in the network. Just as
+hosts are incentivized to host their storage space, payment hubs are
+incentivized to route payment in return for a fee.
 
-Instead of all payments being required to come from either a siacoin input or by
-being paid through the file contract, we should add an option to all of our
-payment RPCs (including Form Contract and Renew Contract) to instead accept an
-outsourced payment by supplying it with a payment code.
+In order to route payment these hubs will create file contracts that will serve
+solely as a payment channel between two nodes. These file contracts won't keep
+track of any data at all.
 
-This new form of payment method is called `EphemeralPaymentMethod`. The word
-ephemeral comes from the fact that these accounts will not be persisted, the is
-no record of its existance besides the two parties that know the account is
-supposed to be there.
+Becoming a payment hub will become possible through a setting in the host's
+external settings. By adding it to the host's external settings we can piggy
+back off of the existing host announcement infrastructure.
 
-Having these ephemeral accounts that can be prefunded saves an fsync when the
-actual payable RPC is triggered by the end user. This is hugely beneficial as
-pre-paid downloads for example could have multiple requests running in parallel
-avoiding the necessity to lock the contract for revision updates.
+### Payment Hub Announcement
 
-These payment codes should not represent a single action but rather allow for a
-series of actions to be prepaid. The amount of money here is in theory
-completely arbitrary but it should be an amount of money that you are ok with to
-lose. If the host which you prefund decideds to go rogue you effectively lose
-all money you pre-funded with no way of reclaiming it.
+A `PaymentHubAnnouncement` is made by a host to indicate his willingness to
+serve as a payment hub. Hosts will announce this through a setting. The current
+code can easily be extended to support this new concept.
 
-A slight concern for the time being is the trustlessness of this setup. However
-through the fact that we use packetized payments, this risk is minimized as the
-loss each party can incurr is minized by the fact we pay in very small
-increments, and thus losses are negligible should a node decide to go rogue and
-run with the money.
+### Payment Hub Locator
 
-### Payment Edge
+The `PaymentHubLocator` is constantly monitoring consensus changes for these hub
+announcements. Whenever a new host announces itself as payment hub, or an
+existing host announces he is no longer willing to act as a hub, this will be
+signaled to the routing subsystem. Most likely it will just be reflected in the
+host database.
 
-In order to route a payment there needs to be a payment vessel between two
-hosts. This channel can be a one way channel but ideally is a two-way payment
-channel between two hosts in the network.
+Here again, we will just extend the existing code that calls
+'findHostAnnouncements' when a block is added to the consensus.
 
-#### Payment Edge Builder
+### Payment Destination List
 
-File contracts can be used to create such a channel and we will introduce a new
-entity called `PaymentEdgeBuilder` that will be responsible for constructing
-these special file contracts. Code will need to be written in order to support
-the behaviour of two way payments through a file contract, as up until now it
-only supported one way payment from renter to the host.
+The `PaymentDestinationList` is the list of nodes the payment hubs has an active
+payment channel with. It comprises of a list of payment edges. Topology
+builders, further described [here](#topology-builder), use this list to build up
+the network topology.
+
+This call will be an addition to the current RPC set.
+
+## Payment Edge
+
+A `PaymentEdge` describes a payment channel between two payment hubs. This
+channel is ideally a two-way payment channel however this is not necessarily
+required. This payment channel is nothing more than a FileContract which we will
+use to move funds back and forth between the two parties in the contract.
 
 These 'payment contracts' would essentially ignore the necessity to provide
 proof of storage and simply have a merkle root of zero. The two participants in
-the channel can move money around by signing off on contract revisions that get
-passed between both parties.
+the channel can move money around by signing off on contract revisions.
 
 ```Go
 // PaymentEdge defines a link between two nodes through which payment can be
-// routed. Every edge comes with a cost and latency.
+// routed.
 type PaymentEdge struct {
-    source          types.SiaPublicKey      `json:"source"`
-    destination     types.SiaPublicKey      `json:"destination"`
-    cost            types.Currency          `json:"cost"`
-    latency         time.Duration,          `json:"latency"`
+    destination         types.SiaPublicKey      `json:"destination"`
+    baseFee             types.Currency          `json:"basefee"`
+    liquidityCostFee    types.Currency          `json:"liquiditycostfee"`
+    latency             time.Duration,          `json:"latency"`
 }
 ```
 
-#### Payment Edge Pricer
+### Payment Edge Refresher
+
+The `PaymentEdgeRefresher` is a background thread on a payment hub. If the
+capacity of one of its payment edges gets below a certain pre configured
+threshold on either side, it will refresh the contract by making an on-chain
+transaction.
+
+### Payment Edge Builder
+
+The `PaymentEdgeBuilder` is responsible for constructing the payment channel
+between two payment hubs. Currently, file contracts only allow one-way payments
+to be made through a file contract. Code will need to be written in order to
+support the behaviour of two-way payments through a file contract, as up until
+now it only supported one-way payment from renter to the host.
+
+### Payment Edge Pricer
 
 Creating and maintaining these payment channels comes at a cost. This cost will
-need to be fully recuperable through fees taking on the payment routing if the
+need to be fully recuperable through fees taken on the payment routing if the
 payment network is to be successful and have proper incentivization structures.
 
-The `PaymentEdgePricer` is responsible for pricing these edges, seeing as the
-price is probably dependant on a couple of factors. In theory however it should
-be possible to use fixed prices, although that might prove to be not very viable
-as it'll be hard to be competitive with payment hubs that offer dynamic pricing.
+The `PaymentEdgePricer` is responsible for pricing these payment edges, seeing
+as the price is probably dependant on a couple of factors. In theory however it
+should be possible to use fixed prices, although that might prove to be not very
+viable as it'll be hard to be competitive with payment hubs that offer dynamic
+pricing.
 
-Some thoughts on pricing:
+#### Payment Edge Fee
 
-- Nodes should be able to arbitrarily set the fee they want to charge for
-  payment routing, meaning they will need full control and final say on the
-  price, just as hosts currently can set fixed prices for up- or
-  downloadBandwith
+The fee structure is currently still undecided. Other networks apply varying fee
+structures. Some factors come into play when designing this fee structure, such
+as channel capacity, channel depletion, channel balance.
 
-- Seeing as a depleted channel requires renewal or refreshing a contract, it
-  might make sense to charge more if you want to route a payment through a
-  channel that will get depleted as the result of it
+It should be possible for a host to manipulate his fee price. In that regard it
+is good idea to have the notion of a base fee that is configurable through the
+host settings. Just as hosts currently can set fixed prices for up - or
+download bandwith.
 
-### Payment Hub
+Seeing as a depleted channel requires renewal or refreshing a contract, it might
+make sense to charge more if you want to route a payment through a channel that
+will get depleted as the result of it.
 
-A `PaymentHub` is a node that acts as a payment routing hub in the network. Just
-as hosts are incentivized to host their storage space, payment hubs are nodes
-which provide payments channels to other nodes and are incentivized to do so
-through the fees they collect from the actual routing of these payments.
+#### Negative Fees
 
-#### Payment Hub Locator
+In a network of payment channels it is possible for channels to become
+unbalanced. Negative fees are a way to incentivize users to rebalance these
+channels by routing payments through them. Payment hubs might incentivize users
+this way to push their unbalanced channels from 95% to 75%, avoiding contract
+renewal.
 
-A `PaymentHubLocator` is an entity which listens and indexes
-`PaymentHubAnnoucement`s on the network and can tell you which IP and contract
-id to send money to if you are trying to fund an ephemeral account. More on that
-later.
+Structuring these negative fees might prove tricky. If a channel is oscillating
+between these limits, say 75% - 95%, the hub must be making money. The
+`PaymentEdgePricer` will have to mathematically ensure the hub always wins, also
+when its only traffic is oscillating between these negative <-> positive fee
+ranges.
 
-#### Payment Destination List
+## Payment Network Rebalancer
 
-Every payment hub will only have a certain set of connections open to other
-nodes and have a limited set of payment channels. Every node that is reachable
-forms a payment edge and all of those together comprise the the
-`PaymentDestinationList`. In other words it is basically a list of priced edges
-that are reachable through the node you are talking to.
+The `PaymentNetworkRebalancer` is a worker that can be run by anyone. It can be
+run by a payment hub but it might as well be a thrid party that runs such a
+service. It would do this because it is financially incentivized to do so.
 
-### Payment Network Rebalancer
+The payment network rebalancer will scan the entire payment network and look for
+negative fee routes. It will then route money through those routes and collect a
+fee for doing so.
 
-It is to be expected that these payment channels get out of balance and become
-one-sided after a while. This depletion of a channel's capacity is an issue
-seeing as it means either a channel has to be reopened or funds need to move in
-the other direction to rebalance the channel.
+The payment network rebalancer offers a service to the network as a whole in the
+sense that it makes the network healthier by rebalancing the capacity.
 
-Ideally we devise an algorithm that automatically rebalances these channels to
-avoid the otherwise necessary renewal of a FileContract. However for the time
-being the plan is to settle the contract and recreate it when this event occurs.
+## Ephemeral Accounts
 
-### Topology Builder
+Ephemeral accounts are basically balances that are kept off-chain, by the
+payment hubs. These accounts can be used as payment method to **all existing RPC
+requests already out there**. It is important to note that these accounts are
+fully entrusted with the host.
 
-The `TopologyBuilder` is the entity that can map the entire network topology. It
-connects to the `PaymentHubLocator` to source its information from. Using this
-it gets a list of all the `PaymentHub`s on which you can query the payment
-destination list. By aggregating all of that information cross all hubs you can
-essentially build up a complete network graph or topology locally.
+Instead of all payments being required to come from either a siacoin input or by
+being paid through the file contract, we will add an option to spend from an
+ephemeral account. In order to instead accept an outsourced payment from such an
+ephemeral account the sender must supply a signature from the pubkey for that
+account.
 
-```Go
-// Topology is specific to a payment hub and is comprised out of a collection
-// of payment edges the hub advertises. Every edge represents a payment route.
-type Topology struct {
-    paymentHub      types.SiaPublicKey      `json:"host"`
-    edges           []types.PaymentEdge     `json:"edges"`
-}
-```
+Note that these accounts are fully trusted with the host. The host can at any
+point in time go offline and run away with the money you have entrusted with it.
+We protect ourselves by using packetized payments, the amounts of money we
+entrust with a host are very small. Usually not more than the price of a partial
+download. In theory however these accounts could hold as much as the funder is
+willing to put at stake.
 
-#### Routing Algorithm
+This becomes very powerful when these accounts can not only be funded, but they
+can be used to forward payments. This forms the basis of payment routing and
+enables pre-payment of actions in behalf of somebody else.
 
-The following [talk](#https://www.youtube.com/watch?v=kaRjWBvEXGs) and
-accompanying [paper](#https://arxiv.org/pdf/1709.05748.pdf) proposes a very
-interesting routing algorithm called "SpeedyMurmurs" for finding what they call
-Path Based Transactions or PBTs for short.
+I, Alice, could share my private key with Bob. I would then prefund money on
+that account and forward it through the appropriate host. Bob can then contact
+said host and perform actions on it that require payment, seeing as he is the
+owner of a pre-funded ephemeral account and can prove this ownership. Bob could
+also just send me a public key to which he holds the private key.
 
-From the abstract:  
-*"In this work, we first identify several efficiency concerns in existing
-routing algorithms for decentralized PBT networks. Armed with this knowledge, we
-design and evaluate SpeedyMurmurs, a novel routing algorithm for decentralized
-PBT networks using efficient and flexible embedding-based path discovery and
-on-demand efficient stabilization to handle the dynamics of a PBT network. Our
-simulation study, based on real-world data from the currently deployed Ripple
-credit network, indicates that SpeedyMurmurs reduces the overhead of
-stabilization by up to two orders of magnitude and the overhead of routing a
-transaction by more than a factor of two. Furthermore, using SpeedyMurmurs
-maintains at leas the same success ratio as decentralized landmark routing,
-while providing lower delays. Finally, SpeedyMurmurs achieves key privacy goals
-for routing in decentralized PBT networks"*
+## Topology Builder
 
-### Ephemeral Payment
+The topology builder is capable of piecing together the entire payment network
+topology.
 
-We have already briefly touched on the subject of ephemeral accounts, these
-accounts offer the ability to make ephemeral payment. This is essentially a new
-form of payment method where instead of paying for something directly, you
-supply a payment code. Only the person that pre-funded the ephemeral account and
-the payment hub know about the payment codes. Knowledge of said code thus equals
-ownership. By sharing it you are effectively making payment in behalf of
-somebody else, allowing them to request a prepaid action on a host.
+It does this by consulting the host database to query all of the hosts
+which are acting as payment hubs. It will then periodically target all of them
+and fetch their `PaymentDestinationList`. By doing so it can build and maintain
+this graph.
 
-The current RPC instructions will need to be extended with this new form of
-payment type. Whenever executed they will block that code until payment has been
-made. In most cases however these actions will be pre-paid and the block will be
-lifted immediately allowing fast and concurrent access.
+Once we have such a graph we can then traverse it using well-known shortest path
+algorithms like Dijkstra or Bellman-Ford. See
+[routing algorithm](#routing-algorithm) for more info.
 
-For more detailed descriptions see the [RPC section](#RPCs)
+## Routing
+
+### Routing Algorithm
+
+In order to route a payment to a certain endpoint one must first find a route to
+that endpoint. This is done through a routing algorithm and is a topic that has
+been well studied for decades. Please note though that we are not dealing with
+a shortest path problem here but rather a distributed one, which brings a couple
+of difficulties with it.
+
+That said, the current state of the art distributed routing algorithms like
+VOUTE, SilentWhispers or SpeedyMurmurs all solve problems the Sia network does
+not have. This is why at least in the MVP the routing algorithm of choice will
+probably be a form of distributed bellman ford.
+
+When talking about routing algorithms with edges of a certain capacity term
+'flow' comes to mind. There are algorithms that are designed to route packets
+through such a network ensuring that the route along which you send it has
+enough capacity. Ford-Fulkerson is an example of an algorithm that optimizes for
+maximum flow.
+
+Due to the fact that we have packetized payments, and that these payments are
+usually orders of magnitude smaller than a channel's capacity, we are going to
+ignore flow entirly. We can pretty much safely assume that if a route exist, it
+will have enough capacity left to route our payment through. In the off chance
+that is not the case our algorithm will fall back to a secondary route and
+retry.
 
 ### Accountability Manager
 
@@ -202,7 +232,7 @@ The `AccountabilityMananger` will properly handle a failed routing request. It
 can try and reroute the payment and possibly penalize the node that failed to
 properly complete the request.
 
-## RPCs
+## RPC
 
 This section will provide an overview with the required changes to the RPC set.
 Both changes to the already existing RPCs as well as new additions are
@@ -211,22 +241,22 @@ discussed.
 Payable RPCs, such as `FormNewContract` or `Read` (which is essentially
 download), currently implement a form of direct payment. This direct payment is
 done by exchanging money through updating and signing a contract revision. All
-of the RPCs which currently support this "direct payment method" could
+the RPCs which currently support this "direct payment method" could
 eventually also support the new "ephemeral payment method".
 
 Note that an RPC with an ephemeral account as payment method which is not
-prefunded will block until the account holds enough funds to successfully
+pre-funded will block until the account holds enough funds to successfully
 complete the RPC. This blocked request will expire and resolve in failure after
 a certain timeout.
 
 - `listPaymentDestinations`  
-  This RPC will return all of the possible payment destinations a payment hub
+  This RPC will return all the possible payment destinations a payment hub
   offers. The result of this request is aggregated across multiple payment hubs
   and thus forms network topology. The `TopologyBuilder` does this.
 
 - `fundEphemeralAccount`  
   This RPC funds an ephemeral account on a host. It requires an amount of SC
-  that needs to be prefunded as well as a contract id. This RPC requires payment
+  that needs to be pre-funded as well as a contract id. This RPC requires payment
   as it effectively credits money to an account.
 
 - `forwardEphemeralPayment`  
@@ -242,8 +272,8 @@ is trying to download from H3 however he only has an active contract with H1.
 
 Please note that although the steps listed are represented sequentially, the
 underlying system will be built in such a way that the renter does not need to
-perform these calls in any particular order. Instead the renter will fire off
-all of these requests in parallell.
+perform these calls in any particular order. Instead, the renter will fire off
+all of these requests concurrently.
 
 We assume the renter has a background thread running a `TopologyBuilder` and
 basically maintaining an up-to-date view of the entire network topology. That
@@ -259,9 +289,9 @@ download off of it.
    of the download process as no such RPC actually exists but rather is
    comprised of multiple reads.)
 
-   If the given ephemeral account was prefunded the RPC requests will not be
+   If the given ephemeral account was pre-funded the RPC requests will not be
    blocking at all but instead immediately resolve. Much quicker than currently
-   the case because the pre payment will have eliminated the need for a contract
+   the case because the pre-payment will have eliminated the need for a contract
    update which entails locking and fsync'ing.
 
 2. Renter sends a `forwardEphemeralPayment` RPC request to H2, again it
@@ -283,8 +313,8 @@ download off of it.
 4. H1 will forward payment by calling `fundEphemeralAccount` on H2
 
 5. H2 will forward payment by calling `fundEphemeralAccount` on H3. This action
-   will effictevely unlock the first download RPC request which was blocking.
-   The ephemeral account should now hold enough balance to fulfil the download
+   will effectively unlock the first download RPC request which was blocking.
+   The ephemeral account should now hold enough balance to fulfill the download
    request.
 
 ![Screenshot](../assets/paymentrouting.png)
