@@ -141,6 +141,14 @@ between these limits, say 75% - 95%, the hub must be making money. The
 when its only traffic is oscillating between these negative <-> positive fee
 ranges.
 
+Negative fees also bring with it the problem of negative weight cycles in
+graphs. Those negative weight cycles pose a big issue to shortest path
+algorithms, seeing as the shortest path becomes negative infinity as you can
+keep relaxing the path. Bellman-Ford can detect these negative weight cycles but
+is not capable of finding a shortest path when they are present in the network
+graph. [This paper](#http://people.math.sfu.ca/~goddyn/Courses/800/Resources/GraphMisc/short_path.pdf)
+gives a possible solution to this in Section #2.
+
 ## Payment Network Rebalancer
 
 The `PaymentNetworkRebalancer` is a worker that can be run by anyone. It can be
@@ -184,18 +192,6 @@ contact said host and perform actions on it that require payment, seeing as he
 is the owner of a pre-funded ephemeral account and can prove this ownership. Bob
 could also just send me a public key to which he holds the private key.
 
-## Topology Builder
-
-The topology builder is capable of piecing together the entire payment network
-topology. It does this by consulting the host database to query all of the hosts
-which are acting as payment hubs. It will then periodically target all of them
-and fetch their `PaymentDestinationList`. By doing so it can build and maintain
-this graph.
-
-Once we have such a graph we can then traverse it using well-known shortest path
-algorithms like Dijkstra or Bellman-Ford. See
-[routing algorithm](#routing-algorithm) for more info.
-
 ## Routing
 
 The most important part of a payment channel network is its routing algorithm.
@@ -212,6 +208,28 @@ At all times the money in transit is completely at stake. It is a trusted setup
 in that sense, as every node along the route can take the money and run. We
 trust hosts are incentivized not to do so, and they will get penalized for it if
 they do.
+
+### Routing Table
+
+The routing table, maintained by the `TopologyBuilder`, can be built up by using
+the information collected by the `PaymentHubLocator`. It is a set of medium-long
+term static information about the network topology.
+
+Besides keeping a list of every payment edge in the network it will also store
+additional semi-static information about these payment channels. In particular
+their capacity and fee, but it could also contain performance metrics such as
+latency or keep scores of successful historic transactions.
+
+That information is semi-static, that means that essentially it is dynamic and
+variable to change, however we assume for now that it will remain static over a
+period of hours or even days. This makes it possible to route payment with
+accurate fee estimates, which is necessary if you want to be able to make
+payments of an exact amount.
+
+We expect that the size of this routing table will initially be rather small.
+We estimate the amount of vertices to be around 100, and the amount of edges to
+be around 10000. That means that algorithms that run in O(|V| . |E|) would
+complete in a reasonable amount of time.
 
 ### Routing Algorithm
 
@@ -255,7 +273,7 @@ another. Because the only thing that needs to change is how the router
 structures the clam shell. The primitives for moving money around will remain
 the same.
 
-### Accountability Manager
+#### Accountability Manager
 
 The `AccountabilityMananger` will properly handle a failed routing request. It
 can try and reroute the payment and possibly penalize the node that failed to
