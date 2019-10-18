@@ -157,9 +157,9 @@ sense that it makes the network healthier by rebalancing the capacity.
 ## Ephemeral Accounts
 
 Ephemeral accounts are basically balances that are kept off-chain, by the
-payment hubs. These accounts can be used as payment method to **all existing RPC
-requests already out there**. It is important to note that these accounts are
-fully entrusted with the host.
+payment hubs. These accounts can be used as payment method to **all existing
+payable RPC requests we already support**. It is important to note that these
+accounts are fully entrusted with the host.
 
 Instead of all payments being required to come from either a siacoin input or by
 being paid through the file contract, we will add an option to spend from an
@@ -167,29 +167,27 @@ ephemeral account. In order to instead accept an outsourced payment from such an
 ephemeral account the sender must supply a signature from the pubkey for that
 account.
 
-Note that these accounts are fully trusted with the host. The host can at any
-point in time go offline and run away with the money you have entrusted with it.
-We protect ourselves by using packetized payments, the amounts of money we
-entrust with a host are very small. Usually not more than the price of a partial
-download. In theory however these accounts could hold as much as the funder is
-willing to put at stake.
+The host can at any point in time go offline and run away with the money you
+have entrusted with it. We protect ourselves by using packetized payments, the
+amounts of money we entrust with a host are very small. Usually not more than
+the price of a partial download. In theory however these accounts could hold as
+much as the funder is willing to put at stake.
 
-This becomes very powerful when these accounts can not only be funded, but they
-can be used to forward payments. This forms the basis of payment routing and
-enables pre-payment of actions in behalf of somebody else.
+Seeing as these ephemeral accounts can be used as a payment method, it will
+become trivial to tell hosts to forward payments to other hosts. This forms the
+basis of payment routing and enables pre-payment of actions in behalf of
+somebody else.
 
 I, Alice, could share my private key with Bob. I would then prefund money on
-that account and forward it through the appropriate host. Bob can then contact
-said host and perform actions on it that require payment, seeing as he is the
-owner of a pre-funded ephemeral account and can prove this ownership. Bob could
-also just send me a public key to which he holds the private key.
+that account and forward it through to the appropriate host. Bob can then
+contact said host and perform actions on it that require payment, seeing as he
+is the owner of a pre-funded ephemeral account and can prove this ownership. Bob
+could also just send me a public key to which he holds the private key.
 
 ## Topology Builder
 
 The topology builder is capable of piecing together the entire payment network
-topology.
-
-It does this by consulting the host database to query all of the hosts
+topology. It does this by consulting the host database to query all of the hosts
 which are acting as payment hubs. It will then periodically target all of them
 and fetch their `PaymentDestinationList`. By doing so it can build and maintain
 this graph.
@@ -219,16 +217,15 @@ they do.
 
 In order to route a payment to a certain endpoint one must first find a route to
 that endpoint. This is done through a routing algorithm and is a topic that has
-been well studied for decades. Please note though that we are not dealing with
-a shortest path problem here but rather a distributed one, which brings a couple
-of difficulties with it.
+been well studied for decades. Please note though that we are dealing with a
+distributed shortest path which brings a couple of difficulties with it.
 
 That said, the current state of the art distributed routing algorithms like
 VOUTE, SilentWhispers or SpeedyMurmurs all solve problems the Sia network does
 not have. This is why at least in the MVP the routing algorithm of choice will
-probably be a form of distributed bellman ford.
+probably be a form of distributed Bellman Ford.
 
-When talking about routing algorithms with edges of a certain capacity term
+When talking about routing algorithms with edges of a certain capacity the term
 'flow' comes to mind. There are algorithms that are designed to route packets
 through such a network ensuring that the route along which you send it has
 enough capacity. Ford-Fulkerson is an example of an algorithm that optimizes for
@@ -236,10 +233,27 @@ maximum flow.
 
 Due to the fact that we have packetized payments, and that these payments are
 usually orders of magnitude smaller than a channel's capacity, we are going to
-ignore flow entirly. We can pretty much safely assume that if a route exist, it
+ignore flow entirely. We can pretty much safely assume that if a route exist, it
 will have enough capacity left to route our payment through. In the off chance
-that is not the case our algorithm will fall back to a secondary route and
-retry.
+that is not the case our algorithm will fall back and will try to route the
+payment through a secondary route and retry.
+
+#### Clamshell Routing
+
+Clamshell routing means that the sender of the payment is orchestrating the
+forward along the entire route. This means that if it is going to route a
+payment along a route with 2 landmark routers, it will talk to them directly and
+request to forward payment. It will instruct each intermediary to forward the
+payment onto the next hop.
+
+This is necessary because otherwise we can not tell which host betrayed us by
+not forwarding the payment. We would have no way of knowing which host was
+malicious.
+
+Another benefit is that it becomes trivial to swap out the routing algorithm for
+another. Because the only thing that needs to change is how the router
+structures the clam shell. The primitives for moving money around will remain
+the same.
 
 ### Accountability Manager
 
