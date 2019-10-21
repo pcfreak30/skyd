@@ -74,17 +74,6 @@ These 'payment contracts' would essentially ignore the necessity to provide
 proof of storage and simply have a merkle root of zero. The two participants in
 the channel can move money around by signing off on contract revisions.
 
-```Go
-// PaymentEdge defines a link between two nodes through which payment can be
-// routed.
-type PaymentEdge struct {
-    destination         types.SiaPublicKey      `json:"destination"`
-    baseFee             types.Currency          `json:"basefee"`
-    liquidityCostFee    types.Currency          `json:"liquiditycostfee"`
-    latency             time.Duration,          `json:"latency"`
-}
-```
-
 ### Payment Edge Refresher
 
 The `PaymentEdgeRefresher` is a background thread on a payment hub. If the
@@ -370,14 +359,219 @@ download off of it.
 
 ## Implementation Steps
 
-1. Add notion of ephemeral accounts
+### MR1: PaymentHub Announcements
 
-2. Add `fundEphemeralAccount` & `forwardEphemeralPayment` RPCs
+Description:
 
-3. Extend existing payable RPCs with the `EphermalPayment` option
+Add the notion of a payment hub. Hosts can signal they are willing to act as a
+payment hub through their host settings. Payment hubs can be used to route
+payment through. They will advertise all hosts they have payment channels with.
 
-4. Add Payment Hub and Payment Hub Locator
+Tasks:
 
-5. Add Topology Builder
+- Extend HostSettings w/payment hub option
+- Extend HostDBEntry w/payment hub option (probably implied through hES)
 
-[TODO: add MRs for every step]
+Dependencies:
+
+- /
+
+### MR2: Form Payment Contract (PaymentEdgeBuilder)
+
+Description:
+
+The payment edge builder will construct the payment channel between two payment
+hubs. The payment channel is constructed by forming a file contract between two
+hosts without any data in it.
+
+This MR will only add code that deals with forming these new type of contracts.
+Other functinalities like pricing, advertising, listing will be tackled later.
+
+Tasks:
+
+- Add code to form payment contract w/another host
+  (`managedRPCFormPaymentContract`)
+
+Dependencies:
+
+- Notion of payment hub, forming payment contracts is only allowed with a host
+  that has this setting enabled
+
+Notes:
+
+- The concept of PaymentEdgeBuilder might be a bit much, if it's exposed through
+  an RPC we can drop the term entirely
+
+### MR3: PaymentEdgePricer
+
+Description:
+
+The PaymentEdgePricer determines the cost to use the payment channel. The price
+is dependent on a couple of factors, which may or may not include:
+
+- base fee (?)
+- liquidity fee (?)
+- channel capacity
+- channel latency
+- channel imbalance (inbound/outbound capacity)
+- contract refresh/formatino costs
+
+The eventually determined price to route payment through a payment channel will
+always consist out of two parts, the inbound and outbound cost.
+
+Consider the following setup  
+`R1 -> PH1 <-> PH2 -> H1`
+
+If R1 wants to route payment to H1, he can use PH1 and PH2 to route payment
+through. To traverse the channel between PH1 and PH2, the fee consists of the
+outbound fee set by PH1 plus the inbound fee set by PH2.
+
+Tasks:
+
+- Add payment edge pricing logic
+
+Dependencies:
+
+- Payment Contract formation (see MR2)
+
+Design (WIP):
+
+```Go
+func determinePaymentEdgePrice(
+    costToOpenChannel,
+    costToRefreshChannel,
+    remainingInboundCapacity,
+    remainingOutboundCapacity types.Currency
+) (costOfInboundPayment, costOfOutboundPayment types.Currency)
+```
+
+### MR4: PaymentEdgeDestinationList
+
+Description:
+
+In this MR we will add the list route which advertises the payment edge
+destinations of a payment hub. This will be used by the `RouteBuilder` to form a
+topology of the overall network, to decide how to route the payment.
+
+Tasks:
+
+- Expose function that lists all payment edges
+
+Questions:
+
+- Do we build the list on demand or periodically?
+- Do we reprice based off of triggers or on request?
+
+Design (WIP):
+
+```Go
+// PaymentEdge defines a link between two nodes through which a payment can be
+// routed. It contains the identifier of the destination node and edge pricing
+// details
+type PaymentEdge struct {
+    destination         types.SiaPublicKey
+    inboundCost         types.Currency
+    outboundCost        types.Currency
+    capacity            types.Currency
+    latency             time.Duration
+}
+
+Host interface {
+    PaymentEdgeDestinations() []types.PaymentEdge
+}
+```
+
+### MR5: Add Ephemeral Accounts
+
+Description:
+
+Ephemeral accounts are a new form of payment method. They are kept off-chain and
+are managed by the hosts. They keep track of a balance. See the section on
+[ephemeral accounts](#ephemeral-accounts) for more info.
+
+We will extend all payable RPCs to be payable by ephemeral account
+
+Tasks:
+
+- Add notion of ephemeral account
+- Add an ephemeral account manager
+- Ensure accounts are persisted
+- Enable account funding through direct payment (as initial step)
+
+Dependencies:
+
+- /
+
+Questions:
+
+- Do we add ephemeral accounts to the host's persistence object?
+
+Design (WIP):
+
+```Go
+    // EphemeralAccount represents an account which is kept off-chain, and which
+    // can be used as a form of payment method. Every payable RPC can be paid
+    // through direct payment or through such an ephemeral account payment
+    EphemeralAccount struct {
+        Balance types.Currency
+        PubKey  types.SiaPublicKey
+    }
+
+    // EphemeralAccountManager is responsible for managing all of the ephemeral
+    // accounts that might be present on a host. In order to fund such an ac
+    EphemeralAccountManager struct {
+        accounts    map[string]EphemeralAccount
+        mu          sync.Mutex
+    }
+
+    // RPC Request and method on the host
+    func (h *Host) managedRPCLoopFundEphemeralAccount(s *rpcSession) error
+
+    type LoopFundEphemeralAccountRequest struct {
+        // Payment details
+        ContractID  types.FileContractID
+        account     types.SiaPublicKey
+        amount      types.Currency
+
+        // Contract details
+        NewRevisionNumber    uint64
+        NewValidProofValues  []types.Currency
+        NewMissedProofValues []types.Currency
+
+        // Contains challenge signed by the ephemeral account owner's public key
+        Signature []byte
+    }
+
+```
+
+### MR6: Add Ephemeral Account Payment Method
+
+Description:
+
+Every RPC that requires some form of payment needs to be altered/extended to be
+able to pay through form of an ephemeral account. This payment method might be
+blocking if the account is not funded enough to perform the RPC. This blocking
+action is protected by a timeout after which the RPC fails.
+
+Tasks:
+
+- /
+
+Dependencies:
+
+- Ephmeral Accounts
+
+### MR6: Add Forward Ephemeral Payment
+
+Description:
+
+Extend the current RPC set with a forward payment method. This RPC can be either
+paid directly or funded by an ephemeral account.
+
+Tasks:
+
+- Add `forwardEphemeralPayment` RPC
+
+Dependencies:
+
+- Ephmeral Accounts
