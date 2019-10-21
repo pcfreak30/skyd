@@ -359,13 +359,17 @@ download off of it.
 
 ## Implementation Steps
 
-### MR1: PaymentHub Announcements
+### MR1: PaymentHub Host Setting & Announcement
 
 Description:
 
-Add the notion of a payment hub. Hosts can signal they are willing to act as a
-payment hub through their host settings. Payment hubs can be used to route
-payment through. They will advertise all hosts they have payment channels with.
+Add the notion of a payment hub. Payment hubs can be used to route payment
+through. Hosts can signal they are willing to act as a payment hub through their
+host settings.
+
+The setting is a simple bool flag called "PaymentHub".
+The Payment Hub Announcement can thus fully piggy back on the exting host
+announcement code.
 
 Tasks:
 
@@ -375,6 +379,10 @@ Tasks:
 Dependencies:
 
 - /
+
+Questions:
+
+- Perhaps we should call it `forwardingPayments` or `routingPayments` instead
 
 ### MR2: Form Payment Contract (PaymentEdgeBuilder)
 
