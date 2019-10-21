@@ -388,9 +388,14 @@ Questions:
 
 Description:
 
-The payment edge builder will construct the payment channel between two payment
-hubs. The payment channel is constructed by forming a file contract between two
-hosts without any data in it.
+The payment edge builder will construct a payment channel between two entities.
+The payment channel is constructed by forming a file contract without any data
+in it.
+
+These contracts can be formed only with hosts that have the "PaymnetHub" setting
+configured. These contracts will be formed between both renters and hosts. So it
+is not necessarily a contract between a renter and a host, but it might be a
+contract between two hosts.
 
 This MR will only add code that deals with forming these new type of contracts.
 Other functinalities like pricing, advertising, listing will be tackled later.
@@ -409,6 +414,12 @@ Notes:
 
 - The concept of PaymentEdgeBuilder might be a bit much, if it's exposed through
   an RPC we can drop the term entirely
+
+Questions:
+
+- Do we want to reuse existing contracts between renters and hosts as payment
+  channels? Seeing as renters have put in money in the contract based on their
+  expected usage we might want to keep that separate
 
 ### MR3: PaymentEdgePricer
 
@@ -494,8 +505,8 @@ Host interface {
 Description:
 
 Ephemeral accounts are a new form of payment method. They are kept off-chain and
-are managed by the hosts. They keep track of a balance. See the section on
-[ephemeral accounts](#ephemeral-accounts) for more info.
+are managed by the hosts. They keep track of a user's balance. See the section
+on [ephemeral accounts](#ephemeral-accounts) for more info.
 
 We will extend all payable RPCs to be payable by ephemeral account
 
