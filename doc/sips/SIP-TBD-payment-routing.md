@@ -385,7 +385,7 @@ Even though the implementation steps are numbered, they do not have to be
 implemented in this order. Every MR has listed its dependencies, by verifying
 those an MR might be ready to start implementing yes or no.
 
-### MR1: PaymentHub HostSetting & Announcement
+### MR1: PaymentHub HostSetting
 
 Description:
 
@@ -749,5 +749,23 @@ Note:
 
 We might not need the concept of a payment hub locator.
 That will become clear when building out the topology builder.
+
+// TODO
+
+### MR11: Add Accountability Manager
+
+Note:
+
+Unsure where to house the accountability manager as it might live both on the
+renter and out the host side. It should tie in with either the HostDB or the
+TopologyBuilder in order to ensure it is able to penalize nodes or influence
+future routing requests. Still very much an open question.
+
+Description:
+
+The accountability manager is in charge of rerouting a failed request and
+penalizing the host that caused the routing to fail. We have this information
+seeing as we route using a clamshell pattern, meaning we know exactly where it
+fails.
 
 // TODO
