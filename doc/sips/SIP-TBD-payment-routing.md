@@ -196,6 +196,10 @@ that account and forward it through to the appropriate host. Bob can then
 contact said host and perform actions on it that require payment, seeing as he
 is the owner of a pre-funded ephemeral account and can prove this ownership.
 
+These accounts can be funded through an RPC request. Please note you can not
+withdraw from an ephemeral account. Seeing as we use packetized payments and the
+amounts are, or at least should be, very small, withdrawing is not possible.
+
 ## Routing
 
 The most important part of a payment channel network is its routing algorithm.
@@ -377,6 +381,10 @@ download off of it.
 
 ## Implementation Steps
 
+Even though the implementation steps are numbered, they do not have to be
+implemented in this order. Every MR has listed its dependencies, by verifying
+those an MR might be ready to start implementing yes or no.
+
 ### MR1: PaymentHub HostSetting & Announcement
 
 Description:
@@ -550,40 +558,110 @@ Dependencies:
 
 Design (WIP):
 
+#### Ephemeral Account Manager
+
 ```Go
+// Ephemeral accounts are kept by the host, however not into perpetuity
+// Whenever an account has not been updated for `accountExpiryTimeout` time
+// it gets removed.
+const accountExpiryTimeout = 30 * time.Day
+
+// The ephemeral account manager will become a subsystem of the host.
+// It involves everything with regards to ephemeral accounts, which are
+// essentially off-chain balances that can used to pay for RPCs
+//
+// The host is responsible for managing said accounts, however they do so in a
+// trusted setup. Meaning the account owner has no guarantees what so ever.
+//
+// Seeing as ephemeral accounts can be used as payment method, it can be used to
+// forward and thus route payment around the payment network
+//
+// The account manager is meant to survive a clean reboot of the host. This
+// means its actions are not ACID, however the accounts are persisted.
+//
+// Information about every account is kept interally by the account manager, it
+// uses ephemeral account structs to store all information belonging to one
+// single account
+//
+// Every interaction with an account that happens through the account manager
+// will need to acquire a lock on said account. These locks are kept by the
+// account manager as well.
+type (
     // EphemeralAccount represents an account which is kept off-chain, and which
     // can be used as a form of payment method. Every payable RPC can be paid
     // through direct payment or through such an ephemeral account payment
     EphemeralAccount struct {
-        Balance types.Currency
-        PubKey  types.SiaPublicKey
+        pubKey      types.SiaPublicKey
+        balance     types.Currency
+        created     time.Time
+        updated     time.Time // used for account expiry
     }
 
     // EphemeralAccountManager is responsible for managing all of the ephemeral
-    // accounts that might be present on a host. In order to fund such an ac
+    // accounts that might be present on a host.
     EphemeralAccountManager struct {
-        accounts    map[string]EphemeralAccount
-        mu          sync.Mutex
+        accounts        map[string]EphemeralAccount
+        lockedAccounts  map[string]accountLock
+
+        // Utilities.
+        dependencies    modules.Dependencies
+        log             *persist.Logger
+        persistDir      string
+        tg              siasync.ThreadGroup
     }
 
-    // RPC Request and method on the host
-    func (h *Host) managedRPCLoopFundEphemeralAccount(s *rpcSession) error
+    // accountLock contains a lock plus a count of the number of threads
+    // currently waiting to access the lock.
+    accountLock struct {
+        waiting int
+        mu      sync.Mutex
+    }
+)
 
-    type LoopFundEphemeralAccountRequest struct {
+// New creates a new EphemeralAccountManager
+func New(persistDir string) (*EphemeralAccountManager, error)
+
+// Close will cleanly shut down the ephemeral account manager
+func (eam *EphemeralAccountManager) Close() error
+```
+
+#### RPCs
+
+```Go
+func (h *Host) managedRPCLoopFundEphemeralAccount(s *rpcSession) error
+
+var (
+    SpecifierPaymentMethodDirect = Specifier{'d', 'i', 'r', 'e', 'c', 't'}
+    SpecifierPaymentMethodEphemeralAccount = Specifier{'e', 'p', 'h', 'e', 'm',
+    'e', 'r', 'a', 'l', 'a', 'c', 'c', 'o', 'u', 'n', 't', }
+)
+
+type  (
+    // LoopFundEphemeralAccountRequest contains the request parameters which are
+    // necessary to successfully fund an ephemeral account.
+    //
+    // Ephemeral accounts are uniquely identifyable by their pubKey.
+    // They are funded either through a contract revision or through another
+    // ephemeral account
+    LoopFundEphemeralAccountRequest struct {
+        // Account details
+        PubKey      types.SiaPublicKey
+
         // Payment details
-        ContractID  types.FileContractID
-        account     types.SiaPublicKey
-        amount      types.Currency
+        PaymentMethod   types.Specifier
+        AccountID       types.SiaPublicKey   // present in case of ephemeral pay
+        ContractID      types.FileContractID // present in case of direct pay
+        Amount          types.Currency
 
         // Contract details
         NewRevisionNumber    uint64
         NewValidProofValues  []types.Currency
         NewMissedProofValues []types.Currency
 
-        // Contains challenge signed by the ephemeral account owner's public key
+        // Signed challenge
         Signature []byte
     }
-
+)
 ```
 
 ### MR7: Add Ephemeral Account Payment Method
@@ -593,11 +671,20 @@ Description:
 Every RPC that requires some form of payment needs to be altered/extended to be
 able to pay through form of an ephemeral account. This payment method might be
 blocking if the account is not funded enough to perform the RPC. This blocking
-action is protected by a timeout after which the RPC fails.
+action is protected by a timeout after which the RPC eventually fails.
+
+It will be impossible to extend the currently existing RPCs to support his new
+payment method specifier. Therefor we will need to copy over the ones we really
+want to support to a new RPPC that does support it.
+
+The payment method will be specified through the use of an identifier.
+We need payment method specifiers to specify if the user is paying for that RPC
+directly or through an ephemeral account.
 
 Tasks:
 
-- TODO
+- Introduce payment method specifiers
+- Identify which (legacy) RPCs we want to add this payment method specifier to
 
 Dependencies:
 
