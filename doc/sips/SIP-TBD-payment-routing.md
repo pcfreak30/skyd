@@ -48,11 +48,7 @@ code can easily be extended to support this new concept.
 The `PaymentHubLocator` is constantly monitoring consensus changes for these hub
 announcements. Whenever a new host announces itself as payment hub, or an
 existing host announces he is no longer willing to act as a hub, this will be
-signaled to the routing subsystem. Most likely it will just be reflected in the
-host database.
-
-Here again, we will just extend the existing code that calls
-'findHostAnnouncements' when a block is added to the consensus.
+signaled to the routing subsystem.
 
 ### Payment Destination List
 
@@ -66,13 +62,14 @@ This call will be an addition to the current RPC set.
 ## Payment Edge
 
 A `PaymentEdge` describes a payment channel between two payment hubs. This
-channel is ideally a two-way payment channel however this is not necessarily
+channel is ideally a two-way payment channel, however this is not necessarily
 required. This payment channel is nothing more than a FileContract which we will
 use to move funds back and forth between the two parties in the contract.
 
 These 'payment contracts' would essentially ignore the necessity to provide
-proof of storage and simply have a merkle root of zero. The two participants in
-the channel can move money around by signing off on contract revisions.
+proof of storage and simply have a merkle root and file size of zero. The two
+participants in the channel can move money around by signing off on contract
+revisions.
 
 ### Payment Edge Refresher
 
@@ -84,10 +81,13 @@ transaction.
 ### Payment Edge Builder
 
 The `PaymentEdgeBuilder` is responsible for constructing the payment channel
-between two payment hubs. Currently, file contracts only allow one-way payments
-to be made through a file contract. Code will need to be written in order to
-support the behaviour of two-way payments through a file contract, as up until
-now it only supported one-way payment from renter to the host.
+between two payment hubs. Currently, renters use file contracts to make one-way
+payments only. However technically these file contracts can already be used to
+make two-way payments.
+
+The consensus code was updated to allow hosts to submit a proof for 0 data. This
+means we can use the existing FormNewContract RPC in a first version to create a
+payment channel.
 
 ### Payment Edge Pricer
 
@@ -105,7 +105,8 @@ pricing.
 
 The fee structure is currently still undecided. Other networks apply varying fee
 structures. Some factors come into play when designing this fee structure, such
-as channel capacity, channel depletion, channel balance.
+as channel capacity, channel depletion, channel balance, cost of opening up or
+renewing a channel.
 
 It should be possible for a host to manipulate his fee price. In that regard it
 is good idea to have the notion of a base fee that is configurable through the
@@ -138,22 +139,37 @@ is not capable of finding a shortest path when they are present in the network
 graph. [This paper](#http://people.math.sfu.ca/~goddyn/Courses/800/Resources/GraphMisc/short_path.pdf)
 gives a possible solution to this in Section #2.
 
+#### Pricing Tiers
+
+Hosts will guarantee fees up until a certain blockheight. If necessary pricing
+tiers can be added to protect against users routing larger payments very quickly
+and draining all liquidity. E.g.
+
+```Go
+/**
+
+1X price guaranteed for next 30 seconds
+1.5X price guaranteed for next 90 seconds
+5X price guaranteed for 30 minutes
+
+*/
+```
+
 ## Payment Network Rebalancer
 
-The `PaymentNetworkRebalancer` is a worker that can be run by anyone. It can be
-run by a payment hub but it might as well be a thrid party that runs such a
-service. It would do this because it is financially incentivized to do so.
-
-The payment network rebalancer will scan the entire payment network and look for
+The `PaymentNetworkRebalancer` will scan the entire payment network and look for
 negative fee routes. It will then route money through those routes and collect a
 fee for doing so.
 
-The payment network rebalancer offers a service to the network as a whole in the
-sense that it makes the network healthier by rebalancing the capacity.
+It offers a service to the network as a whole in the sense that it makes the
+network healthier by rebalancing the capacity. It is essentially a worker that
+can be run by anyone. It can be run by a payment hub but it might as well be a
+thrid party that runs such a service. It would do this because it is financially
+incentivized to do so.
 
 ## Ephemeral Accounts
 
-Ephemeral accounts are basically balances that are kept off-chain, by the
+Ephemeral accounts are basically balances that are kept off-chain by the
 payment hubs. These accounts can be used as payment method to **all existing
 payable RPC requests we already support**. It is important to note that these
 accounts are fully entrusted with the host.
@@ -175,11 +191,10 @@ become trivial to tell hosts to forward payments to other hosts. This forms the
 basis of payment routing and enables pre-payment of actions in behalf of
 somebody else.
 
-I, Alice, could share my private key with Bob. I would then prefund money on
+I, Alice, could share my public key with Bob. I would then prefund money on
 that account and forward it through to the appropriate host. Bob can then
 contact said host and perform actions on it that require payment, seeing as he
-is the owner of a pre-funded ephemeral account and can prove this ownership. Bob
-could also just send me a public key to which he holds the private key.
+is the owner of a pre-funded ephemeral account and can prove this ownership.
 
 ## Routing
 
@@ -191,7 +206,10 @@ keep payment channels balanced.
 We plan to side-step these two main problems by having packetized payments, and
 keep the payments very small w/regards to average channel capacity. Further more
 we will not have atomic payments, in the sense that if one intermediary host
-drops out, the money is "stuck" at the hop prior to that one.
+drops out, the money is "stuck" at the hop prior to that one. In order to
+penalize the host in question, and know which host went rogue in the first
+place, we will use clamshell routing where the sender of the payment is
+essentially orchestrating everything along the entire route.
 
 At all times the money in transit is completely at stake. It is a trusted setup
 in that sense, as every node along the route can take the money and run. We
@@ -201,13 +219,13 @@ they do.
 ### Routing Table
 
 The routing table, maintained by the `TopologyBuilder`, can be built up by using
-the information collected by the `PaymentHubLocator`. It is a set of medium-long
-term static information about the network topology.
+the information sent by the `PaymentHubLocator`. It is a set of medium-long term
+static information about the network topology.
 
 Besides keeping a list of every payment edge in the network it will also store
 additional semi-static information about these payment channels. In particular
-their capacity and fee, but it could also contain performance metrics such as
-latency or keep scores of successful historic transactions.
+their capacity and pricing, but it could also contain performance metrics such
+as latency or keep scores of successful historic transactions.
 
 That information is semi-static, that means that essentially it is dynamic and
 variable to change, however we assume for now that it will remain static over a
@@ -359,32 +377,45 @@ download off of it.
 
 ## Implementation Steps
 
-### MR1: PaymentHub Host Setting & Announcement
+### MR1: PaymentHub HostSetting & Announcement
 
 Description:
 
-Add the notion of a payment hub. Payment hubs can be used to route payment
-through. Hosts can signal they are willing to act as a payment hub through their
-host settings.
-
-The setting is a simple bool flag called "PaymentHub".
-The Payment Hub Announcement can thus fully piggy back on the exting host
-announcement code.
+Add the notion of a payment hub. Payment hubs are hosts which are willing to
+route payments. They can signal this willingness through a host setting.
 
 Tasks:
 
 - Extend HostSettings w/payment hub option
+
+Dependencies:
+
+- /
+
+### MR2: PaymentHub Announcement
+
+Description:
+
+Ensure payment hubs are properly announced. Most probably this is already the
+case as payment hub announcements can piggy back entirely off of the existing
+host announcement code. Make sure of this.
+
+Tasks:
+
 - Extend HostDBEntry w/payment hub option (probably implied through hES)
 
 Dependencies:
 
 - /
 
-Questions:
+### MR3: Form Payment Contract (PaymentEdgeBuilder)
 
-- Perhaps we should call it `forwardingPayments` or `routingPayments` instead
+Note:
 
-### MR2: Form Payment Contract (PaymentEdgeBuilder)
+We can reuse existing contracts to act as payment contracts. The current form
+contract RPC already allows forming contracts with 0 merkleroot and file size.
+Further more consensus allows to submit 0 proofs. This means that in a first
+version we might just reuse the RPCs we already have.
 
 Description:
 
@@ -392,36 +423,22 @@ The payment edge builder will construct a payment channel between two entities.
 The payment channel is constructed by forming a file contract without any data
 in it.
 
-These contracts can be formed only with hosts that have the "PaymnetHub" setting
-configured. These contracts will be formed between both renters and hosts. So it
-is not necessarily a contract between a renter and a host, but it might be a
-contract between two hosts.
+These payment contracts can be formed with all hosts. If the destination host
+is not interested in forming a payment channel with the other host, the one
+opening the channel pays the contract formation fee.
 
 This MR will only add code that deals with forming these new type of contracts.
 Other functinalities like pricing, advertising, listing will be tackled later.
 
 Tasks:
 
-- Add code to form payment contract w/another host
-  (`managedRPCFormPaymentContract`)
+- Add `managedRPCFormPaymentContract`
 
 Dependencies:
 
-- Notion of payment hub, forming payment contracts is only allowed with a host
-  that has this setting enabled
+- /
 
-Notes:
-
-- The concept of PaymentEdgeBuilder might be a bit much, if it's exposed through
-  an RPC we can drop the term entirely
-
-Questions:
-
-- Do we want to reuse existing contracts between renters and hosts as payment
-  channels? Seeing as renters have put in money in the contract based on their
-  expected usage we might want to keep that separate
-
-### MR3: PaymentEdgePricer
+### MR4: PaymentEdgePricer
 
 Description:
 
@@ -433,7 +450,10 @@ is dependent on a couple of factors, which may or may not include:
 - channel capacity
 - channel latency
 - channel imbalance (inbound/outbound capacity)
-- contract refresh/formatino costs
+- contract refresh/formation costs
+
+Hosts will guarantee a certain price for a certain amount of blocks. We might
+make his a tiered model, see [Pricing Tiers](#pricing-tiers)
 
 The eventually determined price to route payment through a payment channel will
 always consist out of two parts, the inbound and outbound cost.
@@ -451,7 +471,7 @@ Tasks:
 
 Dependencies:
 
-- Payment Contract formation (see MR2)
+- Payment Contract formation
 
 Design (WIP):
 
@@ -464,7 +484,7 @@ func determinePaymentEdgePrice(
 ) (costOfInboundPayment, costOfOutboundPayment types.Currency)
 ```
 
-### MR4: PaymentEdgeDestinationList
+### MR5: PaymentEdgeDestinationList
 
 Description:
 
@@ -472,14 +492,17 @@ In this MR we will add the list route which advertises the payment edge
 destinations of a payment hub. This will be used by the `RouteBuilder` to form a
 topology of the overall network, to decide how to route the payment.
 
+Depending on the size of this list we will want to keep this list in memory
+opposed to building it on the fly. Most probably though we'll want to keep it in
+memory in any case because this RPC needs to be fast.
+
 Tasks:
 
-- Expose function that lists all payment edges
+- Expose RPC on the host that lists all payment edges
 
-Questions:
+Dependencies:
 
-- Do we build the list on demand or periodically?
-- Do we reprice based off of triggers or on request?
+- Payment Contract formation (if we re-use existing contracts -> no deps)
 
 Design (WIP):
 
@@ -500,7 +523,7 @@ Host interface {
 }
 ```
 
-### MR5: Add Ephemeral Accounts
+### MR6: Add Ephemeral Accounts
 
 Description:
 
@@ -509,6 +532,10 @@ are managed by the hosts. They keep track of a user's balance. See the section
 on [ephemeral accounts](#ephemeral-accounts) for more info.
 
 We will extend all payable RPCs to be payable by ephemeral account
+
+We probably want to persist the ephemeral accounts. However we will limit their
+lifetime so the host does not have to keep track of stale accounts until
+infinity. 30 days seems like a good expiry timeout.
 
 Tasks:
 
@@ -520,10 +547,6 @@ Tasks:
 Dependencies:
 
 - /
-
-Questions:
-
-- Do we add ephemeral accounts to the host's persistence object?
 
 Design (WIP):
 
@@ -563,7 +586,7 @@ Design (WIP):
 
 ```
 
-### MR6: Add Ephemeral Account Payment Method
+### MR7: Add Ephemeral Account Payment Method
 
 Description:
 
@@ -574,13 +597,13 @@ action is protected by a timeout after which the RPC fails.
 
 Tasks:
 
-- /
+- TODO
 
 Dependencies:
 
 - Ephmeral Accounts
 
-### MR6: Add Forward Ephemeral Payment
+### MR8: Add Forward Ephemeral Payment
 
 Description:
 
@@ -594,3 +617,50 @@ Tasks:
 Dependencies:
 
 - Ephmeral Accounts
+
+### MR9: Add Routing Touble (Topology Builder)
+
+Description:
+
+The topology builder is capable of building up the entire network topology. It
+does this by asking all payment hubs in the network for their payment edge
+destination list. This way it can build up a graph with all edges and vertices
+and use known routing algorithms to decide on an appropriate route to forward a
+payment towards a certain host.
+
+It is probably a worker in a background thread, that means an active routing
+table and updates it on certain triggers. These triggers can be the coming from
+the payment hub locator for example, who notices new hubs coming online or going
+offline. It might fetch updates from hubs periodically, or it might actively
+ask for an update of a hot route when it knows it'll update pricing soon (it
+knows this because edges have pricing advertised up until a certain block).
+
+The routing algorithm will most probably be Bellman-Ford or a variation of it.
+This routing agorithm essentialy acts as a strategy and should be easily
+updated/replaced. We most likely need Bellman-Ford though seeing as we'll have
+negative weight edges in our graph. We will need to devise a way to ignore
+negative weighted cycles, or price those edges at 0 for Bellman-Ford to
+successfully find a route.
+
+Tasks:
+
+- Add topology builder
+- Add payment hub locator (?)
+
+Dependencies:
+
+- PaymentEdgeDestinationList
+
+Questions:
+
+- Everyone needs to be able to build the topology. What would be a good module
+  or place to house this code under?
+
+### MR10: Add PaymentHub Locator
+
+Note:
+
+We might not need the concept of a payment hub locator.
+That will become clear when building out the topology builder.
+
+// TODO
