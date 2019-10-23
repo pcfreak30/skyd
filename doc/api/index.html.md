@@ -638,6 +638,7 @@ returns information about the gateway, including the list of connected peers.
             "version":    "1.0.0",                 // string
         },
     ],
+    "online":           true,  // boolean
     "maxdownloadspeed": 1234,  // bytes per second
     "maxuploadspeed":   1234,  // bytes per second
 }
@@ -656,14 +657,17 @@ local is true if the peer's IP address belongs to a local address range such as 
 
 **netaddress** | string  
 netaddress is the address of the peer. It represents a `modules.NetAddress`.  
-        
+
 **version** | string  
 version is the version number of the peer.  
 
-**maxdownloadspeed** | bytes per second  
+**online** | boolean  
+online is true if the gateway is connected to at least one peer that isn't local.
+
+**maxdownloadspeed** | bytes per second   
 Max download speed permitted in bytes per second
 
-**maxuploadspeed** | bytes per second  
+**maxuploadspeed** | bytes per second   
 Max upload speed permitted in bytes per second
 
 ## /gateway [POST]
@@ -723,6 +727,53 @@ netaddress is the address of the peer to connect to. It should be a reachable ip
 **netaddress** | string  
 Example IPV4 address: 123.456.789.0:123  
 Example IPV6 address: [123::456]:789  
+
+### Response
+standard success or error response. See [standard responses](#standard-responses).
+
+## /gateway/blacklist [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/gateway/blacklist"
+```
+
+fetches the list of blacklisted addresses.
+
+### JSON Response
+> JSON Response Example
+```go
+{
+  "blacklist":
+  [
+    "123.456.789.0",  // string
+    "123.456.789.0",  // string
+    "123.456.789.0",  // string
+  ],
+}
+```
+**blacklist** | string  
+blacklist is a list of blacklisted address
+
+## /gateway/blacklist [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","123.456.789.0:9981","123.456.789.0:9981"]}' "localhost:9980/gateway/blacklist"
+```
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"
+```
+
+performs actions on the Gateway's blacklist. There are three `actions` that can be performed. `append` and `remove` are used for appending or removing addresses from the Gateway's blacklist. `set` is used to define all the addresses in the blacklist. If a list of addresses is provided with `set`, that list of addresses will become the Gateway's blacklist, replacing any blacklist that was currently in place. To clear the Gateway's blacklist, submit an empty list with `set`.
+
+### Path Parameters
+#### REQUIRED
+**action** | string  
+this is the action to be performed on the blacklist. Allowed inputs are `append`, `remove`, and `set`.
+
+**addresses** | string  
+this is a comma separated list of addresses that are to be appended to or removed from the blacklist. If the action is `append` or `remove` this field is required.
 
 ### Response
 standard success or error response. See [standard responses](#standard-responses).
@@ -1254,6 +1305,9 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&size=1000000000000"
 
 adds a storage folder to the manager. The manager may not check that there is enough space available on-disk to support as much storage as requested
 
+### Storage Folder Limits
+A host can only have 65536 storage folders in total which have to be between 256 MiB and 16 PiB in size
+
 ### Query String Parameters
 #### REQUIRED
 **path** | string  
@@ -1296,6 +1350,9 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=10000000000
 ```
 
 Grows or shrinks a storage file in the manager. The manager may not check that there is enough space on-disk to support growing the storasge folder, but should gracefully handle running out of space unexpectedly. When shrinking a storage folder, any data in the folder that neeeds to be moved will be placed into other storage folders, meaning that no data will be lost. If the manager is unable to migrate the data, an error will be returned and the operation will be stopped.
+
+### Storage Folder Limits
+See [/host/storage/folders/add](#host-storage-folders-add-post)
 
 ### Query String Parameters
 #### REQUIRED
