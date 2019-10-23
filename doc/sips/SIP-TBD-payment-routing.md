@@ -9,19 +9,17 @@ description.
 ## Description
 
 Payment routing is the act of routing a payment through potentially a series of
-interconnected payment hubs. Routing payment effectively enables performing
-actions on hosts with which you don't necessarily share an immediate payment
-link. This opens up the door for hosts, renters, even non Sia users, to perform
-actions on hosts.
+interconnected hosts or payment hubs. This opens up the door for hosts, renters,
+even non Sia users, to perform actions on hosts with which you don't necessarily
+share an immediate payment link.
 
 ## Motivation
 
 Two of the most attractive use cases for Sia are filesharing and content
-distribution. For both cases, a user will often be required to make a
-micro payment to a host, where they don't have a preexisting payment channel
-with that host. By implementing payment routing we enable anybody that has an
-existing payment channel with a host, to make payment on behalf of somebody
-else.
+distribution. For both cases, a user will often be required to make a micro
+payment to a host, where they don't have a preexisting payment channel with that
+host. Through routing payments along these payment channels, users will be able
+to interact with any (reachable) host in the network.
 
 ## Payment Hubs
 
@@ -29,65 +27,77 @@ A `PaymentHub` is a node that acts as a payment router in the network. Just as
 hosts are incentivized to host their storage space, payment hubs are
 incentivized to route payment in return for a fee.
 
-In order to route payment these hubs will create file contracts that will serve
-solely as a payment channel between two nodes. These file contracts won't keep
-track of any data at all.
+To do so, these hubs will create file contracts that will serve solely as a
+payment channel between two nodes. These file contracts won't keep track of any
+data at all.
 
-Becoming a payment hub will become possible through a setting in the host's
-external settings. By adding it to the host's external settings we can piggy
-back off of the existing host announcement infrastructure.
+A host can signal that he is acting as a payment hub through a property in the
+host settings.
 
 ### Payment Hub Announcement
 
 A `PaymentHubAnnouncement` is made by a host to indicate his willingness to
-serve as a payment hub. Hosts will announce this through a setting. The current
-code can easily be extended to support this new concept.
+serve as a payment hub. Hosts will announce this through their host settings.
+The current code can easily be extended to support this new concept.
 
 ### Payment Hub Locator
 
-The `PaymentHubLocator` is constantly monitoring consensus changes for these hub
-announcements. Whenever a new host announces itself as payment hub, or an
-existing host announces he is no longer willing to act as a hub, this will be
-signaled to the routing subsystem.
+The `PaymentHubLocator` is constantly monitoring changes in the consensus for
+these hub announcements. Whenever a new payment hub comes online, or an existing
+one goes offline, this will be signaled to the routing subsystem.
 
 ### Payment Destination List
 
-The `PaymentDestinationList` is the list of nodes the payment hubs has an active
-payment channel with. It comprises of a list of payment edges. Topology
-builders, further described [here](#topology-builder), use this list to build up
-the network topology.
-
-This call will be an addition to the current RPC set.
+The `PaymentDestinationList` is a list of hosts a payment hub is able to route
+payment towards. This payment link between two hosts is called a payment edge.
+Topology builders, further described [here](#topology-builder), use this list to
+build up the network topology.
 
 ## Payment Edge
 
-A `PaymentEdge` describes a payment channel between two payment hubs. This
-channel is ideally a two-way payment channel, however this is not necessarily
-required. This payment channel is nothing more than a FileContract which we will
-use to move funds back and forth between the two parties in the contract.
+A `PaymentEdge` describes a payment channel between two hosts. This channel is
+ideally a two-way payment channel, however this is not necessarily required.
+This payment channel is nothing more than a file contract which we will use to
+move funds back and forth between the two parties in the contract.
 
-These 'payment contracts' would essentially ignore the necessity to provide
-proof of storage and simply have a merkle root and file size of zero. The two
-participants in the channel can move money around by signing off on contract
-revisions.
+These payment contracts would hold no data and thus have a zero merkle root and
+file size. Money can flow in either direction by simply creating a new revisions
+signed off by both parties.
+
+Note that we will be able to re-use existing contracts between renters and hosts
+as potential payment channels.
+
+The formation of such a payment channel is no different than how we form a file
+contract currently. This means that payment hubs might very well form a contract
+with a host, with the intention of it being a payment channel, without that host
+knowing its purpose.
+
+The 'receiving' host might not put up any collateral, which would make the
+channel very imbalanced in the beginning but that's fine. It would serve as a
+one way payment channel towards the destionation host.
 
 ### Payment Edge Refresher
 
 The `PaymentEdgeRefresher` is a background thread on a payment hub. If the
-capacity of one of its payment edges gets below a certain pre configured
-threshold on either side, it will refresh the contract by making an on-chain
-transaction.
+payment channel becomes imbalanced, and either the inbound - or outbound
+capacity gets below a certain threshold, it will refresh the contract.
+
+Refreshing a payment channel requires making an on-chain transaction. Payment
+hubs will avoid this at all cost, seeing as it is expensive. There are various
+mechanisms to do so, one of which we'll discuss in the section on
+[negative fees](#negative-fees)
 
 ### Payment Edge Builder
 
 The `PaymentEdgeBuilder` is responsible for constructing the payment channel
-between two payment hubs. Currently, renters use file contracts to make one-way
-payments only. However technically these file contracts can already be used to
-make two-way payments.
+between two hosts. The current file contracts are used to make one-way payments
+only, however technically these file contracts can already be used to make
+two-way payments.
 
 The consensus code was updated to allow hosts to submit a proof for 0 data. This
 means we can use the existing FormNewContract RPC in a first version to create a
-payment channel.
+payment channel. (Note that this might make the concept of a PaymentEdgeBuilder
+completely obsolete, TBD)
 
 ### Payment Edge Pricer
 
@@ -95,11 +105,13 @@ Creating and maintaining these payment channels comes at a cost. This cost will
 need to be fully recuperable through fees taken on the payment routing if the
 payment network is to be successful and have proper incentivization structures.
 
-The `PaymentEdgePricer` is responsible for pricing these payment edges, seeing
-as the price is probably dependant on a couple of factors. In theory however it
-should be possible to use fixed prices, although that might prove to be not very
-viable as it'll be hard to be competitive with payment hubs that offer dynamic
-pricing.
+The `PaymentEdgePricer` calculates the cost of routing a payment along a payment
+edge. This cost is dependent on various factors. Such are, capacity, latency,
+contract refresh/formation costs, etc.
+
+In theory however it should be possible to use fixed prices, although that might
+prove to be not very viable as it'll be hard to be competitive with payment hubs
+that offer dynamic pricing.
 
 #### Payment Edge Fee
 
@@ -143,17 +155,12 @@ gives a possible solution to this in Section #2.
 
 Hosts will guarantee fees up until a certain blockheight. If necessary pricing
 tiers can be added to protect against users routing larger payments very quickly
-and draining all liquidity. E.g.
+and draining all liquidity.
 
-```Go
-/**
-
-1X price guaranteed for next 30 seconds
-1.5X price guaranteed for next 90 seconds
+E.g.
+1X price guaranteed for next 30 seconds  
+1.5X price guaranteed for next 90 seconds  
 5X price guaranteed for 30 minutes
-
-*/
-```
 
 ## Payment Network Rebalancer
 
@@ -163,49 +170,50 @@ fee for doing so.
 
 It offers a service to the network as a whole in the sense that it makes the
 network healthier by rebalancing the capacity. It is essentially a worker that
-can be run by anyone. It can be run by a payment hub but it might as well be a
-thrid party that runs such a service. It would do this because it is financially
-incentivized to do so.
+can be run by anyone. If there is enough financial incentivization, there might
+be third parties that start running such a service on the network.
 
 ## Ephemeral Accounts
 
-Ephemeral accounts are basically balances that are kept off-chain by the
-payment hubs. These accounts can be used as payment method to **all existing
-payable RPC requests we already support**. It is important to note that these
-accounts are fully entrusted with the host.
+Ephemeral accounts are basically balances that are kept off-chain by the payment
+hubs. Instead of all payments being required to come from either a siacoin input
+or by being paid through the file contract, we will add an option to spend from
+an ephemeral account. In order to spend from such an account, the sender must
+supply a signature from the account's pubkey. We intend to have all payable RPCs
+payable by this new payment method.
 
-Instead of all payments being required to come from either a siacoin input or by
-being paid through the file contract, we will add an option to spend from an
-ephemeral account. In order to instead accept an outsourced payment from such an
-ephemeral account the sender must supply a signature from the pubkey for that
-account.
+It is important to note that these accounts require fully trusting the host. The
+host can at any point in time go offline and run away with the money. We protect
+ourselves by using packetized payments, the amounts of money we entrust with a
+host are very small. Usually not more than the price of a partial download. In
+theory however these accounts could hold as much as the funder is willing to put
+at risk.
 
-The host can at any point in time go offline and run away with the money you
-have entrusted with it. We protect ourselves by using packetized payments, the
-amounts of money we entrust with a host are very small. Usually not more than
-the price of a partial download. In theory however these accounts could hold as
-much as the funder is willing to put at stake.
+This new payment method is at the very base of payment routing. By adding an RPC
+to fund these accounts, and an RPC to forward payment to another host, we create
+all tools to route payment through the network.
 
-Seeing as these ephemeral accounts can be used as a payment method, it will
-become trivial to tell hosts to forward payments to other hosts. This forms the
-basis of payment routing and enables pre-payment of actions in behalf of
-somebody else.
+Using this payment routing network, you can pay hosts with which you don't share
+an immediate payment link, or you can pre-pay a host in behalf of somebody else.
 
-I, Alice, could share my public key with Bob. I would then prefund money on
-that account and forward it through to the appropriate host. Bob can then
-contact said host and perform actions on it that require payment, seeing as he
-is the owner of a pre-funded ephemeral account and can prove this ownership.
+For example:
 
-These accounts can be funded through an RPC request. Please note you can not
-withdraw from an ephemeral account. Seeing as we use packetized payments and the
-amounts are, or at least should be, very small, withdrawing is not possible.
+I, Alice, can fund my account I have with Bob and tell him to forward payment to
+Carol. I do not have a direct connection with Carol, however I do want to
+download some data she's hosting...
+
+or
+
+I, Alice, can fund Carol's account on Bob because I have some data hosted on Bob
+I wish to share with Carol. Carol can now just download that data from Bob
+seeing as I've essentially prepaid the download for her.
 
 ## Routing
 
 The most important part of a payment channel network is its routing algorithm.
 Existing payment channel routing protocols have two main hurdles to overcome.
 First, they attempt to route payment in an atomic fashion. Second, they fail to
-keep payment channels balanced.
+keep the channels balanced.
 
 We plan to side-step these two main problems by having packetized payments, and
 keep the payments very small w/regards to average channel capacity. Further more
