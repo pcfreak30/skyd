@@ -72,6 +72,7 @@ type v1412ContractHeader struct {
 // the persist struct as of v1.4.1.2, returning a header that has been converted
 // to the v1.4.1.3 version of the header.
 func contractHeaderDecodeV1412ToV1413(f *os.File, decodeMaxSize int) (contractHeader, error) {
+	decodeMaxSize += 5000000
 	var v1412Header v1412ContractHeader
 	err := encoding.NewDecoder(f, decodeMaxSize).Decode(&v1412Header)
 	if err != nil {
