@@ -227,6 +227,7 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 			extErr := fmt.Errorf("failed to load safecontract %v", path)
 			return nil, errors.Compose(extErr, err)
 		}
+		println("loaded contract sucessfully")
 	}
 
 	return cs, nil
