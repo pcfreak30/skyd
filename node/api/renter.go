@@ -86,6 +86,7 @@ type (
 		Settings         modules.RenterSettings     `json:"settings"`
 		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
+		NextPeriod       types.BlockHeight          `json:"Nextperiod"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -522,10 +523,13 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 		WriteError(w, Error{"unable to get Period Spending: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+	currentPeriod := api.renter.CurrentPeriod()
+	nextPeriod := currentPeriod + settings.Allowance.Period
 	WriteJSON(w, RenterGET{
 		Settings:         settings,
 		FinancialMetrics: spending,
-		CurrentPeriod:    api.renter.CurrentPeriod(),
+		CurrentPeriod:    currentPeriod,
+		NextPeriod:       nextPeriod,
 	})
 }
 
@@ -1514,10 +1518,11 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 	err = api.renter.Upload(modules.FileUploadParams{
-		Source:      source,
-		SiaPath:     siaPath,
-		ErasureCode: ec,
-		Force:       force,
+		Source:              source,
+		SiaPath:             siaPath,
+		ErasureCode:         ec,
+		Force:               force,
+		DisablePartialChunk: true, // TODO: remove this
 	})
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)

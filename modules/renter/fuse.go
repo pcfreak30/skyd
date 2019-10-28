@@ -158,7 +158,7 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	}
 
 	// Unable to look up a file, might be a dir instead.
-	dirInfo, dirErr := fdn.filesystem.renter.staticDirSet.DirInfo(fdn.siapath)
+	dirInfo, dirErr := fdn.filesystem.renter.staticFileSystem.DirInfo(fdn.siapath)
 	if dirErr != nil {
 		fdn.filesystem.renter.log.Printf("Unable to perform lookup on %v in dir %v; file err %v :: dir err %v", name, fdn.siapath, fileErr, dirErr)
 		return nil, errToStatus(dirErr)

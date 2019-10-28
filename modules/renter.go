@@ -106,9 +106,17 @@ const (
 	// renter's persistent data.
 	RenterDir = "renter"
 
-	// SiapathRoot is the name of the directory that is used to store the
+	// FileSystemRoot is the name of the directory that is used as the root of
+	// the renter's filesystem.
+	FileSystemRoot = "fs"
+
+	// HomeFolderRoot is the name of the directory that is used to store all of
+	// the user accessible data.
+	HomeFolderRoot = "home"
+
+	// UserRoot is the name of the directory that is used to store the
 	// renter's siafiles.
-	SiapathRoot = "siafiles"
+	UserRoot = "user"
 
 	// BackupRoot is the name of the directory that is used to store the renter's
 	// snapshot siafiles.
@@ -259,6 +267,7 @@ type DirectoryInfo struct {
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
+	DirSize             uint64    `json:"size"` // name chaned to avoid conflict with Size() method
 	Health              float64   `json:"health"`
 	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 	MaxHealthPercentage float64   `json:"maxhealthpercentage"`
@@ -269,7 +278,6 @@ type DirectoryInfo struct {
 	NumStuckChunks      uint64    `json:"numstuckchunks"`
 	NumSubDirs          uint64    `json:"numsubdirs"`
 	SiaPath             SiaPath   `json:"siapath"`
-	DirSize             uint64    `json:"size"` // name chaned to avoid conflict with Size() method
 	StuckHealth         float64   `json:"stuckhealth"`
 }
 
@@ -330,12 +338,12 @@ type FileInfo struct {
 	CipherType       string            `json:"ciphertype"`
 	CreateTime       time.Time         `json:"createtime"`
 	Expiration       types.BlockHeight `json:"expiration"`
+	FileMode         os.FileMode       `json:"mode"`    // name chaned to avoid conflict with Mode()
 	Filesize         uint64            `json:"filesize"`
 	Health           float64           `json:"health"`
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	FileMode         os.FileMode       `json:"mode"`    // name chaned to avoid conflict with Mode()
 	ModificationTime time.Time         `json:"modtime"` // name changed to avoid conflict with ModTime() method
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
@@ -358,7 +366,8 @@ func (f FileInfo) Size() int64 { return int64(f.Filesize) }
 // Mode implements os.FileInfo.
 //
 // TODO: get the real mode
-func (f FileInfo) Mode() os.FileMode { return f.FileMode }
+// func (f FileInfo) Mode() os.FileMode { return f.FileMode }
+func (f FileInfo) Mode() os.FileMode { return 0666 | syscall.S_IFREG }
 
 // ModTime implements os.FileInfo.
 func (f FileInfo) ModTime() time.Time { return f.ModificationTime }

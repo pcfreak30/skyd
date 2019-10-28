@@ -10,7 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -92,10 +92,20 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 
 // managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
-func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*siafile.SiaFileSetEntry, error) {
+func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FileNode, error) {
+	// Prepend the provided siapath with the /home/siafiles or /snapshots.
+	var err error
+	sp := up.SiaPath // remember original path
+	if backup {
+		up.SiaPath, err = modules.SnapshotsSiaPath().Join(up.SiaPath.String())
+	} else {
+		up.SiaPath, err = modules.UserSiaPath().Join(up.SiaPath.String())
+	}
+	if err != nil {
+		return nil, err
+	}
 	siaPath, ec, force, repair := up.SiaPath, up.ErasureCode, up.Force, up.Repair
 	// Check if ec was set. If not use defaults.
-	var err error
 	if ec == nil && !repair {
 		up.ErasureCode, err = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, 64)
 		if err != nil {
@@ -113,13 +123,13 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if force {
-		if err := r.DeleteFile(siaPath); err != nil && err != siafile.ErrUnknownPath {
+		if err := r.DeleteFile(sp); err != nil && err != siafile.ErrUnknownPath {
 			return nil, err
 		}
 	}
 	// If repair is set open the existing file.
 	if repair {
-		entry, err := r.staticFileSet.Open(up.SiaPath)
+		entry, err := r.staticFileSystem.OpenSiaFile(up.SiaPath)
 		if err != nil {
 			return nil, err
 		}
@@ -140,27 +150,18 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 	if err != nil {
 		return nil, err
 	}
-	// Choose the right file and dir sets.
-	sfs := r.staticFileSet
-	sds := r.staticDirSet
-	if backup {
-		sfs = r.staticBackupFileSet
-		sds = r.staticBackupDirSet
-	}
 	// Create directory
-	siaDirEntry, err := sds.NewSiaDir(dirSiaPath)
-	if err != nil && err != siadir.ErrPathOverload {
+	err = r.staticFileSystem.NewSiaDir(dirSiaPath)
+	if err != nil && err != filesystem.ErrExists {
 		return nil, err
-	} else if err == nil {
-		siaDirEntry.Close()
 	}
 	// Create the Siafile and add to renter
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
-	entry, err := sfs.NewSiaFile(up, sk, 0, 0700)
+	err = r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, sk, 0, 0700, up.DisablePartialChunk)
 	if err != nil {
 		return nil, err
 	}
-	return entry, nil
+	return r.staticFileSystem.OpenSiaFile(up.SiaPath)
 }
 
 // managedUploadStreamFromReader reads from the provided reader until io.EOF is

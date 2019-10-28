@@ -66,7 +66,7 @@ func TestFuse(t *testing.T) {
 	r := tg.Renters()[0]
 
 	// Try mounting an empty fuse filesystem.
-	mountpoint1 := filepath.Join(testDir, "mount1")
+	mountpoint1 := filepath.Join(testDir, "mount2")
 	err = os.MkdirAll(mountpoint1, 0777)
 	if err != nil {
 		t.Fatal(err)

@@ -239,8 +239,14 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error)
 // returns the download object and an error that indicates if the download
 // setup was successful.
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	p.SiaPath, err = modules.UserSiaPath().Join(p.SiaPath.String())
+	if err != nil {
+		return nil, err
+	}
 	// Lookup the file associated with the nickname.
-	entry, err := r.staticFileSet.Open(p.SiaPath)
+	entry, err := r.staticFileSystem.OpenSiaFile(p.SiaPath)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +307,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	}
 
 	// Prepare snapshot.
-	snap, err := entry.Snapshot()
+	snap, err := entry.Snapshot(p.SiaPath)
 	if err != nil {
 		return nil, err
 	}
@@ -528,12 +534,17 @@ func (r *Renter) DownloadByUID(uid modules.DownloadID) (modules.DownloadInfo, bo
 	if !exists {
 		return modules.DownloadInfo{}, false
 	}
+	// Rebase the siapath.
+	sp, err := d.staticSiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+	if err != nil {
+		sp = d.staticSiaPath // should only happen during testing
+	}
 	return modules.DownloadInfo{
 		Destination:     d.destinationString,
 		DestinationType: d.staticDestinationType,
 		Length:          d.staticLength,
 		Offset:          d.staticOffset,
-		SiaPath:         d.staticSiaPath,
+		SiaPath:         sp,
 
 		Completed:            d.staticComplete(),
 		EndTime:              d.endTime,
@@ -571,13 +582,19 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 	for i := range downloadHistory {
 		// Order from most recent to least recent.
 		d := downloadHistory[len(r.downloadHistory)-i-1]
+		// Rebase the siapath.
+		sp, err := d.staticSiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+		if err != nil {
+			// should only happen during testing.
+			sp = d.staticSiaPath
+		}
 		d.mu.Lock() // Lock required for d.endTime only.
 		downloads[i] = modules.DownloadInfo{
 			Destination:     d.destinationString,
 			DestinationType: d.staticDestinationType,
 			Length:          d.staticLength,
 			Offset:          d.staticOffset,
-			SiaPath:         d.staticSiaPath,
+			SiaPath:         sp,
 
 			Completed:            d.staticComplete(),
 			EndTime:              d.endTime,

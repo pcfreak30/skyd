@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
@@ -64,18 +67,27 @@ func TestRenterCreateDirectories(t *testing.T) {
 // initialized correctly and the metadata file exist and contain the correct
 // information
 func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
-	fullpath := siaPath.SiaDirMetadataSysPath(rt.renter.staticFilesDir)
-	if _, err := os.Stat(fullpath); err != nil {
+	// Since we are using the filesystem here directly we need to rebase the
+	// path first.
+	siaPath, err := siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
+	if err != nil {
 		return err
 	}
-	siaDir, err := rt.renter.staticDirSet.Open(siaPath)
+	siaDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return fmt.Errorf("unable to load directory %v metadata: %v", siaPath, err)
+	}
+	fullpath := siaPath.SiaDirMetadataSysPath(rt.renter.staticFileSystem.Root())
+	if _, err := os.Stat(fullpath); err != nil {
+		return err
 	}
 	defer siaDir.Close()
 
 	// Check that metadata is default value
-	metadata := siaDir.Metadata()
+	metadata, err := siaDir.Metadata()
+	if err != nil {
+		return err
+	}
 	// Check Aggregate Fields
 	if metadata.AggregateHealth != siadir.DefaultDirHealth {
 		return fmt.Errorf("AggregateHealth not initialized properly: have %v expected %v", metadata.AggregateHealth, siadir.DefaultDirHealth)
@@ -102,10 +114,12 @@ func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	if metadata.StuckHealth != siadir.DefaultDirHealth {
 		return fmt.Errorf("StuckHealth not initialized properly: have %v expected %v", metadata.StuckHealth, siadir.DefaultDirHealth)
 	}
-
-	// Check that the SiaPath was initialized properly
-	if siaDir.SiaPath() != siaPath {
-		return fmt.Errorf("Expected siapath to be %v, got %v", siaPath, siaDir.SiaPath())
+	path, err := siaDir.Path()
+	if err != nil {
+		return err
+	}
+	if path != rt.renter.staticFileSystem.DirPath(siaPath) {
+		return fmt.Errorf("Expected path to be %v, got %v", path, rt.renter.staticFileSystem.DirPath(siaPath))
 	}
 	return nil
 }
@@ -130,21 +144,25 @@ func TestDirInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	// Rebase siaPath.
+	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Check that DirInfo returns the same information as stored in the metadata
-	fooDirInfo, err := rt.renter.staticDirSet.DirInfo(siaPath)
+	fooDirInfo, err := rt.renter.staticFileSystem.DirInfo(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootDirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
+	rootDirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	fooEntry, err := rt.renter.staticDirSet.Open(siaPath)
+	fooEntry, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootEntry, err := rt.renter.staticDirSet.Open(modules.RootSiaPath())
+	rootEntry, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,14 +218,22 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Verify that the directory information matches the on disk information
-	rootDir, err := rt.renter.staticDirSet.Open(modules.RootSiaPath())
+	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	fooDir, err := rt.renter.staticDirSet.Open(siaPath)
+	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
+	fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sort directories.
+	sort.Slice(directories, func(i, j int) bool {
+		return strings.Compare(directories[i].SiaPath.String(), directories[j].SiaPath.String()) < 0
+	})
 	if err = compareDirectoryInfoAndMetadata(directories[0], rootDir); err != nil {
 		t.Fatal(err)
 	}
@@ -218,8 +244,11 @@ func TestRenterListDirectory(t *testing.T) {
 
 // compareDirectoryInfoAndMetadata is a helper that compares the information in
 // a DirectoryInfo struct and a SiaDirSetEntry struct
-func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.SiaDirSetEntry) error {
-	md := siaDir.Metadata()
+func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesystem.DirNode) error {
+	md, err := siaDir.Metadata()
+	if err != nil {
+		return err
+	}
 
 	// Compare Aggregate Fields
 	if md.AggregateHealth != di.AggregateHealth {
@@ -232,7 +261,7 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 	if di.AggregateMaxHealth != aggregateMaxHealth {
 		return fmt.Errorf("AggregateMaxHealths not equal %v and %v", di.AggregateMaxHealth, aggregateMaxHealth)
 	}
-	aggregateMaxHealthPercentage := siadir.HealthPercentage(aggregateMaxHealth)
+	aggregateMaxHealthPercentage := filesystem.HealthPercentage(aggregateMaxHealth)
 	if di.AggregateMaxHealthPercentage != aggregateMaxHealthPercentage {
 		return fmt.Errorf("AggregateMaxHealthPercentage not equal %v and %v", di.AggregateMaxHealthPercentage, aggregateMaxHealthPercentage)
 	}
@@ -268,7 +297,7 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 	if di.MaxHealth != maxHealth {
 		return fmt.Errorf("MaxHealths not equal %v and %v", di.MaxHealth, maxHealth)
 	}
-	maxHealthPercentage := siadir.HealthPercentage(maxHealth)
+	maxHealthPercentage := filesystem.HealthPercentage(maxHealth)
 	if di.MaxHealthPercentage != maxHealthPercentage {
 		return fmt.Errorf("MaxHealthPercentage not equal %v and %v", di.MaxHealthPercentage, maxHealthPercentage)
 	}
@@ -292,9 +321,6 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *siadir.Si
 	}
 	if md.StuckHealth != di.StuckHealth {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, di.StuckHealth)
-	}
-	if !siaDir.SiaPath().Equals(di.SiaPath) {
-		return fmt.Errorf("siapaths not equal, %v and %v", siaDir.SiaPath(), di.SiaPath)
 	}
 	return nil
 }

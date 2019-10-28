@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -113,18 +114,15 @@ func (r *Renter) managedLoadSettings() error {
 // managedInitPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
 func (r *Renter) managedInitPersist() error {
-	// Create the persist and files directories if they do not yet exist.
+	// Create the persist and filesystem directories if they do not yet exist.
 	//
 	// Note: the os package needs to be used here instead of the renter's
 	// CreateDir method because the staticDirSet has not been initialized yet.
 	// The directory is needed before the staticDirSet can be initialized
 	// because the wal needs the directory to be created and the staticDirSet
 	// needs the wal.
-	err := os.MkdirAll(r.staticFilesDir, 0700)
-	if err != nil {
-		return err
-	}
-	err = os.MkdirAll(r.staticBackupsDir, 0700)
+	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
+	err := os.MkdirAll(fsRoot, 0700)
 	if err != nil {
 		return err
 	}
@@ -189,16 +187,32 @@ func (r *Renter) managedInitPersist() error {
 		}
 	}
 
+	// Prepare the filesystem and create the essential dirs.
+	fs, err := filesystem.New(fsRoot, wal)
+	if err != nil {
+		return err
+	}
+	err = fs.NewSiaDir(modules.RootSiaPath())
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+	err = fs.NewSiaDir(modules.HomeSiaPath())
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+	err = fs.NewSiaDir(modules.UserSiaPath())
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+	err = fs.NewSiaDir(modules.SnapshotsSiaPath())
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+
 	// Initialize the wal, staticFileSet and the staticDirSet. With the
 	// staticDirSet finish the initialization of the files directory
 	r.wal = wal
-	r.staticFileSet = siafile.NewSiaFileSet(r.staticFilesDir, wal)
-	r.staticDirSet = siadir.NewSiaDirSet(r.staticFilesDir, wal)
-	r.staticBackupFileSet = siafile.NewSiaFileSet(r.staticBackupsDir, wal)
-	r.staticBackupDirSet = siadir.NewSiaDirSet(r.staticBackupsDir, wal)
-	if err := r.staticDirSet.InitRootDir(); err != nil {
-		return err
-	}
+	r.staticFileSystem = fs
 	// Load the prior persistence structures.
 	return r.managedLoadSettings()
 }

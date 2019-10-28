@@ -5,6 +5,19 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 )
 
+// trimSiaFileFolder is a helper method to trim /home/siafiles off of the
+// siapaths of the fileinfos since the user expects a path relative to
+// /home/siafiles and not relative to root.
+func trimSiaFileFolder(fis ...modules.FileInfo) (_ []modules.FileInfo, err error) {
+	for i := range fis {
+		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return fis, nil
+}
+
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
 func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
@@ -12,6 +25,13 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
+	if err != nil {
+		return err
+	}
 
 	// Call callThreadedBubbleMetadata on the old directory to make sure the
 	// system metadata is updated to reflect the move
@@ -24,7 +44,7 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 		return nil
 	}()
 
-	return r.staticFileSet.Delete(siaPath)
+	return r.staticFileSystem.DeleteFile(siaPath)
 }
 
 // FileList returns all of the files that the renter has.
@@ -33,8 +53,23 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 		return []modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	if siaPath.IsRoot() {
+		siaPath = modules.UserSiaPath()
+	} else {
+		siaPath, err = modules.UserSiaPath().Join(siaPath.String())
+	}
+	if err != nil {
+		return []modules.FileInfo{}, err
+	}
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	fis, _, err := r.staticFileSystem.List(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	if err != nil {
+		return nil, err
+	}
+	fis, err = trimSiaFileFolder(fis...)
+	return fis, err
 }
 
 // File returns file from siaPath queried by user.
@@ -44,8 +79,22 @@ func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 		return modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
 	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileInfo(siaPath, offline, goodForRenew, contracts)
+	fi, err := r.staticFileSystem.FileInfo(siaPath, offline, goodForRenew, contracts)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	fis, err := trimSiaFileFolder(fi)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	return fis[0], nil
 }
 
 // FileCached returns file from siaPath queried by user, using cached values for
@@ -55,7 +104,7 @@ func (r *Renter) FileCached(siaPath modules.SiaPath) (modules.FileInfo, error) {
 		return modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
-	return r.staticFileSet.CachedFileInfo(siaPath)
+	return r.staticFileSystem.CachedFileInfo(siaPath)
 }
 
 // RenameFile takes an existing file and changes the nickname. The original
@@ -66,8 +115,18 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapaths with the /home/siafiles dir.
+	var err error
+	currentName, err = modules.UserSiaPath().Join(currentName.String())
+	if err != nil {
+		return err
+	}
+	newName, err = modules.UserSiaPath().Join(newName.String())
+	if err != nil {
+		return err
+	}
 	// Rename file
-	err := r.staticFileSet.Rename(currentName, newName)
+	err = r.staticFileSystem.RenameFile(currentName, newName)
 	if err != nil {
 		return err
 	}
@@ -101,8 +160,14 @@ func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
 		return err
 	}
 	defer r.tg.Done()
+	// Prepend the provided siapath with the /home/siafiles dir.
+	var err error
+	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
+	if err != nil {
+		return err
+	}
 	// Open the file.
-	entry, err := r.staticFileSet.Open(siaPath)
+	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return err
 	}
