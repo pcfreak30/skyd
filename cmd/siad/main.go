@@ -2,14 +2,11 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-
-	_ "net/http/pprof"
 )
 
 var (
@@ -140,9 +137,6 @@ Explorer (e):
 
 // main establishes a set of commands and flags using the cobra package.
 func main() {
-	go func() {
-		http.ListenAndServe("localhost:6060", nil)
-	}()
 	if build.DEBUG {
 		fmt.Println("Running with debugging enabled")
 	}

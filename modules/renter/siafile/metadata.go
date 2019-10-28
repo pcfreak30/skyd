@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -259,7 +260,8 @@ func (sf *SiaFile) Metadata() Metadata {
 func (sf *SiaFile) Mode() os.FileMode {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
-	return sf.staticMetadata.Mode
+	// return sf.staticMetadata.Mode
+	return syscall.S_IFREG
 }
 
 // ModTime returns the ModTime timestamp of the file.

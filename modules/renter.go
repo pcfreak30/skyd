@@ -367,7 +367,7 @@ func (f FileInfo) Size() int64 { return int64(f.Filesize) }
 //
 // TODO: get the real mode
 // func (f FileInfo) Mode() os.FileMode { return f.FileMode }
-func (f FileInfo) Mode() os.FileMode { return 0666 | syscall.S_IFREG }
+func (f FileInfo) Mode() os.FileMode { return syscall.S_IFREG }
 
 // ModTime implements os.FileInfo.
 func (f FileInfo) ModTime() time.Time { return f.ModificationTime }
