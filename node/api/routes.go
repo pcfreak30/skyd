@@ -51,6 +51,8 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/gateway", api.gatewayHandlerPOST)
 		router.POST("/gateway/connect/:netaddress", RequirePassword(api.gatewayConnectHandler, requiredPassword))
 		router.POST("/gateway/disconnect/:netaddress", RequirePassword(api.gatewayDisconnectHandler, requiredPassword))
+		router.GET("/gateway/blacklist", api.gatewayBlacklistHandlerGET)
+		router.POST("/gateway/blacklist", RequirePassword(api.gatewayBlacklistHandlerPOST, requiredPassword))
 	}
 
 	// Host API Calls
@@ -84,6 +86,7 @@ func (api *API) buildHTTPRoutes() {
 	if api.renter != nil {
 		router.GET("/renter", api.renterHandlerGET)
 		router.POST("/renter", RequirePassword(api.renterHandlerPOST, requiredPassword))
+		router.POST("/renter/allowance/cancel", RequirePassword(api.renterAllowanceCancelHandlerPOST, requiredPassword))
 		router.GET("/renter/backups", RequirePassword(api.renterBackupsHandlerGET, requiredPassword))
 		router.POST("/renter/backups/create", RequirePassword(api.renterBackupsCreateHandlerPOST, requiredPassword))
 		router.POST("/renter/backups/restore", RequirePassword(api.renterBackupsRestoreHandlerGET, requiredPassword))

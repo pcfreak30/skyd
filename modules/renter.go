@@ -225,8 +225,17 @@ type Allowance struct {
 type ContractUtility struct {
 	GoodForUpload bool
 	GoodForRenew  bool
-	LastOOSErr    types.BlockHeight // OOS means Out Of Storage
-	Locked        bool              // Locked utilities can only be set to false.
+
+	// BadContract will be set to true if there's good reason to believe that
+	// the contract is unusuable and will continue to be unusuable. For example,
+	// if the host is claiming that the contract does not exist, the contract
+	// should be marked as bad.
+	BadContract bool
+	LastOOSErr  types.BlockHeight // OOS means Out Of Storage
+
+	// If a contract is locked, the utility should not be updated. 'Locked' is a
+	// value that gets persisted.
+	Locked bool
 }
 
 // DirectoryInfo provides information about a siadir
@@ -564,10 +573,10 @@ type Renter interface {
 
 	// ActiveHosts provides the list of hosts that the renter is selecting,
 	// sorted by preference.
-	ActiveHosts() []HostDBEntry
+	ActiveHosts() ([]HostDBEntry, error)
 
 	// AllHosts returns the full list of hosts known to the renter.
-	AllHosts() []HostDBEntry
+	AllHosts() ([]HostDBEntry, error)
 
 	// Close closes the Renter.
 	Close() error
@@ -607,7 +616,7 @@ type Renter interface {
 
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
-	PeriodSpending() ContractorSpending
+	PeriodSpending() (ContractorSpending, error)
 
 	// RecoverableContracts returns the contracts that the contractor deems
 	// recoverable. That means they are not expired yet and also not part of the
@@ -679,7 +688,7 @@ type Renter interface {
 	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error
 
 	// Host provides the DB entry and score breakdown for the requested host.
-	Host(pk types.SiaPublicKey) (HostDBEntry, bool)
+	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)
 
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
@@ -704,7 +713,7 @@ type Renter interface {
 	ScoreBreakdown(entry HostDBEntry) (HostScoreBreakdown, error)
 
 	// Settings returns the Renter's current settings.
-	Settings() RenterSettings
+	Settings() (RenterSettings, error)
 
 	// SetSettings sets the Renter's settings.
 	SetSettings(RenterSettings) error

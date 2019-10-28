@@ -102,7 +102,10 @@ func (c *Contractor) managedCheckForDuplicates() {
 // contract has been.
 func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.RenterContract, blockHeight types.BlockHeight, allowance modules.Allowance) (types.Currency, error) {
 	// Fetch the host pricing to use in the estimate.
-	host, exists := c.hdb.Host(contract.HostPublicKey)
+	host, exists, err := c.hdb.Host(contract.HostPublicKey)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "error geting host from hostdb:")
+	}
 	if !exists {
 		return types.ZeroCurrency, errors.New("could not find host in hostdb")
 	}
@@ -207,10 +210,10 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	return estimatedCost, nil
 }
 
-// managedInterruptContractMaintenance will issue an interrupt signal to any
+// callInterruptContractMaintenance will issue an interrupt signal to any
 // running maintenance, stopping that maintenance. If there are multiple threads
 // running maintenance, they will all be stopped.
-func (c *Contractor) managedInterruptContractMaintenance() {
+func (c *Contractor) callInterruptContractMaintenance() {
 	// Spin up a thread to grab the maintenance lock. Signal that the lock was
 	// acquired after the lock is acquired.
 	gotLock := make(chan struct{})
@@ -233,202 +236,47 @@ func (c *Contractor) managedInterruptContractMaintenance() {
 	}
 }
 
-// managedMarkContractsUtility checks every active contract in the contractor and
-// figures out whether the contract is useful for uploading, and whether the
-// contract should be renewed.
-func (c *Contractor) managedMarkContractsUtility() error {
+// managedFindMinAllowedHostScores uses a set of random hosts from the hostdb to
+// calculate minimum acceptable score for a host to be marked GFR and GFU.
+func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, types.Currency) {
 	// Pull a new set of hosts from the hostdb that could be used as a new set
 	// to match the allowance. The lowest scoring host of these new hosts will
 	// be used as a baseline for determining whether our existing contracts are
 	// worthwhile.
 	c.mu.RLock()
 	hostCount := int(c.allowance.Hosts)
-	period := c.allowance.Period
-	height := c.blockHeight
 	c.mu.RUnlock()
 	hosts, err := c.hdb.RandomHosts(hostCount+randomHostsBufferForScore, nil, nil)
 	if err != nil {
-		return err
+		return err, types.Currency{}, types.Currency{}
+	}
+
+	if len(hosts) == 0 {
+		return errors.New("No hosts returned in RandomHosts"), types.Currency{}, types.Currency{}
 	}
 
 	// Find the minimum score that a host is allowed to have to be considered
 	// good for upload.
-	var minScoreGFR types.Currency
-	var minScoreGFU types.Currency
-	if len(hosts) > 0 {
-		sb, err := c.hdb.ScoreBreakdown(hosts[0])
-		if err != nil {
-			return err
-		}
-		lowestScore := sb.Score
-		for i := 1; i < len(hosts); i++ {
-			score, err := c.hdb.ScoreBreakdown(hosts[i])
-			if err != nil {
-				return err
-			}
-			if score.Score.Cmp(lowestScore) < 0 {
-				lowestScore = score.Score
-			}
-		}
-		// Set the minimum acceptable score to a factor of the lowest score.
-		minScoreGFR = lowestScore.Div(scoreLeewayGoodForRenew)
-		minScoreGFU = lowestScore.Div(scoreLeewayGoodForUpload)
+	var minScoreGFR, minScoreGFU types.Currency
+	sb, err := c.hdb.ScoreBreakdown(hosts[0])
+	if err != nil {
+		return err, types.Currency{}, types.Currency{}
 	}
-
-	// Update utility fields for each contract.
-	for _, contract := range c.staticContracts.ViewAll() {
-		utility, err := func() (u modules.ContractUtility, err error) {
-			u = contract.Utility
-
-			// If the utility is locked, do nothing.
-			if u.Locked {
-				return u, nil
-			}
-
-			host, exists := c.hdb.Host(contract.HostPublicKey)
-			// Contract has no utility if the host is not in the database. Or is
-			// filtered by the blacklist or whitelist.
-			if !exists || host.Filtered {
-				// Log if the utility has changed.
-				if u.GoodForUpload || u.GoodForRenew {
-					c.log.Printf("Marking contract as having no utility because found in hostDB: %v, or host is Filtered: %v - %v", exists, host.Filtered, contract.ID)
-				}
-				u.GoodForUpload = false
-				u.GoodForRenew = false
-				return u, nil
-			}
-
-			// Contract has no utility if the score is poor.
-			sb, err := c.hdb.ScoreBreakdown(host)
-			if err != nil {
-				return u, err
-			}
-			if !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0 {
-				// Log if the utility has changed.
-				if u.GoodForUpload || u.GoodForRenew {
-					c.log.Printf("Marking contract as having no utility because of host score: %v", contract.ID)
-					c.log.Println("Min Score:", minScoreGFR)
-					c.log.Println("Score:    ", sb.Score)
-					c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
-					c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
-					c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
-					c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
-					c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
-					c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
-					c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
-					c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
-					c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
-				}
-				u.GoodForUpload = false
-				u.GoodForRenew = false
-				return u, nil
-			}
-
-			// Contract has no utility if the host is offline.
-			if isOffline(host) {
-				// Log if the utility has changed.
-				if u.GoodForUpload || u.GoodForRenew {
-					c.log.Println("Marking contract as having no utility because of host being offline", contract.ID)
-				}
-				u.GoodForUpload = false
-				u.GoodForRenew = false
-				return u, nil
-			}
-
-			// Contract should not be used for uplodaing if the score is poor.
-			if !minScoreGFU.IsZero() && sb.Score.Cmp(minScoreGFU) < 0 {
-				if u.GoodForUpload {
-					c.log.Println("Marking contract as not good for upload because of a poor score", contract.ID)
-					c.log.Println("Min Score:", minScoreGFU)
-					c.log.Println("Score:    ", sb.Score)
-					c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
-					c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
-					c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
-					c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
-					c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
-					c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
-					c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
-					c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
-					c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
-				}
-				if !u.GoodForRenew {
-					c.log.Println("Marking contract as being good for renew", contract.ID)
-				}
-				u.GoodForUpload = false
-				u.GoodForRenew = true
-				return u, nil
-			}
-
-			// Contract should not be used for uploading if the time has come to
-			// renew the contract.
-			c.mu.RLock()
-			blockHeight := c.blockHeight
-			renewWindow := c.allowance.RenewWindow
-			c.mu.RUnlock()
-			if blockHeight+renewWindow >= contract.EndHeight {
-				if u.GoodForUpload {
-					c.log.Println("Marking contract as not good for upload because it is time to renew the contract", contract.ID)
-				}
-				if !u.GoodForRenew {
-					c.log.Println("Marking contract as being good for renew:", contract.ID)
-				}
-				u.GoodForUpload = false
-				u.GoodForRenew = true
-				return u, nil
-			}
-
-			// Contract should not be used for uploading if the contract does
-			// not have enough money remaining to perform the upload.
-			blockBytes := types.NewCurrency64(modules.SectorSize * uint64(period))
-			sectorStoragePrice := host.StoragePrice.Mul(blockBytes)
-			sectorUploadBandwidthPrice := host.UploadBandwidthPrice.Mul64(modules.SectorSize)
-			sectorDownloadBandwidthPrice := host.DownloadBandwidthPrice.Mul64(modules.SectorSize)
-			sectorBandwidthPrice := sectorUploadBandwidthPrice.Add(sectorDownloadBandwidthPrice)
-			sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
-			percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
-			if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundUploadThreshold {
-				if u.GoodForUpload {
-					c.log.Printf("Marking contract as not good for upload because of insufficient funds: %v vs. %v - %v", contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0, percentRemaining, contract.ID)
-				}
-				if !u.GoodForRenew {
-					c.log.Println("Marking contract as being good for renew:", contract.ID)
-				}
-				u.GoodForUpload = false
-				u.GoodForRenew = true
-				return u, nil
-			}
-
-			// Contract should not be used for uploading if the host is out of storage.
-			if height-u.LastOOSErr <= oosRetryInterval {
-				if u.GoodForUpload {
-					c.log.Println("Marking contract as not being good for upload due to the host running out of storage:", contract.ID)
-				}
-				if !u.GoodForRenew {
-					c.log.Println("Marking contract as being good for renew:", contract.ID)
-				}
-				u.GoodForUpload = false
-				u.GoodForRenew = true
-				return u, nil
-			}
-
-			if !u.GoodForUpload || !u.GoodForRenew {
-				c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", u.GoodForUpload, u.GoodForRenew, contract.ID)
-			}
-			u.GoodForUpload = true
-			u.GoodForRenew = true
-			return u, nil
-		}()
+	lowestScore := sb.Score
+	for i := 1; i < len(hosts); i++ {
+		score, err := c.hdb.ScoreBreakdown(hosts[i])
 		if err != nil {
-			return err
+			return err, types.Currency{}, types.Currency{}
 		}
-
-		// Apply changes.
-		err = c.managedUpdateContractUtility(contract.ID, utility)
-		if err != nil {
-			return err
+		if score.Score.Cmp(lowestScore) < 0 {
+			lowestScore = score.Score
 		}
 	}
-	return nil
+	// Set the minimum acceptable score to a factor of the lowest score.
+	minScoreGFR = lowestScore.Div(scoreLeewayGoodForRenew)
+	minScoreGFU = lowestScore.Div(scoreLeewayGoodForUpload)
+
+	return nil, minScoreGFR, minScoreGFU
 }
 
 // managedNewContract negotiates an initial file contract with the specified
@@ -558,7 +406,11 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 
 	// Let the hostdb filter out bad hosts and cancel contracts with those
 	// hosts.
-	badHosts := c.hdb.CheckForIPViolations(pks)
+	badHosts, err := c.hdb.CheckForIPViolations(pks)
+	if err != nil {
+		c.log.Println("WARN: errror checking for IP violations:", err)
+		return
+	}
 	for _, host := range badHosts {
 		if err := c.managedCancelContract(cids[host.String()]); err != nil {
 			c.log.Print("WARNING: Wasn't able to cancel contract in managedPrunedRedundantAddressRange", err)
@@ -580,7 +432,10 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 
 	// Fetch the host associated with this contract.
-	host, ok := c.hdb.Host(contract.HostPublicKey)
+	host, ok, err := c.hdb.Host(contract.HostPublicKey)
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "error getting host from hostdb:")
+	}
 	c.mu.Lock()
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.mu.Unlock()
@@ -816,7 +671,7 @@ func (c *Contractor) managedFindRecoverableContracts() {
 	c.mu.RLock()
 	cc := c.recentRecoveryChange
 	c.mu.RUnlock()
-	if err := c.managedInitRecoveryScan(cc); err != nil {
+	if err := c.callInitRecoveryScan(cc); err != nil {
 		c.log.Debug(err)
 		return
 	}
@@ -882,7 +737,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	// contracts, archiving contracts, and other cleanup work. This should all
 	// happen before the rest of the maintenance.
 	c.managedFindRecoverableContracts()
-	c.managedRecoverContracts()
+	c.callRecoverContracts()
 	c.managedArchiveContracts()
 	c.managedCheckForDuplicates()
 	c.managedPrunePubkeyMap()
@@ -938,7 +793,11 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Debugln("Examining a contract:", contract.HostPublicKey, contract.ID)
 		// Skip any host that does not match our whitelist/blacklist filter
 		// settings.
-		host, _ := c.hdb.Host(contract.HostPublicKey)
+		host, _, err := c.hdb.Host(contract.HostPublicKey)
+		if err != nil {
+			c.log.Println("WARN: error getting host", err)
+			continue
+		}
 		if host.Filtered {
 			c.log.Debugln("Contract skipped because it is filtered")
 			continue
@@ -1036,7 +895,12 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Depend on the PeriodSpending function to get a breakdown of spending in
 	// the contractor. Then use that to determine how many funds remain
 	// available in the allowance for renewals.
-	spending := c.PeriodSpending()
+	spending, err := c.PeriodSpending()
+	if err != nil {
+		// This should only error if the contractor is shutting down
+		c.log.Println("WARN: error getting period spending:", err)
+		return
+	}
 	var fundsRemaining types.Currency
 	// Check for an underflow. This can happen if the user reduced their
 	// allowance at some point to less than what we've already spent.
@@ -1049,9 +913,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	var registerLowFundsAlert bool
 	defer func() {
 		if registerLowFundsAlert {
-			c.staticAlerter.RegisterAlert(modules.AlertIDAllowanceLowFunds, AlertMSGAllowanceLowFunds, "", modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, "", modules.SeverityWarning)
 		} else {
-			c.staticAlerter.UnregisterAlert(modules.AlertIDAllowanceLowFunds)
+			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterAllowanceLowFunds)
 		}
 	}()
 	// Go through the contracts we've assembled for renewal. Any contracts that
