@@ -1993,7 +1993,7 @@ Each billing period begins at the beginnig of each period.
 **renewwindow** | blocks  
 The renew window is how long the user has to renew their contracts after the
 period is over. At the end of the renew window, all of the contracts expire. The
-contracts need to be renewewd before they expire, otherwise the user will lose
+contracts need to be renewed before they expire, otherwise the user will lose
 all of their files. For example, if the renew window is 1 week long, then during
 the week after each period the user will renew their contracts. If the user is
 offline for that whole week, the user's data will be lost.
