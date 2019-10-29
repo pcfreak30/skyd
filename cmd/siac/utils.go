@@ -11,10 +11,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -121,6 +123,14 @@ party integrations such as Duplicati`,
 		Long: `Attempts to brute force a partial Sia seed.  Accepts a 27 or 28 word
 seed and returns a valid 28 or 29 word seed`,
 		Run: wrap(utilsbruteforceseed),
+	}
+
+	utilsDeriveSeed = &cobra.Command{
+		Use:   "derive-seed",
+		Short: "derive a seed from a password",
+		Long: `Converts a password to a Sia seed by taking the password, hashing it
+with blake2b, and then converting the result to a phrase.`,
+		Run: wrap(utilsderiveseed),
 	}
 )
 
@@ -317,4 +327,39 @@ func utilsbruteforceseed() {
 		}
 	}
 	fmt.Printf("\nNo valid seed found :(\n")
+}
+
+func utilsderiveseed() {
+	// Query for password.
+	fmt.Print("Please provide password:")
+	pw, err := terminal.ReadPassword(int(syscall.Stdin))
+	if err != nil {
+		fmt.Println("Unable to read password:", err)
+		return
+	}
+	fmt.Print("\n")
+
+	// Query again and check that both attampts match.
+	fmt.Print("Verify password:")
+	vpw, err := terminal.ReadPassword(int(syscall.Stdin))
+	if err != nil {
+		fmt.Println("Unable to read verify password:", err)
+		return
+	}
+	fmt.Print("\n")
+
+	// Check that they match.
+	if !bytes.Equal(pw, vpw) {
+		fmt.Println("Passwords do not match!")
+		return
+	}
+
+	// Convert password to a blake2b hashed string.
+	seed := crypto.HashBytes(pw)
+	phrase, err := modules.SeedToString(modules.Seed(seed), "english")
+	if err != nil {
+		fmt.Println("Unable to convert password to seed phrase:", err)
+		return
+	}
+	fmt.Println(phrase)
 }
