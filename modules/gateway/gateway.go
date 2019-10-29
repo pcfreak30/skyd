@@ -151,17 +151,38 @@ type Gateway struct {
 	peerTG    siasync.ThreadGroup
 
 	// Utilities.
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persist    persistence
-	persistDir string
-	threads    siasync.ThreadGroup
+	log           *persist.Logger
+	mu            sync.RWMutex
+	persist       persistence
+	persistDir    string
+	threads       siasync.ThreadGroup
+	staticAlerter *modules.GenericAlerter
+	staticDeps    modules.Dependencies
 
 	// Unique ID
 	staticID gatewayID
 }
 
 type gatewayID [8]byte
+
+// addToBlacklist adds addresses to the Gateway's blacklist
+func (g *Gateway) addToBlacklist(addresses []modules.NetAddress) error {
+	// Add addresses to the blacklist and disconnect from them
+	var err error
+	for _, addr := range addresses {
+		p, exists := g.peers[addr]
+		if exists {
+			err = errors.Compose(err, p.sess.Close())
+		}
+
+		// Peer is removed from the peer list as well as the node list, to prevent
+		// the node from being re-connected while looking for a replacement peer.
+		delete(g.peers, addr)
+		delete(g.nodes, addr)
+		g.blacklist[addr.Host()] = struct{}{}
+	}
+	return errors.Compose(err, g.saveSync())
+}
 
 // managedSleep will sleep for the given period of time. If the full time
 // elapses, 'true' is returned. If the sleep is interrupted for shutdown,
@@ -196,6 +217,33 @@ func (g *Gateway) Address() modules.NetAddress {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.myAddr
+}
+
+// AddToBlacklist adds addresses to the Gateway's blacklist
+func (g *Gateway) AddToBlacklist(addresses []modules.NetAddress) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.addToBlacklist(addresses)
+}
+
+// Blacklist returns the Gateway's blacklist
+func (g *Gateway) Blacklist() ([]string, error) {
+	if err := g.threads.Add(); err != nil {
+		return nil, err
+	}
+	defer g.threads.Done()
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	var blacklist []string
+	for addr := range g.blacklist {
+		blacklist = append(blacklist, addr)
+	}
+	return blacklist, nil
 }
 
 // Close saves the state of the Gateway and stops its listener process.
@@ -233,6 +281,44 @@ func (g *Gateway) RateLimits() (int64, int64) {
 	return g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed
 }
 
+// RemoveFromBlacklist removes addresses from the Gateway's blacklist
+func (g *Gateway) RemoveFromBlacklist(addresses []modules.NetAddress) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Remove addresses from the blacklist
+	for _, addr := range addresses {
+		delete(g.blacklist, addr.Host())
+	}
+	return g.saveSync()
+}
+
+// SetBlacklist sets the blacklist of the gateway
+func (g *Gateway) SetBlacklist(addresses []modules.NetAddress) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Reset the gateway blacklist since we are replacing the list with the new
+	// list of peers
+	g.blacklist = make(map[string]struct{})
+
+	// If the length of addresses is 0 we are done, save and return
+	if len(addresses) == 0 {
+		return g.saveSync()
+	}
+
+	// Add addresses to the blacklist and disconnect from them
+	return g.addToBlacklist(addresses)
+}
+
 // SetRateLimits changes the rate limits for the peer-connections of the
 // gateway.
 func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
@@ -250,6 +336,11 @@ func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
 
 // New returns an initialized Gateway.
 func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
+	return NewCustomGateway(addr, bootstrap, persistDir, modules.ProdDependencies)
+}
+
+// NewCustomGateway returns an initialized Gateway with custom dependencies.
+func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modules.Dependencies) (*Gateway, error) {
 	// Create the directory if it doesn't exist.
 	err := os.MkdirAll(persistDir, 0700)
 	if err != nil {
@@ -264,7 +355,9 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 		nodes:     make(map[modules.NetAddress]*node),
 		peers:     make(map[modules.NetAddress]*peer),
 
-		persistDir: persistDir,
+		persistDir:    persistDir,
+		staticAlerter: modules.NewAlerter("gateway"),
+		staticDeps:    deps,
 	}
 
 	// Set Unique GatewayID
@@ -398,7 +491,27 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	go g.threadedForwardPort(g.port)
 	go g.threadedLearnHostname()
 
+	// Spawn thread to periodically check if the gateway is online.
+	go g.threadedOnlineCheck()
+
 	return g, nil
+}
+
+// threadedOnlineCheck periodically calls 'Online' to register the
+// GatewayOffline alert.
+func (g *Gateway) threadedOnlineCheck() {
+	if err := g.threads.Add(); err != nil {
+		return
+	}
+	defer g.threads.Done()
+	for {
+		select {
+		case <-g.threads.StopChan():
+			return
+		case <-time.After(onlineCheckFrequency):
+		}
+		_ = g.Online()
+	}
 }
 
 // enforce that Gateway satisfies the modules.Gateway interface

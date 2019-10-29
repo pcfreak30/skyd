@@ -82,6 +82,8 @@ type NodeParams struct {
 	ConsensusSetDeps modules.Dependencies
 	ContractorDeps   modules.Dependencies
 	ContractSetDeps  modules.Dependencies
+	GatewayDeps      modules.Dependencies
+	HostDeps         modules.Dependencies
 	HostDBDeps       modules.Dependencies
 	RenterDeps       modules.Dependencies
 	WalletDeps       modules.Dependencies
@@ -234,9 +236,13 @@ func New(params NodeParams) (*Node, <-chan error) {
 		if params.RPCAddress == "" {
 			params.RPCAddress = "localhost:0"
 		}
+		gatewayDeps := params.GatewayDeps
+		if gatewayDeps == nil {
+			gatewayDeps = modules.ProdDependencies
+		}
 		i++
 		printfRelease("(%d/%d) Loading gateway...\n", i, numModules)
-		return gateway.New(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir))
+		return gateway.NewCustomGateway(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir), gatewayDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create gateway"))
@@ -373,12 +379,16 @@ func New(params NodeParams) (*Node, <-chan error) {
 		if !params.CreateHost {
 			return nil, nil
 		}
+		hostDeps := params.HostDeps
+		if hostDeps == nil {
+			hostDeps = modules.ProdDependencies
+		}
 		if params.HostAddress == "" {
 			params.HostAddress = "localhost:0"
 		}
 		i++
 		printfRelease("(%d/%d) Loading host...\n", i, numModules)
-		return host.New(cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
+		return host.NewCustomHost(hostDeps, cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create host"))

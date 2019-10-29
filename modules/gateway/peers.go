@@ -524,7 +524,7 @@ func (g *Gateway) Connect(addr modules.NetAddress) error {
 }
 
 // Disconnect terminates a connection to a peer and removes it from the
-// Gateway's peer list. The peer's address remains in the node list.
+// Gateway's peer list.
 func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 	g.log.Debugln("Attempting to Disconnect from", addr)
 	if err := g.threads.Add(); err != nil {
@@ -587,15 +587,23 @@ func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
 
 // Online returns true if the node is connected to the internet. During testing
 // we always assume that the node is online
-func (g *Gateway) Online() bool {
-	if build.Release == "dev" || build.Release == "testing" {
+func (g *Gateway) Online() (online bool) {
+	defer func() {
+		if online {
+			g.staticAlerter.UnregisterAlert(modules.AlertIDGatewayOffline)
+		} else {
+			g.staticAlerter.RegisterAlert(modules.AlertIDGatewayOffline, AlertMSGGatewayOffline, "", modules.SeverityWarning)
+		}
+	}()
+	disableAutoOnline := g.staticDeps.Disrupt("DisableGatewayAutoOnline")
+	if (build.Release == "dev" || build.Release == "testing") && !disableAutoOnline {
 		return true
 	}
 
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	for _, p := range g.peers {
-		if !p.Local {
+		if !p.Local || disableAutoOnline {
 			return true
 		}
 	}

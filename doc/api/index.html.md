@@ -638,6 +638,7 @@ returns information about the gateway, including the list of connected peers.
             "version":    "1.0.0",                 // string
         },
     ],
+    "online":           true,  // boolean
     "maxdownloadspeed": 1234,  // bytes per second
     "maxuploadspeed":   1234,  // bytes per second
 }
@@ -656,14 +657,17 @@ local is true if the peer's IP address belongs to a local address range such as 
 
 **netaddress** | string  
 netaddress is the address of the peer. It represents a `modules.NetAddress`.  
-        
+
 **version** | string  
 version is the version number of the peer.  
 
-**maxdownloadspeed** | bytes per second  
+**online** | boolean  
+online is true if the gateway is connected to at least one peer that isn't local.
+
+**maxdownloadspeed** | bytes per second   
 Max download speed permitted in bytes per second
 
-**maxuploadspeed** | bytes per second  
+**maxuploadspeed** | bytes per second   
 Max upload speed permitted in bytes per second
 
 ## /gateway [POST]
@@ -723,6 +727,53 @@ netaddress is the address of the peer to connect to. It should be a reachable ip
 **netaddress** | string  
 Example IPV4 address: 123.456.789.0:123  
 Example IPV6 address: [123::456]:789  
+
+### Response
+standard success or error response. See [standard responses](#standard-responses).
+
+## /gateway/blacklist [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/gateway/blacklist"
+```
+
+fetches the list of blacklisted addresses.
+
+### JSON Response
+> JSON Response Example
+```go
+{
+  "blacklist":
+  [
+    "123.456.789.0",  // string
+    "123.456.789.0",  // string
+    "123.456.789.0",  // string
+  ],
+}
+```
+**blacklist** | string  
+blacklist is a list of blacklisted address
+
+## /gateway/blacklist [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","123.456.789.0:9981","123.456.789.0:9981"]}' "localhost:9980/gateway/blacklist"
+```
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"
+```
+
+performs actions on the Gateway's blacklist. There are three `actions` that can be performed. `append` and `remove` are used for appending or removing addresses from the Gateway's blacklist. `set` is used to define all the addresses in the blacklist. If a list of addresses is provided with `set`, that list of addresses will become the Gateway's blacklist, replacing any blacklist that was currently in place. To clear the Gateway's blacklist, submit an empty list with `set`.
+
+### Path Parameters
+#### REQUIRED
+**action** | string  
+this is the action to be performed on the blacklist. Allowed inputs are `append`, `remove`, and `set`.
+
+**addresses** | string  
+this is a comma separated list of addresses that are to be appended to or removed from the blacklist. If the action is `append` or `remove` this field is required.
 
 ### Response
 standard success or error response. See [standard responses](#standard-responses).
@@ -820,6 +871,10 @@ fetches status information about the host.
 
   "connectabilitystatus": "checking", // string
   "workingstatus":        "checking"  // string
+  "publickey": {
+    "algorithm": "ed25519", // string
+    "key":       "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU=" // string
+  },
 }
 ```
 #### externalsettings  
@@ -1011,6 +1066,9 @@ connectabilitystatus is one of "checking", "connectable", or "not connectable", 
 
 **workingstatus** | string  
 workingstatus is one of "checking", "working", or "not working" and indicates if the host is being actively used by renters.  
+
+**publickey** | SiaPublicKey  
+Public key used to identify the host.  
 
 ## /host [POST]
 > curl example  
@@ -1565,7 +1623,7 @@ List of IP subnet masks used by the host. For IPv4 the /24 and for IPv6 the /54 
 **lastipnetchange** | date  
 The last time the list of IP subnet masks was updated. When equal subnet masks are found for different hosts, the host that occupies the subnet mask for a longer time is preferred.  
 
-**publickey**  
+**publickey** | SiaPublicKey  
 Public key used to identify and verify hosts.  
 
 **algorithm** | string  
@@ -1898,7 +1956,8 @@ Returns the current settings along with metrics on the renter's spending.
     "uploadspending":   "5678", // hastings
     "unspent":          "1234"  // hastings
   },
-  "currentperiod": 200  // blockheight
+  "currentperiod":  6000  // blockheight
+  "nextperiod":    12248  // blockheight
 }
 ```
 #### settings  
@@ -2024,6 +2083,9 @@ Amount of money in the allowance that has not been spent.
 
 **currentperiod** | blockheight  
 Height at which the current allowance period began.  
+
+**nextperiod** | blockheight  
+Height at which the next allowance period began.  
 
 ## /renter [POST]
 > curl example  
@@ -2246,7 +2308,7 @@ Block height that the file contract ends on.
 **fees** | hastings  
 Fees paid in order to form the file contract.  
 
-**hostpublickey** 
+**hostpublickey** | SiaPublicKey  
 Public key of the host that the file contract is formed with.  
        
 **hostversion** | string  
@@ -4118,7 +4180,7 @@ The minimum blockheight required.
 **signaturesrequired**  
 The number of signatures required.  
 
-**publickeys**  
+**publickeys** | SiaPublicKey  
 The set of keys whose signatures count towards signaturesrequired.  
 
 ## /wallet/unspent [GET]

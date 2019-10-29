@@ -129,7 +129,7 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	}
 	go func() {
 		defer c.tg.Done()
-		c.managedInterruptContractMaintenance()
+		c.callInterruptContractMaintenance()
 		c.threadedContractMaintenance()
 	}()
 	return nil
@@ -179,7 +179,7 @@ func (c *Contractor) managedCancelAllowance() error {
 	}
 
 	// Issue an interrupt to any in-progress contract maintenance thread.
-	c.managedInterruptContractMaintenance()
+	c.callInterruptContractMaintenance()
 
 	// Cycle through all contracts and mark them as !goodForRenew and !goodForUpload
 	ids = c.staticContracts.IDs()

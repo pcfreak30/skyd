@@ -18,23 +18,10 @@ type (
 	DependencyLowFundsRenewalFail struct {
 		modules.ProductionDependencies
 	}
-	// DependencyBlockScan blocks the scan progress of the hostdb until Scan is
-	// called on the dependency.
-	DependencyBlockScan struct {
-		modules.ProductionDependencies
-		closed bool
-		c      chan struct{}
-	}
 
 	// DependencyDisableAsyncStartup prevents the async part of a module's creation
 	// from being executed.
 	DependencyDisableAsyncStartup struct {
-		modules.ProductionDependencies
-	}
-
-	// DependencyDisableCloseUploadEntry prevents SiaFileEntries in the upload code
-	// from being closed.
-	DependencyDisableCloseUploadEntry struct {
 		modules.ProductionDependencies
 	}
 
@@ -52,14 +39,6 @@ type (
 
 	// DependencyDisableRenewal prevents contracts from being renewed.
 	DependencyDisableRenewal struct {
-		modules.ProductionDependencies
-	}
-
-	// DependencyDisableRepairAndHealthLoops prevents the background loops for
-	// repairs and updating directory metadata from running. This includes
-	// threadedUploadAndRepair, threadedStuckLoop, and
-	// threadedUpdateRenterHealth
-	DependencyDisableRepairAndHealthLoops struct {
 		modules.ProductionDependencies
 	}
 
@@ -218,27 +197,10 @@ func (d *DependencyInterruptOnceOnKeyword) Disable() {
 	d.mu.Unlock()
 }
 
-// Disrupt will block the scan progress of the hostdb. The scan can be started
-// by calling Scan on the dependency.
-func (d *DependencyBlockScan) Disrupt(s string) bool {
-	if d.c == nil {
-		d.c = make(chan struct{})
-	}
-	if s == "BlockScan" {
-		<-d.c
-	}
-	return false
-}
-
 // Disrupt prevents contracts from being recovered in
 // threadedContractMaintenance.
 func (d *DependencyDisableContractRecovery) Disrupt(s string) bool {
 	return s == "DisableContractRecovery"
-}
-
-// Disrupt prevents SiafileEntries in the upload code from being closed.
-func (d *DependencyDisableCloseUploadEntry) Disrupt(s string) bool {
-	return s == "disableCloseUploadEntry"
 }
 
 // Disrupt will prevent the fields scanInProgress and atomicRecoveryScanHeight
@@ -253,23 +215,9 @@ func (d *DependencyDisableRenewal) Disrupt(s string) bool {
 	return s == "disableRenew"
 }
 
-// Disrupt will prevent the repair and health loops from running
-func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
-	return s == "DisableRepairAndHealthLoops"
-}
-
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyPostponeWritePiecesRecovery) Disrupt(s string) bool {
 	return s == "PostponeWritePiecesRecovery"
-}
-
-// Scan resumes the blocked scan.
-func (d *DependencyBlockScan) Scan() {
-	if d.closed {
-		return
-	}
-	close(d.c)
-	d.closed = true
 }
 
 type (
