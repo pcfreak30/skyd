@@ -1988,7 +1988,7 @@ The period is equivalent to the billing cycle length. The renter will not spend
 more than the full balance of its funds every billing period. When the billing
 period is over, the contracts will be renewed and the spending will be reset.
 
-Each billing period begins at the beginnig of each period.
+Each billing period begins at the beginning of each period.
 
 **renewwindow** | blocks  
 The renew window is how long the user has to renew their contracts after the
