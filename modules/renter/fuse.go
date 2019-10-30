@@ -31,6 +31,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"syscall"
 
@@ -81,6 +82,9 @@ type fuseFilenode struct {
 
 	// Not static - the stream is created separately from the node.
 	stream modules.Streamer
+
+	// local file, if it exists
+	lf *os.File
 
 	filesystem *fuseFS
 	mu         sync.Mutex
@@ -133,6 +137,10 @@ func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Er
 			ffn.filesystem.renter.log.Printf("Unable to close stream for file %v: %v", ffn.staticSiapath, err)
 			return errToStatus(err)
 		}
+	}
+	// If a local file was opened, close it.
+	if ffn.lf != nil {
+		ffn.lf.Close()
 	}
 
 	return errToStatus(nil)
@@ -228,12 +236,24 @@ func (ffn *fuseFilenode) Open(ctx context.Context, flags uint32) (fs.FileHandle,
 	ffn.mu.Lock()
 	defer ffn.mu.Unlock()
 
-	_, stream, err := ffn.filesystem.renter.Streamer(ffn.staticSiapath)
-	if err != nil {
-		ffn.filesystem.renter.log.Printf("Unable to get stream for file %v: %v", ffn.staticSiapath, err)
-		return nil, 0, errToStatus(err)
+	fi, err := ffn.filesystem.renter.FileCached(ffn.staticSiapath)
+	if err == nil {
+		if fi.LocalPath != "" {
+			lf, err := os.Open(fi.LocalPath)
+			if err == nil {
+				ffn.lf = lf
+			}
+		}
 	}
-	ffn.stream = stream
+	if ffn.lf == nil {
+		// no local file; must stream instead
+		_, stream, err := ffn.filesystem.renter.Streamer(ffn.staticSiapath)
+		if err != nil {
+			ffn.filesystem.renter.log.Printf("Unable to get stream for file %v: %v", ffn.staticSiapath, err)
+			return nil, 0, errToStatus(err)
+		}
+		ffn.stream = stream
+	}
 
 	return ffn, 0, errToStatus(nil)
 }
@@ -242,6 +262,12 @@ func (ffn *fuseFilenode) Open(ctx context.Context, flags uint32) (fs.FileHandle,
 func (ffn *fuseFilenode) Read(ctx context.Context, f fs.FileHandle, dest []byte, offset int64) (fuse.ReadResult, syscall.Errno) {
 	ffn.mu.Lock()
 	defer ffn.mu.Unlock()
+
+	if ffn.lf != nil {
+		// read from local file
+		n, err := ffn.lf.ReadAt(dest, offset)
+		return fuse.ReadResultData(dest[:n]), errToStatus(err)
+	}
 
 	_, err := ffn.stream.Seek(offset, io.SeekStart)
 	if err != nil {
