@@ -10,6 +10,7 @@ package renter
 // force an unmount.
 
 import (
+	"os"
 	"sync"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -117,11 +118,17 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 		return errors.New("there is already a sia fuse system mounted at " + mountPoint)
 	}
 
+	// TODO: allow caller to override these
+	uid := os.Getuid()
+	gid := os.Getgid()
+
 	// Mount the filesystem.
 	server, err := fs.Mount(mountPoint, filesystem.root, &fs.Options{
 		MountOptions: fuse.MountOptions{
 			// Debug: true,
 		},
+		UID: uint32(uid),
+		GID: uint32(gid),
 	})
 	if err != nil {
 		return errors.AddContext(err, "error calling mount")
