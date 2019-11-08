@@ -346,9 +346,16 @@ price and total throughput.
 
 The Renter uploads `siafiles` in 40MB chunks. Redundancy kept at the chunk level
 which means each chunk will then be split in `datapieces` number of pieces. For
-example, a 10/20 scheme would mean that each 40MB chunk will be split into 10
-4MB pieces, which is turn will be uploaded to 30 different hosts (10 data pieces
-and 20 parity pieces).
+example, a 10/20 erasure coding scheme would mean that each 40MB chunk will be
+split into 10 4MB pieces, which is turn will be uploaded to 30 different hosts
+(10 data pieces and 20 parity pieces).
+
+Users can set the number of `dataPieces` and `parityPieces` manually for an
+upload. To protect the user from uploading files with an erasure coding that
+would prevent the file from successfully uploading, the number of contracts and
+the number of hosts defined in the allowance are checked. If there are not at
+least `dataPieces + parityPieces/2` contracts or hosts, then the upload will
+fail. 
 
 Chunks are uploaded by first distributing the chunk to the worker pool. The
 chunk is distributed to the worker pool by adding it to the upload queue and

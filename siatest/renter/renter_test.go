@@ -299,6 +299,7 @@ func TestRenterFour(t *testing.T) {
 		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
+		{"TestUploadChecks", testUploadChecks}, // Should be last as it changes the allowance
 	}
 
 	// Run tests
@@ -2982,7 +2983,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			if !valid {
 				t.Fatal("identifier is invalid")
 			}
-			// Check that the host's key is a valid key from the hostb.
+			// Check that the host's key is a valid key from the hostdb.
 			_, err = r.HostDbHostsGet(spk)
 			if err != nil {
 				t.Fatal("hostKey is invalid", err)
@@ -3875,5 +3876,40 @@ func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if nextPeriod != currentPeriod+period {
 		t.Fatalf("expected next period to be %v but got %v", currentPeriod+period, nextPeriod)
+	}
+}
+
+// testUploadChecks probes the checks in the Upload code that prevent a file
+// from being uploaded if it isn't going to be successful.
+func testUploadChecks(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the renter
+	r := tg.Renters()[0]
+
+	// Check the number of hosts in the allowance
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	numHosts := rg.Settings.Allowance.Hosts
+
+	// Set the dataPieces and parityPiecs to the number of Hosts, this should
+	// ensure that it exceeds both the number of required contracts and hosts
+	dataPieces := uint64(numHosts)
+	parityPieces := uint64(numHosts)
+	_, _, err = r.UploadNewFileBlocking(100, dataPieces, parityPieces, false)
+	if err == nil {
+		t.Fatal("Upload Should have failed due to not enough contracts")
+	}
+	if !strings.Contains(err.Error(), renter.ErrInsufficientContractsOrHostsForUpload.Error()) {
+		t.Fatalf("Expected error to contain %v but got %v", renter.ErrInsufficientContractsOrHostsForUpload, err)
+	}
+
+	// Drop the number of data pieces and parity pieces and upload should
+	// succeed
+	dataPieces = uint64(1)
+	parityPieces = uint64(numHosts - 1)
+	_, _, err = r.UploadNewFileBlocking(100, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

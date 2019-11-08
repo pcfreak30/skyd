@@ -14,7 +14,6 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
@@ -22,6 +21,11 @@ import (
 )
 
 var (
+	// ErrInsufficientContractsOrHostsForUpload is returned if the user tries to
+	// upload a file before there are enough contracts or doesn't not have
+	// enough Hosts set in their Allowance to successfully upload the file
+	ErrInsufficientContractsOrHostsForUpload = errors.New("insufficient contracts for successful upload")
+
 	// errUploadDirectory is returned if the user tries to upload a directory.
 	errUploadDirectory = errors.New("cannot upload directory")
 )
@@ -62,21 +66,18 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		up.ErasureCode, _ = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, crypto.SegmentSize)
 	}
 
-	// Check that we have contracts to upload to. We need at least data +
-	// parity/2 contracts. NumPieces is equal to data+parity, and min pieces is
-	// equal to parity. Therefore (NumPieces+MinPieces)/2 = (data+data+parity)/2
-	// = data+parity/2.
+	// Check that we have enough contracts or hosts to upload to. We need at
+	// least data + parity/2 contracts or hosts. NumPieces is equal to
+	// data+parity, and min pieces is equal to data pieces.
+	// Therefore (NumPieces+MinPieces)/2 = (data+data+parity)/2 = data+parity/2.
 	numContracts := len(r.hostContractor.Contracts())
 	requiredContracts := (up.ErasureCode.NumPieces() + up.ErasureCode.MinPieces()) / 2
-	if numContracts < requiredContracts && build.Release != "testing" {
-		return fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (up.ErasureCode.NumPieces()+up.ErasureCode.MinPieces())/2)
-	}
-
-	// Check that the renter has an allowance that will enable a successful
-	// upload
 	allowance := r.hostContractor.Allowance()
-	if requiredContracts > int(allowance.Hosts) {
-		return fmt.Errorf("allowance does not have sufficient hosts for successful upload. Have %v need %v", allowance.Hosts, requiredContracts)
+	enoughContracts := numContracts >= requiredContracts
+	enoughHosts := int(allowance.Hosts) >= requiredContracts
+	if !enoughContracts && !enoughHosts {
+		contextStr := fmt.Sprintf("have %v contracts and %v Hosts, need %v for upload", numContracts, allowance.Hosts, requiredContracts)
+		return errors.AddContext(ErrInsufficientContractsOrHostsForUpload, contextStr)
 	}
 
 	// Create the directory path on disk. Renter directory is already present so
