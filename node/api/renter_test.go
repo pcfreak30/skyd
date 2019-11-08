@@ -502,6 +502,17 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Post an allowance so we can upload a file
+	allowanceValues := url.Values{}
+	allowanceValues.Set("funds", "500000000000000000000000000") // 500 SC
+	allowanceValues.Set("hosts", "3")
+	allowanceValues.Set("period", "10")
+	allowanceValues.Set("renewwindow", "2")
+	err = st.stdPostAPI("/renter", allowanceValues)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Create a file.
 	path := filepath.Join(build.SiaTestingDir, "api", t.Name(), "test.dat")
 	err = createRandFile(path, 1024)
@@ -543,6 +554,17 @@ func TestRenterConflicts(t *testing.T) {
 
 	// Announce the host.
 	err = st.announceHost()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Post an allowance so we can upload a file
+	allowanceValues := url.Values{}
+	allowanceValues.Set("funds", "500000000000000000000000000") // 500 SC
+	allowanceValues.Set("hosts", "3")
+	allowanceValues.Set("period", "10")
+	allowanceValues.Set("renewwindow", "2")
+	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,12 +30,9 @@ func newTestingWal() *writeaheadlog.WAL {
 	return wal
 }
 
-// newRenterTestFile creates a test file when the test has a renter so that the
-// file is properly added to the renter. It returns the SiaFileSetEntry that the
-// SiaFile is stored in
-func (r *Renter) newRenterTestFile() (*siafile.SiaFileSetEntry, error) {
-	// Generate name and erasure coding
-	siaPath, rsc := testingFileParams()
+// newFile creates a test file so that the file is properly added to the renter.
+// It returns the SiaFileSetEntry that the SiaFile is stored in
+func (r *Renter) newFile(siaPath modules.SiaPath, rsc modules.ErasureCoder) (*siafile.SiaFileSetEntry, error) {
 	// create the renter/files dir if it doesn't exist
 	siaFilePath := siaPath.SiaFileSysPath(r.staticFilesDir)
 	dir, _ := filepath.Split(siaFilePath)
@@ -53,6 +50,24 @@ func (r *Renter) newRenterTestFile() (*siafile.SiaFileSetEntry, error) {
 		return nil, err
 	}
 	return entry, nil
+}
+
+// newRenterTestFile creates a test file when the test has a renter so that the
+// file is properly added to the renter. It returns the SiaFileSetEntry that the
+// SiaFile is stored in
+func (r *Renter) newRenterTestFile() (*siafile.SiaFileSetEntry, error) {
+	// Generate name and erasure coding
+	siaPath, rsc := testingFileParams()
+	return r.newFile(siaPath, rsc)
+}
+
+// newRenterTestFile mimics uploading a test file when the test has a renter so
+// that the file is properly added to the renter. It returns the SiaFileSetEntry
+// that the SiaFile is stored in
+func (r *Renter) uploadTestFile(siaPath modules.SiaPath) (*siafile.SiaFileSetEntry, error) {
+	// Generate erasure coding
+	_, rsc := testingFileParams()
+	return r.newFile(siaPath, rsc)
 }
 
 // TestRenterFileListLocalPath verifies that FileList() returns the correct
@@ -390,20 +405,11 @@ func TestRenterFileDir(t *testing.T) {
 	}
 
 	// Upload local file
-	ec, err := siafile.NewRSCode(DefaultDataPieces, DefaultParityPieces)
-	if err != nil {
-		t.Fatal(err)
-	}
 	siaPath, err := modules.NewSiaPath(fileName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	params := modules.FileUploadParams{
-		Source:      source,
-		SiaPath:     siaPath,
-		ErasureCode: ec,
-	}
-	err = rt.renter.Upload(params)
+	_, err = rt.renter.uploadTestFile(siaPath)
 	if err != nil {
 		t.Fatal("failed to upload file:", err)
 	}

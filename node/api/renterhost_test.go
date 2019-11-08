@@ -48,7 +48,7 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 	}
 	allowanceValues := url.Values{}
 	allowanceValues.Set("funds", "50000000000000000000000000000") // 50k SC
-	allowanceValues.Set("hosts", "1")
+	allowanceValues.Set("hosts", "3")
 	allowanceValues.Set("period", "10")
 	allowanceValues.Set("renewwindow", "5")
 	err = st.stdPostAPI("/renter", allowanceValues)
@@ -1326,6 +1326,8 @@ func TestHostAndRentReload(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
+		t.Log("Number of Files", len(rf.Files))
+		t.Log("UploadProgress", rf.Files[0].UploadProgress)
 		t.Fatal("the uploading is not succeeding for some reason:", rf.Files[0])
 	}
 

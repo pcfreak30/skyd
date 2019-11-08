@@ -72,6 +72,13 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (up.ErasureCode.NumPieces()+up.ErasureCode.MinPieces())/2)
 	}
 
+	// Check that the renter has an allowance that will enable a successful
+	// upload
+	allowance := r.hostContractor.Allowance()
+	if requiredContracts > int(allowance.Hosts) {
+		return fmt.Errorf("allowance does not have sufficient hosts for successful upload. Have %v need %v", allowance.Hosts, requiredContracts)
+	}
+
 	// Create the directory path on disk. Renter directory is already present so
 	// only files not in top level directory need to have directories created
 	dirSiaPath, err := up.SiaPath.Dir()
