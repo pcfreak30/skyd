@@ -15,6 +15,11 @@ var (
 
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.
 	BytesPerTerabyte = types.NewCurrency64(1e12)
+
+	// DefaultBaseRPCPrice is the default price of talking to the host. It is
+	// roughly equal to the default bandwidth cost of exchanging a pair of
+	// 4096-byte messages.
+	DefaultBaseRPCPrice = types.SiacoinPrecision.Mul64(100).Div64(1e9) // 100 nS
 )
 
 var (

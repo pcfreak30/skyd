@@ -23,6 +23,7 @@ type HostAdjustments struct {
 	DurationAdjustment         float64
 	InteractionAdjustment      float64
 	PriceAdjustment            float64
+	BaseRPCPriceAdjustment     float64
 	StorageRemainingAdjustment float64
 	UptimeAdjustment           float64
 	VersionAdjustment          float64
@@ -73,6 +74,7 @@ func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge
 		DurationAdjustment:         h.DurationAdjustment,
 		InteractionAdjustment:      h.InteractionAdjustment,
 		PriceAdjustment:            h.PriceAdjustment,
+		BaseRPCPriceAdjustment:     h.BaseRPCPriceAdjustment,
 		StorageRemainingAdjustment: h.StorageRemainingAdjustment,
 		UptimeAdjustment:           h.UptimeAdjustment,
 		VersionAdjustment:          h.VersionAdjustment,
@@ -84,7 +86,7 @@ func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge
 func (h HostAdjustments) Score() types.Currency {
 	// Combine the adjustments.
 	fullPenalty := h.BurnAdjustment * h.CollateralAdjustment * h.DurationAdjustment * h.InteractionAdjustment *
-		h.AgeAdjustment * h.PriceAdjustment * h.StorageRemainingAdjustment * h.UptimeAdjustment * h.VersionAdjustment
+		h.AgeAdjustment * h.PriceAdjustment * h.BaseRPCPriceAdjustment * h.StorageRemainingAdjustment * h.UptimeAdjustment * h.VersionAdjustment
 
 	// Return a types.Currency.
 	weight := baseWeight.MulFloat(fullPenalty)

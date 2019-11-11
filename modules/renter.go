@@ -396,6 +396,7 @@ type HostScoreBreakdown struct {
 	DurationAdjustment         float64 `json:"durationadjustment"`
 	InteractionAdjustment      float64 `json:"interactionadjustment"`
 	PriceAdjustment            float64 `json:"pricesmultiplier"`
+	BaseRPCPriceAdjustment     float64 `json:"baserpcpricesmultiplier"`
 	StorageRemainingAdjustment float64 `json:"storageremainingadjustment"`
 	UptimeAdjustment           float64 `json:"uptimeadjustment"`
 	VersionAdjustment          float64 `json:"versionadjustment"`

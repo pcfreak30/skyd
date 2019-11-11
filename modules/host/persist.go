@@ -64,7 +64,7 @@ func (h *Host) establishDefaults() error {
 		CollateralBudget: defaultCollateralBudget,
 		MaxCollateral:    defaultMaxCollateral,
 
-		MinBaseRPCPrice:           defaultBaseRPCPrice,
+		MinBaseRPCPrice:           modules.DefaultBaseRPCPrice,
 		MinContractPrice:          defaultContractPrice,
 		MinDownloadBandwidthPrice: defaultDownloadBandwidthPrice,
 		MinSectorAccessPrice:      defaultSectorAccessPrice,

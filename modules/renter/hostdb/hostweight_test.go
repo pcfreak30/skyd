@@ -1,6 +1,7 @@
 package hostdb
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -38,6 +39,7 @@ var (
 
 			ContractPrice: types.NewCurrency64(5).Mul(types.SiacoinPrecision),
 			StoragePrice:  types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte),
+			BaseRPCPrice:  modules.DefaultBaseRPCPrice,
 
 			Version: build.Version,
 		},
@@ -513,5 +515,50 @@ func TestHostWeightConstants(t *testing.T) {
 	weight = hdb.weightFunc(entry).Score()
 	if weight.Cmp(types.NewCurrency64(1e9)) < 0 {
 		t.Error("weight is not sufficiently high for hosts")
+	}
+}
+
+// TestHostWeightBaseRPCPricing
+func TestHostWeightBaseRPCPRicing(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	hdb := bareHostDB()
+	allowance := DefaultTestAllowance
+	hdb.SetAllowance(allowance)
+
+	entry := DefaultHostDBEntry
+	defaultScore := hdb.weightFunc(entry).Score()
+	hdb.SetAllowance(allowance)
+
+	entry.BaseRPCPrice = modules.DefaultBaseRPCPrice.MulFloat(0.5)
+	defaultScore2 := hdb.weightFunc(entry).Score()
+	hdb.SetAllowance(allowance)
+
+	entry.BaseRPCPrice = modules.DefaultBaseRPCPrice
+	defaultScore3 := hdb.weightFunc(entry).Score()
+	hdb.SetAllowance(allowance)
+
+	// These 3 scores should be equal.
+	if !(defaultScore.Cmp(defaultScore2) == 0 && defaultScore2.Cmp(defaultScore3) == 0) {
+		t.Fatal("Expected same score for low base RPC prices")
+	}
+
+	// Factors created from the quadratic equation used in the adjustment
+	// function. The value at index i is f(defaultPrice*i+1).
+	expectedAdjustmentFactor := []float64{1, 0.98, 0.95, 0.88, 0.80, 0.69, 0.55, 0.40, 0.21, 0.0}
+	defaultScoreFloat, _ := defaultScore.Float64()
+
+	for i := 0; i < 10; i++ {
+		entry.BaseRPCPrice = modules.DefaultBaseRPCPrice.Mul64(uint64(i + 1))
+		score := hdb.weightFunc(entry).Score()
+		scoreFloat, _ := score.Float64()
+
+		// Check that the the new score is the approximately the same as the default
+		// score times the expectedAdjustmentFactor.
+		factorFloat := scoreFloat / defaultScoreFloat
+		if math.Abs(expectedAdjustmentFactor[i]-factorFloat) >= 0.1 {
+			t.Fatal("Expected score to be adjusted by the factor: ", expectedAdjustmentFactor[i], factorFloat)
+		}
 	}
 }

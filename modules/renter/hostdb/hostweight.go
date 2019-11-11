@@ -493,6 +493,43 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	return math.Pow(uptimeRatio, exp)
 }
 
+// baseRPCPriceAdjustment will adjust the weight of the entry according the the
+// min base RPC price of the host.
+func baseRPCPriceAdjustments(entry modules.HostDBEntry) float64 {
+	base := float64(1)
+
+	// If the base price is less than or equal to the default, don't adjust the
+	// weight.
+	if entry.BaseRPCPrice.Cmp(modules.DefaultBaseRPCPrice) <= 0 {
+		return base
+	}
+
+	// Quadratic decrease from (DefaultBaseRPCPrice, 1) to (10*DefaultBaseRPCPrice, 0)
+	// Using vertex formula for quadratic equation.
+	// Example values:
+	// (1, 1)
+	// (2, 0.98)
+	// (3, 0.95)
+	// (4, 0.88)
+	// (5, 0.80)
+	// (6, 0.69)
+	// (7, 0.55)
+	// (8, 0.40)
+	// (9, 0.21)
+	// (10, 0)
+	xEnd := 10.0
+	yEnd := 0.0
+	a := (yEnd - 1) / ((xEnd - 1) * (xEnd - 1))
+	if entry.BaseRPCPrice.Cmp(modules.DefaultBaseRPCPrice.MulFloat(xEnd)) <= 0 {
+		// a * (price -1 )^2 + 1
+		price, _ := entry.BaseRPCPrice.Div(modules.DefaultBaseRPCPrice).Float64()
+		result := a*(price-1)*(price-1) + 1
+		return result
+	}
+
+	return 0.0
+}
+
 // managedCalculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
 func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
 	// Get the txnFees.
@@ -508,6 +545,7 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 			InteractionAdjustment:      hdb.interactionAdjustments(entry),
 			AgeAdjustment:              hdb.lifetimeAdjustments(entry),
 			PriceAdjustment:            hdb.priceAdjustments(entry, allowance, txnFees),
+			BaseRPCPriceAdjustment:     baseRPCPriceAdjustments(entry),
 			StorageRemainingAdjustment: hdb.storageRemainingAdjustments(entry, allowance),
 			UptimeAdjustment:           hdb.uptimeAdjustments(entry),
 			VersionAdjustment:          versionAdjustments(entry),
