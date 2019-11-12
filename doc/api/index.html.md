@@ -867,7 +867,7 @@ blacklist is a list of blacklisted address
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","123.456.789.0:9981","123.456.789.0:9981"]}' "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","valid.host.name.example:9981","123.456.789.0:1"]}' "localhost:9980/gateway/blacklist"
 ```
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"
@@ -890,6 +890,10 @@ this is the action to be performed on the blacklist. Allowed inputs are
 this is a comma separated list of addresses that are to be appended to or
 removed from the blacklist. If the action is `append` or `remove` this field is
 required.
+
+While only the hostname or IP address is blacklisted, a port is still required
+in order for the address to be valid. If the port is not known then `:1` can be
+used.
 
 ### Response
 standard success or error response. See [standard

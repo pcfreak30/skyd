@@ -165,18 +165,28 @@ type Gateway struct {
 
 type gatewayID [8]byte
 
-// addToBlacklist adds addresses to the Gateway's blacklist
+// addToBlacklist adds addresses to the Gateway's blacklist. Any errors that are
+// encountered will be remembered and returned at the end so that as many
+// addresses can be blacklisted as possible
 func (g *Gateway) addToBlacklist(addresses []modules.NetAddress) error {
 	// Add addresses to the blacklist and disconnect from them
 	var err error
 	for _, addr := range addresses {
+		// Check if the address is valid
+		if validErr := addr.IsStdValid(); validErr != nil {
+			err = errors.Compose(err, validErr)
+			continue
+		}
+
+		// Check if address is a peer so we can close the session
 		p, exists := g.peers[addr]
 		if exists {
 			err = errors.Compose(err, p.sess.Close())
 		}
 
-		// Peer is removed from the peer list as well as the node list, to prevent
-		// the node from being re-connected while looking for a replacement peer.
+		// Peer is removed from the peer list as well as the node list, to
+		// prevent the node from being re-connected while looking for a
+		// replacement peer.
 		delete(g.peers, addr)
 		delete(g.nodes, addr)
 		g.blacklist[addr.Host()] = struct{}{}

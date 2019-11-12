@@ -138,7 +138,7 @@ func (api *API) gatewayBlacklistHandlerPOST(w http.ResponseWriter, req *http.Req
 		}
 		// Add addresses to Blacklist
 		if err := api.gateway.AddToBlacklist(params.Addresses); err != nil {
-			WriteError(w, Error{"failed to add addresses to the blacklist: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"failed to add all addresses to the blacklist: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	case "remove":

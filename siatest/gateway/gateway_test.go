@@ -100,96 +100,74 @@ func TestGatewayBlacklist(t *testing.T) {
 		t.Fatalf("Expected blacklist to be empty, got %v", blacklist)
 	}
 
-	// Set the Gateways's blacklist
-	addr1 := modules.NetAddress("123.123.123.123:0")
-	addr2 := modules.NetAddress("456.456.456.456:0")
-	addresses := []modules.NetAddress{addr1, addr2}
-	err = gateway.GatewaySetBlacklistPost(addresses)
-	if err != nil {
-		t.Fatal(err)
+	hostnameNoPort := modules.NetAddress("host.name.No.Port")
+	badHostname := modules.NetAddress("badHostname")
+	noPortAddr := modules.NetAddress("123.123.123.123")
+	hostnameWithPort := modules.NetAddress("host.name.With.Port:1")
+	addr1 := modules.NetAddress("123.123.123.123:1")
+	addr2 := modules.NetAddress("456.456.456.456:1")
+	var blacklistTests = []struct {
+		addresses    []modules.NetAddress
+		action       string
+		errExpected  bool
+		lenBlacklist int
+	}{
+		{[]modules.NetAddress{hostnameNoPort}, "set", true, 0},    // check hostname with no port fails
+		{[]modules.NetAddress{badHostname}, "set", true, 0},       // check bad hostname fails
+		{[]modules.NetAddress{noPortAddr}, "set", true, 0},        // check address with no port fails
+		{[]modules.NetAddress{hostnameWithPort}, "set", false, 1}, // check hostname with port succeeds
+		{[]modules.NetAddress{addr1, addr2}, "append", false, 3},  // check appending addresses
+		{[]modules.NetAddress{addr1}, "remove", false, 2},         // check removing addresses
+		{[]modules.NetAddress{}, "remove", true, 2},               // check removing empty list results in an error
+		{[]modules.NetAddress{}, "set", false, 0},                 // check clearing the blacklist
 	}
 
-	// Confirm they are on the blacklist
-	blacklist, err = gateway.GatewayBlacklistGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(blacklist.Blacklist) != len(addresses) {
-		t.Fatalf("Expected blacklist to be %v, got %v", len(addresses), blacklist)
-	}
-	blacklistMap := make(map[string]struct{})
-	blacklistMap[blacklist.Blacklist[0]] = struct{}{}
-	blacklistMap[blacklist.Blacklist[1]] = struct{}{}
-	for _, addr := range addresses {
-		if _, ok := blacklistMap[addr.Host()]; !ok {
-			t.Fatalf("Did not find %v in the blacklist", addr.Host())
+	for _, test := range blacklistTests {
+		// Perform blacklist action
+		switch test.action {
+		case "set":
+			err = gateway.GatewaySetBlacklistPost(test.addresses)
+		case "append":
+			err = gateway.GatewayAppendBlacklistPost(test.addresses)
+		case "remove":
+			err = gateway.GatewayRemoveBlacklistPost(test.addresses)
+		default:
+			t.Fatal("test action not recognized:", test.action)
 		}
-	}
-
-	// Append an address to the gateway
-	addr3 := modules.NetAddress("789.789.789.789:0")
-	err = gateway.GatewayAppendBlacklistPost([]modules.NetAddress{})
-	if err == nil {
-		t.Fatal("Should return an error if trying to append no addresses")
-	}
-	err = gateway.GatewayAppendBlacklistPost([]modules.NetAddress{addr3})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Confirm they are on the blacklist
-	blacklist, err = gateway.GatewayBlacklistGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(blacklist.Blacklist) != len(addresses)+1 {
-		t.Fatalf("Expected blacklist to be %v, got %v", len(addresses)+1, blacklist)
-	}
-	blacklistMap = make(map[string]struct{})
-	blacklistMap[blacklist.Blacklist[0]] = struct{}{}
-	blacklistMap[blacklist.Blacklist[1]] = struct{}{}
-	blacklistMap[blacklist.Blacklist[2]] = struct{}{}
-	if _, ok := blacklistMap[addr3.Host()]; !ok {
-		t.Fatalf("Address %v not found in blacklist %v", addr3.Host(), blacklist)
-	}
-
-	// Remove some from the blacklist
-	err = gateway.GatewayRemoveBlacklistPost([]modules.NetAddress{})
-	if err == nil {
-		t.Fatal("Should be an error if submitting remove without a list of addresses")
-	}
-	err = gateway.GatewayRemoveBlacklistPost([]modules.NetAddress{modules.NetAddress(addr1)})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Confirm they were removed
-	blacklist, err = gateway.GatewayBlacklistGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(blacklist.Blacklist) != len(addresses) {
-		t.Fatalf("Expected blacklist to be %v, got %v", len(addresses), blacklist)
-	}
-	for _, addr := range blacklist.Blacklist {
-		if addr == addr1.Host() {
-			t.Fatalf("Found %v in the blacklist even though it should have been removed", addr1.Host())
+		// Check action error
+		if err == nil && test.errExpected {
+			t.Fatal("Expected error with test:", test)
 		}
-	}
+		if err != nil && !test.errExpected {
+			t.Fatalf("Expected no error with tests %v but got %v", test, err)
+		}
 
-	// Reset the blacklist
-	err = gateway.GatewaySetBlacklistPost([]modules.NetAddress{})
-	if err != nil {
-		t.Fatal(err)
-	}
+		// Check the Blacklist Length
+		blacklist, err = gateway.GatewayBlacklistGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(blacklist.Blacklist) != test.lenBlacklist {
+			t.Fatalf("Expected blacklist to be of length %v but got %v", test.lenBlacklist, blacklist)
+		}
+		if test.lenBlacklist == 0 {
+			continue
+		}
 
-	// Confirm the blacklist is empty
-	blacklist, err = gateway.GatewayBlacklistGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(blacklist.Blacklist) != 0 {
-		t.Fatalf("Expected blacklist to be empty, got %v", blacklist)
+		// Verify Blacklisted addresses
+		blacklistMap := make(map[string]struct{})
+		for _, addr := range blacklist.Blacklist {
+			blacklistMap[addr] = struct{}{}
+		}
+		for _, addr := range test.addresses {
+			_, ok := blacklistMap[addr.Host()]
+			if !ok && test.action != "remove" {
+				t.Fatalf("Did not find %v in the blacklist", addr.Host())
+			}
+			if ok && test.action == "remove" {
+				t.Fatal("Address should have been removing from the blacklist:", addr)
+			}
+		}
 	}
 }
 
