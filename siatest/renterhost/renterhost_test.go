@@ -359,3 +359,66 @@ func TestMultiRead(t *testing.T) {
 		t.Fatal("read did not quit early")
 	}
 }
+
+// TestRPCExtortionChecks tests that renter's avoid paying for RPCs with costs
+// that indiciate extortion.
+func TestRPCExtortionChecks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	gp := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterHostTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// manually grab a renter contract
+	renter := tg.Renters()[0]
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := cs.ViewAll()[0]
+
+	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Increase the host's base price.
+	host := tg.Hosts()[0]
+	extortionPrice := contract.TotalCost.MulFloat(proto.RPCExtortionLimit)
+	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, extortionPrice)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Begin an RPC session.
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the session settings to match the new base RPC price.
+	_, err = s.Settings()
+	if err != nil {
+		t.Fatal(nil)
+	}
+
+	// Upload a sector.
+	sector := fastrand.Bytes(int(modules.SectorSize))
+	_, _, err = s.Append(sector)
+	if err == nil || !strings.Contains(err.Error(), "write RPC extortion") {
+		t.Fatal("expected extortion error, got", err)
+	}
+}

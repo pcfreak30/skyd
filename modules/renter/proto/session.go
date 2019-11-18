@@ -21,9 +21,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// rpcExtortionLimit the max price of an RPC as a fraction of the total costs of
+// RPCExtortionLimit the max price of an RPC as a fraction of the total costs of
 // a file contract.
-const rpcExtortionLimit = 0.01
+const RPCExtortionLimit = 0.005
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
 //
@@ -46,9 +46,17 @@ type Session struct {
 // to be too high. The heuristic used is that a single RPC should never have to
 // use more than 1% of the contract's total funds (as long as the total amount
 // in the contract was not too low to begin with).
-func maybeExtortion(rpcCost types.Currency, contract modules.RenterContract) bool {
+func maybeExtortion(rpcCost types.Currency, contract contractHeader) bool {
 	// Get the total amount used to pay for storage and RPCs.
-	renterCosts := contract.TotalCost.Sub(contract.ContractFee).Sub(contract.TxnFee).Sub(contract.SiafundFee)
+	nonStorageOrRPCFees := contract.ContractFee.Add(contract.TxnFee).Add(contract.SiafundFee)
+
+	// Skip extortion check if the values are non-sensical. This happens always
+	// for recovered contracts.
+	if contract.TotalCost.Cmp(nonStorageOrRPCFees) < 0 {
+		return false
+	}
+
+	renterCosts := contract.TotalCost.Sub(nonStorageOrRPCFees)
 
 	// Avoid divide by zero. If funds are 0 then extortion is not possible.
 	if renterCosts.Cmp(types.ZeroCurrency) <= 0 {
@@ -56,7 +64,7 @@ func maybeExtortion(rpcCost types.Currency, contract modules.RenterContract) boo
 	}
 
 	costFraction, _ := big.NewRat(0, 1).SetFrac(rpcCost.Big(), renterCosts.Big()).Float64()
-	return costFraction >= rpcExtortionLimit
+	return costFraction >= RPCExtortionLimit
 }
 
 // writeRequest sends an encrypted RPC request to the host.
@@ -243,7 +251,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 
 	// Check if the cost of the RPC is an excessively large fraction of the total
 	// contract cost.
-	if maybeExtortion(cost, sc.Metadata()) {
+	if maybeExtortion(cost, contract) {
 		return modules.RenterContract{}, errors.New("write RPC extortion")
 	}
 
@@ -460,7 +468,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 
 	// Check if the cost of the RPC is an excessively large fraction of the total
 	// contract cost.
-	if maybeExtortion(price, sc.Metadata()) {
+	if maybeExtortion(price, contract) {
 		return modules.RenterContract{}, errors.New("Read RPC extortion")
 	}
 
@@ -645,7 +653,7 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 
 	// Check if the cost of the RPC is an excessively large fraction of the total
 	// contract cost.
-	if maybeExtortion(price, sc.Metadata()) {
+	if maybeExtortion(price, contract) {
 		return modules.RenterContract{}, nil, errors.New("SectorRoots RPC extortion")
 	}
 
@@ -757,21 +765,6 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	// To mitigate small errors (e.g. differing block heights), fudge the
 	// price and collateral by 0.2%.
 	price = price.MulFloat(1 + hostPriceLeeway)
-
-	// Get the contract metadata so we can get the cost values for extortion
-	// checks.
-	sc, haveContract := s.contractSet.Acquire(s.contractID)
-	if !haveContract {
-		return types.Transaction{}, nil, errors.New("contract not present in contract set")
-	}
-	contract := sc.Metadata()
-	s.contractSet.Return(sc)
-
-	// Check if the cost of the RPC is an excessively large fraction of the total
-	// contract cost.
-	if maybeExtortion(price, contract) {
-		return types.Transaction{}, nil, errors.New("RecoverSectorRoots RPC extortion")
-	}
 
 	// create the download revision and sign it
 	rev := newDownloadRevision(lastRev, price)
