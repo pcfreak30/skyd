@@ -290,7 +290,7 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 
 	switch id {
 	case modules.RPCOpenSession:
-		err = extendErr("incoming RPCInitSession failed: ", h.managedRPCOpenSession(conn))
+		err = extendErr("incoming RPCOpenSession failed: ", h.managedRPCOpenSession(conn))
 	// new RPCs: enter an infinite request/response loop
 	case modules.RPCLoopEnter:
 		err = extendErr("incoming RPCLoopEnter failed: ", h.managedRPCLoop(conn))

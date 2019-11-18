@@ -107,7 +107,9 @@ func (h *Host) managedRPCOpenSession(conn net.Conn) (err error) {
 				return extendErr("incoming RPC"+id.String()+" failed: ", err)
 			}
 		case modules.RPCFundEphemeralAccount:
-			// TODO
+			if err := h.managedRPCFundEphemeralAccount(s); err != nil {
+				return extendErr("incoming RPC"+id.String()+" failed: ", err)
+			}
 		default:
 			return errors.New("invalid or unknown RPC ID: " + id.String())
 		}
