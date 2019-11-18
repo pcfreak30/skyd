@@ -2,6 +2,7 @@ package modules
 
 import (
 	"crypto/cipher"
+	"errors"
 	"net"
 	"time"
 
@@ -15,6 +16,9 @@ const (
 )
 
 var (
+	ErrSessionClosed      = errors.New("session was closed")
+	ErrNoSupportedCiphers = errors.New("no supported ciphers found during DH handshake")
+
 	// OpenSessionTimeout establishes the minimum amount of time that the
 	// connection deadline is expected to be set to for a session to be fully
 	// set up. The deadline is long enough that the connection should be
@@ -130,7 +134,7 @@ type (
 
 // RPC identifiers
 var (
-	RPCInitSession          = newSpecifier("InitSession")
+	RPCOpenSession          = newSpecifier("OpenSession")
 	RPCUpdatePriceTable     = newSpecifier("UpdatePriceTable")
 	RPCFundEphemeralAccount = newSpecifier("FundEphemeralAcc")
 )
