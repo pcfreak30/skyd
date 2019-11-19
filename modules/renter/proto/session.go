@@ -52,16 +52,10 @@ func maybeExtortion(rpcCost types.Currency, contract contractHeader) bool {
 
 	// Skip extortion check if the values are non-sensical. This happens always
 	// for recovered contracts.
-	if contract.TotalCost.Cmp(nonStorageOrRPCFees) < 0 {
+	if contract.TotalCost.Cmp(nonStorageOrRPCFees) <= 0 {
 		return false
 	}
-
 	renterCosts := contract.TotalCost.Sub(nonStorageOrRPCFees)
-
-	// Avoid divide by zero. If funds are 0 then extortion is not possible.
-	if renterCosts.Cmp(types.ZeroCurrency) <= 0 {
-		return false
-	}
 
 	costFraction, _ := big.NewRat(0, 1).SetFrac(rpcCost.Big(), renterCosts.Big()).Float64()
 	return costFraction >= RPCExtortionLimit
