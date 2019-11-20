@@ -9,37 +9,37 @@ import (
 
 // managedRPCUpdatePriceTable will calculate the host's new pricing table and
 // send it in response to the caller's update request
-func (h *Host) managedRPCUpdatePriceTable(s *modules.Session) error {
+func (h *Host) managedRPCUpdatePriceTable(pm *modules.PeerMux) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	// build price table
-	s.Costs = h.buildPriceTable()
-	ptBytes, err := json.Marshal(s.Costs)
+	pm.Costs = h.buildPriceTable()
+	ptBytes, err := json.Marshal(pm.Costs)
 	if err != nil {
-		return errors.Compose(s.WriteError(err), err)
+		return errors.Compose(pm.WriteError(err), err)
 	}
 
 	// communicate it back to the caller
-	if err := s.WriteResponse(&modules.RPCUpdatePriceTableResponse{
+	if err := pm.WriteResponse(&modules.RPCUpdatePriceTableResponse{
 		PriceTableJSONEncoded: ptBytes,
 	}); err != nil {
-		return errors.Compose(s.WriteError(err), err)
+		return errors.Compose(pm.WriteError(err), err)
 	}
 
 	// extract payment
-	accepted, amountPaid, err := h.extractPaymentForRPC(s)
+	accepted, amountPaid, err := h.extractPaymentForRPC(pm)
 	if !accepted {
 		err = errors.Compose(err, errors.New("payment was not accepted"))
 	}
 	if err != nil {
-		return errors.Compose(s.WriteError(err), err)
+		return errors.Compose(pm.WriteError(err), err)
 	}
 
 	// verify amount paid
-	if amountPaid.Cmp(s.Costs.RPC[modules.NewRemoteRPCID(h.publicKey, modules.RPCUpdatePriceTable)]) < 0 {
+	if amountPaid.Cmp(pm.Costs.RPC[modules.NewRemoteRPCID(h.publicKey, modules.RPCUpdatePriceTable)]) < 0 {
 		err = errors.New("insufficient payment")
-		return errors.Compose(s.WriteError(err), err)
+		return errors.Compose(pm.WriteError(err), err)
 	}
 
 	return nil

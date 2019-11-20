@@ -8,7 +8,9 @@ import (
 )
 
 var (
-	errInvalidPaymentMethod = errors.New("invalid payment method, valid methods are 'PayByContract' or 'PayByEphemeralAcc'")
+	errPaymentInvalidMethod = errors.New("invalid payment method, valid methods are 'PayByContract' or 'PayByEphemeralAcc'")
+	errPaymentInsufficient  = errors.New("payment was insufficient")
+	errPaymentNotAccepted   = errors.New("payment was not accepted")
 
 	// priceTableExpiry defines for how many blocks the price table remains
 	// valid (TODO: make host setting (?))
@@ -34,44 +36,44 @@ func (h *Host) buildPriceTable() modules.PriceTable {
 	}
 }
 
-// ExtractPaymentForRPC will read from the session how the caller wants to pay
+// ExtractPaymentForRPC will read from the peermux how the caller wants to pay
 // and then process that payment. When successful it will return how much has
 // been paid so the caller can continue processing the RPC. If unsuccessful the
 // RPC will abort
-func (h *Host) extractPaymentForRPC(s *modules.Session) (accepted bool, amountPaid types.Currency, err error) {
-	if s.Closed {
-		return false, types.ZeroCurrency, modules.ErrSessionClosed
+func (h *Host) extractPaymentForRPC(pm *modules.PeerMux) (accepted bool, amountPaid types.Currency, err error) {
+	if pm.Closed {
+		return false, types.ZeroCurrency, modules.ErrPeerMuxClosed
 	}
 
 	var req modules.PaymentRequest
-	if err := s.ReadRequest(&req, modules.RPCMaxLen); err != nil {
+	if err := pm.ReadRequest(&req, modules.RPCMaxLen); err != nil {
 		return true, types.ZeroCurrency, err
 	}
 
 	switch req.Type {
 	case modules.PayByContract:
 		var payByReq modules.PayByContractRequest
-		if err := s.ReadRequest(&payByReq, modules.RPCMaxLen); err != nil {
+		if err := pm.ReadRequest(&payByReq, modules.RPCMaxLen); err != nil {
 			return true, types.ZeroCurrency, err
 		}
-		acc, ap, err := h.payByContract(s, &payByReq)
+		acc, ap, err := h.payByContract(pm, &payByReq)
 		return acc, ap, err
 	case modules.PayByEphemeralAccount:
 		var payByReq modules.PayByEphemeralAccountRequest
-		if err := s.ReadRequest(&payByReq, modules.RPCMaxLen); err != nil {
+		if err := pm.ReadRequest(&payByReq, modules.RPCMaxLen); err != nil {
 			return true, types.ZeroCurrency, err
 		}
-		acc, ap, err := h.payByEphemeralAccount(s, &payByReq)
+		acc, ap, err := h.payByEphemeralAccount(pm, &payByReq)
 		return acc, ap, err
 	default:
-		return true, types.ZeroCurrency, errInvalidPaymentMethod
+		return true, types.ZeroCurrency, errPaymentInvalidMethod
 	}
 
 }
 
 // payByEphemeralAccount will call upon the ephemeral account manager and try to
 // perform the withdrawal
-func (h *Host) payByEphemeralAccount(s *modules.Session, req *modules.PayByEphemeralAccountRequest) (accepted bool, amountPaid types.Currency, err error) {
+func (h *Host) payByEphemeralAccount(s *modules.PeerMux, req *modules.PayByEphemeralAccountRequest) (accepted bool, amountPaid types.Currency, err error) {
 	if err := h.staticAccountManager.callWithdraw(transformToLocalWithdrawMessage(&req.Message), req.Signature); err != nil {
 		return true, types.ZeroCurrency, err
 	}
@@ -79,7 +81,7 @@ func (h *Host) payByEphemeralAccount(s *modules.Session, req *modules.PayByEphem
 }
 
 // payByContract will process the payByContractRequest
-func (h *Host) payByContract(s *modules.Session, req *modules.PayByContractRequest) (accepted bool, amountPaid types.Currency, err error) {
+func (h *Host) payByContract(s *modules.PeerMux, req *modules.PayByContractRequest) (accepted bool, amountPaid types.Currency, err error) {
 	return true, types.ZeroCurrency, nil // TODO
 }
 

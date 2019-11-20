@@ -13,22 +13,22 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-// managedRPCOpenSession initializes a session by performing a DH key exchange
+// managedRPCOpenPeerMux initializes a session by performing a DH key exchange
 // with the caller, it will open the session after verify the session's contract
 // id and communicating the host's pricing table to the caller
-func (h *Host) managedRPCOpenSession(conn net.Conn) (err error) {
+func (h *Host) managedRPCOpenPeerMux(conn net.Conn) (err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	// create the session object
-	s := &modules.Session{
+	s := &modules.PeerMux{
 		Conn: conn,
 	}
 
-	s.Conn.SetDeadline(time.Now().Add(modules.OpenSessionTimeout))
+	s.Conn.SetDeadline(time.Now().Add(modules.OpenPeerMuxTimeout))
 
 	// read caller's half of key exchange
-	var req modules.SessionHandshakeRequest
+	var req modules.PeerMuxHandshakeRequest
 	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&req); err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func (h *Host) managedRPCOpenSession(conn net.Conn) (err error) {
 		}
 	}
 	if !supportsChaCha {
-		_ = encoding.NewEncoder(conn).Encode(modules.SessionHandshakeResponse{
+		_ = encoding.NewEncoder(conn).Encode(modules.PeerMuxHandshakeResponse{
 			Cipher: modules.CipherNoOverlap,
 		})
 		return modules.ErrNoSupportedCiphers
@@ -53,7 +53,7 @@ func (h *Host) managedRPCOpenSession(conn net.Conn) (err error) {
 	cipherKey := crypto.DeriveSharedSecret(xsk, req.PublicKey)
 
 	// send our half of the key exchange
-	resp := modules.SessionHandshakeResponse{
+	resp := modules.PeerMuxHandshakeResponse{
 		Cipher:    modules.CipherChaCha20Poly1305,
 		PublicKey: xpk,
 		Signature: pubkeySig[:],
@@ -70,7 +70,7 @@ func (h *Host) managedRPCOpenSession(conn net.Conn) (err error) {
 	}
 
 	// read the open session request
-	var ssReq modules.OpenSessionRequest
+	var ssReq modules.OpenPeerMuxRequest
 	if err := s.ReadRequest(&ssReq, modules.RPCMinLen); err != nil {
 		return errors.Compose(s.WriteError(err), err)
 	}
@@ -82,7 +82,7 @@ func (h *Host) managedRPCOpenSession(conn net.Conn) (err error) {
 	if err != nil {
 		return errors.Compose(s.WriteError(err), err)
 	}
-	if err := s.WriteResponse(&modules.OpenSessionResponse{
+	if err := s.WriteResponse(&modules.OpenPeerMuxResponse{
 		PriceTableJSONEncoded: ptBytes,
 	}); err != nil {
 		return errors.Compose(s.WriteError(err), err)

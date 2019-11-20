@@ -16,14 +16,14 @@ const (
 )
 
 var (
-	ErrSessionClosed      = errors.New("session was closed")
+	ErrPeerMuxClosed      = errors.New("peermux was closed")
 	ErrNoSupportedCiphers = errors.New("no supported ciphers found during DH handshake")
 
-	// OpenSessionTimeout establishes the minimum amount of time that the
-	// connection deadline is expected to be set to for a session to be fully
+	// OpenPeerMuxTimeout establishes the minimum amount of time that the
+	// connection deadline is expected to be set to for a peermux to be fully
 	// set up. The deadline is long enough that the connection should be
 	// successful even if both parties are on Tor.
-	OpenSessionTimeout = build.Select(build.Var{
+	OpenPeerMuxTimeout = build.Select(build.Var{
 		Dev:      120 * time.Second,
 		Standard: 120 * time.Second,
 		Testing:  3 * time.Second,
@@ -31,8 +31,8 @@ var (
 )
 
 type (
-	// A Session contains all the session state
-	Session struct {
+	// A PeerMux contains all the peermux state
+	PeerMux struct {
 		Conn       net.Conn
 		AEAD       cipher.AEAD
 		ContractID types.FileContractID
@@ -40,20 +40,20 @@ type (
 		Closed     bool
 	}
 
-	// OpenSessionRequest contains the contract id for the session
-	OpenSessionRequest struct {
+	// OpenPeerMuxRequest contains the contract id for the peermux
+	OpenPeerMuxRequest struct {
 		ContractID types.FileContractID
 	}
 
-	// OpenSessionResponse contains the host's price table
-	OpenSessionResponse struct {
+	// OpenPeerMuxResponse contains the host's price table
+	OpenPeerMuxResponse struct {
 		PriceTableJSONEncoded []byte
 	}
 )
 
 type (
 	// The PriceTable is built by the host and contains its pricing relevant to
-	// the session. Under RPC the host lists all different RPC calls and their
+	// the peermux. Under RPC the host lists all different RPC calls and their
 	// corresponding price. The prices remain valid up until the expiry block
 	// height.
 	PriceTable struct {
@@ -68,21 +68,21 @@ type (
 
 // Handshake identifiers
 var (
-	InitHandshake = newSpecifier("InitHandshake")
+	InitHandshake = NewSpecifier("InitHandshake")
 )
 
 // Handshake request-response objects
 type (
-	// SessionHandshakeRequest is the first object sent when forming a session,
+	// PeerMuxHandshakeRequest is the first object sent when forming a peermux,
 	// it initiates a Diffie-Hellman key exchange
-	SessionHandshakeRequest struct {
+	PeerMuxHandshakeRequest struct {
 		PublicKey crypto.X25519PublicKey
 		Ciphers   []types.Specifier
 	}
 
-	// SessionHandshakeResponse is the host's response to the
-	// SessionHandshakeRequest
-	SessionHandshakeResponse struct {
+	// PeerMuxHandshakeResponse is the host's response to the
+	// PeerMuxHandshakeRequest
+	PeerMuxHandshakeResponse struct {
 		PublicKey crypto.X25519PublicKey
 		Signature []byte
 		Cipher    types.Specifier
@@ -91,8 +91,8 @@ type (
 
 // Extract payment identifiers
 var (
-	PayByContract         = newSpecifier("PayByContract")
-	PayByEphemeralAccount = newSpecifier("PayByEphemeralAcc")
+	PayByContract         = NewSpecifier("PayByContract")
+	PayByEphemeralAccount = NewSpecifier("PayByEphemeralAcc")
 )
 
 // Extract payment request-response objects
@@ -134,9 +134,9 @@ type (
 
 // RPC identifiers
 var (
-	RPCOpenSession          = newSpecifier("OpenSession")
-	RPCUpdatePriceTable     = newSpecifier("UpdatePriceTable")
-	RPCFundEphemeralAccount = newSpecifier("FundEphemeralAcc")
+	RPCOpenPeerMux          = NewSpecifier("OpenPeerMux")
+	RPCUpdatePriceTable     = NewSpecifier("UpdatePriceTable")
+	RPCFundEphemeralAccount = NewSpecifier("FundEphemeralAcc")
 )
 
 // RPC request-response objects
@@ -153,8 +153,8 @@ type (
 	}
 )
 
-// Close will mark the session as closed and close the underlying connection
-func (s *Session) Close() error {
+// Close will mark the peermux as closed and close the underlying connection
+func (s *PeerMux) Close() error {
 	if s.Closed {
 		return nil
 	}
@@ -163,42 +163,42 @@ func (s *Session) Close() error {
 }
 
 // ReadRequest reads an encrypted RPC request
-func (s *Session) ReadRequest(req interface{}, maxLen uint64) error {
+func (s *PeerMux) ReadRequest(req interface{}, maxLen uint64) error {
 	return ReadRPCRequest(s.Conn, s.AEAD, req, maxLen)
 }
 
 // WriteRequest sends an encrypted RPC request
-func (s *Session) WriteRequest(rpcID types.Specifier, req interface{}) error {
+func (s *PeerMux) WriteRequest(rpcID types.Specifier, req interface{}) error {
 	return WriteRPCRequest(s.Conn, s.AEAD, rpcID, req)
 }
 
 // ReadResponse reads an encrypted RPC response
-func (s *Session) ReadResponse(resp interface{}, maxLen uint64) error {
+func (s *PeerMux) ReadResponse(resp interface{}, maxLen uint64) error {
 	return ReadRPCResponse(s.Conn, s.AEAD, resp, maxLen)
 }
 
 // WriteResponse sends an encrypted RPC response
-func (s *Session) WriteResponse(resp interface{}) error {
+func (s *PeerMux) WriteResponse(resp interface{}) error {
 	return WriteRPCResponse(s.Conn, s.AEAD, resp, nil)
 }
 
 // WriteMessage sends an encrypted RPC message
-func (s *Session) WriteMessage(msg interface{}) error {
+func (s *PeerMux) WriteMessage(msg interface{}) error {
 	return WriteRPCMessage(s.Conn, s.AEAD, msg)
 }
 
 // WriteError sends an encrypted RPC error
-func (s *Session) WriteError(err error) error {
+func (s *PeerMux) WriteError(err error) error {
 	return WriteRPCResponse(s.Conn, s.AEAD, nil, err)
 }
 
 // ExtendDeadline extends the read/write deadline on the underlying connection
-func (s *Session) ExtendDeadline(d time.Duration) error {
+func (s *PeerMux) ExtendDeadline(d time.Duration) error {
 	return s.Conn.SetDeadline(time.Now().Add(d))
 }
 
 // Call is a helper method that calls WriteRequest followed by ReadResponse.
-func (s *Session) Call(rpcID types.Specifier, req, resp interface{}, maxLen uint64) error {
+func (s *PeerMux) Call(rpcID types.Specifier, req, resp interface{}, maxLen uint64) error {
 	if err := s.WriteRequest(rpcID, req); err != nil {
 		return err
 	}
@@ -214,10 +214,10 @@ func NewRemoteRPCID(hpk types.SiaPublicKey, rpc types.Specifier) RemoteRPCID {
 	return id
 }
 
-// newSpecifier takes in a name and returns a fixed-length byte-array specifier
-func newSpecifier(name string) types.Specifier {
+// NewSpecifier takes in a name and returns a fixed-length byte-array specifier
+func NewSpecifier(name string) types.Specifier {
 	if len(name) > 16 {
-		panic("ERROR: specifier max length exceeded")
+		panic("ERROR: name exceeds the max length of a specifier")
 	}
 	var s types.Specifier
 	copy(s[:], name)

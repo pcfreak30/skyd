@@ -272,7 +272,7 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 		h.log.Debugf("WARN: incoming conn %v was malformed: %v", conn.RemoteAddr(), err)
 		return
 	}
-	if id != modules.RPCLoopEnter && id != modules.RPCOpenSession {
+	if id != modules.RPCLoopEnter && id != modules.RPCOpenPeerMux {
 		// first 8 bytes should be a length prefix of 16
 		if lp := encoding.DecUint64(id[:8]); lp != 16 {
 			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
@@ -289,8 +289,8 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 
 	switch id {
-	case modules.RPCOpenSession:
-		err = extendErr("incoming RPCOpenSession failed: ", h.managedRPCOpenSession(conn))
+	case modules.RPCOpenPeerMux:
+		err = extendErr("incoming RPCOpenPeerMux failed: ", h.managedRPCOpenPeerMux(conn))
 	// new RPCs: enter an infinite request/response loop
 	case modules.RPCLoopEnter:
 		err = extendErr("incoming RPCLoopEnter failed: ", h.managedRPCLoop(conn))

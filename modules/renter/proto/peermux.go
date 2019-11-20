@@ -14,36 +14,39 @@ import (
 )
 
 type (
-	// RenterSession is an ongoing exchange of RPC request and responses
-	RenterSession struct {
-		Session *modules.Session
+	// RenterPeerMuxObject is an ongoing exchange of RPC request and responses
+	RenterPeerMuxObject struct {
+		pm *modules.PeerMux
 	}
 )
 
-// NewRenterSession will intialize a new session with the given host
-func NewRenterSession(conn *net.Conn, hostPublicKey types.SiaPublicKey, id types.FileContractID) (_ *RenterSession, err error) {
-	rs := &RenterSession{
-		Session: &modules.Session{
+// NewRenterPeerMuxObject will intialize a new session with the given host
+func NewRenterPeerMuxObject(conn *net.Conn, hostPublicKey types.SiaPublicKey, id types.FileContractID) (_ *RenterPeerMuxObject, err error) {
+	rpm := &RenterPeerMuxObject{
+		pm: &modules.PeerMux{
 			Conn:       *conn,
 			ContractID: id,
 		},
 	}
-	rs.Session.ExtendDeadline(modules.OpenSessionTimeout)
 
-	// perform handshake
-	if rs.Session.AEAD, err = performHandshake(rs.Session.Conn, hostPublicKey); err != nil {
+	if err = rpm.pm.ExtendDeadline(modules.OpenPeerMuxTimeout); err != nil {
 		return nil, err
 	}
 
-	// open the session
-	if err = openRenterSession(rs.Session, id); err != nil {
+	// perform handshake
+	if rpm.pm.AEAD, err = performHandshake(rpm.pm.Conn, hostPublicKey); err != nil {
+		return nil, err
+	}
+
+	// open the peer mux
+	if err = openRenterPeerMuxObject(rpm.pm, id); err != nil {
 		return nil, err
 	}
 
 	// TODO: we should subscribe to consensus changes in order to request an
 	// updated price table from the Host before the TTL expires
 
-	return rs, nil
+	return rpm, nil
 }
 
 // performHandshake performs the initial handshake during session setup
@@ -52,7 +55,7 @@ func performHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (cipher.A
 	xsk, xpk := crypto.GenerateX25519KeyPair()
 
 	// send our half of the key exchange
-	req := modules.SessionHandshakeRequest{
+	req := modules.PeerMuxHandshakeRequest{
 		PublicKey: xpk,
 		Ciphers:   []types.Specifier{modules.CipherChaCha20Poly1305},
 	}
@@ -61,7 +64,7 @@ func performHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (cipher.A
 	}
 
 	// read host's half of the key exchange
-	var resp modules.SessionHandshakeResponse
+	var resp modules.PeerMuxHandshakeResponse
 	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&resp); err != nil {
 		return nil, err
 	}
@@ -93,18 +96,18 @@ func performHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (cipher.A
 	return aead, nil
 }
 
-// openRenterSession will open the session by sending the contract ID and verify
+// openRenterPeerMuxObject will open the session by sending the contract ID and verify
 // the host's pricing table
-func openRenterSession(s *modules.Session, id types.FileContractID) error {
+func openRenterPeerMuxObject(s *modules.PeerMux, id types.FileContractID) error {
 	// send OpenSessionRequest
-	if err := encoding.NewEncoder(s.Conn).Encode(modules.OpenSessionRequest{
+	if err := encoding.NewEncoder(s.Conn).Encode(modules.OpenPeerMuxRequest{
 		ContractID: id,
 	}); err != nil {
 		return err
 	}
 
 	// read OpenSessionResponse
-	var resp modules.OpenSessionResponse
+	var resp modules.OpenPeerMuxResponse
 	if err := encoding.NewDecoder(s.Conn, encoding.DefaultAllocLimit).Decode(&resp); err != nil {
 		return err
 	}
