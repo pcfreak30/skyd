@@ -1,7 +1,9 @@
 package host
 
 import (
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -29,10 +31,26 @@ func (h *Host) managedRPCFundEphemeralAccount(pm *modules.PeerMux) error {
 
 	// fund the ephemeral account
 	if err := h.staticAccountManager.callDeposit(req.AccountID, amountPaid); err != nil {
-		return errors.AddContext(errors.Compose(pm.WriteError(err), err), "failed funding ephemeral account"
+		return errors.AddContext(errors.Compose(pm.WriteError(err), err), "failed funding ephemeral account")
 	}
 
-	// TODO build receipt and communicate it back to the caller
+	// create the receipt
+	hash := crypto.HashObject(struct {
+		Host      string
+		AccountID string
+		Amount    types.Currency
+	}{
+		h.publicKey.String(),
+		req.AccountID,
+		amountPaid,
+	})
+
+	// write the response
+	if err := pm.WriteResponse(modules.RPCFundEphemeralAccountResponse{
+		Signature: crypto.SignHash(hash, h.secretKey),
+	}); err != nil {
+		return errors.Compose(pm.WriteError(err), err)
+	}
 
 	return nil
 }

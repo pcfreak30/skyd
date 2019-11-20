@@ -151,6 +151,11 @@ type (
 	RPCFundEphemeralAccountRequest struct {
 		AccountID string
 	}
+
+	// RPCFundEphemeralAccountResponse
+	RPCFundEphemeralAccountResponse struct {
+		Signature crypto.Signature
+	}
 )
 
 // Close will mark the peermux as closed and close the underlying connection
