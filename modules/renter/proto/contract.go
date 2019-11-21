@@ -47,15 +47,16 @@ type contractHeader struct {
 	SecretKey crypto.SecretKey
 
 	// Same as modules.RenterContract.
-	StartHeight      types.BlockHeight
-	DownloadSpending types.Currency
-	StorageSpending  types.Currency
-	UploadSpending   types.Currency
-	TotalCost        types.Currency
-	ContractFee      types.Currency
-	TxnFee           types.Currency
-	SiafundFee       types.Currency
-	Utility          modules.ContractUtility
+	StartHeight         types.BlockHeight
+	DownloadSpending    types.Currency
+	StorageSpending     types.Currency
+	UploadSpending      types.Currency
+	FundAccountSpending types.Currency
+	TotalCost           types.Currency
+	ContractFee         types.Currency
+	TxnFee              types.Currency
+	SiafundFee          types.Currency
+	Utility             modules.ContractUtility
 }
 
 // validate returns an error if the contractHeader is invalid.
@@ -118,6 +119,11 @@ type SafeContract struct {
 	// revisionMu, it is still necessary to lock mu when modifying fields of the
 	// SafeContract.
 	revisionMu sync.Mutex
+}
+
+// Sign will sign the given hash using the safecontract's secret key
+func (c *SafeContract) Sign(hash crypto.Hash) crypto.Signature {
+	return crypto.SignHash(hash, c.header.SecretKey)
 }
 
 // Metadata returns the metadata of a renter contract
@@ -326,6 +332,33 @@ func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signe
 		return err
 	}
 	c.unappliedTxns = nil
+	return nil
+}
+
+func (c *SafeContract) managedRecordFundAccountIntent(rev types.FileContractRevision, amount types.Currency) (*writeaheadlog.Transaction, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	newHeader := c.header
+	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
+	newHeader.Transaction.TransactionSignatures = nil
+	newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount)
+
+	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+		c.makeUpdateSetHeader(newHeader),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := <-t.SignalSetupComplete(); err != nil {
+		return nil, err
+	}
+	c.unappliedTxns = append(c.unappliedTxns, t)
+	return t, nil
+}
+
+func (c *SafeContract) managedCommitFundAccountIntent(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
+	// TODO
 	return nil
 }
 

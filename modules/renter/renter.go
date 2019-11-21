@@ -116,6 +116,10 @@ type hostDB interface {
 type hostContractor interface {
 	modules.Alerter
 
+	// Account creates an Account that represents the renter's ephemeral account
+	// on the host for the specified key.
+	Account(types.SiaPublicKey) (contractor.Account, error)
+
 	// SetAllowance sets the amount of money the contractor is allowed to
 	// spend on contracts over a given time period, divided among the number
 	// of hosts specified. Note that contractor can start forming contracts as

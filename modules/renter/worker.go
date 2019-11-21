@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -71,6 +72,19 @@ type worker struct {
 	uploadRecentFailure       time.Time                // How recent was the last failure?
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
+
+	// Ephemeral account variables.
+	//
+	// Fund accounts queue for the worker.
+	staticFundAccountJobQueue fundAccountJobQueue
+
+	// The staticAccountBalanceTarget is the amount of money that should always
+	// be contained in the ephemeral account on the host. If the account balance
+	// drops below this target, the account gets refilled.
+	staticAccountBalanceTarget types.Currency
+
+	account        contractor.Account // represents the ephemeral account on the host
+	accountBalance types.Currency     // keeps track of the ephemeral account balance
 
 	// Utilities.
 	//
@@ -142,6 +156,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
+	defer w.managedKillFundAccountJobs()
 
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
@@ -161,20 +176,24 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		var workAttempted bool
+		// Perform fund ephemeral account job
+		go w.threadedPerformFundAcountJob()
+
 		// Perform any job to fetch the list of backups from the host.
-		workAttempted = w.managedPerformFetchBackupsJob()
+		workAttempted := w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
 		}
 		// Perform any job to help download a chunk.
 		workAttempted = w.managedPerformDownloadChunkJob()
 		if workAttempted {
+			w.managedRefillAccount()
 			continue
 		}
 		// Perform any job to help upload a chunk.
 		workAttempted = w.managedPerformUploadChunkJob()
 		if workAttempted {
+			w.managedRefillAccount()
 			continue
 		}
 
@@ -193,8 +212,16 @@ func (w *worker) threadedWorkLoop() {
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
+	// TODO handle error, it will never occur seeing as the worker is called
+	// using an existing hostPubKey and the error happens in case the host is
+	// unknown
+	account, _ := r.hostContractor.Account(hostPubKey)
 	return &worker{
 		staticHostPubKey: hostPubKey,
+
+		staticAccountBalanceTarget: types.SiacoinPrecision.Div64(5),
+		accountBalance:             types.ZeroCurrency,
+		account:                    account,
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
