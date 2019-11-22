@@ -2,11 +2,6 @@
 
 Status: Proposal
 
-TODO: For now, the cost calculations in SIP-0001 assume that the host is
-incapable of reading part of a sector. Which I believe is actually true, but
-it's probably not too difficult to adjust the implementation of the host to make
-this a lot cheaper.
-
 SIP-0001 is a description of a virtual machine - the Merklized Data Machine
 (MDM) - that executes instructions on the data in a Sia file contract. The file
 contract tracks the size and Merkle root of the underlying data, which the MDM
