@@ -51,6 +51,7 @@ var (
 		ExpectedUpload:     modules.SectorSize * 5e3,
 		ExpectedDownload:   modules.SectorSize * 5e3,
 		ExpectedRedundancy: 5.0,
+		MaxPeriodChurn:     modules.SectorSize * 5e3,
 	}
 
 	// testGroupBuffer is a buffer channel to control the number of testgroups
@@ -141,7 +142,7 @@ func NewGroupFromTemplate(groupDir string, groupParams GroupParams) (*TestGroup,
 	}
 	// Create miner params
 	for i := 0; i < groupParams.Miners; i++ {
-		params = append(params, MinerTemplate)
+		params = append(params, node.MinerTemplate)
 		randomNodeDir(groupDir, &params[len(params)-1])
 	}
 	return NewGroup(groupDir, params...)
@@ -220,8 +221,8 @@ func fullyConnectNodes(nodes []*TestNode) error {
 	return nil
 }
 
-// fundNodes uses the funds of a miner node to fund all the nodes of the group
-func fundNodes(miner *TestNode, nodes map[*TestNode]struct{}) error {
+// FundNodes uses the funds of a miner node to fund all the nodes of the group
+func FundNodes(miner *TestNode, nodes map[*TestNode]struct{}) error {
 	// Get the miner's balance
 	wg, err := miner.WalletGet()
 	if err != nil {
@@ -399,7 +400,7 @@ func synchronizationCheck(nodes map[*TestNode]struct{}) error {
 			// If the miner's height is greater than the node's we need to
 			// wait a bit longer for them to sync.
 			if lcg.Height != ncg.Height {
-				return errors.New("blockHeight doesn't match")
+				return fmt.Errorf("blockHeight doesn't match, %v vs %v", lcg.Height, ncg.Height)
 			}
 			// If the miner's height is smaller than the node's we need a
 			// bit longer for them to sync.
@@ -430,6 +431,10 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 	// each renter is supposed to have at least expectedContracts with hosts
 	// from the hosts map.
 	for renter := range renters {
+		if renter.params.SkipSetAllowance {
+			continue
+		}
+
 		numRetries := 0
 		// Get expected number of contracts for this renter.
 		rg, err := renter.RenterGet()
@@ -449,6 +454,7 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 				expectedContracts--
 			}
 		}
+
 		// Check if number of contracts is sufficient.
 		err = Retry(1000, 100*time.Millisecond, func() error {
 			numRetries++
@@ -561,7 +567,7 @@ func (tg *TestGroup) setupNodes(setHosts, setNodes, setRenters map[*TestNode]str
 		return build.ExtendErr("synchronization check 1 failed", err)
 	}
 	// Fund nodes.
-	if err := fundNodes(miner, setNodes); err != nil {
+	if err := FundNodes(miner, setNodes); err != nil {
 		return build.ExtendErr("failed to fund new hosts", err)
 	}
 	// Add storage to host
