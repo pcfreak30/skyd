@@ -53,6 +53,7 @@ type Session interface {
 type hostSession struct {
 	clients    int // safe to Close when 0
 	contractor *Contractor
+	allowance  modules.Allowance // store a copy of the allowance.
 	session    *proto.Session
 	endHeight  types.BlockHeight
 	id         types.FileContractID
@@ -60,6 +61,14 @@ type hostSession struct {
 	netAddress modules.NetAddress
 
 	mu sync.Mutex
+}
+
+// callAllowanceUpdated updates the allowance value cached in the session when
+// the contractor allowance is changed.
+func (hs *hostSession) callAllowanceUpdated(allowance modules.Allowance) {
+	hs.mu.Lock()
+	hs.allowance = allowance
+	hs.mu.Unlock()
 }
 
 // invalidate sets the invalid flag and closes the underlying proto.Session.
@@ -188,6 +197,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	c.mu.RLock()
 	id, gotID := c.pubKeysToContractID[pk.String()]
 	cachedSession, haveSession := c.sessions[id]
+	allowance := c.allowance
 	height := c.blockHeight
 	renewing := c.renewing[id]
 	c.mu.RUnlock()
@@ -240,6 +250,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	hs := &hostSession{
 		clients:    1,
 		contractor: c,
+		allowance:  allowance,
 		session:    s,
 		endHeight:  contract.EndHeight,
 		id:         id,

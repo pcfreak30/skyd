@@ -133,6 +133,13 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	// Inform the watchdog about the allowance change.
 	c.staticWatchdog.callAllowanceUpdated(a)
 
+	// Update cached sesssions with the allowance change.
+	c.mu.RLock()
+	for _, session := range c.sessions {
+		session.callAllowanceUpdated(a)
+	}
+	c.mu.RUnlock()
+
 	// We changed the allowance successfully. Update the hostdb.
 	err = c.hdb.SetAllowance(a)
 	if err != nil {
