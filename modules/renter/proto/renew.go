@@ -139,7 +139,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	}()
 
 	// Initiate protocol.
-	s, err := cs.NewRawSession(host, startHeight, hdb, cancel)
+	s, err := cs.NewRawSession(host, params.Allowance, startHeight, hdb, cancel)
 	if err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}

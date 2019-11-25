@@ -127,7 +127,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	}()
 
 	// Initiate protocol.
-	s, err := cs.NewRawSession(host, startHeight, hdb, cancel)
+	s, err := cs.NewRawSession(host, params.Allowance, startHeight, hdb, cancel)
 	if err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}

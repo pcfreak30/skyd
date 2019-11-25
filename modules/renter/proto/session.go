@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"encoding/json"
 	"io"
+	"math"
 	"math/bits"
 	"net"
 	"sort"
@@ -34,6 +35,7 @@ type Session struct {
 	hdb         hostDB
 	height      types.BlockHeight
 	host        modules.HostDBEntry
+	allowance   modules.Allowance
 	once        sync.Once
 }
 
@@ -58,6 +60,11 @@ func (s *Session) call(rpcID types.Specifier, req, resp interface{}, maxLen uint
 		return err
 	}
 	return s.readResponse(resp, maxLen)
+}
+
+// SetUpdatedAllowance updates the sessions allowance.
+func (s *Session) SetUpdatedAllowance(a modules.Allowance) {
+	s.allowance = a
 }
 
 // Lock calls the Lock RPC, locking the supplied contract and returning its
@@ -168,6 +175,23 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterCont
 	return s.write(sc, actions)
 }
 
+// uploadExtortionCheck returns a non-nil error if and only if this session's
+// host would be to expensive to fulfill the allowance requirements for upload.
+func (s *Session) uploadExtortionCheck(contract contractHeader, perSectorPrice types.Currency) error {
+	// Get the amount of storage we still need to upload
+	currentSize := contract.LastRevision().NewFileSize
+	remainingStorage := float64(s.allowance.ExpectedStorage-currentSize) / float64(s.allowance.Hosts)
+	remainingSectorsToUpload := uint64(math.Ceil(remainingStorage / float64(modules.SectorSize)))
+
+	totalRemainingCosts := perSectorPrice.Mul64(remainingSectorsToUpload)
+	renterFunds := contract.RenterFunds()
+
+	if renterFunds.Cmp(totalRemainingCosts) < 0 {
+		return errors.New("upload extortion")
+	}
+	return nil
+}
+
 func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ modules.RenterContract, err error) {
 	contract := sc.header // for convenience
 
@@ -176,6 +200,12 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	sectorBandwidthPrice := s.host.UploadBandwidthPrice.Mul64(modules.SectorSize)
 	sectorStoragePrice := s.host.StoragePrice.Mul(blockBytes)
 	sectorCollateral := s.host.Collateral.Mul(blockBytes)
+
+	// Check for upload extortion.
+	err = s.uploadExtortionCheck(contract, sectorStoragePrice.Add(sectorBandwidthPrice))
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
 
 	// calculate the new Merkle root set and total cost/collateral
 	var bandwidthPrice, storagePrice, collateral types.Currency
@@ -371,6 +401,13 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	return sc.Metadata(), nil
 }
 
+// downloadExtortionCheck returns a non-nil error if and only if this session's
+// host would be to expensive to fulfill the allowance requirements for
+// downloads.
+func (s *Session) downloadExtortionCheck(contract contractHeader, perSectorPrice types.Currency) error {
+	return nil
+}
+
 // Read calls the Read RPC, writing the requested data to w. The RPC can be
 // cancelled (with a granularity of one section) via the cancel channel.
 func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan struct{}) (_ modules.RenterContract, err error) {
@@ -425,6 +462,7 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	if contract.RenterFunds().Cmp(price) < 0 {
 		return modules.RenterContract{}, errors.New("contract has insufficient funds to support download")
 	}
+
 	// To mitigate small errors (e.g. differing block heights), fudge the
 	// price and collateral by 0.2%.
 	price = price.MulFloat(1 + hostPriceLeeway)
@@ -798,13 +836,13 @@ func (s *Session) Close() error {
 }
 
 // NewSession initiates the RPC loop with a host and returns a Session.
-func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
+func (cs *ContractSet) NewSession(host modules.HostDBEntry, allowance modules.Allowance, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
 	sc, ok := cs.Acquire(id)
 	if !ok {
 		return nil, errors.New("could not locate contract to create session")
 	}
 	defer cs.Return(sc)
-	s, err := cs.managedNewSession(host, currentHeight, hdb, cancel)
+	s, err := cs.managedNewSession(host, allowance, currentHeight, hdb, cancel)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create a new session with the host")
 	}
@@ -821,12 +859,12 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 }
 
 // NewRawSession creates a new session unassociated with any contract.
-func (cs *ContractSet) NewRawSession(host modules.HostDBEntry, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
-	return cs.managedNewSession(host, currentHeight, hdb, cancel)
+func (cs *ContractSet) NewRawSession(host modules.HostDBEntry, allowance modules.Allowance, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
+	return cs.managedNewSession(host, allowance, currentHeight, hdb, cancel)
 }
 
 // managedNewSession initiates the RPC loop with a host and returns a Session.
-func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
+func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, allowance modules.Allowance, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
 		if err != nil {
@@ -874,6 +912,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		hdb:         hdb,
 		height:      currentHeight,
 		host:        host,
+		allowance:   allowance,
 	}
 
 	return s, nil

@@ -168,6 +168,10 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 // managedRecoverContract recovers a single contract by contacting the host it
 // was formed with and retrieving the latest revision and sector roots.
 func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.EphemeralRenterSeed, blockHeight types.BlockHeight) error {
+	c.mu.RLock()
+	allowance := c.allowance
+	c.mu.RUnlock()
+
 	// Get the corresponding host.
 	host, ok, err := c.hdb.Host(rc.HostPublicKey)
 	if err != nil {
@@ -180,7 +184,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	sk, _ := proto.GenerateKeyPairWithOutputID(rs, rc.InputParentID)
 	defer fastrand.Read(sk[:])
 	// Start a new RPC session.
-	s, err := c.staticContracts.NewRawSession(host, blockHeight, c.hdb, c.tg.StopChan())
+	s, err := c.staticContracts.NewRawSession(host, allowance, blockHeight, c.hdb, c.tg.StopChan())
 	if err != nil {
 		return err
 	}

@@ -238,7 +238,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	}
 
 	// Create the session.
-	s, err := c.staticContracts.NewSession(host, id, height, c.hdb, cancel)
+	s, err := c.staticContracts.NewSession(host, allowance, id, height, c.hdb, cancel)
 	if modules.IsContractNotRecognizedErr(err) {
 		err = errors.Compose(err, c.MarkContractBad(id))
 	}

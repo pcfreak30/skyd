@@ -2,6 +2,7 @@ package renterhost
 
 import (
 	"bytes"
+	"math"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -57,8 +58,15 @@ func TestSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Get the allowance.
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowance := rg.Settings.Allowance
+
 	// begin the RPC session
-	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, allowance, contract.ID, cg.Height, stubHostDB{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +150,7 @@ func TestSession(t *testing.T) {
 	}
 	hhg.Entry.HostDBEntry.NetAddress = hg.ExternalSettings.NetAddress
 	// initiate session
-	s, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err = cs.NewSession(hhg.Entry.HostDBEntry, allowance, contract.ID, cg.Height, stubHostDB{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,15 +197,22 @@ func TestHostLockTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Get the allowance.
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowance := rg.Settings.Allowance
+
 	// Begin an RPC session. This will lock the contract.
-	s1, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s1, err := cs.NewSession(hhg.Entry.HostDBEntry, allowance, contract.ID, cg.Height, stubHostDB{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Attempt to begin a separate RPC session. This will block while waiting
 	// to acquire the contract lock, and eventually fail.
-	_, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	_, err = cs.NewSession(hhg.Entry.HostDBEntry, allowance, contract.ID, cg.Height, stubHostDB{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "contract is locked by another party") {
 		t.Fatal("expected contract lock error, got", err)
 	}
@@ -210,7 +225,7 @@ func TestHostLockTimeout(t *testing.T) {
 			panic(err) // can't call t.Fatal from goroutine
 		}
 	}()
-	s2, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s2, err := cs.NewSession(hhg.Entry.HostDBEntry, allowance, contract.ID, cg.Height, stubHostDB{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,8 +267,15 @@ func TestHostBaseRPCPrice(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Get the allowance.
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowance := rg.Settings.Allowance
+
 	// Begin an RPC session.
-	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, allowance, contract.ID, cg.Height, stubHostDB{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,9 +332,15 @@ func TestMultiRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Get the allowance.
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowance := rg.Settings.Allowance
 
 	// begin the RPC session
-	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, allowance, contract.ID, cg.Height, stubHostDB{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,5 +385,109 @@ func TestMultiRead(t *testing.T) {
 	}
 	if len(buf.Bytes()) == len(sector)*len(req.Sections) {
 		t.Fatal("read did not quit early")
+	}
+}
+
+// TestRPCExtortionChecks tests that renter's avoid paying for RPCs with costs
+// that indiciate extortion.
+func TestRPCExtortionChecks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	gp := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterHostTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// manually grab a renter contract
+	renter := tg.Renters()[0]
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := cs.ViewAll()[0]
+
+	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allowance := rg.Settings.Allowance
+	host := tg.Hosts()[0]
+	hdbEntry := hhg.Entry.HostDBEntry
+	lastRev := contract.Transaction.FileContractRevisions[0]
+
+	remainingStorage := float64(allowance.ExpectedStorage-lastRev.NewFileSize) / float64(allowance.Hosts)
+	remainingSectorsToUpload := uint64(math.Ceil(remainingStorage / float64(modules.SectorSize)))
+	blockBytes := types.NewCurrency64(modules.SectorSize * uint64(lastRev.NewWindowEnd-cg.Height))
+	sectorStoragePrice := hdbEntry.StoragePrice.Mul(blockBytes)
+	totalStoragePrice := sectorStoragePrice.Mul64(remainingSectorsToUpload)
+
+	fundsMinusStorage := contract.RenterFunds.Sub(totalStoragePrice)
+	extortionUploadRate := fundsMinusStorage.Div64(remainingSectorsToUpload).Div64(modules.SectorSize)
+
+	// Set the upload cost to slightly above the extortion threshold.
+	err = host.HostModifySettingPost(client.HostParamMinUploadBandwidthPrice, extortionUploadRate.MulFloat(1.00001))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Begin an RPC session.
+	s, err := cs.NewSession(hdbEntry, allowance, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Update the session settings to match the new base RPC price.
+	_, err = s.Settings()
+	if err != nil {
+		t.Fatal(nil)
+	}
+
+	// Upload a sector.
+	sector := fastrand.Bytes(int(modules.SectorSize))
+	_, _, err = s.Append(sector)
+	if err == nil || !strings.Contains(err.Error(), "upload extortion") {
+		t.Fatal("expected extortion error, got", err)
+	}
+
+	// Close the session and try the same upload with a upload cost slightly below the extortion threshold.
+	err = s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = host.HostModifySettingPost(client.HostParamMinUploadBandwidthPrice, extortionUploadRate.MulFloat(0.9999))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Begin an RPC session.
+	s, err = cs.NewSession(hdbEntry, allowance, contract.ID, cg.Height, stubHostDB{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Update the session settings to match the new base RPC price.
+	_, err = s.Settings()
+	if err != nil {
+		t.Fatal(nil)
+	}
+	// Upload a sector.
+	_, _, err = s.Append(sector)
+	if err != nil {
+		t.Fatal("Expected good upload", err)
 	}
 }
