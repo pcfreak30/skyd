@@ -167,7 +167,7 @@ mean however that the host is at risk for all of the money it has yet to persist
 to disk. If the host loses power at that exact moment, the host will forget that
 the user has spent money and the user will be able to spend that money again.
 The host can configure the amount of money he is willing to risk due to this
-asynchronous persist model through the `MaxUnsavedDelta` setting.
+asynchronous persist model through the `MaxEphemeralAccountRisk` setting.
 
 ### Withdrawal Message Expiry
 
