@@ -66,7 +66,6 @@ type Contractor struct {
 	// is unlocked.
 	recentRecoveryChange modules.ConsensusChangeID
 
-	accounts            map[types.FileContractID]*hostAccount
 	downloaders         map[types.FileContractID]*hostDownloader
 	editors             map[types.FileContractID]*hostEditor
 	sessions            map[types.FileContractID]*hostSession
@@ -329,7 +328,6 @@ func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hd
 		synced:               make(chan struct{}),
 
 		staticContracts:      contractSet,
-		accounts:             make(map[types.FileContractID]*hostAccount),
 		downloaders:          make(map[types.FileContractID]*hostDownloader),
 		editors:              make(map[types.FileContractID]*hostEditor),
 		sessions:             make(map[types.FileContractID]*hostSession),

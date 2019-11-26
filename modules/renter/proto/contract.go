@@ -47,16 +47,15 @@ type contractHeader struct {
 	SecretKey crypto.SecretKey
 
 	// Same as modules.RenterContract.
-	StartHeight         types.BlockHeight
-	DownloadSpending    types.Currency
-	StorageSpending     types.Currency
-	UploadSpending      types.Currency
-	FundAccountSpending types.Currency
-	TotalCost           types.Currency
-	ContractFee         types.Currency
-	TxnFee              types.Currency
-	SiafundFee          types.Currency
-	Utility             modules.ContractUtility
+	StartHeight      types.BlockHeight
+	DownloadSpending types.Currency
+	StorageSpending  types.Currency
+	UploadSpending   types.Currency
+	TotalCost        types.Currency
+	ContractFee      types.Currency
+	TxnFee           types.Currency
+	SiafundFee       types.Currency
+	Utility          modules.ContractUtility
 }
 
 // validate returns an error if the contractHeader is invalid.
@@ -342,7 +341,9 @@ func (c *SafeContract) managedRecordFundAccountIntent(rev types.FileContractRevi
 	newHeader := c.header
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
 	newHeader.Transaction.TransactionSignatures = nil
-	newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount)
+
+	// TODO: do we want to register this fund in the contract header?
+	// newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount)
 
 	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),

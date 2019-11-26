@@ -1,0 +1,49 @@
+// NOTE this is merely a mocked of the peermux object to be able to use the
+// Stream interface
+package modules
+
+import (
+	"net"
+	"time"
+
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/types"
+)
+
+var mock = types.Specifier{'M', 'o', 'c', 'k'}
+
+type Stream interface {
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	SetPriority(int) error
+	SetTimeout(time.Time) error
+}
+
+// For now just have stream wrap a net.Conn
+type stream struct{ conn net.Conn }
+
+func (s *stream) Read(b []byte) (int, error)   { return s.conn.Read(b) }
+func (s *stream) Write(b []byte) (int, error)  { return s.conn.Write(b) }
+func (s *stream) SetPriority(p int) error      { return nil }
+func (s *stream) SetTimeout(t time.Time) error { return s.conn.SetDeadline(t) }
+
+type PeerMux struct {
+	streams map[types.Specifier]*stream
+}
+
+func NewPeerMux(address string) *PeerMux {
+	conn, err := (&net.Dialer{
+		Cancel:  make(chan struct{}),
+		Timeout: 45 * time.Second,
+	}).Dial("tcp", address)
+	if err != nil {
+		build.Critical(err)
+		return nil
+	}
+	return &PeerMux{streams: map[types.Specifier]*stream{
+		mock: &stream{conn: conn},
+	}}
+}
+
+func (p *PeerMux) Stream() Stream { return p.streams[mock] }
+func (p *PeerMux) Close() error   { return nil }

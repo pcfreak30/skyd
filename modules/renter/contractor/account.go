@@ -7,49 +7,64 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// TODO: the account interface is duplicated, figure a clean way to dedupe it
+// Account interface lists all possible actions which can be done on the
+// renter's account on the host
 type Account interface {
 	AccountBalance() (types.Currency, error)
 	FundAccount(amount types.Currency) error
 }
 
+// A hostAccount allows to interact with the renter's ephemeral account on a
+// host. If money needs to be deposited into that account it will revise the
+// file contract to do so.
 type hostAccount struct {
 	hostKey    types.SiaPublicKey
-	contractor *Contractor
-	account    *proto.Account
+	accountKey types.SiaPublicKey
+	contractID types.FileContractID
+	client     *proto.RPCClient
+	c          *Contractor
 }
 
-func (c *Contractor) Account(hostKey types.SiaPublicKey) (Account, error) {
-	c.mu.RLock()
-	cID, cExists := c.pubKeysToContractID[hostKey.String()]
-	account, aExists := c.accounts[contractID]
-	c.mu.RUnlock()
-
-	if !cExists {
-		return nil, errors.New("No contract found for host")
-	}
-	if aExists {
-		return account, nil
+// Account returns a new hostAccount for the given host and account key
+func (c *Contractor) Account(host, account types.SiaPublicKey) (Account, error) {
+	h, exists, err := c.hdb.Host(host)
+	if !exists || err != nil {
+		return nil, errors.New("host not found")
 	}
 
-	// Create account
-	account = &hostAccount{
-		hostKey:    hostKey,
-		contractor: c,
-		account:    c.staticContracts.NewAccount(contractID),
+	contract, exists := c.ContractByPublicKey(host)
+	if !exists {
+		return nil, errors.New("contract not found")
 	}
 
-	// Cache account
-	c.mu.Lock()
-	c.accounts[contractID] = account
-	c.mu.Unlock()
-
-	return account, nil
+	client := proto.NewRPCClient(string(h.NetAddress))
+	return &hostAccount{
+		hostKey:    host,
+		accountKey: account,
+		contractID: contract.ID,
+		client:     client,
+		c:          c,
+	}, nil
 }
 
+// AccountBalance returns the account balance
 func (a *hostAccount) AccountBalance() (types.Currency, error) {
-	return a.account.GetBalance()
+	contract, exists := a.c.staticContracts.Acquire(a.contractID)
+	if !exists {
+		return types.ZeroCurrency, errors.New("contract not present in contract set")
+	}
+	defer a.c.staticContracts.Return(contract)
+	return a.client.AccountBalance(contract, a.c.blockHeight)
 }
 
+// FundAccount will use the underlying contract to move money from the renter to
+// the host, hereby funding the ephemeral account
 func (a *hostAccount) FundAccount(amount types.Currency) error {
-	return a.account.Fund(amount, a.contractor.blockHeight)
+	contract, exists := a.c.staticContracts.Acquire(a.contractID)
+	if !exists {
+		return errors.New("contract not present in contract set")
+	}
+	defer a.c.staticContracts.Return(contract)
+	return a.client.FundAccount(contract, amount, a.c.blockHeight)
 }

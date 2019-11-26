@@ -60,7 +60,8 @@ func (wp *workerPool) callUpdate() {
 	for id, contract := range contractMap {
 		_, exists := wp.workers[id]
 		if !exists {
-			w := wp.renter.newWorker(contract.HostPublicKey)
+			acc := wp.renter.newAccount(contract.HostPublicKey)
+			w := wp.renter.newWorker(contract.HostPublicKey, acc)
 			wp.workers[id] = w
 			if err := wp.renter.tg.Add(); err != nil {
 				// Renter shutdown is happening, abort the loop to create more

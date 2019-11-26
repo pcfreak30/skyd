@@ -118,7 +118,7 @@ type hostContractor interface {
 
 	// Account creates an Account that represents the renter's ephemeral account
 	// on the host for the specified key.
-	Account(types.SiaPublicKey) (contractor.Account, error)
+	Account(types.SiaPublicKey, types.SiaPublicKey) (contractor.Account, error)
 
 	// SetAllowance sets the amount of money the contractor is allowed to
 	// spend on contracts over a given time period, divided among the number

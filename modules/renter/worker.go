@@ -24,7 +24,8 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules"
+
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -42,6 +43,7 @@ import (
 // uploading and downloading with flaky hosts in the worker sets has
 // substantially reduced overall performance and throughput.
 type worker struct {
+	staticStream modules.Stream
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
 	staticHostPubKey types.SiaPublicKey
@@ -83,8 +85,8 @@ type worker struct {
 	// drops below this target, the account gets refilled.
 	staticAccountBalanceTarget types.Currency
 
-	account        contractor.Account // represents the ephemeral account on the host
-	accountBalance types.Currency     // keeps track of the ephemeral account balance
+	account        Account        // represents the ephemeral account on the host
+	accountBalance types.Currency // keeps track of the ephemeral account balance
 
 	// Utilities.
 	//
@@ -176,7 +178,12 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		// Perform fund ephemeral account job
+		// TODO we will want to call this `managedRefillAccount` whenever the
+		// ephemeral account balance has been updated. Currently downloads do
+		// not yet use the account to pay, so that's not really useful
+		w.managedRefillAccount()
+
+		// Refill the account in a separate thread
 		go w.threadedPerformFundAcountJob()
 
 		// Perform any job to fetch the list of backups from the host.
@@ -187,13 +194,11 @@ func (w *worker) threadedWorkLoop() {
 		// Perform any job to help download a chunk.
 		workAttempted = w.managedPerformDownloadChunkJob()
 		if workAttempted {
-			w.managedRefillAccount()
 			continue
 		}
 		// Perform any job to help upload a chunk.
 		workAttempted = w.managedPerformUploadChunkJob()
 		if workAttempted {
-			w.managedRefillAccount()
 			continue
 		}
 
@@ -211,20 +216,26 @@ func (w *worker) threadedWorkLoop() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
-	// TODO handle error, it will never occur seeing as the worker is called
-	// using an existing hostPubKey and the error happens in case the host is
-	// unknown
-	account, _ := r.hostContractor.Account(hostPubKey)
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, account Account) *worker {
+	// TODO we probably want to figure out a good balance target using the
+	// host's settings here. E.g. can't have a target > max account balance
+	// For now fix it on 1/5th if the default max account balance
+	target := types.SiacoinPrecision.Div64(5)
+
+	// Fetch the initial account balance
+	balance, err := account.AccountBalance()
+	if err != nil {
+		// TODO handle this erro
+	}
+
 	return &worker{
 		staticHostPubKey: hostPubKey,
 
-		staticAccountBalanceTarget: types.SiacoinPrecision.Div64(5),
-		accountBalance:             types.ZeroCurrency,
+		staticAccountBalanceTarget: target,
 		account:                    account,
-
-		killChan: make(chan struct{}),
-		wakeChan: make(chan struct{}, 1),
+		accountBalance:             balance,
+		killChan:                   make(chan struct{}),
+		wakeChan:                   make(chan struct{}, 1),
 
 		renter: r,
 	}
