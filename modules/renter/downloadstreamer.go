@@ -93,12 +93,9 @@ func (s *streamer) managedFillCache() bool {
 	if cacheOffset <= streamOffset && cacheOffset+cacheLen == fileSize {
 		return false
 	}
-	// If partial downloads are supported and the stream offset is in the first
-	// half of the cache, then no fetching is required.
-	//
-	// An extra check that there is any data in the cache needs to be made so
-	// that the cache fill function runs immediately after initialization.
-	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen/2 {
+	// If partial downloads are supported and more than half of the target cache
+	// size is remaining, then no fetching is required.
+	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < (cacheOffset+cacheLen-(targetCacheSize/2)) {
 		return false
 	}
 	// If partial downloads are not supported, the full chunk containing the
@@ -158,7 +155,7 @@ func (s *streamer) managedFillCache() bool {
 		// consumed, so that the cache remains the same size after we drop all
 		// of the consumed bytes and extend the cache with new data.
 		fetchOffset = cacheOffset + cacheLen
-		fetchLen = targetCacheSize - (streamOffset - cacheOffset)
+		fetchLen = targetCacheSize - (cacheOffset + cacheLen - streamOffset)
 	}
 
 	// Finally, check if the fetchOffset and fetchLen goes beyond the boundaries
@@ -440,6 +437,10 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 	newOffset += offset
 	if newOffset < 0 {
 		return s.offset, errors.New("cannot seek to negative offset")
+	}
+	// If the Seek is a no-op, do not invalidate the cache.
+	if newOffset == s.offset {
+		return 0, nil
 	}
 
 	// Reset the target cache size upon seek to be the default again. This is in

@@ -476,6 +476,22 @@ func (sds *SiaDirSet) open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
 	}, nil
 }
 
+// readLockMetadata returns the metadata of the SiaDir at siaPath. NOTE: The
+// 'readLock' prefix in this case is used to indicate that it's safe to call
+// this method with other 'readLock' methods without locking since is doesn't
+// write to any fields. This guarantee can be made by locking sfs.mu and then
+// spawning multiple threads which call 'readLock' methods in parallel.
+func (sds *SiaDirSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, error) {
+	var entry *siaDirSetEntry
+	entry, exists := sds.siaDirMap[siaPath]
+	if exists {
+		// Get metadata from entry.
+		return entry.Metadata(), nil
+	}
+	// Load metadat from disk.
+	return callLoadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(sds.staticRootDir), modules.ProdDependencies)
+}
+
 // readLockDirInfo returns the Directory Information of the siadir. NOTE: The 'readLock'
 // prefix in this case is used to indicate that it's safe to call this method
 // with other 'readLock' methods without locking since is doesn't write to any
@@ -514,24 +530,7 @@ func (sds *SiaDirSet) readLockDirInfo(siaPath modules.SiaPath) (modules.Director
 		NumStuckChunks:      metadata.NumStuckChunks,
 		NumSubDirs:          metadata.NumSubDirs,
 		SiaPath:             siaPath,
-		Size:                metadata.Size,
+		DirSize:             metadata.Size,
 		StuckHealth:         metadata.StuckHealth,
 	}, nil
-}
-
-// readLockMetadata returns the metadata of the SiaDir at siaPath. NOTE: The
-// 'readLock' prefix in this case is used to indicate that it's safe to call
-// this method with other 'readLock' methods without locking since is doesn't
-// write to any fields. This guarantee can be made by locking sfs.mu and then
-// spawning multiple threads which call 'readLock' methods in parallel.
-func (sds *SiaDirSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, error) {
-	var entry *siaDirSetEntry
-	entry, exists := sds.siaDirMap[siaPath]
-	if exists {
-		// Get metadata from entry.
-		return entry.Metadata(), nil
-	}
-	// Load metadat from disk.
-	md, err := callLoadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(sds.staticRootDir), modules.ProdDependencies)
-	return md, err
 }

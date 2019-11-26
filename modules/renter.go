@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -286,9 +287,29 @@ type DirectoryInfo struct {
 	NumStuckChunks      uint64    `json:"numstuckchunks"`
 	NumSubDirs          uint64    `json:"numsubdirs"`
 	SiaPath             SiaPath   `json:"siapath"`
-	Size                uint64    `json:"size"`
+	DirSize             uint64    `json:"size"` // name chaned to avoid conflict with Size() method
 	StuckHealth         float64   `json:"stuckhealth"`
 }
+
+// Name implements os.FileInfo.
+func (d DirectoryInfo) Name() string { return d.SiaPath.Name() }
+
+// Size implements os.FileInfo.
+func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
+
+// Mode implements os.FileInfo.
+//
+// TODO: get the real mode
+func (d DirectoryInfo) Mode() os.FileMode { return 0755 }
+
+// ModTime implements os.FileInfo.
+func (d DirectoryInfo) ModTime() time.Time { return d.MostRecentModTime }
+
+// IsDir implements os.FileInfo.
+func (d DirectoryInfo) IsDir() bool { return true }
+
+// Sys implements os.FileInfo.
+func (d DirectoryInfo) Sys() interface{} { return nil }
 
 // DownloadInfo provides information about a file that has been requested for
 // download.
@@ -332,7 +353,8 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	ModTime          time.Time         `json:"modtime"`
+	FileMode         os.FileMode       `json:"mode"`    // name chaned to avoid conflict with Mode()
+	ModificationTime time.Time         `json:"modtime"` // name changed to avoid conflict with ModTime() method
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`
@@ -341,9 +363,28 @@ type FileInfo struct {
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
+	UID              string            `json:"uid"`
 	UploadedBytes    uint64            `json:"uploadedbytes"`
 	UploadProgress   float64           `json:"uploadprogress"`
 }
+
+// Name implements os.FileInfo.
+func (f FileInfo) Name() string { return f.SiaPath.Name() }
+
+// Size implements os.FileInfo.
+func (f FileInfo) Size() int64 { return int64(f.Filesize) }
+
+// Mode implements os.FileInfo.
+func (f FileInfo) Mode() os.FileMode { return f.FileMode }
+
+// ModTime implements os.FileInfo.
+func (f FileInfo) ModTime() time.Time { return f.ModificationTime }
+
+// IsDir implements os.FileInfo.
+func (f FileInfo) IsDir() bool { return false }
+
+// Sys implements os.FileInfo.
+func (f FileInfo) Sys() interface{} { return nil }
 
 // A HostDBEntry represents one host entry in the Renter's host DB. It
 // aggregates the host's external settings and metrics with its public key.
@@ -407,6 +448,12 @@ type HostScoreBreakdown struct {
 	StorageRemainingAdjustment float64 `json:"storageremainingadjustment"`
 	UptimeAdjustment           float64 `json:"uptimeadjustment"`
 	VersionAdjustment          float64 `json:"versionadjustment"`
+}
+
+// MountInfo contains information about a mounted FUSE filesystem.
+type MountInfo struct {
+	MountPoint string  `json:"mountpoint"`
+	SiaPath    SiaPath `json:"siapath"`
 }
 
 // RenterPriceEstimation contains a bunch of files estimating the costs of
@@ -477,6 +524,11 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 	}
 	*mrs = umrs
 	return nil
+}
+
+// MountOptions specify various settings of a FUSE filesystem mount.
+type MountOptions struct {
+	ReadOnly bool
 }
 
 // RecoverableContract is a types.FileContract as it appears on the blockchain
@@ -649,6 +701,16 @@ type Renter interface {
 	// CurrentPeriod returns the height at which the current allowance period
 	// began.
 	CurrentPeriod() types.BlockHeight
+
+	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
+	// available via the local filesystem.
+	Mount(mountPoint string, sp SiaPath, opts MountOptions) error
+
+	// MountInfo returns the list of currently mounted FUSE filesystems.
+	MountInfo() []MountInfo
+
+	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
+	Unmount(mountPoint string) error
 
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
