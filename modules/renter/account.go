@@ -35,8 +35,11 @@ func (r *Renter) newAccount(hostKey types.SiaPublicKey) Account {
 	}
 }
 
-// Balance returns the current account balance
+// AccountBalance returns the current account balance
 func (a *account) AccountBalance() (types.Currency, error) {
+	// TODO fetching the account balance costs money, we can pay for this by
+	// using a contract, or using an ephemeral account. For now we assume we
+	// always use a file contract to make payments
 	acc, err := a.r.hostContractor.Account(a.hostKey, a.accountKey)
 	if err != nil {
 		return types.ZeroCurrency, err
@@ -44,8 +47,11 @@ func (a *account) AccountBalance() (types.Currency, error) {
 	return acc.AccountBalance()
 }
 
-// Fund will deposit given amount into the account
+// FundAccount will deposit given amount into the account
 func (a *account) FundAccount(amount types.Currency) error {
+	// TODO funding the account balance requires money, we can pay for this by
+	// using a contract, or using an ephemeral account. For now we assume we
+	// always use a file contract to make payments
 	acc, err := a.r.hostContractor.Account(a.hostKey, a.accountKey)
 	if err != nil {
 		return err

@@ -2,35 +2,47 @@ package proto
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 type RPCClient struct {
-	peerMux *modules.PeerMux
+	peerMux       *modules.PeerMux
+	rpcPriceTable *modules.RPCPriceTable
 }
 
 func NewRPCClient(address string) *RPCClient {
 	pm := modules.NewPeerMux(address)
-	return &RPCClient{peerMux: pm}
+	pt := &modules.RPCPriceTable{} // TODO: this 'll probably be set on the peermux itself right after the handshake was completed
+	return &RPCClient{peerMux: pm, rpcPriceTable: pt}
 }
 
-func (c *RPCClient) AccountBalance(sc *SafeContract, currentBlockHeight types.BlockHeight) (types.Currency, error) {
+// EphemeralAccountBalance calls the ephemeralAccountBalanceRPC on the host
+func (c *RPCClient) EphemeralAccountBalance(accountID string, sc *SafeContract, currentBlockHeight types.BlockHeight) (types.Currency, error) {
 	return types.ZeroCurrency, nil
 }
 
-func (c *RPCClient) FundAccount(sc *SafeContract, amount types.Currency, currentBlockHeight types.BlockHeight) error {
-
-	// verify the contract has enough money in it to make the payment
+// FundEphemeralAccount calls the fundEphemeralAccountRPC on the host
+func (c *RPCClient) FundEphemeralAccount(accountID string, sc *SafeContract, amount types.Currency, currentBlockHeight types.BlockHeight) error {
 	metadata := sc.Metadata()
-	if metadata.RenterFunds.Cmp(amount) < 0 {
+
+	// lookup the host's RPC price
+	rpcCost, err := c.getRPCCost(metadata.HostPublicKey, modules.RPCFundEphemeralAccount)
+	if err != nil {
+		return errors.AddContext(err, "RPC not available on host")
+	}
+
+	// verify the contract has enough money in it
+	totalCost := rpcCost.Add(amount)
+	if metadata.RenterFunds.Cmp(totalCost) < 0 {
 		return errors.New("contract has insufficient funds")
 	}
 
 	// create a new revision
 	current := metadata.Transaction.FileContractRevisions[0]
-	rev := newPaymentRevision(current, amount)
+	rev := newPaymentRevision(current, totalCost)
 
 	// create transaction containing the revision
 	signedTxn := types.Transaction{
@@ -41,22 +53,63 @@ func (c *RPCClient) FundAccount(sc *SafeContract, amount types.Currency, current
 			PublicKeyIndex: 0, // renter key is always first -- see formContract
 		}},
 	}
-	// TODO signature := sc.Sign(signedTxn.SigHash(0, currentBlockHeight))
+	sig := sc.Sign(signedTxn.SigHash(0, currentBlockHeight))
 
-	// TODO send RPCFundEphemeralAccountRequest
+	// send RPCFundEphemeralAccountRequest
+	stream := c.peerMux.Stream(modules.RPCFundEphemeralAccount)
+	if _, err := stream.Write(encoding.Marshal(modules.RPCFundEphemeralAccountRequest{
+		AccountID: accountID,
+	})); err != nil {
+		return err
+	}
+
+	// record the intent (TODO: should we do this for accounts? should we then
+	// also change the contract header to reflect this?)
 	walTxn, err := sc.managedRecordFundAccountIntent(rev, amount)
 	if err != nil {
 		return err
 	}
 
-	// TODO send PaymentRequest
-	// TODO send PayByContractRequest
+	// send PaymentRequest & PayByContractRequest
+	if _, err := stream.Write(encoding.MarshalAll(modules.PaymentRequest{Type: modules.PayByContract},
+		modules.PayByContractRequest{
+			Revision:  rev,
+			Signature: sig,
+		})); err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	if _, err := stream.Read(payByResponse); err != nil {
+		return err
+	}
+
+	// receive RPCFundEphemeralAccountResponse (which is the receipt)
+	var fundAccResponse modules.RPCFundEphemeralAccountResponse
+	if _, err := stream.Read(fundAccResponse); err != nil {
+		return err
+	}
+
+	// TODO verify both responses to see if payment was made. If successful we
+	// want to commit the intent
 	err = sc.managedCommitFundAccountIntent(walTxn, signedTxn, amount)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// getRPCCost returns the cost of the given RPC on the given host
+func (c *RPCClient) getRPCCost(hostKey types.SiaPublicKey, rpcID types.Specifier) (types.Currency, error) {
+	remoteRPCID := modules.NewRemoteRPCID(hostKey, rpcID)
+	cost, ok := c.rpcPriceTable.Costs[remoteRPCID]
+	if !ok {
+		// TODO return errRPCNotAvailable
+		return types.ZeroCurrency, nil
+	}
+	return cost, nil
 }
 
 // newPaymentRevision creates a copy of current with its revision number

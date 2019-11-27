@@ -59,6 +59,21 @@ type (
 	RPCFundEphemeralAccountRequest struct {
 		AccountID string
 	}
+
+	// RPCFundEphemeralAccountResponse
+	RPCFundEphemeralAccountResponse struct {
+		Signature []byte // receipt
+	}
+
+	// RPCEphemeralAccountBalanceRequest
+	RPCEphemeralAccountBalanceRequest struct {
+		AccountID string
+	}
+
+	// RPCEphemeralAccountBalanceResponse
+	RPCEphemeralAccountBalanceResponse struct {
+		Balance types.Currency
+	}
 )
 
 // newSpecifier takes in a name and returns a fixed-length byte-array specifier

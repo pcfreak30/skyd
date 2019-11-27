@@ -55,7 +55,7 @@ func (a *hostAccount) AccountBalance() (types.Currency, error) {
 		return types.ZeroCurrency, errors.New("contract not present in contract set")
 	}
 	defer a.c.staticContracts.Return(contract)
-	return a.client.AccountBalance(contract, a.c.blockHeight)
+	return a.client.EphemeralAccountBalance(a.accountKey.String(), contract, a.c.blockHeight)
 }
 
 // FundAccount will use the underlying contract to move money from the renter to
@@ -66,5 +66,5 @@ func (a *hostAccount) FundAccount(amount types.Currency) error {
 		return errors.New("contract not present in contract set")
 	}
 	defer a.c.staticContracts.Return(contract)
-	return a.client.FundAccount(contract, amount, a.c.blockHeight)
+	return a.client.FundEphemeralAccount(a.accountKey.String(), contract, amount, a.c.blockHeight)
 }

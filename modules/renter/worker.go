@@ -43,7 +43,6 @@ import (
 // uploading and downloading with flaky hosts in the worker sets has
 // substantially reduced overall performance and throughput.
 type worker struct {
-	staticStream modules.Stream
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
 	staticHostPubKey types.SiaPublicKey
@@ -179,8 +178,9 @@ func (w *worker) threadedWorkLoop() {
 		}
 
 		// TODO we will want to call this `managedRefillAccount` whenever the
-		// ephemeral account balance has been updated. Currently downloads do
-		// not yet use the account to pay, so that's not really useful
+		// ephemeral account balance has been updated. Currently downloads are
+		// not yet paid by the account, so calling it here will never actually
+		// schedule a job.
 		w.managedRefillAccount()
 
 		// Refill the account in a separate thread
@@ -216,16 +216,17 @@ func (w *worker) threadedWorkLoop() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, account Account) *worker {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
 	// TODO we probably want to figure out a good balance target using the
 	// host's settings here. E.g. can't have a target > max account balance
 	// For now fix it on 1/5th if the default max account balance
 	target := types.SiacoinPrecision.Div64(5)
 
 	// Fetch the initial account balance
+	account := r.newAccount(hostPubKey)
 	balance, err := account.AccountBalance()
 	if err != nil {
-		// TODO handle this erro
+		// TODO handle this error
 	}
 
 	return &worker{

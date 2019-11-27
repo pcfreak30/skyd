@@ -358,7 +358,7 @@ func (c *SafeContract) managedRecordFundAccountIntent(rev types.FileContractRevi
 	return t, nil
 }
 
-func (c *SafeContract) managedCommitFundAccountIntent(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
+func (c *SafeContract) managedCommitFundAccountIntent(t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency) error {
 	// TODO
 	return nil
 }
