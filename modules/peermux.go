@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var mock = types.Specifier{'M', 'o', 'c', 'k'}
 
 type Stream interface {
-	Read(obj interface{}) (int, error)
+	Read([]byte) (int, error)
 	Write([]byte) (int, error)
 	SetPriority(int) error
 	SetTimeout(time.Time) error
@@ -26,19 +25,7 @@ type Stream interface {
 // For now just have stream wrap a net.Conn
 type stream struct{ conn net.Conn }
 
-func (s *stream) Read(obj interface{}) (int, error) {
-	// Note we purposefully skip encryption, really just want to have an
-	// interface that compiles
-	bytes, err := encoding.ReadPrefixedBytes(s.conn, 4096)
-	if err != nil {
-		return len(bytes), err
-	}
-	err = encoding.Unmarshal(bytes, obj)
-	if err != nil {
-		return len(bytes), err
-	}
-	return len(bytes), nil
-}
+func (s *stream) Read(b []byte) (int, error)   { return s.conn.Read(b) }
 func (s *stream) Write(b []byte) (int, error)  { return s.conn.Write(b) }
 func (s *stream) SetPriority(p int) error      { return nil }
 func (s *stream) SetTimeout(t time.Time) error { return s.conn.SetDeadline(t) }

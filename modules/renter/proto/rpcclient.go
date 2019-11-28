@@ -15,8 +15,25 @@ type RPCClient struct {
 
 func NewRPCClient(address string) *RPCClient {
 	pm := modules.NewPeerMux(address)
-	pt := &modules.RPCPriceTable{} // TODO: this 'll probably be set on the peermux itself right after the handshake was completed
+	pt := &modules.RPCPriceTable{} // TODO
 	return &RPCClient{peerMux: pm, rpcPriceTable: pt}
+}
+
+func (c *RPCClient) writeRequest(stream modules.Stream, reqs ...interface{}) error {
+	_, err := stream.Write(encoding.MarshalAll(reqs))
+	return err
+}
+
+func (c *RPCClient) readResponse(stream modules.Stream, resp interface{}) error {
+	bytes, err := encoding.ReadPrefixedBytes(stream, 4096)
+	if err != nil {
+		return err
+	}
+	err = encoding.Unmarshal(bytes, resp)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // EphemeralAccountBalance calls the ephemeralAccountBalanceRPC on the host
@@ -57,9 +74,9 @@ func (c *RPCClient) FundEphemeralAccount(accountID string, sc *SafeContract, amo
 
 	// send RPCFundEphemeralAccountRequest
 	stream := c.peerMux.Stream(modules.RPCFundEphemeralAccount)
-	if _, err := stream.Write(encoding.Marshal(modules.RPCFundEphemeralAccountRequest{
+	if err := c.writeRequest(stream, modules.RPCFundEphemeralAccountRequest{
 		AccountID: accountID,
-	})); err != nil {
+	}); err != nil {
 		return err
 	}
 
@@ -71,23 +88,23 @@ func (c *RPCClient) FundEphemeralAccount(accountID string, sc *SafeContract, amo
 	}
 
 	// send PaymentRequest & PayByContractRequest
-	if _, err := stream.Write(encoding.MarshalAll(modules.PaymentRequest{Type: modules.PayByContract},
+	if err := c.writeRequest(stream, modules.PaymentRequest{Type: modules.PayByContract},
 		modules.PayByContractRequest{
 			Revision:  rev,
 			Signature: sig,
-		})); err != nil {
+		}); err != nil {
 		return err
 	}
 
 	// receive PayByContractResponse
 	var payByResponse modules.PayByContractResponse
-	if _, err := stream.Read(payByResponse); err != nil {
+	if err := c.readResponse(stream, payByResponse); err != nil {
 		return err
 	}
 
 	// receive RPCFundEphemeralAccountResponse (which is the receipt)
 	var fundAccResponse modules.RPCFundEphemeralAccountResponse
-	if _, err := stream.Read(fundAccResponse); err != nil {
+	if err := c.readResponse(stream, fundAccResponse); err != nil {
 		return err
 	}
 
