@@ -24,6 +24,7 @@ type fundAccountJob struct {
 // fundAccountJobResult contains the result from funding an ephemeral account
 // on the host.
 type fundAccountJobResult struct {
+	job    *fundAccountJob
 	funded types.Currency
 	err    error
 }
@@ -32,6 +33,10 @@ type fundAccountJobResult struct {
 // queue. A channel will be returned, this channel will have the result of the
 // job returned down it when the job is completed.
 func (w *worker) callQueueFundAccount(amount types.Currency) chan fundAccountJobResult {
+	w.accountState.mu.Lock()
+	w.accountState.pending = w.accountState.pending.Add(amount)
+	w.accountState.mu.Unlock()
+
 	resultChan := make(chan fundAccountJobResult)
 	w.staticFundAccountJobQueue.mu.Lock()
 	w.staticFundAccountJobQueue.queue = append(w.staticFundAccountJobQueue.queue, &fundAccountJob{
@@ -40,6 +45,7 @@ func (w *worker) callQueueFundAccount(amount types.Currency) chan fundAccountJob
 	})
 	w.staticFundAccountJobQueue.mu.Unlock()
 	w.staticWake()
+
 	return resultChan
 }
 
@@ -51,6 +57,7 @@ func (w *worker) managedKillFundAccountJobs() {
 	w.staticFundAccountJobQueue.mu.Lock()
 	for _, job := range w.staticFundAccountJobQueue.queue {
 		result := fundAccountJobResult{
+			job: job,
 			err: errors.New("worker was killed before account could be funded"),
 		}
 		job.resultChan <- result
@@ -67,38 +74,81 @@ func (w *worker) threadedPerformFundAcountJob() {
 	}
 	defer w.renter.tg.Done()
 
-	// Check whether there is any work to be performed.
+	// Try to dequeue a job, return if there's no work to be performed
 	w.staticFundAccountJobQueue.mu.Lock()
 	if len(w.staticFundAccountJobQueue.queue) == 0 {
 		w.staticFundAccountJobQueue.mu.Unlock()
 		return
 	}
-
-	// Dequeue a job
 	job := w.staticFundAccountJobQueue.queue[0]
 	w.staticFundAccountJobQueue.queue = w.staticFundAccountJobQueue.queue[1:]
 	w.staticFundAccountJobQueue.mu.Unlock()
 
-	if err := w.account.FundAccount(job.amount); err != nil {
-		job.resultChan <- fundAccountJobResult{err: err}
+	// Fund the account & return the result
+	if err := w.account.Fund(job.amount); err != nil {
+		job.resultChan <- fundAccountJobResult{
+			job: job,
+			err: err,
+		}
 		return
 	}
-
-	job.resultChan <- fundAccountJobResult{funded: job.amount}
+	job.resultChan <- fundAccountJobResult{
+		job:    job,
+		funded: job.amount,
+	}
 }
 
-// managedRefillAccount will check if the account balance is lower than the
-// target and schedule a fund account job to fill the potential deficit
-func (w *worker) managedRefillAccount() {
-	w.mu.Lock()
-	var deficit types.Currency
-	if w.accountBalance.Cmp(w.staticAccountBalanceTarget.Div64(2)) < 0 {
-		deficit = w.staticAccountBalanceTarget.Sub(w.accountBalance)
-		w.accountBalance = w.staticAccountBalanceTarget
-	}
-	defer w.mu.Unlock()
+// managedRefillAccount checks if the account balance drops below a certain
+// threshold, if so it will schedule a fundAccountJob to refill the account
+func (w *worker) managedRefillAccount() bool {
+	w.accountState.mu.Lock()
+	total := w.accountState.balance.Add(w.accountState.pending)
+	w.accountState.mu.Unlock()
 
-	if !deficit.Equals(types.ZeroCurrency) {
-		w.callQueueFundAccount(deficit)
+	if total.Cmp(w.staticAccountBalanceTarget.Div64(2)) < 0 {
+		refill := w.staticAccountBalanceTarget.Sub(total)
+		resultChan := w.callQueueFundAccount(refill)
+		go w.threadedProcessFundAccountResult(resultChan)
+		return true
+	}
+
+	return false
+}
+
+// managedProcessWithdrawal will update the account state when other workers
+// signal they have spent from the ephemeral account
+func (w *worker) managedProcessWithdrawal(amount types.Currency) {
+	w.accountState.mu.Lock()
+	defer w.accountState.mu.Unlock()
+
+	if w.accountState.balance.Cmp(amount) < 0 {
+		w.accountState.balance = types.ZeroCurrency
+		return
+	} // sanity check
+
+	w.accountState.balance = w.accountState.balance.Sub(amount)
+}
+
+// threadedProcessFundAccountResult will update the account state when a
+// fundAccountJob completed.
+func (w *worker) threadedProcessFundAccountResult(resultChan chan fundAccountJobResult) {
+	if err := w.renter.tg.Add(); err != nil {
+		return
+	}
+	defer w.renter.tg.Done()
+
+	for {
+		select {
+		case result := <-resultChan:
+			w.accountState.mu.Lock()
+			w.accountState.pending = w.accountState.pending.Sub(result.job.amount)
+			w.accountState.balance = w.accountState.balance.Add(result.funded)
+			w.accountState.mu.Unlock()
+			return
+		case <-w.renter.tg.StopChan():
+			return
+		case <-w.killChan:
+			return
+		}
 	}
 }

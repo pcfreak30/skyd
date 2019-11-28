@@ -8,8 +8,8 @@ import (
 // Account interface lists all possible actions which can be done on the
 // renter's account on the host
 type Account interface {
-	AccountBalance() (types.Currency, error)
-	FundAccount(amount types.Currency) error
+	GetBalance() (types.Currency, error)
+	Fund(amount types.Currency) error
 }
 
 // account represents a renter's ephemeral account on a host
@@ -22,6 +22,8 @@ type account struct {
 
 // newAccount returns a new account for the given host
 func (r *Renter) newAccount(hostKey types.SiaPublicKey) Account {
+	// TODO should we generate the keypair here? should the account use a pubkey
+	// specific to the renter?
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
@@ -35,8 +37,8 @@ func (r *Renter) newAccount(hostKey types.SiaPublicKey) Account {
 	}
 }
 
-// AccountBalance returns the current account balance
-func (a *account) AccountBalance() (types.Currency, error) {
+// GetBalance returns the current account balance
+func (a *account) GetBalance() (types.Currency, error) {
 	// TODO fetching the account balance costs money, we can pay for this by
 	// using a contract, or using an ephemeral account. For now we assume we
 	// always use a file contract to make payments
@@ -47,8 +49,8 @@ func (a *account) AccountBalance() (types.Currency, error) {
 	return acc.AccountBalance()
 }
 
-// FundAccount will deposit given amount into the account
-func (a *account) FundAccount(amount types.Currency) error {
+// Fund will fund the account by depositing the amount into the account
+func (a *account) Fund(amount types.Currency) error {
 	// TODO funding the account balance requires money, we can pay for this by
 	// using a contract, or using an ephemeral account. For now we assume we
 	// always use a file contract to make payments

@@ -7,9 +7,13 @@ package renter
 // functions for a job are Queue, Kill, and Perform. Queue will add a job to the
 // queue of work of that type. Kill will empty the queue and close out any work
 // that will not be completed. Perform will grab a job from the queue if one
-// exists and complete that piece of work. See snapshotworkerfetchbackups.go for
-// a clean example.
-
+// exists and complete that piece of work. See workerfetchbackups.go for a clean
+// example.
+//
+// The worker has an ephemeral account on the host. It can use this account to
+// pay for downloads and uploads. In order to ensure the account's balance does
+// not run out, it maintains a balance target by refilling it when necessary.
+//
 // TODO: A single session should be added to the worker that gets maintained
 // within the work loop. All jobs performed by the worker will use the worker's
 // single session.
@@ -72,18 +76,20 @@ type worker struct {
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
 
-	// Ephemeral account variables.
-	//
-	// Fund accounts queue for the worker.
-	staticFundAccountJobQueue fundAccountJobQueue
-
 	// The staticAccountBalanceTarget is the amount of money that should always
-	// be contained in the ephemeral account on the host. If the account balance
-	// drops below this target, the account gets refilled.
+	// be contained in the account on the host. If the account balance drops
+	// below this target, the account gets refilled.
 	staticAccountBalanceTarget types.Currency
-
-	account        Account        // represents the ephemeral account on the host
-	accountBalance types.Currency // keeps track of the ephemeral account balance
+	// The staticFundAccountJobQueue holds the fund account jobs
+	staticFundAccountJobQueue fundAccountJobQueue
+	// account represents the account on the host
+	account Account
+	// accountState holds stateful information about the account
+	accountState *accountState
+	// accountWithdrawalsChan is used by workers that spend from the account.
+	// When they withdraw from the account, they use the channel to signal it,
+	// this updates the account's state and potentially triggers a refill.
+	accountWithdrawalsChan chan types.Currency
 
 	// Utilities.
 	//
@@ -94,6 +100,14 @@ type worker struct {
 	mu       sync.Mutex
 	renter   *Renter
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
+}
+
+// accountState keeps track of the account balance, it has its own mutex domain
+// to minimize lock contention
+type accountState struct {
+	balance types.Currency
+	pending types.Currency
+	mu      sync.Mutex
 }
 
 // managedBlockUntilReady will block until the worker has internet connectivity.
@@ -157,6 +171,12 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillFundAccountJobs()
 
+	// Refill the account in a background thread. The workers signal withdrawals
+	// through the accountWithdrawalsChan. Upon receiving a message on this
+	// channel we update the account state and check if the balance is below a
+	// certain threshold. If so we schedule a job to refill it.
+	go w.threadedRefillAccount()
+
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
 	// work is attempted, the loop resets to check for higher priority work
@@ -175,17 +195,13 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		// TODO we will want to call this `managedRefillAccount` whenever the
-		// ephemeral account balance has been updated. Currently downloads are
-		// not yet paid by the account, so calling it here will never actually
-		// schedule a job.
-		w.managedRefillAccount()
-
 		// Refill the account in a separate thread
+		// TODO this might not be the best spot to check for fund account jobs
 		go w.threadedPerformFundAcountJob()
 
 		// Perform any job to fetch the list of backups from the host.
-		workAttempted := w.managedPerformFetchBackupsJob()
+		var workAttempted bool
+		workAttempted = w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
 		}
@@ -213,28 +229,48 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
+// threadedRefillAccount will check if the account needs to be refilled every
+// time a worker spends from the account
+func (w *worker) threadedRefillAccount() {
+	if err := w.renter.tg.Add(); err != nil {
+		return
+	}
+	defer w.renter.tg.Done()
+
+	for {
+		select {
+		case withdrawal := <-w.accountWithdrawalsChan:
+			w.managedProcessWithdrawal(withdrawal)
+			w.managedRefillAccount()
+			continue
+		case <-w.killChan:
+			return
+		case <-w.renter.tg.StopChan():
+			return
+		}
+	}
+}
+
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
-	// TODO we probably want to figure out a good balance target using the
-	// host's settings here. E.g. can't have a target > max account balance
-	// For now fix it on 1/5th if the default max account balance
-	target := types.SiacoinPrecision.Div64(5)
-
-	// Fetch the initial account balance
+	/*
+	 TODOs
+	 + balance target based on host's maxaccountbalance (?)
+	 + handle the error when fetching the current balance
+	 + not sure we want to do all of this here
+	*/
 	account := r.newAccount(hostPubKey)
-	balance, err := account.AccountBalance()
-	if err != nil {
-		// TODO handle this error
-	}
+	balance, _ := account.GetBalance()
 
 	return &worker{
 		staticHostPubKey: hostPubKey,
+		killChan:         make(chan struct{}),
+		wakeChan:         make(chan struct{}, 1),
 
-		staticAccountBalanceTarget: target,
+		staticAccountBalanceTarget: types.SiacoinPrecision.Div64(5),
 		account:                    account,
-		accountBalance:             balance,
-		killChan:                   make(chan struct{}),
-		wakeChan:                   make(chan struct{}, 1),
+		accountState:               &accountState{balance: balance},
+		accountWithdrawalsChan:     make(chan types.Currency),
 
 		renter: r,
 	}
