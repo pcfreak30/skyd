@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // A worker listens for work on a certain host.
@@ -76,20 +77,15 @@ type worker struct {
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
 
-	// The staticAccountBalanceTarget is the amount of money that should always
-	// be contained in the account on the host. If the account balance drops
-	// below this target, the account gets refilled.
-	staticAccountBalanceTarget types.Currency
 	// The staticFundAccountJobQueue holds the fund account jobs
 	staticFundAccountJobQueue fundAccountJobQueue
 	// account represents the account on the host
 	account Account
-	// accountState holds stateful information about the account
-	accountState *accountState
-	// accountWithdrawalsChan is used by workers that spend from the account.
-	// When they withdraw from the account, they use the channel to signal it,
-	// this updates the account's state and potentially triggers a refill.
-	accountWithdrawalsChan chan types.Currency
+
+	// refillChan receives signals from the ephemeral account to schedule fund
+	// account jobs. The account will trigger these when it's balance has
+	// dropped below a certain threshold.
+	refillChan chan types.Currency
 
 	// Utilities.
 	//
@@ -100,14 +96,6 @@ type worker struct {
 	mu       sync.Mutex
 	renter   *Renter
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
-}
-
-// accountState keeps track of the account balance, it has its own mutex domain
-// to minimize lock contention
-type accountState struct {
-	balance types.Currency
-	pending types.Currency
-	mu      sync.Mutex
 }
 
 // managedBlockUntilReady will block until the worker has internet connectivity.
@@ -239,9 +227,8 @@ func (w *worker) threadedRefillAccount() {
 
 	for {
 		select {
-		case withdrawal := <-w.accountWithdrawalsChan:
-			w.managedProcessWithdrawal(withdrawal)
-			w.managedRefillAccount()
+		case amount := <-w.refillChan:
+			w.callQueueFundAccount(amount)
 			continue
 		case <-w.killChan:
 			return
@@ -252,26 +239,47 @@ func (w *worker) threadedRefillAccount() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
-	/*
-	 TODOs
-	 + balance target based on host's maxaccountbalance (?)
-	 + handle the error when fetching the current balance
-	 + not sure we want to do all of this here
-	*/
-	account := r.newAccount(hostPubKey)
-	balance, _ := account.GetBalance()
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+	balanceTarget, err := r.calculateAccountBalanceTarget(hostPubKey)
+	if err != nil {
+		return nil, err
+	}
+
+	refillChan := make(chan types.Currency)
+	account := r.managedOpenAccount(hostPubKey, balanceTarget, refillChan)
 
 	return &worker{
 		staticHostPubKey: hostPubKey,
 		killChan:         make(chan struct{}),
 		wakeChan:         make(chan struct{}, 1),
+		refillChan:       refillChan,
+		account:          account,
+		renter:           r,
+	}, nil
+}
 
-		staticAccountBalanceTarget: types.SiacoinPrecision.Div64(5),
-		account:                    account,
-		accountState:               &accountState{balance: balance},
-		accountWithdrawalsChan:     make(chan types.Currency),
+// calculateAccountBalanceTarget will use the host's settings to figure out a
+// good account balance target.
+func (r *Renter) calculateAccountBalanceTarget(hostPubKey types.SiaPublicKey) (types.Currency, error) {
+	var target types.Currency
 
-		renter: r,
+	// Look up the MaxEphemeralAccountBalance defined by the host
+	hostEntry, ok, err := r.hostDB.Host(hostPubKey)
+	if err != nil {
+		return target, err
 	}
+	if !ok {
+		return target, errors.New("host does not exist")
+	}
+	_ = hostEntry.HostExternalSettings
+	maxBalance := types.SiacoinPrecision // TODO: will be defined on HES
+
+	// Impose a renter-side max
+	renterMaxBalance := types.SiacoinPrecision
+	if renterMaxBalance.Cmp(maxBalance) < 0 {
+		maxBalance = renterMaxBalance
+	}
+
+	target = maxBalance
+	return target, nil
 }

@@ -33,10 +33,6 @@ type fundAccountJobResult struct {
 // queue. A channel will be returned, this channel will have the result of the
 // job returned down it when the job is completed.
 func (w *worker) callQueueFundAccount(amount types.Currency) chan fundAccountJobResult {
-	w.accountState.mu.Lock()
-	w.accountState.pending = w.accountState.pending.Add(amount)
-	w.accountState.mu.Unlock()
-
 	resultChan := make(chan fundAccountJobResult)
 	w.staticFundAccountJobQueue.mu.Lock()
 	w.staticFundAccountJobQueue.queue = append(w.staticFundAccountJobQueue.queue, &fundAccountJob{
@@ -85,7 +81,7 @@ func (w *worker) threadedPerformFundAcountJob() {
 	w.staticFundAccountJobQueue.mu.Unlock()
 
 	// Fund the account & return the result
-	if err := w.account.Fund(job.amount); err != nil {
+	if _, err := w.account.Fund(job.amount); err != nil {
 		job.resultChan <- fundAccountJobResult{
 			job: job,
 			err: err,
@@ -95,60 +91,5 @@ func (w *worker) threadedPerformFundAcountJob() {
 	job.resultChan <- fundAccountJobResult{
 		job:    job,
 		funded: job.amount,
-	}
-}
-
-// managedRefillAccount checks if the account balance drops below a certain
-// threshold, if so it will schedule a fundAccountJob to refill the account
-func (w *worker) managedRefillAccount() bool {
-	w.accountState.mu.Lock()
-	total := w.accountState.balance.Add(w.accountState.pending)
-	w.accountState.mu.Unlock()
-
-	if total.Cmp(w.staticAccountBalanceTarget.Div64(2)) < 0 {
-		refill := w.staticAccountBalanceTarget.Sub(total)
-		resultChan := w.callQueueFundAccount(refill)
-		go w.threadedProcessFundAccountResult(resultChan)
-		return true
-	}
-
-	return false
-}
-
-// managedProcessWithdrawal will update the account state when other workers
-// signal they have spent from the ephemeral account
-func (w *worker) managedProcessWithdrawal(amount types.Currency) {
-	w.accountState.mu.Lock()
-	defer w.accountState.mu.Unlock()
-
-	if w.accountState.balance.Cmp(amount) < 0 {
-		w.accountState.balance = types.ZeroCurrency
-		return
-	} // sanity check
-
-	w.accountState.balance = w.accountState.balance.Sub(amount)
-}
-
-// threadedProcessFundAccountResult will update the account state when a
-// fundAccountJob completed.
-func (w *worker) threadedProcessFundAccountResult(resultChan chan fundAccountJobResult) {
-	if err := w.renter.tg.Add(); err != nil {
-		return
-	}
-	defer w.renter.tg.Done()
-
-	for {
-		select {
-		case result := <-resultChan:
-			w.accountState.mu.Lock()
-			w.accountState.pending = w.accountState.pending.Sub(result.job.amount)
-			w.accountState.balance = w.accountState.balance.Add(result.funded)
-			w.accountState.mu.Unlock()
-			return
-		case <-w.renter.tg.StopChan():
-			return
-		case <-w.killChan:
-			return
-		}
 	}
 }

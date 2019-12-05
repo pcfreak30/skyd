@@ -5,6 +5,27 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// RPCPaymentProvider is the interface implemented when payment has to be made
+// for an RPC call to a host.
+type RPCPaymentProvider interface {
+	ProvidePaymentForRPC(rpcID types.Specifier, cost types.Currency, stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, error)
+}
+
+// RPCPaymentExtractor is the interface implemented when receiving payment for
+// an RPC.
+type RPCPaymentExtractor interface {
+	ExtractPaymentForRPC(stream Stream) (types.Currency, bool, error)
+}
+
+// RPCPaymentProviderFunc is an adapter for the interface. This allows wrapping
+// an anonymous function as if it were an object implementing the interface.
+type RPCPaymentProviderFunc func(rpcID types.Specifier, cost types.Currency, stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, error)
+
+// ProvidePaymentForRPC implements the interface
+func (f RPCPaymentProviderFunc) ProvidePaymentForRPC(rpcID types.Specifier, cost types.Currency, stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
+	return f(rpcID, cost, stream, currentBlockHeight)
+}
+
 // Extract payment identifiers
 var (
 	PayByContract         = newSpecifier("PayByContract")
@@ -41,10 +62,10 @@ type (
 
 	// WithdrawalMessage contains all details to spend from an ephemeral account
 	WithdrawalMessage struct {
-		Id     types.SiaPublicKey
+		Id     string
 		Expiry types.BlockHeight
 		Amount types.Currency
-		Nonce  int
+		Nonce  []byte
 	}
 )
 
@@ -76,6 +97,7 @@ type (
 	}
 )
 
+// TODO: replace this with new specifier.go (yet to be merged)
 // newSpecifier takes in a name and returns a fixed-length byte-array specifier
 func newSpecifier(name string) types.Specifier {
 	if len(name) > 16 {
@@ -84,4 +106,28 @@ func newSpecifier(name string) types.Specifier {
 	var s types.Specifier
 	copy(s[:], name)
 	return s
+}
+
+const RemoteRPCLen = 48
+
+type (
+	// The RPCPriceTable lists all the RPCs the host offers and their price. The
+	// prices remain valid up until the expiry block height.
+	RPCPriceTable struct {
+		Costs  map[RemoteRPCID]types.Currency
+		Expiry types.BlockHeight
+	}
+
+	// RemoteRPCID is a fixed-length 48 byte-array which uniquely identifies an
+	// RPC on a host (HostID|RPCID)
+	RemoteRPCID = [RemoteRPCLen]byte
+)
+
+// NewRemoteRPCID takes a host public key and an rpc identifier and joins them
+// into a remote RPC identifier
+func NewRemoteRPCID(host types.SiaPublicKey, rpcID types.Specifier) RemoteRPCID {
+	var id RemoteRPCID
+	copy(id[:], host.Key[:])
+	copy(id[:], rpcID[:])
+	return id
 }

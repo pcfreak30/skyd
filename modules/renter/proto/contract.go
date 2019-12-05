@@ -51,6 +51,7 @@ type contractHeader struct {
 	DownloadSpending types.Currency
 	StorageSpending  types.Currency
 	UploadSpending   types.Currency
+	AccountFunding   types.Currency
 	TotalCost        types.Currency
 	ContractFee      types.Currency
 	TxnFee           types.Currency
@@ -140,6 +141,7 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 		DownloadSpending: h.DownloadSpending,
 		StorageSpending:  h.StorageSpending,
 		UploadSpending:   h.UploadSpending,
+		AccountFunding:   h.AccountFunding,
 		TotalCost:        h.TotalCost,
 		ContractFee:      h.ContractFee,
 		TxnFee:           h.TxnFee,
@@ -334,16 +336,20 @@ func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signe
 	return nil
 }
 
-func (c *SafeContract) managedRecordFundAccountIntent(rev types.FileContractRevision, amount types.Currency) (*writeaheadlog.Transaction, error) {
+// CallRecordFundEphemeralAccountIntent will record the intent to fund an
+// ephemeral account in the contract's header
+func (c *SafeContract) CallRecordFundEphemeralAccountIntent(rev types.FileContractRevision, amount types.Currency) (*writeaheadlog.Transaction, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	newHeader := c.header
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
 	newHeader.Transaction.TransactionSignatures = nil
+	newHeader.AccountFunding = newHeader.AccountFunding.Add(amount)
 
-	// TODO: do we want to register this fund in the contract header?
-	// newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount)
+	// TODO: AccountFunding is currently naievely just added to the header. If
+	// we decide we will add it to the header, we need to bump version and write
+	// the conversion.
 
 	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
@@ -358,8 +364,31 @@ func (c *SafeContract) managedRecordFundAccountIntent(rev types.FileContractRevi
 	return t, nil
 }
 
-func (c *SafeContract) managedCommitFundAccountIntent(t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency) error {
-	// TODO
+// CallCommitFundEphemeralAccountIntent will commit the intent to fund an
+// ephemeral account by committing the signed txn in the contract's header
+func (c *SafeContract) CallCommitFundEphemeralAccountIntent(t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// construct new header
+	newHeader := c.header
+	newHeader.Transaction = signedTxn
+	newHeader.AccountFunding = newHeader.AccountFunding.Add(amount)
+
+	// TODO: AccountFunding is currently naievely just added to the header. If
+	// we decide we will add it to the header, we need to bump version and write
+	// the conversion.
+
+	if err := c.applySetHeader(newHeader); err != nil {
+		return err
+	}
+	if err := c.headerFile.Sync(); err != nil {
+		return err
+	}
+	if err := t.SignalUpdatesApplied(); err != nil {
+		return err
+	}
+	c.unappliedTxns = nil
 	return nil
 }
 

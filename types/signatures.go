@@ -18,8 +18,8 @@ var (
 	// ErrEntropyKey is the error when a transaction tries to sign an entropy
 	// public key
 	ErrEntropyKey = errors.New("transaction tries to sign an entropy public key")
-	// ErrFrivolousSignature is the error when a transaction contains a frivolous
-	// signature
+	// ErrFrivolousSignature is the error when a transaction contains a
+	// frivolous signature
 	ErrFrivolousSignature = errors.New("transaction contains a frivolous signature")
 	// ErrInvalidPubKeyIndex is the error when a transaction contains a signature
 	// that points to a nonexistent public key

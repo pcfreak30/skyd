@@ -39,6 +39,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -116,10 +117,6 @@ type hostDB interface {
 type hostContractor interface {
 	modules.Alerter
 
-	// Account returns an object that allows to interact with the ephemeral
-	// account on a host, identified by the specified keys.
-	Account(types.SiaPublicKey, types.SiaPublicKey) (contractor.Account, error)
-
 	// SetAllowance sets the amount of money the contractor is allowed to
 	// spend on contracts over a given time period, divided among the number
 	// of hosts specified. Note that contractor can start forming contracts as
@@ -159,6 +156,10 @@ type hostContractor interface {
 	// InitRecoveryScan starts scanning the whole blockchain for recoverable
 	// contracts within a separate thread.
 	InitRecoveryScan() error
+
+	// PaymentProvider creates a payment provider from the specified host key,
+	// allowing payments to be made from the host contract.
+	PaymentProvider(types.SiaPublicKey) (modules.RPCPaymentProvider, error)
 
 	// PeriodSpending returns the amount spent on contracts during the current
 	// billing period.
@@ -253,6 +254,11 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
+	accounts map[string]Account
+
+	// RPC
+	clients map[string]proto.RPCClient
+
 	// Utilities.
 	cs               modules.ConsensusSet
 	deps             modules.Dependencies
@@ -272,6 +278,7 @@ type Renter struct {
 	tpool            modules.TransactionPool
 	wal              *writeaheadlog.WAL
 	staticWorkerPool *workerPool
+	peerMux          *modules.PeerMux
 }
 
 // Close closes the Renter and its dependencies
@@ -472,6 +479,21 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	r.mu.Unlock(id)
 
 	return est, allowance, nil
+}
+
+// managedRPCClient returns an RPC client for the host with given key
+func (r *Renter) managedRPCClient(host types.SiaPublicKey) proto.RPCClient {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+
+	key := host.String()
+	client, exists := r.clients[key]
+	if !exists {
+		he, _, _ := r.hostDB.Host(host) // TODO handle !exists and err
+		proto.NewRPCClient(r.peerMux.Connection(string(he.NetAddress)))
+	}
+
+	return client
 }
 
 // managedContractUtilityMaps returns a set of maps that contain contract
@@ -854,6 +876,10 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
+		accounts: make(map[string]Account),
+
+		clients: make(map[string]proto.RPCClient),
+
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
@@ -869,6 +895,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
 		mu:               siasync.New(modules.SafeMutexDelay, 1),
 		tpool:            tpool,
+		peerMux:          modules.NewPeerMux(), // TODO
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 	r.stuckStack = callNewStuckStack()

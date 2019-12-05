@@ -1,155 +1,95 @@
 package proto
 
 import (
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
-type RPCClient struct {
-	peerMux       *modules.PeerMux
-	rpcPriceTable *modules.RPCPriceTable
+var (
+	// errRPCNotAvailable is returned when the requested RPC is not found in the
+	// host's price table
+	errRPCNotAvailable = errors.New("RPC not avaiable on host")
+)
+
+type Account interface {
+	ID() string
+	HostKey() types.SiaPublicKey
+	modules.RPCPaymentProvider
 }
 
-func NewRPCClient(address string) *RPCClient {
-	pm := modules.NewPeerMux(address)
-	pt := &modules.RPCPriceTable{} // TODO
-	return &RPCClient{peerMux: pm, rpcPriceTable: pt}
+// RPCClient interface lists all possible RPC that can be called on the host
+type RPCClient interface {
+	FundEphemeralAccount(a Account, amount types.Currency) (types.Currency, error)
 }
 
-func (c *RPCClient) writeRequest(stream modules.Stream, reqs ...interface{}) error {
-	_, err := stream.Write(encoding.MarshalAll(reqs))
-	return err
+// HostRPCClient wraps all necessities to communicate with a host
+type HostRPCClient struct {
+	connection         modules.Connection
+	priceTable         *modules.RPCPriceTable
+	currentBlockHeight types.BlockHeight // TODO subscribe to consensus or have access to something that does
 }
 
-func (c *RPCClient) readResponse(stream modules.Stream, resp interface{}) error {
-	bytes, err := encoding.ReadPrefixedBytes(stream, 4096)
-	if err != nil {
-		return err
+// NewRPCClient returns a new RPC client. The RPC client is in direct
+// communication with the host, generally there should only be one client per
+// host. It is capable of performing all of the RPCs that the host offers. Aside
+// from this it is responsible for keeping the host's price table up-to-date.
+func NewRPCClient(c modules.Connection) RPCClient {
+	// the RPC price table is going to be decided by the host, it will
+	// communicate it after the peermux is set up
+	pt := &modules.RPCPriceTable{}
+
+	// TODO background thread keeping the prices up-to-date
+
+	return &HostRPCClient{
+		connection: c,
+		priceTable: pt,
 	}
-	err = encoding.Unmarshal(bytes, resp)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// EphemeralAccountBalance calls the ephemeralAccountBalanceRPC on the host
-func (c *RPCClient) EphemeralAccountBalance(accountID string, sc *SafeContract, currentBlockHeight types.BlockHeight) (types.Currency, error) {
-	return types.ZeroCurrency, nil
 }
 
 // FundEphemeralAccount calls the fundEphemeralAccountRPC on the host
-func (c *RPCClient) FundEphemeralAccount(accountID string, sc *SafeContract, amount types.Currency, currentBlockHeight types.BlockHeight) error {
-	metadata := sc.Metadata()
+func (c *HostRPCClient) FundEphemeralAccount(acc Account, amount types.Currency) (types.Currency, error) {
+	rpcID := modules.RPCFundEphemeralAccount
 
-	// lookup the host's RPC price
-	rpcCost, err := c.getRPCCost(metadata.HostPublicKey, modules.RPCFundEphemeralAccount)
+	// Find the cost of the RPC
+	cost, err := c.costOfRPC(acc.HostKey(), rpcID)
 	if err != nil {
-		return errors.AddContext(err, "RPC not available on host")
+		return types.ZeroCurrency, errors.AddContext(err, "RPC not available on host")
 	}
 
-	// verify the contract has enough money in it
-	totalCost := rpcCost.Add(amount)
-	if metadata.RenterFunds.Cmp(totalCost) < 0 {
-		return errors.New("contract has insufficient funds")
-	}
-
-	// create a new revision
-	current := metadata.Transaction.FileContractRevisions[0]
-	rev := newPaymentRevision(current, totalCost)
-
-	// create transaction containing the revision
-	signedTxn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{rev},
-		TransactionSignatures: []types.TransactionSignature{{
-			ParentID:       crypto.Hash(rev.ParentID),
-			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
-			PublicKeyIndex: 0, // renter key is always first -- see formContract
-		}},
-	}
-	sig := sc.Sign(signedTxn.SigHash(0, currentBlockHeight))
+	// Get a stream using the RPC ID
+	stream := c.connection.Stream(rpcID)
+	defer stream.Close()
 
 	// send RPCFundEphemeralAccountRequest
-	stream := c.peerMux.Stream(modules.RPCFundEphemeralAccount)
-	if err := c.writeRequest(stream, modules.RPCFundEphemeralAccountRequest{
-		AccountID: accountID,
+	if err := stream.WriteRequest(modules.RPCFundEphemeralAccountRequest{
+		AccountID: acc.ID(),
 	}); err != nil {
-		return err
+		return types.ZeroCurrency, err
 	}
 
-	// record the intent (TODO: should we do this for accounts? should we then
-	// also change the contract header to reflect this?)
-	walTxn, err := sc.managedRecordFundAccountIntent(rev, amount)
+	// provide payment and await response
+	paid, err := acc.ProvidePaymentForRPC(rpcID, cost.Add(amount), stream, c.currentBlockHeight)
 	if err != nil {
-		return err
+		return types.ZeroCurrency, err
 	}
 
-	// send PaymentRequest & PayByContractRequest
-	if err := c.writeRequest(stream, modules.PaymentRequest{Type: modules.PayByContract},
-		modules.PayByContractRequest{
-			Revision:  rev,
-			Signature: sig,
-		}); err != nil {
-		return err
-	}
-
-	// receive PayByContractResponse
-	var payByResponse modules.PayByContractResponse
-	if err := c.readResponse(stream, payByResponse); err != nil {
-		return err
-	}
-
-	// receive RPCFundEphemeralAccountResponse (which is the receipt)
+	// receive RPCFundEphemeralAccountResponse
 	var fundAccResponse modules.RPCFundEphemeralAccountResponse
-	if err := c.readResponse(stream, fundAccResponse); err != nil {
-		return err
+	if err := stream.ReadResponse(fundAccResponse); err != nil {
+		return types.ZeroCurrency, err
 	}
 
-	// TODO verify both responses to see if payment was made. If successful we
-	// want to commit the intent
-	err = sc.managedCommitFundAccountIntent(walTxn, signedTxn, amount)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return paid, nil
 }
 
-// getRPCCost returns the cost of the given RPC on the given host
-func (c *RPCClient) getRPCCost(hostKey types.SiaPublicKey, rpcID types.Specifier) (types.Currency, error) {
+// costOfRPC uses the RPC table to figure out the cost of the given RPC on the
+// host with hostKey
+func (c *HostRPCClient) costOfRPC(hostKey types.SiaPublicKey, rpcID types.Specifier) (types.Currency, error) {
 	remoteRPCID := modules.NewRemoteRPCID(hostKey, rpcID)
-	cost, ok := c.rpcPriceTable.Costs[remoteRPCID]
+	cost, ok := c.priceTable.Costs[remoteRPCID]
 	if !ok {
-		// TODO return errRPCNotAvailable
-		return types.ZeroCurrency, nil
+		return types.ZeroCurrency, errRPCNotAvailable
 	}
 	return cost, nil
-}
-
-// newPaymentRevision creates a copy of current with its revision number
-// incremented, and with cost transferred from the renter to the host.
-func newPaymentRevision(current types.FileContractRevision, cost types.Currency) types.FileContractRevision {
-	rev := current
-
-	// need to manually copy slice memory
-	rev.NewValidProofOutputs = make([]types.SiacoinOutput, 2)
-	rev.NewMissedProofOutputs = make([]types.SiacoinOutput, 3)
-	copy(rev.NewValidProofOutputs, current.NewValidProofOutputs)
-	copy(rev.NewMissedProofOutputs, current.NewMissedProofOutputs)
-
-	// move valid payout from renter to host
-	rev.NewValidProofOutputs[0].Value = current.NewValidProofOutputs[0].Value.Sub(cost)
-	rev.NewValidProofOutputs[1].Value = current.NewValidProofOutputs[1].Value.Add(cost)
-
-	// move missed payout from renter to void
-	rev.NewMissedProofOutputs[0].Value = current.NewMissedProofOutputs[0].Value.Sub(cost)
-	rev.NewMissedProofOutputs[2].Value = current.NewMissedProofOutputs[2].Value.Add(cost)
-
-	// increment revision number
-	rev.NewRevisionNumber++
-
-	return rev
 }
