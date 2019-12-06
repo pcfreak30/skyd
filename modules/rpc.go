@@ -29,7 +29,7 @@ func (f RPCPaymentProviderFunc) ProvidePaymentForRPC(rpcID types.Specifier, cost
 // Extract payment identifiers
 var (
 	PayByContract         = newSpecifier("PayByContract")
-	PayByEphemeralAccount = newSpecifier("PayByEphemeralAcc")
+	PayByEphemeralAccount = newSpecifier("PayByEphemAcc")
 )
 
 // Extract payment request-response objects
