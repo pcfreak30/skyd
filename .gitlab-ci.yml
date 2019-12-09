@@ -1,5 +1,5 @@
 default:
-  image: golang:1.12
+  image: golang:latest
   before_script:
     - mkdir -p .cache/gocache
     - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
@@ -23,6 +23,7 @@ lint:
     - make test
 
 build:
+  image: golang:1.13
   stage: lint
   cache:
     key: build-cache
