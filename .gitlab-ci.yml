@@ -23,16 +23,14 @@ lint:
     - make test
 
 build:
-  image: golang:1.13
   stage: lint
-  cache:
-    key: build-cache
+  image: golang:1.13
+  artifacts:
+    name: "Binaries"
     paths:
-      - .cache
+      - $CI_PROJECT_DIR/artifacts
   script:
-      - GOOS=windows make
-      - GOOS=darwin make
-      - GOOS=linux GOARCH=arm64 make
+    - ./build.sh
 
 legacy-tests:
   stage: test
@@ -137,15 +135,3 @@ siatest-renter--tests-nightly:
   script:
     - make test-vlong run=. pkgs="./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-
-deploy:
-  stage: deploy
-  only:
-    refs:
-      - master@NebulousLabs/Sia
-  artifacts:
-    name: "Binaries"
-    paths:
-      - $CI_PROJECT_DIR/artifacts
-  script: 
-    - ./deploy.sh "$NIGHTLY_SIGNING_KEY"
