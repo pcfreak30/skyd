@@ -22,6 +22,17 @@ lint:
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
     - make test
 
+build:
+  stage: lint
+  cache:
+    key: build-cache
+    paths:
+      - .cache
+  script:
+      - GOOS=windows make
+      - GOOS=darwin make
+      - GOOS=linux GOARCH=arm64 make
+
 legacy-tests:
   stage: test
   cache:
