@@ -113,9 +113,11 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 	defer c.mu.RUnlock()
 
 	var spending modules.ContractorSpending
+	println(len(allContracts))
 	for _, contract := range allContracts {
 		// Don't count double-spent contracts.
 		if _, doubleSpent := c.doubleSpentContracts[contract.ID]; doubleSpent {
+			println("skipping a contract for double spent")
 			continue
 		}
 
@@ -130,6 +132,7 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 		spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
 		spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 		spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
+		println(spending.ContractFees.String())
 	}
 
 	// Calculate needed spending to be reported from old contracts
