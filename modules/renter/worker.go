@@ -83,8 +83,8 @@ type worker struct {
 	account Account
 
 	// refillChan receives signals from the ephemeral account to schedule fund
-	// account jobs. The account will trigger these when it's balance has
-	// dropped below a certain threshold.
+	// account jobs. The account will trigger these when its balance has dropped
+	// below a certain threshold.
 	refillChan chan types.Currency
 
 	// Utilities.

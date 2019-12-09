@@ -14,7 +14,7 @@ import (
 // IMPORTANT:
 //
 // The types and interfaces in this file are merely mocks. The sole purpose of
-// having these is to be able to use the interfaces before the acutal peermux MR
+// having these is to be able to use the interfaces before the actual peermux MR
 // gets merged.
 //
 ///////////////////////////////////////////
