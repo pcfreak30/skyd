@@ -1,5 +1,5 @@
 default:
-  image: golang:latest
+  image: golang:1.12
   before_script:
     - mkdir -p .cache/gocache
     - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
