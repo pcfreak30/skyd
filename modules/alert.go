@@ -47,6 +47,9 @@ const (
 	// registered if the host has insufficient collateral budget left to form or
 	// renew a contract
 	AlertIDHostInsufficientCollateral = "host-insufficient-collateral"
+	// AlterIDFuseDisabled warns the user that fuse functionality is disabled
+	// on windows.
+	AlertIDFuseDisabled = "fuse-disabled"
 )
 
 // AlertIDSiafileLowRedundancy uses a Siafile's UID to create a unique AlertID
