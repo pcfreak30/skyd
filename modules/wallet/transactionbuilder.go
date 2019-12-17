@@ -179,7 +179,7 @@ func (tb *transactionBuilder) MarkWalletInputs() bool {
 			}
 		}
 		if !alreadyMarked {
-			tb.siacoinInputs = append(tb.siafundInputs, i)
+			tb.siafundInputs = append(tb.siafundInputs, i)
 			markedAnyInputs = true
 		}
 	}
