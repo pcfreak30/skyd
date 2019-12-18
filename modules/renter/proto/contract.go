@@ -51,7 +51,6 @@ type contractHeader struct {
 	DownloadSpending types.Currency
 	StorageSpending  types.Currency
 	UploadSpending   types.Currency
-	AccountFunding   types.Currency
 	TotalCost        types.Currency
 	ContractFee      types.Currency
 	TxnFee           types.Currency
@@ -141,7 +140,6 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 		DownloadSpending: h.DownloadSpending,
 		StorageSpending:  h.StorageSpending,
 		UploadSpending:   h.UploadSpending,
-		AccountFunding:   h.AccountFunding,
 		TotalCost:        h.TotalCost,
 		ContractFee:      h.ContractFee,
 		TxnFee:           h.TxnFee,
@@ -345,11 +343,6 @@ func (c *SafeContract) CallRecordFundEphemeralAccountIntent(rev types.FileContra
 	newHeader := c.header
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
 	newHeader.Transaction.TransactionSignatures = nil
-	newHeader.AccountFunding = newHeader.AccountFunding.Add(amount)
-
-	// TODO: AccountFunding is currently naievely just added to the header. If
-	// we decide we will add it to the header, we need to bump version and write
-	// the conversion.
 
 	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
@@ -373,11 +366,6 @@ func (c *SafeContract) CallCommitFundEphemeralAccountIntent(t *writeaheadlog.Tra
 	// construct new header
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
-	newHeader.AccountFunding = newHeader.AccountFunding.Add(amount)
-
-	// TODO: AccountFunding is currently naievely just added to the header. If
-	// we decide we will add it to the header, we need to bump version and write
-	// the conversion.
 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err

@@ -157,7 +157,7 @@ type hostContractor interface {
 
 	// PaymentProvider creates a payment provider from the specified host key,
 	// allowing payments to be made from the host contract.
-	PaymentProvider(types.SiaPublicKey) (modules.RPCPaymentProvider, error)
+	PaymentProvider(types.SiaPublicKey) (modules.PaymentProvider, error)
 
 	// PeriodSpending returns the amount spent on contracts during the current
 	// billing period.

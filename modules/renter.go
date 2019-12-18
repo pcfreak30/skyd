@@ -636,11 +636,6 @@ type RenterContract struct {
 	StorageSpending  types.Currency
 	UploadSpending   types.Currency
 
-	// A FileContract can be used to fund an ephemeral account on the host. We
-	// track how much money was taken out of the contract to do so. We do not
-	// know what the money will be spent on.
-	AccountFunding types.Currency
-
 	// Utility contains utility information about the renter.
 	Utility ContractUtility
 

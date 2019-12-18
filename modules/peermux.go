@@ -79,8 +79,8 @@ type Stream interface {
 	SetTimeout(time.Time) error
 
 	// TODO: nothing to see here - move along
-	WriteRequest(reqs ...interface{}) error
-	ReadResponse(resp interface{}) error
+	WriteObjects(objs ...interface{}) error
+	ReadObject(obj interface{}) error
 }
 
 // For now just have stream wrap a net.Conn
@@ -94,19 +94,19 @@ func (s stream) SetTimeout(t time.Time) error { return s.conn.SetDeadline(t) }
 
 const maxLen = 4096
 
-// WriteRequest writes requests objects to the stream
-func (s stream) WriteRequest(reqs ...interface{}) error {
-	_, err := s.Write(encoding.MarshalAll(reqs))
+// Write writes objects to the stream
+func (s stream) WriteObjects(objs ...interface{}) error {
+	_, err := s.Write(encoding.MarshalAll(objs))
 	return err
 }
 
-// ReadResponse reads response objects from the stream
-func (s stream) ReadResponse(resp interface{}) error {
+// Read reads an objects from the stream
+func (s stream) ReadObject(obj interface{}) error {
 	bytes, err := encoding.ReadPrefixedBytes(s, maxLen)
 	if err != nil {
 		return err
 	}
-	err = encoding.Unmarshal(bytes, resp)
+	err = encoding.Unmarshal(bytes, obj)
 	if err != nil {
 		return err
 	}

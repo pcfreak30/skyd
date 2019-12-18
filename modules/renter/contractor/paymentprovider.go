@@ -16,17 +16,17 @@ var (
 	errContractInsufficientFunds = errors.New("contract has insufficient funds")
 )
 
-// paymentProvider contains a contract through which payment can be made. It
-// will implement the RPCPaymentProvider interface and pay for these RPC calls
-// using the underlying contract.
-type paymentProvider struct {
+// paymentProviderContract contains a contract through which payment can be
+// made. It will implement the PaymentProvider interface and pay for these
+// RPC calls using the underlying contract.
+type paymentProviderContract struct {
 	contractID  types.FileContractID
 	contractSet *proto.ContractSet
 }
 
 // PaymentProvider returns a new PaymentProvider for the given host, it allows
 // payments to be made from the contract the renter has with the host
-func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.RPCPaymentProvider, error) {
+func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.PaymentProvider, error) {
 	_, exists, err := c.hdb.Host(host)
 	if !exists || err != nil {
 		return nil, errHostNotFound
@@ -37,15 +37,15 @@ func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.RPCPaymen
 		return nil, errContractNotFound
 	}
 
-	return &paymentProvider{
+	return &paymentProviderContract{
 		contractID:  contract.ID,
 		contractSet: c.staticContracts,
 	}, nil
 }
 
-// ProvidePaymentForRPC fulfills the RPCPaymentProvider interface. It uses the
+// ProvidePaymentForRPC fulfills the PaymentProvider interface. It uses the
 // paymentProvider's underlying contract to make payment for an RPC call.
-func (p *paymentProvider) ProvidePaymentForRPC(rpcID types.Specifier, cost types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
+func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
 	// acquire a safe contract
 	sc, exists := p.contractSet.Acquire(p.contractID)
 	if !exists {
@@ -55,41 +55,35 @@ func (p *paymentProvider) ProvidePaymentForRPC(rpcID types.Specifier, cost types
 
 	// verify the contract has enough funds
 	metadata := sc.Metadata()
-	if metadata.RenterFunds.Cmp(cost) < 0 {
+	if metadata.RenterFunds.Cmp(payment) < 0 {
 		return types.ZeroCurrency, errContractInsufficientFunds
 	}
 
 	// create a new revision
 	current := metadata.Transaction.FileContractRevisions[0]
-	rev := newPaymentRevision(current, cost)
+	rev := newPaymentRevision(current, payment)
 
 	// create transaction containing the revision
 	signedTxn := types.NewTransaction(rev, 0)
 	sig := sc.Sign(signedTxn.SigHash(0, currentBlockHeight))
-
-	// TODO: do we want to record this intent? We have no way of knowing what
-	// the money will be spent on eventually (download, upload, etc) but the
-	// contract header should reflect that the money was 'spent' on something
+	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
 	// record the intent to fund the ephemeral account
-	walTxn, err := sc.CallRecordFundEphemeralAccountIntent(rev, cost)
+	walTxn, err := sc.CallRecordFundEphemeralAccountIntent(rev, payment)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
 
 	// send PaymentRequest & PayByContractRequest
 	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := modules.PayByContractRequest{
-		Revision:  rev,
-		Signature: sig,
-	}
-	if err := stream.WriteRequest(pRequest, pbcRequest); err != nil {
+	pbcRequest := buildPayBycontractRequest(rev, sig)
+	if err := stream.WriteObjects(pRequest, pbcRequest); err != nil {
 		return types.ZeroCurrency, err
 	}
 
 	// receive PayByContractResponse
 	var payByResponse modules.PayByContractResponse
-	if err := stream.ReadResponse(payByResponse); err != nil {
+	if err := stream.ReadObject(payByResponse); err != nil {
 		return types.ZeroCurrency, err
 	}
 
@@ -102,7 +96,7 @@ func (p *paymentProvider) ProvidePaymentForRPC(rpcID types.Specifier, cost types
 	}
 
 	// commit the intent
-	err = sc.CallCommitFundEphemeralAccountIntent(walTxn, signedTxn, cost)
+	err = sc.CallCommitFundEphemeralAccountIntent(walTxn, signedTxn, payment)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
@@ -115,9 +109,32 @@ func (p *paymentProvider) ProvidePaymentForRPC(rpcID types.Specifier, cost types
 	return payByResponse.Amount, nil
 }
 
-// newPaymentRevision creates a copy of current with its revision number
-// incremented, and with cost transferred from the renter to the host.
-func newPaymentRevision(current types.FileContractRevision, cost types.Currency) types.FileContractRevision {
+// buildPayBycontractRequest uses a revision and signature to build the
+// PayBycontractRequest
+func buildPayBycontractRequest(rev types.FileContractRevision, sig crypto.Signature) modules.PayByContractRequest {
+	var req modules.PayByContractRequest
+
+	req.ContractID = rev.ID()
+	req.NewRevisionNumber = rev.NewRevisionNumber
+
+	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
+	for i, o := range rev.NewValidProofOutputs {
+		req.NewValidProofValues[i] = o.Value
+	}
+
+	req.NewMissedProofValues = make([]types.Currency, len(rev.NewMissedProofOutputs))
+	for i, o := range rev.NewMissedProofOutputs {
+		req.NewMissedProofValues[i] = o.Value
+	}
+
+	req.Signature = sig[:]
+
+	return req
+}
+
+// newPaymentRevision will make a new revision that transfers the funds from the
+// renter to the host.
+func newPaymentRevision(current types.FileContractRevision, payment types.Currency) types.FileContractRevision {
 	rev := current
 
 	// need to manually copy slice memory
@@ -127,12 +144,12 @@ func newPaymentRevision(current types.FileContractRevision, cost types.Currency)
 	copy(rev.NewMissedProofOutputs, current.NewMissedProofOutputs)
 
 	// move valid payout from renter to host
-	rev.NewValidProofOutputs[0].Value = current.NewValidProofOutputs[0].Value.Sub(cost)
-	rev.NewValidProofOutputs[1].Value = current.NewValidProofOutputs[1].Value.Add(cost)
+	rev.NewValidProofOutputs[0].Value = current.NewValidProofOutputs[0].Value.Sub(payment)
+	rev.NewValidProofOutputs[1].Value = current.NewValidProofOutputs[1].Value.Add(payment)
 
 	// move missed payout from renter to void
-	rev.NewMissedProofOutputs[0].Value = current.NewMissedProofOutputs[0].Value.Sub(cost)
-	rev.NewMissedProofOutputs[2].Value = current.NewMissedProofOutputs[2].Value.Add(cost)
+	rev.NewMissedProofOutputs[0].Value = current.NewMissedProofOutputs[0].Value.Sub(payment)
+	rev.NewMissedProofOutputs[2].Value = current.NewMissedProofOutputs[2].Value.Add(payment)
 
 	// increment revision number
 	rev.NewRevisionNumber++

@@ -15,7 +15,7 @@ var (
 type Account interface {
 	ID() string
 	HostKey() types.SiaPublicKey
-	modules.RPCPaymentProvider
+	modules.PaymentProvider
 }
 
 // RPCClient interface lists all possible RPC that can be called on the host
@@ -62,7 +62,7 @@ func (c *HostRPCClient) FundEphemeralAccount(acc Account, amount types.Currency)
 	defer stream.Close()
 
 	// send RPCFundEphemeralAccountRequest
-	if err := stream.WriteRequest(modules.RPCFundEphemeralAccountRequest{
+	if err := stream.WriteObjects(modules.RPCFundEphemeralAccountRequest{
 		AccountID: acc.ID(),
 	}); err != nil {
 		return types.ZeroCurrency, err
@@ -76,7 +76,7 @@ func (c *HostRPCClient) FundEphemeralAccount(acc Account, amount types.Currency)
 
 	// receive RPCFundEphemeralAccountResponse
 	var fundAccResponse modules.RPCFundEphemeralAccountResponse
-	if err := stream.ReadResponse(fundAccResponse); err != nil {
+	if err := stream.ReadObject(fundAccResponse); err != nil {
 		return types.ZeroCurrency, err
 	}
 

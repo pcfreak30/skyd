@@ -21,7 +21,6 @@ const withdrawalDefaultExpiry = 144
 // ephemeral account on the host. Some of these methods will involve underlying
 // RPC calls to the host.
 type Account interface {
-	GetBalance() types.Currency
 	Fund(amount types.Currency) (types.Currency, error)
 }
 
@@ -48,25 +47,26 @@ func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey, target types.Cur
 
 	hpk := hostKey.String()
 	acc, exists := r.accounts[hpk]
-	if !exists {
-		sk, pk := crypto.GenerateKeyPair()
-		spk := types.SiaPublicKey{
-			Algorithm: types.SignatureEd25519,
-			Key:       pk[:],
-		}
-
-		acc = &account{
-			staticHostKey:       hostKey,
-			staticAccountID:     spk.String(),
-			staticSecretKey:     sk,
-			staticBalanceTarget: target,
-			refillChan:          refillChan,
-			contractor:          r.hostContractor,
-			r:                   r,
-		}
-		r.accounts[hpk] = acc
+	if exists {
+		return acc
 	}
 
+	sk, pk := crypto.GenerateKeyPair()
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	acc = &account{
+		staticHostKey:       hostKey,
+		staticAccountID:     spk.String(),
+		staticSecretKey:     sk,
+		staticBalanceTarget: target,
+		refillChan:          refillChan,
+		contractor:          r.hostContractor,
+		r:                   r,
+	}
+	r.accounts[hpk] = acc
 	return acc
 }
 
@@ -93,44 +93,43 @@ func (a *account) Fund(amount types.Currency) (types.Currency, error) {
 	return c.FundEphemeralAccount(a, amount)
 }
 
-// ProvidePaymentForRPC implements the RPCPaymentProvider interface. This method
+// ProvidePaymentForRPC implements the PaymentProvider interface. This method
 // will abstract if the RPC was paid for using an ephemeral account or an
 // underlying file contract.
-func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, cost types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
+func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, cost types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (payment types.Currency, err error) {
+	var provider modules.PaymentProvider
 	switch rpcID {
 	// funding an ephemeral account is always paid from a contract
 	case modules.RPCFundEphemeralAccount:
-		a.managedProcessFundIntent(cost)
-		provider, err := a.contractor.PaymentProvider(a.staticHostKey)
+		provider, err = a.contractor.PaymentProvider(a.staticHostKey)
 		if err != nil {
-			return types.ZeroCurrency, err
+			return
 		}
-
-		payment, err := provider.ProvidePaymentForRPC(rpcID, cost, stream, currentBlockHeight)
+		a.managedProcessFundIntent(cost)
+		payment, err = provider.ProvidePaymentForRPC(rpcID, cost, stream, currentBlockHeight)
 		a.managedProcessFundResult(cost, err == nil)
-		return payment, err
 	// all other RPCs get paid by ephemeral account
 	default:
+		provider = a.paymentProvider()
 		a.managedProcessPaymentIntent(cost)
-		provider := a.paymentProvider()
-		payment, err := provider.ProvidePaymentForRPC(rpcID, cost, stream, currentBlockHeight)
+		payment, err = provider.ProvidePaymentForRPC(rpcID, cost, stream, currentBlockHeight)
 		a.managedProcessPaymentResult(cost, err == nil)
-		return payment, err
 	}
+	return
 }
 
-// paymentProvider returns an object that adheres to the RPCPaymentProvider
+// paymentProvider returns an object that adheres to the PaymentProvider
 // interface. Not we use an interface adapter here to avoid creating a separate
 // object for it. This essentially handles PayByEphemeralAccount.
-func (a *account) paymentProvider() modules.RPCPaymentProvider {
-	return modules.RPCPaymentProviderFunc(func(rpcID types.Specifier, cost types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
+func (a *account) paymentProvider() modules.PaymentProvider {
+	return modules.PaymentProviderFunc(func(rpcID types.Specifier, payment types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
 		// Note that we purposefully do not verify if the account has sufficient
 		// funds. It is perfectly ok to provide payment even though the account
 		// has insufficient funds at the time. The host will block until the
 		// withdrawal until the account is funded, or until it times out.
 
 		// create a withdrawal message and signature that will pay for the RPC
-		msg, sig := a.newSignedWithdrawal(cost, currentBlockHeight+withdrawalDefaultExpiry)
+		msg, sig := a.newSignedWithdrawal(payment, currentBlockHeight+withdrawalDefaultExpiry)
 
 		// send PaymentRequest & PayByEphemeralAccountRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
@@ -138,13 +137,13 @@ func (a *account) paymentProvider() modules.RPCPaymentProvider {
 			Message:   msg,
 			Signature: sig,
 		}
-		if err := stream.WriteRequest(pRequest, pbcRequest); err != nil {
+		if err := stream.WriteObjects(pRequest, pbcRequest); err != nil {
 			return types.ZeroCurrency, err
 		}
 
 		// receive PayByEphemeralAccountResponse
 		var payByResponse modules.PayByEphemeralAccountResponse
-		if err := stream.ReadResponse(payByResponse); err != nil {
+		if err := stream.ReadObject(payByResponse); err != nil {
 			return types.ZeroCurrency, err
 		}
 
