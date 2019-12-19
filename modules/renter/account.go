@@ -15,14 +15,7 @@ const withdrawalNonceSize = 8
 
 // withdrawalDefaultExpiry decides the WithdrawalMessage expiry. This default is
 // added to the current blockheight to make up the expiry blockheight.
-const withdrawalDefaultExpiry = 144
-
-// Account interface lists all possible actions that can be executed on an
-// ephemeral account on the host. Some of these methods will involve underlying
-// RPC calls to the host.
-type Account interface {
-	Fund(amount types.Currency) (types.Currency, error)
-}
+const withdrawalDefaultExpiry = 6
 
 // account represents a renter's ephemeral account on a host
 type account struct {
@@ -30,22 +23,25 @@ type account struct {
 	staticAccountID     string
 	staticSecretKey     crypto.SecretKey
 	staticBalanceTarget types.Currency
+	staticBalanceMax    types.Currency
 
-	balanceLocal   types.Currency
-	balancePending types.Currency
-	balanceMu      sync.Mutex
-	refillChan     chan types.Currency
+	pendingSpends   types.Currency
+	pendingDeposits types.Currency
+	balanceLocal    types.Currency
+	balanceMu       sync.Mutex
+
+	refillChan chan types.Currency
 
 	contractor hostContractor
 	r          *Renter
 }
 
 // managedOpenAccount returns a new account for the given host
-func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey, target types.Currency, refillChan chan types.Currency) Account {
+func (r *Renter) managedOpenAccount(host modules.HostDBEntry, refillChan chan types.Currency) *account {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
 
-	hpk := hostKey.String()
+	hpk := host.PublicKey.String()
 	acc, exists := r.accounts[hpk]
 	if exists {
 		return acc
@@ -58,10 +54,11 @@ func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey, target types.Cur
 	}
 
 	acc = &account{
-		staticHostKey:       hostKey,
+		staticHostKey:       host.PublicKey,
 		staticAccountID:     spk.String(),
 		staticSecretKey:     sk,
-		staticBalanceTarget: target,
+		staticBalanceTarget: types.SiacoinPrecision.Div64(2), // TODO
+		staticBalanceMax:    types.SiacoinPrecision,          // TODO
 		refillChan:          refillChan,
 		contractor:          r.hostContractor,
 		r:                   r,
@@ -80,22 +77,9 @@ func (a *account) HostKey() types.SiaPublicKey {
 	return a.staticHostKey
 }
 
-// GetBalance returns the current account balance
-func (a *account) GetBalance() types.Currency {
-	a.balanceMu.Lock()
-	defer a.balanceMu.Unlock()
-	return a.balanceLocal
-}
-
-// Fund will fund the account by depositing the amount into the account
-func (a *account) Fund(amount types.Currency) (types.Currency, error) {
-	c := a.r.managedRPCClient(a.staticHostKey)
-	return c.FundEphemeralAccount(a, amount)
-}
-
-// ProvidePaymentForRPC implements the PaymentProvider interface. This method
-// will abstract if the RPC was paid for using an ephemeral account or an
-// underlying file contract.
+// ProvidePaymentForRPC implements the PaymentProvider interface. This way, the
+// account object can be used to pay for any RPC, regardless of whether it is
+// paid through an ephemeral account or file contract.
 func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, cost types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (payment types.Currency, err error) {
 	var provider modules.PaymentProvider
 	switch rpcID {
@@ -118,9 +102,9 @@ func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, cost types.Currenc
 	return
 }
 
-// paymentProvider returns an object that adheres to the PaymentProvider
-// interface. Not we use an interface adapter here to avoid creating a separate
-// object for it. This essentially handles PayByEphemeralAccount.
+// paymentProvider returns an object that implements the PaymentProvider
+// interface. Note that we use an interface adapter here to avoid creating a
+// separate object for it. This essentially handles PayByEphemeralAccount.
 func (a *account) paymentProvider() modules.PaymentProvider {
 	return modules.PaymentProviderFunc(func(rpcID types.Specifier, payment types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
 		// Note that we purposefully do not verify if the account has sufficient
@@ -147,14 +131,7 @@ func (a *account) paymentProvider() modules.PaymentProvider {
 			return types.ZeroCurrency, err
 		}
 
-		// TODO verify response
-
-		// TODO: currently we return amount funded. It is probably more useful
-		// to the have the host return its current version of the ephemeral
-		// account balance, this way the renter can check more easily if his
-		// version of the balance is drifting and act accordingly
-
-		return payByResponse.Amount, nil
+		return payByResponse.Amount, payByResponse.AccountManagerResponse
 	})
 }
 
@@ -171,19 +148,19 @@ func (a *account) newSignedWithdrawal(amount types.Currency, expiry types.BlockH
 	return wm, sig
 }
 
-// managedProcessedFund will add the amount that was funded to the local
-// balance.
+// managedProcessFundIntent will add the amount that is being funded to the
+// pending balance.
 func (a *account) managedProcessFundIntent(amount types.Currency) {
 	a.balanceMu.Lock()
-	a.balancePending = a.balancePending.Add(amount)
+	a.pendingDeposits = a.pendingDeposits.Add(amount)
 	a.balanceMu.Unlock()
 }
 
-// managedProcessedFund will add the amount that was funded to the local
-// balance.
+// managedProcessFundResult will properly adjust the balance after the fund was
+// executed.
 func (a *account) managedProcessFundResult(amount types.Currency, success bool) {
 	a.balanceMu.Lock()
-	a.balancePending = a.balancePending.Sub(amount)
+	a.pendingDeposits = a.pendingDeposits.Sub(amount)
 	if success {
 		a.balanceLocal = a.balanceLocal.Add(amount)
 	}
@@ -195,38 +172,41 @@ func (a *account) managedProcessFundResult(amount types.Currency, success bool) 
 func (a *account) managedProcessPaymentIntent(amount types.Currency) {
 	a.balanceMu.Lock()
 	defer a.balanceMu.Unlock()
+	defer a.refill()
+	a.pendingSpends = a.pendingSpends.Add(amount)
 
-	// set the threshold at 80% of target, we do not want to refill each and
-	// every time we drop 1 hasting below the target
-	threshold := a.staticBalanceTarget.Mul64(8).Div64(10)
-
-	// ensure we never exceed balance target
-	needed := amount
-	if needed.Cmp(a.staticBalanceTarget) >= 0 {
-		needed = a.staticBalanceTarget
-	}
-
-	// calculate the eventual balance, this is what will be left after payment
-	balanceTotal := a.balanceLocal.Add(a.balancePending)
-	var eventualBalance types.Currency
-	if needed.Cmp(balanceTotal) < 0 {
-		eventualBalance = balanceTotal.Sub(needed)
-	}
-
-	// if we are below the threshold, schedule a refill
-	if eventualBalance.Cmp(threshold) < 0 {
-		refill := a.staticBalanceTarget.Sub(eventualBalance)
-		a.refillChan <- refill
-	}
 }
 
-// managedProcessPayment will deduct the amount that was paid from the local
-// balance. If the balance drops below a certain threshold it triggers a refill.
+// managedProcessPaymentResult will properly adjust the balance after the RPC
+// has executed.
 func (a *account) managedProcessPaymentResult(amount types.Currency, success bool) {
 	a.balanceMu.Lock()
-	a.balancePending = a.balancePending.Sub(amount)
+	a.pendingSpends = a.pendingSpends.Sub(amount)
 	if success {
 		a.balanceLocal = a.balanceLocal.Sub(amount)
 	}
 	a.balanceMu.Unlock()
+}
+
+// refill will use the account state to see if a refill is necessary. It will do
+// so if the eventual account balance drops below a certain threshold.
+func (a *account) refill() {
+	// Calculate the eventual account balance of the account on the host, note
+	// that this takes into account the amount of money that is in the process
+	// of being spent.
+	var eventual types.Currency
+	if a.pendingSpends.Cmp(a.balanceLocal.Add(a.pendingDeposits)) < 0 {
+		eventual = a.balanceLocal.Add(a.pendingDeposits).Sub(a.pendingSpends)
+	}
+
+	// If the account's eventual balance is below the threshold, we want to
+	// schedule a refill. The amount to refill is the difference between the
+	// eventual balance and our target balance. We only refill if we drop below
+	// a threshold because we want to avoid refilling every time we drop 1
+	// hasting below the target.
+	threshold := a.staticBalanceTarget.Mul64(8).Div64(10)
+	if eventual.Cmp(threshold) < 0 {
+		refill := a.staticBalanceTarget.Sub(eventual)
+		a.refillChan <- refill
+	}
 }

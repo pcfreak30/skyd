@@ -11,10 +11,10 @@ import (
 
 var errUnknownPaymentMethod = errors.New("unkown payment method")
 
-// paymentExtractor fulfills the PaymentExtractor interface on the host. It is
+// paymentProcessor fulfills the PaymentProcessor interface on the host. It is
 // used by the RPCs to extract a payment from the stream. Once payment is
 // extracted the RPC can continue processing.
-type paymentExtractor struct {
+type paymentProcessor struct {
 	am            accountManager
 	hostSecretKey crypto.SecretKey
 
@@ -22,9 +22,9 @@ type paymentExtractor struct {
 	h  *Host
 }
 
-// PaymentExtractor returns a new PaymentExtractor.
-func (h *Host) PaymentExtractor(host types.SiaPublicKey) modules.PaymentExtractor {
-	return &paymentExtractor{
+// PaymentProcessor returns a new PaymentProcessor.
+func (h *Host) PaymentProcessor(host types.SiaPublicKey) modules.PaymentProcessor {
+	return &paymentProcessor{
 		am:            h.staticAccountManager,
 		hostSecretKey: h.secretKey,
 		tg:            &h.tg,
@@ -32,14 +32,14 @@ func (h *Host) PaymentExtractor(host types.SiaPublicKey) modules.PaymentExtracto
 	}
 }
 
-// ExtractPaymentForRPC reads a payment request from the stream, depending on
+// ProcessPaymentForRPC reads a payment request from the stream, depending on
 // the type of payment it will either update the file contract revision or call
 // upon the ephemeral account manager to process the payment.
-func (p *paymentExtractor) ExtractPaymentForRPC(stream modules.Stream, currentBlockHeight types.BlockHeight) (amount types.Currency, accepted bool, err error) {
+func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, chan error, error) {
 	// Read the PaymentRequest
 	var pr modules.PaymentRequest
-	if err = stream.ReadObject(pr); err != nil {
-		return
+	if err := stream.ReadObject(pr); err != nil {
+		return types.ZeroCurrency, nil, err
 	}
 
 	// Process payment depending on the payment method
@@ -47,35 +47,34 @@ func (p *paymentExtractor) ExtractPaymentForRPC(stream modules.Stream, currentBl
 	case modules.PayByContract:
 		// Read the PayByContractRequest
 		var pbcr modules.PayByContractRequest
-		if err = stream.ReadObject(pbcr); err != nil {
-			return
+		if err := stream.ReadObject(pbcr); err != nil {
+			return types.ZeroCurrency, nil, err
 		}
 
 		// Process the request
-		accepted = true
-		amount, err = p.payByContract(pbcr, currentBlockHeight)
+		done := make(chan error)
+		amount, err := p.payByContract(pbcr, currentBlockHeight, done)
+		return amount, done, err
 	case modules.PayByEphemeralAccount:
 		// Read the PayByEphemeralAccountRequest
 		var pbear modules.PayByEphemeralAccountRequest
-		if err = stream.ReadObject(pbear); err != nil {
-			return
+		if err := stream.ReadObject(pbear); err != nil {
+			return types.ZeroCurrency, nil, err
 		}
 
 		// Process the request
-		accepted = true
-		amount, err = p.payByEphemeralAccount(pbear)
+		amount, err := p.payByEphemeralAccount(pbear)
+		return amount, nil, err
 	default:
-		err = errUnknownPaymentMethod
+		return types.ZeroCurrency, nil, errUnknownPaymentMethod
 	}
-
-	return
 }
 
 // payByContract processes the payment request by verifying the renter's payment
 // revision. If accepted it will modify the storage obligation. Note that this
 // happens in a different thread to allow immediate release of funds, without
 // having to wait for the FC fsync.
-func (p *paymentExtractor) payByContract(req modules.PayByContractRequest, cbh types.BlockHeight) (types.Currency, error) {
+func (p *paymentProcessor) payByContract(req modules.PayByContractRequest, cbh types.BlockHeight, doneChan chan error) (types.Currency, error) {
 	// Lock the storage obligation
 	so, currentRevision, _, err := p.lockStorageObligation(req.ContractID)
 	defer p.h.managedUnlockStorageObligation(req.ContractID)
@@ -106,7 +105,7 @@ func (p *paymentExtractor) payByContract(req modules.PayByContractRequest, cbh t
 
 	// Modify the storage obligation in a separate thread. This allows payment
 	// to be processed and funds to become available immediately.
-	go p.threadedModifyStorageObligation(so, amount)
+	go p.threadedModifyStorageObligation(so, amount, doneChan)
 
 	return amount, nil
 }
@@ -114,7 +113,7 @@ func (p *paymentExtractor) payByContract(req modules.PayByContractRequest, cbh t
 // payByEphemeralAccount process the payment request by calling the account
 // manager. The account manager will try to withdraw the request amount from the
 // renter's ephemeral account balance.
-func (p *paymentExtractor) payByEphemeralAccount(req modules.PayByEphemeralAccountRequest) (types.Currency, error) {
+func (p *paymentProcessor) payByEphemeralAccount(req modules.PayByEphemeralAccountRequest) (types.Currency, error) {
 	err := p.am.callWithdraw(req.Message, req.Signature, req.Priority)
 	if err != nil {
 		return types.ZeroCurrency, err
@@ -123,9 +122,12 @@ func (p *paymentExtractor) payByEphemeralAccount(req modules.PayByEphemeralAccou
 }
 
 // threadedModifyStorageObligation modifies the given storage obligation.
-func (p *paymentExtractor) threadedModifyStorageObligation(so storageObligation, amount types.Currency) {
+func (p *paymentProcessor) threadedModifyStorageObligation(so storageObligation, amount types.Currency, done chan error) {
+	defer close(done)
+
 	err := p.tg.Add()
 	if err != nil {
+		done <- err
 		return
 	}
 	defer p.tg.Done()
@@ -134,18 +136,16 @@ func (p *paymentExtractor) threadedModifyStorageObligation(so storageObligation,
 	// because we don't know yet what the payment is for
 
 	p.h.mu.Lock()
-	defer p.h.mu.Unlock()
-
 	err = p.h.modifyStorageObligation(so, nil, nil, nil)
 	if err != nil {
-		// TODO: update the ephemeral account to reflect this failure
-		p.h.log.Fatal("Could not modify storage obligation", err)
+		done <- err
 	}
+	p.h.mu.Unlock()
 }
 
 // lockStorageObligation will call upon the host to lock the storage obligation
 // for given ID. It returns the most recent revision and its signatures.
-func (p *paymentExtractor) lockStorageObligation(fcid types.FileContractID) (so storageObligation, recentRevision types.FileContractRevision, revisionSigs []types.TransactionSignature, err error) {
+func (p *paymentProcessor) lockStorageObligation(fcid types.FileContractID) (so storageObligation, recentRevision types.FileContractRevision, revisionSigs []types.TransactionSignature, err error) {
 	p.h.managedLockStorageObligation(fcid)
 
 	// Fetch the storage obligation, which has the revision, which has the

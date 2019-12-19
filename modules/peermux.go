@@ -86,6 +86,10 @@ type Stream interface {
 // For now just have stream wrap a net.Conn
 type stream struct{ conn net.Conn }
 
+func NewStream(conn net.Conn) Stream {
+	return stream{conn: conn}
+}
+
 func (s stream) Read(b []byte) (int, error)   { return s.conn.Read(b) }
 func (s stream) Write(b []byte) (int, error)  { return s.conn.Write(b) }
 func (s stream) Close() error                 { return s.Close() }

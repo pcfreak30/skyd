@@ -80,7 +80,7 @@ type worker struct {
 	// The staticFundAccountJobQueue holds the fund account jobs
 	staticFundAccountJobQueue fundAccountJobQueue
 	// account represents the account on the host
-	account Account
+	acc *account
 
 	// refillChan receives signals from the ephemeral account to schedule fund
 	// account jobs. The account will trigger these when its balance has dropped
@@ -183,8 +183,7 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		// Refill the account in a separate thread
-		// TODO this might not be the best spot to check for fund account jobs
+		// Perform fund account jobs in a separate thread
 		go w.threadedPerformFundAcountJob()
 
 		// Perform any job to fetch the list of backups from the host.
@@ -240,46 +239,21 @@ func (w *worker) threadedRefillAccount() {
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	balanceTarget, err := r.calculateAccountBalanceTarget(hostPubKey)
+	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "could not find host entry")
+	}
+	if !ok {
+		return nil, errors.New("host does not exist")
 	}
 
-	refillChan := make(chan types.Currency)
-	account := r.managedOpenAccount(hostPubKey, balanceTarget, refillChan)
-
-	return &worker{
+	w := &worker{
 		staticHostPubKey: hostPubKey,
 		killChan:         make(chan struct{}),
 		wakeChan:         make(chan struct{}, 1),
-		refillChan:       refillChan,
-		account:          account,
+		refillChan:       make(chan types.Currency),
 		renter:           r,
-	}, nil
-}
-
-// calculateAccountBalanceTarget will use the host's settings to figure out a
-// good account balance target.
-func (r *Renter) calculateAccountBalanceTarget(hostPubKey types.SiaPublicKey) (types.Currency, error) {
-	var target types.Currency
-
-	// Look up the MaxEphemeralAccountBalance defined by the host
-	hostEntry, ok, err := r.hostDB.Host(hostPubKey)
-	if err != nil {
-		return target, err
 	}
-	if !ok {
-		return target, errors.New("host does not exist")
-	}
-	_ = hostEntry.HostExternalSettings
-	maxBalance := types.SiacoinPrecision // TODO: will be defined on HES
-
-	// Impose a renter-side max
-	renterMaxBalance := types.SiacoinPrecision
-	if renterMaxBalance.Cmp(maxBalance) < 0 {
-		maxBalance = renterMaxBalance
-	}
-
-	target = maxBalance
-	return target, nil
+	w.acc = r.managedOpenAccount(host, w.refillChan)
+	return w, nil
 }

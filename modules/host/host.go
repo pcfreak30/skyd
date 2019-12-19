@@ -168,8 +168,9 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
+	// TODO
 	staticAccountManager accountManager
-	rpcPriceTable        modules.RPCPriceTable
+	priceTable           modules.PriceTable
 
 	// Utilities.
 	db         *persist.BoltDatabase

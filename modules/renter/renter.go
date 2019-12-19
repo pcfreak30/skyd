@@ -259,7 +259,7 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
-	accounts map[string]Account
+	accounts map[string]*account
 
 	// RPC
 	clients map[string]proto.RPCClient
@@ -488,18 +488,25 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 }
 
 // managedRPCClient returns an RPC client for the host with given key
-func (r *Renter) managedRPCClient(host types.SiaPublicKey) proto.RPCClient {
+func (r *Renter) managedRPCClient(host types.SiaPublicKey) (proto.RPCClient, error) {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
 
 	key := host.String()
 	client, exists := r.clients[key]
-	if !exists {
-		he, _, _ := r.hostDB.Host(host) // TODO handle !exists and err
-		proto.NewRPCClient(r.peerMux.Connection(string(he.NetAddress)))
+	if exists {
+		return client, nil
 	}
 
-	return client
+	he, found, err := r.hostDB.Host(host)
+	if !found || err != nil {
+		return nil, errors.AddContext(err, "host not found")
+	}
+
+	client = proto.NewRPCClient(r.peerMux.Connection(string(he.NetAddress)))
+	r.clients[key] = client
+	return client, nil
+
 }
 
 // managedContractUtilityMaps returns a set of maps that contain contract
@@ -909,9 +916,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
-		accounts: make(map[string]Account),
-
-		clients: make(map[string]proto.RPCClient),
+		accounts: make(map[string]*account),
+		clients:  make(map[string]proto.RPCClient),
 
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),

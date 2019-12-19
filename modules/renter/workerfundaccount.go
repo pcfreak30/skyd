@@ -47,8 +47,6 @@ func (w *worker) callQueueFundAccount(amount types.Currency) chan fundAccountJob
 
 // managedKillFundAccountJobs will throw an error for all queued fund account
 // jobs, as they will not complete due to the worker being shut down.
-//
-// TODO: Need to write testing around the Kill functions for workers.
 func (w *worker) managedKillFundAccountJobs() {
 	w.staticFundAccountJobQueue.mu.Lock()
 	for _, job := range w.staticFundAccountJobQueue.queue {
@@ -80,16 +78,26 @@ func (w *worker) threadedPerformFundAcountJob() {
 	w.staticFundAccountJobQueue.queue = w.staticFundAccountJobQueue.queue[1:]
 	w.staticFundAccountJobQueue.mu.Unlock()
 
-	// Fund the account & return the result
-	if _, err := w.account.Fund(job.amount); err != nil {
+	client, err := w.renter.managedRPCClient(w.staticHostPubKey)
+	if err != nil {
 		job.resultChan <- fundAccountJobResult{
 			job: job,
 			err: err,
 		}
 		return
 	}
+
+	amount, err := client.FundEphemeralAccount(w.acc, job.amount)
+	if err != nil {
+		job.resultChan <- fundAccountJobResult{
+			job: job,
+			err: err,
+		}
+		return
+	}
+
 	job.resultChan <- fundAccountJobResult{
 		job:    job,
-		funded: job.amount,
+		funded: amount,
 	}
 }

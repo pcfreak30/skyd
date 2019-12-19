@@ -289,6 +289,8 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 
 	switch id {
+	case modules.RPCFundEphemeralAccount:
+		err = extendErr("incoming RPCFundEphemeralAccount failed: ", h.managedRPCFundEphemeralAccount(modules.NewStream(conn)))
 	// new RPCs: enter an infinite request/response loop
 	case modules.RPCLoopEnter:
 		err = extendErr("incoming RPCLoopEnter failed: ", h.managedRPCLoop(conn))

@@ -11,10 +11,10 @@ type PaymentProvider interface {
 	ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, error)
 }
 
-// PaymentExtractor is the interface implemented when receiving payment for
-// an RPC.
-type PaymentExtractor interface {
-	ExtractPaymentForRPC(stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, bool, error)
+// PaymentProcessor is the interface implemented when receiving payment for an
+// RPC.
+type PaymentProcessor interface {
+	ProcessPaymentForRPC(stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, chan error, error)
 }
 
 // PaymentProviderFunc is an adapter for the interface. This allows wrapping
@@ -26,13 +26,13 @@ func (f PaymentProviderFunc) ProvidePaymentForRPC(rpcID types.Specifier, payment
 	return f(rpcID, payment, stream, currentBlockHeight)
 }
 
-// Extract payment identifiers
+// Payment identifiers
 var (
 	PayByContract         = types.NewSpecifier("PayByContract")
 	PayByEphemeralAccount = types.NewSpecifier("PayByEphemAcc")
 )
 
-// Extract payment request-response objects
+// Payment request-response objects
 type (
 	PaymentRequest struct {
 		Type types.Specifier

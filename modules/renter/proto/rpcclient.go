@@ -25,9 +25,11 @@ type RPCClient interface {
 
 // HostRPCClient wraps all necessities to communicate with a host
 type HostRPCClient struct {
-	connection         modules.Connection
-	priceTable         *modules.RPCPriceTable
-	currentBlockHeight types.BlockHeight // TODO subscribe to consensus or have access to something that does
+	connection modules.Connection
+
+	priceTable *modules.PriceTable
+	// TODO subscribe to consensus or have access to something that does
+	currentBlockHeight types.BlockHeight
 }
 
 // NewRPCClient returns a new RPC client. The RPC client is in direct
@@ -37,24 +39,25 @@ type HostRPCClient struct {
 func NewRPCClient(c modules.Connection) RPCClient {
 	// the RPC price table is going to be decided by the host, it will
 	// communicate it after the peermux is set up
-	pt := &modules.RPCPriceTable{}
+	pt := &modules.PriceTable{}
 
-	// TODO background thread keeping the prices up-to-date
-
-	return &HostRPCClient{
+	client := &HostRPCClient{
 		connection: c,
 		priceTable: pt,
 	}
+	// TODO background thread keeping the prices up-to-date
+
+	return client
 }
 
 // FundEphemeralAccount calls the fundEphemeralAccountRPC on the host
 func (c *HostRPCClient) FundEphemeralAccount(acc Account, amount types.Currency) (types.Currency, error) {
 	rpcID := modules.RPCFundEphemeralAccount
 
-	// Find the cost of the RPC
-	cost, err := c.costOfRPC(acc.HostKey(), rpcID)
-	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "RPC not available on host")
+	// Calculate the cost of the RPC
+	cost, exists := c.priceTable.Costs[rpcID]
+	if !exists {
+		return types.ZeroCurrency, errors.AddContext(errRPCNotAvailable, "could not fund ephemeral account")
 	}
 
 	// Get a stream using the RPC ID
@@ -81,15 +84,4 @@ func (c *HostRPCClient) FundEphemeralAccount(acc Account, amount types.Currency)
 	}
 
 	return paid, nil
-}
-
-// costOfRPC uses the RPC table to figure out the cost of the given RPC on the
-// host with hostKey
-func (c *HostRPCClient) costOfRPC(hostKey types.SiaPublicKey, rpcID types.Specifier) (types.Currency, error) {
-	remoteRPCID := modules.NewRemoteRPCID(hostKey, rpcID)
-	cost, ok := c.priceTable.Costs[remoteRPCID]
-	if !ok {
-		return types.ZeroCurrency, errRPCNotAvailable
-	}
-	return cost, nil
 }

@@ -25,7 +25,7 @@ type paymentProviderContract struct {
 }
 
 // PaymentProvider returns a new PaymentProvider for the given host, it allows
-// payments to be made from the contract the renter has with the host
+// payments to be made from the contract the renter has with the host.
 func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.PaymentProvider, error) {
 	_, exists, err := c.hdb.Host(host)
 	if !exists || err != nil {
@@ -76,7 +76,7 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, pa
 
 	// send PaymentRequest & PayByContractRequest
 	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := buildPayBycontractRequest(rev, sig)
+	pbcRequest := buildPayByContractRequest(rev, sig)
 	if err := stream.WriteObjects(pRequest, pbcRequest); err != nil {
 		return types.ZeroCurrency, err
 	}
@@ -109,24 +109,21 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, pa
 	return payByResponse.Amount, nil
 }
 
-// buildPayBycontractRequest uses a revision and signature to build the
+// buildPayByContractRequest uses a revision and signature to build the
 // PayBycontractRequest
-func buildPayBycontractRequest(rev types.FileContractRevision, sig crypto.Signature) modules.PayByContractRequest {
+func buildPayByContractRequest(rev types.FileContractRevision, sig crypto.Signature) modules.PayByContractRequest {
 	var req modules.PayByContractRequest
 
 	req.ContractID = rev.ID()
 	req.NewRevisionNumber = rev.NewRevisionNumber
-
 	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
 	for i, o := range rev.NewValidProofOutputs {
 		req.NewValidProofValues[i] = o.Value
 	}
-
 	req.NewMissedProofValues = make([]types.Currency, len(rev.NewMissedProofOutputs))
 	for i, o := range rev.NewMissedProofOutputs {
 		req.NewMissedProofValues[i] = o.Value
 	}
-
 	req.Signature = sig[:]
 
 	return req
