@@ -1494,21 +1494,23 @@ func renterfilesdeletecmd(path string) {
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
-	// Try to delete file.
-	errFile := httpClient.RenterDeletePost(siaPath)
-	if errFile == nil {
-		fmt.Printf("Deleted file '%v'\n", path)
-		return
-	} else if !strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) {
-		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
-	}
-	// Try to delete folder.
+	// Try to delete folder first since deleting a file will return nil if the
+	// file does not exist
 	errDir := httpClient.RenterDirDeletePost(siaPath)
 	if errDir == nil {
 		fmt.Printf("Deleted directory '%v'\n", path)
 		return
 	} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
 		die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
+	}
+	// Try to delete file second since it will return nil if the file doesn't
+	// exist.
+	errFile := httpClient.RenterDeletePost(siaPath)
+	if errFile == nil {
+		fmt.Printf("Deleted file '%v'\n", path)
+		return
+	} else if !strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) {
+		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 	}
 	// Unknown file/folder.
 	die(fmt.Sprintf("Unknown path '%v'", path))
