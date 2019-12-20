@@ -1007,7 +1007,7 @@ func TestRenterHandlerDelete(t *testing.T) {
 	}
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err != filesystem.ErrNotExist {
+	if !errors.Contains(err, filesystem.ErrNotExist) {
 		t.Errorf("Expected '%v', got '%v'", filesystem.ErrNotExist, err)
 	}
 }

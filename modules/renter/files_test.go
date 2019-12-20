@@ -89,7 +89,7 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPath)
-	if err != filesystem.ErrNotExist {
+	if !errors.Contains(err, filesystem.ErrNotExist) {
 		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
 	}
 
@@ -104,7 +104,7 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPathOne)
-	if err != filesystem.ErrNotExist {
+	if !errors.Contains(err, filesystem.ErrNotExist) {
 		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
 	}
 	// Delete the file.
@@ -150,7 +150,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	}
 	// Call delete on the previous name.
 	err = rt.renter.DeleteFile(siaPath1)
-	if err != filesystem.ErrNotExist {
+	if !errors.Contains(err, filesystem.ErrNotExist) {
 		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
 	}
 	// Call delete on the new name.
