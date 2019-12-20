@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -195,7 +196,7 @@ func TestRenterDeleteFileMissingParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath, rsc := testingFileParams()
+	_, rsc := testingFileParams()
 	up := modules.FileUploadParams{
 		Source:      "",
 		SiaPath:     siaPath,
@@ -206,12 +207,12 @@ func TestRenterDeleteFileMissingParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Delete the parent.
-	if err := rt.renter.staticFileSystem.DeleteFile(dirSiaPath); err != nil {
+	if err := rt.renter.staticFileSystem.DeleteDir(dirSiaPath); err != nil {
 		t.Fatal(err)
 	}
-	// Delete the file. This should not return an error since it's already
-	// deleted implicitly.
-	if err := rt.renter.staticFileSystem.DeleteFile(up.SiaPath); err != nil {
+	// Delete the file. This should return an error since it's already deleted
+	// implicitly.
+	if err := rt.renter.staticFileSystem.DeleteFile(up.SiaPath); !errors.Contains(err, filesystem.ErrNotExist) {
 		t.Fatal(err)
 	}
 }

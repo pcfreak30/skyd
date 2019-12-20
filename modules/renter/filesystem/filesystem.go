@@ -524,7 +524,7 @@ func (fs *FileSystem) managedDeleteDir(path string) error {
 	// Open the dir.
 	dir, err := fs.managedOpenDir(path)
 	if err != nil {
-		return errors.AddContext(err, "failed to open parent dir of file")
+		return errors.AddContext(err, "failed to open parent dir of dir")
 	}
 	// Close the dir since we are not returning it. The open file keeps it
 	// loaded in memory.
