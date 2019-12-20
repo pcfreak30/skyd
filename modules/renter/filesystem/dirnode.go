@@ -512,7 +512,7 @@ func (n *DirNode) managedDeleteFile(fileName string) error {
 	// Otherwise simply delete the file.
 	err := os.Remove(filepath.Join(n.absPath(), fileName+modules.SiaFileExtension))
 	if os.IsNotExist(err) {
-		return nil
+		return ErrNotExist
 	}
 	return err
 }
