@@ -8,7 +8,7 @@ type (
 	// The PriceTable lists all the RPCs the host offers and their price. The
 	// prices remain valid up until the expiry block height.
 	PriceTable struct {
-		Costs map[types.Specifier]types.Currency
+		Costs  map[types.Specifier]types.Currency
 		Expiry types.BlockHeight
 	}
 )
@@ -32,6 +32,6 @@ type (
 	}
 
 	RPCUpdatePriceTableResponse struct {
-		PriceTableJSON string
+		PriceTableJSON []byte
 	}
 )

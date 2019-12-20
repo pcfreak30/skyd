@@ -264,6 +264,8 @@ type Renter struct {
 	// RPC
 	clients map[string]proto.RPCClient
 
+	blockHeight types.BlockHeight
+
 	// Utilities.
 	cs                modules.ConsensusSet
 	deps              modules.Dependencies
@@ -503,7 +505,13 @@ func (r *Renter) managedRPCClient(host types.SiaPublicKey) (proto.RPCClient, err
 		return nil, errors.AddContext(err, "host not found")
 	}
 
-	client = proto.NewRPCClient(r.peerMux.Connection(string(he.NetAddress)))
+	connection := r.peerMux.Connection(string(he.NetAddress))
+	account := r.managedOpenAccount(host)
+	client, err = proto.NewRPCClient(connection, account, r.blockHeight, &r.tg, r.log)
+	if err != nil {
+		return nil, errors.AddContext(err, "could not create RPC client")
+	}
+
 	r.clients[key] = client
 	return client, nil
 
@@ -842,7 +850,28 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
+
+	// Update the block height on the renter
+	for _, block := range cc.RevertedBlocks {
+		if block.ID() != types.GenesisID {
+			r.blockHeight--
+		}
+	}
+	for _, block := range cc.AppliedBlocks {
+		if block.ID() != types.GenesisID {
+			r.blockHeight++
+		}
+	}
+
+	// Notify all rpc clients of the new block height
+	if cc.Synced {
+		for _, c := range r.clients {
+			c.(*proto.HostRPCClient).UpdateBlockHeight(r.blockHeight)
+		}
+	}
+
 	r.mu.Unlock(id)
+
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the

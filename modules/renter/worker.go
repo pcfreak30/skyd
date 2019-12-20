@@ -79,13 +79,11 @@ type worker struct {
 
 	// The staticFundAccountJobQueue holds the fund account jobs
 	staticFundAccountJobQueue fundAccountJobQueue
-	// account represents the account on the host
-	acc *account
 
-	// refillChan receives signals from the ephemeral account to schedule fund
-	// account jobs. The account will trigger these when its balance has dropped
-	// below a certain threshold.
-	refillChan chan types.Currency
+	// Account represents the account on the host. The worker will maintain a
+	// certain account balance defined by the max and target balance.
+	staticBalanceTarget types.Currency
+	account             *account
 
 	// Utilities.
 	//
@@ -159,12 +157,6 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillFundAccountJobs()
 
-	// Refill the account in a background thread. The workers signal withdrawals
-	// through the accountWithdrawalsChan. Upon receiving a message on this
-	// channel we update the account state and check if the balance is below a
-	// certain threshold. If so we schedule a job to refill it.
-	go w.threadedRefillAccount()
-
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
 	// work is attempted, the loop resets to check for higher priority work
@@ -183,8 +175,8 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		// Perform fund account jobs in a separate thread
-		go w.threadedPerformFundAcountJob()
+		// Refill the account in a background thread.
+		go w.threadedRefillAccount()
 
 		// Perform any job to fetch the list of backups from the host.
 		var workAttempted bool
@@ -224,17 +216,27 @@ func (w *worker) threadedRefillAccount() {
 	}
 	defer w.renter.tg.Done()
 
-	for {
-		select {
-		case amount := <-w.refillChan:
-			w.callQueueFundAccount(amount)
-			continue
-		case <-w.killChan:
-			return
-		case <-w.renter.tg.StopChan():
-			return
-		}
+	var balance, refill types.Currency
+
+	w.mu.Lock()
+	balance = w.account.Balance()
+	w.mu.Unlock()
+
+	// If the account's eventual balance is below the threshold, we want to
+	// trigger a refill. The amount to refill is the difference between the
+	// eventual balance and our target balance. We only refill if we drop below
+	// a threshold because we want to avoid refilling every time we drop 1
+	// hasting below the target.
+	threshold := w.staticBalanceTarget.Mul64(8).Div64(10)
+	if balance.Cmp(threshold) < 0 {
+		refill = w.staticBalanceTarget.Sub(balance)
 	}
+	if refill.IsZero() {
+		return
+	}
+
+	w.callQueueFundAccount(refill)
+	w.threadedPerformFundAcountJob()
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
@@ -247,13 +249,19 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		return nil, errors.New("host does not exist")
 	}
 
-	w := &worker{
+	// TODO the balance target is currently hardcoded and does not take into
+	// account the max ephemeral account balance (configured by the host). The
+	// target balance should be calculated based off of that and probably also a
+	// max configurable in the renter. For now the target is temporarily set to
+	// half the default ephemeral account max balance
+
+	return &worker{
 		staticHostPubKey: hostPubKey,
 		killChan:         make(chan struct{}),
 		wakeChan:         make(chan struct{}, 1),
-		refillChan:       make(chan types.Currency),
 		renter:           r,
-	}
-	w.acc = r.managedOpenAccount(host, w.refillChan)
-	return w, nil
+
+		staticBalanceTarget: types.SiacoinPrecision.Div64(2),
+		account:             r.managedOpenAccount(host.PublicKey),
+	}, nil
 }
