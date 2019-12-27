@@ -24,12 +24,11 @@ import (
 
 // renterTester contains all of the modules that are used while testing the renter.
 type renterTester struct {
-	cs        modules.ConsensusSet
-	gateway   modules.Gateway
-	miner     modules.TestMiner
-	tpool     modules.TransactionPool
-	wallet    modules.Wallet
-	walletKey crypto.CipherKey
+	cs      modules.ConsensusSet
+	gateway modules.Gateway
+	miner   modules.TestMiner
+	tpool   modules.TransactionPool
+	wallet  modules.Wallet
 
 	renter *Renter
 	dir    string
@@ -60,7 +59,7 @@ func (rt *renterTester) addRenter(r *Renter) error {
 // createZeroByteFileOnDisk creates a 0 byte file on disk so that a Stat of the
 // local path won't return an error
 func (rt *renterTester) createZeroByteFileOnDisk() (string, error) {
-	path := filepath.Join(rt.renter.staticFilesDir, persist.RandomSuffix())
+	path := filepath.Join(rt.renter.staticFileSystem.Root(), persist.RandomSuffix())
 	err := ioutil.WriteFile(path, []byte{}, 0600)
 	if err != nil {
 		return "", err
@@ -192,23 +191,6 @@ func (stubHostDB) Host(types.SiaPublicKey) (modules.HostDBEntry, bool, error) {
 }
 func (stubHostDB) ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error) {
 	return modules.HostScoreBreakdown{}, nil
-}
-
-// stubContractor is the minimal implementation of the hostContractor
-// interface.
-type stubContractor struct{}
-
-func (stubContractor) SetAllowance(modules.Allowance) error { return nil }
-func (stubContractor) Allowance() modules.Allowance         { return modules.Allowance{} }
-func (stubContractor) Contract(modules.NetAddress) (modules.RenterContract, bool) {
-	return modules.RenterContract{}, false
-}
-func (stubContractor) Contracts() []modules.RenterContract                    { return nil }
-func (stubContractor) CurrentPeriod() types.BlockHeight                       { return 0 }
-func (stubContractor) IsOffline(modules.NetAddress) bool                      { return false }
-func (stubContractor) Editor(types.FileContractID) (contractor.Editor, error) { return nil, nil }
-func (stubContractor) Downloader(types.FileContractID) (contractor.Downloader, error) {
-	return nil, nil
 }
 
 type pricesStub struct {

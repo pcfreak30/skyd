@@ -77,12 +77,10 @@ type nodeScanner struct {
 	scanLog io.WriteCloser
 
 	// data keeps track of connection time and uptime stats for each node that has
-	// been succesfully connected to at least once it the past 30 days.
+	// been successfully connected to at least once it the past 30 days.
 	data persistData
 	// persistFile stores persistData using siaPersist.
 	persistFile string
-
-	testing bool
 }
 
 type persistData struct {
@@ -94,7 +92,7 @@ type persistData struct {
 }
 
 type nodeStats struct {
-	// Timestamp of first succesful connection to this node.
+	// Timestamp of first successful connection to this node.
 	// Used for total uptime and uptime percentage calculations.
 	FirstConnectionTime time.Time
 
@@ -171,13 +169,13 @@ func newNodeScanner(scannerDirPrefix string) (ns *nodeScanner) {
 	scannerDirPath := filepath.Join(scannerDirPrefix, nodeScannerDirName)
 	scannerGatewayDirPath := filepath.Join(scannerDirPath, "gateway")
 	if _, err := os.Stat(scannerDirPath); os.IsNotExist(err) {
-		err := os.Mkdir(scannerDirPath, 0777)
+		err := os.Mkdir(scannerDirPath, 0750)
 		if err != nil {
 			log.Fatal("Error creating scan directory: ", err)
 		}
 	}
 	if _, err := os.Stat(scannerGatewayDirPath); os.IsNotExist(err) {
-		err := os.Mkdir(scannerGatewayDirPath, 0777)
+		err := os.Mkdir(scannerGatewayDirPath, 0750)
 		if err != nil {
 			log.Fatal("Error creating scanner gateway directory: ", err)
 		}
@@ -283,7 +281,7 @@ func (ns *nodeScanner) startScan() {
 	for {
 		select {
 		case <-printTicker.C:
-			fmt.Printf(ns.getStatsStr())
+			fmt.Println(ns.getStatsStr())
 
 		case <-persistTicker.C:
 			log.Println("Persisting nodes: ", len(ns.data.NodeStats))
@@ -344,7 +342,7 @@ func (ns *nodeScanner) done() bool {
 // close prints out the final set of stats, adds them to the log file, and
 // persists the persisted set one last time.
 func (ns *nodeScanner) close() {
-	fmt.Printf(ns.getStatsStr())
+	fmt.Println(ns.getStatsStr())
 
 	// Append stats to stats file.
 	json.NewEncoder(ns.scanLog).Encode(ns.stats)
@@ -453,7 +451,7 @@ func (ns *nodeScanner) updateNodeStats(res nodeScanResult) {
 	if !ok && res.Err != nil {
 		return
 	} else if !ok {
-		// If this node isn't in the persisted set, initalize it.
+		// If this node isn't in the persisted set, initialize it.
 		stats = nodeStats{
 			FirstConnectionTime:          res.Timestamp,
 			LastSuccessfulConnectionTime: res.Timestamp,

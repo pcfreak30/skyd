@@ -19,6 +19,10 @@ const (
 	FCSignedIdentiferSize = 80 // 32 bytes identifier, 32 bytes signature, 16 bytes prefix
 )
 
+// ErrCSIDoesNotMatchSeed is returned when a ContractSignedIdentifier was not
+// created with the current seed used by the renter.
+var ErrCSIDoesNotMatchSeed = errors.New("ContractSignedIdentifier signature bytes not equal")
+
 // Declaration of individual seed types for additional type safety.
 type (
 	// identifierSeed is the seed used to derive identifiers for file contracts.
@@ -38,14 +42,14 @@ type (
 )
 
 type (
-	// contractIdentifier is an identifer which is stored in the arbitrary data
+	// contractIdentifier is an identifier which is stored in the arbitrary data
 	// section of each contract.
 	contractIdentifier [32]byte
 	// contractIdentifierSigningKey is the key used to sign a
 	// contractIdentifier to verify that the identifier was created by the
 	// renter.
 	contractIdentifierSigningKey [64]byte
-	// ContractSignedIdentifier is an identifer with a prefix and appended
+	// ContractSignedIdentifier is an identifier with a prefix and appended
 	// signature, ready to be stored in the arbitrary data section of a
 	// transaction.
 	ContractSignedIdentifier [FCSignedIdentiferSize]byte
@@ -172,7 +176,7 @@ func PrefixedSignedIdentifier(renterSeed EphemeralRenterSeed, txn types.Transact
 	marshaledKey := encoding.Marshal(hostKey)
 	padding := threefish.BlockSize - len(marshaledKey)%threefish.BlockSize
 	encryptedKey := sk.EncryptBytes(append(marshaledKey, make([]byte, padding)...))
-	// Create the signed identifer object.
+	// Create the signed identifier object.
 	var csi ContractSignedIdentifier
 	copy(csi[:16], modules.PrefixNonSia[:])
 	copy(csi[16:48], identifier[:])
@@ -204,7 +208,7 @@ func (csi ContractSignedIdentifier) IsValid(renterSeed EphemeralRenterSeed, txn 
 	signature := sk.EncryptBytes(append(identifier[:], make([]byte, 32)...))[:32]
 	// Compare the signatures.
 	if !bytes.Equal(signature, csi[48:80]) {
-		return types.SiaPublicKey{}, false, errors.New("signature bytes not equal")
+		return types.SiaPublicKey{}, false, ErrCSIDoesNotMatchSeed
 	}
 	// Decrypt the hostKey.
 	hk, err := sk.DecryptBytes(hostKey)
