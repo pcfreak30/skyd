@@ -10,34 +10,33 @@ import (
 func (h *Host) managedRPCFundEphemeralAccount(stream modules.Stream) error {
 	// Grab some variables
 	h.mu.RLock()
-	hostKey := h.publicKey
 	blockHeight := h.blockHeight
 	h.mu.RUnlock()
 
 	// Extract the payment
-	pe := h.PaymentProcessor(hostKey)
-	amount, done, err := pe.ProcessPaymentForRPC(stream, blockHeight)
-	if err != nil {
-		return errors.AddContext(err, "could not process payment")
+	pp := h.PaymentProcessor()
+	amount, so, err := pp.ProcessPaymentForRPC(stream, blockHeight)
+	if so == nil {
+		// TODO
 	}
 
-	// Commit the deposit when the FC is fsynced to disk
-	go func() {
-		err := <-done
-		if err == nil {
-			h.staticAccountManager.callCommitDeposit(amount)
-		}
-	}()
-
 	// Fund the ephemeral account
+	syncChan := make(chan struct{})
 	var fear modules.RPCFundEphemeralAccountRequest
 	if err = stream.ReadObject(fear); err != nil {
 		return errors.AddContext(err, "could not read request")
 	}
-	err = h.staticAccountManager.callDeposit(fear.AccountID, amount)
+	err = h.staticAccountManager.callDeposit(fear.AccountID, amount, syncChan)
 	if err != nil {
 		return errors.AddContext(err, "could not fund the account")
 	}
 
-	return nil
+	// Update the storage obligation
+	err = h.modifyStorageObligation(so.(storageObligation), nil, nil, nil)
+	if err != nil {
+		h.log.Fatal(err) // TODO improve
+	}
+	close(syncChan)
+
+	return errors.AddContext(err, "RPC fund ephemeral account failed")
 }

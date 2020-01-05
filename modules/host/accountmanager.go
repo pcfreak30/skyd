@@ -10,7 +10,6 @@ import (
 )
 
 type accountManager interface {
-	callDeposit(id string, amount types.Currency) error
-	callCommitDeposit(amount types.Currency)
+	callDeposit(string, types.Currency, chan struct{}) error
 	callWithdraw(modules.WithdrawalMessage, crypto.Signature, int64) error
 }
