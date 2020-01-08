@@ -1255,6 +1255,14 @@ func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 		}
 		opts.ReadOnly = readOnly
 	}
+	if req.FormValue("allowother") != "" {
+		allowOther, err := scanBool(req.FormValue("allowother"))
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		opts.AllowOther = allowOther
+	}
 	if err := api.renter.Mount(mount, siaPath, opts); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1397,7 +1405,7 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 			return
 		}
 	}
-	files, err := api.renter.FileList(modules.RootSiaPath(), true, c)
+	files, err := api.renter.FileList(modules.UserSiaPath(), true, c)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
