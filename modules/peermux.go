@@ -1,13 +1,12 @@
 package modules
 
 import (
+	"errors"
 	"io"
 	"net"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 ///////////////////////////////////////////
@@ -19,58 +18,52 @@ import (
 //
 ///////////////////////////////////////////
 
-// PeerMux
-type PeerMux struct {
-	connections map[string]Connection
+var ErrStreamTimeout = errors.New("stream timed out")
+var ErrStreamClosed = errors.New("stream closed")
+
+type SiaMux struct {
+	muxes map[string]*PeerMux
 }
 
-// NewPeerMux returns a PeerMux object
-func NewPeerMux() *PeerMux {
-	return &PeerMux{
-		connections: make(map[string]Connection),
+func NewSiaMux() *SiaMux {
+	return &SiaMux{
+		muxes: make(map[string]*PeerMux),
 	}
+}
+
+func (sm *SiaMux) NewMux(address string) *PeerMux {
+	m, exists := sm.muxes[address]
+	if exists {
+		return m
+	}
+
+	conn, _ := (&net.Dialer{
+		Cancel:  make(chan struct{}),
+		Timeout: 45 * time.Second,
+	}).Dial("tcp", address)
+	sm.muxes[address] = &PeerMux{conn: conn}
+	return sm.muxes[address]
+}
+
+// PeerMux
+type PeerMux struct {
+	conn net.Conn
+}
+
+// NewStream creates a new stream
+func (p *PeerMux) NewStream() Stream {
+	var s Stream = stream{conn: p.conn}
+	return s
+}
+
+// Accept listens for incoming streams and returns it
+func (p *PeerMux) Accept() Stream {
+	var s Stream = stream{conn: p.conn}
+	return s
 }
 
 // Close will close the peermux
 func (p *PeerMux) Close() error { return nil }
-
-// Connection creates a new connection using given address
-func (p *PeerMux) Connection(address string) Connection {
-	c, exists := p.connections[address]
-	if !exists {
-		conn, err := (&net.Dialer{
-			Cancel:  make(chan struct{}),
-			Timeout: 45 * time.Second,
-		}).Dial("tcp", address)
-		if err != nil {
-			build.Critical(err)
-		}
-		c = connection{
-			conn:    conn,
-			streams: make(map[types.Specifier]Stream),
-		}
-		p.connections[address] = c
-	}
-	return c
-}
-
-// Connection is specific to a net address, and holds streams by specifier
-type Connection interface {
-	Stream(name types.Specifier) Stream
-}
-
-// connection contains a net.Conn and a set of streams. A stream is uniquely
-// identified by a Specifier.
-type connection struct {
-	conn    net.Conn
-	streams map[types.Specifier]Stream
-}
-
-// Stream returns a new stream for given specifier.
-func (c connection) Stream(name types.Specifier) Stream {
-	// for now just return the same stream simply wrapping the net.Conn
-	return stream{conn: c.conn}
-}
 
 // Stream
 type Stream interface {
@@ -85,10 +78,6 @@ type Stream interface {
 
 // For now just have stream wrap a net.Conn
 type stream struct{ conn net.Conn }
-
-func NewStream(conn net.Conn) Stream {
-	return stream{conn: conn}
-}
 
 func (s stream) Read(b []byte) (int, error)   { return s.conn.Read(b) }
 func (s stream) Write(b []byte) (int, error)  { return s.conn.Write(b) }

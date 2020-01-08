@@ -5,9 +5,9 @@ import (
 )
 
 type (
-	// The PriceTable lists all the RPCs the host offers and their price. The
+	// The RPCPriceTable lists all the RPCs the host offers and their price. The
 	// prices remain valid up until the expiry block height.
-	PriceTable struct {
+	RPCPriceTable struct {
 		Costs  map[types.Specifier]types.Currency
 		Expiry types.BlockHeight
 	}

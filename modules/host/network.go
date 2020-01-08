@@ -24,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
@@ -289,12 +290,6 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 
 	switch id {
-	// TODO: currently we simply wrap the connection in a stream, but
-	// eventually the host should probably listen on a different ports for
-	// RPC that want to connect through the siamux. That will give us a
-	// stream.
-	case modules.RPCFundEphemeralAccount:
-		err = extendErr("incoming RPCFundEphemeralAccount failed: ", h.managedRPCFundEphemeralAccount(modules.NewStream(conn)))
 	// new RPCs: enter an infinite request/response loop
 	case modules.RPCLoopEnter:
 		err = extendErr("incoming RPCLoopEnter failed: ", h.managedRPCLoop(conn))
@@ -327,22 +322,115 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 }
 
-// threadedListen listens for incoming RPCs and spawns an appropriate handler for each.
+// threadedHandleStream handles an incoming stream.
+func (h *Host) threadedHandleStream(s modules.Stream) {
+	err := h.tg.Add()
+	if err != nil {
+		return
+	}
+	defer h.tg.Done()
+
+	// Close the stream on host.Close or when the method terminates, whichever
+	// comes first.
+	closeStreamChan := make(chan struct{})
+	defer close(closeStreamChan)
+	go func() {
+		select {
+		case <-h.tg.StopChan():
+		case <-closeStreamChan:
+		}
+		s.Close()
+	}()
+
+	// The first RPC a renter sends over the stream should always be one to
+	// request the host's prices.
+	var id types.Specifier
+	if err = s.ReadObject(id); err != nil {
+		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+		return
+	}
+	if id != modules.RPCUpdatePriceTable {
+		return // TODO possible to write an error response somehow?
+	}
+	var pt modules.RPCPriceTable
+	if pt, err = h.managedRPCUpdatePriceTable(s, pt); err != nil {
+		return
+	}
+
+	// Keep processing RPCs coming over the stream until it times out or until
+	// the renter closes the stream.
+	for {
+		var id types.Specifier
+		if err = s.ReadObject(id); err != nil {
+			if !errors.Contains(modules.ErrStreamClosed, err) {
+				atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			}
+			break
+		}
+
+		switch id {
+		case modules.RPCFundEphemeralAccount:
+			err = errors.AddContext(h.managedRPCFundEphemeralAccount(s, pt), "Failed to handle FundEphemeralAccountRPC")
+
+		case modules.RPCUpdatePriceTable:
+			pt, err = h.managedRPCUpdatePriceTable(s, pt)
+			err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
+		default:
+			// TODO: add debug logging
+			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+		}
+
+		if errors.Contains(modules.ErrStreamTimeout, err) {
+			break
+		}
+
+		if err != nil {
+			atomic.AddUint64(&h.atomicErroredCalls, 1)
+			h.managedLogError(err) // TODO: add stream context to the error
+		}
+	}
+}
+
+// threadedListen listens for incoming RPCs and spawns an appropriate handler
+// for each.
 func (h *Host) threadedListen(closeChan chan struct{}) {
 	defer close(closeChan)
 
-	// Receive connections until an error is returned by the listener. When an
-	// error is returned, there will be no more calls to receive.
-	for {
-		// Block until there is a connection to handle.
-		conn, err := h.listener.Accept()
-		if err != nil {
-			return
+	incoming := make(chan func())
+
+	// Receive connections until an error is returned by the listener. When
+	// an error is returned, there will be no more calls to receive.
+	go func() {
+		for {
+			// Block until there is a connection to handle.
+			conn, err := h.listener.Accept()
+			if err != nil {
+				return
+			}
+
+			incoming <- func() {
+				h.threadedHandleConn(conn)
+			}
 		}
+	}()
 
-		go h.threadedHandleConn(conn)
+	// Receive streams until an error is returned by the siamux. When an error
+	// is returned, there will be no more calls to receive.
+	go func() {
+		for {
+			// Block until there is a connection to handle.
+			stream := h.peermux.Accept()
+			incoming <- func() {
+				h.threadedHandleStream(stream)
+			}
+		}
+	}()
 
-		// Soft-sleep to ratelimit the number of incoming connections.
+	for {
+		rpcHandler := <-incoming
+		go rpcHandler()
+
+		// Soft-sleep to ratelimit the number of incoming RPCs.
 		select {
 		case <-h.tg.StopChan():
 		case <-time.After(rpcRatelimit):

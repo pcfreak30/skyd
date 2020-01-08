@@ -168,9 +168,18 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// TODO
+	// Ephemeral Account Manager - the EA manager keeps track of all the
+	// ephemeral accounts on the host.
 	staticAccountManager accountManager
-	priceTable           modules.PriceTable
+
+	// The price table lists the host's prices for every RPC it offers. This
+	// table is updated depending on various conditions that require the host to
+	// increase or decrease prices dynamically.
+	priceTable modules.RPCPriceTable
+
+	// TODO this'll be replaced by siamux but is a temporary means to accept new
+	// incoming streams.
+	peermux modules.PeerMux
 
 	// Utilities.
 	db         *persist.BoltDatabase
@@ -216,6 +225,30 @@ func (h *Host) checkUnlockHash() error {
 	return nil
 }
 
+// managedUpdatePriceTable will calculate new RPC prices and update the RPC
+// price table on the host. These prices are dependant on numerous factors,
+// such as congestion, load, etc.
+func (h *Host) managedUpdatePriceTable() {
+	// TODO: the host guarantees fixed pricing up until a certain expiry block
+	// height. This can be dependant on several factors. For now, it is a fixed
+	// amount of blocks in the future
+	expiry := h.BlockHeight() + 6
+
+	// Build the new price table
+	priceTable := modules.RPCPriceTable{
+		Costs:  make(map[types.Specifier]types.Currency),
+		Expiry: expiry,
+	}
+
+	// TODO: the host only offers two RPCs
+	h.priceTable.Costs[modules.RPCFundEphemeralAccount] = h.managedCalculateFundEphemeralAccountRPCPrice()
+	h.priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
+
+	h.mu.Lock()
+	h.priceTable = priceTable
+	h.mu.Unlock()
+}
+
 // newHost returns an initialized Host, taking a set of dependencies as input.
 // By making the dependencies an argument of the 'new' call, the host can be
 // mocked such that the dependencies can return unexpected errors or unique
@@ -247,6 +280,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
+		peermux:    modules.PeerMux{}, // TODO
 		persistDir: persistDir,
 	}
 
@@ -321,6 +355,11 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		h.log.Println("Could not initialize host networking:", err)
 		return nil, err
 	}
+
+	// Build the RPC price table. This table is dynamically updated with the
+	// host's most recent prices for every RPC it offers.
+	h.managedUpdatePriceTable()
+
 	return h, nil
 }
 
@@ -455,4 +494,11 @@ func (h *Host) InternalSettings() modules.HostInternalSettings {
 	}
 	defer h.tg.Done()
 	return h.settings
+}
+
+// BlockHeight returns the host's current blockheight.
+func (h *Host) BlockHeight() types.BlockHeight {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.blockHeight
 }

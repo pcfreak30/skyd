@@ -34,7 +34,7 @@ func (h *Host) PaymentProcessor() modules.PaymentProcessor {
 // ProcessPaymentForRPC reads a payment request from the stream, depending on
 // the type of payment it will either update the file contract revision or call
 // upon the ephemeral account manager to process the payment.
-func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
+func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTable modules.RPCPriceTable) (types.Currency, error) {
 	// Read the PaymentRequest
 	var pr modules.PaymentRequest
 	if err := stream.ReadObject(pr); err != nil {
@@ -63,7 +63,8 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, currentBl
 		renterSignature := signatureFromRequest(currentRevision, pbcr)
 
 		// Sign the revision
-		txn, err := createRevisionSignature(renterRevision, renterSignature, p.hostSecretKey, currentBlockHeight)
+		blockHeight := p.h.BlockHeight()
+		txn, err := createRevisionSignature(renterRevision, renterSignature, p.hostSecretKey, blockHeight)
 		if err != nil {
 			return failTo("ProcessPaymentForRPC", "verify revision", err)
 		}
@@ -106,7 +107,7 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, currentBl
 // account is funded by making payment through a contract. This is a special
 // case because it requires some coordination between the FC fsync and the EA
 // fsync. See callDeposit in accountmanager.go for more details.
-func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
+func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream modules.Stream, priceTable modules.RPCPriceTable) (types.Currency, error) {
 	// Read the PaymentRequest
 	var pr modules.PaymentRequest
 	if err := stream.ReadObject(pr); err != nil {
@@ -143,7 +144,8 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream modules.Stream,
 	renterSignature := signatureFromRequest(currentRevision, pbcr)
 
 	// Sign the revision
-	txn, err := createRevisionSignature(renterRevision, renterSignature, p.hostSecretKey, currentBlockHeight)
+	blockHeight := p.h.BlockHeight()
+	txn, err := createRevisionSignature(renterRevision, renterSignature, p.hostSecretKey, blockHeight)
 	if err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "verify revision", err)
 	}

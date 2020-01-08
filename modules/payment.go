@@ -1,9 +1,15 @@
 package modules
 
 import (
+	"errors"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// ErrInsufficientPaymentForRPC is returned when the provided payment was lower
+// than the cost of the RPC.
+var ErrInsufficientPaymentForRPC = errors.New("Provided payment was lower than the RPC price")
 
 // PaymentProvider is the interface implemented when payment has to be made
 // for an RPC call to a host.
@@ -14,9 +20,9 @@ type PaymentProvider interface {
 // PaymentProcessor is the interface implemented when receiving payment for an
 // RPC.
 type PaymentProcessor interface {
-	ProcessFundEphemeralAccountRPC(stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, error)
+	ProcessFundEphemeralAccountRPC(stream Stream, priceTable RPCPriceTable) (types.Currency, error)
 
-	ProcessPaymentForRPC(stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, error)
+	ProcessPaymentForRPC(stream Stream, priceTable RPCPriceTable) (types.Currency, error)
 }
 
 // PaymentProviderFunc is an adapter for the interface. This allows wrapping
