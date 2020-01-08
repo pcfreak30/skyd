@@ -289,6 +289,10 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 
 	switch id {
+	// TODO: currently we simply wrap the connection in a stream, but
+	// eventually the host should probably listen on a different ports for
+	// RPC that want to connect through the siamux. That will give us a
+	// stream.
 	case modules.RPCFundEphemeralAccount:
 		err = extendErr("incoming RPCFundEphemeralAccount failed: ", h.managedRPCFundEphemeralAccount(modules.NewStream(conn)))
 	// new RPCs: enter an infinite request/response loop

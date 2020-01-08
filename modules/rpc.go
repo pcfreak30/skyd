@@ -15,7 +15,6 @@ type (
 
 // RPC identifiers
 var (
-	RPCDownload2            = types.NewSpecifier("Download2")
 	RPCFundEphemeralAccount = types.NewSpecifier("FundEphemeralAcc")
 	RPCUpdatePriceTable     = types.NewSpecifier("UpdatePriceTable")
 )

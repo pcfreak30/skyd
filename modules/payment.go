@@ -14,7 +14,9 @@ type PaymentProvider interface {
 // PaymentProcessor is the interface implemented when receiving payment for an
 // RPC.
 type PaymentProcessor interface {
-	ProcessPaymentForRPC(stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, interface{}, error)
+	ProcessFundEphemeralAccountRPC(stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, error)
+
+	ProcessPaymentForRPC(stream Stream, currentBlockHeight types.BlockHeight) (types.Currency, error)
 }
 
 // PaymentProviderFunc is an adapter for the interface. This allows wrapping

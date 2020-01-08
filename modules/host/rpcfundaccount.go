@@ -13,30 +13,8 @@ func (h *Host) managedRPCFundEphemeralAccount(stream modules.Stream) error {
 	blockHeight := h.blockHeight
 	h.mu.RUnlock()
 
-	// Extract the payment
+	// Process the request
 	pp := h.PaymentProcessor()
-	amount, so, err := pp.ProcessPaymentForRPC(stream, blockHeight)
-	if so == nil {
-		// TODO
-	}
-
-	// Fund the ephemeral account
-	syncChan := make(chan struct{})
-	var fear modules.RPCFundEphemeralAccountRequest
-	if err = stream.ReadObject(fear); err != nil {
-		return errors.AddContext(err, "could not read request")
-	}
-	err = h.staticAccountManager.callDeposit(fear.AccountID, amount, syncChan)
-	if err != nil {
-		return errors.AddContext(err, "could not fund the account")
-	}
-
-	// Update the storage obligation
-	err = h.modifyStorageObligation(so.(storageObligation), nil, nil, nil)
-	if err != nil {
-		h.log.Fatal(err) // TODO improve
-	}
-	close(syncChan)
-
-	return errors.AddContext(err, "RPC fund ephemeral account failed")
+	_, err := pp.ProcessFundEphemeralAccountRPC(stream, blockHeight)
+	return errors.AddContext(err, "Could not fund ephemeral account")
 }
