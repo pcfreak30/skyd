@@ -16,10 +16,23 @@ const (
 	necessaryUtilityUpdate
 )
 
+// badContractCheck checks whether the contract has been marked as bad. If the
+// contract has been marked as bad, GoodForUpload and GoodForRenew need to be
+// set to false to prevent the renter from using this contract.
+func (c *Contractor) badContractCheck(u modules.ContractUtility) (modules.ContractUtility, bool) {
+	if u.BadContract {
+		u.GoodForUpload = false
+		u.GoodForRenew = false
+		return u, true
+	}
+	return u, false
+}
+
 // checkHostScore checks host scorebreakdown against minimum accepted scores.
 // forceUpdate is true if the utility change must be taken.
 func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.HostScoreBreakdown, minScoreGFR, minScoreGFU types.Currency) (modules.ContractUtility, utilityUpdateStatus) {
 	u := contract.Utility
+
 	// Contract has no utility if the score is poor.
 	if !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0 {
 		// Log if the utility has changed.
@@ -39,7 +52,15 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = false
-		return u, necessaryUtilityUpdate
+
+		// Only force utility updates if the score is the min possible score.
+		// Otherwise defer update decision for low-score contracts to the
+		// churnLimiter.
+		if sb.Score.Cmp(types.NewCurrency64(1)) <= 0 {
+			return u, necessaryUtilityUpdate
+		}
+		c.log.Println("Adding contract utility update to churnLimiter queue")
+		return u, suggestedUtilityUpdate
 	}
 
 	// Contract should not be used for uplodaing if the score is poor.
@@ -74,13 +95,23 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 // require, with no exceptions, marking the contract as !GFR and/or !GFU.
 // Returns true if and only if and of the checks passed and require the utility
 // to be updated.
+//
+// NOTE: 'needsUpdate' should return 'true' if the contract should be marked as
+// !GFR and !GFU, even if the contract is already marked as such. If
+// 'needsUpdate' is set to true, other checks which may change those values will
+// be ignored and the contract will remain marked as having no utility.
 func (c *Contractor) criticalUtilityChecks(contract modules.RenterContract, host modules.HostDBEntry) (modules.ContractUtility, bool) {
 	c.mu.RLock()
 	blockHeight := c.blockHeight
 	renewWindow := c.allowance.RenewWindow
 	c.mu.RUnlock()
 
-	u, needsUpdate := c.offlineCheck(contract, host)
+	u, needsUpdate := c.badContractCheck(contract.Utility)
+	if needsUpdate {
+		return u, needsUpdate
+	}
+
+	u, needsUpdate = c.offlineCheck(contract, host)
 	if needsUpdate {
 		return u, needsUpdate
 	}

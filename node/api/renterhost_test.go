@@ -131,7 +131,7 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 		time.Sleep(time.Millisecond * 100)
 	}
 	downloadPath := filepath.Join(st.dir, "test-downloaded-verify.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 
 	// Try downloading the first file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +324,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 
 	// Try downloading the second file.
 	downpath2 := filepath.Join(st.dir, "testdown2.dat")
-	err = st.stdGetAPI("/renter/download/test2?destination=" + downpath2)
+	err = st.stdGetAPI("/renter/download/test2?disablelocalfetch=true&destination=" + downpath2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -506,7 +506,7 @@ func TestHostAndRentMultiHost(t *testing.T) {
 
 	// Try downloading the file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -674,7 +674,7 @@ func TestHostAndRentManyFiles(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		downpath := filepath.Join(st.dir, "testdown1.dat")
-		err := st.stdGetAPI("/renter/download/test1?destination=" + downpath)
+		err := st.stdGetAPI("/renter/download/test1?disablelocalfetch=true&destination=" + downpath)
 		if err != nil {
 			t.Error(err)
 		}
@@ -694,7 +694,7 @@ func TestHostAndRentManyFiles(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		downpath := filepath.Join(st.dir, "testdown2.dat")
-		err := st.stdGetAPI("/renter/download/test2?destination=" + downpath)
+		err := st.stdGetAPI("/renter/download/test2?disablelocalfetch=true&destination=" + downpath)
 		if err != nil {
 			t.Error(err)
 		}
@@ -714,7 +714,7 @@ func TestHostAndRentManyFiles(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		downpath := filepath.Join(st.dir, "testdown3.dat")
-		err := st.stdGetAPI("/renter/download/test3?destination=" + downpath)
+		err := st.stdGetAPI("/renter/download/test3?disablelocalfetch=true&destination=" + downpath)
 		if err != nil {
 			t.Error(err)
 		}
@@ -847,7 +847,7 @@ func TestRenterUploadDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -987,7 +987,7 @@ func TestRenterParallelDelete(t *testing.T) {
 	go st.stdPostAPI("/renter/delete/test2", url.Values{})
 	time.Sleep(100 * time.Millisecond)
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test2?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test2?disablelocalfetch=true&destination=" + downpath)
 	if err == nil {
 		t.Fatal("download should fail after delete")
 	}
@@ -1117,7 +1117,7 @@ func TestRenterRenew(t *testing.T) {
 
 	// Try downloading the file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1228,7 +1228,7 @@ func TestRenterAllowance(t *testing.T) {
 
 		// Try downloading the file.
 		downpath := filepath.Join(st.dir, "testdown.dat")
-		err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+		err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1330,10 +1330,9 @@ func TestHostAndRentReload(t *testing.T) {
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
 		t.Fatal("the uploading is not succeeding for some reason:", rf.Files[0])
 	}
-
 	// Try downloading the file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1399,7 +1398,7 @@ func TestHostAndRentReload(t *testing.T) {
 	}
 
 	// Try downloading the file.
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1533,7 +1532,7 @@ func TestHostAndRenterRenewInterrupt(t *testing.T) {
 
 	// Try downloading the file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1782,7 +1781,7 @@ func TestRepairLoopBlocking(t *testing.T) {
 
 	// verify we can download
 	downloadPath := filepath.Join(st.dir, "test-downloaded-verify.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1813,7 +1812,7 @@ func TestRepairLoopBlocking(t *testing.T) {
 
 	// verify we still can download
 	downloadPath = filepath.Join(st.dir, "test-downloaded-verify2.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1924,7 +1923,7 @@ func TestRepairLoopBlocking(t *testing.T) {
 
 	// verify we can download the second file
 	downloadPath = filepath.Join(st.dir, "test-downloaded-verify2.dat")
-	err = st.stdGetAPI("/renter/download/test2?destination=" + downloadPath)
+	err = st.stdGetAPI("/renter/download/test2?disablelocalfetch=true&destination=" + downloadPath)
 	if err != nil {
 		t.Fatal(err)
 	}

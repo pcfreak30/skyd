@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"sync"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -88,7 +88,7 @@ func decryptSeedFile(masterKey crypto.CipherKey, sf seedFile) (seed modules.Seed
 	// Decrypt and return the seed.
 	plainSeed, err := decryptionKey.DecryptBytes(sf.Seed)
 	if err != nil {
-		return modules.Seed{}, err
+		return modules.Seed{}, errors.AddContext(err, "failed to decrypt seed")
 	}
 	copy(seed[:], plainSeed)
 	return seed, nil

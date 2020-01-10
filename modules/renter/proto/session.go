@@ -111,6 +111,11 @@ func (s *Session) Unlock() error {
 	return s.writeRequest(modules.RPCLoopUnlock, nil)
 }
 
+// HostSettings returns the currently active host settings of the session.
+func (s *Session) HostSettings() modules.HostExternalSettings {
+	return s.host.HostExternalSettings
+}
+
 // Settings calls the Settings RPC, returning the host's reported settings.
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
@@ -842,7 +847,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		Timeout: 45 * time.Second, // TODO: Constant
 	}).Dial("tcp", string(host.NetAddress))
 	if err != nil {
-		return nil, errors.AddContext(err, "unsucessful dial when creating a new session")
+		return nil, errors.AddContext(err, "unsuccessful dial when creating a new session")
 	}
 	conn := ratelimit.NewRLConn(c, cs.rl, cancel)
 
