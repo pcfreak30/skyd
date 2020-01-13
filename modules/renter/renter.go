@@ -39,7 +39,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -261,8 +260,8 @@ type Renter struct {
 
 	accounts map[string]*account
 
-	// RPC
-	clients map[string]proto.RPCClient
+	// RPC clients
+	clients map[string]RPCClient
 
 	blockHeight types.BlockHeight
 
@@ -488,7 +487,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 }
 
 // managedRPCClient returns an RPC client for the host with given key
-func (r *Renter) managedRPCClient(host types.SiaPublicKey) (proto.RPCClient, error) {
+func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
 
@@ -505,7 +504,7 @@ func (r *Renter) managedRPCClient(host types.SiaPublicKey) (proto.RPCClient, err
 
 	pm := r.sm.NewMux(string(he.NetAddress))
 	account := r.managedOpenAccount(host)
-	client, err = proto.NewRPCClient(pm, account, r.blockHeight, &r.tg, r.log)
+	client, err = r.newRPCClient(pm, account, r.blockHeight, &r.tg, r.log)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not create RPC client")
 	}
@@ -864,7 +863,7 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Notify all rpc clients of the new block height
 	if cc.Synced {
 		for _, c := range r.clients {
-			c.(*proto.HostRPCClient).UpdateBlockHeight(r.blockHeight)
+			c.(*hostRPCClient).UpdateBlockHeight(r.blockHeight)
 		}
 	}
 
@@ -944,7 +943,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		},
 
 		accounts: make(map[string]*account),
-		clients:  make(map[string]proto.RPCClient),
+		clients:  make(map[string]RPCClient),
 
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),

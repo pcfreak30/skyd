@@ -224,18 +224,15 @@ func (h *Host) checkUnlockHash() error {
 // price table on the host. These prices are dependant on numerous factors,
 // such as congestion, load, etc.
 func (h *Host) managedUpdatePriceTable() {
-	// TODO: the host guarantees fixed pricing up until a certain expiry block
-	// height. This can be dependant on several factors. For now, it is a fixed
-	// amount of blocks in the future
-	expiry := h.BlockHeight() + 6
+	bh := h.BlockHeight()
 
 	// Build the new price table
 	priceTable := modules.RPCPriceTable{
 		Costs:  make(map[types.Specifier]types.Currency),
-		Expiry: expiry,
+		Expiry: bh + 144, // TODO: one day is probably bit long
 	}
 
-	// TODO: the host only offers two RPCs
+	// TODO: add more RPCs
 	h.priceTable.Costs[modules.RPCFundEphemeralAccount] = h.managedCalculateFundEphemeralAccountRPCPrice()
 	h.priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
 

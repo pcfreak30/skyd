@@ -9,7 +9,7 @@ import (
 
 // ErrInsufficientPaymentForRPC is returned when the provided payment was lower
 // than the cost of the RPC.
-var ErrInsufficientPaymentForRPC = errors.New("Provided payment was lower than the RPC price")
+var ErrInsufficientPaymentForRPC = errors.New("Insufficient payment, the provided payment did not cover the cost of the RPC.")
 
 // PaymentProvider is the interface implemented when payment has to be made
 // for an RPC call to a host.

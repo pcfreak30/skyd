@@ -24,7 +24,6 @@ type fundAccountJob struct {
 // fundAccountJobResult contains the result from funding an ephemeral account
 // on the host.
 type fundAccountJobResult struct {
-	job    *fundAccountJob
 	funded types.Currency
 	err    error
 }
@@ -51,8 +50,8 @@ func (w *worker) managedKillFundAccountJobs() {
 	w.staticFundAccountJobQueue.mu.Lock()
 	for _, job := range w.staticFundAccountJobQueue.queue {
 		result := fundAccountJobResult{
-			job: job,
-			err: errors.New("worker was killed before account could be funded"),
+			funded: types.ZeroCurrency,
+			err:    errors.New("worker killed before account could be funded"),
 		}
 		job.resultChan <- result
 	}
@@ -81,23 +80,22 @@ func (w *worker) threadedPerformFundAcountJob() {
 	client, err := w.renter.managedRPCClient(w.staticHostPubKey)
 	if err != nil {
 		job.resultChan <- fundAccountJobResult{
-			job: job,
-			err: err,
+			funded: types.ZeroCurrency,
+			err:    err,
 		}
 		return
 	}
 
-	amount, err := client.FundEphemeralAccount(w.account.ID(), job.amount)
+	err = client.FundEphemeralAccount(w.account.ID(), job.amount)
 	if err != nil {
 		job.resultChan <- fundAccountJobResult{
-			job: job,
-			err: err,
+			funded: types.ZeroCurrency,
+			err:    err,
 		}
 		return
 	}
 
 	job.resultChan <- fundAccountJobResult{
-		job:    job,
-		funded: amount,
+		funded: job.amount,
 	}
 }

@@ -3,6 +3,7 @@ package contractor
 import (
 	"errors"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
@@ -46,6 +47,12 @@ func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.PaymentPr
 // ProvidePaymentForRPC fulfills the PaymentProvider interface. It uses the
 // paymentProvider's underlying contract to make payment for an RPC call.
 func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
+	// For now, only the RPCFundEphemeralAccount should be paid from a contract.
+	// If this changes, makes sure to record the intent depending on the rpcID.
+	if rpcID != modules.RPCFundEphemeralAccount {
+		build.Critical("Unexpected RPC id, only RPCFundEphemeralAccount is paid through a file contract.")
+	}
+
 	// acquire a safe contract
 	sc, exists := p.contractSet.Acquire(p.contractID)
 	if !exists {
@@ -69,7 +76,7 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, pa
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
 	// record the intent to fund the ephemeral account
-	walTxn, err := sc.CallRecordFundEphemeralAccountIntent(rev, payment)
+	walTxn, err := sc.RecordFundEphemeralAccountIntent(rev, payment)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
@@ -96,15 +103,10 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, pa
 	}
 
 	// commit the intent
-	err = sc.CallCommitFundEphemeralAccountIntent(walTxn, signedTxn, payment)
+	err = sc.CommitFundEphemeralAccountIntent(walTxn, signedTxn, payment)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
-
-	// TODO: currently we return amount funded. It is probably more useful to
-	// the have the host return its current version of the ephemeral account
-	// balance, this way the renter can check more easily if his version of the
-	// balance is drifting and act accordingly
 
 	return payByResponse.Amount, nil
 }

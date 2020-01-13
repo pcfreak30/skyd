@@ -380,7 +380,8 @@ func (h *Host) threadedHandleStream(s modules.Stream) {
 			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		}
 
-		if errors.Contains(modules.ErrStreamTimeout, err) {
+		if errors.Contains(modules.ErrStreamTimeout, err) ||
+			errors.Contains(modules.ErrStreamClosed, err) {
 			break
 		}
 
