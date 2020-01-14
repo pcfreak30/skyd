@@ -82,12 +82,12 @@ func (tn *TestNode) MineEmptyBlock() error {
 }
 
 // emptyBlockForWork creates an empty block without any transactions.
-func emptyBlockForWork(currentBlockHeight types.BlockHeight, address types.UnlockHash, parentID types.BlockID) types.Block {
+func emptyBlockForWork(blockHeight types.BlockHeight, address types.UnlockHash, parentID types.BlockID) types.Block {
 	var b types.Block
 	b.ParentID = parentID
 	b.Timestamp = types.CurrentTimestamp()
 	b.MinerPayouts = []types.SiacoinOutput{{
-		Value:      b.CalculateSubsidy(currentBlockHeight + 1),
+		Value:      b.CalculateSubsidy(blockHeight + 1),
 		UnlockHash: address,
 	}}
 	return b

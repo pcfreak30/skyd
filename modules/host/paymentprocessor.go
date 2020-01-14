@@ -10,66 +10,64 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-var errUnknownPaymentMethod = errors.New("unkown payment method")
+var errUnknownPaymentMethod = errors.New("unknown payment method")
 var errInvalidPaymentMethod = errors.New("invalid payment method")
 
 // paymentProcessor fulfills the PaymentProcessor interface on the host. It is
 // used by the RPCs to extract a payment from the stream. Once payment is
 // extracted the RPC can continue processing.
 type paymentProcessor struct {
-	am            accountManager
-	hostSecretKey crypto.SecretKey
-	h             *Host
+	staticSecretKey crypto.SecretKey
+	h               *Host
 }
 
 // PaymentProcessor returns a new PaymentProcessor.
 func (h *Host) PaymentProcessor() modules.PaymentProcessor {
 	return &paymentProcessor{
-		am:            h.staticAccountManager,
-		hostSecretKey: h.secretKey,
-		h:             h,
+		staticSecretKey: h.secretKey,
+		h:               h,
 	}
 }
 
 // ProcessPaymentForRPC reads a payment request from the stream, depending on
-// the type of payment it will either update the file contract revision or call
-// upon the ephemeral account manager to process the payment.
+// the type of payment it will either update the file contract or call upon the
+// ephemeral account manager to process the payment.
 func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTable modules.RPCPriceTable) (types.Currency, error) {
-	// Read the PaymentRequest
+	// read the PaymentRequest
 	var pr modules.PaymentRequest
 	if err := stream.ReadObject(pr); err != nil {
 		return failTo("ProcessPaymentForRPC", "read PaymentRequest", err)
 	}
 
-	// Process payment depending on the payment method
+	// process payment depending on the payment method
 	switch pr.Type {
 	case modules.PayByContract:
-		// Read the PayByContractRequest
+		// read the PayByContractRequest
 		var pbcr modules.PayByContractRequest
 		if err := stream.ReadObject(pbcr); err != nil {
 			return failTo("ProcessPaymentForRPC", "read PayByContractRequest", err)
 		}
 
-		// Lock the storage obligation
+		// lock the storage obligation
 		so, currentRevision, _, err := p.lockStorageObligation(pbcr.ContractID)
 		defer p.h.managedUnlockStorageObligation(so.id())
 		if err != nil {
 			return failTo("ProcessPaymentForRPC", "lock storage obligation", err)
 		}
 
-		// Extract the proposed revision and the signature from the request
+		// extract the proposed revision and the signature from the request
 		// object, using the existing revision
 		renterRevision := revisionFromRequest(currentRevision, pbcr)
 		renterSignature := signatureFromRequest(currentRevision, pbcr)
 
-		// Sign the revision
+		// sign the revision
 		blockHeight := p.h.BlockHeight()
-		txn, err := createRevisionSignature(renterRevision, renterSignature, p.hostSecretKey, blockHeight)
+		txn, err := createRevisionSignature(renterRevision, renterSignature, p.staticSecretKey, blockHeight)
 		if err != nil {
 			return failTo("ProcessPaymentForRPC", "verify revision", err)
 		}
 
-		// Extract the payment output & update the storage obligation with the
+		// extract the payment output & update the storage obligation with the
 		// host's signature
 		amount := currentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
 		so.RevisionTransactionSet = []types.Transaction{{
@@ -77,7 +75,9 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTabl
 			TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
 		}}
 
-		// Update the storage obligation
+		// TODO: update so finincial metrics
+
+		// update the storage obligation
 		err = p.h.modifyStorageObligation(so, nil, nil, nil)
 		if err != nil {
 			return failTo("ProcessPaymentForRPC", "modify storage obligation", err)
@@ -85,14 +85,14 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTabl
 
 		return amount, nil
 	case modules.PayByEphemeralAccount:
-		// Read the PayByEphemeralAccountRequest
+		// read the PayByEphemeralAccountRequest
 		var pbear modules.PayByEphemeralAccountRequest
 		if err := stream.ReadObject(pbear); err != nil {
 			return failTo("ProcessPaymentForRPC", "read PayByEphemeralAccountRequest", err)
 		}
 
-		// Process the request
-		err := p.am.callWithdraw(pbear.Message, pbear.Signature, pbear.Priority)
+		// process the request
+		err := p.h.staticAccountManager.callWithdraw(pbear.Message, pbear.Signature, pbear.Priority)
 		if err != nil {
 			return failTo("ProcessPaymentForRPC", "withdraw from ephemeral account", err)
 		}
@@ -108,65 +108,66 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTabl
 // case because it requires some coordination between the FC fsync and the EA
 // fsync. See callDeposit in accountmanager.go for more details.
 func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream modules.Stream, priceTable modules.RPCPriceTable) (types.Currency, error) {
-	// Read the PaymentRequest
+	// read the PaymentRequest
 	var pr modules.PaymentRequest
 	if err := stream.ReadObject(pr); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read PaymentRequest", err)
 	}
 
-	// Ensure it's a PayByContract request
+	// ensure it's a PayByContract request
 	if pr.Type != modules.PayByContract {
 		return failTo("ProcessFundEphemeralAccountRPC", "handle payment method", errInvalidPaymentMethod)
 	}
 
-	// Read the PayByContractRequest
+	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
 	if err := stream.ReadObject(pbcr); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read PayByContractRequest", err)
 	}
 
-	// Read the FundEphemeralAccountRequest
+	// read the FundEphemeralAccountRequest
 	var fear modules.RPCFundEphemeralAccountRequest
 	if err := stream.ReadObject(fear); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read FundEphemeralAccountRequest", err)
 	}
 
-	// Lock the storage obligation
+	// lock the storage obligation
 	so, currentRevision, _, err := p.lockStorageObligation(pbcr.ContractID)
 	defer p.h.managedUnlockStorageObligation(so.id())
 	if err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "lock storage obligation", err)
 	}
 
-	// Extract the proposed revision and the signature from the request
+	// extract the proposed revision and the signature from the request
 	// object, using the existing revision
 	renterRevision := revisionFromRequest(currentRevision, pbcr)
 	renterSignature := signatureFromRequest(currentRevision, pbcr)
 
-	// Sign the revision
+	// sign the revision
 	blockHeight := p.h.BlockHeight()
-	txn, err := createRevisionSignature(renterRevision, renterSignature, p.hostSecretKey, blockHeight)
+	txn, err := createRevisionSignature(renterRevision, renterSignature, p.staticSecretKey, blockHeight)
 	if err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "verify revision", err)
 	}
 
 	amount := currentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
 
-	// Create a sync chan to pass to the account manager, once the FC is fully
+	// create a sync chan to pass to the account manager, once the FC is fully
 	// fsynced we'll close this so the account manager can properly lower the
 	// host's outstanding risk induced by the (immediate) deposit.
 	syncChan := make(chan struct{})
-	err = p.am.callDeposit(fear.AccountID, amount, syncChan)
+	err = p.h.staticAccountManager.callDeposit(fear.AccountID, amount, syncChan)
 	if err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "verify revision", err)
 	}
 
-	// Update the storage obligation
+	// update the storage obligation
 	so.RevisionTransactionSet = []types.Transaction{{
 		FileContractRevisions: []types.FileContractRevision{renterRevision},
 		TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
 	}}
-	// TODO reminder to add revenue: so.PotentialDownloadRevenue
+
+	// TODO: update so finincial metrics
 
 	err = p.h.modifyStorageObligation(so, nil, nil, nil)
 	if err != nil {
@@ -182,7 +183,7 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream modules.Stream,
 func (p *paymentProcessor) lockStorageObligation(fcid types.FileContractID) (so storageObligation, recentRevision types.FileContractRevision, revisionSigs []types.TransactionSignature, err error) {
 	p.h.managedLockStorageObligation(fcid)
 
-	// Fetch the storage obligation, which has the revision, which has the
+	// fetch the storage obligation, which has the revision, which has the
 	// renter's public key.
 	p.h.mu.RLock()
 	defer p.h.mu.RUnlock()
@@ -195,12 +196,12 @@ func (p *paymentProcessor) lockStorageObligation(fcid types.FileContractID) (so 
 		return storageObligation{}, types.FileContractRevision{}, nil, err
 	}
 
-	// Pull out the file contract revision and the revision's signatures from
+	// pull out the file contract revision and the revision's signatures from
 	// the transaction.
 	revisionTxn := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
 	recentRevision = revisionTxn.FileContractRevisions[0]
 	for _, sig := range revisionTxn.TransactionSignatures {
-		// Checking for just the parent id is sufficient, an over-signed file
+		// checking for just the parent id is sufficient, an over-signed file
 		// contract is invalid.
 		if sig.ParentID == crypto.Hash(fcid) {
 			revisionSigs = append(revisionSigs, sig)

@@ -140,6 +140,9 @@ type Host struct {
 	dependencies  modules.Dependencies
 	modules.StorageManager
 
+	// Subsystems
+	staticAccountManager accountManager
+
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
 	announced    bool
@@ -163,20 +166,13 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// Ephemeral Account Manager - the EA manager keeps track of all the
-	// ephemeral accounts on the host.
-	staticAccountManager accountManager
-
-	// The price table lists the host's prices for every RPC it offers. This
-	// table is updated depending on various conditions that require the host to
-	// increase or decrease prices dynamically.
+	// The price table lists the host's prices for every RPC it offers. These
+	// prices are dynamic and are subject to various conditions specific to the
+	// RPC in question.
 	priceTable modules.RPCPriceTable
 
-	// TODO this'll be replaced by siamux but is a temporary means to accept new
-	// incoming streams.
-	peermux modules.PeerMux
-
 	// Utilities.
+	peermux    modules.PeerMux // TODO drop-in siamux
 	db         *persist.BoltDatabase
 	listener   net.Listener
 	log        *persist.Logger
@@ -220,22 +216,23 @@ func (h *Host) checkUnlockHash() error {
 	return nil
 }
 
-// managedUpdatePriceTable will calculate new RPC prices and update the RPC
-// price table on the host. These prices are dependant on numerous factors,
-// such as congestion, load, etc.
+// managedUpdatePriceTable recalculates the host's RPC pricing. The prices are
+// dependant on numerous factors that vary for every RPC, such as congestion,
+// load, etc.
 func (h *Host) managedUpdatePriceTable() {
 	bh := h.BlockHeight()
 
-	// Build the new price table
+	// build a new price table
 	priceTable := modules.RPCPriceTable{
 		Costs:  make(map[types.Specifier]types.Currency),
-		Expiry: bh + 144, // TODO: one day is probably bit long
+		Expiry: bh + 6, // price guarantee for up to 1h
 	}
 
-	// TODO: add more RPCs
+	// recalculate the price for every RPC
 	h.priceTable.Costs[modules.RPCFundEphemeralAccount] = h.managedCalculateFundEphemeralAccountRPCPrice()
 	h.priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
 
+	// update the pricetable
 	h.mu.Lock()
 	h.priceTable = priceTable
 	h.mu.Unlock()
@@ -348,8 +345,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 
-	// Build the RPC price table. This table is dynamically updated with the
-	// host's most recent prices for every RPC it offers.
+	// Initialize the RPC price table.
 	h.managedUpdatePriceTable()
 
 	return h, nil

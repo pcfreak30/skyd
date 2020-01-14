@@ -86,7 +86,7 @@ func (w *worker) threadedPerformFundAcountJob() {
 		return
 	}
 
-	err = client.FundEphemeralAccount(w.account.ID(), job.amount)
+	err = client.FundEphemeralAccount(w.account.staticID, job.amount)
 	if err != nil {
 		job.resultChan <- fundAccountJobResult{
 			funded: types.ZeroCurrency,

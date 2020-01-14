@@ -1,11 +1,13 @@
 package renter
 
 import (
+	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -13,11 +15,12 @@ import (
 // WithdrawalMessage
 const withdrawalNonceSize = 8
 
-// withdrawalDefaultExpiry decides the WithdrawalMessage expiry. This default is
-// added to the current blockheight to make up the expiry blockheight.
+// withdrawalDefaultExpiry defines a default for the WithdrawalMessage expiry.
+// This default is added to the current blockheight to make up the expiry
+// blockheight. By default a WithdrawalMessage expires 6 blocks into the future.
 const withdrawalDefaultExpiry = 6
 
-// account represents a renter's ephemeral account on a host
+// account represents a renter's ephemeral account on a host.
 type account struct {
 	staticID        string
 	staticHostKey   types.SiaPublicKey
@@ -32,7 +35,8 @@ type account struct {
 	r  *Renter
 }
 
-// managedOpenAccount returns a new account for the given host
+// managedOpenAccount returns a new account for the given host. Every time this
+// a new account is opened, it's created using a new keypair.
 func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
@@ -60,21 +64,12 @@ func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
 	return acc
 }
 
-// ID returns the account id
-func (a *account) ID() string {
-	return a.staticID
-}
-
-// HostKey returns the host's publickey
-func (a *account) HostKey() types.SiaPublicKey {
-	return a.staticHostKey
-}
-
-// Balance returns the account balance. Note that this returns the eventual
-// account balance. This balance is calculated taking into account pending
-// spends and funds. It is used by the worker to figure out whether it should
-// schedule an account refill.
+// Balance returns the eventual account balance. This is calculated taking into
+// account pending spends and pending funds.
 func (a *account) Balance() types.Currency {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	total := a.balance.Add(a.pendingFunds)
 	var eventual types.Currency
 	if a.pendingSpends.Cmp(total) < 0 {
@@ -83,43 +78,52 @@ func (a *account) Balance() types.Currency {
 	return eventual
 }
 
-// ProvidePaymentForRPC implements the PaymentProvider interface. This way, the
-// account object can be used to pay for any RPC, regardless of whether it is
-// paid through an ephemeral account or file contract.
-func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, amount types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (payment types.Currency, err error) {
-	var provider modules.PaymentProvider
+// ProvidePaymentForRPC is the implementation of the PaymentProvider interface.
+// The account can be used to pay for RPCs. Depending on which RPC, payment will
+// be made from an ephemeral account, or from a file contract. Typically, only
+// funding an ephemeral account is paid from a file contract.
+func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, amount types.Currency, stream modules.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
+	var err error
+	var payment types.Currency
+
+	// depending on which RPC we'll want to make payment from an ephemeral
+	// account, or from a file contract. Typically only funding the ephemeral
+	// account is paid from a file contract, all other RPCs are paid using an
+	// ephemeral account.
 	switch rpcID {
-	// funding an ephemeral account is always paid from a contract
 	case modules.RPCFundEphemeralAccount:
-		provider, err = a.c.PaymentProvider(a.staticHostKey)
+		provider, err := a.c.PaymentProvider(a.staticHostKey)
 		if err != nil {
-			return
+			err = errors.AddContext(err, fmt.Sprintf("Could not create a (contract) payment provider for RPC %v", rpcID))
+			return types.ZeroCurrency, err
 		}
 		a.managedProcessFundIntent(amount)
-		payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, currentBlockHeight)
+		payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, blockHeight)
 		a.managedProcessFundResult(amount, err == nil)
-	// all other RPCs get paid by ephemeral account
 	default:
-		provider = a.paymentProvider()
+		provider := a.paymentProvider()
 		a.managedProcessPaymentIntent(amount)
-		payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, currentBlockHeight)
+		payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, blockHeight)
 		a.managedProcessPaymentResult(amount, err == nil)
 	}
-	return
+
+	return payment, errors.AddContext(err, fmt.Sprintf("Could not provide payment for RPC %v", rpcID))
 }
 
 // paymentProvider returns an object that implements the PaymentProvider
-// interface. Note that we use an interface adapter here to avoid creating a
-// separate object for it. This essentially handles PayByEphemeralAccount.
+// interface. This method wraps an interface adapter and thus avoids creating a
+// separate object that implements the PaymentProvider interface. This way the
+// account object can be used to handle PayByEphemeralAccount.
 func (a *account) paymentProvider() modules.PaymentProvider {
-	return modules.PaymentProviderFunc(func(rpcID types.Specifier, payment types.Currency, stream modules.Stream, currentBlockHeight types.BlockHeight) (types.Currency, error) {
-		// Note that we purposefully do not verify if the account has sufficient
-		// funds. It is perfectly ok to provide payment even though the account
-		// has insufficient funds at the time. The host will block until the
-		// withdrawal until the account is funded, or until it times out.
+	return modules.PaymentProviderFunc(func(rpcID types.Specifier, payment types.Currency, stream modules.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
+		// NOTE: we purposefully do not verify if the account has sufficient
+		// funds. Seeing as spends are a blocking action on the host, it is
+		// perfectly ok to trigger spends from an account with insufficient
+		// balance. If it is succeeded by a fund in due time, the RPCs will
+		// successfully execute as soon as funds are available.
 
 		// create a withdrawal message and signature that will pay for the RPC
-		msg, sig := a.newSignedWithdrawal(payment, currentBlockHeight+withdrawalDefaultExpiry)
+		msg, sig := a.newSignedWithdrawal(payment, blockHeight+withdrawalDefaultExpiry)
 
 		// send PaymentRequest & PayByEphemeralAccountRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
@@ -141,16 +145,16 @@ func (a *account) paymentProvider() modules.PaymentProvider {
 	})
 }
 
-// managedProcessFundIntent will add the amount that is being funded to the
-// pending balance.
+// managedProcessFundIntent tracks the amount of money that is being funded,
+// however is not yet processed and added to the balance on the host.
 func (a *account) managedProcessFundIntent(amount types.Currency) {
 	a.mu.Lock()
 	a.pendingFunds = a.pendingFunds.Add(amount)
 	a.mu.Unlock()
 }
 
-// managedProcessFundResult will properly adjust the balance after the fund was
-// executed.
+// managedProcessFundResult adjusts the account balance depending on the outcome
+// of the call to fund the account on the host.
 func (a *account) managedProcessFundResult(amount types.Currency, success bool) {
 	a.mu.Lock()
 	a.pendingFunds = a.pendingFunds.Sub(amount)
@@ -160,16 +164,17 @@ func (a *account) managedProcessFundResult(amount types.Currency, success bool) 
 	a.mu.Unlock()
 }
 
-// managedProcessPayment will deduct the amount that was paid from the local
-// balance. If the balance drops below a certain threshold it triggers a refill.
+// managedProcessPaymentIntent tracks the amount of money that is being spent,
+// however is not yet processed and deducted from the account's balance on the
+// host.
 func (a *account) managedProcessPaymentIntent(amount types.Currency) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.pendingSpends = a.pendingSpends.Add(amount)
+	a.mu.Unlock()
 }
 
-// managedProcessPaymentResult will properly adjust the balance after the RPC
-// has executed.
+// managedProcessPaymentResult adjusts the account balance depending on the
+// outcome of the RPC call that spent money.
 func (a *account) managedProcessPaymentResult(amount types.Currency, success bool) {
 	a.mu.Lock()
 	a.pendingSpends = a.pendingSpends.Sub(amount)

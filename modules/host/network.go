@@ -349,8 +349,15 @@ func (h *Host) threadedHandleStream(s modules.Stream) {
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
+
+	// TODO: unsure if this is a good requirement to have, but the first RPC the
+	// renter sends should be one that updates the RPC price table. That, or the
+	// prices should be communicated when the connection is set up.
+
+	// TODO: possible to signal this to the renter through writing an error
+	// response somehow?
 	if id != modules.RPCUpdatePriceTable {
-		return // TODO possible to write an error response somehow?
+		return
 	}
 	var pt modules.RPCPriceTable
 	if pt, err = h.managedRPCUpdatePriceTable(s, pt); err != nil {
@@ -371,12 +378,11 @@ func (h *Host) threadedHandleStream(s modules.Stream) {
 		switch id {
 		case modules.RPCFundEphemeralAccount:
 			err = errors.AddContext(h.managedRPCFundEphemeralAccount(s, pt), "Failed to handle FundEphemeralAccountRPC")
-
 		case modules.RPCUpdatePriceTable:
 			pt, err = h.managedRPCUpdatePriceTable(s, pt)
 			err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
 		default:
-			// TODO: add debug logging
+			// TODO: add logging
 			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		}
 
@@ -397,44 +403,68 @@ func (h *Host) threadedHandleStream(s modules.Stream) {
 func (h *Host) threadedListen(closeChan chan struct{}) {
 	defer close(closeChan)
 
-	incoming := make(chan func())
+	// Both incoming connects and streams will pass a handler over this channel.
+	// This ensures the rpcRatelimit applies to incoming RPCs both over the
+	// streams as well as the legacy connections.
+	handlers := make(chan func())
 
 	// Receive connections until an error is returned by the listener. When
 	// an error is returned, there will be no more calls to receive.
-	go func() {
-		for {
-			// Block until there is a connection to handle.
-			conn, err := h.listener.Accept()
-			if err != nil {
-				return
-			}
-
-			incoming <- func() {
-				h.threadedHandleConn(conn)
-			}
-		}
-	}()
+	go h.compatV1420threadedAcceptsConnections(handlers)
 
 	// Receive streams until an error is returned by the siamux. When an error
 	// is returned, there will be no more calls to receive.
-	go func() {
-		for {
-			// Block until there is a connection to handle.
-			stream := h.peermux.Accept()
-			incoming <- func() {
-				h.threadedHandleStream(stream)
-			}
-		}
-	}()
+	go h.threadedAcceptsStreams(handlers)
 
 	for {
-		rpcHandler := <-incoming
-		go rpcHandler()
+		handler := <-handlers
+		go handler()
 
 		// Soft-sleep to ratelimit the number of incoming RPCs.
 		select {
 		case <-h.tg.StopChan():
 		case <-time.After(rpcRatelimit):
+		}
+	}
+}
+
+// compatV1420threadedAcceptsConnections receive connections until an error is
+// returned by the listener. When an error is returned, there will be no more
+// calls to receive. When a connection gets received, we pass a handler for it
+// to the given handlers channel.
+//
+// Note: This is considered legacy and is replaced by threadedAcceptsStreams.
+// Note: We do not add ourselves to the threadgroup, instead the handler will do
+// so to avoid a possible deadlock when the threadgroup gets flushed.
+func (h *Host) compatV1420threadedAcceptsConnections(handlers chan func()) {
+	for {
+		// Block until there is a connection to handle.
+		conn, err := h.listener.Accept()
+		if err != nil {
+			return
+		}
+		handlers <- func() {
+			h.threadedHandleConn(conn)
+		}
+	}
+}
+
+// threadedAcceptsStreams receive streams until an error is returned by the
+// siamux. When an error is returned, there will be no more streams to accept.
+// When a connection gets received, we pass a handler for it to the given
+// handlers channel.
+//
+// Note: We do not add ourselves to the threadgroup, instead the handler will do
+// so to avoid a possible deadlock when the threadgroup gets flushed.
+func (h *Host) threadedAcceptsStreams(handlers chan func()) {
+	for {
+		// Block until there is a stream to handle.
+		stream, err := h.peermux.Accept()
+		if err != nil {
+			return
+		}
+		handlers <- func() {
+			h.threadedHandleStream(stream)
 		}
 	}
 }

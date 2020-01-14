@@ -1,7 +1,7 @@
 package host
 
-// NOTE: this file contains a placeholder interface for the account manager.
-// This file should be removed when EA is merged.
+// TODO: this is a placeholder that holds an interface for the account manager.
+// This file should be removed when EA gets merged.
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"

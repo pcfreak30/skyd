@@ -14,7 +14,7 @@ import (
 //
 // The types and interfaces in this file are merely mocks. The sole purpose of
 // having these is to be able to use the interfaces before the actual peermux MR
-// gets merged.
+// gets merged. Ignore this entire file.
 //
 ///////////////////////////////////////////
 
@@ -57,9 +57,9 @@ func (p *PeerMux) NewStream() Stream {
 }
 
 // Accept listens for incoming streams and returns it
-func (p *PeerMux) Accept() Stream {
+func (p *PeerMux) Accept() (Stream, error) {
 	var s Stream = stream{conn: p.conn}
-	return s
+	return s, nil
 }
 
 // Close will close the peermux
