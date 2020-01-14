@@ -5,8 +5,9 @@ import (
 )
 
 type (
-	// The RPCPriceTable lists all the RPCs the host offers and their price. The
-	// prices remain valid up until the expiry block height.
+	// RPCPriceTable contains the cost of every RPC the host offers. These
+	// prices are guaranteed to remain valid up until the specified expiry block
+	// height.
 	RPCPriceTable struct {
 		Costs  map[types.Specifier]types.Currency
 		Expiry types.BlockHeight
@@ -19,18 +20,19 @@ var (
 	RPCUpdatePriceTable     = types.NewSpecifier("UpdatePriceTable")
 )
 
-// RPC request-response objects
 type (
-	// RPCFundEphemeralAccountRequest
+	// RPCFundEphemeralAccountRequest specifies the account id.
 	RPCFundEphemeralAccountRequest struct {
 		AccountID string
 	}
 
-	// RPCFundEphemeralAccountResponse
+	// RPCFundEphemeralAccountResponse contains the signature. This signature
+	// can be used as a receipt and is a proof of payment.
 	RPCFundEphemeralAccountResponse struct {
-		Signature []byte // receipt
+		Signature []byte
 	}
 
+	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
 	}

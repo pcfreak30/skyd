@@ -18,19 +18,25 @@ import (
 //
 ///////////////////////////////////////////
 
+// ErrStreamTimeout is returned when the stream timed out
 var ErrStreamTimeout = errors.New("stream timed out")
+
+// ErrStreamClosed is returned when the stream closed
 var ErrStreamClosed = errors.New("stream closed")
 
+// SiaMux
 type SiaMux struct {
 	muxes map[string]*PeerMux
 }
 
+// NewSiaMux
 func NewSiaMux() *SiaMux {
 	return &SiaMux{
 		muxes: make(map[string]*PeerMux),
 	}
 }
 
+// NewMux returns a new mux
 func (sm *SiaMux) NewMux(address string) *PeerMux {
 	m, exists := sm.muxes[address]
 	if exists {

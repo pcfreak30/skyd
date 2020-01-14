@@ -39,24 +39,31 @@ var (
 	PayByEphemeralAccount = types.NewSpecifier("PayByEphemAcc")
 )
 
-// Payment request-response objects
 type (
+	// PaymentRequest identifies the payment method. This can be either
+	// PayByContract or PayByEphemeralAccount
 	PaymentRequest struct {
 		Type types.Specifier
 	}
 
+	// PayByEphemeralAccountRequest holds all payment details to pay from an
+	// ephemeral account.
 	PayByEphemeralAccountRequest struct {
 		Message   WithdrawalMessage
 		Signature crypto.Signature
 		Priority  int64
 	}
 
+	// PayByEphemeralAccountResponse is the object sent in response to the
+	// PayByEphemeralAccountRequest
 	PayByEphemeralAccountResponse struct {
 		Amount                 types.Currency
 		AcceptRejectMessage    string
 		AccountManagerResponse error
 	}
 
+	// PayByContractRequest holds all payment details to pay from a file
+	// contract.
 	PayByContractRequest struct {
 		ContractID           types.FileContractID
 		NewRevisionNumber    uint64
@@ -65,6 +72,8 @@ type (
 		Signature            []byte
 	}
 
+	// PayByContractResponse is the object sent in response to the
+	// PayByContractRequest
 	PayByContractResponse struct {
 		Amount              types.Currency
 		AcceptRejectMessage string

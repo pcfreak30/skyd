@@ -229,8 +229,8 @@ func (h *Host) managedUpdatePriceTable() {
 	}
 
 	// recalculate the price for every RPC
-	h.priceTable.Costs[modules.RPCFundEphemeralAccount] = h.managedCalculateFundEphemeralAccountRPCPrice()
-	h.priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
+	priceTable.Costs[modules.RPCFundEphemeralAccount] = h.managedCalculateFundEphemeralAccountRPCPrice()
+	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
 
 	// update the pricetable
 	h.mu.Lock()
