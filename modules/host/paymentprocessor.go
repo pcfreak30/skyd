@@ -92,7 +92,7 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTabl
 		}
 
 		// process the request
-		err := p.h.staticAccountManager.callWithdraw(pbear.Message, pbear.Signature, pbear.Priority)
+		err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority)
 		if err != nil {
 			return failTo("ProcessPaymentForRPC", "withdraw from ephemeral account", err)
 		}

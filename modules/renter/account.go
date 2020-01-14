@@ -188,10 +188,10 @@ func (a *account) managedProcessPaymentResult(amount types.Currency, success boo
 // provided withdrawal input.
 func (a *account) newSignedWithdrawal(amount types.Currency, expiry types.BlockHeight) (modules.WithdrawalMessage, crypto.Signature) {
 	wm := modules.WithdrawalMessage{
-		Id:     a.staticID,
-		Expiry: expiry,
-		Amount: amount,
-		Nonce:  fastrand.Bytes(withdrawalNonceSize),
+		Account: a.staticID,
+		Expiry:  expiry,
+		Amount:  amount,
+		Nonce:   fastrand.Bytes(withdrawalNonceSize),
 	}
 	sig := crypto.SignHash(crypto.HashObject(wm), a.staticSecretKey)
 	return wm, sig
