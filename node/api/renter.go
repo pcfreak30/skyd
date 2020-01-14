@@ -981,6 +981,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 // OldContracts().
 func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterContracts {
 	var rc RenterContracts
+	currentBlockHeight := api.cs.Height()
 	for _, c := range api.renter.Contracts() {
 		var size uint64
 		if len(c.Transaction.FileContractRevisions) != 0 {
@@ -1082,11 +1083,11 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Determine contract status
 		refreshed := api.renter.RefreshedContract(c.ID)
-		currentPeriodContract := c.StartHeight >= currentPeriod
-		expiredContract := expired && !currentPeriodContract && !refreshed
-		expiredRefreshed := expired && !currentPeriodContract && refreshed
-		refreshedContract := refreshed && currentPeriodContract
-		disabledContract := disabled && !refreshed && currentPeriodContract
+		endHeightInPast := c.EndHeight < currentBlockHeight || c.StartHeight < currentPeriod
+		expiredContract := expired && endHeightInPast && !refreshed
+		expiredRefreshed := expired && endHeightInPast && refreshed
+		refreshedContract := refreshed && !endHeightInPast
+		disabledContract := disabled && !refreshed && !endHeightInPast
 
 		// A contract can only be refreshed, disabled, expired, or expired refreshed
 		if expiredContract {
@@ -1100,7 +1101,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 		}
 
 		// Record inactive contracts for compatibility
-		if inactive && currentPeriodContract {
+		if inactive && !endHeightInPast {
 			rc.InactiveContracts = append(rc.InactiveContracts, contract)
 		}
 	}
@@ -1754,6 +1755,9 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		ErasureCode:         ec,
 		Force:               force,
 		DisablePartialChunk: true, // TODO: remove this
+
+		// NOTE: can make this an optional param.
+		CipherType: crypto.TypeDefaultRenter,
 	})
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)
@@ -1881,6 +1885,9 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 		ErasureCode: ec,
 		Force:       force,
 		Repair:      repair,
+
+		// NOTE: can make this an optional param.
+		CipherType: crypto.TypeDefaultRenter,
 	}
 	err = api.renter.UploadStreamFromReader(up, req.Body)
 	if err != nil {

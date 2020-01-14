@@ -82,7 +82,6 @@ func TestRenterOne(t *testing.T) {
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
-		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDirectories", testDirectories},
 	}
@@ -1950,26 +1949,9 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 
-	// All contracts should be disabled.
+	// All contracts should be expired.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterDisabledContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have num of hosts expired contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.PassiveContracts) != 0 {
-			return fmt.Errorf("expected 0 passive contracts, got %v", len(rc.PassiveContracts))
-		}
-		if len(rc.RefreshedContracts) != 0 {
-			return fmt.Errorf("expected 0 refreshed contracts, got %v", len(rc.RefreshedContracts))
-		}
-		if len(rc.DisabledContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v disabled contracts, got %v", len(tg.Hosts()), len(rc.DisabledContracts))
-		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
@@ -2868,8 +2850,28 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	wg.Wait()
 }
 
-// testSetFileTrackingPath tests if changing the repairPath of a file works.
-func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
+// TestSetFileTrackingPath tests if changing the repairPath of a file works.
+func TestSetFileTrackingPath(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a group for the subtests
+	gp := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 	// Check that we have enough hosts for this test.
