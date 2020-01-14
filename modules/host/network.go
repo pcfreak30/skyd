@@ -323,12 +323,17 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 }
 
 // threadedHandleStream handles an incoming stream.
-func (h *Host) threadedHandleStream(s modules.Stream) {
+func (h *Host) threadedHandleStream(s *modules.Stream) {
 	err := h.tg.Add()
 	if err != nil {
 		return
 	}
 	defer h.tg.Done()
+
+	readIDFromStream := func(s *modules.Stream) (id types.Specifier, err error) {
+		err = encoding.ReadObject(s, id, uint64(modules.RPCMinLen))
+		return
+	}
 
 	// Close the stream on host.Close or when the method terminates, whichever
 	// comes first.
@@ -344,8 +349,8 @@ func (h *Host) threadedHandleStream(s modules.Stream) {
 
 	// The first RPC a renter sends over the stream should always be one to
 	// request the host's prices.
-	var id types.Specifier
-	if err = s.ReadObject(id); err != nil {
+	id, err := readIDFromStream(s)
+	if err != nil {
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
@@ -367,8 +372,8 @@ func (h *Host) threadedHandleStream(s modules.Stream) {
 	// Keep processing RPCs coming over the stream until it times out or until
 	// the renter closes the stream.
 	for {
-		var id types.Specifier
-		if err = s.ReadObject(id); err != nil {
+		id, err := readIDFromStream(s)
+		if err != nil {
 			if !errors.Contains(modules.ErrStreamClosed, err) {
 				atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 			}
@@ -459,12 +464,12 @@ func (h *Host) compatV1420threadedAcceptsConnections(handlers chan func()) {
 func (h *Host) threadedAcceptsStreams(handlers chan func()) {
 	for {
 		// Block until there is a stream to handle.
-		stream, err := h.peermux.Accept()
+		stream, err := h.staticMux.Accept()
 		if err != nil {
 			return
 		}
 		handlers <- func() {
-			h.threadedHandleStream(stream)
+			h.threadedHandleStream(stream.(*modules.Stream))
 		}
 	}
 }

@@ -172,7 +172,7 @@ type Host struct {
 	priceTable modules.RPCPriceTable
 
 	// Utilities.
-	peermux    modules.PeerMux // TODO drop-in siamux
+	staticMux  *modules.SiaMux
 	db         *persist.BoltDatabase
 	listener   net.Listener
 	log        *persist.Logger
@@ -268,7 +268,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
-		peermux:    modules.PeerMux{}, // TODO
+		staticMux:  modules.NewSiaMux(), // TODO
 		persistDir: persistDir,
 	}
 

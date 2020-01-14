@@ -3,6 +3,8 @@ package host
 import (
 	"encoding/json"
 	"fmt"
+
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -10,7 +12,7 @@ import (
 
 // managedRPCUpdatePriceTable handles the RPC request from the renter to fetch
 // the host's latest RPC price table.
-func (h *Host) managedRPCUpdatePriceTable(stream modules.Stream, pt modules.RPCPriceTable) (modules.RPCPriceTable, error) {
+func (h *Host) managedRPCUpdatePriceTable(stream *modules.Stream, pt modules.RPCPriceTable) (modules.RPCPriceTable, error) {
 	// take a snapshot of the host's price table
 	h.mu.RLock()
 	updated := h.priceTable
@@ -25,7 +27,8 @@ func (h *Host) managedRPCUpdatePriceTable(stream modules.Stream, pt modules.RPCP
 	}
 
 	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: encoded}
-	if err := stream.WriteObjects(uptResponse); err != nil {
+	_, err = stream.Write(encoding.Marshal(uptResponse))
+	if err != nil {
 		return modules.RPCPriceTable{}, errors.AddContext(err, "Failed to write response")
 	}
 

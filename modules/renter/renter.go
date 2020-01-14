@@ -25,10 +25,12 @@ package renter
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -502,7 +504,13 @@ func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
 		return nil, errors.AddContext(err, "host not found")
 	}
 
-	mux := r.staticSiaMux.NewMux(string(he.NetAddress))
+	// TODO: temporary connection setup here
+	conn, _ := (&net.Dialer{
+		Cancel:  r.tg.StopChan(),
+		Timeout: 45 * time.Second,
+	}).Dial("tcp", string(he.NetAddress))
+
+	mux := r.staticSiaMux.NewClientMux(conn)
 	account := r.managedOpenAccount(host)
 	client, err = r.newRPCClient(mux, account, r.blockHeight, &r.tg, r.log)
 	if err != nil {

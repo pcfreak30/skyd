@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux/mux"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
@@ -28,7 +30,7 @@ type RPCClient interface {
 // hostRPCClient wraps all necessities to communicate with a host
 type hostRPCClient struct {
 	staticPaymentProvider modules.PaymentProvider
-	staticPeerMux         *modules.PeerMux
+	staticMux             *mux.Mux
 
 	priceTable        modules.RPCPriceTable
 	priceTableUpdated types.BlockHeight
@@ -45,10 +47,10 @@ type hostRPCClient struct {
 }
 
 // newRPCClient returns a new RPC client.
-func (r *Renter) newRPCClient(pm *modules.PeerMux, pp modules.PaymentProvider, cbh types.BlockHeight, tg *threadgroup.ThreadGroup, log *persist.Logger) (RPCClient, error) {
+func (r *Renter) newRPCClient(mux *mux.Mux, pp modules.PaymentProvider, cbh types.BlockHeight, tg *threadgroup.ThreadGroup, log *persist.Logger) (RPCClient, error) {
 	client := hostRPCClient{
 		staticPaymentProvider: pp,
-		staticPeerMux:         pm,
+		staticMux:             mux,
 		blockHeight:           cbh,
 		renter:                r,
 		log:                   log,
@@ -97,19 +99,24 @@ func (c *hostRPCClient) UpdateBlockHeight(blockHeight types.BlockHeight) {
 
 // UpdatePriceTable performs the updatePriceTableRPC on the host.
 func (c *hostRPCClient) UpdatePriceTable() error {
+
 	// Fetch a stream from the mux
-	stream := c.staticPeerMux.NewStream()
+	stream, err := c.staticMux.NewStream()
 	defer stream.Close()
+	if err != nil {
+		return err
+	}
 
 	// Write the RPC id on the stream, there's no request object as it's
 	// implied from the RPC id.
-	if err := stream.WriteObjects(modules.RPCUpdatePriceTable); err != nil {
+	_, err = stream.Write(encoding.Marshal(modules.RPCUpdatePriceTable))
+	if err != nil {
 		return err
 	}
 
 	// Receive RPCUpdatePriceTableResponse
 	var uptr modules.RPCUpdatePriceTableResponse
-	if err := stream.ReadObject(uptr); err != nil {
+	if err := encoding.ReadObject(stream, uptr, uint64(modules.RPCMinLen)); err != nil {
 		return err
 	}
 	var updated modules.RPCPriceTable
@@ -119,15 +126,14 @@ func (c *hostRPCClient) UpdatePriceTable() error {
 
 	// Perform gouging check
 	allowance := c.renter.hostContractor.Allowance()
-	err := checkPriceTableGouging(allowance, updated)
-	if err != nil {
+	if err := checkPriceTableGouging(allowance, updated); err != nil {
 		// TODO: (follow-up) this should negatively affect the host's score
 		return err
 	}
 
 	// Provide payment for the RPC
 	cost := updated.Costs[modules.RPCUpdatePriceTable]
-	_, err = c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream, c.blockHeight)
+	_, err = c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream.(*modules.Stream), c.blockHeight)
 	if err != nil {
 		return err
 	}
@@ -154,24 +160,28 @@ func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) e
 	}
 
 	// Get a stream
-	stream := c.staticPeerMux.NewStream()
+	stream, err := c.staticMux.NewStream()
+	if err != nil {
+		return err
+	}
 	defer stream.Close()
 
 	// Write the RPC id and RPCFundEphemeralAccountRequest object on the stream.
-	if err := stream.WriteObjects(modules.RPCFundEphemeralAccount, modules.RPCFundEphemeralAccountRequest{AccountID: id}); err != nil {
+	_, err = stream.Write(encoding.MarshalAll(modules.RPCFundEphemeralAccount, modules.RPCFundEphemeralAccountRequest{AccountID: id}))
+	if err != nil {
 		return err
 	}
 
 	// Provide payment for the RPC and await response
 	payment := amount.Add(cost)
-	_, err := c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCFundEphemeralAccount, payment, stream, bh)
+	_, err = c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCFundEphemeralAccount, payment, stream.(*modules.Stream), bh)
 	if err != nil {
 		return err
 	}
 
 	// Receive RPCFundEphemeralAccountResponse
 	var fundAccResponse modules.RPCFundEphemeralAccountResponse
-	if err := stream.ReadObject(fundAccResponse); err != nil {
+	if err := encoding.ReadObject(stream, fundAccResponse, uint64(modules.RPCMinLen)); err != nil {
 		return err
 	}
 

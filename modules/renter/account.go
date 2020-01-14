@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -82,7 +83,7 @@ func (a *account) Balance() types.Currency {
 // The account can be used to pay for RPCs. Depending on which RPC, payment will
 // be made from an ephemeral account, or from a file contract. Typically, only
 // funding an ephemeral account is paid from a file contract.
-func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, amount types.Currency, stream modules.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
+func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, amount types.Currency, stream *modules.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
 	var err error
 	var payment types.Currency
 
@@ -115,7 +116,7 @@ func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, amount types.Curre
 // separate object that implements the PaymentProvider interface. This way the
 // account object can be used to handle PayByEphemeralAccount.
 func (a *account) paymentProvider() modules.PaymentProvider {
-	return modules.PaymentProviderFunc(func(rpcID types.Specifier, payment types.Currency, stream modules.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
+	return modules.PaymentProviderFunc(func(rpcID types.Specifier, payment types.Currency, stream *modules.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
 		// NOTE: we purposefully do not verify if the account has sufficient
 		// funds. Seeing as spends are a blocking action on the host, it is
 		// perfectly ok to trigger spends from an account with insufficient
@@ -131,13 +132,14 @@ func (a *account) paymentProvider() modules.PaymentProvider {
 			Message:   msg,
 			Signature: sig,
 		}
-		if err := stream.WriteObjects(pRequest, pbcRequest); err != nil {
+		_, err := stream.Write(encoding.MarshalAll(pRequest, pbcRequest))
+		if err != nil {
 			return types.ZeroCurrency, err
 		}
 
 		// receive PayByEphemeralAccountResponse
 		var payByResponse modules.PayByEphemeralAccountResponse
-		if err := stream.ReadObject(payByResponse); err != nil {
+		if err := encoding.ReadObject(stream, payByResponse, uint64(modules.RPCMinLen)); err != nil {
 			return types.ZeroCurrency, err
 		}
 

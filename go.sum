@@ -77,6 +77,8 @@ gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a h1:fs891phmYZ
 gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a/go.mod h1:QxXtb5hIp2xQkfb+lzBDIqQIGEj22U7AkYCXO3hkhqc=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20180716154200-1308156c2eaf h1:B0oWvYNYeov4s6nzoVPN4qxdAanrlR9mx552axpnXmg=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20180716154200-1308156c2eaf/go.mod h1:vowDA1cdvtWW678ugB7L/yKT2pCN37aH6zYp9NF5Isc=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200114112131-230147736f87 h1:974/kQtEWa61AkKb6Fn6PTudI7m8b37zhjM1+GSRMjE=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200114112131-230147736f87/go.mod h1:xe4prq7sd/NP8lhgt0yVTsvq5GMmrZdhhqgQ0YKXKQ4=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c h1:psW9YBmnyKKCddPncr7mwJCx6n7FzlIs1EWIiSo7fyQ=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c/go.mod h1:w05nvlkvHlk3Vfc7mcU29Toic1X0BcYUnKoTHS0ea2Y=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20180919184411-4f883ffbdd01 h1:LDXYBpbbxNhmRZgcyGagTJMaggP64gYj3E6KTAyrVOU=

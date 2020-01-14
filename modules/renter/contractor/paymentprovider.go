@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -46,7 +47,7 @@ func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.PaymentPr
 
 // ProvidePaymentForRPC fulfills the PaymentProvider interface. It uses the
 // paymentProvider's underlying contract to make payment for an RPC call.
-func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream modules.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
+func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream *modules.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
 	// For now, only the RPCFundEphemeralAccount should be paid from a contract.
 	// If this changes, makes sure to record the intent depending on the rpcID.
 	if rpcID != modules.RPCFundEphemeralAccount {
@@ -84,13 +85,15 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, pa
 	// send PaymentRequest & PayByContractRequest
 	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
 	pbcRequest := buildPayByContractRequest(rev, sig)
-	if err := stream.WriteObjects(pRequest, pbcRequest); err != nil {
+	_, err = stream.Write(encoding.MarshalAll(pRequest, pbcRequest))
+	if err != nil {
 		return types.ZeroCurrency, err
 	}
 
 	// receive PayByContractResponse
 	var payByResponse modules.PayByContractResponse
-	if err := stream.ReadObject(payByResponse); err != nil {
+	maxLen := uint64(modules.RPCMinLen)
+	if err := encoding.ReadObject(stream, payByResponse, maxLen); err != nil {
 		return types.ZeroCurrency, err
 	}
 

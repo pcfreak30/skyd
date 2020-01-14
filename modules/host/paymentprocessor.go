@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/bolt"
@@ -32,10 +33,12 @@ func (h *Host) PaymentProcessor() modules.PaymentProcessor {
 // ProcessPaymentForRPC reads a payment request from the stream, depending on
 // the type of payment it will either update the file contract or call upon the
 // ephemeral account manager to process the payment.
-func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTable modules.RPCPriceTable) (types.Currency, error) {
+func (p *paymentProcessor) ProcessPaymentForRPC(stream *modules.Stream, priceTable modules.RPCPriceTable) (types.Currency, error) {
+	maxLen := uint64(modules.RPCMinLen)
+
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
-	if err := stream.ReadObject(pr); err != nil {
+	if err := encoding.ReadObject(stream, pr, maxLen); err != nil {
 		return failTo("ProcessPaymentForRPC", "read PaymentRequest", err)
 	}
 
@@ -44,7 +47,7 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTabl
 	case modules.PayByContract:
 		// read the PayByContractRequest
 		var pbcr modules.PayByContractRequest
-		if err := stream.ReadObject(pbcr); err != nil {
+		if err := encoding.ReadObject(stream, pbcr, maxLen); err != nil {
 			return failTo("ProcessPaymentForRPC", "read PayByContractRequest", err)
 		}
 
@@ -87,7 +90,7 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTabl
 	case modules.PayByEphemeralAccount:
 		// read the PayByEphemeralAccountRequest
 		var pbear modules.PayByEphemeralAccountRequest
-		if err := stream.ReadObject(pbear); err != nil {
+		if err := encoding.ReadObject(stream, pbear, maxLen); err != nil {
 			return failTo("ProcessPaymentForRPC", "read PayByEphemeralAccountRequest", err)
 		}
 
@@ -107,10 +110,12 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream modules.Stream, priceTabl
 // account is funded by making payment through a contract. This is a special
 // case because it requires some coordination between the FC fsync and the EA
 // fsync. See callDeposit in accountmanager.go for more details.
-func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream modules.Stream, priceTable modules.RPCPriceTable) (types.Currency, error) {
+func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream *modules.Stream, priceTable modules.RPCPriceTable) (types.Currency, error) {
+	maxLen := uint64(modules.RPCMinLen)
+
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
-	if err := stream.ReadObject(pr); err != nil {
+	if err := encoding.ReadObject(stream, pr, maxLen); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read PaymentRequest", err)
 	}
 
@@ -121,13 +126,13 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream modules.Stream,
 
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
-	if err := stream.ReadObject(pbcr); err != nil {
+	if err := encoding.ReadObject(stream, pbcr, maxLen); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read PayByContractRequest", err)
 	}
 
 	// read the FundEphemeralAccountRequest
 	var fear modules.RPCFundEphemeralAccountRequest
-	if err := stream.ReadObject(fear); err != nil {
+	if err := encoding.ReadObject(stream, fear, maxLen); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read FundEphemeralAccountRequest", err)
 	}
 

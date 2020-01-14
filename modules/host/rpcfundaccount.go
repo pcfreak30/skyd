@@ -8,7 +8,7 @@ import (
 
 // managedRPCFundEphemeralAccount is responsible for handling an RPC request
 // from the renter to fund his ephemeral account.
-func (h *Host) managedRPCFundEphemeralAccount(stream modules.Stream, pt modules.RPCPriceTable) error {
+func (h *Host) managedRPCFundEphemeralAccount(stream *modules.Stream, pt modules.RPCPriceTable) error {
 	pp := h.PaymentProcessor()
 	_, err := pp.ProcessFundEphemeralAccountRPC(stream, pt)
 	return errors.AddContext(err, "Could not fund ephemeral account")
