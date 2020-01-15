@@ -472,7 +472,6 @@ func (h *Host) compatV1421threadedAcceptsConnections(handlers chan func()) {
 // Note: We do not add ourselves to the threadgroup, instead the handler will do
 // so, this to avoid a possible deadlock when the threadgroup gets flushed.
 func (h *Host) threadedAcceptsStreams(handlers chan func()) {
-	return // TODO: enable
 	for {
 		// Block until there is a stream to handle.
 		stream, err := h.staticMux.Accept()
