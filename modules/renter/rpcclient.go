@@ -17,7 +17,7 @@ import (
 var (
 	// errRPCNotAvailable is returned when the requested RPC is not available on
 	// the host. This is possible when a host runs an older version, or when it
-	// is not fully synced and disables his ephemeral account manager.
+	// is not fully synced and disables its ephemeral account manager.
 	errRPCNotAvailable = errors.New("RPC not available on host")
 )
 
@@ -47,14 +47,14 @@ type hostRPCClient struct {
 }
 
 // newRPCClient returns a new RPC client.
-func (r *Renter) newRPCClient(mux *mux.Mux, pp modules.PaymentProvider, cbh types.BlockHeight, tg *threadgroup.ThreadGroup, log *persist.Logger) (RPCClient, error) {
+func (r *Renter) newRPCClient(pp modules.PaymentProvider, mux *mux.Mux) (RPCClient, error) {
 	client := hostRPCClient{
 		staticPaymentProvider: pp,
 		staticMux:             mux,
-		blockHeight:           cbh,
+		blockHeight:           r.blockHeight,
+		log:                   r.log,
+		tg:                    &r.tg,
 		renter:                r,
-		log:                   log,
-		tg:                    tg,
 	}
 
 	if err := client.UpdatePriceTable(); err != nil {

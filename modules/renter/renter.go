@@ -493,31 +493,35 @@ func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
 
-	key := host.String()
-	client, exists := r.clients[key]
+	// return early if we early have an RPC client for the given host
+	client, exists := r.clients[host.String()]
 	if exists {
 		return client, nil
 	}
 
+	// lookup the host entry
 	he, found, err := r.hostDB.Host(host)
 	if !found || err != nil {
 		return nil, errors.AddContext(err, "host not found")
 	}
 
-	// TODO: temporary connection setup here
+	// setup a connection
+	// TODO: temporary connection setup, improve
+	// TODO: does the siamux take care of all of this? e.g. give it a hostkey
+	// and it gives you a mux?
 	conn, _ := (&net.Dialer{
 		Cancel:  r.tg.StopChan(),
 		Timeout: 45 * time.Second,
 	}).Dial("tcp", string(he.NetAddress))
 
+	acc := r.openAccount(host)
 	mux := r.staticSiaMux.NewClientMux(conn)
-	account := r.managedOpenAccount(host)
-	client, err = r.newRPCClient(mux, account, r.blockHeight, &r.tg, r.log)
+	client, err = r.newRPCClient(acc, mux)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not create RPC client")
 	}
 
-	r.clients[key] = client
+	r.clients[host.String()] = client
 	return client, nil
 }
 
@@ -965,8 +969,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticAlerter:  modules.NewAlerter("renter"),
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
-		staticSiaMux:   modules.NewSiaMux(), // TODO
 	}
+	r.staticSiaMux = modules.NewSiaMux(r.tg.StopChan()) // TODO: use siamux package
 	close(r.uploadHeap.pauseChan)
 
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())

@@ -166,13 +166,15 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// The price table lists the host's prices for every RPC it offers. These
-	// prices are dynamic and are subject to various conditions specific to the
-	// RPC in question.
+	// The price table holds a list of prices for everyevery RPC the host
+	// offers. These prices are dynamic and are subject to various conditions,
+	// specific to the RPC in question. Examples of such conditions are
+	// congestion, load, liquidity, etc. The host will guarantee these prices up
+	// until an expiry block height.
 	priceTable modules.RPCPriceTable
 
 	// Utilities.
-	staticMux  *modules.SiaMux
+	staticMux  *modules.SiaMux // TODO: use siamux package
 	db         *persist.BoltDatabase
 	listener   net.Listener
 	log        *persist.Logger
@@ -216,16 +218,16 @@ func (h *Host) checkUnlockHash() error {
 	return nil
 }
 
-// managedUpdatePriceTable recalculates the host's RPC pricing. The prices are
-// dependant on numerous factors that vary for every RPC, such as congestion,
-// load, etc.
+// managedUpdatePriceTable will recalculate the price of every RPC and update
+// the host's RPC price table. The prices are dependant on numerous factors that
+// vary for every RPC. Examples are congestion, load, liquidity, etc.
 func (h *Host) managedUpdatePriceTable() {
 	bh := h.BlockHeight()
 
 	// build a new price table
 	priceTable := modules.RPCPriceTable{
 		Costs:  make(map[types.Specifier]types.Currency),
-		Expiry: bh + 6, // price guarantee for up to 1h
+		Expiry: bh + 6, // prices are guaranteed for ~1h
 	}
 
 	// recalculate the price for every RPC
@@ -267,10 +269,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticAlerter:            modules.NewAlerter("host"),
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
-
-		staticMux:  modules.NewSiaMux(), // TODO
-		persistDir: persistDir,
+		persistDir:               persistDir,
 	}
+	h.staticMux = modules.NewSiaMux(h.tg.StopChan()) // TODO: use siamux package
 
 	// Call stop in the event of a partial startup.
 	var err error

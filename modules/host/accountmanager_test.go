@@ -77,7 +77,7 @@ func TestAccountMaxBalance(t *testing.T) {
 	maxBalance := am.h.InternalSettings().MaxEphemeralAccountBalance
 	exceedingBalance := maxBalance.Add(types.NewCurrency64(1))
 	err = callDeposit(am, accountID, exceedingBalance)
-	if !errors.Contains(err, errBalanceMaxExceeded) {
+	if !errors.Contains(err, ErrBalanceMaxExceeded) {
 		t.Fatal(err)
 	}
 }
@@ -181,7 +181,7 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 	// Withdraw from it
 	amount := types.NewCurrency64(1)
 	msg, sig := prepareWithdrawal(unknown, amount, am.h.blockHeight, sk)
-	if err := callWithdraw(am, msg, sig); !errors.Contains(err, errBalanceInsufficient) {
+	if err := callWithdraw(am, msg, sig); !errors.Contains(err, ErrBalanceInsufficient) {
 		t.Fatal("Unexpected error: ", err)
 	}
 }
@@ -255,7 +255,7 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 	}
 
 	err = callWithdraw(am, msg, sig)
-	if !errors.Contains(err, errWithdrawalSpent) {
+	if !errors.Contains(err, ErrWithdrawalSpent) {
 		t.Fatal("Expected withdrawal spent error", err)
 	}
 }
@@ -518,7 +518,7 @@ func TestAccountRiskBenchmark(t *testing.T) {
 					wErr := callWithdraw(am, msg, sig)
 					if wErr == errMaxRiskReached {
 						atomic.StoreUint64(&atomicMaxRiskReached, 1)
-					} else if wErr == errBalanceInsufficient {
+					} else if wErr == ErrBalanceInsufficient {
 						if dErr := callDeposit(am, accountIDs[randIndex], maxBalance); dErr != nil {
 							atomic.AddUint64(&atomicWithdrawalErrs, 1)
 							t.Log(wErr)

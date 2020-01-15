@@ -11,7 +11,12 @@ import (
 func (h *Host) managedRPCFundEphemeralAccount(stream *modules.Stream, pt modules.RPCPriceTable) error {
 	pp := h.PaymentProcessor()
 	_, err := pp.ProcessFundEphemeralAccountRPC(stream, pt)
-	return errors.AddContext(err, "Could not fund ephemeral account")
+
+	// There's no need to verify payment here. The account get funded by the
+	// amount paid minus the cost of the RPC. If the amount paid did not cover
+	// the cost of the RPC, an error will have been returned.
+
+	return errors.AddContext(err, "Failed to fund ephemeral account")
 }
 
 // managedCalculateFundEphemeralAccountRPCPrice calculates the price for the

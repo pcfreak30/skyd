@@ -12,40 +12,44 @@ import (
 
 // managedRPCUpdatePriceTable handles the RPC request from the renter to fetch
 // the host's latest RPC price table.
-func (h *Host) managedRPCUpdatePriceTable(stream *modules.Stream, pt modules.RPCPriceTable) (modules.RPCPriceTable, error) {
-	// take a snapshot of the host's price table
+func (h *Host) managedRPCUpdatePriceTable(stream *modules.Stream, oldPt modules.RPCPriceTable) (update modules.RPCPriceTable, err error) {
 	h.mu.RLock()
-	updated := h.priceTable
+	pt := h.priceTable
 	h.mu.RUnlock()
+
+	// take a snapshot of the host's price table
+	encoded, err := json.Marshal(pt)
+	if err != nil {
+		errors.AddContext(err, "Failed to JSON encode the price table")
+		return
+	}
+	_ = json.Unmarshal(encoded, &update)
 
 	// encode it as JSON and send it to the renter. Note that we send the price
 	// table before we process payment. This allows the renter to close the
-	// stream if it does not agree with the host's prices.
-	encoded, err := json.Marshal(updated)
-	if err != nil {
-		return modules.RPCPriceTable{}, errors.AddContext(err, "Failed to JSON encode the price table")
-	}
-
+	// stream if it decides the host's gouging the prices.
 	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: encoded}
 	_, err = stream.Write(encoding.Marshal(uptResponse))
 	if err != nil {
-		return modules.RPCPriceTable{}, errors.AddContext(err, "Failed to write response")
+		errors.AddContext(err, "Failed to write response")
+		return
 	}
 
-	// process payment for this RPC call.
+	// process payment for this RPC call
 	pp := h.PaymentProcessor()
-	amountPaid, err := pp.ProcessPaymentForRPC(stream, updated)
+	amountPaid, err := pp.ProcessPaymentForRPC(stream)
 	if err != nil {
-		return modules.RPCPriceTable{}, errors.AddContext(err, "Failed to process payment")
+		errors.AddContext(err, "Failed to process payment")
+		return
 	}
 
-	// verify the renter payment was sufficient.
-	expected := updated.Costs[modules.RPCUpdatePriceTable]
+	// verify the renter payment was sufficient
+	expected := oldPt.Costs[modules.RPCUpdatePriceTable]
 	if amountPaid.Cmp(expected) < 0 {
-		return modules.RPCPriceTable{}, errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
+		errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
+		return
 	}
-
-	return updated, nil
+	return
 }
 
 // managedCalculateUpdatePriceTableRPCPrice calculates the price for the

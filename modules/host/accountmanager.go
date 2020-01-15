@@ -14,38 +14,38 @@ import (
 )
 
 var (
+	// ErrAccountPersist occurs when an ephemeral account could not be persisted
+	// to disk.
+	ErrAccountPersist = errors.New("ephemeral account could not be persisted to disk")
+
+	// ErrAccountExpired occurs when a blocked action can not complete because
+	// the account has expired in the meantime.
+	ErrAccountExpired = errors.New("ephemeral account expired")
+
+	// ErrBalanceInsufficient occurs when a withdrawal could not be successfully
+	// completed because the account balance was insufficient.
+	ErrBalanceInsufficient = errors.New("ephemeral account balance was insufficient")
+
+	// ErrBalanceMaxExceeded occurs when a deposit would push the account's
+	// balance over the maximum allowed ephemeral account balance.
+	ErrBalanceMaxExceeded = errors.New("ephemeral account maximam balance exceeded")
+
+	// ErrDepositCancelled occurs when the host was willingly or unwillingly
+	// stopped in the midst of a deposit process.
+	ErrDepositCancelled = errors.New("ephemeral account deposit cancelled due to a shutdown")
+
+	// ErrWithdrawalCancelled occurs when the host was willingly or unwillingly
+	// stopped in the midst of a withdrawal process.
+	ErrWithdrawalCancelled = errors.New("ephemeral account withdrawal cancelled due to a shutdown")
+
+	// ErrWithdrawalSpent occurs when a withdrawal is requested using a
+	// withdrawal message that has been spent already.
+	ErrWithdrawalSpent = errors.New("withdrawal message was already spent")
+
 	// When the errMaxRiskReached dependency is specified this error is returned
 	// on withdraw or deposit when max risk is reached. It enables easy
 	// verification of when max risk is reached in tests. Used only in tests.
 	errMaxRiskReached = errors.New("errMaxRiskReached")
-
-	// errAccountPersist occurs when an ephemeral account could not be persisted
-	// to disk.
-	errAccountPersist = errors.New("ephemeral account could not be persisted to disk")
-
-	// errAccountExpired occurs when a blocked action can not complete because
-	// the account has expired in the meantime.
-	errAccountExpired = errors.New("ephemeral account expired")
-
-	// errBalanceInsufficient occurs when a withdrawal could not be successfully
-	// completed because the account balance was insufficient.
-	errBalanceInsufficient = errors.New("ephemeral account balance was insufficient")
-
-	// errBalanceMaxExceeded occurs when a deposit would push the account's
-	// balance over the maximum allowed ephemeral account balance.
-	errBalanceMaxExceeded = errors.New("ephemeral account maximam balance exceeded")
-
-	// errDepositCancelled occurs when the host was willingly or unwillingly
-	// stopped in the midst of a deposit process.
-	errDepositCancelled = errors.New("ephemeral account deposit cancelled due to a shutdown")
-
-	// errWithdrawalCancelled occurs when the host was willingly or unwillingly
-	// stopped in the midst of a withdrawal process.
-	errWithdrawalCancelled = errors.New("ephemeral account withdrawal cancelled due to a shutdown")
-
-	// errWithdrawalSpent occurs when a withdrawal is requested using a
-	// withdrawal message that has been spent already.
-	errWithdrawalSpent = errors.New("withdrawal message was already spent")
 
 	// pruneExpiredAccountsFrequency is the frequency at which the account
 	// manager checks if it can expire accounts which have been inactive for too
@@ -407,7 +407,7 @@ func (am *accountManager) managedDeposit(id string, amount, maxRisk, maxBalance 
 
 	// Verify if the deposit does not exceed the maximum
 	if acc.depositExceedsMaxBalance(amount, maxBalance) {
-		return errBalanceMaxExceeded
+		return ErrBalanceMaxExceeded
 	}
 
 	// If current risk exceeds the max risk, add the deposit to the
@@ -453,7 +453,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	// fingerprint on disk.
 	exists := am.fingerprints.has(fp)
 	if exists {
-		return errWithdrawalSpent
+		return ErrWithdrawalSpent
 	}
 	am.fingerprints.add(fp, expiry, blockHeight)
 
@@ -830,7 +830,7 @@ func (am *accountManager) staticWaitForDepositResult(persistResultChan chan erro
 	case err := <-persistResultChan:
 		return err
 	case <-am.h.tg.StopChan():
-		return errDepositCancelled
+		return ErrDepositCancelled
 	}
 }
 
@@ -841,9 +841,9 @@ func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan er
 	case err := <-commitResultChan:
 		return err
 	case <-time.After(blockedWithdrawalTimeout):
-		return errBalanceInsufficient
+		return ErrBalanceInsufficient
 	case <-am.h.tg.StopChan():
-		return errWithdrawalCancelled
+		return ErrWithdrawalCancelled
 	}
 }
 
@@ -863,7 +863,7 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 			// Signal all waiting result chans this account has expired
 			for _, c := range acc.persistResultChans {
 				select {
-				case c <- errAccountExpired:
+				case c <- ErrAccountExpired:
 				default:
 				}
 				close(c)
@@ -1001,7 +1001,7 @@ func (a *account) withdrawalExceedsBalance(withdrawal types.Currency) bool {
 func (a *account) sendResult(result error, waiting int) {
 	for i := 0; i < waiting; i++ {
 		persistResultChan := a.persistResultChans[i]
-		err := errors.AddContext(result, errAccountPersist.Error())
+		err := errors.AddContext(result, ErrAccountPersist.Error())
 		select {
 		case persistResultChan <- err:
 		default:

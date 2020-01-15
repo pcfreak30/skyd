@@ -68,15 +68,23 @@ func (s *Stream) SetWriteDeadline(t time.Time) error {
 }
 
 type SiaMux struct {
-	mux *mux.Mux
+	stopChan <-chan struct{}
+	mux      *mux.Mux
 }
 
-func NewSiaMux() *SiaMux {
-	return &SiaMux{}
+func NewSiaMux(stopChan <-chan struct{}) *SiaMux {
+
+	return &SiaMux{stopChan: stopChan}
 }
 
 func (sm *SiaMux) Accept() (net.Conn, error) {
-	return sm.mux.AcceptStream()
+	block := make(chan struct{})
+	select {
+	case <-block: // For now just block
+	case <-sm.stopChan:
+		return &Stream{}, nil
+	}
+	return &Stream{}, nil
 }
 
 func (sm *SiaMux) NewClientMux(conn net.Conn) *mux.Mux {

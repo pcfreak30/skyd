@@ -504,7 +504,7 @@ func (fm *fingerprintManager) managedSave(fp fingerprint) error {
 	fpBytes, err := safeEncode(fp.hash, fingerprintSize)
 	if err != nil {
 		build.Critical(errors.New("fingerprint size is larger than the expected size"))
-		return errAccountPersist
+		return ErrAccountPersist
 	}
 	bh := fm.h.BlockHeight()
 

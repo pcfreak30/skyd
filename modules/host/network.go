@@ -349,18 +349,17 @@ func (h *Host) threadedHandleStream(s *modules.Stream) {
 
 	// The first RPC a renter sends over the stream should always be one to
 	// request the host's prices.
+
+	// TODO: unsure if this is a good requirement to have, but the first RPC the
+	// renter sends should be one that updates the RPC price table. That, or the
+	// prices should be communicated when the connection is set up.
 	id, err := readIDFromStream(s)
 	if err != nil {
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
-
-	// TODO: unsure if this is a good requirement to have, but the first RPC the
-	// renter sends should be one that updates the RPC price table. That, or the
-	// prices should be communicated when the connection is set up.
-
 	// TODO: possible to signal this to the renter through writing an error
-	// response somehow?
+	// response somehow? Right now this just closes the stream
 	if id != modules.RPCUpdatePriceTable {
 		return
 	}
@@ -369,8 +368,9 @@ func (h *Host) threadedHandleStream(s *modules.Stream) {
 		return
 	}
 
-	// Keep processing RPCs coming over the stream until it times out or until
-	// the renter closes the stream.
+	// The first call to update the price table will have established an initial
+	// set of prices for this "session". We keep processing RPCs coming over the
+	// stream until it either times out or gets closed.
 	for {
 		id, err := readIDFromStream(s)
 		if err != nil {
@@ -380,10 +380,17 @@ func (h *Host) threadedHandleStream(s *modules.Stream) {
 			break
 		}
 
+		// TODO: verify if current blockheight does not exceed the RPC price
+		// table's expiry. In which case we should not accept the RPC and
+		// indicate to the renter he has outdated prices.
+
 		switch id {
 		case modules.RPCFundEphemeralAccount:
 			err = errors.AddContext(h.managedRPCFundEphemeralAccount(s, pt), "Failed to handle FundEphemeralAccountRPC")
 		case modules.RPCUpdatePriceTable:
+			// Note this RPC call will update the price table, this way the host
+			// has a copy of the same price table the renter has and can verify
+			// if the payment was sufficient.
 			pt, err = h.managedRPCUpdatePriceTable(s, pt)
 			err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
 		default:
@@ -397,8 +404,9 @@ func (h *Host) threadedHandleStream(s *modules.Stream) {
 		}
 
 		if err != nil {
+			// TODO: add context to the error
 			atomic.AddUint64(&h.atomicErroredCalls, 1)
-			h.managedLogError(err) // TODO: add stream context to the error
+			h.managedLogError(err)
 		}
 	}
 }
@@ -408,14 +416,14 @@ func (h *Host) threadedHandleStream(s *modules.Stream) {
 func (h *Host) threadedListen(closeChan chan struct{}) {
 	defer close(closeChan)
 
-	// Both incoming connects and streams will pass a handler over this channel.
-	// This ensures the rpcRatelimit applies to incoming RPCs both over the
-	// streams as well as the legacy connections.
+	// Both incoming connections and streams will pass a handler over this
+	// channel. This ensures the rpcRatelimit applies to both the RPCs coming in
+	// over a stream as well as over a legacy connection.
 	handlers := make(chan func())
 
 	// Receive connections until an error is returned by the listener. When
 	// an error is returned, there will be no more calls to receive.
-	go h.compatV1420threadedAcceptsConnections(handlers)
+	go h.compatV1421threadedAcceptsConnections(handlers)
 
 	// Receive streams until an error is returned by the siamux. When an error
 	// is returned, there will be no more calls to receive.
@@ -433,15 +441,17 @@ func (h *Host) threadedListen(closeChan chan struct{}) {
 	}
 }
 
-// compatV1420threadedAcceptsConnections receive connections until an error is
+// compatV1421threadedAcceptsConnections receive connections until an error is
 // returned by the listener. When an error is returned, there will be no more
 // calls to receive. When a connection gets received, we pass a handler for it
 // to the given handlers channel.
 //
 // Note: This is considered legacy and is replaced by threadedAcceptsStreams.
 // Note: We do not add ourselves to the threadgroup, instead the handler will do
-// so to avoid a possible deadlock when the threadgroup gets flushed.
-func (h *Host) compatV1420threadedAcceptsConnections(handlers chan func()) {
+// so, this to avoid a possible deadlock when the threadgroup gets flushed.
+//
+// TODO: verify version
+func (h *Host) compatV1421threadedAcceptsConnections(handlers chan func()) {
 	for {
 		// Block until there is a connection to handle.
 		conn, err := h.listener.Accept()
@@ -460,8 +470,9 @@ func (h *Host) compatV1420threadedAcceptsConnections(handlers chan func()) {
 // handlers channel.
 //
 // Note: We do not add ourselves to the threadgroup, instead the handler will do
-// so to avoid a possible deadlock when the threadgroup gets flushed.
+// so, this to avoid a possible deadlock when the threadgroup gets flushed.
 func (h *Host) threadedAcceptsStreams(handlers chan func()) {
+	return // TODO: enable
 	for {
 		// Block until there is a stream to handle.
 		stream, err := h.staticMux.Accept()

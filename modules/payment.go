@@ -6,9 +6,18 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// ErrInsufficientPaymentForRPC is returned when the provided payment was lower
-// than the cost of the RPC.
 var (
+	// ErrUnknownPaymentMethod occurs when the payment method specified in the
+	// PaymentRequest object is unknown. The possible options are outlined below
+	// under "Payment identifiers".
+	ErrUnknownPaymentMethod = errors.New("unknown payment method")
+
+	// ErrInvalidPaymentMethod occurs when the payment method is not accepted
+	// for a specific RPC.
+	ErrInvalidPaymentMethod = errors.New("invalid payment method")
+
+	// ErrInsufficientPaymentForRPC is returned when the provided payment was
+	// lower than the cost of the RPC.
 	ErrInsufficientPaymentForRPC = errors.New("Insufficient payment, the provided payment did not cover the cost of the RPC.")
 
 	// ErrWithdrawalsInactive occurs when the host is not synced yet. If that is
@@ -38,8 +47,8 @@ type PaymentProvider interface {
 // PaymentProcessor is the interface implemented when receiving payment for an
 // RPC.
 type PaymentProcessor interface {
-	ProcessFundEphemeralAccountRPC(stream *Stream, priceTable RPCPriceTable) (types.Currency, error)
-	ProcessPaymentForRPC(stream *Stream, priceTable RPCPriceTable) (types.Currency, error)
+	ProcessFundEphemeralAccountRPC(stream *Stream, pt RPCPriceTable) (types.Currency, error)
+	ProcessPaymentForRPC(stream *Stream) (types.Currency, error)
 }
 
 // PaymentProviderFunc is an adapter for the interface. This allows wrapping
@@ -113,7 +122,7 @@ type (
 func (wm *WithdrawalMessage) Validate(blockHeight, expiry types.BlockHeight, hash crypto.Hash, sig crypto.Signature) error {
 	return errors.Compose(
 		wm.ValidateExpiry(blockHeight, expiry),
-		wm.validateSignature(hash, sig),
+		wm.ValidateSignature(hash, sig),
 	)
 }
 
@@ -124,17 +133,15 @@ func (wm *WithdrawalMessage) ValidateExpiry(blockHeight, expiry types.BlockHeigh
 	if blockHeight > wm.Expiry {
 		return ErrWithdrawalExpired
 	}
-
 	// Verify the withdrawal is not too far into the future
 	if wm.Expiry > expiry {
 		return ErrWithdrawalExtremeFuture
 	}
-
 	return nil
 }
 
-// validateSignature returns an error if the provided signature is invalid
-func (wm *WithdrawalMessage) validateSignature(hash crypto.Hash, sig crypto.Signature) error {
+// ValidateSignature returns an error if the provided signature is invalid
+func (wm *WithdrawalMessage) ValidateSignature(hash crypto.Hash, sig crypto.Signature) error {
 	var spk types.SiaPublicKey
 	spk.LoadString(wm.Account)
 	var pk crypto.PublicKey

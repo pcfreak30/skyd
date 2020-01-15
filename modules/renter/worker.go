@@ -249,11 +249,9 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		return nil, errors.New("host does not exist")
 	}
 
-	// TODO the balance target is currently hardcoded and does not take into
-	// account the max ephemeral account balance (configured by the host). The
-	// target balance should be calculated based off of that and probably also a
-	// max configurable in the renter. For now the target is temporarily set to
-	// half the default ephemeral account max balance
+	id := r.mu.Lock()
+	account := r.openAccount(host.PublicKey)
+	r.mu.Unlock(id)
 
 	return &worker{
 		staticHostPubKey: hostPubKey,
@@ -261,7 +259,12 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		wakeChan:         make(chan struct{}, 1),
 		renter:           r,
 
+		// TODO the balance target is currently hardcoded and does not take into
+		// account the max ephemeral account balance (configured by the host).
+		// The target balance should be calculated based off of that and
+		// probably also a max configurable in the renter. For now the target is
+		// temporarily set to half the default ephemeral account max balance
 		staticBalanceTarget: types.SiacoinPrecision.Div64(2),
-		account:             r.managedOpenAccount(host.PublicKey),
+		account:             account,
 	}, nil
 }
