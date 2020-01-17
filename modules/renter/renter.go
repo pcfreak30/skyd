@@ -154,6 +154,10 @@ type hostContractor interface {
 	// contracts within a separate thread.
 	InitRecoveryScan() error
 
+	// PaymentProvider creates a payment provider from the specified host key,
+	// allowing payments to be made from the host contract.
+	PaymentProvider(types.SiaPublicKey) (modules.PaymentProvider, error)
+
 	// PeriodSpending returns the amount spent on contracts during the current
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
@@ -253,6 +257,13 @@ type Renter struct {
 	// properly reflected throughout the filesystem.
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
+
+	accounts map[string]*account
+
+	// RPC clients
+	clients map[string]RPCClient
+
+	blockHeight types.BlockHeight
 
 	// Utilities.
 	cs                modules.ConsensusSet
@@ -472,6 +483,33 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	r.mu.Unlock(id)
 
 	return est, allowance, nil
+}
+
+// managedRPCClient returns an RPC client for the host with given key
+func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+
+	// return early if we early have an RPC client for the given host
+	client, exists := r.clients[host.String()]
+	if exists {
+		return client, nil
+	}
+
+	// lookup the host entry
+	_, found, err := r.hostDB.Host(host)
+	if !found || err != nil {
+		return nil, errors.AddContext(err, "host not found")
+	}
+
+	acc := r.openAccount(host)
+	client, err = r.newRPCClient(acc, struct{}{})
+	if err != nil {
+		return nil, errors.AddContext(err, "could not create RPC client")
+	}
+
+	r.clients[host.String()] = client
+	return client, nil
 }
 
 // managedContractUtilityMaps returns a set of maps that contain contract
@@ -807,7 +845,28 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
+
+	// Update the block height on the renter
+	for _, block := range cc.RevertedBlocks {
+		if block.ID() != types.GenesisID {
+			r.blockHeight--
+		}
+	}
+	for _, block := range cc.AppliedBlocks {
+		if block.ID() != types.GenesisID {
+			r.blockHeight++
+		}
+	}
+
+	// Notify all rpc clients of the new block height
+	if cc.Synced {
+		for _, c := range r.clients {
+			c.(*hostRPCClient).UpdateBlockHeight(r.blockHeight)
+		}
+	}
+
 	r.mu.Unlock(id)
+
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the
@@ -881,6 +940,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
+		accounts: make(map[string]*account),
+		clients:  make(map[string]RPCClient),
+
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
@@ -895,7 +957,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
 	}
+	r.staticSiaMux = modules.NewSiaMux(r.tg.StopChan()) // TODO: use siamux package
 	close(r.uploadHeap.pauseChan)
+
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()

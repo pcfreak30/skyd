@@ -29,9 +29,9 @@ type ContractSet struct {
 	wal       *writeaheadlog.WAL
 }
 
-// Acquire looks up the contract for the specified host key and locks it before
-// returning it. If the contract is not present in the set, Acquire returns
-// false and a zero-valued RenterContract.
+// Acquire looks up the contract for the specified file contract id and locks it
+// before returning it. If the contract is not present in the set, Acquire
+// returns false and a zero-valued RenterContract.
 func (cs *ContractSet) Acquire(id types.FileContractID) (*SafeContract, bool) {
 	cs.mu.Lock()
 	safeContract, ok := cs.contracts[id]

@@ -51,6 +51,7 @@ type contractHeader struct {
 	DownloadSpending types.Currency
 	StorageSpending  types.Currency
 	UploadSpending   types.Currency
+	AccountFunding   types.Currency // TODO: write conversion
 	TotalCost        types.Currency
 	ContractFee      types.Currency
 	TxnFee           types.Currency
@@ -118,6 +119,11 @@ type SafeContract struct {
 	// revisionMu, it is still necessary to lock mu when modifying fields of the
 	// SafeContract.
 	revisionMu sync.Mutex
+}
+
+// Sign will sign the given hash using the safecontract's secret key
+func (c *SafeContract) Sign(hash crypto.Hash) crypto.Signature {
+	return crypto.SignHash(hash, c.header.SecretKey)
 }
 
 // Metadata returns the metadata of a renter contract
@@ -315,6 +321,54 @@ func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signe
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
 	newHeader.DownloadSpending = newHeader.DownloadSpending.Add(bandwidthCost)
+
+	if err := c.applySetHeader(newHeader); err != nil {
+		return err
+	}
+	if err := c.headerFile.Sync(); err != nil {
+		return err
+	}
+	if err := t.SignalUpdatesApplied(); err != nil {
+		return err
+	}
+	c.unappliedTxns = nil
+	return nil
+}
+
+// RecordFundEphemeralAccountIntent will record the intent to fund an ephemeral
+// account in the contract's header.
+func (c *SafeContract) RecordFundEphemeralAccountIntent(rev types.FileContractRevision, amount types.Currency) (*writeaheadlog.Transaction, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	newHeader := c.header
+	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
+	newHeader.Transaction.TransactionSignatures = nil
+	newHeader.AccountFunding = newHeader.AccountFunding.Add(amount)
+
+	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+		c.makeUpdateSetHeader(newHeader),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := <-t.SignalSetupComplete(); err != nil {
+		return nil, err
+	}
+	c.unappliedTxns = append(c.unappliedTxns, t)
+	return t, nil
+}
+
+// CommitFundEphemeralAccountIntent will commit the intent to fund an ephemeral
+// account by committing the signed txn in the contract's header.
+func (c *SafeContract) CommitFundEphemeralAccountIntent(t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// construct new header
+	newHeader := c.header
+	newHeader.Transaction = signedTxn
+	newHeader.AccountFunding = newHeader.AccountFunding.Add(amount)
 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err
