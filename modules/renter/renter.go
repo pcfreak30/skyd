@@ -283,6 +283,7 @@ type Renter struct {
 	tpool             modules.TransactionPool
 	wal               *writeaheadlog.WAL
 	staticWorkerPool  *workerPool
+	staticSiaMux      modules.SiaMux
 }
 
 // Close closes the Renter and its dependencies
@@ -497,13 +498,13 @@ func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
 	}
 
 	// lookup the host entry
-	_, found, err := r.hostDB.Host(host)
+	he, found, err := r.hostDB.Host(host)
 	if !found || err != nil {
 		return nil, errors.AddContext(err, "host not found")
 	}
 
 	acc := r.openAccount(host)
-	client, err = r.newRPCClient(acc, struct{}{})
+	client, err = r.newRPCClient(acc, he)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not create RPC client")
 	}
@@ -956,8 +957,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticAlerter:  modules.NewAlerter("renter"),
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
+		staticSiaMux:   modules.NewSiaMux(),
 	}
-	r.staticSiaMux = modules.NewSiaMux(r.tg.StopChan()) // TODO: use siamux package
 	close(r.uploadHeap.pauseChan)
 
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
