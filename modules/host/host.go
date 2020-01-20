@@ -84,6 +84,11 @@ const (
 	dbFilename   = modules.HostDir + ".db"
 	logFile      = modules.HostDir + ".log"
 	settingsFile = modules.HostDir + ".json"
+
+	// rpcPriceGuaranteePeriod defines for how many blocks the host guarantees a
+	// fixed set of RPC prices to the renter. Current block height + this period
+	// defines the expiry block height on the RPC price table.
+	rpcPriceGuaranteePeriod = 6 // ~1h
 )
 
 var (
@@ -166,6 +171,13 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
+	// The price table holds a list of prices, which is the cost of every RPC
+	// that is callable on the host. These prices are dynamic, and are subject
+	// to various conditions specific to the RPC in question. Examples of such
+	// conditions are congestion, load, liquidity, etc. Alongside the costs, the
+	// host sets an expiry block height up until which it guarantees pricing.
+	priceTable modules.RPCPriceTable
+
 	// Misc state.
 	db         *persist.BoltDatabase
 	listener   net.Listener
@@ -208,6 +220,24 @@ func (h *Host) checkUnlockHash() error {
 		}
 	}
 	return nil
+}
+
+// managedUpdatePriceTable will recalculate the price of every RPC and update
+// the host's RPC price table.
+func (h *Host) managedUpdatePriceTable() {
+	currentBlockHeight := h.BlockHeight()
+
+	// create a new RPC price table and set the expiry
+	priceTable := modules.NewRPCPriceTable()
+	priceTable.Expiry = currentBlockHeight + rpcPriceGuaranteePeriod
+
+	// recalculate the price for every RPC
+	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
+
+	// update the pricetable
+	h.mu.Lock()
+	h.priceTable = priceTable
+	h.mu.Unlock()
 }
 
 // newHost returns an initialized Host, taking a set of dependencies as input.
@@ -327,6 +357,10 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		h.log.Println("Could not initialize host networking:", err)
 		return nil, err
 	}
+
+	// Initialize the RPC price table.
+	h.managedUpdatePriceTable()
+
 	return h, nil
 }
 

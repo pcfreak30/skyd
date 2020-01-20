@@ -13,10 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// withdrawalNonceSize is the size of the nonce which is sent in the
-// WithdrawalMessage
-const withdrawalNonceSize = 8
-
 // withdrawalDefaultExpiry defines a default for the WithdrawalMessage expiry.
 // This default is added to the current blockheight to make up the expiry
 // blockheight. By default a WithdrawalMessage expires 6 blocks into the future.
@@ -187,12 +183,19 @@ func (a *account) managedProcessPaymentResult(amount types.Currency, success boo
 // newSignedWithdrawal returns a withdrawal message and signature using the
 // provided withdrawal input.
 func (a *account) newSignedWithdrawal(amount types.Currency, expiry types.BlockHeight) (modules.WithdrawalMessage, crypto.Signature) {
+	// generate a nonce
+	var nonce [modules.WithdrawalNonceSize]byte
+	copy(nonce[:], fastrand.Bytes(len(nonce)))
+
+	// create a new WithdrawalMessage
 	wm := modules.WithdrawalMessage{
 		Account: a.staticID,
 		Expiry:  expiry,
 		Amount:  amount,
-		Nonce:   fastrand.Bytes(withdrawalNonceSize),
+		Nonce:   nonce,
 	}
+
+	// sign it
 	sig := crypto.SignHash(crypto.HashObject(wm), a.staticSecretKey)
 	return wm, sig
 }
