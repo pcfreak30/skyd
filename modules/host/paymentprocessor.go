@@ -13,7 +13,7 @@ import (
 )
 
 // paymentProcessor fulfills the PaymentProcessor interface on the host. It is
-// used by the RPCs to extract a payment from the stream.
+// used by the RPCs to process a payment that is sent over a stream.
 type paymentProcessor struct {
 	staticSecretKey crypto.SecretKey
 	h               *Host
@@ -41,6 +41,19 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream net.Conn) (types.Currency
 
 	// process payment depending on the payment method
 	switch pr.Type {
+	case modules.PayByEphemeralAccount:
+		// read the PayByEphemeralAccountRequest
+		var pbear modules.PayByEphemeralAccountRequest
+		if err := encoding.ReadObject(stream, pbear, maxLen); err != nil {
+			return failTo("ProcessPaymentForRPC", "read PayByEphemeralAccountRequest", err)
+		}
+
+		// process the request
+		if err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority); err != nil {
+			return failTo("ProcessPaymentForRPC", "withdraw from ephemeral account", err)
+		}
+
+		return pbear.Message.Amount, nil
 	case modules.PayByContract:
 		// read the PayByContractRequest
 		var pbcr modules.PayByContractRequest
@@ -56,7 +69,6 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream net.Conn) (types.Currency
 		}
 
 		// extract the proposed revision and the signature from the request
-		// object, using the existing revision
 		renterRevision := revisionFromRequest(currentRevision, pbcr)
 		renterSignature := signatureFromRequest(currentRevision, pbcr)
 
@@ -86,27 +98,13 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream net.Conn) (types.Currency
 		}
 
 		return amount, nil
-	case modules.PayByEphemeralAccount:
-		// read the PayByEphemeralAccountRequest
-		var pbear modules.PayByEphemeralAccountRequest
-		if err := encoding.ReadObject(stream, pbear, maxLen); err != nil {
-			return failTo("ProcessPaymentForRPC", "read PayByEphemeralAccountRequest", err)
-		}
-
-		// process the request
-		err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority)
-		if err != nil {
-			return failTo("ProcessPaymentForRPC", "withdraw from ephemeral account", err)
-		}
-
-		return pbear.Message.Amount, nil
 	default:
 		return failTo("ProcessPaymentForRPC", "handle payment method", modules.ErrUnknownPaymentMethod)
 	}
 }
 
-// ProcessFundEphemeralAccountRPC handles the special case where an ephemeral
-// account is funded by making payment through a contract. This is a special
+// ProcessFundEphemeralAccountRPC reads a payment request from the stream with
+// the intention of funding an ephemeral account. This is treated as a special
 // case because it requires some coordination between the FC fsync and the EA
 // fsync. See callDeposit in accountmanager.go for more details.
 func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream net.Conn, pt modules.RPCPriceTable) (types.Currency, error) {
@@ -143,7 +141,6 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream net.Conn, pt mo
 	}
 
 	// extract the proposed revision and the signature from the request
-	// object, using the existing revision
 	renterRevision := revisionFromRequest(currentRevision, pbcr)
 	renterSignature := signatureFromRequest(currentRevision, pbcr)
 

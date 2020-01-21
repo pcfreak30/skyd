@@ -13,10 +13,11 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// withdrawalDefaultExpiry defines a default for the WithdrawalMessage expiry.
-// This default is added to the current blockheight to make up the expiry
-// blockheight. By default a WithdrawalMessage expires 6 blocks into the future.
-const withdrawalDefaultExpiry = 6
+// withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
+// remains spendable after it has been created. Together with the current block
+// height at time of creation, this period makes up the WithdrawalMessage's
+// expiry block height.
+const withdrawalValidityPeriod = 6
 
 // account represents a renter's ephemeral account on a host.
 type account struct {
@@ -33,8 +34,8 @@ type account struct {
 	r  *Renter
 }
 
-// openAccount returns a new account for the given host. Every time this
-// a new account is opened, it's created using a new keypair.
+// openAccount returns a new account for the given host. Every time a new
+// account is opened, it's created using a new keypair.
 func (r *Renter) openAccount(hostKey types.SiaPublicKey) *account {
 	hpk := hostKey.String()
 	acc, exists := r.accounts[hpk]
@@ -77,30 +78,33 @@ func (a *account) Balance() types.Currency {
 // The account can be used to pay for RPCs. Depending on which RPC, payment will
 // be made from an ephemeral account, or from a file contract. Typically, only
 // funding an ephemeral account is paid from a file contract.
-func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, amount types.Currency, stream net.Conn, blockHeight types.BlockHeight) (types.Currency, error) {
-	var err error
-	var payment types.Currency
-
-	// depending on which RPC we'll want to make payment from an ephemeral
-	// account, or from a file contract. Typically only funding the ephemeral
-	// account is paid from a file contract, all other RPCs are paid using an
-	// ephemeral account.
-	switch rpcID {
-	case modules.RPCFundEphemeralAccount:
+func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, amount types.Currency, stream net.Conn, blockHeight types.BlockHeight) (payment types.Currency, err error) {
+	// Depending on the RPC we'll want to make payment from an ephemeral account
+	// or from a file contract. Typically, only funding the ephemeral account is
+	// paid from a file contract. All other RPCs are paid using an ephemeral
+	// account.
+	//
+	// Note that the type of payment method decides:
+	// - where we fetch the payment provider from
+	// - which fields we update on the account
+	if rpcID == modules.RPCFundEphemeralAccount {
 		provider, err := a.c.PaymentProvider(a.staticHostKey)
 		if err != nil {
 			err = errors.AddContext(err, fmt.Sprintf("Could not create a (contract) payment provider for RPC %v", rpcID))
 			return types.ZeroCurrency, err
 		}
+
 		a.managedProcessFundIntent(amount)
 		payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, blockHeight)
 		a.managedProcessFundResult(amount, err == nil)
-	default:
-		provider := a.paymentProvider()
-		a.managedProcessPaymentIntent(amount)
-		payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, blockHeight)
-		a.managedProcessPaymentResult(amount, err == nil)
+
+		return payment, errors.AddContext(err, fmt.Sprintf("Could not provide payment for RPC %v", rpcID))
 	}
+
+	provider := a.paymentProvider()
+	a.managedProcessPaymentIntent(amount)
+	payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, blockHeight)
+	a.managedProcessPaymentResult(amount, err == nil)
 
 	return payment, errors.AddContext(err, fmt.Sprintf("Could not provide payment for RPC %v", rpcID))
 }
@@ -118,7 +122,7 @@ func (a *account) paymentProvider() modules.PaymentProvider {
 		// successfully execute as soon as funds are available.
 
 		// create a withdrawal message and signature that will pay for the RPC
-		msg, sig := a.newSignedWithdrawal(payment, blockHeight+withdrawalDefaultExpiry)
+		msg, sig := a.newSignedWithdrawal(payment, blockHeight+withdrawalValidityPeriod)
 
 		// send PaymentRequest & PayByEphemeralAccountRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
