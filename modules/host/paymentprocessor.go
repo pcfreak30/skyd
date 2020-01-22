@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -19,8 +18,8 @@ type paymentProcessor struct {
 	h               *Host
 }
 
-// PaymentProcessor returns a new PaymentProcessor.
-func (h *Host) PaymentProcessor() modules.PaymentProcessor {
+// NewPaymentProcessor returns a new PaymentProcessor.
+func (h *Host) NewPaymentProcessor() modules.PaymentProcessor {
 	return &paymentProcessor{
 		staticSecretKey: h.secretKey,
 		h:               h,
@@ -42,62 +41,9 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream net.Conn) (types.Currency
 	// process payment depending on the payment method
 	switch pr.Type {
 	case modules.PayByEphemeralAccount:
-		// read the PayByEphemeralAccountRequest
-		var pbear modules.PayByEphemeralAccountRequest
-		if err := encoding.ReadObject(stream, pbear, maxLen); err != nil {
-			return failTo("ProcessPaymentForRPC", "read PayByEphemeralAccountRequest", err)
-		}
-
-		// process the request
-		if err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority); err != nil {
-			return failTo("ProcessPaymentForRPC", "withdraw from ephemeral account", err)
-		}
-
-		return pbear.Message.Amount, nil
+		return p.payByEphemeralAccount(stream)
 	case modules.PayByContract:
-		// read the PayByContractRequest
-		var pbcr modules.PayByContractRequest
-		if err := encoding.ReadObject(stream, pbcr, maxLen); err != nil {
-			return failTo("ProcessPaymentForRPC", "read PayByContractRequest", err)
-		}
-
-		// lock the storage obligation
-		so, currentRevision, _, err := p.lockStorageObligation(pbcr.ContractID)
-		defer p.h.managedUnlockStorageObligation(so.id())
-		if err != nil {
-			return failTo("ProcessPaymentForRPC", "lock storage obligation", err)
-		}
-
-		// extract the proposed revision and the signature from the request
-		renterRevision := revisionFromRequest(currentRevision, pbcr)
-		renterSignature := signatureFromRequest(currentRevision, pbcr)
-
-		// sign the revision
-		blockHeight := p.h.BlockHeight()
-		txn, err := createRevisionSignature(renterRevision, renterSignature, p.staticSecretKey, blockHeight)
-		if err != nil {
-			return failTo("ProcessPaymentForRPC", "verify revision", err)
-		}
-
-		// extract the payment output & update the storage obligation with the
-		// host's signature
-		amount := currentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
-		so.RevisionTransactionSet = []types.Transaction{{
-			FileContractRevisions: []types.FileContractRevision{renterRevision},
-			TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
-		}}
-
-		// TODO: update so finincial metrics. This is rather tricky seeing as
-		// we're unaware of which RPC the payment is goin gto be used for.
-		// We might have to modify the storage obligation twice.
-
-		// update the storage obligation
-		err = p.h.modifyStorageObligation(so, nil, nil, nil)
-		if err != nil {
-			return failTo("ProcessPaymentForRPC", "modify storage obligation", err)
-		}
-
-		return amount, nil
+		return p.payByContract(stream)
 	default:
 		return failTo("ProcessPaymentForRPC", "handle payment method", modules.ErrUnknownPaymentMethod)
 	}
@@ -134,15 +80,16 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream net.Conn, pt mo
 	}
 
 	// lock the storage obligation
-	so, currentRevision, _, err := p.lockStorageObligation(pbcr.ContractID)
+	so, err := p.lockStorageObligation(pbcr.ContractID)
 	defer p.h.managedUnlockStorageObligation(so.id())
 	if err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "lock storage obligation", err)
 	}
 
 	// extract the proposed revision and the signature from the request
-	renterRevision := revisionFromRequest(currentRevision, pbcr)
-	renterSignature := signatureFromRequest(currentRevision, pbcr)
+	recentRevision := so.recentRevision()
+	renterRevision := revisionFromRequest(recentRevision, pbcr)
+	renterSignature := signatureFromRequest(recentRevision, pbcr)
 
 	// sign the revision
 	blockHeight := p.h.BlockHeight()
@@ -154,7 +101,7 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream net.Conn, pt mo
 	// calculate the deposit amount, this equals to amount of money paid minus
 	// the cost of the RPC
 	cost := pt.Costs[modules.RPCFundEphemeralAccount]
-	amount := currentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
+	amount := recentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
 	var deposit types.Currency
 	if cost.Cmp(amount) <= 0 {
 		deposit = amount.Sub(cost)
@@ -178,64 +125,108 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream net.Conn, pt mo
 		TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
 	}}
 
-	// TODO: update so finincial metrics. This is rather tricky seeing as we're
-	// unaware of which RPC the payment is goin gto be used for. We might have
-	// to modify the storage obligation twice.
-
+	// modify the storage obligation
 	err = p.h.modifyStorageObligation(so, nil, nil, nil)
 	if err != nil {
-		p.h.log.Fatalf("Host incurred a loss of %v, ephemeral account funded but could not modify storage obligation, error %v", amount.HumanString(), err)
+		p.h.log.Critical(fmt.Sprintf("Host incurred a loss of %v, ephemeral account funded but could not modify storage obligation, error %v", amount.HumanString(), err))
 	}
-	close(syncChan)
+	close(syncChan) // signal FC fsync by closing the sync channel
+
+	return amount, nil
+}
+
+// payByEphemeralAccount processes a PayByEphemeralAccountRequest coming in over
+// the given stream.
+func (p *paymentProcessor) payByEphemeralAccount(stream net.Conn) (types.Currency, error) {
+	maxLen := uint64(modules.RPCMinLen)
+
+	// read the PayByEphemeralAccountRequest
+	var pbear modules.PayByEphemeralAccountRequest
+	if err := encoding.ReadObject(stream, pbear, maxLen); err != nil {
+		return failTo("ProcessPaymentForRPC", "read PayByEphemeralAccountRequest", err)
+	}
+
+	// process the request
+	if err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority); err != nil {
+		return failTo("ProcessPaymentForRPC", "withdraw from ephemeral account", err)
+	}
+
+	return pbear.Message.Amount, nil
+}
+
+// payByContract processese a PayByContractRequest coming in over the given
+// stream.
+func (p *paymentProcessor) payByContract(stream net.Conn) (types.Currency, error) {
+	maxLen := uint64(modules.RPCMinLen)
+
+	// read the PayByContractRequest
+	var pbcr modules.PayByContractRequest
+	if err := encoding.ReadObject(stream, pbcr, maxLen); err != nil {
+		return failTo("ProcessPaymentForRPC", "read PayByContractRequest", err)
+	}
+
+	// lock the storage obligation
+	so, err := p.lockStorageObligation(pbcr.ContractID)
+	defer p.h.managedUnlockStorageObligation(so.id())
+	if err != nil {
+		return failTo("ProcessPaymentForRPC", "lock storage obligation", err)
+	}
+
+	// extract the proposed revision and the signature from the request
+	recentRevision := so.recentRevision()
+	renterRevision := revisionFromRequest(recentRevision, pbcr)
+	renterSignature := signatureFromRequest(recentRevision, pbcr)
+
+	// sign the revision
+	blockHeight := p.h.BlockHeight()
+	txn, err := createRevisionSignature(renterRevision, renterSignature, p.staticSecretKey, blockHeight)
+	if err != nil {
+		return failTo("ProcessPaymentForRPC", "verify revision", err)
+	}
+
+	// extract the payment output & update the storage obligation with the
+	// host's signature
+	amount := recentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
+	so.RevisionTransactionSet = []types.Transaction{{
+		FileContractRevisions: []types.FileContractRevision{renterRevision},
+		TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
+	}}
+
+	// update the storage obligation
+	err = p.h.modifyStorageObligation(so, nil, nil, nil)
+	if err != nil {
+		return failTo("ProcessPaymentForRPC", "modify storage obligation", err)
+	}
 
 	return amount, nil
 }
 
 // lockStorageObligation will call upon the host to lock the storage obligation
 // for given ID. It returns the most recent revision and its signatures.
-func (p *paymentProcessor) lockStorageObligation(fcid types.FileContractID) (so storageObligation, recentRevision types.FileContractRevision, revisionSigs []types.TransactionSignature, err error) {
+func (p *paymentProcessor) lockStorageObligation(fcid types.FileContractID) (so storageObligation, err error) {
 	p.h.managedLockStorageObligation(fcid)
 
 	// fetch the storage obligation, which has the revision, which has the
 	// renter's public key.
-	p.h.mu.RLock()
-	defer p.h.mu.RUnlock()
-	err = p.h.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, fcid)
-		return err
-	})
-	if err != nil {
+	if so, err = p.h.managedGetStorageObligation(fcid); err != nil {
 		err = extendErr("could not fetch "+fcid.String()+": ", ErrorInternal(err.Error()))
-		return storageObligation{}, types.FileContractRevision{}, nil, err
+		return storageObligation{}, err
 	}
-
-	// pull out the file contract revision and the revision's signatures from
-	// the transaction.
-	revisionTxn := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
-	recentRevision = revisionTxn.FileContractRevisions[0]
-	for _, sig := range revisionTxn.TransactionSignatures {
-		// checking for just the parent id is sufficient, an over-signed file
-		// contract is invalid.
-		if sig.ParentID == crypto.Hash(fcid) {
-			revisionSigs = append(revisionSigs, sig)
-		}
-	}
-
 	return
 }
 
-// revisionFromRequest creates a copy of the current revision and decorates it
+// revisionFromRequest creates a copy of the recent revision and decorates it
 // with the suggested revision values which are provided through the
 // PayByContractRequest object.
-func revisionFromRequest(current types.FileContractRevision, pbcr modules.PayByContractRequest) types.FileContractRevision {
-	rev := current
+func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByContractRequest) types.FileContractRevision {
+	rev := recent
 
 	rev.NewRevisionNumber = pbcr.NewRevisionNumber
 	rev.NewValidProofOutputs = make([]types.SiacoinOutput, len(pbcr.NewValidProofValues))
 	for i, v := range pbcr.NewValidProofValues {
 		rev.NewValidProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
-			UnlockHash: current.NewValidProofOutputs[i].UnlockHash,
+			UnlockHash: recent.NewValidProofOutputs[i].UnlockHash,
 		}
 	}
 
@@ -243,17 +234,17 @@ func revisionFromRequest(current types.FileContractRevision, pbcr modules.PayByC
 	for i, v := range pbcr.NewMissedProofValues {
 		rev.NewMissedProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
-			UnlockHash: current.NewMissedProofOutputs[i].UnlockHash,
+			UnlockHash: recent.NewMissedProofOutputs[i].UnlockHash,
 		}
 	}
 
 	return rev
 }
 
-// signatureFromRequest creates a copy of the current revision and decorates it
+// signatureFromRequest creates a copy of the recent revision and decorates it
 // with the signature provided through the PayByContractRequest object.
-func signatureFromRequest(rev types.FileContractRevision, pbcr modules.PayByContractRequest) types.TransactionSignature {
-	txn := types.NewTransaction(rev, 0)
+func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByContractRequest) types.TransactionSignature {
+	txn := types.NewTransaction(recent, 0)
 	txn.TransactionSignatures[0].Signature = pbcr.Signature
 	return txn.TransactionSignatures[0]
 }

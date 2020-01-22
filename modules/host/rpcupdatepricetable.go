@@ -39,7 +39,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	}
 
 	// TODO: process payment for this RPC call (introduced in other MR)
-	pp := h.PaymentProcessor()
+	pp := h.NewPaymentProcessor()
 	amountPaid, err := pp.ProcessPaymentForRPC(stream)
 	if err != nil {
 		errors.AddContext(err, "Failed to process payment")

@@ -105,8 +105,8 @@ var (
 	errNilWallet  = errors.New("host cannot use a nil wallet")
 	errNilGateway = errors.New("host cannot use nil gateway")
 
-	// persistMetadata is the header that gets written to the persist file, and is
-	// used to recognize other persist files.
+	// persistMetadata is the header that gets written to the persist file, and
+	// is used to recognize other persist files.
 	persistMetadata = persist.Metadata{
 		Header:  "Sia Host",
 		Version: "1.2.0",
@@ -171,11 +171,12 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// The price table holds a list of prices, which is the cost of every RPC
-	// that is callable on the host. These prices are dynamic, and are subject
-	// to various conditions specific to the RPC in question. Examples of such
-	// conditions are congestion, load, liquidity, etc. Alongside the costs, the
-	// host sets an expiry block height up until which it guarantees pricing.
+	// The price table holds a list of prices, such as the price for a specific
+	// RPC, or the prices of the individual MDM instruction operations. These
+	// prices are dynamic, and are subject to various conditions specific to the
+	// RPC in question. Examples of such conditions are congestion, load,
+	// liquidity, etc. Alongside the costs, the host sets an expiry block height
+	// up until which it guarantees pricing.
 	priceTable modules.RPCPriceTable
 
 	// Misc state.
