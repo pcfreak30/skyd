@@ -23,12 +23,26 @@ type (
 var (
 	// RPCUpdatePriceTable specifier
 	RPCUpdatePriceTable = types.NewSpecifier("UpdatePriceTable")
+
+	// RPCFundEphemeralAccount specifier
+	RPCFundEphemeralAccount = types.NewSpecifier("FundEphemeralAcc")
 )
 
 type (
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
+	}
+
+	// RPCFundEphemeralAccountRequest specifies the account id.
+	RPCFundEphemeralAccountRequest struct {
+		AccountID string
+	}
+
+	// RPCFundEphemeralAccountResponse contains the signature. This signature
+	// can be used as a receipt and is a proof of payment.
+	RPCFundEphemeralAccountResponse struct {
+		Signature []byte
 	}
 )
 

@@ -39,7 +39,12 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	}
 
 	// TODO: process payment for this RPC call (introduced in other MR)
-	amountPaid := update.Costs[modules.RPCUpdatePriceTable]
+	pp := h.NewPaymentProcessor()
+	amountPaid, err := pp.ProcessPaymentForRPC(stream)
+	if err != nil {
+		errors.AddContext(err, "Failed to process payment")
+		return
+	}
 
 	// verify the renter payment was sufficient, since the renter already has
 	// the updated prices, we expect it will have paid the latest price

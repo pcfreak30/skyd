@@ -13,6 +13,10 @@ const (
 	// persistVersion defines the Sia version that the persistence was
 	// last updated
 	persistVersion = "1.4.2"
+
+	// siaMuxSubscriberName is the name the renter uses to register a listener
+	// on the SiaMux.
+	siaMuxSubscriberName = "renter"
 )
 
 const (

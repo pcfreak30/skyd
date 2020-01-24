@@ -49,6 +49,12 @@ type (
 	}
 )
 
+// SiaPKToMuxPK turns a SiaPublicKey into a mux.ED25519PublicKey
+func SiaPKToMuxPK(spk types.SiaPublicKey) (mk mux.ED25519PublicKey) {
+	copy(mk[:], spk.Key)
+	return
+}
+
 // NewSiaMux returns a new SiaMux object
 func NewSiaMux(dir, address string) (*SiaMux, error) {
 	// create the logger

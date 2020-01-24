@@ -174,6 +174,18 @@ func (i storageObligationStatus) String() string {
 	return "storageObligationStatus(" + strconv.FormatInt(int64(i), 10) + ")"
 }
 
+// managedGetStorageObligation fetches a storage obligation from the database.
+func (h *Host) managedGetStorageObligation(fcid types.FileContractID) (so storageObligation, err error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = getStorageObligation(tx, fcid)
+		return err
+	})
+	return
+}
+
 // getStorageObligation fetches a storage obligation from the database tx.
 func getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObligation, err error) {
 	soBytes := tx.Bucket(bucketStorageObligations).Get(soid[:])
@@ -313,6 +325,18 @@ func (so storageObligation) transactionID() types.TransactionID {
 // value returns the value of fulfilling the storage obligation to the host.
 func (so storageObligation) value() types.Currency {
 	return so.ContractCost.Add(so.PotentialDownloadRevenue).Add(so.PotentialStorageRevenue).Add(so.PotentialUploadRevenue).Add(so.RiskedCollateral)
+}
+
+// recentRevision returns the most recent file contract revision in this storage
+// obligation.
+func (so storageObligation) recentRevision() types.FileContractRevision {
+	numRevisions := len(so.RevisionTransactionSet)
+	if numRevisions > 0 {
+		revisionTxn := so.RevisionTransactionSet[numRevisions-1]
+		return revisionTxn.FileContractRevisions[0]
+	}
+	revisionTxn := so.OriginTransactionSet[len(so.OriginTransactionSet)-1]
+	return revisionTxn.FileContractRevisions[0]
 }
 
 // deleteStorageObligations deletes obligations from the database.
