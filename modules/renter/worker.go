@@ -278,16 +278,9 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, 
 	// TODO: enable the account refiller by setting a balance target greater
 	// than the zero currency
 
-	// TODO: (TL;DR mock causes infinite loop if target is not set to zero) the
-	// target is set to zero because as long as FundEphemeralAccount is mocked,
-	// setting a target larger than zero would create an endless refill loop,
-	// just because there is nothing holding back consecutive refill jobs from
-	// being enqueued (which wakes the workerloop and so on). This is due to
-	// pendingFunds not increasing, which causes the AvailableBalance to remain
-	// the same, which causes a fund account job to be scheduled on every
-	// iteration.
-	balanceTarget := types.ZeroCurrency
-
+	// TODO: figure out appropriate balance target using host settings and
+	// renter max.
+	balanceTarget := types.SiacoinPrecision.Div64(2)
 	return &worker{
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
