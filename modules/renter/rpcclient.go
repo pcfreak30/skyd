@@ -25,6 +25,7 @@ var (
 
 // RPCClient interface lists all possible RPC that can be called on the host
 type RPCClient interface {
+	DownloadSectorByRoot(offset, length uint64, sectorRoot crypto.Hash, merkleProof bool) ([]byte, error)
 	UpdatePriceTable() error
 	FundEphemeralAccount(id string, amount types.Currency) error
 }

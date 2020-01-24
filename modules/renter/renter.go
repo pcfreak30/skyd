@@ -259,7 +259,6 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	accounts map[string]*account
-
 	// RPC clients
 	clients map[string]RPCClient
 

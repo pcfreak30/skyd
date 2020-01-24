@@ -129,34 +129,51 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	// whether successful or failed, the worker needs to be removed.
 	defer udc.managedRemoveWorker()
 
+	rpcClient, err := w.renter.managedRPCClient(w.staticHostPubKey)
+	if err != nil {
+		w.renter.log.Debugln("worker failed to create rpcClient:", err)
+		udc.managedUnregisterWorker(w)
+		return true
+	}
+
+	// TODO: use this on legacy hosts
 	// Fetch the sector. If fetching the sector fails, the worker needs to be
 	// unregistered with the chunk.
-	d, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
-	if err != nil {
-		w.renter.log.Debugln("worker failed to create downloader:", err)
-		udc.managedUnregisterWorker(w)
-		return true
-	}
-	defer d.Close()
+	//	d, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
+	//	if err != nil {
+	//		w.renter.log.Debugln("worker failed to create downloader:", err)
+	//		udc.managedUnregisterWorker(w)
+	//		return true
+	//	}
+	//	defer d.Close()
 
+	// TODO gouging is checkd when pricetables are updated
 	// Before performing the download, check for price gouging.
-	allowance := w.renter.hostContractor.Allowance()
-	hostSettings := d.HostSettings()
-	err = checkDownloadGouging(allowance, hostSettings)
-	if err != nil {
-		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
-		udc.managedUnregisterWorker(w)
-		return true
-	}
+	//  allowance := w.renter.hostContractor.Allowance()
+	//	hostSettings := d.HostSettings()
+	//	err = checkDownloadGouging(allowance, hostSettings)
+	//	if err != nil {
+	//		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
+	//		udc.managedUnregisterWorker(w)
+	//		return true
+	//	}
 
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
+	pieceData, err := rpcClient.DownloadSectorByRoot(fetchOffset, fetchLength, root, false) // TODO: enable proof
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)
 		return true
 	}
+
+	// TODO:
+	//	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
+	//	if err != nil {
+	//		w.renter.log.Debugln("worker failed to download sector:", err)
+	//		udc.managedUnregisterWorker(w)
+	//		return true
+	//	}
 	// TODO: Instead of adding the whole sector after the download completes,
 	// have the 'd.Sector' call add to this value ongoing as the sector comes
 	// in. Perhaps even include the data from creating the downloader and other
