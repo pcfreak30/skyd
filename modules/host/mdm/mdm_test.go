@@ -20,7 +20,9 @@ type (
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
 	TestStorageObligation struct {
-		locked bool
+		contractSize uint64
+		locked       bool
+		merkleRoot   crypto.Hash
 	}
 )
 
@@ -30,9 +32,11 @@ func newTestHost() Host {
 	}
 }
 
-func newTestStorageObligation(locked bool) StorageObligation {
+func newTestStorageObligation(locked bool, contractSize uint64, merkleRoot crypto.Hash) StorageObligation {
 	return &TestStorageObligation{
-		locked: locked,
+		contractSize: contractSize,
+		locked:       locked,
+		merkleRoot:   merkleRoot,
 	}
 }
 
@@ -56,9 +60,18 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 	return data, nil
 }
 
+func (so *TestStorageObligation) ContractSize() uint64 {
+	return so.contractSize
+}
+
 // Locked implements the StorageObligation interface.
 func (so *TestStorageObligation) Locked() bool {
 	return so.locked
+}
+
+// MerkleRoot implements the StorageObligation interface.
+func (so *TestStorageObligation) MerkleRoot() crypto.Hash {
+	return so.merkleRoot
 }
 
 // Update implements the StorageObligation interface

@@ -26,6 +26,9 @@ var (
 
 	// RPCFundEphemeralAccount specifier
 	RPCFundEphemeralAccount = types.NewSpecifier("FundEphemeralAcc")
+
+	// RPCDownloadRoot specifier
+	RPCDownloadRoot = types.NewSpecifier("DownloadRoot")
 )
 
 type (

@@ -24,6 +24,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
@@ -230,7 +232,7 @@ func (h *Host) initNetworking(address string) (err error) {
 
 	// Launch the listener.
 	go h.threadedListen(threadedListenerClosedChan)
-	return nil
+	return h.staticMux.NewListener(siaMuxSubscriberName, h.handleStream)
 }
 
 // threadedHandleConn handles an incoming connection to the host, typically an
@@ -318,6 +320,96 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		err = extendErr("error with "+conn.RemoteAddr().String()+": ", err)
 		h.managedLogError(err)
+	}
+}
+
+// handleStream handles incoming SiaMux streams.
+func (h *Host) handleStream(stream siamux.Stream) {
+	err := h.tg.Add()
+	if err != nil {
+		return
+	}
+	defer h.tg.Done()
+
+	// Close the conn on host.Close or when the method terminates, whichever comes
+	// first.
+	connCloseChan := make(chan struct{})
+	defer close(connCloseChan)
+	go func() {
+		select {
+		case <-h.tg.StopChan():
+		case <-connCloseChan:
+		}
+		stream.Close()
+	}()
+
+	// Set an initial duration that is generous, but finite. RPCs can extend
+	// this if desired.
+	// TODO: enable when implemented on SiaMux
+	//	err = stream.SetDeadline(time.Now().Add(5 * time.Minute))
+	//	if err != nil {
+	//		h.log.Println("WARN: could not set deadline on connection:", err)
+	//		return
+	//	}
+
+	readIDFromStream := func(s siamux.Stream) (id types.Specifier, err error) {
+		err = encoding.ReadObject(s, id, uint64(modules.RPCMinLen))
+		return
+	}
+
+	// TODO: unsure if this is a good requirement to have, but the first RPC the
+	// renter sends should be one that updates the RPC price table. That, or the
+	// prices should be communicated when the connection is set up.
+	id, err := readIDFromStream(stream)
+	if err != nil {
+		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+		return
+	}
+	// TODO: possible to signal this to the renter through writing an error
+	// response somehow? Right now this just closes the stream
+	if id != modules.RPCUpdatePriceTable {
+		return
+	}
+	var pt modules.RPCPriceTable
+	if pt, err = h.managedRPCUpdatePriceTable(stream); err != nil {
+		return
+	}
+
+	// The first call to update the price table will have established an initial
+	// set of prices for this "session". We keep processing RPCs coming over the
+	// stream until it either times out or gets closed.
+	for {
+		id, err := readIDFromStream(stream)
+		if err != nil {
+			println("couldn't read ID from stream: ", err.Error())
+			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			break
+		}
+
+		// TODO: verify if current blockheight does not exceed the RPC price
+		// table's expiry. In which case we should not accept the RPC and
+		// indicate to the renter he has outdated prices.
+
+		switch id {
+		case modules.RPCUpdatePriceTable:
+			// Note this RPC call will update the price table, this way the host
+			// has a copy of the same price table the renter has and can verify
+			// if the payment was sufficient.
+			pt, err = h.managedRPCUpdatePriceTable(stream)
+			err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
+		case modules.RPCDownloadRoot:
+			err = h.managedRPCDownloadRoot(stream, pt)
+			err = errors.AddContext(err, "Failed to handle DownloadRootRPC")
+		default:
+			// TODO: add logging
+			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+		}
+
+		if err != nil {
+			// TODO: add context to the error
+			atomic.AddUint64(&h.atomicErroredCalls, 1)
+			h.managedLogError(err)
+		}
 	}
 }
 

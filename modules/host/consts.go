@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+const (
+	// siaMuxSubscriberName is the name used by the host to register a listener
+	// on the SiaMux.
+	siaMuxSubscriberName = "host"
+)
+
 // Constants related to the host's alerts.
 const (
 	// AlertMSGHostInsufficientCollateral indicates that a host has insufficient

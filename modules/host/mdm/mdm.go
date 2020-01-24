@@ -9,7 +9,9 @@ import (
 // StorageObligation defines the minimal interface a StorageObligation needs to
 // implement to be used by the mdm.
 type StorageObligation interface {
+	ContractSize() uint64
 	Locked() bool
+	MerkleRoot() crypto.Hash
 	Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error
 }
 

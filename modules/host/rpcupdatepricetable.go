@@ -21,11 +21,11 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	// deepcopy the host's price table by json encoding and decoding it
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
-		errors.AddContext(err, "Failed to JSON encode the RPC price table")
+		err = errors.AddContext(err, "Failed to JSON encode the RPC price table")
 		return
 	}
 	if err = json.Unmarshal(ptBytes, &update); err != nil {
-		errors.AddContext(err, "Failed to JSON decode the RPC price table")
+		err = errors.AddContext(err, "Failed to JSON decode the RPC price table")
 		return
 	}
 
@@ -34,7 +34,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	// the price
 	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: ptBytes}
 	if err = encoding.WriteObject(stream, uptResponse); err != nil {
-		errors.AddContext(err, "Failed to write response")
+		err = errors.AddContext(err, "Failed to write response")
 		return
 	}
 
@@ -42,7 +42,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	pp := h.NewPaymentProcessor()
 	amountPaid, err := pp.ProcessPaymentForRPC(stream)
 	if err != nil {
-		errors.AddContext(err, "Failed to process payment")
+		err = errors.AddContext(err, "Failed to process payment")
 		return
 	}
 
@@ -50,7 +50,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	// the updated prices, we expect it will have paid the latest price
 	expected := update.Costs[modules.RPCUpdatePriceTable]
 	if amountPaid.Cmp(expected) < 0 {
-		errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
+		err = errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
 		return
 	}
 

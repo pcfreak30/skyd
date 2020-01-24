@@ -16,7 +16,7 @@ func TestNewEmptyProgram(t *testing.T) {
 	mdm := New(newTestHost())
 	var r io.Reader
 	// Execute the program.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, InitCost(0), newTestStorageObligation(true), 0, crypto.Hash{}, 0, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, InitCost(0), newTestStorageObligation(true, 0, crypto.Hash{}), 0, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestNewEmptyProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	var r io.Reader
 	// Execute the program.
-	_, _, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, Cost{}, newTestStorageObligation(true), 0, crypto.Hash{}, 0, r)
+	_, _, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, Cost{}, newTestStorageObligation(true, 0, crypto.Hash{}), 0, r)
 	if !errors.Contains(err, ErrInsufficientBudget) {
 		t.Fatal("missing error")
 	}
