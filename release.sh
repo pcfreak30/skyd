@@ -29,18 +29,10 @@ function build {
 		if [ "$os" == "windows" ]; then
 			bin=${pkg}.exe
 		fi
-		GOOS=${os} GOARCH=${arch} go build -a -tags 'netgo' -trimpath -ldflags="$ldflags" -o $folder/$bin ./cmd/$pkg
+		CGO_ENABLED=0 GOOS=${os} GOARCH=${arch} go build -a -tags 'netgo' -trimpath -ldflags="$ldflags" -o $folder/$bin ./cmd/$pkg
     sha256sum $folder/$bin >> release/Sia-$version-SHA256SUMS.txt
   done
 }
-
-# Build amd64 binaries.
-for os in darwin linux windows; do
-  build "$os" "amd64"
-done
-
-# Build Raspberry Pi binaries.
-build "linux" "arm64"
 
 function package {
   os=$1
@@ -58,10 +50,5 @@ function package {
 	)
 }
 
-# Package amd64 binaries.
-for os in darwin linux windows; do
-  package "$os" "amd64"
-done
-
-# Package Raspberry Pi binaries.
-package "linux" "arm64"
+build "linux" "amd64"
+package "linux" "amd64"
