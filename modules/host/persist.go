@@ -76,10 +76,14 @@ func (h *Host) establishDefaults() error {
 		MaxEphemeralAccountRisk:    defaultMaxEphemeralAccountRisk,
 	}
 
-	// Generate signing key, for revising contracts.
-	sk, pk := crypto.GenerateKeyPair()
-	h.secretKey = sk
+	// Load the host's key pair, use the same keys as the SiaMux.
+	var sk crypto.SecretKey
+	var pk crypto.PublicKey
+	copy(sk[:], h.staticMux.Keys.SecretKey[:])
+	copy(pk[:], h.staticMux.Keys.PublicKey[:])
+
 	h.publicKey = types.Ed25519PublicKey(pk)
+	h.secretKey = sk
 
 	return nil
 }
