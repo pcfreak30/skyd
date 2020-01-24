@@ -2,7 +2,6 @@ package contractor
 
 import (
 	"errors"
-	"net"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -10,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // errors
@@ -48,7 +48,7 @@ func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.PaymentPr
 
 // ProvidePaymentForRPC fulfills the PaymentProvider interface. It uses the
 // paymentProvider's underlying contract to make payment for an RPC call.
-func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream net.Conn, blockHeight types.BlockHeight) (types.Currency, error) {
+func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
 	// For now, only the RPCFundEphemeralAccount should be paid from a contract.
 	// If this changes, makes sure to record the intent depending on the rpcID.
 	if rpcID != modules.RPCFundEphemeralAccount {

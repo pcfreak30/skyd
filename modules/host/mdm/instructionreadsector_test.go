@@ -3,8 +3,6 @@ package mdm
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
-	"io"
 	"reflect"
 	"testing"
 
@@ -12,20 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 )
-
-// newReadSectorProgram is a convenience method which prepares the instructions
-// and the program data for a program that executes a single
-// ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash) ([]modules.Instruction, io.Reader, uint64) {
-	instructions := []modules.Instruction{
-		NewReadSectorInstruction(0, 8, 16, true),
-	}
-	data := make([]byte, 8+8+crypto.HashSize)
-	binary.LittleEndian.PutUint64(data[:8], length)
-	binary.LittleEndian.PutUint64(data[8:16], offset)
-	copy(data[16:], merkleRoot[:])
-	return instructions, bytes.NewReader(data), uint64(len(data))
-}
 
 // TestInstructionReadSector tests executing a program with a single
 // ReadSectorInstruction.
@@ -35,12 +19,13 @@ func TestInstructionReadSector(t *testing.T) {
 	defer mdm.Stop()
 
 	// Create a program to read a full sector from the host.
-	instructions, r, dataLen := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{})
+	instructions, programData := NewReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, false) // TODO: use merkle
+	dataLen := uint64(len(programData))
 	// Execute it.
 	ics := uint64(0) // initial contract size is 0 sectors.
 	imr := crypto.Hash{}
 	fastrand.Read(imr[:]) // random initial merkle root
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), instructions, InitCost(dataLen).Add(ReadSectorCost()), newTestStorageObligation(true, ics, imr), dataLen, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), instructions, modules.InitCost(dataLen).Add(modules.ReadSectorCost()), newTestStorageObligation(true, ics, imr), dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,9 +61,10 @@ func TestInstructionReadSector(t *testing.T) {
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
-	instructions, r, dataLen = newReadSectorProgram(length, offset, crypto.Hash{})
+	instructions, programData = NewReadSectorProgram(length, offset, crypto.Hash{}, true)
+	dataLen = uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), instructions, InitCost(dataLen).Add(ReadSectorCost()), newTestStorageObligation(true, ics, imr), dataLen, r)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), instructions, modules.InitCost(dataLen).Add(modules.ReadSectorCost()), newTestStorageObligation(true, ics, imr), dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}

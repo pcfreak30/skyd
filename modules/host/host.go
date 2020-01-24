@@ -353,7 +353,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
-		priceTableHeap: make(priceTableHeap),
+		priceTableHeap: new(priceTableHeap),
 		persistDir:     persistDir,
 	}
 	h.staticMDM = mdm.New(h)

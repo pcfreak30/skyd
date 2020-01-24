@@ -34,6 +34,20 @@ func NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset uint6
 	return rsi
 }
 
+// NewReadSectorProgram is a convenience method which prepares the instructions
+// and the program data for a program that executes a single
+// ReadSectorInstruction.
+func NewReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) ([]modules.Instruction, []byte) {
+	instructions := []modules.Instruction{
+		NewReadSectorInstruction(0, 8, 16, merkleProof),
+	}
+	data := make([]byte, 8+8+crypto.HashSize)
+	binary.LittleEndian.PutUint64(data[:8], length)
+	binary.LittleEndian.PutUint64(data[8:16], offset)
+	copy(data[16:], merkleRoot[:])
+	return instructions, data
+}
+
 // staticDecodeReadSectorInstruction creates a new 'ReadSector' instruction from the
 // provided generic instruction.
 func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruction) (instruction, error) {
@@ -65,15 +79,15 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 }
 
 // Cost returns the cost of executing this instruction.
-func (i *instructionReadSector) Cost() Cost {
-	return ReadSectorCost()
+func (i *instructionReadSector) Cost() modules.Cost {
+	return modules.ReadSectorCost()
 }
 
 // Execute executes the 'Read' instruction.
 func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 	// Subtract cost from budget beforehand.
 	var err error
-	i.staticState.remainingBudget, err = i.staticState.remainingBudget.Sub(ReadSectorCost())
+	i.staticState.remainingBudget, err = i.staticState.remainingBudget.Sub(modules.ReadSectorCost())
 	if err != nil {
 		return outputFromError(err)
 	}

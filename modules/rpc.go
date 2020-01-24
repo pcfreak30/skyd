@@ -26,6 +26,10 @@ type (
 	}
 )
 
+func (rpcs RPCSpecifier) DontLookAtMeHarryImHideous() types.Specifier {
+	return types.NewSpecifier(string(rpcs[:]))
+}
+
 var (
 	// RPCUpdatePriceTable specifier
 	RPCUpdatePriceTable = RPCSpecifier{'U', 'p', 'd', 'a', 't', 'e', 'P', 'T'}

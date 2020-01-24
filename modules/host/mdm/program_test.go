@@ -16,7 +16,7 @@ func TestNewEmptyProgram(t *testing.T) {
 	mdm := New(newTestHost())
 	var r io.Reader
 	// Execute the program.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, InitCost(0), newTestStorageObligation(true, 0, crypto.Hash{}), 0, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, modules.InitCost(0), newTestStorageObligation(true, 0, crypto.Hash{}), 0, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,23 +41,23 @@ func TestNewEmptyProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	var r io.Reader
 	// Execute the program.
-	_, _, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, Cost{}, newTestStorageObligation(true, 0, crypto.Hash{}), 0, r)
-	if !errors.Contains(err, ErrInsufficientBudget) {
+	_, _, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, modules.Cost{}, newTestStorageObligation(true, 0, crypto.Hash{}), 0, r)
+	if !errors.Contains(err, modules.ErrInsufficientBudget) {
 		t.Fatal("missing error")
 	}
-	if !errors.Contains(err, ErrInsufficientMemoryBudget) {
+	if !errors.Contains(err, modules.ErrInsufficientMemoryBudget) {
 		t.Fatal("missing error")
 	}
-	if !errors.Contains(err, ErrInsufficientDiskAccessesBudget) {
+	if !errors.Contains(err, modules.ErrInsufficientDiskAccessesBudget) {
 		t.Fatal("missing error")
 	}
-	if !errors.Contains(err, ErrInsufficientComputeBudget) {
+	if !errors.Contains(err, modules.ErrInsufficientComputeBudget) {
 		t.Fatal("missing error")
 	}
-	if errors.Contains(err, ErrInsufficientDiskReadBudget) {
+	if errors.Contains(err, modules.ErrInsufficientDiskReadBudget) {
 		t.Fatal("wrong error")
 	}
-	if errors.Contains(err, ErrInsufficientDiskWriteBudget) {
+	if errors.Contains(err, modules.ErrInsufficientDiskWriteBudget) {
 		t.Fatal("wrong error")
 	}
 	if err == nil {

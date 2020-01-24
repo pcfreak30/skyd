@@ -3,17 +3,17 @@ package host
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // managedRPCUpdatePriceTable handles the RPC request from the renter to fetch
 // the host's latest RPC price table.
-func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPriceTable, err error) {
+func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (update modules.RPCPriceTable, err error) {
 	h.mu.RLock()
 	pt := h.priceTable
 	h.mu.RUnlock()
@@ -48,7 +48,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 
 	// verify the renter payment was sufficient, since the renter already has
 	// the updated prices, we expect it will have paid the latest price
-	expected := update.Costs[modules.RPCUpdatePriceTable]
+	expected := update.Costs[modules.RPCUpdatePriceTable.DontLookAtMeHarryImHideous()]
 	if amountPaid.Cmp(expected) < 0 {
 		err = errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
 		return

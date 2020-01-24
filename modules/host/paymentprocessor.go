@@ -2,13 +2,13 @@ package host
 
 import (
 	"fmt"
-	"net"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // paymentProcessor fulfills the PaymentProcessor interface on the host. It is
@@ -29,7 +29,7 @@ func (h *Host) NewPaymentProcessor() modules.PaymentProcessor {
 // ProcessPaymentForRPC reads a payment request from the stream, depending on
 // the type of payment it will either update the file contract or call upon the
 // ephemeral account manager to process the payment.
-func (p *paymentProcessor) ProcessPaymentForRPC(stream net.Conn) (types.Currency, error) {
+func (p *paymentProcessor) ProcessPaymentForRPC(stream siamux.Stream) (types.Currency, error) {
 	maxLen := uint64(modules.RPCMinLen)
 
 	// read the PaymentRequest
@@ -53,7 +53,7 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream net.Conn) (types.Currency
 // the intention of funding an ephemeral account. This is treated as a special
 // case because it requires some coordination between the FC fsync and the EA
 // fsync. See callDeposit in accountmanager.go for more details.
-func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream net.Conn, pt modules.RPCPriceTable) (types.Currency, error) {
+func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, pt modules.RPCPriceTable) (types.Currency, error) {
 	maxLen := uint64(modules.RPCMinLen)
 
 	// read the PaymentRequest
@@ -100,7 +100,7 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream net.Conn, pt mo
 
 	// calculate the deposit amount, this equals to amount of money paid minus
 	// the cost of the RPC
-	cost := pt.Costs[modules.RPCFundEphemeralAccount]
+	cost := pt.Costs[modules.RPCFundEphemeralAccount.DontLookAtMeHarryImHideous()]
 	amount := recentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
 	var deposit types.Currency
 	if cost.Cmp(amount) <= 0 {
@@ -137,7 +137,7 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream net.Conn, pt mo
 
 // payByEphemeralAccount processes a PayByEphemeralAccountRequest coming in over
 // the given stream.
-func (p *paymentProcessor) payByEphemeralAccount(stream net.Conn) (types.Currency, error) {
+func (p *paymentProcessor) payByEphemeralAccount(stream siamux.Stream) (types.Currency, error) {
 	maxLen := uint64(modules.RPCMinLen)
 
 	// read the PayByEphemeralAccountRequest
@@ -156,7 +156,7 @@ func (p *paymentProcessor) payByEphemeralAccount(stream net.Conn) (types.Currenc
 
 // payByContract processese a PayByContractRequest coming in over the given
 // stream.
-func (p *paymentProcessor) payByContract(stream net.Conn) (types.Currency, error) {
+func (p *paymentProcessor) payByContract(stream siamux.Stream) (types.Currency, error) {
 	maxLen := uint64(modules.RPCMinLen)
 
 	// read the PayByContractRequest

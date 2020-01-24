@@ -2,20 +2,24 @@ package host
 
 import (
 	"encoding/json"
-	"net"
+	"io/ioutil"
 	"sync"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 // TestMarshalUnmarshalRPCPriceTable tests the MarshalJSON and UnmarshalJSON
 // function of the RPC price table
 func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
-	pt := modules.NewRPCPriceTable()
-	pt.Expiry = types.BlockHeight(1)
+	pt := modules.NewRPCPriceTable(modules.RPCPriceTableSpecifier{})
+	pt.Expiry = time.Now().Unix() + 1
 	pt.Costs[types.NewSpecifier("RPC1")] = types.NewCurrency64(1)
 	pt.Costs[types.NewSpecifier("RPC2")] = types.NewCurrency64(2)
 
@@ -90,24 +94,48 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		t.Fatal("Failed to unmarshal the JSON encoded RPC price table")
 	}
 
-	_, exists := pt.Costs[modules.RPCUpdatePriceTable]
+	_, exists := pt.Costs[modules.RPCUpdatePriceTable.DontLookAtMeHarryImHideous()]
 	if !exists {
 		t.Log(pt)
 		t.Fatal("Expected the cost of the updatePriceTableRPC to be defined")
 	}
 }
 
-// createTestingConns is a helper method to create a pair of connected tcp
-// connection ready to use.
-func createTestingConns() (clientConn, serverConn net.Conn) {
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+// createTestingMuxs creates a connected pair of type Mux which has already
+// completed the encryption handshake and is ready to go.
+func createTestingConns() (clientStream, serverStream siamux.Stream) {
+	// Prepare tcp connections.
+	clientConn, serverConn := createTestingConns()
+	// Generate server keypair.
+	serverPrivKey, serverPubKey := mux.GenerateED25519KeyPair()
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		serverConn, _ = ln.Accept()
-		wg.Done()
+		defer wg.Done()
+		var err error
+		clientMux, err := mux.NewClientMux(clientConn, serverPubKey, persist.NewLogger(ioutil.Discard))
+		if err != nil {
+			panic(err)
+		}
+		clientStream, err = clientMux.NewStream()
+		if err != nil {
+			panic(err)
+		}
 	}()
-	clientConn, _ = net.Dial("tcp", ln.Addr().String())
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		serverMux, err := mux.NewServerMux(serverConn, serverPubKey, serverPrivKey, persist.NewLogger(ioutil.Discard))
+		if err != nil {
+			panic(err)
+		}
+		serverStream, err = serverMux.AcceptStream()
+		if err != nil {
+			panic(err)
+		}
+	}()
 	wg.Wait()
 	return
 }

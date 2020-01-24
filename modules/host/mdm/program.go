@@ -14,18 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// The following errors are returned by `cost.Sub` in case of an underflow.
-// ErrInsufficientBudget is always returned in combination with the error of the
-// corresponding resource.
-var (
-	ErrInsufficientBudget             = errors.New("program has insufficient budget to execute")
-	ErrInsufficientComputeBudget      = errors.New("insufficient 'compute' budget")
-	ErrInsufficientDiskAccessesBudget = errors.New("insufficient 'diskaccess' budget")
-	ErrInsufficientDiskReadBudget     = errors.New("insufficient 'diskread' budget")
-	ErrInsufficientDiskWriteBudget    = errors.New("insufficient 'diskwrite' budget")
-	ErrInsufficientMemoryBudget       = errors.New("insufficient 'memory' budget")
-)
-
 var (
 	// ErrInterrupted indicates that the program was interrupted during
 	// execution and couldn't finish.
@@ -37,7 +25,7 @@ var (
 // same during the execution of the program.
 type programState struct {
 	// mdm related fields.
-	remainingBudget Cost
+	remainingBudget modules.Cost
 
 	// host related fields
 	blockHeight types.BlockHeight
@@ -60,7 +48,7 @@ type Program struct {
 	staticProgramState *programState
 
 	finalContractSize uint64 // contract size after executing all instructions
-	budget            Cost
+	budget            modules.Cost
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -70,7 +58,7 @@ type Program struct {
 
 // ExecuteProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget Cost, so StorageObligation, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget modules.Cost, so StorageObligation, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	p := &Program{
 		budget:     budget,
 		outputChan: make(chan Output, len(instructions)),
@@ -111,7 +99,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 	}
 	// Make sure the budget covers the initial cost.
 	ps := p.staticProgramState
-	ps.remainingBudget, err = ps.remainingBudget.Sub(InitCost(p.staticData.Len()))
+	ps.remainingBudget, err = ps.remainingBudget.Sub(modules.InitCost(p.staticData.Len()))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
