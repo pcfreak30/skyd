@@ -64,11 +64,13 @@ package host
 // TODO: update_test.go has commented out tests.
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -78,6 +80,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -89,7 +92,7 @@ const (
 	// rpcPriceGuaranteePeriod defines for how many blocks the host guarantees a
 	// fixed set of RPC prices to the renter. Current block height + this period
 	// defines the expiry block height on the RPC price table.
-	rpcPriceGuaranteePeriod = 6 // ~1h
+	rpcPriceGuaranteePeriod = 3600 // ~1h
 )
 
 var (
@@ -112,6 +115,14 @@ var (
 		Header:  "Sia Host",
 		Version: "1.2.0",
 	}
+
+	// updatePriceTableFrequency is the frequency with which we update the
+	// host's RPC price table
+	updatePriceTableFrequency = build.Select(build.Var{
+		Standard: 15 * time.Minute,
+		Dev:      time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // A Host contains all the fields necessary for storing files for clients and
@@ -180,7 +191,9 @@ type Host struct {
 	// RPC in question. Examples of such conditions are congestion, load,
 	// liquidity, etc. Alongside the costs, the host sets an expiry block height
 	// up until which it guarantees pricing.
-	priceTable modules.RPCPriceTable
+	priceTable       *modules.RPCPriceTable
+	priceTableHeap   *priceTableHeap
+	uuidToPriceTable map[modules.RPCPriceTableSpecifier]*modules.RPCPriceTable
 
 	// Misc state.
 	db         *persist.BoltDatabase
@@ -190,6 +203,24 @@ type Host struct {
 	persistDir string
 	port       string
 	tg         siasync.ThreadGroup
+}
+
+type priceTableHeap []*modules.RPCPriceTable
+
+// Implementation of heap.Interface for priceTableHeap.
+func (pth priceTableHeap) Len() int           { return len(pth) }
+func (pth priceTableHeap) Less(i, j int) bool { return pth[i].Expiry < pth[j].Expiry }
+func (pth priceTableHeap) Swap(i, j int)      { pth[i], pth[j] = pth[j], pth[i] }
+func (pth *priceTableHeap) Push(x interface{}) {
+	rpt := x.(modules.RPCPriceTable)
+	*pth = append(*pth, &rpt)
+}
+func (pth *priceTableHeap) Pop() interface{} {
+	old := *pth
+	n := len(old)
+	pt := old[n-1]
+	*pth = old[0 : n-1]
+	return pt
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -226,20 +257,42 @@ func (h *Host) checkUnlockHash() error {
 	return nil
 }
 
+// threadedUpdatePriceTable periodically updates the host's price table
+func (h *Host) threadedUpdatePriceTable() {
+	if err := h.tg.Add(); err != nil {
+		return
+	}
+	defer h.tg.Done()
+
+	for {
+		h.managedUpdatePriceTable()
+
+		select {
+		case <-h.tg.StopChan():
+			return
+		case <-time.After(updatePriceTableFrequency):
+			continue
+		}
+	}
+}
+
 // managedUpdatePriceTable will recalculate the price of every RPC and update
 // the host's RPC price table.
 func (h *Host) managedUpdatePriceTable() {
-	currentBlockHeight := h.BlockHeight()
+	// generate the uuid
+	var uuid modules.RPCPriceTableSpecifier
+	fastrand.Read(uuid[:])
 
 	// create a new RPC price table and set the expiry
-	priceTable := modules.NewRPCPriceTable()
-	priceTable.Expiry = currentBlockHeight + rpcPriceGuaranteePeriod
+	priceTable := modules.NewRPCPriceTable(uuid)
+	priceTable.Expiry = time.Now().Unix() + rpcPriceGuaranteePeriod
 
+	// TODO: move along, nothing to see here
+	// TODO: fix this disgusting mess with the RPC IDs
 	// recalculate the price for every RPC
-	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
+	priceTable.Costs[types.NewSpecifier(string(modules.RPCUpdatePriceTable[:]))] = h.managedCalculateUpdatePriceTableRPCPrice()
 
-	// TODO: for now just hardcode the cost of the MDM operations, needs a
-	// better place
+	// TODO: needs a better place
 	his := h.InternalSettings()
 	priceTable.Costs[modules.ComponentCompute] = types.ZeroCurrency
 	priceTable.Costs[modules.ComponentMemory] = types.ZeroCurrency
@@ -247,10 +300,26 @@ func (h *Host) managedUpdatePriceTable() {
 	priceTable.Costs[modules.OperationDiskRead] = his.MinBaseRPCPrice
 	priceTable.Costs[modules.OperationDiskWrite] = his.MinBaseRPCPrice
 
-	// update the pricetable
 	h.mu.Lock()
-	h.priceTable = priceTable
-	h.mu.Unlock()
+	defer h.mu.Unlock()
+
+	// update the pricetable
+	h.priceTable = &priceTable
+	h.uuidToPriceTable[uuid] = &priceTable
+	heap.Push(h.priceTableHeap, priceTable)
+
+	// prune expired pricetables
+	now := time.Now().Unix()
+	oldest := heap.Pop(h.priceTableHeap).(*modules.RPCPriceTable)
+	for {
+		if oldest.Expiry < now {
+			heap.Push(h.priceTableHeap, oldest)
+			break
+		}
+
+		delete(h.uuidToPriceTable, oldest.UUID)
+		oldest = heap.Pop(h.priceTableHeap).(*modules.RPCPriceTable)
+	}
 }
 
 // newHost returns an initialized Host, taking a set of dependencies as input.
@@ -284,7 +353,8 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
-		persistDir: persistDir,
+		priceTableHeap: make(priceTableHeap),
+		persistDir:     persistDir,
 	}
 	h.staticMDM = mdm.New(h)
 

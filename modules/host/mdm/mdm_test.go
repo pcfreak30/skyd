@@ -60,6 +60,7 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 	return data, nil
 }
 
+// ContractSize implements the StorageObligation interface.
 func (so *TestStorageObligation) ContractSize() uint64 {
 	return so.contractSize
 }

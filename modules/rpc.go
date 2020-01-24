@@ -4,13 +4,19 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+const SpecifierLen = 8
+
 type (
+	RPCSpecifier           [SpecifierLen]byte
+	RPCPriceTableSpecifier [SpecifierLen]byte
+
 	// RPCPriceTable contains the cost of every RPC the host offers. These
 	// prices are guaranteed to remain valid up until the specified expiry block
 	// height.
 	RPCPriceTable struct {
+		UUID   RPCPriceTableSpecifier
 		Costs  map[types.Specifier]types.Currency
-		Expiry types.BlockHeight
+		Expiry int64
 	}
 
 	// costEntry is a helper struct used when marshaling the RPC price table
@@ -22,13 +28,13 @@ type (
 
 var (
 	// RPCUpdatePriceTable specifier
-	RPCUpdatePriceTable = types.NewSpecifier("UpdatePriceTable")
+	RPCUpdatePriceTable = RPCSpecifier{'U', 'p', 'd', 'a', 't', 'e', 'P', 'T'}
 
 	// RPCFundEphemeralAccount specifier
-	RPCFundEphemeralAccount = types.NewSpecifier("FundEphemeralAcc")
+	RPCFundEphemeralAccount = RPCSpecifier{'F', 'u', 'n', 'd', 'E', 'A'}
 
-	// RPCDownloadRoot specifier
-	RPCDownloadRoot = types.NewSpecifier("DownloadRoot")
+	// RPCExecuteProgram specifier
+	RPCExecuteProgram = RPCSpecifier{'R', 'u', 'n', 'M', 'D', 'M'}
 )
 
 type (
@@ -47,11 +53,17 @@ type (
 	RPCFundEphemeralAccountResponse struct {
 		Signature []byte
 	}
+
+	// RPCExecuteProgramRequest contains the filecontract ID.
+	RPCExecuteProgramRequest struct {
+		FileContractID types.FileContractID
+	}
 )
 
 // NewRPCPriceTable returns an empty RPC price table
-func NewRPCPriceTable() RPCPriceTable {
+func NewRPCPriceTable(uuid RPCPriceTableSpecifier) RPCPriceTable {
 	return RPCPriceTable{
+		UUID:  uuid,
 		Costs: make(map[types.Specifier]types.Currency),
 	}
 }

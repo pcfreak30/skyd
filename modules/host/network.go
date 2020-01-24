@@ -352,64 +352,52 @@ func (h *Host) handleStream(stream siamux.Stream) {
 	//		return
 	//	}
 
-	readIDFromStream := func(s siamux.Stream) (id types.Specifier, err error) {
-		err = encoding.ReadObject(s, id, uint64(modules.RPCMinLen))
-		return
-	}
-
-	// TODO: unsure if this is a good requirement to have, but the first RPC the
-	// renter sends should be one that updates the RPC price table. That, or the
-	// prices should be communicated when the connection is set up.
-	id, err := readIDFromStream(stream)
+	var rpcID modules.RPCSpecifier
+	var rpcPTS modules.RPCPriceTableSpecifier
+	err1 := encoding.ReadObject(stream, rpcID, uint64(modules.RPCMinLen))
+	err2 := encoding.ReadObject(stream, rpcPTS, uint64(modules.RPCMinLen))
+	err = errors.Compose(err1, err2)
 	if err != nil {
+		// TODO
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
-	// TODO: possible to signal this to the renter through writing an error
-	// response somehow? Right now this just closes the stream
-	if id != modules.RPCUpdatePriceTable {
-		return
-	}
-	var pt modules.RPCPriceTable
-	if pt, err = h.managedRPCUpdatePriceTable(stream); err != nil {
+
+	pt, exists := h.uuidToPriceTable[rpcPTS]
+	if !exists {
+		// TODO
+		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
 
-	// The first call to update the price table will have established an initial
-	// set of prices for this "session". We keep processing RPCs coming over the
-	// stream until it either times out or gets closed.
-	for {
-		id, err := readIDFromStream(stream)
+	// TODO: verify if current blockheight does not exceed the RPC price
+	// table's expiry. In which case we should not accept the RPC and
+	// indicate to the renter he has outdated prices.
+	switch rpcID {
+	case modules.RPCUpdatePriceTable:
+		// Note this RPC call will update the price table, this way the host
+		// has a copy of the same price table the renter has and can verify
+		// if the payment was sufficient.
+		err = encoding.WriteObject(stream, h.priceTable)
+		err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
+	case modules.RPCExecuteProgram:
+		var epr modules.RPCExecuteProgramRequest
+		err = encoding.ReadObject(stream, &epr, 4096) // TODO
 		if err != nil {
-			println("couldn't read ID from stream: ", err.Error())
-			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			err = errors.AddContext(err, "Failed to read RPCExecuteProgramRequest")
 			break
 		}
+		err = h.managedRPCExecuteProgram(stream, pt, epr.FileContractID)
+		err = errors.AddContext(err, "Failed to handle DownloadRootRPC")
+	default:
+		// TODO: add logging
+		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+	}
 
-		// TODO: verify if current blockheight does not exceed the RPC price
-		// table's expiry. In which case we should not accept the RPC and
-		// indicate to the renter he has outdated prices.
-
-		switch id {
-		case modules.RPCUpdatePriceTable:
-			// Note this RPC call will update the price table, this way the host
-			// has a copy of the same price table the renter has and can verify
-			// if the payment was sufficient.
-			pt, err = h.managedRPCUpdatePriceTable(stream)
-			err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
-		case modules.RPCDownloadRoot:
-			err = h.managedRPCDownloadRoot(stream, pt)
-			err = errors.AddContext(err, "Failed to handle DownloadRootRPC")
-		default:
-			// TODO: add logging
-			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
-		}
-
-		if err != nil {
-			// TODO: add context to the error
-			atomic.AddUint64(&h.atomicErroredCalls, 1)
-			h.managedLogError(err)
-		}
+	if err != nil {
+		// TODO: add context to the error
+		atomic.AddUint64(&h.atomicErroredCalls, 1)
+		h.managedLogError(err)
 	}
 }
 

@@ -45,9 +45,40 @@ func convertCostToPrice(cost mdm.Cost, pt modules.RPCPriceTable) (price types.Cu
 	return
 }
 
+type MDMStorageObligation struct {
+	so storageObligation
+	h  *Host
+}
+
+func newMDMStorageObligation(so storageObligation, h *Host) *MDMStorageObligation {
+	return &MDMStorageObligation{so: so, h: h}
+}
+
+func (mso *MDMStorageObligation) ContractSize() uint64 {
+	if !mso.h.managedIsLockedStorageObligation(mso.so.id()) {
+		panic("TODO")
+	}
+	return mso.so.recentRevision().NewFileSize
+}
+
+func (mso *MDMStorageObligation) Locked() bool {
+	return mso.h.managedIsLockedStorageObligation(mso.so.id())
+}
+
+func (mso *MDMStorageObligation) MerkleRoot() crypto.Hash {
+	if mso.h.managedIsLockedStorageObligation(mso.so.id()) {
+		return mso.so.recentRevision().NewFileMerkleRoot
+	}
+	return crypto.Hash{}
+}
+
+func (mso *MDMStorageObligation) Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+	return mso.h.modifyStorageObligation(mso.so, sectorsRemoved, sectorsGained, gainedSectorData)
+}
+
 // managedRPCExecuteProgram will read a program from the stream and execute it
 // on the MDM.
-func (h *Host) managedRPCExecuteProgram(stream net.Conn, pt modules.RPCPriceTable, fcid types.FileContractID) error {
+func (h *Host) managedRPCExecuteProgram(stream net.Conn, pt *modules.RPCPriceTable, fcid types.FileContractID) error {
 	// TODO: process payment for this RPC call (introduced in other MR)
 	pp := h.NewPaymentProcessor()
 	amountPaid, err := pp.ProcessPaymentForRPC(stream)
@@ -82,11 +113,11 @@ func (h *Host) managedRPCExecuteProgram(stream net.Conn, pt modules.RPCPriceTabl
 		return errors.AddContext(err, "Failed to get storage obligation")
 	}
 	// TODO: figure out how to get initial contract size without locking.
-	so.recentRevision().NewFileMerkleRoot
+	mso := newMDMStorageObligation(so, h)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, instructions, cost, so, crypto.Hash{}, dataLen, stream)
+	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, instructions, cost, mso, dataLen, stream)
 	if err != nil {
 		return errors.AddContext(err, "failed to execute program")
 	}
