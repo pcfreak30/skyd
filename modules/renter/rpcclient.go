@@ -33,7 +33,7 @@ type RPCClient interface {
 // hostRPCClient wraps all necessities to communicate with a host
 type hostRPCClient struct {
 	staticPaymentProvider modules.PaymentProvider
-	staticHostAddress     string
+	staticMuxAddress      string
 	staticHostKey         types.SiaPublicKey
 
 	priceTable        modules.RPCPriceTable
@@ -54,7 +54,7 @@ type hostRPCClient struct {
 func (r *Renter) newRPCClient(pp modules.PaymentProvider, he modules.HostDBEntry) (RPCClient, error) {
 	client := hostRPCClient{
 		staticPaymentProvider: pp,
-		staticHostAddress:     string(he.NetAddress),
+		staticMuxAddress:      he.NetAddress.Host() + ":9999",
 		staticHostKey:         he.PublicKey,
 		blockHeight:           r.blockHeight,
 		log:                   r.log,
@@ -105,7 +105,10 @@ func (c *hostRPCClient) UpdateBlockHeight(blockHeight types.BlockHeight) {
 // UpdatePriceTable performs the updatePriceTableRPC on the host.
 func (c *hostRPCClient) UpdatePriceTable() error {
 	// Fetch a stream from the mux
-	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticHostAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	if err != nil {
+		return err
+	}
 
 	// Write the RPC id on the stream, there's no request object as it's
 	// implied from the RPC id.
@@ -116,7 +119,7 @@ func (c *hostRPCClient) UpdatePriceTable() error {
 
 	// Receive RPCUpdatePriceTableResponse
 	var uptr modules.RPCUpdatePriceTableResponse
-	if err := encoding.ReadObject(stream, uptr, uint64(modules.RPCMinLen)); err != nil {
+	if err := encoding.ReadObject(stream, &uptr, uint64(modules.RPCMinLen)); err != nil {
 		return err
 	}
 	var updated modules.RPCPriceTable
@@ -133,7 +136,7 @@ func (c *hostRPCClient) UpdatePriceTable() error {
 
 	// Provide payment for the RPC
 	// TODO: don't look at me harry, I'm hideous.
-	cost := updated.Costs[types.NewSpecifier(string(modules.RPCFundEphemeralAccount[:]))]
+	cost := updated.Costs[modules.RPCFundEphemeralAccount.DontLookAtMeHarryImHideous()]
 	_, err = c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream, c.blockHeight)
 	if err != nil {
 		return err
@@ -156,13 +159,13 @@ func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) e
 
 	// Calculate the cost of the RPC
 	// TODO: don't look at me harry, I'm hideous.
-	cost, available := pt.Costs[types.NewSpecifier(string(modules.RPCFundEphemeralAccount[:]))]
+	cost, available := pt.Costs[modules.RPCFundEphemeralAccount.DontLookAtMeHarryImHideous()]
 	if !available {
 		return errors.AddContext(errRPCNotAvailable, fmt.Sprintf("Failed to fund ephemeral account %v", id))
 	}
 
 	// Get a stream
-	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticHostAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return err
 	}
@@ -208,7 +211,7 @@ func (c *hostRPCClient) DownloadSectorByRoot(offset, length uint64, sectorRoot c
 	programPrice := modules.ConvertCostToPrice(programCost, &pt)
 
 	// Get a stream
-	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticHostAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return nil, err
 	}

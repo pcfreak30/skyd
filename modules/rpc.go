@@ -32,8 +32,9 @@ type (
 
 // DontLookAtMeHarryImHideous converts a RPCSpecifier into a types.Specifier.
 // TODO: fix this.
-func (rpcs RPCSpecifier) DontLookAtMeHarryImHideous() types.Specifier {
-	return types.NewSpecifier(string(rpcs[:]))
+func (rpcs RPCSpecifier) DontLookAtMeHarryImHideous() (specifier types.Specifier) {
+	copy(specifier[:], rpcs[:])
+	return
 }
 
 var (

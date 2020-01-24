@@ -192,7 +192,7 @@ type Host struct {
 	// liquidity, etc. Alongside the costs, the host sets an expiry block height
 	// up until which it guarantees pricing.
 	priceTable       *modules.RPCPriceTable
-	priceTableHeap   *priceTableHeap
+	priceTableHeap   priceTableHeap
 	uuidToPriceTable map[modules.RPCPriceTableSpecifier]*modules.RPCPriceTable
 
 	// Misc state.
@@ -290,7 +290,7 @@ func (h *Host) managedUpdatePriceTable() {
 	// TODO: move along, nothing to see here
 	// TODO: fix this disgusting mess with the RPC IDs
 	// recalculate the price for every RPC
-	priceTable.Costs[types.NewSpecifier(string(modules.RPCUpdatePriceTable[:]))] = h.managedCalculateUpdatePriceTableRPCPrice()
+	priceTable.Costs[modules.RPCUpdatePriceTable.DontLookAtMeHarryImHideous()] = h.managedCalculateUpdatePriceTableRPCPrice()
 
 	// TODO: needs a better place
 	his := h.InternalSettings()
@@ -306,19 +306,26 @@ func (h *Host) managedUpdatePriceTable() {
 	// update the pricetable
 	h.priceTable = &priceTable
 	h.uuidToPriceTable[uuid] = &priceTable
-	heap.Push(h.priceTableHeap, priceTable)
+	heap.Push(&h.priceTableHeap, priceTable)
 
 	// prune expired pricetables
 	now := time.Now().Unix()
-	oldest := heap.Pop(h.priceTableHeap).(*modules.RPCPriceTable)
+
+	if h.priceTableHeap.Len() == 0 {
+		return
+	}
+	oldest := heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
 	for {
 		if oldest.Expiry < now {
-			heap.Push(h.priceTableHeap, oldest)
+			heap.Push(&h.priceTableHeap, oldest)
 			break
 		}
 
 		delete(h.uuidToPriceTable, oldest.UUID)
-		oldest = heap.Pop(h.priceTableHeap).(*modules.RPCPriceTable)
+		if h.priceTableHeap.Len() == 0 {
+			return
+		}
+		oldest = heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
 	}
 }
 
@@ -352,11 +359,13 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
+		uuidToPriceTable:         make(map[modules.RPCPriceTableSpecifier]*modules.RPCPriceTable),
 
-		priceTableHeap: new(priceTableHeap),
+		priceTableHeap: make(priceTableHeap, 0),
 		persistDir:     persistDir,
 	}
 	h.staticMDM = mdm.New(h)
+	heap.Init(&h.priceTableHeap)
 
 	// Call stop in the event of a partial startup.
 	var err error
