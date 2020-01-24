@@ -74,6 +74,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
+	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -143,6 +144,7 @@ type Host struct {
 	wallet        modules.Wallet
 	staticAlerter *modules.GenericAlerter
 	staticMux     *modules.SiaMux
+	staticMDM     *mdm.MDM
 	dependencies  modules.Dependencies
 	modules.StorageManager
 
@@ -284,6 +286,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 
 		persistDir: persistDir,
 	}
+	h.staticMDM = mdm.New(h)
 
 	// Call stop in the event of a partial startup.
 	var err error
