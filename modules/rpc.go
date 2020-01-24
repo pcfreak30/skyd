@@ -4,10 +4,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// SpecifierLen is the length of both the RPCSpecifier and
+// RPCPriceTableSpecifier types.
 const SpecifierLen = 8
 
 type (
-	RPCSpecifier           [SpecifierLen]byte
+	// RPCSpecifier is the specifier sent at the beginning of every RPC.
+	RPCSpecifier [SpecifierLen]byte
+	// RPCPriceTableSpecifier uniquely identifies a price table.
 	RPCPriceTableSpecifier [SpecifierLen]byte
 
 	// RPCPriceTable contains the cost of every RPC the host offers. These
@@ -26,6 +30,8 @@ type (
 	}
 )
 
+// DontLookAtMeHarryImHideous converts a RPCSpecifier into a types.Specifier.
+// TODO: fix this.
 func (rpcs RPCSpecifier) DontLookAtMeHarryImHideous() types.Specifier {
 	return types.NewSpecifier(string(rpcs[:]))
 }

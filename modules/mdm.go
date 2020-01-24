@@ -75,6 +75,7 @@ type Cost struct {
 	Memory       uint64 // estimated ram used in bytes
 }
 
+// CalculateProgramCost computes the mdm.Cost of running Instructions.
 func CalculateProgramCost(instructions []Instruction, dataLen uint64) (cost Cost, err error) {
 	cost = cost.Add(InitCost(dataLen))
 	for _, instruction := range instructions {
@@ -88,6 +89,7 @@ func CalculateProgramCost(instructions []Instruction, dataLen uint64) (cost Cost
 	return
 }
 
+// ConvertCostToPrice uses a price table to convert a mdm.Cost to a types.Currency.
 func ConvertCostToPrice(cost Cost, pt *RPCPriceTable) (price types.Currency) {
 	price = price.Add(types.NewCurrency64(cost.Compute).Mul(pt.Costs[ComponentCompute]))
 	price = price.Add(types.NewCurrency64(cost.DiskAccesses).Mul(pt.Costs[OperationDiskAccess]))

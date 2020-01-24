@@ -22,6 +22,8 @@ func readDataLen(stream siamux.Stream) (dataLen uint64, err error) {
 	return
 }
 
+// MDMStorageObligation wraps a host and storage obligation to satisfy the
+// mdm.StorageObligation interface.
 type MDMStorageObligation struct {
 	so storageObligation
 	h  *Host
@@ -31,6 +33,7 @@ func newMDMStorageObligation(so storageObligation, h *Host) *MDMStorageObligatio
 	return &MDMStorageObligation{so: so, h: h}
 }
 
+// ContractSize satisfies the mdm.StorageObligation interface.
 func (mso *MDMStorageObligation) ContractSize() uint64 {
 	if !mso.h.managedIsLockedStorageObligation(mso.so.id()) {
 		panic("TODO")
@@ -38,10 +41,12 @@ func (mso *MDMStorageObligation) ContractSize() uint64 {
 	return mso.so.recentRevision().NewFileSize
 }
 
+// Locked satisfies the mdm.StorageObligation interface.
 func (mso *MDMStorageObligation) Locked() bool {
 	return mso.h.managedIsLockedStorageObligation(mso.so.id())
 }
 
+// MerkleRoot satisfies the mdm.StorageObligation interface.
 func (mso *MDMStorageObligation) MerkleRoot() crypto.Hash {
 	if mso.h.managedIsLockedStorageObligation(mso.so.id()) {
 		return mso.so.recentRevision().NewFileMerkleRoot
@@ -49,6 +54,7 @@ func (mso *MDMStorageObligation) MerkleRoot() crypto.Hash {
 	return crypto.Hash{}
 }
 
+// Update satisfies the mdm.StorageObligation interface.
 func (mso *MDMStorageObligation) Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
 	return mso.h.modifyStorageObligation(mso.so, sectorsRemoved, sectorsGained, gainedSectorData)
 }
