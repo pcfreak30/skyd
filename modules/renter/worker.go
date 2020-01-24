@@ -280,7 +280,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, 
 
 	// TODO: figure out appropriate balance target using host settings and
 	// renter max.
-	balanceTarget := types.ZeroCurrency //types.SiacoinPrecision.Div64(2)
+	balanceTarget := types.SiacoinPrecision.Div64(2)
 	return &worker{
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),

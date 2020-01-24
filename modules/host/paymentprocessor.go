@@ -34,10 +34,9 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream siamux.Stream) (types.Cur
 
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
-	if err := encoding.ReadObject(stream, pr, maxLen); err != nil {
+	if err := encoding.ReadObject(stream, &pr, maxLen); err != nil {
 		return failTo("ProcessPaymentForRPC", "read PaymentRequest", err)
 	}
-
 	// process payment depending on the payment method
 	switch pr.Type {
 	case modules.PayByEphemeralAccount:
@@ -58,7 +57,7 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, 
 
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
-	if err := encoding.ReadObject(stream, pr, maxLen); err != nil {
+	if err := encoding.ReadObject(stream, &pr, maxLen); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read PaymentRequest", err)
 	}
 
@@ -69,13 +68,13 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, 
 
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
-	if err := encoding.ReadObject(stream, pbcr, maxLen); err != nil {
+	if err := encoding.ReadObject(stream, &pbcr, maxLen); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read PayByContractRequest", err)
 	}
 
 	// read the FundEphemeralAccountRequest
 	var fear modules.RPCFundEphemeralAccountRequest
-	if err := encoding.ReadObject(stream, fear, maxLen); err != nil {
+	if err := encoding.ReadObject(stream, &fear, maxLen); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read FundEphemeralAccountRequest", err)
 	}
 
@@ -142,15 +141,13 @@ func (p *paymentProcessor) payByEphemeralAccount(stream siamux.Stream) (types.Cu
 
 	// read the PayByEphemeralAccountRequest
 	var pbear modules.PayByEphemeralAccountRequest
-	if err := encoding.ReadObject(stream, pbear, maxLen); err != nil {
+	if err := encoding.ReadObject(stream, &pbear, maxLen); err != nil {
 		return failTo("ProcessPaymentForRPC", "read PayByEphemeralAccountRequest", err)
 	}
-
 	// process the request
 	if err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority); err != nil {
 		return failTo("ProcessPaymentForRPC", "withdraw from ephemeral account", err)
 	}
-
 	return pbear.Message.Amount, nil
 }
 
@@ -161,7 +158,7 @@ func (p *paymentProcessor) payByContract(stream siamux.Stream) (types.Currency, 
 
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
-	if err := encoding.ReadObject(stream, pbcr, maxLen); err != nil {
+	if err := encoding.ReadObject(stream, &pbcr, maxLen); err != nil {
 		return failTo("ProcessPaymentForRPC", "read PayByContractRequest", err)
 	}
 

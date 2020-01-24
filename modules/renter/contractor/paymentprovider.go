@@ -54,6 +54,7 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifie
 	if rpcID != modules.RPCFundEphemeralAccount {
 		build.Critical("Unexpected RPC id, only RPCFundEphemeralAccount is paid through a file contract.")
 	}
+	panic("trololo")
 
 	// acquire a safe contract
 	sc, exists := p.contractSet.Acquire(p.contractID)
@@ -86,7 +87,11 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifie
 	// send PaymentRequest & PayByContractRequest
 	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
 	pbcRequest := buildPayByContractRequest(rev, sig)
-	_, err = stream.Write(encoding.MarshalAll(pRequest, pbcRequest))
+	err = encoding.WriteObject(stream, pRequest)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+	err = encoding.WriteObject(stream, pbcRequest)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
@@ -94,7 +99,7 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifie
 	// receive PayByContractResponse
 	var payByResponse modules.PayByContractResponse
 	maxLen := uint64(modules.RPCMinLen)
-	if err := encoding.ReadObject(stream, payByResponse, maxLen); err != nil {
+	if err := encoding.ReadObject(stream, &payByResponse, maxLen); err != nil {
 		return types.ZeroCurrency, err
 	}
 

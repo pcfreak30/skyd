@@ -54,7 +54,7 @@ type hostRPCClient struct {
 func (r *Renter) newRPCClient(pp modules.PaymentProvider, he modules.HostDBEntry) (RPCClient, error) {
 	client := hostRPCClient{
 		staticPaymentProvider: pp,
-		staticMuxAddress:      he.NetAddress.Host() + ":9999",
+		staticMuxAddress:      he.NetAddress.Host() + fmt.Sprintf(":%d", he.HostExternalSettings.SiaMuxPort),
 		staticHostKey:         he.PublicKey,
 		blockHeight:           r.blockHeight,
 		log:                   r.log,
@@ -105,20 +105,21 @@ func (c *hostRPCClient) UpdateBlockHeight(blockHeight types.BlockHeight) {
 // UpdatePriceTable performs the updatePriceTableRPC on the host.
 func (c *hostRPCClient) UpdatePriceTable() error {
 	// Fetch a stream from the mux
-	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	stream, err := c.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return err
 	}
 
 	// Write the RPC id on the stream, there's no request object as it's
 	// implied from the RPC id.
-	_, err = stream.Write(encoding.Marshal(modules.RPCUpdatePriceTable))
+	err = encoding.WriteObject(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return err
 	}
 
 	// Receive RPCUpdatePriceTableResponse
 	var uptr modules.RPCUpdatePriceTableResponse
+	// TODO if this blocks siad dies
 	if err := encoding.ReadObject(stream, &uptr, uint64(modules.RPCMinLen)); err != nil {
 		return err
 	}
@@ -165,7 +166,7 @@ func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) e
 	}
 
 	// Get a stream
-	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	stream, err := c.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return err
 	}
@@ -181,14 +182,17 @@ func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) e
 	payment := amount.Add(cost)
 	_, err = c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCFundEphemeralAccount, payment, stream, bh)
 	if err != nil {
+		panic(err)
 		return err
 	}
 
 	// Receive RPCFundEphemeralAccountResponse
 	var fundAccResponse modules.RPCFundEphemeralAccountResponse
-	if err := encoding.ReadObject(stream, fundAccResponse, uint64(modules.RPCMinLen)); err != nil {
+	if err := encoding.ReadObject(stream, &fundAccResponse, uint64(modules.RPCMinLen)); err != nil {
+		panic(err)
 		return err
 	}
+	panic("wth")
 
 	return nil
 }
@@ -211,7 +215,7 @@ func (c *hostRPCClient) DownloadSectorByRoot(offset, length uint64, sectorRoot c
 	programPrice := modules.ConvertCostToPrice(programCost, &pt)
 
 	// Get a stream
-	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	stream, err := c.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return nil, err
 	}

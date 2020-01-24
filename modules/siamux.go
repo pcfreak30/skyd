@@ -2,7 +2,9 @@ package modules
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -38,8 +40,9 @@ type (
 		*siamux.SiaMux
 		Keys SiaMuxKeys
 
-		closed bool
-		mu     sync.Mutex
+		closed     bool
+		staticPort uint
+		mu         sync.Mutex
 	}
 
 	// SiaMuxKeys contains the siamux's public and secret key
@@ -65,13 +68,23 @@ func NewSiaMux(dir, address string) (*SiaMux, error) {
 
 	// create the siamux
 	keys := loadKeys(dir)
-	smux, _, err := siamux.New(address, keys.PublicKey, keys.SecretKey, logger)
+	smux, address, err := siamux.New(address, keys.PublicKey, keys.SecretKey, logger)
+	if err != nil {
+		return &SiaMux{}, err
+	}
+
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return &SiaMux{}, err
+	}
+	var nPort uint
+	_, err = fmt.Sscan(port, &nPort)
 	if err != nil {
 		return &SiaMux{}, err
 	}
 
 	// wrap it
-	mux := &SiaMux{Keys: keys}
+	mux := &SiaMux{Keys: keys, staticPort: nPort}
 	mux.SiaMux = smux
 	return mux, nil
 }
@@ -85,6 +98,11 @@ func (mux *SiaMux) SafeClose() error {
 	}
 	mux.closed = true
 	return mux.Close()
+}
+
+// Port returns the port the SiaMux is listening on.
+func (mux *SiaMux) Port() uint {
+	return mux.staticPort
 }
 
 // newLogger creates a new logger

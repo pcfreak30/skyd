@@ -89,6 +89,8 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 
 		RevisionNumber: h.revisionNumber,
 		Version:        build.Version,
+
+		SiaMuxPort: h.staticMux.Port(),
 	}
 }
 

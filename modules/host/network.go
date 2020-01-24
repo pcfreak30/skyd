@@ -232,7 +232,7 @@ func (h *Host) initNetworking(address string) (err error) {
 
 	// Launch the listener.
 	go h.threadedListen(threadedListenerClosedChan)
-	return h.staticMux.NewListener(siaMuxSubscriberName, h.handleStream)
+	return h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.handleStream)
 }
 
 // threadedHandleConn handles an incoming connection to the host, typically an
@@ -333,15 +333,7 @@ func (h *Host) handleStream(stream siamux.Stream) {
 
 	// Close the conn on host.Close or when the method terminates, whichever comes
 	// first.
-	connCloseChan := make(chan struct{})
-	defer close(connCloseChan)
-	go func() {
-		select {
-		case <-h.tg.StopChan():
-		case <-connCloseChan:
-		}
-		stream.Close()
-	}()
+	defer stream.Close()
 
 	// Set an initial duration that is generous, but finite. RPCs can extend
 	// this if desired.
@@ -354,20 +346,27 @@ func (h *Host) handleStream(stream siamux.Stream) {
 
 	var rpcID modules.RPCSpecifier
 	var rpcPTS modules.RPCPriceTableSpecifier
-	err1 := encoding.ReadObject(stream, rpcID, uint64(modules.RPCMinLen))
-	err2 := encoding.ReadObject(stream, rpcPTS, uint64(modules.RPCMinLen))
-	err = errors.Compose(err1, err2)
+	var pt *modules.RPCPriceTable
+	err = encoding.ReadObject(stream, &rpcID, uint64(modules.RPCMinLen))
 	if err != nil {
 		// TODO
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
-
-	pt, exists := h.uuidToPriceTable[rpcPTS]
-	if !exists {
-		// TODO
-		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
-		return
+	if rpcID != modules.RPCUpdatePriceTable {
+		err = encoding.ReadObject(stream, &rpcPTS, uint64(modules.RPCMinLen))
+		if err != nil {
+			// TODO
+			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			return
+		}
+		var exists bool
+		pt, exists = h.uuidToPriceTable[rpcPTS]
+		if !exists {
+			// TODO
+			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			return
+		}
 	}
 
 	// TODO: verify if current blockheight does not exceed the RPC price
@@ -378,7 +377,7 @@ func (h *Host) handleStream(stream siamux.Stream) {
 		// Note this RPC call will update the price table, this way the host
 		// has a copy of the same price table the renter has and can verify
 		// if the payment was sufficient.
-		err = encoding.WriteObject(stream, h.priceTable)
+		err = h.managedRPCUpdatePriceTable(stream)
 		err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
 	case modules.RPCExecuteProgram:
 		var epr modules.RPCExecuteProgramRequest

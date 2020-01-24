@@ -10,6 +10,12 @@ const (
 	HostDir = "host"
 )
 
+const (
+	// HostSiaMuxSubscriberName is the name used by the host to register a
+	// listener on the SiaMux.
+	HostSiaMuxSubscriberName = "host"
+)
+
 var (
 	// BlockBytesPerMonthTerabyte is the conversion rate between block-bytes and month-TB.
 	BlockBytesPerMonthTerabyte = BytesPerTerabyte.Mul64(uint64(types.BlocksPerMonth))

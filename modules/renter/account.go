@@ -141,14 +141,18 @@ func (a *account) paymentProvider() modules.PaymentProvider {
 			Message:   msg,
 			Signature: sig,
 		}
-		_, err := stream.Write(encoding.MarshalAll(pRequest, pbcRequest))
+		err := encoding.WriteObject(stream, pRequest)
+		if err != nil {
+			return types.ZeroCurrency, err
+		}
+		err = encoding.WriteObject(stream, pbcRequest)
 		if err != nil {
 			return types.ZeroCurrency, err
 		}
 
 		// receive PayByEphemeralAccountResponse
 		var payByResponse modules.PayByEphemeralAccountResponse
-		if err := encoding.ReadObject(stream, payByResponse, uint64(modules.RPCMinLen)); err != nil {
+		if err := encoding.ReadObject(stream, &payByResponse, uint64(modules.RPCMinLen)); err != nil {
 			return types.ZeroCurrency, err
 		}
 
