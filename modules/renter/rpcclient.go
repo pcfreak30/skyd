@@ -31,6 +31,7 @@ type RPCClient interface {
 type hostRPCClient struct {
 	staticPaymentProvider modules.PaymentProvider
 	staticHostAddress     string
+	staticHostKey         types.SiaPublicKey
 
 	priceTable        modules.RPCPriceTable
 	priceTableUpdated types.BlockHeight
@@ -51,6 +52,7 @@ func (r *Renter) newRPCClient(pp modules.PaymentProvider, he modules.HostDBEntry
 	client := hostRPCClient{
 		staticPaymentProvider: pp,
 		staticHostAddress:     string(he.NetAddress),
+		staticHostKey:         he.PublicKey,
 		blockHeight:           r.blockHeight,
 		log:                   r.log,
 		tg:                    &r.tg,
@@ -100,11 +102,7 @@ func (c *hostRPCClient) UpdateBlockHeight(blockHeight types.BlockHeight) {
 // UpdatePriceTable performs the updatePriceTableRPC on the host.
 func (c *hostRPCClient) UpdatePriceTable() error {
 	// Fetch a stream from the mux
-	stream, err := c.renter.staticSiaMux.NewStream(c.staticHostAddress)
-	defer stream.Close()
-	if err != nil {
-		return err
-	}
+	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticHostAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 
 	// Write the RPC id on the stream, there's no request object as it's
 	// implied from the RPC id.
@@ -159,7 +157,7 @@ func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) e
 	}
 
 	// Get a stream
-	stream, err := c.renter.staticSiaMux.NewStream(c.staticHostAddress)
+	stream, err := c.renter.staticMux.NewStream(siaMuxSubscriberName, c.staticHostAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return err
 	}

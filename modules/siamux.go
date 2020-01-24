@@ -1,84 +1,156 @@
 package modules
 
 import (
-	"net"
-	"time"
+	"encoding/json"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
-// SiaMux lists all methods that can be performed on the SiaMux
-type SiaMux interface {
-	NewStream(string) (Stream, error)
+// TODO: add test to verify host keys are recycled as siamux keys properly
+// TODO: add persistence to SiaMux so we can get rid of the SiaMux wrap
+// TODO: get rid of SafeClose - added due to failing TestWatchdogSweep test
+
+const (
+	// keyfile is the filename of the siamux keys file
+	keyfile = "siamuxkeys.json"
+	// logfile is the filename of the siamux log file
+	logfile = "siamux.log"
+)
+
+// siamuxKeysMetadata contains the header and version strings that identify
+// the siamux keys
+var siamuxKeysMetadata = persist.Metadata{
+	Header:  "SiaMux Keys",
+	Version: "1.4.2.2",
 }
 
-// NewSiaMux returns a new sia mux
-func NewSiaMux() SiaMux {
-	return &MockSiaMux{}
+type (
+	// SiaMux wraps the siamux to allow decorating it with the siamux keys
+	SiaMux struct {
+		*siamux.SiaMux
+		Keys SiaMuxKeys
+
+		closed bool
+		mu     sync.Mutex
+	}
+
+	// SiaMuxKeys contains the siamux's public and secret key
+	SiaMuxKeys struct {
+		SecretKey mux.ED25519SecretKey `json:"secretkey"`
+		PublicKey mux.ED25519PublicKey `json:"publickey"`
+	}
+)
+
+// SiaPKToMuxPK turns a SiaPublicKey into a mux.ED25519PublicKey
+func SiaPKToMuxPK(spk types.SiaPublicKey) (mk mux.ED25519PublicKey) {
+	copy(mk[:], spk.Key)
+	return
 }
 
-// MockSiaMux is a mock implementing the SiaMux interface
-type MockSiaMux struct{}
+// NewSiaMux returns a new SiaMux object
+func NewSiaMux(dir, address string) (*SiaMux, error) {
+	// create the logger
+	logger, err := newLogger(dir)
+	if err != nil {
+		return &SiaMux{}, err
+	}
 
-// NewStream returns a new stream object
-func (s *MockSiaMux) NewStream(address string) (Stream, error) {
-	conn, _ := (&net.Dialer{
-		Cancel:  make(chan struct{}),
-		Timeout: 45 * time.Second,
-	}).Dial("tcp", address)
-	return &MockStream{conn: conn}, nil
+	// create the siamux
+	keys := loadKeys(dir)
+	smux, _, err := siamux.New(address, keys.PublicKey, keys.SecretKey, logger)
+	if err != nil {
+		return &SiaMux{}, err
+	}
+
+	// wrap it
+	mux := &SiaMux{Keys: keys}
+	mux.SiaMux = smux
+	return mux, nil
 }
 
-// Stream lists all the stream methods
-type Stream interface {
-	net.Conn
-	SetPriority(int) error
+// SafeClose ensures Close is never called twice on the SiaMux
+func (mux *SiaMux) SafeClose() error {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+	if mux.closed {
+		return nil
+	}
+	mux.closed = true
+	return mux.Close()
 }
 
-// MockStream is a mock object implementing the Stream Interface
-type MockStream struct {
-	conn net.Conn
+// newLogger creates a new logger
+func newLogger(dir string) (*persist.Logger, error) {
+	// create the directory if it doesn't exist.
+	err := os.MkdirAll(dir, 0700)
+	if err != nil {
+		return nil, err
+	}
+
+	// create the logger
+	logfilePath := filepath.Join(dir, logfile)
+	logger, err := persist.NewFileLogger(logfilePath)
+	if err != nil {
+		return nil, err
+	}
+	return logger, nil
 }
 
-// Read implements Stream interface
-func (s *MockStream) Read(b []byte) (n int, err error) {
-	return s.conn.Read(b)
+// loadKeys loads the siamux keys, it has several fallbacks. Most importantly it
+// will reuse the host's keys as the siamux keys.
+func loadKeys(dir string) (keys SiaMuxKeys) {
+	keyfilePath := filepath.Join(dir, keyfile)
+
+	// load the siamux keys from the keyfile
+	err := persist.LoadJSON(siamuxKeysMetadata, keys, keyfilePath)
+	if err == nil {
+		return
+	}
+
+	// if that failed, recycle the host's keys and use those as siamux keys
+	if keys, err = loadHostKeys(dir); err != nil {
+		sk, pk := mux.GenerateED25519KeyPair()
+		keys = SiaMuxKeys{sk, pk}
+	}
+
+	// save the siamux keys to the keyfile
+	err = persist.SaveJSON(siamuxKeysMetadata, keys, keyfilePath)
+	if err != nil {
+		println("Could not persist siamux keys", err)
+	}
+	return
 }
 
-// Write implements Stream interface
-func (s *MockStream) Write(b []byte) (n int, err error) {
-	return s.conn.Write(b)
-}
+// loadHostKeys looks for the host's key pair in the persistence object
+func loadHostKeys(dir string) (keys SiaMuxKeys, err error) {
+	settingsPath := filepath.Join(dir, HostDir, HostDir, ".json")
 
-// Close implements Stream interface
-func (s *MockStream) Close() error {
-	return s.conn.Close()
-}
+	// read the host persistence file
+	var bytes []byte
+	bytes, err = ioutil.ReadFile(settingsPath)
+	if err != nil {
+		return
+	}
 
-// LocalAddr implements Stream interface
-func (s *MockStream) LocalAddr() net.Addr {
-	panic("not implemented yet")
-}
+	// parse the key pair out of the host's persist file
+	hostkeys := struct {
+		PublicKey types.SiaPublicKey `json:"publickey"`
+		SecretKey crypto.SecretKey   `json:"secretkey"`
+	}{}
+	err = json.Unmarshal(bytes, &hostkeys)
+	if err != nil {
+		return
+	}
 
-// RemoteAddr implements net.Conn.
-func (s *MockStream) RemoteAddr() net.Addr {
-	panic("not implemented yet")
-}
-
-// SetDeadline implements net.Conn.
-func (s *MockStream) SetDeadline(t time.Time) error {
-	panic("not implemented yet")
-}
-
-// SetReadDeadline implements net.Conn.
-func (s *MockStream) SetReadDeadline(t time.Time) error {
-	panic("not implemented yet")
-}
-
-// SetWriteDeadline implements net.Conn.
-func (s *MockStream) SetWriteDeadline(t time.Time) error {
-	panic("not implemented yet")
-}
-
-// SetPriority implements Stream interface
-func (s *MockStream) SetPriority(p int) error {
-	panic("not implemented yet")
+	copy(keys.SecretKey[:], hostkeys.SecretKey[:])
+	copy(keys.PublicKey[:], hostkeys.PublicKey.Key[:])
+	return
 }
