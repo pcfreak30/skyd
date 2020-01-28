@@ -266,24 +266,25 @@ type Renter struct {
 	blockHeight types.BlockHeight
 
 	// Utilities.
-	cs                modules.ConsensusSet
-	deps              modules.Dependencies
-	g                 modules.Gateway
-	w                 modules.Wallet
-	hostContractor    hostContractor
-	hostDB            hostDB
-	log               *persist.Logger
-	persist           persistence
-	persistDir        string
-	memoryManager     *memoryManager
-	mu                *siasync.RWMutex
-	repairLog         *persist.Logger
-	staticFuseManager renterFuseManager
-	tg                threadgroup.ThreadGroup
-	tpool             modules.TransactionPool
-	wal               *writeaheadlog.WAL
-	staticWorkerPool  *workerPool
-	staticMux         *modules.SiaMux
+	cs                    modules.ConsensusSet
+	deps                  modules.Dependencies
+	g                     modules.Gateway
+	w                     modules.Wallet
+	hostContractor        hostContractor
+	hostDB                hostDB
+	log                   *persist.Logger
+	persist               persistence
+	persistDir            string
+	memoryManager         *memoryManager
+	mu                    *siasync.RWMutex
+	repairLog             *persist.Logger
+	staticFuseManager     renterFuseManager
+	staticStreamBufferSet *streamBufferSet
+	staticMux             *modules.SiaMux
+	staticWorkerPool      *workerPool
+	tg                    threadgroup.ThreadGroup
+	tpool                 modules.TransactionPool
+	wal                   *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies
@@ -947,17 +948,18 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
-		cs:             cs,
-		deps:           deps,
-		g:              g,
-		w:              w,
-		hostDB:         hdb,
-		hostContractor: hc,
-		persistDir:     persistDir,
-		staticAlerter:  modules.NewAlerter("renter"),
-		staticMux:      mux,
-		mu:             siasync.New(modules.SafeMutexDelay, 1),
-		tpool:          tpool,
+		cs:                    cs,
+		deps:                  deps,
+		g:                     g,
+		w:                     w,
+		hostDB:                hdb,
+		hostContractor:        hc,
+		persistDir:            persistDir,
+		staticAlerter:         modules.NewAlerter("renter"),
+		staticStreamBufferSet: newStreamBufferSet(),
+		staticMux:             mux,
+		mu:                    siasync.New(modules.SafeMutexDelay, 1),
+		tpool:                 tpool,
 	}
 	close(r.uploadHeap.pauseChan)
 
