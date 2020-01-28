@@ -2,7 +2,7 @@ package modules
 
 import (
 	"gitlab.com/NebulousLabs/Sia/types"
-	"time"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // SpecifierLen is the length of both the RPCSpecifier and
@@ -21,7 +21,7 @@ type (
 	RPCPriceTable struct {
 		UUID   RPCPriceTableSpecifier
 		Costs  map[types.Specifier]types.Currency
-		Expiry types.Timestamp
+		Expiry int64
 	}
 )
 
@@ -67,10 +67,11 @@ type (
 )
 
 // NewRPCPriceTable returns an empty RPC price table
-func NewRPCPriceTable(uuid RPCPriceTableSpecifier, expiry time.Time) RPCPriceTable {
-	return RPCPriceTable{
-		UUID:   uuid,
+func NewRPCPriceTable(expiry int64) RPCPriceTable {
+	pt := RPCPriceTable{
+		Expiry: expiry,
 		Costs:  make(map[types.Specifier]types.Currency),
-		Expiry: types.Timestamp(expiry.Unix()),
 	}
+	fastrand.Read(pt.UUID[:])
+	return pt
 }

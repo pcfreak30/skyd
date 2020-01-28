@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -36,7 +37,7 @@ type hostRPCClient struct {
 	staticHostKey         types.SiaPublicKey
 
 	priceTable        modules.RPCPriceTable
-	priceTableUpdated types.Timestamp
+	priceTableUpdated int64
 
 	// blockHeight is cached on every client and gets updated by the renter when
 	// consensus changes. This to avoid fetching the block height from the
@@ -95,7 +96,7 @@ func (c *hostRPCClient) UpdateBlockHeight(blockHeight types.BlockHeight) {
 	// the expiry window. The expiry window is defined as the time (in blocks)
 	// since we last updated the RPC price table until its expiry block height.
 	window := c.priceTable.Expiry - c.priceTableUpdated
-	if types.CurrentTimestamp() > c.priceTableUpdated+window/2 {
+	if time.Now().Unix() > c.priceTableUpdated+window/2 {
 		updatePriceTable = true
 		return
 	}
@@ -144,7 +145,7 @@ func (c *hostRPCClient) UpdatePriceTable() error {
 
 	c.mu.Lock()
 	c.priceTable = updated
-	c.priceTableUpdated = types.CurrentTimestamp()
+	c.priceTableUpdated = time.Now().Unix()
 	c.mu.Unlock()
 	return nil
 }

@@ -80,7 +80,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -119,8 +118,8 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
-	// rpcPriceGuaranteePeriod defines the amount of time the host guarantees a
-	// fixed set of RPC costs to the renter.
+	// rpcPriceGuaranteePeriod defines the amount of time a host will guarantee
+	// its prices to the renter.
 	rpcPriceGuaranteePeriod = build.Select(build.Var{
 		Standard: 10 * time.Minute,
 		Dev:      1 * time.Minute,
@@ -188,12 +187,11 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// The price table holds a list of prices, such as the price for a specific
-	// RPC, or the prices of the individual MDM instruction operations. These
-	// prices are dynamic, and are subject to various conditions specific to the
-	// RPC in question. Examples of such conditions are congestion, load,
-	// liquidity, etc. Alongside the costs, the host sets an expiry block height
-	// up until which it guarantees pricing.
+	// The price table contains a set of RPC costs, along with an expiry that
+	// dictates up until what time the host guarantees the prices that are
+	// listed. These host's RPC prices are dynamic, and are subject to various
+	// conditions specific to the RPC in question. Examples of such conditions
+	// are congestion, load, liquidity, etc.
 	priceTable       *modules.RPCPriceTable
 	priceTableHeap   priceTableHeap
 	uuidToPriceTable map[modules.RPCPriceTableSpecifier]*modules.RPCPriceTable
@@ -279,15 +277,11 @@ func (h *Host) threadedUpdatePriceTable() {
 	}
 }
 
-// managedUpdatePriceTable will recalculate the RPC costs and update
-// the host's RPC price table accordingly.
+// managedUpdatePriceTable will recalculate the RPC costs and update the host's
+// price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
-	// generate the uuid
-	var uuid modules.RPCPriceTableSpecifier
-	fastrand.Read(uuid[:])
-
 	// create a new RPC price table and set the expiry
-	priceTable := modules.NewRPCPriceTable(uuid, time.Now().Add(rpcPriceGuaranteePeriod))
+	priceTable := modules.NewRPCPriceTable(time.Now().Add(rpcPriceGuaranteePeriod).Unix())
 
 	// TODO: move along, nothing to see here
 	// TODO: fix this disgusting mess with the RPC IDs
@@ -307,7 +301,7 @@ func (h *Host) managedUpdatePriceTable() {
 
 	// update the pricetable
 	h.priceTable = &priceTable
-	h.uuidToPriceTable[uuid] = &priceTable
+	h.uuidToPriceTable[priceTable.UUID] = &priceTable
 	heap.Push(&h.priceTableHeap, priceTable)
 
 	// prune expired pricetables
@@ -316,7 +310,7 @@ func (h *Host) managedUpdatePriceTable() {
 	}
 	oldest := heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
 	for {
-		if oldest.Expiry < types.CurrentTimestamp() {
+		if oldest.Expiry < time.Now().Unix() {
 			heap.Push(&h.priceTableHeap, oldest)
 			break
 		}
