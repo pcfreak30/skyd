@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -34,7 +35,7 @@ type hostRPCClient struct {
 	staticHostKey         types.SiaPublicKey
 
 	priceTable        modules.RPCPriceTable
-	priceTableUpdated types.Timestamp
+	priceTableUpdated int64
 
 	// blockHeight is cached on every client and gets updated by the renter when
 	// consensus changes. This to avoid fetching the block height from the
@@ -137,7 +138,7 @@ func (c *hostRPCClient) UpdatePriceTable() error {
 
 	c.mu.Lock()
 	c.priceTable = updated
-	c.priceTableUpdated = types.CurrentTimestamp()
+	c.priceTableUpdated = time.Now().Unix()
 	c.mu.Unlock()
 	return nil
 }
