@@ -34,7 +34,7 @@ type hostRPCClient struct {
 	staticHostKey         types.SiaPublicKey
 
 	priceTable        modules.RPCPriceTable
-	priceTableUpdated types.BlockHeight
+	priceTableUpdated types.Timestamp
 
 	// blockHeight is cached on every client and gets updated by the renter when
 	// consensus changes. This to avoid fetching the block height from the
@@ -137,7 +137,7 @@ func (c *hostRPCClient) UpdatePriceTable() error {
 
 	c.mu.Lock()
 	c.priceTable = updated
-	c.priceTableUpdated = c.blockHeight
+	c.priceTableUpdated = types.CurrentTimestamp()
 	c.mu.Unlock()
 	return nil
 }
