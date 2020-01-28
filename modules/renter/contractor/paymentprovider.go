@@ -54,7 +54,6 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifie
 	if rpcID != modules.RPCFundEphemeralAccount {
 		build.Critical("Unexpected RPC id, only RPCFundEphemeralAccount is paid through a file contract.")
 	}
-	panic("trololo")
 
 	// acquire a safe contract
 	sc, exists := p.contractSet.Acquire(p.contractID)

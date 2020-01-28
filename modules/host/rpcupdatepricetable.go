@@ -13,16 +13,15 @@ import (
 
 // managedRPCUpdatePriceTable handles the RPC request from the renter to fetch
 // the host's latest RPC price table.
-func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
+func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	h.mu.RLock()
 	pt := h.priceTable
 	h.mu.RUnlock()
 
-	// deepcopy the host's price table by json encoding and decoding it
+	// json encode the RPC price table
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
-		err = errors.AddContext(err, "Failed to JSON encode the RPC price table")
-		return
+		return errors.AddContext(err, "Failed to JSON encode the RPC price table")
 	}
 
 	// send it to the renter, note we send it before we process payment, this
@@ -30,27 +29,24 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
 	// the price
 	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: ptBytes}
 	if err = encoding.WriteObject(stream, uptResponse); err != nil {
-		err = errors.AddContext(err, "Failed to write response")
-		return
+		return errors.AddContext(err, "Failed to write response")
 	}
 
 	// TODO: process payment for this RPC call (introduced in other MR)
 	pp := h.NewPaymentProcessor()
 	amountPaid, err := pp.ProcessPaymentForRPC(stream)
 	if err != nil {
-		err = errors.AddContext(err, "Failed to process payment")
-		return
+		return errors.AddContext(err, "Failed to process payment")
 	}
 
 	// verify the renter payment was sufficient, since the renter already has
 	// the updated prices, we expect it will have paid the latest price
 	expected := pt.Costs[modules.RPCUpdatePriceTable.DontLookAtMeHarryImHideous()]
 	if amountPaid.Cmp(expected) < 0 {
-		err = errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
-		return
+		return errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
 	}
-	panic("bäm")
-	return
+
+	return nil
 }
 
 // managedCalculateUpdatePriceTableRPCPrice calculates the price for the

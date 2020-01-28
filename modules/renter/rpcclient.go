@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -37,7 +36,7 @@ type hostRPCClient struct {
 	staticHostKey         types.SiaPublicKey
 
 	priceTable        modules.RPCPriceTable
-	priceTableUpdated time.Time
+	priceTableUpdated types.Timestamp
 
 	// blockHeight is cached on every client and gets updated by the renter when
 	// consensus changes. This to avoid fetching the block height from the
@@ -87,7 +86,7 @@ func (c *hostRPCClient) UpdateBlockHeight(blockHeight types.BlockHeight) {
 	// This is more of a sanity check to prevent underflow. This could only be
 	// the case if the renter and host's blockheight differ by a large amount of
 	// blocks.
-	if c.priceTableUpdated.Unix() > c.priceTable.Expiry {
+	if c.priceTableUpdated > c.priceTable.Expiry {
 		updatePriceTable = true
 		return
 	}
@@ -95,8 +94,8 @@ func (c *hostRPCClient) UpdateBlockHeight(blockHeight types.BlockHeight) {
 	// Update the price table if the current blockheight has surpassed half of
 	// the expiry window. The expiry window is defined as the time (in blocks)
 	// since we last updated the RPC price table until its expiry block height.
-	window := c.priceTable.Expiry - c.priceTableUpdated.Unix()
-	if time.Now().Unix() > (c.priceTableUpdated.Unix())+window/2 {
+	window := c.priceTable.Expiry - c.priceTableUpdated
+	if types.CurrentTimestamp() > c.priceTableUpdated+window/2 {
 		updatePriceTable = true
 		return
 	}
@@ -145,7 +144,7 @@ func (c *hostRPCClient) UpdatePriceTable() error {
 
 	c.mu.Lock()
 	c.priceTable = updated
-	c.priceTableUpdated = time.Now()
+	c.priceTableUpdated = types.CurrentTimestamp()
 	c.mu.Unlock()
 	return nil
 }
@@ -182,17 +181,14 @@ func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) e
 	payment := amount.Add(cost)
 	_, err = c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCFundEphemeralAccount, payment, stream, bh)
 	if err != nil {
-		panic(err)
 		return err
 	}
 
 	// Receive RPCFundEphemeralAccountResponse
 	var fundAccResponse modules.RPCFundEphemeralAccountResponse
 	if err := encoding.ReadObject(stream, &fundAccResponse, uint64(modules.RPCMinLen)); err != nil {
-		panic(err)
 		return err
 	}
-	panic("wth")
 
 	return nil
 }

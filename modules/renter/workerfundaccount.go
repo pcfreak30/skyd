@@ -95,11 +95,9 @@ func (w *worker) threadedPerformFundAcountJob() {
 
 	client, err := w.renter.managedRPCClient(w.staticHostPubKey)
 	if err != nil {
-		panic(err)
 		job.sendResult(types.ZeroCurrency, err)
 		return
 	}
-	panic("häh heh")
 
 	err = client.FundEphemeralAccount(w.account.staticID, job.amount)
 	if err != nil {

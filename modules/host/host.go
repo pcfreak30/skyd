@@ -88,11 +88,6 @@ const (
 	dbFilename   = modules.HostDir + ".db"
 	logFile      = modules.HostDir + ".log"
 	settingsFile = modules.HostDir + ".json"
-
-	// rpcPriceGuaranteePeriod defines for how many blocks the host guarantees a
-	// fixed set of RPC prices to the renter. Current block height + this period
-	// defines the expiry block height on the RPC price table.
-	rpcPriceGuaranteePeriod = 3600 // ~1h
 )
 
 var (
@@ -121,6 +116,14 @@ var (
 	updatePriceTableFrequency = build.Select(build.Var{
 		Standard: 15 * time.Minute,
 		Dev:      time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
+
+	// rpcPriceGuaranteePeriod defines the amount of time the host guarantees a
+	// fixed set of RPC costs to the renter.
+	rpcPriceGuaranteePeriod = build.Select(build.Var{
+		Standard: 10 * time.Minute,
+		Dev:      1 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
@@ -276,29 +279,28 @@ func (h *Host) threadedUpdatePriceTable() {
 	}
 }
 
-// managedUpdatePriceTable will recalculate the price of every RPC and update
-// the host's RPC price table.
+// managedUpdatePriceTable will recalculate the RPC costs and update
+// the host's RPC price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// generate the uuid
 	var uuid modules.RPCPriceTableSpecifier
 	fastrand.Read(uuid[:])
 
 	// create a new RPC price table and set the expiry
-	priceTable := modules.NewRPCPriceTable(uuid)
-	priceTable.Expiry = time.Now().Unix() + rpcPriceGuaranteePeriod
+	priceTable := modules.NewRPCPriceTable(uuid, time.Now().Add(rpcPriceGuaranteePeriod))
 
 	// TODO: move along, nothing to see here
 	// TODO: fix this disgusting mess with the RPC IDs
 	// recalculate the price for every RPC
 	priceTable.Costs[modules.RPCUpdatePriceTable.DontLookAtMeHarryImHideous()] = h.managedCalculateUpdatePriceTableRPCPrice()
 
-	// TODO: needs a better place
+	// TODO: hardcoded MDM costs, needs a better place
 	his := h.InternalSettings()
-	priceTable.Costs[modules.ComponentCompute] = types.ZeroCurrency
-	priceTable.Costs[modules.ComponentMemory] = types.ZeroCurrency
-	priceTable.Costs[modules.OperationDiskAccess] = types.ZeroCurrency
-	priceTable.Costs[modules.OperationDiskRead] = his.MinBaseRPCPrice
-	priceTable.Costs[modules.OperationDiskWrite] = his.MinBaseRPCPrice
+	priceTable.Costs[modules.MDMComponentCompute] = types.ZeroCurrency
+	priceTable.Costs[modules.MDMComponentMemory] = types.ZeroCurrency
+	priceTable.Costs[modules.MDMOperationDiskAccess] = types.ZeroCurrency
+	priceTable.Costs[modules.MDMOperationDiskRead] = his.MinBaseRPCPrice
+	priceTable.Costs[modules.MDMOperationDiskWrite] = his.MinBaseRPCPrice
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -309,14 +311,12 @@ func (h *Host) managedUpdatePriceTable() {
 	heap.Push(&h.priceTableHeap, priceTable)
 
 	// prune expired pricetables
-	now := time.Now().Unix()
-
 	if h.priceTableHeap.Len() == 0 {
 		return
 	}
 	oldest := heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
 	for {
-		if oldest.Expiry < now {
+		if oldest.Expiry < types.CurrentTimestamp() {
 			heap.Push(&h.priceTableHeap, oldest)
 			break
 		}

@@ -21,11 +21,11 @@ type (
 
 // MDM instruction cost component specifiers
 var (
-	ComponentCompute    = types.NewSpecifier("Compute")
-	ComponentMemory     = types.NewSpecifier("Memory")
-	OperationDiskAccess = types.NewSpecifier("DiskAccess")
-	OperationDiskRead   = types.NewSpecifier("DiskRead")
-	OperationDiskWrite  = types.NewSpecifier("DiskWrite")
+	MDMComponentCompute    = types.NewSpecifier("Compute")
+	MDMComponentMemory     = types.NewSpecifier("Memory")
+	MDMOperationDiskAccess = types.NewSpecifier("DiskAccess")
+	MDMOperationDiskRead   = types.NewSpecifier("DiskRead")
+	MDMOperationDiskWrite  = types.NewSpecifier("DiskWrite")
 )
 
 const (
@@ -91,11 +91,11 @@ func CalculateProgramCost(instructions []Instruction, dataLen uint64) (cost Cost
 
 // ConvertCostToPrice uses a price table to convert a mdm.Cost to a types.Currency.
 func ConvertCostToPrice(cost Cost, pt *RPCPriceTable) (price types.Currency) {
-	price = price.Add(types.NewCurrency64(cost.Compute).Mul(pt.Costs[ComponentCompute]))
-	price = price.Add(types.NewCurrency64(cost.DiskAccesses).Mul(pt.Costs[OperationDiskAccess]))
-	price = price.Add(types.NewCurrency64(cost.DiskRead).Mul(pt.Costs[OperationDiskRead]))
-	price = price.Add(types.NewCurrency64(cost.DiskWrite).Mul(pt.Costs[OperationDiskWrite]))
-	price = price.Add(types.NewCurrency64(cost.Memory).Mul(pt.Costs[ComponentMemory]))
+	price = price.Add(types.NewCurrency64(cost.Compute).Mul(pt.Costs[MDMComponentCompute]))
+	price = price.Add(types.NewCurrency64(cost.DiskAccesses).Mul(pt.Costs[MDMOperationDiskAccess]))
+	price = price.Add(types.NewCurrency64(cost.DiskRead).Mul(pt.Costs[MDMOperationDiskRead]))
+	price = price.Add(types.NewCurrency64(cost.DiskWrite).Mul(pt.Costs[MDMOperationDiskWrite]))
+	price = price.Add(types.NewCurrency64(cost.Memory).Mul(pt.Costs[MDMComponentMemory]))
 	return
 }
 

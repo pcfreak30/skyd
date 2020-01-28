@@ -2,6 +2,7 @@ package modules
 
 import (
 	"gitlab.com/NebulousLabs/Sia/types"
+	"time"
 )
 
 // SpecifierLen is the length of both the RPCSpecifier and
@@ -11,22 +12,16 @@ const SpecifierLen = 8
 type (
 	// RPCSpecifier is the specifier sent at the beginning of every RPC.
 	RPCSpecifier [SpecifierLen]byte
+
 	// RPCPriceTableSpecifier uniquely identifies a price table.
 	RPCPriceTableSpecifier [SpecifierLen]byte
 
-	// RPCPriceTable contains the cost of every RPC the host offers. These
-	// prices are guaranteed to remain valid up until the specified expiry block
-	// height.
+	// RPCPriceTable contains a list of RPC costs to remain vaild up until the
+	// specified expiry timestamp.
 	RPCPriceTable struct {
 		UUID   RPCPriceTableSpecifier
 		Costs  map[types.Specifier]types.Currency
-		Expiry int64
-	}
-
-	// costEntry is a helper struct used when marshaling the RPC price table
-	costEntry struct {
-		ID   types.Specifier
-		Cost types.Currency
+		Expiry types.Timestamp
 	}
 )
 
@@ -72,9 +67,10 @@ type (
 )
 
 // NewRPCPriceTable returns an empty RPC price table
-func NewRPCPriceTable(uuid RPCPriceTableSpecifier) RPCPriceTable {
+func NewRPCPriceTable(uuid RPCPriceTableSpecifier, expiry time.Time) RPCPriceTable {
 	return RPCPriceTable{
-		UUID:  uuid,
-		Costs: make(map[types.Specifier]types.Currency),
+		UUID:   uuid,
+		Costs:  make(map[types.Specifier]types.Currency),
+		Expiry: types.Timestamp(expiry.Unix()),
 	}
 }
