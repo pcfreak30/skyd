@@ -13,6 +13,12 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TODO: try to load account from persistence
+//
+// TODO: for now the account is a separate object that sits as first class
+// object on the worker, most probably though this will move as to not have two
+// separate mutex domains.
+
 // withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
 // remains spendable after it has been created. Together with the current block
 // height at time of creation, this period makes up the WithdrawalMessage's
@@ -31,33 +37,39 @@ type account struct {
 
 	mu sync.Mutex
 	c  hostContractor
-	r  *Renter
 }
 
-// openAccount returns a new account for the given host. Every time a new
-// account is opened, it's created using a new keypair.
-func (r *Renter) openAccount(hostKey types.SiaPublicKey) *account {
-	hpk := hostKey.String()
-	acc, exists := r.accounts[hpk]
-	if exists {
-		return acc
-	}
-
+// openAccount returns an account for the given host. In the case it does
+// not exist yet, it gets created. Every time a new account is created, a new
+// keypair is used.
+func openAccount(hostKey types.SiaPublicKey, contractor hostContractor) *account {
+	// generate a new key pair
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
 
-	acc = &account{
+	// create the account
+	return &account{
 		staticID:        spk.String(),
 		staticHostKey:   hostKey,
 		staticSecretKey: sk,
-		c:               r.hostContractor,
-		r:               r,
+		c:               contractor,
 	}
-	r.accounts[hpk] = acc
-	return acc
+}
+
+// AvailableBalance returns the amount of money that is available to spend. It
+// is calculated by taking into account pending spends and pending funds.
+func (a *account) AvailableBalance() types.Currency {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	total := a.balance.Add(a.pendingFunds)
+	if a.pendingSpends.Cmp(total) < 0 {
+		return total.Sub(a.pendingSpends)
+	}
+	return types.ZeroCurrency
 }
 
 // Balance returns the eventual account balance. This is calculated taking into

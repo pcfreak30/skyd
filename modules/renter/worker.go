@@ -7,9 +7,13 @@ package renter
 // functions for a job are Queue, Kill, and Perform. Queue will add a job to the
 // queue of work of that type. Kill will empty the queue and close out any work
 // that will not be completed. Perform will grab a job from the queue if one
-// exists and complete that piece of work. See snapshotworkerfetchbackups.go for
-// a clean example.
-
+// exists and complete that piece of work. See workerfetchbackups.go for a clean
+// example.
+//
+// The worker has an ephemeral account on the host. It can use this account to
+// pay for downloads and uploads. In order to ensure the account's balance does
+// not run out, it maintains a balance target by refilling it when necessary.
+//
 // TODO: A single session should be added to the worker that gets maintained
 // within the work loop. All jobs performed by the worker will use the worker's
 // single session.
@@ -24,7 +28,9 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // A worker listens for work on a certain host.
@@ -66,6 +72,7 @@ type worker struct {
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
 	staticJobQueueDownloadByRoot jobQueueDownloadByRoot
+	staticFundAccountJobQueue    fundAccountJobQueue
 
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -73,6 +80,25 @@ type worker struct {
 	uploadRecentFailure       time.Time                // How recent was the last failure?
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
+
+	// The staticAccount represent the renter's ephemeral account on the host.
+	// It keeps track of the available balance in the account, the worker has a
+	// refill mechanism that keeps the account balance filled up until the
+	// staticBalanceTarget.
+	staticAccount       *account
+	staticBalanceTarget types.Currency
+
+	// Every worker has an RPC client it uses to interact with the host. The RPC
+	// client interface exposes all RPC calls the renter can perform on the
+	// host.
+	staticRPCClient RPCClient
+
+	// The worker has to keep track of the host's RPC costs. When a worker is
+	// created, it will call an RPC on the host to fetch his prices. After that
+	// the worker will ensure it has up-to-date prices by continuously fetching
+	// a new update before the price table expires.
+	priceTable        modules.RPCPriceTable
+	priceTableUpdated int64
 
 	// Utilities.
 	//
@@ -152,10 +178,11 @@ func (w *worker) threadedWorkLoop() {
 	//
 	// TODO: Need to write testing around these kill functions and ensure they
 	// are executing correctly.
+	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
+	defer w.managedKillFundAccountJobs()
 	defer w.managedKillJobsDownloadByRoot()
-	defer w.managedKillUploading()
 
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
@@ -175,7 +202,15 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		var workAttempted bool
+		// Check if the account needs to be refilled.
+		w.scheduleRefillAccount()
+
+		// Perform any job to fund the account
+		workAttempted := w.managedPerformFundAcountJob()
+		if workAttempted {
+			continue
+		}
+
 		// Perform any job to fetch the list of backups from the host.
 		workAttempted = w.managedPerformFetchBackupsJob()
 		if workAttempted {
@@ -212,15 +247,137 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
+// scheduleRefillAccount will check if the account needs to be refilled,
+// and will schedule a fund account job if so. This is called every time the
+// worker spends from the account.
+func (w *worker) scheduleRefillAccount() {
+	// Calculate the threshold, if the account's available balance is below this
+	// threshold, we want to trigger a refill.We only refill if we drop below a
+	// threshold because we want to avoid refilling every time we drop 1 hasting
+	// below the target.
+	threshold := w.staticBalanceTarget.Mul64(8).Div64(10)
+
+	// Fetch the account's available balance and skip if it's above the
+	// threshold
+	balance := w.staticAccount.AvailableBalance()
+	if balance.Cmp(threshold) >= 0 {
+		return
+	}
+
+	// If it's below the threshold, calculate the refill amount and enqueue a
+	// new fund account job
+	refill := w.staticBalanceTarget.Sub(balance)
+	_ = w.callQueueFundAccount(refill)
+
+	// TODO: handle result chan
+	// TODO: add cooldown in case of failure
+}
+
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
-	return &worker{
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+	he, ok, err := r.hostDB.Host(hostPubKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "could not find host entry")
+	}
+	if !ok {
+		return nil, errors.New("host does not exist")
+	}
+
+	// TODO: use the host's external settings settings to calc. an appropriate
+	// balance target
+
+	// TODO: enable the account refiller by setting a balance target greater
+	// than the zero currency
+
+	// TODO: (TL;DR mock causes infinite loop if target is not set to zero) the
+	// target is set to zero because as long as FundEphemeralAccount is mocked,
+	// setting a target larger than zero would create an endless refill loop,
+	// just because there is nothing holding back consecutive refill jobs from
+	// being enqueued (which wakes the workerloop and so on). This is due to
+	// pendingFunds not increasing, which causes the AvailableBalance to remain
+	// the same, which causes a fund account job to be scheduled on every
+	// iteration.
+	balanceTarget := types.ZeroCurrency
+
+	w := &worker{
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
 
+		staticAccount:       openAccount(hostPubKey, r.hostContractor),
+		staticBalanceTarget: balanceTarget,
+		staticRPCClient:     r.newRPCClient(he),
+
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
-
-		renter: r,
+		renter:   r,
 	}
+
+	// Defer an initial price table update.
+	defer func() {
+		if err := w.renter.tg.Add(); err != nil {
+			return
+		}
+		defer w.renter.tg.Done()
+
+		if err := w.managedUpdatePriceTable(); err != nil {
+			// TODO: error handling
+			return
+		}
+
+		w.mu.Lock()
+		frequency := w.priceTable.Expiry - w.priceTableUpdated/2
+		w.mu.Unlock()
+
+		go w.threadedUpdatePriceTable(frequency)
+	}()
+
+	return w, nil
+}
+
+// UpdateBlockHeight is called by the renter when it processes a consensus
+// change. The worker forwards this to the RPC client as it contains the RPC
+// price table. To ensure the client has up-to-date pricing, it needs to be
+// alerted when consensus changes as it might want to update its pricing table.
+func (w *worker) UpdateBlockHeight(blockHeight types.BlockHeight) {
+	w.staticRPCClient.UpdateBlockHeight(blockHeight)
+}
+
+// threadedUpdatePriceTable will periodically update the RPC price table to
+// fetch the host's latest prices. This is necessary as the host will refuse
+// renters that have an outdated price table.
+func (w *worker) threadedUpdatePriceTable(frequency int64) {
+	for {
+		func() {
+			if err := w.renter.tg.Add(); err != nil {
+				return
+			}
+			w.renter.tg.Done()
+
+			if err := w.managedUpdatePriceTable(); err != nil {
+				// TODO: error handling
+				return
+			}
+		}()
+
+		select {
+		case <-w.renter.tg.StopChan():
+			break
+		case <-time.After(time.Duration(frequency)):
+			continue
+		}
+	}
+}
+
+// managedUpdatePriceTable calls the updatePriceTable RPC on the host
+func (w *worker) managedUpdatePriceTable() error {
+	pt, err := w.staticRPCClient.UpdatePriceTable(w.staticAccount)
+	if err != nil {
+		return err
+	}
+
+	w.mu.Lock()
+	w.priceTable = pt
+	w.priceTableUpdated = time.Now().Unix()
+	w.mu.Unlock()
+	return nil
 }
