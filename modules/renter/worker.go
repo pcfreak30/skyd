@@ -71,6 +71,7 @@ type worker struct {
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
 	staticJobQueueDownloadByRoot jobQueueDownloadByRoot
+	staticFundAccountJobQueue    fundAccountJobQueue
 
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -79,13 +80,14 @@ type worker struct {
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
 
-	// The staticFundAccountJobQueue holds the fund account jobs
-	staticFundAccountJobQueue fundAccountJobQueue
-
-	// Account represents the account on the host. The worker will maintain a
-	// certain account balance defined by the max and target balance.
+	// The staticAccount represent the renter's ephemeral account on the host.
+	// It keeps track of the available balance in the account, the worker has a
+	// refill mechanism that keeps the account balance filled up until the
+	// staticBalanceTarget.
+	staticAccount       *account
 	staticBalanceTarget types.Currency
-	account             *account
+
+	staticRPCClient RPCClient
 
 	// Utilities.
 	//
@@ -189,15 +191,17 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		// Check if the account needs to be refilled. This is done in a separate
-		// goroutine to ensure other jobs are not blocked by it.
-		go func() {
-			w.threadedScheduleRefillAccount()
-			w.threadedPerformFundAcountJob()
-		}()
+		// Check if the account needs to be refilled.
+		w.scheduleRefillAccount()
+
+		// Perform any job to fund the account
+		workAttempted := w.managedPerformFundAcountJob()
+		if workAttempted {
+			continue
+		}
 
 		// Perform any job to fetch the list of backups from the host.
-		workAttempted := w.managedPerformFetchBackupsJob()
+		workAttempted = w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
 		}
@@ -232,15 +236,10 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
-// threadedScheduleRefillAccount will check if the account needs to be refilled,
+// scheduleRefillAccount will check if the account needs to be refilled,
 // and will schedule a fund account job if so. This is called every time the
 // worker spends from the account.
-func (w *worker) threadedScheduleRefillAccount() {
-	if err := w.renter.tg.Add(); err != nil {
-		return
-	}
-	defer w.renter.tg.Done()
-
+func (w *worker) scheduleRefillAccount() {
 	// Calculate the threshold, if the account's available balance is below this
 	// threshold, we want to trigger a refill.We only refill if we drop below a
 	// threshold because we want to avoid refilling every time we drop 1 hasting
@@ -249,7 +248,7 @@ func (w *worker) threadedScheduleRefillAccount() {
 
 	// Fetch the account's available balance and skip if it's above the
 	// threshold
-	balance := w.account.AvailableBalance()
+	balance := w.staticAccount.AvailableBalance()
 	if balance.Cmp(threshold) >= 0 {
 		return
 	}
@@ -264,7 +263,7 @@ func (w *worker) threadedScheduleRefillAccount() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -272,6 +271,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, 
 	if !ok {
 		return nil, errors.New("host does not exist")
 	}
+
 	// TODO: use the host's external settings settings to calc. an appropriate
 	// balance target
 
@@ -285,8 +285,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, 
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
 
+		staticAccount:       openAccount(hostPubKey, r.hostContractor),
 		staticBalanceTarget: balanceTarget,
-		account:             a,
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),

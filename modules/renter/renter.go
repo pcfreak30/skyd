@@ -258,10 +258,6 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
-	accounts map[string]*account
-	// RPC clients
-	clients map[string]RPCClient
-
 	blockHeight types.BlockHeight
 
 	// Utilities.
@@ -484,33 +480,6 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	r.mu.Unlock(id)
 
 	return est, allowance, nil
-}
-
-// managedRPCClient returns an RPC client for the host with given key
-func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
-	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
-
-	// return early if we early have an RPC client for the given host
-	client, exists := r.clients[host.String()]
-	if exists {
-		return client, nil
-	}
-
-	// lookup the host entry
-	he, found, err := r.hostDB.Host(host)
-	if !found || err != nil {
-		return nil, errors.AddContext(err, "host not found")
-	}
-
-	acc := r.openAccount(host)
-	client, err = r.newRPCClient(acc, he)
-	if err != nil {
-		return nil, errors.AddContext(err, "could not create RPC client")
-	}
-
-	r.clients[host.String()] = client
-	return client, nil
 }
 
 // managedContractUtilityMaps returns a set of maps that contain contract
@@ -861,8 +830,8 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 
 	// Notify all rpc clients of the new block height
 	if cc.Synced {
-		for _, c := range r.clients {
-			c.(*hostRPCClient).UpdateBlockHeight(r.blockHeight)
+		for _, _ = range r.staticWorkerPool.workers {
+			// w.UpdateBlockHeight(r.blockHeight)
 		}
 	}
 
@@ -940,9 +909,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
-
-		accounts: make(map[string]*account),
-		clients:  make(map[string]RPCClient),
 
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),

@@ -129,13 +129,6 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	// whether successful or failed, the worker needs to be removed.
 	defer udc.managedRemoveWorker()
 
-	rpcClient, err := w.renter.managedRPCClient(w.staticHostPubKey)
-	if err != nil {
-		w.renter.log.Debugln("worker failed to create rpcClient:", err)
-		udc.managedUnregisterWorker(w)
-		return true
-	}
-
 	// TODO: use this on legacy hosts
 	// Fetch the sector. If fetching the sector fails, the worker needs to be
 	// unregistered with the chunk.
@@ -160,7 +153,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := rpcClient.DownloadSectorByRoot(fetchOffset, fetchLength, root, false) // TODO: enable proof
+	pieceData, err := w.staticRPCClient.DownloadSectorByRoot(fetchOffset, fetchLength, root, false) // TODO: enable proof
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)
