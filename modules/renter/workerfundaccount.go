@@ -88,8 +88,7 @@ func (w *worker) managedPerformFundAcountJob() bool {
 	w.staticFundAccountJobQueue.queue = w.staticFundAccountJobQueue.queue[1:]
 	w.staticFundAccountJobQueue.mu.Unlock()
 
-	err := w.staticRPCClient.FundEphemeralAccount(w.staticAccount.staticID, job.amount)
-	if err != nil {
+	if err := w.staticRPCClient.FundEphemeralAccount(w.staticAccount, w.priceTable, w.staticAccount.staticID, job.amount); err != nil {
 		job.sendResult(types.ZeroCurrency, err)
 		return true
 	}

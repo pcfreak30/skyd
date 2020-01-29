@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -10,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/NebulousLabs/siamux"
 )
 

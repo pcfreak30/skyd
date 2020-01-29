@@ -153,7 +153,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := w.staticRPCClient.DownloadSectorByRoot(fetchOffset, fetchLength, root, false) // TODO: enable proof
+	pieceData, err := w.staticRPCClient.DownloadSectorByRoot(w.staticAccount, w.priceTable, fetchOffset, fetchLength, root, false) // TODO: enable proof
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)

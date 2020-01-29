@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -87,7 +88,17 @@ type worker struct {
 	staticAccount       *account
 	staticBalanceTarget types.Currency
 
+	// Every worker has an RPC client it uses to interact with the host. The RPC
+	// client interface exposes all RPC calls the renter can perform on the
+	// host.
 	staticRPCClient RPCClient
+
+	// The worker has to keep track of the host's RPC costs. When a worker is
+	// created, it will call an RPC on the host to fetch his prices. After that
+	// the worker will ensure it has up-to-date prices by continuously fetching
+	// a new update before the price table expires.
+	priceTable        modules.RPCPriceTable
+	priceTableUpdated int64
 
 	// Utilities.
 	//
@@ -264,7 +275,7 @@ func (w *worker) scheduleRefillAccount() {
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	_, ok, err := r.hostDB.Host(hostPubKey)
+	he, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
@@ -272,24 +283,89 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		return nil, errors.New("host does not exist")
 	}
 
-	// TODO: use the host's external settings settings to calc. an appropriate
-	// balance target
-
-	// TODO: enable the account refiller by setting a balance target greater
-	// than the zero currency
-
 	// TODO: figure out appropriate balance target using host settings and
 	// renter max.
 	balanceTarget := types.SiacoinPrecision.Div64(2)
-	return &worker{
+
+	w := &worker{
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
 
 		staticAccount:       openAccount(hostPubKey, r.hostContractor),
 		staticBalanceTarget: balanceTarget,
+		staticRPCClient:     r.newRPCClient(he),
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
-	}, nil
+	}
+
+	// Defer an initial price table update.
+	defer func() {
+		if err := w.renter.tg.Add(); err != nil {
+			return
+		}
+		defer w.renter.tg.Done()
+
+		if err := w.managedUpdatePriceTable(); err != nil {
+			// TODO: error handling
+			return
+		}
+
+		w.mu.Lock()
+		frequency := w.priceTable.Expiry - w.priceTableUpdated/2
+		w.mu.Unlock()
+
+		go w.threadedUpdatePriceTable(frequency)
+	}()
+
+	return w, nil
+}
+
+// UpdateBlockHeight is called by the renter when it processes a consensus
+// change. The worker forwards this to the RPC client as it contains the RPC
+// price table. To ensure the client has up-to-date pricing, it needs to be
+// alerted when consensus changes as it might want to update its pricing table.
+func (w *worker) UpdateBlockHeight(blockHeight types.BlockHeight) {
+	w.staticRPCClient.UpdateBlockHeight(blockHeight)
+}
+
+// threadedUpdatePriceTable will periodically update the RPC price table to
+// fetch the host's latest prices. This is necessary as the host will refuse
+// renters that have an outdated price table.
+func (w *worker) threadedUpdatePriceTable(frequency int64) {
+	for {
+		func() {
+			if err := w.renter.tg.Add(); err != nil {
+				return
+			}
+			w.renter.tg.Done()
+
+			if err := w.managedUpdatePriceTable(); err != nil {
+				// TODO: error handling
+				return
+			}
+		}()
+
+		select {
+		case <-w.renter.tg.StopChan():
+			break
+		case <-time.After(time.Duration(frequency)):
+			continue
+		}
+	}
+}
+
+// managedUpdatePriceTable calls the updatePriceTable RPC on the host
+func (w *worker) managedUpdatePriceTable() error {
+	pt, err := w.staticRPCClient.UpdatePriceTable(w.staticAccount)
+	if err != nil {
+		return err
+	}
+
+	w.mu.Lock()
+	w.priceTable = pt
+	w.priceTableUpdated = time.Now().Unix()
+	w.mu.Unlock()
+	return nil
 }

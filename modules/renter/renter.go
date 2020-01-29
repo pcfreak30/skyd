@@ -258,6 +258,10 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
+	// blockHeight is cached on the renter, this is used to update the state of
+	// the workers every time consensus changes. We keep this as state on the
+	// renter to avoid that the worker has to fetch the block height from the
+	// renter for every RPC call that is paid from an ephemeral account.
 	blockHeight types.BlockHeight
 
 	// Utilities.
@@ -830,8 +834,8 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 
 	// Notify all rpc clients of the new block height
 	if cc.Synced {
-		for _, _ = range r.staticWorkerPool.workers {
-			// w.UpdateBlockHeight(r.blockHeight)
+		for _, w := range r.staticWorkerPool.workers {
+			w.UpdateBlockHeight(r.blockHeight)
 		}
 	}
 

@@ -1,10 +1,15 @@
 package renter
 
+// TODO: The RPC client is used by the worker to interact with the host. It
+// holds the RPC price table and can be seen as a renter RPC session. For now
+// this is extracted in a separate object, quite possible though this state will
+// move to the worker, and the RPCs will be exposed as static functions,
+// callable by the worker.
+
 import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -23,144 +28,100 @@ var (
 	errRPCNotAvailable = errors.New("RPC not available on host")
 )
 
-// TODO: The RPC client is used by the worker to interact with the host. It
-// holds the RPC price table and can be seen as a renter RPC session. For now
-// this is extracted in a separate object, quite possible though this state will
-// move to the worker, and the RPCs will be exposed as static functions,
-// callable by the worker.
-
 // RPCClient interface lists all possible RPC that can be called on the host
 type RPCClient interface {
-	DownloadSectorByRoot(offset, length uint64, sectorRoot crypto.Hash, merkleProof bool) ([]byte, error)
-	UpdatePriceTable() error
-	FundEphemeralAccount(id string, amount types.Currency) error
+	UpdateBlockHeight(bh types.BlockHeight)
+	UpdatePriceTable(pp modules.PaymentProvider) (modules.RPCPriceTable, error)
+	FundEphemeralAccount(pp modules.PaymentProvider, pt modules.RPCPriceTable, id string, amount types.Currency) error
+	DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool) ([]byte, error)
 }
 
 // hostRPCClient wraps all necessities to communicate with a host
 type hostRPCClient struct {
-	staticPaymentProvider modules.PaymentProvider
-	staticMuxAddress      string
-	staticHostKey         types.SiaPublicKey
+	staticHostAddress string
+	staticMuxAddress  string
+	staticHostKey     types.SiaPublicKey
 
-	priceTable        modules.RPCPriceTable
-	priceTableUpdated int64
-
-	// blockHeight is cached on every client and gets updated by the renter when
-	// consensus changes. This to avoid fetching the block height from the
-	// renter on every RPC call.
+	// The current block height is cached on the client and gets updated by the
+	// renter when consensus changes. This to avoid fetching the block height
+	// from the renter on every RPC call.
 	blockHeight types.BlockHeight
 
-	renter *Renter
-	log    *persist.Logger
-	tg     *threadgroup.ThreadGroup
-	mu     sync.Mutex
+	log *persist.Logger
+	tg  *threadgroup.ThreadGroup
+	mu  sync.Mutex
+	r   *Renter
 }
 
 // newRPCClient returns a new RPC client.
-func (r *Renter) newRPCClient(pp modules.PaymentProvider, he modules.HostDBEntry) (RPCClient, error) {
-	client := hostRPCClient{
-		staticPaymentProvider: pp,
-		staticMuxAddress:      he.NetAddress.Host() + fmt.Sprintf(":%d", he.HostExternalSettings.SiaMuxPort),
-		staticHostKey:         he.PublicKey,
-		blockHeight:           r.blockHeight,
-		log:                   r.log,
-		tg:                    &r.tg,
-		renter:                r,
+func (r *Renter) newRPCClient(he modules.HostDBEntry) RPCClient {
+	return &hostRPCClient{
+		staticHostAddress: string(he.NetAddress),
+		staticMuxAddress:  he.NetAddress.Host() + fmt.Sprintf(":%d", he.HostExternalSettings.SiaMuxPort),
+		staticHostKey:     he.PublicKey,
+		log:               r.log,
+		tg:                &r.tg,
+		r:                 r,
 	}
-
-	if err := client.UpdatePriceTable(); err != nil {
-		// Return nil if we weren't able fetch the host's pricing.
-		return nil, err
-	}
-	return &client, nil
 }
 
 // UpdateBlockHeight is called by the renter when it processes a consensus
-// change. Every time the block height gets updated we potentially also update
-// the RPC price table to get the host's latest prices.
-func (c *hostRPCClient) UpdateBlockHeight(blockHeight types.BlockHeight) {
-	var updatePriceTable bool
-	defer func() {
-		if updatePriceTable {
-			go c.threadedUpdatePriceTable()
-		}
-	}()
-
+// change. The RPC client keeps the current block height as state to avoid
+// fetching it from the renter on every RPC call.
+func (c *hostRPCClient) UpdateBlockHeight(bh types.BlockHeight) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.blockHeight = blockHeight
-
-	// This is more of a sanity check to prevent underflow. This could only be
-	// the case if the renter and host's blockheight differ by a large amount of
-	// blocks.
-	if c.priceTableUpdated > c.priceTable.Expiry {
-		updatePriceTable = true
-		return
-	}
-
-	// Update the price table if the current blockheight has surpassed half of
-	// the expiry window. The expiry window is defined as the time (in blocks)
-	// since we last updated the RPC price table until its expiry block height.
-	window := c.priceTable.Expiry - c.priceTableUpdated
-	if time.Now().Unix() > c.priceTableUpdated+window/2 {
-		updatePriceTable = true
-		return
-	}
+	c.blockHeight = bh
 }
 
 // UpdatePriceTable performs the updatePriceTableRPC on the host.
-func (c *hostRPCClient) UpdatePriceTable() error {
+func (c *hostRPCClient) UpdatePriceTable(pp modules.PaymentProvider) (modules.RPCPriceTable, error) {
 	// Fetch a stream from the mux
-	stream, err := c.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	stream, err := c.r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
-		return err
+		return modules.RPCPriceTable{}, err
 	}
 
 	// Write the RPC id on the stream, there's no request object as it's
 	// implied from the RPC id.
 	err = encoding.WriteObject(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
-		return err
+		return modules.RPCPriceTable{}, err
 	}
 
 	// Receive RPCUpdatePriceTableResponse
 	var uptr modules.RPCUpdatePriceTableResponse
 	// TODO if this blocks siad dies
 	if err := encoding.ReadObject(stream, &uptr, uint64(modules.RPCMinLen)); err != nil {
-		return err
+		return modules.RPCPriceTable{}, err
 	}
 	var updated modules.RPCPriceTable
 	if err := json.Unmarshal(uptr.PriceTableJSON, &updated); err != nil {
-		return err
+		return modules.RPCPriceTable{}, err
 	}
 
 	// Perform gouging check
-	allowance := c.renter.hostContractor.Allowance()
+	allowance := c.r.hostContractor.Allowance()
 	if err := checkPriceTableGouging(allowance, updated); err != nil {
 		// TODO: (follow-up) this should negatively affect the host's score
-		return err
+		return modules.RPCPriceTable{}, err
 	}
 
 	// Provide payment for the RPC
 	// TODO: don't look at me harry, I'm hideous.
 	cost := updated.Costs[modules.RPCFundEphemeralAccount.DontLookAtMeHarryImHideous()]
-	_, err = c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream, c.blockHeight)
+	_, err = pp.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream, c.blockHeight)
 	if err != nil {
-		return err
+		return modules.RPCPriceTable{}, err
 	}
 
-	c.mu.Lock()
-	c.priceTable = updated
-	c.priceTableUpdated = time.Now().Unix()
-	c.mu.Unlock()
-	return nil
+	return updated, nil
 }
 
 // FundEphemeralAccount will deposit the given amount into the account with id
 // by calling the fundEphemeralAccountRPC on the host.
-func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) error {
+func (c *hostRPCClient) FundEphemeralAccount(pp modules.PaymentProvider, pt modules.RPCPriceTable, id string, amount types.Currency) error {
 	c.mu.Lock()
-	pt := c.priceTable
 	bh := c.blockHeight
 	c.mu.Unlock()
 
@@ -172,7 +133,7 @@ func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) e
 	}
 
 	// Get a stream
-	stream, err := c.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	stream, err := c.r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return err
 	}
@@ -186,7 +147,7 @@ func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) e
 
 	// Provide payment for the RPC and await response
 	payment := amount.Add(cost)
-	_, err = c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCFundEphemeralAccount, payment, stream, bh)
+	_, err = pp.ProvidePaymentForRPC(modules.RPCFundEphemeralAccount, payment, stream, bh)
 	if err != nil {
 		return err
 	}
@@ -200,9 +161,8 @@ func (c *hostRPCClient) FundEphemeralAccount(id string, amount types.Currency) e
 	return nil
 }
 
-func (c *hostRPCClient) DownloadSectorByRoot(offset, length uint64, sectorRoot crypto.Hash, merkleProof bool) ([]byte, error) {
+func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool) ([]byte, error) {
 	c.mu.Lock()
-	pt := c.priceTable
 	bh := c.blockHeight
 	c.mu.Unlock()
 
@@ -218,7 +178,7 @@ func (c *hostRPCClient) DownloadSectorByRoot(offset, length uint64, sectorRoot c
 	programPrice := modules.ConvertCostToPrice(programCost, &pt)
 
 	// Get a stream
-	stream, err := c.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
+	stream, err := c.r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +190,7 @@ func (c *hostRPCClient) DownloadSectorByRoot(offset, length uint64, sectorRoot c
 		return nil, err
 	}
 	// Provide payment for the RPC
-	_, err = c.staticPaymentProvider.ProvidePaymentForRPC(modules.RPCExecuteProgram, programPrice, stream, bh)
+	_, err = pp.ProvidePaymentForRPC(modules.RPCExecuteProgram, programPrice, stream, bh)
 	if err != nil {
 		return nil, err
 	}
@@ -261,20 +221,6 @@ func (c *hostRPCClient) DownloadSectorByRoot(offset, length uint64, sectorRoot c
 		panic("merkle proof not supported yet")
 	}
 	return resp.Output, err
-}
-
-// threadedUpdatePriceTable will update the RPC price table by fetching the
-// host's latest prices.
-func (c *hostRPCClient) threadedUpdatePriceTable() {
-	if err := c.tg.Add(); err != nil {
-		return
-	}
-	defer c.tg.Done()
-
-	err := c.UpdatePriceTable()
-	if err != nil {
-		c.log.Println("Failed to update the RPC price table", err)
-	}
 }
 
 // checkPriceTableGouging checks that the host is not gouging the renter during
