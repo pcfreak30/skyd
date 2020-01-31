@@ -102,6 +102,7 @@ var (
 	errNilTpool   = errors.New("host cannot use a nil transaction pool")
 	errNilWallet  = errors.New("host cannot use a nil wallet")
 	errNilGateway = errors.New("host cannot use nil gateway")
+	errNilSiaMux  = errors.New("host cannot use nil siamux")
 
 	// persistMetadata is the header that gets written to the persist file, and
 	// is used to recognize other persist files.
@@ -341,6 +342,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	}
 	if wallet == nil {
 		return nil, errNilWallet
+	}
+	if mux == nil {
+		return nil, errNilSiaMux
 	}
 
 	// Create the host object.

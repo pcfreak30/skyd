@@ -232,7 +232,14 @@ func (h *Host) initNetworking(address string) (err error) {
 
 	// Launch the listener.
 	go h.threadedListen(threadedListenerClosedChan)
-	return h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.handleStream)
+
+	if err := h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.handleStream); err != nil {
+		return errors.AddContext(err, "Failed to subscribe to the SiaMux")
+	}
+	h.tg.OnStop(func() {
+		h.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
+	})
+	return nil
 }
 
 // threadedHandleConn handles an incoming connection to the host, typically an
