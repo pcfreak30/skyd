@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -17,6 +18,15 @@ type (
 	}
 	// InstructionSpecifier specifies the type of the instruction.
 	InstructionSpecifier types.Specifier
+
+	// MDMInstructionResponse.
+	MDMInstructionResponse struct {
+		Error         string
+		NewSize       uint64
+		NewMerkleRoot crypto.Hash
+		Output        []byte
+		Proof         []crypto.Hash
+	}
 )
 
 // MDM instruction cost component specifiers

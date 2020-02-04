@@ -33,7 +33,7 @@ type RPCClient interface {
 	UpdateBlockHeight(bh types.BlockHeight)
 	UpdatePriceTable(pp modules.PaymentProvider) (modules.RPCPriceTable, error)
 	FundEphemeralAccount(pp modules.PaymentProvider, pt modules.RPCPriceTable, id string, amount types.Currency) error
-	DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool) ([]byte, error)
+	DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool, fcid types.FileContractID) ([]byte, error)
 }
 
 // hostRPCClient wraps all necessities to communicate with a host
@@ -54,11 +54,14 @@ type hostRPCClient struct {
 }
 
 // newRPCClient returns a new RPC client.
-func (r *Renter) newRPCClient(he modules.HostDBEntry) RPCClient {
+func (r *Renter) newRPCClient(he modules.HostDBEntry, bh types.BlockHeight) RPCClient {
+	muxAddress := he.NetAddress.Host() + fmt.Sprintf(":%d", he.HostExternalSettings.SiaMuxPort)
+
 	return &hostRPCClient{
 		staticHostAddress: string(he.NetAddress),
-		staticMuxAddress:  he.NetAddress.Host() + fmt.Sprintf(":%d", he.HostExternalSettings.SiaMuxPort),
+		staticMuxAddress:  muxAddress,
 		staticHostKey:     he.PublicKey,
+		blockHeight:       bh,
 		log:               r.log,
 		tg:                &r.tg,
 		r:                 r,
@@ -81,6 +84,7 @@ func (c *hostRPCClient) UpdatePriceTable(pp modules.PaymentProvider) (modules.RP
 	if err != nil {
 		return modules.RPCPriceTable{}, err
 	}
+	defer stream.Close()
 
 	// Write the RPC id on the stream, there's no request object as it's
 	// implied from the RPC id.
@@ -139,8 +143,17 @@ func (c *hostRPCClient) FundEphemeralAccount(pp modules.PaymentProvider, pt modu
 	}
 	defer stream.Close()
 
-	// Write the RPC id and RPCFundEphemeralAccountRequest object on the stream.
-	_, err = stream.Write(encoding.MarshalAll(modules.RPCFundEphemeralAccount, modules.RPCFundEphemeralAccountRequest{AccountID: id}))
+	// Identify the RPC by writing the RPC id and price table UUID
+	err = encoding.WriteObject(stream, modules.RPCFundEphemeralAccount)
+	if err != nil {
+		return err
+	}
+	err = encoding.WriteObject(stream, pt.UUID)
+	if err != nil {
+		return err
+	}
+	// Send the request
+	err = encoding.WriteObject(stream, modules.RPCFundEphemeralAccountRequest{AccountID: id})
 	if err != nil {
 		return err
 	}
@@ -161,7 +174,7 @@ func (c *hostRPCClient) FundEphemeralAccount(pp modules.PaymentProvider, pt modu
 	return nil
 }
 
-func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool) ([]byte, error) {
+func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool, fcid types.FileContractID) ([]byte, error) {
 	c.mu.Lock()
 	bh := c.blockHeight
 	c.mu.Unlock()
@@ -184,32 +197,53 @@ func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modu
 	}
 	defer stream.Close()
 
-	// Write the RPC id and RPCFundEphemeralAccountRequest object on the stream.
-	_, err = stream.Write(encoding.MarshalAll(modules.RPCExecuteProgram, modules.RPCExecuteProgramRequest{FileContractID: types.FileContractID{}}))
+	// Identify the RPC by writing the RPC id and price table UUID
+	err = encoding.WriteObject(stream, modules.RPCExecuteProgram)
 	if err != nil {
 		return nil, err
 	}
+	err = encoding.WriteObject(stream, pt.UUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send the request
+	err = encoding.WriteObject(stream, modules.RPCExecuteProgramRequest{FileContractID: fcid})
+	if err != nil {
+		return nil, err
+	}
+
 	// Provide payment for the RPC
 	_, err = pp.ProvidePaymentForRPC(modules.RPCExecuteProgram, programPrice, stream, bh)
 	if err != nil {
 		return nil, err
 	}
+
 	// Send instructions.
 	if err := encoding.WriteObject(stream, instructions); err != nil {
 		return nil, err
 	}
+
 	// Send length of program data.
 	if err := encoding.WriteObject(stream, dataLen); err != nil {
 		return nil, err
 	}
+
+	// Send program data (Note: do not prefix w/length).
+	_, err = stream.Write(programData)
+	if err != nil {
+		return nil, err
+	}
+
 	// Read response.
-	var resp mdm.Output
+	var resp modules.MDMInstructionResponse
 	err = encoding.ReadObject(stream, &resp, 4096) // TODO
 	if err != nil {
 		return nil, err
 	}
+
 	// Check response error.
-	if resp.Error != nil {
+	if resp.Error != "TODO" {
 		return nil, errors.AddContext(err, "failed to download sector")
 	}
 	// Sanity check length.

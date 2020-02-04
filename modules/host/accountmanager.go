@@ -1,6 +1,7 @@
 package host
 
 import (
+	"fmt"
 	"math"
 	"math/bits"
 	"sync"
@@ -462,6 +463,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
+		fmt.Println("Withdrawal of %v exceeds balance of %v", amount.HumanString(), acc.balance.HumanString())
 		acc.blockedWithdrawals.Push(blockedWithdrawal{
 			withdrawal:   msg,
 			priority:     priority,

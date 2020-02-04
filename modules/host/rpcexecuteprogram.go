@@ -95,20 +95,30 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPri
 	if err != nil {
 		return errors.AddContext(err, "Failed to get storage obligation")
 	}
+
 	// TODO: figure out how to get initial contract size without locking.
 	mso := newMDMStorageObligation(so, h)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, instructions, cost, mso, dataLen, stream)
 	if err != nil {
 		return errors.AddContext(err, "failed to execute program")
 	}
-	for output := range outputs {
-		// TODO: handle output
-		if output.Error != nil {
-			panic(fmt.Sprint("instruction encountered error", output.Error))
-		}
+
+	// TODO handle multiple
+	output := <-outputs
+	err = encoding.WriteObject(stream, modules.MDMInstructionResponse{
+		Output:        output.Output,
+		NewMerkleRoot: output.NewMerkleRoot,
+		NewSize:       output.NewSize,
+		Proof:         output.Proof,
+		Error:         "TODO",
+	})
+	if err != nil {
+		return errors.AddContext(err, "Failed to send output")
 	}
+
 	return nil
 }

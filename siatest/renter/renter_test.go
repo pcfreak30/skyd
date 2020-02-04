@@ -79,11 +79,11 @@ func TestRenterOne(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
-		{"TestLocalRepair", testLocalRepair},
-		{"TestClearDownloadHistory", testClearDownloadHistory},
+		// {"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
+		// {"TestLocalRepair", testLocalRepair},
+		// {"TestClearDownloadHistory", testClearDownloadHistory},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
-		{"TestDirectories", testDirectories},
+		// {"TestDirectories", testDirectories},
 	}
 
 	// Run tests
@@ -2266,6 +2266,63 @@ func testOverspendAllowance(t *testing.T, tg *siatest.TestGroup) {
 	allocated := rg.FinancialMetrics.TotalAllocated
 	if funds.Cmp(allocated) < 0 {
 		t.Fatalf("%v allocated exceeds allowance of %v", allocated, funds)
+	}
+}
+
+// TestRenterDownloadFile
+func TestRenterDownloadFile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	groupParams := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
+
+	// Get the renter
+	r := tg.Renters()[0]
+
+	// Remember hosts with whom there are contracts
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contractHosts := make(map[string]struct{})
+	for _, c := range rc.ActiveContracts {
+		if _, ok := contractHosts[c.HostPublicKey.String()]; ok {
+			continue
+		}
+		contractHosts[c.HostPublicKey.String()] = struct{}{}
+	}
+
+	// Upload a file
+	_, rf, err := r.UploadNewFileBlocking(100, 2, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be at redundancy of 1.5
+	file, err := r.RenterFileGet(rf.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.File.Redundancy != 1.5 {
+		t.Fatal("Expected filed redundancy to be 1.5 but was", file.File.Redundancy)
+	}
+
+	// Verify we can download the file
+	_, _, err = r.DownloadToDisk(rf, false)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

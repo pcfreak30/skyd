@@ -3,6 +3,7 @@ package host
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -14,9 +15,12 @@ import (
 // managedRPCUpdatePriceTable handles the RPC request from the renter to fetch
 // the host's latest RPC price table.
 func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
-	h.mu.RLock()
-	pt := h.priceTable
-	h.mu.RUnlock()
+	// clone the host's price table and keep track of it
+	h.mu.Lock()
+	expiry := time.Now().Add(rpcPriceGuaranteePeriod).Unix()
+	pt := modules.CloneRPCPriceTable(expiry, h.priceTable)
+	h.uuidToPriceTable[pt.UUID] = pt
+	h.mu.Unlock()
 
 	// json encode the RPC price table
 	ptBytes, err := json.Marshal(pt)

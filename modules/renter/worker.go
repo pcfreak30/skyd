@@ -137,6 +137,25 @@ func (w *worker) managedBlockUntilReady() bool {
 		case <-time.After(offlineCheckFrequency):
 		}
 	}
+
+	timestamp := func() int64 {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return w.priceTableUpdated
+	}
+
+	// Check the price table updated timestamp. If the worker has not yet
+	// received the host's prices, we block until it has.
+	for timestamp() == 0 {
+		select {
+		case <-w.renter.tg.StopChan():
+			return false
+		case <-w.killChan:
+			return false
+		case <-time.After(priceTableCheckFrequency):
+		}
+	}
+
 	return true
 }
 
@@ -274,7 +293,7 @@ func (w *worker) scheduleRefillAccount() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) (*worker, error) {
 	he, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -293,30 +312,21 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 
 		staticAccount:       openAccount(hostPubKey, r.hostContractor),
 		staticBalanceTarget: balanceTarget,
-		staticRPCClient:     r.newRPCClient(he),
+		staticRPCClient:     r.newRPCClient(he, bh),
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}
 
-	// Defer an initial price table update.
-	defer func() {
-		if err := w.renter.tg.Add(); err != nil {
-			return
-		}
+	// Initialize the worker in a separate goroutine. This process will fetch
+	// the host's price table and kickstart the periodic price table updates.
+	if err := w.renter.tg.Add(); err != nil {
+		return w, nil
+	}
+	go func() {
 		defer w.renter.tg.Done()
-
-		if err := w.managedUpdatePriceTable(); err != nil {
-			// TODO: error handling
-			return
-		}
-
-		w.mu.Lock()
-		frequency := w.priceTable.Expiry - w.priceTableUpdated/2
-		w.mu.Unlock()
-
-		go w.threadedUpdatePriceTable(frequency)
+		w.threadedInitialize()
 	}()
 
 	return w, nil
@@ -330,11 +340,33 @@ func (w *worker) UpdateBlockHeight(blockHeight types.BlockHeight) {
 	w.staticRPCClient.UpdateBlockHeight(blockHeight)
 }
 
+// threadedInitialize fetches the host's RPC price table for the first time and
+// kickstarts the periodic price table updates.
+func (w *worker) threadedInitialize() {
+	// fetch the host's price table
+	if err := w.managedUpdatePriceTable(); err != nil {
+		return // TODO: error handling
+	}
+
+	// calculate the frequency with which we should update the price table
+	w.mu.Lock()
+	frequency := (w.priceTable.Expiry - w.priceTableUpdated) / 2
+	w.mu.Unlock()
+
+	go w.threadedUpdatePriceTable(frequency)
+}
+
 // threadedUpdatePriceTable will periodically update the RPC price table to
 // fetch the host's latest prices. This is necessary as the host will refuse
 // renters that have an outdated price table.
 func (w *worker) threadedUpdatePriceTable(frequency int64) {
 	for {
+		select {
+		case <-w.renter.tg.StopChan():
+			break
+		case <-time.After(time.Duration(frequency) * time.Second):
+		}
+
 		func() {
 			if err := w.renter.tg.Add(); err != nil {
 				return
@@ -347,18 +379,17 @@ func (w *worker) threadedUpdatePriceTable(frequency int64) {
 			}
 		}()
 
-		select {
-		case <-w.renter.tg.StopChan():
-			break
-		case <-time.After(time.Duration(frequency)):
-			continue
-		}
 	}
 }
 
 // managedUpdatePriceTable calls the updatePriceTable RPC on the host
 func (w *worker) managedUpdatePriceTable() error {
-	pt, err := w.staticRPCClient.UpdatePriceTable(w.staticAccount)
+	pp, err := w.paymentProvider()
+	if err != nil {
+		return err
+	}
+
+	pt, err := w.staticRPCClient.UpdatePriceTable(pp)
 	if err != nil {
 		return err
 	}
@@ -368,4 +399,14 @@ func (w *worker) managedUpdatePriceTable() error {
 	w.priceTableUpdated = time.Now().Unix()
 	w.mu.Unlock()
 	return nil
+}
+
+// paymentProvider returns a payment provider, if the account has available
+// balance, we will always pay from ephemeral account, otherwise use we pay by
+// contract
+func (w *worker) paymentProvider() (modules.PaymentProvider, error) {
+	if w.staticAccount.AvailableBalance().IsZero() {
+		return w.renter.hostContractor.PaymentProvider(w.staticHostPubKey)
+	}
+	return w.staticAccount, nil
 }

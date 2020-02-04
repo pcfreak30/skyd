@@ -831,16 +831,15 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 			r.blockHeight++
 		}
 	}
+	bh := r.blockHeight
+	r.mu.Unlock(id)
 
 	// Notify all rpc clients of the new block height
 	if cc.Synced {
 		for _, w := range r.staticWorkerPool.workers {
-			w.UpdateBlockHeight(r.blockHeight)
+			w.UpdateBlockHeight(bh)
 		}
 	}
-
-	r.mu.Unlock(id)
-
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the

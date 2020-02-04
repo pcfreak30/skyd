@@ -338,8 +338,8 @@ func (h *Host) handleStream(stream siamux.Stream) {
 	}
 	defer h.tg.Done()
 
-	// Close the conn on host.Close or when the method terminates, whichever comes
-	// first.
+	// Close the conn on host.Close or when the method terminates, whichever
+	// comes first.
 	defer stream.Close()
 
 	// Set an initial duration that is generous, but finite. RPCs can extend
@@ -352,7 +352,6 @@ func (h *Host) handleStream(stream siamux.Stream) {
 	//	}
 
 	var rpcID modules.RPCSpecifier
-	var rpcPTS modules.RPCPriceTableSpecifier
 	var pt *modules.RPCPriceTable
 	err = encoding.ReadObject(stream, &rpcID, uint64(modules.RPCMinLen))
 	if err != nil {
@@ -361,6 +360,7 @@ func (h *Host) handleStream(stream siamux.Stream) {
 		return
 	}
 	if rpcID != modules.RPCUpdatePriceTable {
+		var rpcPTS modules.RPCPriceTableSpecifier
 		err = encoding.ReadObject(stream, &rpcPTS, uint64(modules.RPCMinLen))
 		if err != nil {
 			// TODO
@@ -380,6 +380,9 @@ func (h *Host) handleStream(stream siamux.Stream) {
 	// table's expiry. In which case we should not accept the RPC and
 	// indicate to the renter he has outdated prices.
 	switch rpcID {
+	case modules.RPCFundEphemeralAccount:
+		err = h.managedRPCFundEphemeralAccount(stream, pt)
+		err = errors.AddContext(err, "Failed to handle FundEphemeralAccountRPC")
 	case modules.RPCUpdatePriceTable:
 		// Note this RPC call will update the price table, this way the host
 		// has a copy of the same price table the renter has and can verify

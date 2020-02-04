@@ -3,13 +3,13 @@ package contractor
 import (
 	"errors"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // errors
@@ -27,8 +27,8 @@ type paymentProviderContract struct {
 	contractSet *proto.ContractSet
 }
 
-// PaymentProvider returns a new PaymentProvider for the given host, it allows
-// payments to be made from the contract the renter has with the host.
+// PaymentProvider returns a new PaymentProvider for the given host, it
+// allows payments to be made from the contract the renter has with the host.
 func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.PaymentProvider, error) {
 	_, exists, err := c.hdb.Host(host)
 	if !exists || err != nil {
@@ -49,12 +49,6 @@ func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.PaymentPr
 // ProvidePaymentForRPC fulfills the PaymentProvider interface. It uses the
 // paymentProvider's underlying contract to make payment for an RPC call.
 func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
-	// For now, only the RPCFundEphemeralAccount should be paid from a contract.
-	// If this changes, makes sure to record the intent depending on the rpcID.
-	if rpcID != modules.RPCFundEphemeralAccount {
-		build.Critical("Unexpected RPC id, only RPCFundEphemeralAccount is paid through a file contract.")
-	}
-
 	// acquire a safe contract
 	sc, exists := p.contractSet.Acquire(p.contractID)
 	if !exists {
@@ -77,8 +71,8 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifie
 	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
-	// record the intent to fund the ephemeral account
-	walTxn, err := sc.RecordFundEphemeralAccountIntent(rev, payment)
+	// record the payment intent
+	walTxn, err := recordIntent(rpcID, sc, rev, payment)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
@@ -103,20 +97,36 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifie
 	}
 
 	// verify the host's signature
-	hash := crypto.HashAll(pRequest, pbcRequest)
+	// TODO
+	hash := crypto.HashAll(rev)
 	var pk crypto.PublicKey
 	copy(pk[:], metadata.HostPublicKey.Key)
 	if err := crypto.VerifyHash(hash, pk, payByResponse.Signature); err != nil {
 		return types.ZeroCurrency, errors.New("could not verify host's signature")
 	}
-
 	// commit the intent
-	err = sc.CommitFundEphemeralAccountIntent(walTxn, signedTxn, payment)
+	err = commitIntent(rpcID, sc, walTxn, signedTxn, payment)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
 
-	return payByResponse.Amount, nil
+	return payment, nil
+}
+
+func recordIntent(rpcID modules.RPCSpecifier, sc *proto.SafeContract, rev types.FileContractRevision, amount types.Currency) (*writeaheadlog.Transaction, error) {
+	switch rpcID {
+	case modules.RPCFundEphemeralAccount:
+		return sc.RecordFundEphemeralAccountIntent(rev, amount)
+	}
+	return nil, nil
+}
+
+func commitIntent(rpcID modules.RPCSpecifier, sc *proto.SafeContract, t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency) error {
+	switch rpcID {
+	case modules.RPCFundEphemeralAccount:
+		return sc.CommitFundEphemeralAccountIntent(t, signedTxn, amount)
+	}
+	return nil
 }
 
 // buildPayByContractRequest uses a revision and signature to build the

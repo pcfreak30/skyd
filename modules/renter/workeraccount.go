@@ -96,7 +96,7 @@ func (a *account) ProvidePaymentForRPC(rpcID modules.RPCSpecifier, amount types.
 		payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, blockHeight)
 		a.managedProcessFundResult(amount, err == nil)
 
-		return payment, errors.AddContext(err, fmt.Sprintf("Could not provide payment for RPC %v", rpcID))
+		return payment, errors.AddContext(err, fmt.Sprintf("Could not provide payment for RPC %s", rpcID))
 	}
 
 	provider := a.paymentProvider()
@@ -104,7 +104,7 @@ func (a *account) ProvidePaymentForRPC(rpcID modules.RPCSpecifier, amount types.
 	payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, blockHeight)
 	a.managedProcessPaymentResult(amount, err == nil)
 
-	return payment, errors.AddContext(err, fmt.Sprintf("Could not provide payment for RPC %v", rpcID))
+	return payment, errors.AddContext(err, fmt.Sprintf("Could not provide payment for RPC %s", rpcID))
 }
 
 // paymentProvider returns an object that implements the PaymentProvider
@@ -143,7 +143,13 @@ func (a *account) paymentProvider() modules.PaymentProvider {
 			return types.ZeroCurrency, err
 		}
 
-		return payByResponse.Amount, payByResponse.AccountManagerResponse
+		// TODO: redo the eaErr thing
+		var eaErr error
+		if payByResponse.AccountManagerResponse != "ok" {
+			eaErr = errors.New(payByResponse.AccountManagerResponse)
+		}
+
+		return payByResponse.Amount, eaErr
 	})
 }
 

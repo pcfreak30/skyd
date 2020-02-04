@@ -75,3 +75,17 @@ func NewRPCPriceTable(expiry int64) RPCPriceTable {
 	fastrand.Read(pt.UUID[:])
 	return pt
 }
+
+// CloneRPCPriceTable returns a copy of the given price table, with an updated
+// UUID and expiry
+// TODO: clean this up
+func CloneRPCPriceTable(expiry int64, pt *RPCPriceTable) *RPCPriceTable {
+	cloned := NewRPCPriceTable(expiry)
+
+	for k, v := range pt.Costs {
+		cloned.Costs[k] = v
+	}
+
+	fastrand.Read(cloned.UUID[:])
+	return &cloned
+}

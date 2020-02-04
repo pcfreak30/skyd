@@ -204,6 +204,14 @@ var (
 		Testing:  250 * time.Millisecond,
 	}).(time.Duration)
 
+	// priceTableCheckFrequency is how long the renter will wait to check the
+	// price status if it has not received the host's prices yet.
+	priceTableCheckFrequency = build.Select(build.Var{
+		Dev:      1 * time.Second,
+		Standard: 1 * time.Second,
+		Testing:  1 * time.Second,
+	}).(time.Duration)
+
 	// repairLoopResetFrequency is the frequency with which the repair loop will
 	// reset entirely, pushing the root directory back on top. This is a
 	// temporary measure to ensure that even if a user is continuously

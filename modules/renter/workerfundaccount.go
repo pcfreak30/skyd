@@ -88,7 +88,17 @@ func (w *worker) managedPerformFundAcountJob() bool {
 	w.staticFundAccountJobQueue.queue = w.staticFundAccountJobQueue.queue[1:]
 	w.staticFundAccountJobQueue.mu.Unlock()
 
-	if err := w.staticRPCClient.FundEphemeralAccount(w.staticAccount, w.priceTable, w.staticAccount.staticID, job.amount); err != nil {
+	pp, err := w.renter.hostContractor.PaymentProvider(w.staticHostPubKey)
+	if err != nil {
+		job.sendResult(types.ZeroCurrency, err)
+		return false
+	}
+
+	w.staticAccount.managedProcessFundIntent(job.amount)
+	err = w.staticRPCClient.FundEphemeralAccount(pp, w.priceTable, w.staticAccount.staticID, job.amount)
+	w.staticAccount.managedProcessFundResult(job.amount, err == nil)
+
+	if err != nil {
 		job.sendResult(types.ZeroCurrency, err)
 		return true
 	}

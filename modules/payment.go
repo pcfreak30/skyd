@@ -58,7 +58,7 @@ type PaymentProvider interface {
 // PaymentProcessor is the interface implemented when receiving payment for an
 // RPC.
 type PaymentProcessor interface {
-	ProcessFundEphemeralAccountRPC(stream siamux.Stream, pt RPCPriceTable) (types.Currency, error)
+	ProcessFundEphemeralAccountRPC(stream siamux.Stream, pt RPCPriceTable, accountID string) (types.Currency, error)
 	ProcessPaymentForRPC(stream siamux.Stream) (types.Currency, error)
 }
 
@@ -96,8 +96,7 @@ type (
 	// PayByEphemeralAccountRequest
 	PayByEphemeralAccountResponse struct {
 		Amount                 types.Currency
-		AcceptRejectMessage    string
-		AccountManagerResponse error
+		AccountManagerResponse string
 	}
 
 	// PayByContractRequest holds all payment details to pay from a file
@@ -113,9 +112,7 @@ type (
 	// PayByContractResponse is the object sent in response to the
 	// PayByContractRequest
 	PayByContractResponse struct {
-		Amount              types.Currency
-		AcceptRejectMessage string
-		Signature           crypto.Signature
+		Signature crypto.Signature
 	}
 
 	// WithdrawalMessage contains all details to spend from an ephemeral account

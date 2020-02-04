@@ -123,8 +123,8 @@ var (
 	// its prices to the renter.
 	rpcPriceGuaranteePeriod = build.Select(build.Var{
 		Standard: 10 * time.Minute,
-		Dev:      1 * time.Minute,
-		Testing:  5 * time.Second,
+		Dev:      5 * time.Minute,
+		Testing:  5 * time.Minute, // TODO switch back to seconds
 	}).(time.Duration)
 )
 
@@ -282,12 +282,14 @@ func (h *Host) threadedUpdatePriceTable() {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
-	priceTable := modules.NewRPCPriceTable(time.Now().Add(rpcPriceGuaranteePeriod).Unix())
+	priceTable := modules.NewRPCPriceTable(0) // expiry set on request
 
 	// TODO: move along, nothing to see here
 	// TODO: fix this disgusting mess with the RPC IDs
 	// recalculate the price for every RPC
 	priceTable.Costs[modules.RPCUpdatePriceTable.DontLookAtMeHarryImHideous()] = h.managedCalculateUpdatePriceTableRPCPrice()
+
+	priceTable.Costs[modules.RPCFundEphemeralAccount.DontLookAtMeHarryImHideous()] = h.managedCalculateUpdatePriceTableRPCPrice()
 
 	// TODO: hardcoded MDM costs, needs a better place
 	his := h.InternalSettings()
@@ -309,19 +311,21 @@ func (h *Host) managedUpdatePriceTable() {
 	if h.priceTableHeap.Len() == 0 {
 		return
 	}
-	oldest := heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
-	for {
-		if oldest.Expiry < time.Now().Unix() {
-			heap.Push(&h.priceTableHeap, oldest)
-			break
-		}
+	// TODO: has bug - expires immediately
+	// oldest := heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
+	// for {
+	// 	if oldest.Expiry < time.Now().Unix() {
+	// 		heap.Push(&h.priceTableHeap, oldest)
+	// 		break
+	// 	}
 
-		delete(h.uuidToPriceTable, oldest.UUID)
-		if h.priceTableHeap.Len() == 0 {
-			return
-		}
-		oldest = heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
-	}
+	// 	fmt.Println("DELETING")
+	// 	delete(h.uuidToPriceTable, oldest.UUID)
+	// 	if h.priceTableHeap.Len() == 0 {
+	// 		return
+	// 	}
+	// 	oldest = heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
+	// }
 }
 
 // newHost returns an initialized Host, taking a set of dependencies as input.

@@ -52,7 +52,7 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream siamux.Stream) (types.Cur
 // the intention of funding an ephemeral account. This is treated as a special
 // case because it requires some coordination between the FC fsync and the EA
 // fsync. See callDeposit in accountmanager.go for more details.
-func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, pt modules.RPCPriceTable) (types.Currency, error) {
+func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, pt modules.RPCPriceTable, accountID string) (types.Currency, error) {
 	maxLen := uint64(modules.RPCMinLen)
 
 	// read the PaymentRequest
@@ -70,12 +70,6 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, 
 	var pbcr modules.PayByContractRequest
 	if err := encoding.ReadObject(stream, &pbcr, maxLen); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read PayByContractRequest", err)
-	}
-
-	// read the FundEphemeralAccountRequest
-	var fear modules.RPCFundEphemeralAccountRequest
-	if err := encoding.ReadObject(stream, &fear, maxLen); err != nil {
-		return failTo("ProcessFundEphemeralAccountRPC", "read FundEphemeralAccountRequest", err)
 	}
 
 	// lock the storage obligation
@@ -113,7 +107,7 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, 
 	// fsynced we'll close this so the account manager can properly lower the
 	// host's outstanding risk induced by the (immediate) deposit.
 	syncChan := make(chan struct{})
-	err = p.h.staticAccountManager.callDeposit(fear.AccountID, deposit, syncChan)
+	err = p.h.staticAccountManager.callDeposit(accountID, deposit, syncChan)
 	if err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "verify revision", err)
 	}
@@ -131,6 +125,16 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, 
 	}
 	close(syncChan) // signal FC fsync by closing the sync channel
 
+	// send the response
+	var sig crypto.Signature
+	copy(sig[:], txn.HostSignature().Signature[:])
+	err = encoding.WriteObject(stream, modules.PayByContractResponse{
+		Signature: sig,
+	})
+	if err != nil {
+		return failTo("ProcessPaymentForRPC", "send response", err)
+	}
+
 	return amount, nil
 }
 
@@ -145,9 +149,17 @@ func (p *paymentProcessor) payByEphemeralAccount(stream siamux.Stream) (types.Cu
 		return failTo("ProcessPaymentForRPC", "read PayByEphemeralAccountRequest", err)
 	}
 	// process the request
-	if err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority); err != nil {
-		return failTo("ProcessPaymentForRPC", "withdraw from ephemeral account", err)
+	err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority)
+
+	// TODO: response props don't make sense
+	err = encoding.WriteObject(stream, modules.PayByEphemeralAccountResponse{
+		Amount:                 pbear.Message.Amount,
+		AccountManagerResponse: "ok",
+	})
+	if err != nil {
+		return failTo("ProcessPaymentForRPC", "send PayByEphemeralAccountResponse", err)
 	}
+
 	return pbear.Message.Amount, nil
 }
 
@@ -190,9 +202,21 @@ func (p *paymentProcessor) payByContract(stream siamux.Stream) (types.Currency, 
 	}}
 
 	// update the storage obligation
-	err = p.h.modifyStorageObligation(so, nil, nil, nil)
-	if err != nil {
+	p.h.mu.Lock()
+	if err = p.h.modifyStorageObligation(so, nil, nil, nil); err != nil {
+		p.h.mu.Unlock()
 		return failTo("ProcessPaymentForRPC", "modify storage obligation", err)
+	}
+	p.h.mu.Unlock()
+
+	// send the response
+	var sig crypto.Signature
+	copy(sig[:], txn.HostSignature().Signature[:])
+	err = encoding.WriteObject(stream, modules.PayByContractResponse{
+		Signature: sig,
+	})
+	if err != nil {
+		return failTo("ProcessPaymentForRPC", "send response", err)
 	}
 
 	return amount, nil
