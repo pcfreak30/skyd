@@ -196,7 +196,7 @@ type Host struct {
 	// are congestion, load, liquidity, etc.
 	priceTable       *modules.RPCPriceTable
 	priceTableHeap   priceTableHeap
-	uuidToPriceTable map[modules.RPCPriceTableSpecifier]*modules.RPCPriceTable
+	uuidToPriceTable map[types.ShortSpecifier]*modules.RPCPriceTable
 
 	// Misc state.
 	db         *persist.BoltDatabase
@@ -362,7 +362,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
-		uuidToPriceTable:         make(map[modules.RPCPriceTableSpecifier]*modules.RPCPriceTable),
+		uuidToPriceTable:         make(map[types.ShortSpecifier]*modules.RPCPriceTable),
 
 		priceTableHeap: make(priceTableHeap, 0),
 		persistDir:     persistDir,

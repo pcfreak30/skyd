@@ -5,20 +5,12 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-const (
-	// SpecifierLen is the length in bytes of the RPCPriceTableSpecifier
-	SpecifierLen = 8
-)
-
 type (
-	// RPCPriceTableSpecifier uniquely identifies a price table.
-	RPCPriceTableSpecifier [SpecifierLen]byte
-
 	// RPCPriceTable contains a list of costs associated to RPCs. It is uniquely
 	// identified by its uuid, and is given out by the host which guarantees the
 	// listed costs up until the expiry timestamp.
 	RPCPriceTable struct {
-		UUID   RPCPriceTableSpecifier
+		UUID   types.ShortSpecifier
 		Costs  map[types.Specifier]types.Currency
 		Expiry int64
 	}

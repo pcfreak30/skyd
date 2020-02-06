@@ -360,7 +360,7 @@ func (h *Host) handleStream(stream siamux.Stream) {
 		return
 	}
 	if rpcID != modules.RPCUpdatePriceTable {
-		var rpcPTS modules.RPCPriceTableSpecifier
+		var rpcPTS types.ShortSpecifier
 		err = encoding.ReadObject(stream, &rpcPTS, uint64(modules.RPCMinLen))
 		if err != nil {
 			// TODO
