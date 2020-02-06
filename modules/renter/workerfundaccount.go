@@ -54,7 +54,6 @@ func (w *worker) callQueueFundAccount(amount types.Currency) chan fundAccountJob
 		resultChan: resultChan,
 	})
 	w.staticFundAccountJobQueue.mu.Unlock()
-	w.staticAccount.managedProcessFundIntent(amount)
 	w.staticWake()
 
 	return resultChan
@@ -96,7 +95,6 @@ func (w *worker) managedPerformFundAcountJob() bool {
 	}
 
 	err = w.staticRPCClient.FundEphemeralAccount(pp, w.priceTable, w.staticAccount.staticID, job.amount)
-	w.staticAccount.managedProcessFundResult(job.amount, err == nil)
 
 	if err != nil {
 		job.sendResult(types.ZeroCurrency, err)

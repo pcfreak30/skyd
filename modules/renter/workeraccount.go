@@ -91,10 +91,7 @@ func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, amount types.Curre
 			return types.ZeroCurrency, err
 		}
 
-		a.managedProcessFundIntent(amount)
 		payment, err = provider.ProvidePaymentForRPC(rpcID, amount, stream, blockHeight)
-		a.managedProcessFundResult(amount, err == nil)
-
 		return payment, errors.AddContext(err, fmt.Sprintf("Could not provide payment for RPC %s", rpcID))
 	}
 
@@ -158,11 +155,11 @@ func (a *account) managedProcessFundIntent(amount types.Currency) {
 
 // managedProcessFundResult adjusts the account balance depending on the outcome
 // of the call to fund the account on the host.
-func (a *account) managedProcessFundResult(amount types.Currency, success bool) {
+func (a *account) managedProcessFundResult(result fundAccountJobResult) {
 	a.mu.Lock()
-	a.pendingFunds = a.pendingFunds.Sub(amount)
-	if success {
-		a.balance = a.balance.Add(amount)
+	a.pendingFunds = a.pendingFunds.Sub(result.funded)
+	if result.err == nil {
+		a.balance = a.balance.Add(result.funded)
 	}
 	a.mu.Unlock()
 

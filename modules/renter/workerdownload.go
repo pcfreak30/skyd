@@ -167,7 +167,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	}
 
 	// TODO: remove
-	fmt.Println("Download successful, data received %v", len(pieceData))
+	fmt.Printf("Download successful, data received %v\n", len(pieceData))
 
 	// TODO:
 	//	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))

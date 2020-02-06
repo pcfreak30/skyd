@@ -286,7 +286,24 @@ func (w *worker) scheduleRefillAccount() {
 	// If it's below the threshold, calculate the refill amount and enqueue a
 	// new fund account job
 	refill := w.staticBalanceTarget.Sub(balance)
-	_ = w.callQueueFundAccount(refill)
+
+	w.staticAccount.managedProcessFundIntent(refill)
+	resultChan := w.callQueueFundAccount(refill)
+	if err := w.renter.tg.Add(); err != nil {
+		return
+	}
+	go func() {
+		defer w.renter.tg.Done()
+
+		select {
+		case result := <-resultChan:
+			w.staticAccount.managedProcessFundResult(result)
+		case <-w.killChan:
+			return
+		case <-w.renter.tg.StopChan():
+			return
+		}
+	}()
 
 	// TODO: handle result chan
 	// TODO: add cooldown in case of failure
