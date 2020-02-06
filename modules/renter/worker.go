@@ -303,14 +303,13 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 	}
 
 	// TODO: calc balance target using host settings + renter imposed maximum
-	balanceTarget := types.SiacoinPrecision.Div64(2)
 
 	w := &worker{
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
 
 		staticAccount:       openAccount(hostPubKey, r.hostContractor),
-		staticBalanceTarget: balanceTarget,
+		staticBalanceTarget: types.SiacoinPrecision,
 		staticRPCClient:     r.newRPCClient(he, bh),
 
 		killChan: make(chan struct{}),
@@ -325,7 +324,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 	}
 	go func() {
 		defer w.renter.tg.Done()
-		w.threadedInitialize()
+		w.threadedInit()
 	}()
 
 	return w, nil
@@ -339,19 +338,21 @@ func (w *worker) UpdateBlockHeight(blockHeight types.BlockHeight) {
 	w.staticRPCClient.UpdateBlockHeight(blockHeight)
 }
 
-// threadedInitialize fetches the host's RPC price table for the first time and
-// kickstarts the periodic price table updates.
-func (w *worker) threadedInitialize() {
-	// fetch the host's price table
+// threadedInit runs in the background and fetches the host's RPC price table
+// for the first time. Without it, the worker can't process any jobs. This
+// process will also kickstart the periodic price table updates, depending on
+// the expiry.
+func (w *worker) threadedInit() {
 	if err := w.managedUpdatePriceTable(); err != nil {
-		return // TODO: error handling
+		return // TODO (follow-up) alert? retry?
 	}
 
-	// calculate the frequency with which we should update the price table
+	// The frequency with which we update the RPC price table is dependant on
+	// the host's epxiry. We ensure prices are up-to-date by fetching new prices
+	// at half the expiry window.
 	w.mu.Lock()
 	frequency := (w.priceTable.Expiry - w.priceTableUpdated) / 2
 	w.mu.Unlock()
-
 	go w.threadedUpdatePriceTable(frequency)
 }
 

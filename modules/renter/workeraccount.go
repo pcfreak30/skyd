@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -128,18 +127,14 @@ func (a *account) paymentProvider() modules.PaymentProvider {
 			Message:   msg,
 			Signature: sig,
 		}
-		err := encoding.WriteObject(stream, pRequest)
-		if err != nil {
-			return types.ZeroCurrency, err
-		}
-		err = encoding.WriteObject(stream, pbcRequest)
+		err := modules.RPCWriteAll(stream, pRequest, pbcRequest)
 		if err != nil {
 			return types.ZeroCurrency, err
 		}
 
 		// receive PayByEphemeralAccountResponse
 		var payByResponse modules.PayByEphemeralAccountResponse
-		if err := encoding.ReadObject(stream, &payByResponse, uint64(modules.RPCMinLen)); err != nil {
+		if err := modules.RPCRead(stream, &payByResponse); err != nil {
 			return types.ZeroCurrency, err
 		}
 
@@ -170,6 +165,7 @@ func (a *account) managedProcessFundResult(amount types.Currency, success bool) 
 		a.balance = a.balance.Add(amount)
 	}
 	a.mu.Unlock()
+
 }
 
 // managedProcessPaymentIntent tracks the amount of money that is being spent,

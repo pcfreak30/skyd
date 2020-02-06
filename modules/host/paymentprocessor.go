@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -30,11 +29,9 @@ func (h *Host) NewPaymentProcessor() modules.PaymentProcessor {
 // the type of payment it will either update the file contract or call upon the
 // ephemeral account manager to process the payment.
 func (p *paymentProcessor) ProcessPaymentForRPC(stream siamux.Stream) (types.Currency, error) {
-	maxLen := uint64(modules.RPCMinLen)
-
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
-	if err := encoding.ReadObject(stream, &pr, maxLen); err != nil {
+	if err := modules.RPCRead(stream, &pr); err != nil {
 		return failTo("ProcessPaymentForRPC", "read PaymentRequest", err)
 	}
 	// process payment depending on the payment method
@@ -53,11 +50,9 @@ func (p *paymentProcessor) ProcessPaymentForRPC(stream siamux.Stream) (types.Cur
 // case because it requires some coordination between the FC fsync and the EA
 // fsync. See callDeposit in accountmanager.go for more details.
 func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, pt modules.RPCPriceTable, accountID string) (types.Currency, error) {
-	maxLen := uint64(modules.RPCMinLen)
-
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
-	if err := encoding.ReadObject(stream, &pr, maxLen); err != nil {
+	if err := modules.RPCRead(stream, &pr); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read PaymentRequest", err)
 	}
 
@@ -68,7 +63,7 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, 
 
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
-	if err := encoding.ReadObject(stream, &pbcr, maxLen); err != nil {
+	if err := modules.RPCRead(stream, &pbcr); err != nil {
 		return failTo("ProcessFundEphemeralAccountRPC", "read PayByContractRequest", err)
 	}
 
@@ -128,7 +123,7 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, 
 	// send the response
 	var sig crypto.Signature
 	copy(sig[:], txn.HostSignature().Signature[:])
-	err = encoding.WriteObject(stream, modules.PayByContractResponse{
+	err = modules.RPCWrite(stream, modules.PayByContractResponse{
 		Signature: sig,
 	})
 	if err != nil {
@@ -141,18 +136,16 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, 
 // payByEphemeralAccount processes a PayByEphemeralAccountRequest coming in over
 // the given stream.
 func (p *paymentProcessor) payByEphemeralAccount(stream siamux.Stream) (types.Currency, error) {
-	maxLen := uint64(modules.RPCMinLen)
-
 	// read the PayByEphemeralAccountRequest
 	var pbear modules.PayByEphemeralAccountRequest
-	if err := encoding.ReadObject(stream, &pbear, maxLen); err != nil {
+	if err := modules.RPCRead(stream, &pbear); err != nil {
 		return failTo("ProcessPaymentForRPC", "read PayByEphemeralAccountRequest", err)
 	}
 	// process the request
 	err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority)
 
 	// TODO: response props don't make sense
-	err = encoding.WriteObject(stream, modules.PayByEphemeralAccountResponse{
+	err = modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{
 		Amount:                 pbear.Message.Amount,
 		AccountManagerResponse: "ok",
 	})
@@ -166,11 +159,9 @@ func (p *paymentProcessor) payByEphemeralAccount(stream siamux.Stream) (types.Cu
 // payByContract processese a PayByContractRequest coming in over the given
 // stream.
 func (p *paymentProcessor) payByContract(stream siamux.Stream) (types.Currency, error) {
-	maxLen := uint64(modules.RPCMinLen)
-
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
-	if err := encoding.ReadObject(stream, &pbcr, maxLen); err != nil {
+	if err := modules.RPCRead(stream, &pbcr); err != nil {
 		return failTo("ProcessPaymentForRPC", "read PayByContractRequest", err)
 	}
 
@@ -212,7 +203,7 @@ func (p *paymentProcessor) payByContract(stream siamux.Stream) (types.Currency, 
 	// send the response
 	var sig crypto.Signature
 	copy(sig[:], txn.HostSignature().Signature[:])
-	err = encoding.WriteObject(stream, modules.PayByContractResponse{
+	err = modules.RPCWrite(stream, modules.PayByContractResponse{
 		Signature: sig,
 	})
 	if err != nil {

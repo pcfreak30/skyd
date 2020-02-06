@@ -112,7 +112,7 @@ func RPCWriteError(stream siamux.Stream, err error) error {
 	if err != nil && !ok {
 		re = &RPCError{Description: err.Error()}
 	}
-	return encoding.WriteObject(stream, rpcResponse{re, nil})
+	return encoding.WriteObject(stream, &rpcResponse{re, nil})
 }
 
 // MarshalSia implements the encoding.SiaMarshaler interface.

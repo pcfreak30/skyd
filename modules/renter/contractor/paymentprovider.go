@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -65,7 +64,6 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, pa
 	// create a new revision
 	current := metadata.Transaction.FileContractRevisions[0]
 	rev := newPaymentRevision(current, payment)
-
 	// create transaction containing the revision
 	signedTxn := types.NewTransaction(rev, 0)
 	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
@@ -80,19 +78,14 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, pa
 	// send PaymentRequest & PayByContractRequest
 	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
 	pbcRequest := buildPayByContractRequest(rev, sig)
-	err = encoding.WriteObject(stream, pRequest)
-	if err != nil {
-		return types.ZeroCurrency, err
-	}
-	err = encoding.WriteObject(stream, pbcRequest)
+	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
 
 	// receive PayByContractResponse
 	var payByResponse modules.PayByContractResponse
-	maxLen := uint64(modules.RPCMinLen)
-	if err := encoding.ReadObject(stream, &payByResponse, maxLen); err != nil {
+	if err := modules.RPCRead(stream, &payByResponse); err != nil {
 		return types.ZeroCurrency, err
 	}
 

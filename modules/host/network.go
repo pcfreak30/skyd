@@ -15,6 +15,7 @@ package host
 // have to keep all the files following a renew in order to get the money.
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"sync/atomic"
@@ -353,15 +354,17 @@ func (h *Host) handleStream(stream siamux.Stream) {
 
 	var rpcID types.Specifier
 	var pt *modules.RPCPriceTable
-	err = encoding.ReadObject(stream, &rpcID, uint64(modules.RPCMinLen))
+	err = modules.RPCRead(stream, &rpcID)
 	if err != nil {
 		// TODO
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
+	fmt.Printf("TODO REMOVE: Processing RPC %v\n", string(rpcID[:]))
+
 	if rpcID != modules.RPCUpdatePriceTable {
 		var rpcPTS types.ShortSpecifier
-		err = encoding.ReadObject(stream, &rpcPTS, uint64(modules.RPCMinLen))
+		err = modules.RPCRead(stream, &rpcPTS)
 		if err != nil {
 			// TODO
 			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
@@ -391,7 +394,7 @@ func (h *Host) handleStream(stream siamux.Stream) {
 		err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
 	case modules.RPCExecuteMDMProgram:
 		var epr modules.RPCExecuteProgramRequest
-		err = encoding.ReadObject(stream, &epr, 4096) // TODO
+		err = modules.RPCRead(stream, &epr)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to read RPCExecuteProgramRequest")
 			break
@@ -404,6 +407,7 @@ func (h *Host) handleStream(stream siamux.Stream) {
 	}
 
 	if err != nil {
+		modules.RPCWriteError(stream, err)
 		// TODO: add context to the error
 		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		h.managedLogError(err)
