@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,52 +17,36 @@ import (
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
-// TestMarshalUnmarshalRPCPriceTable tests the MarshalJSON and UnmarshalJSON
-// function of the RPC price table
+// TestMarshalUnmarshalRPCPriceTable tests we can properly marshal and unmarshal
+// the RPC price table.
 func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
-	pt := modules.NewRPCPriceTable(time.Now().Add(1).Unix())
+	// create a price table
+	expiry := time.Now().Add(rpcPriceGuaranteePeriod).Unix()
+	pt := modules.NewRPCPriceTable(expiry)
 	pt.Costs[types.NewSpecifier("RPC1")] = types.NewCurrency64(1)
 	pt.Costs[types.NewSpecifier("RPC2")] = types.NewCurrency64(2)
 
+	// marshal & unmarshal it
 	bytes, err := json.Marshal(pt)
 	if err != nil {
 		t.Fatal("Failed to marshal RPC price table", err)
 	}
-
 	var ptUmar modules.RPCPriceTable
 	err = json.Unmarshal(bytes, &ptUmar)
 	if err != nil {
 		t.Fatal("Failed to unmarshal RPC price table", err)
 	}
 
-	if pt.Expiry != ptUmar.Expiry {
-		t.Log("expected:", pt.Expiry)
-		t.Log("actual:", ptUmar.Expiry)
-		t.Fatal("Unexpected Expiry after marshal unmarshal")
-	}
-
-	if len(pt.Costs) != len(ptUmar.Costs) {
-		t.Log("expected:", len(pt.Costs))
-		t.Log("actual:", len(ptUmar.Costs))
-		t.Fatal("Unexpected # of Costs after marshal unmarshal")
-	}
-
-	for r, c := range pt.Costs {
-		actual, exists := ptUmar.Costs[r]
-		if !exists {
-			t.Log(r)
-			t.Fatal("Failed to find cost of RPC after marshal unmarshal")
-		}
-		if !c.Equals(actual) {
-			t.Log("expected:", c)
-			t.Log("actual:", actual)
-			t.Fatal("Unexpected cost of RPC after marshal unmarshal")
-		}
+	// check equality
+	if !reflect.DeepEqual(pt, ptUmar) {
+		t.Log("expected:", pt)
+		t.Log("actual:", ptUmar)
+		t.Fatal("Price tables not equal after marshaling")
 	}
 }
 
-// TestUpdatePriceTableRPC verifies the update price table RPC, it does this by
-// manually calling the RPC handler.
+// TestUpdatePriceTableRPC tests the UpdatePriceTableRPC by manually calling the
+// RPC handler.
 func TestUpdatePriceTableRPC(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -81,7 +66,6 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	defer server.Close()
 
 	var atomicErrors uint64
-
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -120,7 +104,9 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			return
 		}
 
-		// TODO make payment
+		// Note: we do not verify if the host process payment properly. This
+		// would require a paymentprovider, this functionality should be tested
+		// renter-side.
 	}()
 
 	wg.Add(1)
