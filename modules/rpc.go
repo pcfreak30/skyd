@@ -69,16 +69,14 @@ func NewRPCPriceTable(expiry int64) RPCPriceTable {
 	return pt
 }
 
-// CloneRPCPriceTable returns a copy of the given price table, with an updated
-// UUID and expiry
-// TODO: clean this up
-func CloneRPCPriceTable(expiry int64, pt *RPCPriceTable) *RPCPriceTable {
+// Clone returns a deep copy of the rpc price table with an updated expiry, the
+// host will call this function on its price table every time it hands out a
+// price table to the renter.
+func (pt *RPCPriceTable) Clone(expiry int64) *RPCPriceTable {
 	cloned := NewRPCPriceTable(expiry)
-
 	for k, v := range pt.Costs {
 		cloned.Costs[k] = v
 	}
-
 	fastrand.Read(cloned.UUID[:])
 	return &cloned
 }

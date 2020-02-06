@@ -12,39 +12,43 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-// managedRPCUpdatePriceTable handles the RPC request from the renter to fetch
-// the host's latest RPC price table.
+// managedRPCUpdatePriceTable deep copies the host's current rpc price table,
+// sets an expiry and communicates it back to the rpc caller. The host keeps
+// track of every rpc table it hands out by its uuid.
 func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
-	// clone the host's price table and keep track of it
+	// clone the host's price table and track it
 	h.mu.Lock()
-	expiry := time.Now().Add(rpcPriceGuaranteePeriod).Unix()
-	pt := modules.CloneRPCPriceTable(expiry, h.priceTable)
+	pt := h.priceTable.Clone(time.Now().Add(rpcPriceGuaranteePeriod).Unix())
 	h.uuidToPriceTable[pt.UUID] = pt
 	h.mu.Unlock()
 
-	// json encode the RPC price table
+	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
-		return errors.AddContext(err, "Failed to JSON encode the RPC price table")
+		return errors.AddContext(err, "Failed to JSON encode the price table")
 	}
 
-	// send it to the renter, note we send it before we process payment, this
-	// allows the renter to close the stream if it decides the host is gouging
-	// the price
+	// send it to the renter
 	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: ptBytes}
 	if err = encoding.WriteObject(stream, uptResponse); err != nil {
 		return errors.AddContext(err, "Failed to write response")
 	}
 
-	// TODO: process payment for this RPC call (introduced in other MR)
+	// Note: we have sent the price table before processing payment for this
+	// RPC. This allows the renter to check for price gouging and close out the
+	// stream if it does not agree with pricing. After this the host processes
+	// payment, and the renter will pay for the RPC according to the price it
+	// just received. This essentially means the host is optimistically sending
+	// over the price table, which is ok.
+
+	// process payment
 	pp := h.NewPaymentProcessor()
 	amountPaid, err := pp.ProcessPaymentForRPC(stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to process payment")
 	}
 
-	// verify the renter payment was sufficient, since the renter already has
-	// the updated prices, we expect it will have paid the latest price
+	// verify payment
 	expected := pt.Costs[modules.RPCUpdatePriceTable]
 	if amountPaid.Cmp(expected) < 0 {
 		return errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
