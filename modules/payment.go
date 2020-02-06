@@ -122,6 +122,15 @@ type (
 		Amount  types.Currency
 		Nonce   [WithdrawalNonceSize]byte
 	}
+
+	// Receipt is returned by the host after a successful deposit into an
+	// ephemeral account and can be used as proof of payment.
+	Receipt struct {
+		Host      types.SiaPublicKey
+		Account   string
+		Amount    types.Currency
+		Timestamp int64
+	}
 )
 
 // Validate checks the WithdrawalMessage's expiry and signature. If the

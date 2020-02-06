@@ -159,6 +159,7 @@ type Host struct {
 	staticAlerter *modules.GenericAlerter
 	staticMux     *modules.SiaMux
 	staticMDM     *mdm.MDM
+	staticPP      modules.PaymentProcessor
 	dependencies  modules.Dependencies
 	modules.StorageManager
 
@@ -367,6 +368,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		persistDir:     persistDir,
 	}
 	h.staticMDM = mdm.New(h)
+	h.staticPP = h.NewPaymentProcessor()
 	heap.Init(&h.priceTableHeap)
 
 	// Call stop in the event of a partial startup.

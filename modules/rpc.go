@@ -47,8 +47,9 @@ type (
 	}
 
 	// RPCFundEphemeralAccountResponse contains the signature. This signature
-	// can be used as proof as payment and acts like a receipt.
+	// is a signed receipt, and can be used as proof of payment.
 	RPCFundEphemeralAccountResponse struct {
+		Receipt   Receipt
 		Signature []byte
 	}
 
