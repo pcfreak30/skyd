@@ -241,6 +241,13 @@ type Allowance struct {
 	Period      types.BlockHeight `json:"period"`
 	RenewWindow types.BlockHeight `json:"renewwindow"`
 
+	// PaymentContractInitialFunding establishes the amount of money that the a
+	// Skynet portal will put into a brand new payment contract. If this value
+	// is set to zero, this node will not act as a Skynet portal. When this
+	// value is non-zero, this node will act as a Skynet portal, and form
+	// contracts with every reasonably priced host.
+	PaymentContractInitialFunding types.Currency `json:"paymentcontractinitialfunding"`
+
 	// ExpectedStorage is the amount of data that we expect to have in a contract.
 	ExpectedStorage uint64 `json:"expectedstorage"`
 
@@ -426,7 +433,7 @@ type FileInfo struct {
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`
-	Sialinks         []string          `json:"sialinks"`
+	Skylinks         []string          `json:"skylinks"`
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
@@ -925,24 +932,24 @@ type Renter interface {
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
-	// CreateSialinkFromSiafile will create a sialink from a siafile. This will
+	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector linkfile needs to be uploaded
 	// separately, and if there is a fanout expansion that needs to be uploaded
 	// separately as well.
-	CreateSialinkFromSiafile(LinkfileUploadParameters, SiaPath) (Sialink, error)
+	CreateSkylinkFromSiafile(LinkfileUploadParameters, SiaPath) (Skylink, error)
 
-	// DownloadSialink will fetch a file from the Sia network using the sialink.
-	DownloadSialink(Sialink) (LinkfileMetadata, Streamer, error)
+	// DownloadSkylink will fetch a file from the Sia network using the skylink.
+	DownloadSkylink(Skylink) (LinkfileMetadata, Streamer, error)
 
 	// UploadLinkfile will upload data to the Sia network from a reader and
-	// create a linkfile, returning the sialink that can be used to access the
+	// create a linkfile, returning the skylink that can be used to access the
 	// file.
 	//
 	// NOTE: A linkfile is a file that is tracked and repaired by the renter.  A
 	// linkfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadLinkfile(LinkfileUploadParameters) (Sialink, error)
+	UploadLinkfile(LinkfileUploadParameters) (Skylink, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -980,6 +987,83 @@ func HealthPercentage(health float64) float64 {
 		healthPercent = 0
 	}
 	return healthPercent
+}
+
+// A HostDB is a database of hosts that the renter can use for figuring out who
+// to upload to, and download from.
+type HostDB interface {
+	Alerter
+
+	// ActiveHosts returns the list of hosts that are actively being selected
+	// from.
+	ActiveHosts() ([]HostDBEntry, error)
+
+	// AllHosts returns the full list of hosts known to the hostdb, sorted in
+	// order of preference.
+	AllHosts() ([]HostDBEntry, error)
+
+	// CheckForIPViolations accepts a number of host public keys and returns the
+	// ones that violate the rules of the addressFilter.
+	CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error)
+
+	// Close closes the hostdb.
+	Close() error
+
+	// EstimateHostScore returns the estimated score breakdown of a host with the
+	// provided settings.
+	EstimateHostScore(HostDBEntry, Allowance) (HostScoreBreakdown, error)
+
+	// Filter returns the hostdb's filterMode and filteredHosts
+	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
+
+	// SetFilterMode sets the renter's hostdb filter mode
+	SetFilterMode(lm FilterMode, hosts []types.SiaPublicKey) error
+
+	// Host returns the HostDBEntry for a given host.
+	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)
+
+	// IncrementSuccessfulInteractions increments the number of successful
+	// interactions with a host for a given key
+	IncrementSuccessfulInteractions(types.SiaPublicKey) error
+
+	// IncrementFailedInteractions increments the number of failed interactions with
+	// a host for a given key
+	IncrementFailedInteractions(types.SiaPublicKey) error
+
+	// initialScanComplete returns a boolean indicating if the initial scan of the
+	// hostdb is completed.
+	InitialScanComplete() (bool, error)
+
+	// IPViolationsCheck returns a boolean indicating if the IP violation check is
+	// enabled or not.
+	IPViolationsCheck() (bool, error)
+
+	// RandomHosts returns a set of random hosts, weighted by their estimated
+	// usefulness / attractiveness to the renter. RandomHosts will not return
+	// any offline or inactive hosts.
+	RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]HostDBEntry, error)
+
+	// RandomHostsWithAllowance is the same as RandomHosts but accepts an
+	// allowance as an argument to be used instead of the allowance set in the
+	// renter.
+	RandomHostsWithAllowance(int, []types.SiaPublicKey, []types.SiaPublicKey, Allowance) ([]HostDBEntry, error)
+
+	// ScoreBreakdown returns a detailed explanation of the various properties
+	// of the host.
+	ScoreBreakdown(HostDBEntry) (HostScoreBreakdown, error)
+
+	// SetAllowance updates the allowance used by the hostdb for weighing hosts by
+	// updating the host weight function. It will completely rebuild the hosttree so
+	// it should be used with care.
+	SetAllowance(Allowance) error
+
+	// SetIPViolationCheck enables/disables the IP violation check within the
+	// hostdb.
+	SetIPViolationCheck(enabled bool) error
+
+	// UpdateContracts rebuilds the knownContracts of the HostBD using the provided
+	// contracts.
+	UpdateContracts([]RenterContract) error
 }
 
 // LinkfileMetadata is all of the metadata that gets placed into the first 4096
