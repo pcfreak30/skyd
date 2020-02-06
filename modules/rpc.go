@@ -5,19 +5,18 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// SpecifierLen is the length of both the RPCSpecifier and
-// RPCPriceTableSpecifier types.
-const SpecifierLen = 8
+const (
+	// SpecifierLen is the length in bytes of the RPCPriceTableSpecifier
+	SpecifierLen = 8
+)
 
 type (
-	// RPCSpecifier is the specifier sent at the beginning of every RPC.
-	RPCSpecifier [SpecifierLen]byte
-
 	// RPCPriceTableSpecifier uniquely identifies a price table.
 	RPCPriceTableSpecifier [SpecifierLen]byte
 
-	// RPCPriceTable contains a list of RPC costs to remain vaild up until the
-	// specified expiry timestamp.
+	// RPCPriceTable contains a list of costs associated to RPCs. It is uniquely
+	// identified by its uuid, and is given out by the host which guarantees the
+	// listed costs up until the expiry timestamp.
 	RPCPriceTable struct {
 		UUID   RPCPriceTableSpecifier
 		Costs  map[types.Specifier]types.Currency
@@ -25,42 +24,36 @@ type (
 	}
 )
 
-// DontLookAtMeHarryImHideous converts a RPCSpecifier into a types.Specifier.
-// TODO: fix this.
-func (rpcs RPCSpecifier) DontLookAtMeHarryImHideous() (specifier types.Specifier) {
-	copy(specifier[:], rpcs[:])
-	return
-}
-
 var (
 	// RPCUpdatePriceTable specifier
-	RPCUpdatePriceTable = RPCSpecifier{'U', 'p', 'd', 'a', 't', 'e', 'P', 'T'}
+	RPCUpdatePriceTable = types.NewSpecifier("UpdatePriceTable")
 
 	// RPCFundEphemeralAccount specifier
-	RPCFundEphemeralAccount = RPCSpecifier{'F', 'u', 'n', 'd', 'E', 'A'}
+	RPCFundEphemeralAccount = types.NewSpecifier("FundEphemeralAcc")
 
-	// RPCExecuteProgram specifier
-	RPCExecuteProgram = RPCSpecifier{'R', 'u', 'n', 'M', 'D', 'M'}
+	// RPCExecuteMDMProgram specifier
+	RPCExecuteMDMProgram = types.NewSpecifier("ExecMDMProgram")
 )
 
 type (
-	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
+	// RPCUpdatePriceTableResponse contains a JSON encoded price table.
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
 	}
 
-	// RPCFundEphemeralAccountRequest specifies the account id.
+	// RPCFundEphemeralAccountRequest specifies the ephemeral account id.
 	RPCFundEphemeralAccountRequest struct {
 		AccountID string
 	}
 
 	// RPCFundEphemeralAccountResponse contains the signature. This signature
-	// can be used as a receipt and is a proof of payment.
+	// can be used as proof as payment and acts like a receipt.
 	RPCFundEphemeralAccountResponse struct {
 		Signature []byte
 	}
 
-	// RPCExecuteProgramRequest contains the filecontract ID.
+	// RPCExecuteProgramRequest contains the filecontract ID on which to execute
+	// the program.
 	RPCExecuteProgramRequest struct {
 		FileContractID types.FileContractID
 	}

@@ -45,7 +45,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 
 	// verify the renter payment was sufficient, since the renter already has
 	// the updated prices, we expect it will have paid the latest price
-	expected := pt.Costs[modules.RPCUpdatePriceTable.DontLookAtMeHarryImHideous()]
+	expected := pt.Costs[modules.RPCUpdatePriceTable]
 	if amountPaid.Cmp(expected) < 0 {
 		return errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
 	}

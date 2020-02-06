@@ -48,7 +48,7 @@ func (c *Contractor) PaymentProvider(host types.SiaPublicKey) (modules.PaymentPr
 
 // ProvidePaymentForRPC fulfills the PaymentProvider interface. It uses the
 // paymentProvider's underlying contract to make payment for an RPC call.
-func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
+func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
 	// acquire a safe contract
 	sc, exists := p.contractSet.Acquire(p.contractID)
 	if !exists {
@@ -113,7 +113,8 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID modules.RPCSpecifie
 	return payment, nil
 }
 
-func recordIntent(rpcID modules.RPCSpecifier, sc *proto.SafeContract, rev types.FileContractRevision, amount types.Currency) (*writeaheadlog.Transaction, error) {
+// TODO
+func recordIntent(rpcID types.Specifier, sc *proto.SafeContract, rev types.FileContractRevision, amount types.Currency) (*writeaheadlog.Transaction, error) {
 	switch rpcID {
 	case modules.RPCFundEphemeralAccount:
 		return sc.RecordFundEphemeralAccountIntent(rev, amount)
@@ -121,7 +122,8 @@ func recordIntent(rpcID modules.RPCSpecifier, sc *proto.SafeContract, rev types.
 	return nil, nil
 }
 
-func commitIntent(rpcID modules.RPCSpecifier, sc *proto.SafeContract, t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency) error {
+// TODO
+func commitIntent(rpcID types.Specifier, sc *proto.SafeContract, t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency) error {
 	switch rpcID {
 	case modules.RPCFundEphemeralAccount:
 		return sc.CommitFundEphemeralAccountIntent(t, signedTxn, amount)

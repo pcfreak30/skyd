@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -79,6 +80,8 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	defer client.Close()
 	defer server.Close()
 
+	var atomicErrors uint64
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -87,7 +90,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		// open a new stream
 		stream, err := client.NewStream()
 		if err != nil {
-			t.Fatal(err)
+			t.Log(err)
 		}
 		defer stream.Close()
 
@@ -97,19 +100,24 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		// read the updated RPC price table
 		var update modules.RPCUpdatePriceTableResponse
 		if err = encoding.ReadObject(stream, &update, modules.RPCMinLen); err != nil {
-			t.Fatal("Failed to read updated price table from the stream", err)
+			t.Log("Failed to read updated price table from the stream", err)
+			atomic.AddUint64(&atomicErrors, 1)
+			return
 		}
 
 		// unmarshal the JSON into a price table
 		var pt modules.RPCPriceTable
 		if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
-			t.Fatal("Failed to unmarshal the JSON encoded RPC price table")
+			t.Log("Failed to unmarshal the JSON encoded RPC price table")
+			atomic.AddUint64(&atomicErrors, 1)
+			return
 		}
 
-		_, exists := pt.Costs[modules.RPCUpdatePriceTable.DontLookAtMeHarryImHideous()]
+		_, exists := pt.Costs[modules.RPCUpdatePriceTable]
 		if !exists {
-			t.Log(pt)
-			t.Fatal("Expected the cost of the updatePriceTableRPC to be defined")
+			t.Log("Expected the cost of the updatePriceTableRPC to be defined")
+			atomic.AddUint64(&atomicErrors, 1)
+			return
 		}
 
 		// TODO make payment
@@ -122,11 +130,13 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		// wait for the incoming stream
 		stream, err := server.AcceptStream()
 		if err != nil {
-			t.Fatal(err)
+			t.Log(err)
+			atomic.AddUint64(&atomicErrors, 1)
+			return
 		}
 
 		// read the rpc id
-		var id modules.RPCSpecifier
+		var id types.Specifier
 		encoding.ReadObject(stream, &id, 4096)
 
 		// call the update price table RPC, we purposefully ignore the error
@@ -136,6 +146,10 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 	}()
 	wg.Wait()
+
+	if atomic.LoadUint64(&atomicErrors) > 0 {
+		t.Fatal("Update price table failed")
+	}
 }
 
 // createTestingMuxs creates a connected pair of type Mux which has already

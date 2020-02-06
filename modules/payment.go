@@ -52,7 +52,7 @@ var (
 // PaymentProvider is the interface implemented when payment has to be made
 // for an RPC call to a host.
 type PaymentProvider interface {
-	ProvidePaymentForRPC(rpcID RPCSpecifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error)
+	ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error)
 }
 
 // PaymentProcessor is the interface implemented when receiving payment for an
@@ -64,10 +64,10 @@ type PaymentProcessor interface {
 
 // PaymentProviderFunc is an adapter for the interface. This allows wrapping
 // an anonymous function as if it were an object implementing the interface.
-type PaymentProviderFunc func(rpcID RPCSpecifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error)
+type PaymentProviderFunc func(rpcID types.Specifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error)
 
 // ProvidePaymentForRPC implements the interface
-func (f PaymentProviderFunc) ProvidePaymentForRPC(rpcID RPCSpecifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
+func (f PaymentProviderFunc) ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
 	return f(rpcID, payment, stream, blockHeight)
 }
 

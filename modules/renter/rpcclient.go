@@ -112,8 +112,7 @@ func (c *hostRPCClient) UpdatePriceTable(pp modules.PaymentProvider) (modules.RP
 	}
 
 	// Provide payment for the RPC
-	// TODO: don't look at me harry, I'm hideous.
-	cost := updated.Costs[modules.RPCFundEphemeralAccount.DontLookAtMeHarryImHideous()]
+	cost := updated.Costs[modules.RPCFundEphemeralAccount]
 	_, err = pp.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream, c.blockHeight)
 	if err != nil {
 		return modules.RPCPriceTable{}, err
@@ -130,8 +129,7 @@ func (c *hostRPCClient) FundEphemeralAccount(pp modules.PaymentProvider, pt modu
 	c.mu.Unlock()
 
 	// Calculate the cost of the RPC
-	// TODO: don't look at me harry, I'm hideous.
-	cost, available := pt.Costs[modules.RPCFundEphemeralAccount.DontLookAtMeHarryImHideous()]
+	cost, available := pt.Costs[modules.RPCFundEphemeralAccount]
 	if !available {
 		return errors.AddContext(errRPCNotAvailable, fmt.Sprintf("Failed to fund ephemeral account %v", id))
 	}
@@ -198,7 +196,7 @@ func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modu
 	defer stream.Close()
 
 	// Identify the RPC by writing the RPC id and price table UUID
-	err = encoding.WriteObject(stream, modules.RPCExecuteProgram)
+	err = encoding.WriteObject(stream, modules.RPCExecuteMDMProgram)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +212,7 @@ func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modu
 	}
 
 	// Provide payment for the RPC
-	_, err = pp.ProvidePaymentForRPC(modules.RPCExecuteProgram, programPrice, stream, bh)
+	_, err = pp.ProvidePaymentForRPC(modules.RPCExecuteMDMProgram, programPrice, stream, bh)
 	if err != nil {
 		return nil, err
 	}

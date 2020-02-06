@@ -351,7 +351,7 @@ func (h *Host) handleStream(stream siamux.Stream) {
 	//		return
 	//	}
 
-	var rpcID modules.RPCSpecifier
+	var rpcID types.Specifier
 	var pt *modules.RPCPriceTable
 	err = encoding.ReadObject(stream, &rpcID, uint64(modules.RPCMinLen))
 	if err != nil {
@@ -389,7 +389,7 @@ func (h *Host) handleStream(stream siamux.Stream) {
 		// if the payment was sufficient.
 		err = h.managedRPCUpdatePriceTable(stream)
 		err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
-	case modules.RPCExecuteProgram:
+	case modules.RPCExecuteMDMProgram:
 		var epr modules.RPCExecuteProgramRequest
 		err = encoding.ReadObject(stream, &epr, 4096) // TODO
 		if err != nil {

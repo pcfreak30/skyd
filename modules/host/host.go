@@ -287,9 +287,9 @@ func (h *Host) managedUpdatePriceTable() {
 	// TODO: move along, nothing to see here
 	// TODO: fix this disgusting mess with the RPC IDs
 	// recalculate the price for every RPC
-	priceTable.Costs[modules.RPCUpdatePriceTable.DontLookAtMeHarryImHideous()] = h.managedCalculateUpdatePriceTableRPCPrice()
+	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
 
-	priceTable.Costs[modules.RPCFundEphemeralAccount.DontLookAtMeHarryImHideous()] = h.managedCalculateUpdatePriceTableRPCPrice()
+	priceTable.Costs[modules.RPCFundEphemeralAccount] = h.managedCalculateUpdatePriceTableRPCPrice()
 
 	// TODO: hardcoded MDM costs, needs a better place
 	his := h.InternalSettings()

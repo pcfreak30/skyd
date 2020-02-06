@@ -76,7 +76,7 @@ func (a *account) AvailableBalance() types.Currency {
 // The account can be used to pay for RPCs. Depending on which RPC, payment will
 // be made from an ephemeral account, or from a file contract. Typically, only
 // funding an ephemeral account is paid from a file contract.
-func (a *account) ProvidePaymentForRPC(rpcID modules.RPCSpecifier, amount types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (payment types.Currency, err error) {
+func (a *account) ProvidePaymentForRPC(rpcID types.Specifier, amount types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (payment types.Currency, err error) {
 	// Depending on the RPC we'll want to make payment from an ephemeral account
 	// or from a file contract. Typically, only funding the ephemeral account is
 	// paid from a file contract. All other RPCs are paid using an ephemeral
@@ -112,7 +112,7 @@ func (a *account) ProvidePaymentForRPC(rpcID modules.RPCSpecifier, amount types.
 // separate object that implements the PaymentProvider interface. This way the
 // account object can be used to handle PayByEphemeralAccount.
 func (a *account) paymentProvider() modules.PaymentProvider {
-	return modules.PaymentProviderFunc(func(rpcID modules.RPCSpecifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
+	return modules.PaymentProviderFunc(func(rpcID types.Specifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error) {
 		// NOTE: we purposefully do not verify if the account has sufficient
 		// funds. Seeing as spends are a blocking action on the host, it is
 		// perfectly ok to trigger spends from an account with insufficient
