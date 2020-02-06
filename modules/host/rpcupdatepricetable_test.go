@@ -27,12 +27,12 @@ func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
 	pt.Costs[types.NewSpecifier("RPC2")] = types.NewCurrency64(2)
 
 	// marshal & unmarshal it
-	bytes, err := json.Marshal(pt)
+	ptMar, err := json.Marshal(pt)
 	if err != nil {
 		t.Fatal("Failed to marshal RPC price table", err)
 	}
 	var ptUmar modules.RPCPriceTable
-	err = json.Unmarshal(bytes, &ptUmar)
+	err = json.Unmarshal(ptMar, &ptUmar)
 	if err != nil {
 		t.Fatal("Failed to unmarshal RPC price table", err)
 	}
@@ -79,11 +79,16 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		defer stream.Close()
 
 		// write the rpc id
-		encoding.WriteObject(stream, modules.RPCUpdatePriceTable)
+		err = encoding.WriteObject(stream, modules.RPCUpdatePriceTable)
+		if err != nil {
+			t.Log("Failed to write rpc id", err)
+			atomic.AddUint64(&atomicErrors, 1)
+			return
+		}
 
 		// read the updated RPC price table
 		var update modules.RPCUpdatePriceTableResponse
-		if err = encoding.ReadObject(stream, &update, modules.RPCMinLen); err != nil {
+		if err = modules.RPCRead(stream, &update); err != nil {
 			t.Log("Failed to read updated price table from the stream", err)
 			atomic.AddUint64(&atomicErrors, 1)
 			return

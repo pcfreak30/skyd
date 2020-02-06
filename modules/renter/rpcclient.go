@@ -12,7 +12,6 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -30,10 +29,10 @@ var (
 
 // RPCClient interface lists all possible RPC that can be called on the host
 type RPCClient interface {
-	UpdateBlockHeight(bh types.BlockHeight)
 	UpdatePriceTable(pp modules.PaymentProvider) (modules.RPCPriceTable, error)
 	FundEphemeralAccount(pp modules.PaymentProvider, pt modules.RPCPriceTable, id string, amount types.Currency) error
 	DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool, fcid types.FileContractID) ([]byte, error)
+	UpdateBlockHeight(bh types.BlockHeight)
 }
 
 // hostRPCClient wraps all necessities to communicate with a host
@@ -47,6 +46,7 @@ type hostRPCClient struct {
 	// from the renter on every RPC call.
 	blockHeight types.BlockHeight
 
+	// TODO remove log and tg
 	log *persist.Logger
 	tg  *threadgroup.ThreadGroup
 	mu  sync.Mutex
@@ -68,35 +68,25 @@ func (r *Renter) newRPCClient(he modules.HostDBEntry, bh types.BlockHeight) RPCC
 	}
 }
 
-// UpdateBlockHeight is called by the renter when it processes a consensus
-// change. The RPC client keeps the current block height as state to avoid
-// fetching it from the renter on every RPC call.
-func (c *hostRPCClient) UpdateBlockHeight(bh types.BlockHeight) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.blockHeight = bh
-}
-
 // UpdatePriceTable performs the updatePriceTableRPC on the host.
 func (c *hostRPCClient) UpdatePriceTable(pp modules.PaymentProvider) (modules.RPCPriceTable, error) {
-	// Fetch a stream from the mux
+	// fetch a stream from the mux
 	stream, err := c.r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return modules.RPCPriceTable{}, err
 	}
 	defer stream.Close()
 
-	// Write the RPC id on the stream, there's no request object as it's
-	// implied from the RPC id.
-	err = encoding.WriteObject(stream, modules.RPCUpdatePriceTable)
+	// write the RPC id on the stream, there's no request object as it's
+	// implied from the RPC id
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return modules.RPCPriceTable{}, err
 	}
 
-	// Receive RPCUpdatePriceTableResponse
+	// receive RPCUpdatePriceTableResponse
 	var uptr modules.RPCUpdatePriceTableResponse
-	// TODO if this blocks siad dies
-	if err := encoding.ReadObject(stream, &uptr, uint64(modules.RPCMinLen)); err != nil {
+	if err := modules.RPCRead(stream, &uptr); err != nil {
 		return modules.RPCPriceTable{}, err
 	}
 	var updated modules.RPCPriceTable
@@ -104,14 +94,14 @@ func (c *hostRPCClient) UpdatePriceTable(pp modules.PaymentProvider) (modules.RP
 		return modules.RPCPriceTable{}, err
 	}
 
-	// Perform gouging check
+	// perform gouging check
 	allowance := c.r.hostContractor.Allowance()
 	if err := checkPriceTableGouging(allowance, updated); err != nil {
 		// TODO: (follow-up) this should negatively affect the host's score
 		return modules.RPCPriceTable{}, err
 	}
 
-	// Provide payment for the RPC
+	// provide payment for the RPC
 	cost := updated.Costs[modules.RPCFundEphemeralAccount]
 	_, err = pp.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream, c.blockHeight)
 	if err != nil {
@@ -121,66 +111,49 @@ func (c *hostRPCClient) UpdatePriceTable(pp modules.PaymentProvider) (modules.RP
 	return updated, nil
 }
 
-// FundEphemeralAccount will deposit the given amount into the account with id
-// by calling the fundEphemeralAccountRPC on the host.
+// FundEphemeralAccount will call the fundEphemeralAccountRPC on the host and if
+// successful will deposit the given amount into the specified account.
 func (c *hostRPCClient) FundEphemeralAccount(pp modules.PaymentProvider, pt modules.RPCPriceTable, id string, amount types.Currency) error {
-	c.mu.Lock()
-	bh := c.blockHeight
-	c.mu.Unlock()
-
-	// Calculate the cost of the RPC
+	// calculate the cost of the RPC
 	cost, available := pt.Costs[modules.RPCFundEphemeralAccount]
 	if !available {
 		return errors.AddContext(errRPCNotAvailable, fmt.Sprintf("Failed to fund ephemeral account %v", id))
 	}
 
-	// Get a stream
+	// get a stream
 	stream, err := c.r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return err
 	}
 	defer stream.Close()
 
-	// Identify the RPC by writing the RPC id and price table UUID
-	err = encoding.WriteObject(stream, modules.RPCFundEphemeralAccount)
-	if err != nil {
-		return err
-	}
-	err = encoding.WriteObject(stream, pt.UUID)
-	if err != nil {
-		return err
-	}
-	// Send the request
-	err = encoding.WriteObject(stream, modules.RPCFundEphemeralAccountRequest{AccountID: id})
+	// send all necessary request objects, this consists out of the rpc
+	// identifier, the price table identifier and the actual rpc request
+	err = modules.RPCWriteAll(stream, modules.RPCFundEphemeralAccount, pt.UUID, modules.RPCFundEphemeralAccountRequest{AccountID: id})
 	if err != nil {
 		return err
 	}
 
-	// Provide payment for the RPC and await response
+	// provide payment
 	payment := amount.Add(cost)
-	_, err = pp.ProvidePaymentForRPC(modules.RPCFundEphemeralAccount, payment, stream, bh)
+	_, err = pp.ProvidePaymentForRPC(modules.RPCFundEphemeralAccount, payment, stream, c.managedBlockHeight())
 	if err != nil {
 		return err
 	}
 
-	// Receive RPCFundEphemeralAccountResponse
+	// read response
 	var fundAccResponse modules.RPCFundEphemeralAccountResponse
-	if err := encoding.ReadObject(stream, &fundAccResponse, uint64(modules.RPCMinLen)); err != nil {
-		return err
-	}
-
-	return nil
+	return modules.RPCRead(stream, &fundAccResponse)
 }
 
+// DownloadSectorByRoot will create a ReadSectorProgram and execute that by
+// calling the ExecuteMDMProgram RPC on the host. This will effectively download
+// the specified sector.
 func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool, fcid types.FileContractID) ([]byte, error) {
-	c.mu.Lock()
-	bh := c.blockHeight
-	c.mu.Unlock()
-
-	// Create mdm program.
+	// create mdm program
 	instructions, programData := mdm.NewReadSectorProgram(length, offset, sectorRoot, merkleProof)
 
-	// Calculate the cost of the RPC
+	// calculate the cost of the RPC
 	dataLen := uint64(len(programData))
 	programCost, err := modules.CalculateProgramCost(instructions, dataLen)
 	if err != nil {
@@ -188,71 +161,71 @@ func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modu
 	}
 	programPrice := modules.ConvertCostToPrice(programCost, &pt)
 
-	// Get a stream
+	// get a stream
 	stream, err := c.r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
 	if err != nil {
 		return nil, err
 	}
 	defer stream.Close()
 
-	// Identify the RPC by writing the RPC id and price table UUID
-	err = encoding.WriteObject(stream, modules.RPCExecuteMDMProgram)
-	if err != nil {
-		return nil, err
-	}
-	err = encoding.WriteObject(stream, pt.UUID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Send the request
-	err = encoding.WriteObject(stream, modules.RPCExecuteProgramRequest{FileContractID: fcid})
+	// send all necessary request objects, this consists out of the rpc
+	// identifier, the price table identifier and the actual rpc request
+	err = modules.RPCWriteAll(stream, modules.RPCExecuteMDMProgram, pt.UUID, modules.RPCExecuteProgramRequest{FileContractID: fcid})
 	if err != nil {
 		return nil, err
 	}
 
-	// Provide payment for the RPC
-	_, err = pp.ProvidePaymentForRPC(modules.RPCExecuteMDMProgram, programPrice, stream, bh)
+	// provide payment
+	_, err = pp.ProvidePaymentForRPC(modules.RPCExecuteMDMProgram, programPrice, stream, c.managedBlockHeight())
 	if err != nil {
 		return nil, err
 	}
 
-	// Send instructions.
-	if err := encoding.WriteObject(stream, instructions); err != nil {
+	// send instructions and the length of program data
+	if err := modules.RPCWriteAll(stream, instructions, dataLen); err != nil {
 		return nil, err
 	}
-
-	// Send length of program data.
-	if err := encoding.WriteObject(stream, dataLen); err != nil {
-		return nil, err
-	}
-
-	// Send program data (Note: do not prefix w/length).
-	_, err = stream.Write(programData)
+	_, err = stream.Write(programData) // send programdata without length prefix
 	if err != nil {
 		return nil, err
 	}
 
-	// Read response.
+	// read response
 	var resp modules.MDMInstructionResponse
-	err = encoding.ReadObject(stream, &resp, 4096) // TODO
+	err = modules.RPCRead(stream, &resp)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check response error.
+	// check response error
 	if resp.Error != "TODO" {
 		return nil, errors.AddContext(err, "failed to download sector")
 	}
-	// Sanity check length.
+	// sanity check length
 	if uint64(len(resp.Output)) != length {
 		return nil, fmt.Errorf("expected output to have length %v but was %v", length, len(resp.Output))
 	}
-	// Validate merkle proof if necessary.
+	// validate merkle proof if necessary
 	if merkleProof {
 		panic("merkle proof not supported yet")
 	}
 	return resp.Output, err
+}
+
+// UpdateBlockHeight is called by the renter when it processes a consensus
+// change. The RPC client keeps the current block height as state to avoid
+// fetching it from the renter on every RPC call.
+func (c *hostRPCClient) UpdateBlockHeight(bh types.BlockHeight) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.blockHeight = bh
+}
+
+// managedBlockHeight returns the cached blockheight
+func (c *hostRPCClient) managedBlockHeight() types.BlockHeight {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.blockHeight
 }
 
 // checkPriceTableGouging checks that the host is not gouging the renter during

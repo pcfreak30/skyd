@@ -79,6 +79,7 @@ func TestRenterOne(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
+		// TODO re-enable
 		// {"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		// {"TestLocalRepair", testLocalRepair},
 		// {"TestClearDownloadHistory", testClearDownloadHistory},

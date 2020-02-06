@@ -302,8 +302,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 		return nil, errors.New("host does not exist")
 	}
 
-	// TODO: figure out appropriate balance target using host settings and
-	// renter max.
+	// TODO: calc balance target using host settings + renter imposed maximum
 	balanceTarget := types.SiacoinPrecision.Div64(2)
 
 	w := &worker{

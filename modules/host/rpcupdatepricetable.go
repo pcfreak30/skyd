@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -29,8 +28,8 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	}
 
 	// send it to the renter
-	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: ptBytes}
-	if err = encoding.WriteObject(stream, uptResponse); err != nil {
+	uptResp := modules.RPCUpdatePriceTableResponse{PriceTableJSON: ptBytes}
+	if err = modules.RPCWrite(stream, uptResp); err != nil {
 		return errors.AddContext(err, "Failed to write response")
 	}
 

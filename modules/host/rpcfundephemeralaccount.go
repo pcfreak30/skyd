@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -16,8 +15,7 @@ import (
 func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt *modules.RPCPriceTable) error {
 	// read the FundEphemeralAccountRequest
 	var fear modules.RPCFundEphemeralAccountRequest
-	maxLen := uint64(modules.RPCMinLen)
-	if err := encoding.ReadObject(stream, &fear, maxLen); err != nil {
+	if err := modules.RPCRead(stream, &fear); err != nil {
 		return errors.AddContext(err, "Failed to read FundEphemeralAccountRequest")
 	}
 
@@ -41,11 +39,11 @@ func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt *modules.
 	signature := crypto.SignHash(crypto.HashObject(receipt), h.secretKey)
 
 	// send the FundEphemeralAccountResponse
-	err = encoding.WriteObject(stream, modules.RPCFundEphemeralAccountResponse{
+	err = modules.RPCWrite(stream, modules.RPCFundEphemeralAccountResponse{
 		Receipt:   receipt,
 		Signature: signature[:],
 	})
-	if err := encoding.ReadObject(stream, &fear, maxLen); err != nil {
+	if err := modules.RPCRead(stream, &fear); err != nil {
 		return errors.AddContext(err, "Failed to send FundEphemeralAccountResponse")
 	}
 
