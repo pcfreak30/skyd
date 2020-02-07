@@ -14,10 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 var (
@@ -46,24 +44,19 @@ type hostRPCClient struct {
 	// from the renter on every RPC call.
 	blockHeight types.BlockHeight
 
-	// TODO remove log and tg
-	log *persist.Logger
-	tg  *threadgroup.ThreadGroup
-	mu  sync.Mutex
-	r   *Renter
+	mu sync.Mutex
+	r  *Renter
 }
 
 // newRPCClient returns a new RPC client.
 func (r *Renter) newRPCClient(he modules.HostDBEntry, bh types.BlockHeight) RPCClient {
-	muxAddress := he.NetAddress.Host() + fmt.Sprintf(":%d", he.HostExternalSettings.SiaMuxPort)
+	muxAddress := fmt.Sprintf("%s:%d", he.NetAddress.Host(), he.HostExternalSettings.SiaMuxPort)
 
 	return &hostRPCClient{
 		staticHostAddress: string(he.NetAddress),
 		staticMuxAddress:  muxAddress,
 		staticHostKey:     he.PublicKey,
 		blockHeight:       bh,
-		log:               r.log,
-		tg:                &r.tg,
 		r:                 r,
 	}
 }
@@ -103,7 +96,7 @@ func (c *hostRPCClient) UpdatePriceTable(pp modules.PaymentProvider) (modules.RP
 
 	// provide payment for the RPC
 	cost := updated.Costs[modules.RPCFundEphemeralAccount]
-	_, err = pp.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream, c.blockHeight)
+	_, err = pp.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream, c.managedBlockHeight())
 	if err != nil {
 		return modules.RPCPriceTable{}, err
 	}
