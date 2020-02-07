@@ -68,7 +68,7 @@ func NewSiaMux(dir, address string) (*SiaMux, error) {
 
 	// create the siamux
 	keys := loadKeys(dir)
-	smux, address, err := siamux.New(address, keys.PublicKey, keys.SecretKey, logger)
+	smux, err := siamux.New(address, keys.PublicKey, keys.SecretKey, logger)
 	if err != nil {
 		return &SiaMux{}, err
 	}
