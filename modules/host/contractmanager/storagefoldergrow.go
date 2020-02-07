@@ -57,23 +57,23 @@ func findUnfinishedStorageFolderExtensions(scs []stateChange) []unfinishedStorag
 
 // cleanupUnfinishedStorageFolderExtensions will reset any unsuccessful storage
 // folder extensions from the previous run.
-func (wal *writeAheadLog) cleanupUnfinishedStorageFolderExtensions(scs []stateChange) {
+func (cm *ContractManager) cleanupUnfinishedStorageFolderExtensions(scs []stateChange) {
 	usfes := findUnfinishedStorageFolderExtensions(scs)
 	for _, usfe := range usfes {
-		sf, exists := wal.cm.storageFolders[usfe.Index]
+		sf, exists := cm.storageFolders[usfe.Index]
 		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
-			wal.cm.log.Critical("unfinished storage folder extension exists where the storage folder does not exist")
+			cm.log.Critical("unfinished storage folder extension exists where the storage folder does not exist")
 			continue
 		}
 
 		// Truncate the files back to their original size.
 		err := sf.metadataFile.Truncate(int64(len(sf.usage) * storageFolderGranularity * sectorMetadataDiskSize))
 		if err != nil {
-			wal.cm.log.Printf("Error: unable to truncate metadata file as storage folder %v is resized\n", sf.path)
+			cm.log.Printf("Error: unable to truncate metadata file as storage folder %v is resized\n", sf.path)
 		}
 		err = sf.sectorFile.Truncate(int64(modules.SectorSize * storageFolderGranularity * uint64(len(sf.usage))))
 		if err != nil {
-			wal.cm.log.Printf("Error: unable to truncate sector file as storage folder %v is resized\n", sf.path)
+			cm.log.Printf("Error: unable to truncate sector file as storage folder %v is resized\n", sf.path)
 		}
 
 		// Append an error call to the changeset, indicating that the storage
@@ -86,10 +86,10 @@ func (wal *writeAheadLog) cleanupUnfinishedStorageFolderExtensions(scs []stateCh
 
 // commitStorageFolderExtension will apply a storage folder extension to the
 // state.
-func (wal *writeAheadLog) commitStorageFolderExtension(sfe storageFolderExtension) {
-	sf, exists := wal.cm.storageFolders[sfe.Index]
+func (cm *ContractManager) commitStorageFolderExtension(sfe storageFolderExtension) {
+	sf, exists := cm.storageFolders[sfe.Index]
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
-		wal.cm.log.Critical("ERROR: storage folder extension provided for storage folder that does not exist")
+		cm.log.Critical("ERROR: storage folder extension provided for storage folder that does not exist")
 		return
 	}
 
@@ -100,11 +100,11 @@ func (wal *writeAheadLog) commitStorageFolderExtension(sfe storageFolderExtensio
 
 // growStorageFolder will extend the storage folder files so that they may hold
 // more sectors.
-func (wal *writeAheadLog) growStorageFolder(index uint16, newSectorCount uint32) error {
+func (cm *ContractManager) growStorageFolder(index uint16, newSectorCount uint32) error {
 	// Retrieve the specified storage folder.
-	wal.mu.Lock()
-	sf, exists := wal.cm.storageFolders[index]
-	wal.mu.Unlock()
+	cm.mu.Lock()
+	sf, exists := cm.storageFolders[index]
+	cm.mu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		return errStorageFolderNotFound
 	}
@@ -115,16 +115,14 @@ func (wal *writeAheadLog) growStorageFolder(index uint16, newSectorCount uint32)
 
 	// Write the intention to increase the storage folder size to the WAL,
 	// providing enough information to allow a truncation if the growing fails.
-	wal.mu.Lock()
+	cm.mu.Lock()
 	wal.appendChange(stateChange{
 		UnfinishedStorageFolderExtensions: []unfinishedStorageFolderExtension{{
 			Index:          index,
 			OldSectorCount: uint32(len(sf.usage)) * storageFolderGranularity,
 		}},
 	})
-	syncChan := wal.syncChan
-	wal.mu.Unlock()
-	<-syncChan
+	cm.mu.Unlock()
 
 	// Prepare variables for growing the storage folder.
 	currentHousingSize := int64(len(sf.usage)) * int64(modules.SectorSize) * storageFolderGranularity
@@ -132,7 +130,7 @@ func (wal *writeAheadLog) growStorageFolder(index uint16, newSectorCount uint32)
 	newHousingSize := int64(newSectorCount) * int64(modules.SectorSize)
 	newMetadataSize := int64(newSectorCount) * sectorMetadataDiskSize
 	if newHousingSize <= currentHousingSize || newMetadataSize <= currentMetadataSize {
-		wal.cm.log.Critical("growStorageFolder called without size increase", newHousingSize, currentHousingSize, newMetadataSize, currentMetadataSize)
+		cm.log.Critical("growStorageFolder called without size increase", newHousingSize, currentHousingSize, newMetadataSize, currentMetadataSize)
 		return errors.New("unable to make the requested change, please notify the devs that there is a bug")
 	}
 	housingWriteSize := newHousingSize - currentHousingSize
@@ -143,8 +141,8 @@ func (wal *writeAheadLog) growStorageFolder(index uint16, newSectorCount uint32)
 	var err error
 	defer func(sf *storageFolder, housingSize, metadataSize int64) {
 		if err != nil {
-			wal.mu.Lock()
-			defer wal.mu.Unlock()
+			cm.mu.Lock()
+			defer cm.mu.Unlock()
 
 			// Remove the leftover files from the failed operation.
 			err = build.ComposeErrors(err, sf.metadataFile.Truncate(housingSize))
@@ -193,44 +191,38 @@ func (wal *writeAheadLog) growStorageFolder(index uint16, newSectorCount uint32)
 		defer wg.Done()
 		err1 = sf.metadataFile.Sync()
 		if err != nil {
-			wal.cm.log.Println("could not synchronize allocated sector metadata file:", err)
+			cm.log.Println("could not synchronize allocated sector metadata file:", err)
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		err2 = sf.sectorFile.Sync()
 		if err != nil {
-			wal.cm.log.Println("could not synchronize allocated sector data file:", err)
+			cm.log.Println("could not synchronize allocated sector data file:", err)
 		}
 	}()
 	wg.Wait()
 	if err1 != nil || err2 != nil {
 		err = build.ComposeErrors(err1, err2)
-		wal.cm.log.Println("cound not synchronize storage folder extensions:", err)
+		cm.log.Println("cound not synchronize storage folder extensions:", err)
 		return build.ExtendErr("unable to synchronize storage folder extensions", err)
 	}
 
 	// Simulate power failure at this point for some testing scenarios.
-	if wal.cm.dependencies.Disrupt("incompleteGrowStorageFolder") {
+	if cm.dependencies.Disrupt("incompleteGrowStorageFolder") {
 		return nil
 	}
 
-	// Storage folder growth has completed successfully, commit through the
-	// WAL.
-	wal.mu.Lock()
-	wal.cm.storageFolders[sf.index] = sf
+	// Storage folder growth has completed successfully, commit through the WAL
+	cm.mu.Lock()
+	cm.storageFolders[sf.index] = sf
 	wal.appendChange(stateChange{
 		StorageFolderExtensions: []storageFolderExtension{{
 			Index:          sf.index,
 			NewSectorCount: newSectorCount,
 		}},
 	})
-	syncChan = wal.syncChan
-	wal.mu.Unlock()
-
-	// Wait to confirm the storage folder addition has completed until the WAL
-	// entry has synced.
-	<-syncChan
+	cm.mu.Unlock()
 
 	// Set the progress back to '0'.
 	atomic.StoreUint64(&sf.atomicProgressNumerator, 0)

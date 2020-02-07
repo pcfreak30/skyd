@@ -55,44 +55,33 @@ func (cm *ContractManager) RemoveStorageFolder(index uint16, force bool) error {
 	defer cm.tg.Done()
 
 	// Retrieve the specified storage folder.
-	cm.wal.mu.Lock()
+	cm.mu.Lock()
 	sf, exists := cm.storageFolders[index]
 	if !exists {
-		cm.wal.mu.Unlock()
+		cm.mu.Unlock()
 		return errStorageFolderNotFound
 	}
-	cm.wal.mu.Unlock()
+	cm.mu.Unlock()
 
 	// Lock the storage folder for the duration of the operation.
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 
 	// Clear out the sectors in the storage folder.
-	_, err = cm.wal.managedEmptyStorageFolder(index, 0)
+	_, err = cm.managedEmptyStorageFolder(index, 0)
 	if err != nil && !force {
 		return err
 	}
 
-	// Wait for a synchronize to confirm that all of the moves have succeeded
-	// in full.
-	cm.wal.mu.Lock()
-	syncChan := cm.wal.syncChan
-	cm.wal.mu.Unlock()
-	<-syncChan
-
 	// Submit a storage folder removal to the WAL and wait until the update is
 	// synced.
-	cm.wal.mu.Lock()
+	cm.mu.Lock()
 	cm.wal.appendChange(stateChange{
 		StorageFolderRemovals: []storageFolderRemoval{{
 			Index: index,
 			Path:  sf.path,
 		}},
 	})
-
-	// Wait until the removal action has been synchronized.
-	syncChan = cm.wal.syncChan
-	cm.wal.mu.Unlock()
-	<-syncChan
+	cm.mu.Unlock()
 	return nil
 }

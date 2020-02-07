@@ -311,7 +311,7 @@ func (cm *ContractManager) threadedFolderRecheck() {
 
 		// Check all of the storage folders and recover any that have been added
 		// to the contract manager.
-		cm.wal.mu.Lock()
+		cm.mu.Lock()
 		for _, sf := range cm.storageFolders {
 			if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 				var err1, err2 error
@@ -333,7 +333,7 @@ func (cm *ContractManager) threadedFolderRecheck() {
 				}
 			}
 		}
-		cm.wal.mu.Unlock()
+		cm.mu.Unlock()
 
 		// Increase the sleep time.
 		if sleepTime*2 < maxFolderRecheckInterval {
@@ -350,8 +350,8 @@ func (cm *ContractManager) ResetStorageFolderHealth(index uint16) error {
 		return err
 	}
 	defer cm.tg.Done()
-	cm.wal.mu.Lock()
-	defer cm.wal.mu.Unlock()
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 
 	sf, exists := cm.storageFolders[index]
 	if !exists {
@@ -375,9 +375,9 @@ func (cm *ContractManager) ResizeStorageFolder(index uint16, newSize uint64, for
 	}
 	defer cm.tg.Done()
 
-	cm.wal.mu.Lock()
+	cm.mu.Lock()
 	sf, exists := cm.storageFolders[index]
-	cm.wal.mu.Unlock()
+	cm.mu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		return errStorageFolderNotFound
 	}
@@ -395,9 +395,9 @@ func (cm *ContractManager) ResizeStorageFolder(index uint16, newSize uint64, for
 	}
 	newSectorCount := uint32(newSize / modules.SectorSize)
 	if oldSize > newSize {
-		return cm.wal.shrinkStorageFolder(index, newSectorCount, force)
+		return cm.shrinkStorageFolder(index, newSectorCount, force)
 	}
-	return cm.wal.growStorageFolder(index, newSectorCount)
+	return cm.growStorageFolder(index, newSectorCount)
 }
 
 // StorageFolders will return a list of storage folders in the host, each
@@ -409,8 +409,8 @@ func (cm *ContractManager) StorageFolders() []modules.StorageFolderMetadata {
 		return nil
 	}
 	defer cm.tg.Done()
-	cm.wal.mu.Lock()
-	defer cm.wal.mu.Unlock()
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 
 	// Iterate over the storage folders that are in memory first, and then
 	// suppliment them with the storage folders that are not in memory.

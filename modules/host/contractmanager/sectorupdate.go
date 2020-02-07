@@ -10,13 +10,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// commitUpdateSector will commit a sector update to the contract manager,
+// applyUpdateSector will commit a sector update to the contract manager,
 // writing in metadata and usage info if the sector still exists, and deleting
 // the usage info if the sector does not exist. The update is idempotent.
-func (wal *writeAheadLog) commitUpdateSector(su sectorUpdate) {
-	sf, exists := wal.cm.storageFolders[su.Folder]
+func (cm *ContractManager) applyUpdateSector(su sectorUpdate) {
+	sf, exists := cm.storageFolders[su.Folder]
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
-		wal.cm.log.Printf("ERROR: unable to locate storage folder for a committed sector update.")
+		cm.log.Printf("ERROR: unable to locate storage folder for a committed sector update.")
 		return
 	}
 
@@ -28,9 +28,9 @@ func (wal *writeAheadLog) commitUpdateSector(su sectorUpdate) {
 
 	// Set the usage flag and update the on-disk metadata. Abort if the
 	// metadata write fails.
-	err := wal.writeSectorMetadata(sf, su)
+	err := cm.writeSectorMetadata(sf, su)
 	if err != nil {
-		wal.cm.log.Printf("ERROR: unable to write sector metadata for %v: %v\n", sf.path, err)
+		cm.log.Printf("ERROR: unable to write sector metadata for %v: %v\n", sf.path, err)
 		return
 	}
 	sf.setUsage(su.Index)
@@ -38,20 +38,19 @@ func (wal *writeAheadLog) commitUpdateSector(su sectorUpdate) {
 
 // managedAddPhysicalSector is a WAL operation to add a physical sector to the
 // contract manager.
-func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, count uint16) error {
+func (cm *ContractManager) managedAddPhysicalSector(id sectorID, data []byte, count uint16) error {
 	// Sanity check - data should have modules.SectorSize bytes.
 	if uint64(len(data)) != modules.SectorSize {
-		wal.cm.log.Critical("sector has the wrong size", modules.SectorSize, len(data))
+		cm.log.Critical("sector has the wrong size", modules.SectorSize, len(data))
 		return errors.New("malformed sector")
 	}
 
 	// Find a committed storage folder that has enough space to receive
 	// this sector. Keep trying new storage folders if some return
 	// errors during disk operations.
-	wal.mu.Lock()
-	storageFolders := wal.cm.availableStorageFolders()
-	wal.mu.Unlock()
-	var syncChan chan struct{}
+	cm.mu.Lock()
+	storageFolders := cm.availableStorageFolders()
+	cm.mu.Unlock()
 	for len(storageFolders) >= 1 {
 		var storageFolderIndex int
 		err := func() error {
@@ -61,13 +60,13 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 			// modifying.
 
 			// Grab a vacant storage folder.
-			wal.mu.Lock()
+			cm.mu.Lock()
 			var sf *storageFolder
 			sf, storageFolderIndex = vacancyStorageFolder(storageFolders)
 			if sf == nil {
 				// None of the storage folders have enough room to house the
 				// sector.
-				wal.mu.Unlock()
+				cm.mu.Unlock()
 				return errors.New(modules.V1420HostOutOfStorageErrString)
 			}
 			defer sf.mu.RUnlock()
@@ -78,14 +77,14 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 			// the storage folder.
 			sectorIndex, err := randFreeSector(sf.usage)
 			if err != nil {
-				wal.mu.Unlock()
-				wal.cm.log.Critical("a storage folder with full usage was returned from emptiestStorageFolder")
+				cm.mu.Unlock()
+				cm.log.Critical("a storage folder with full usage was returned from emptiestStorageFolder")
 				return err
 			}
 			// Set the usage, but mark it as uncommitted.
 			sf.setUsage(sectorIndex)
 			sf.availableSectors[id] = sectorIndex
-			wal.mu.Unlock()
+			cm.mu.Unlock()
 
 			// NOTE: The usage has been set, in the event of failure the usage
 			// must be cleared.
@@ -93,12 +92,12 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 			// Try writing the new sector to disk.
 			err = writeSector(sf.sectorFile, sectorIndex, data)
 			if err != nil {
-				wal.cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
+				cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
 				atomic.AddUint64(&sf.atomicFailedWrites, 1)
-				wal.mu.Lock()
+				cm.mu.Lock()
 				sf.clearUsage(sectorIndex)
 				delete(sf.availableSectors, id)
-				wal.mu.Unlock()
+				cm.mu.Unlock()
 				return errDiskTrouble
 			}
 
@@ -109,14 +108,14 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 				Folder: sf.index,
 				Index:  sectorIndex,
 			}
-			err = wal.writeSectorMetadata(sf, su)
+			err = cm.writeSectorMetadata(sf, su)
 			if err != nil {
-				wal.cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
+				cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
 				atomic.AddUint64(&sf.atomicFailedWrites, 1)
-				wal.mu.Lock()
+				cm.mu.Lock()
 				sf.clearUsage(sectorIndex)
 				delete(sf.availableSectors, id)
-				wal.mu.Unlock()
+				cm.mu.Unlock()
 				return errDiskTrouble
 			}
 
@@ -126,14 +125,13 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 				storageFolder: sf.index,
 				count:         count,
 			}
-			wal.mu.Lock()
+			cm.mu.Lock()
 			wal.appendChange(stateChange{
 				SectorUpdates: []sectorUpdate{su},
 			})
-			delete(wal.cm.storageFolders[su.Folder].availableSectors, id)
-			wal.cm.sectorLocations[id] = sl
-			syncChan = wal.syncChan
-			wal.mu.Unlock()
+			delete(cm.storageFolders[su.Folder].availableSectors, id)
+			cm.sectorLocations[id] = sl
+			cm.mu.Unlock()
 			return nil
 		}()
 		if err != nil {
@@ -153,15 +151,11 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 	if len(storageFolders) < 1 {
 		return errors.New(modules.V1420HostOutOfStorageErrString)
 	}
-
-	// Wait for the synchronize.
-	// sectors.
-	<-syncChan
 	return nil
 }
 
 // managedAddVirtualSector will add a virtual sector to the contract manager.
-func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLocation) error {
+func (cm *ContractManager) managedAddVirtualSector(id sectorID, location sectorLocation) error {
 	// Update the location count.
 	if location.count == 65535 {
 		return errMaxVirtualSectors
@@ -177,62 +171,58 @@ func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLo
 	}
 
 	// Append the sector update to the WAL.
-	wal.mu.Lock()
-	sf, exists := wal.cm.storageFolders[su.Folder]
+	cm.mu.Lock()
+	sf, exists := cm.storageFolders[su.Folder]
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		// Need to check that the storage folder exists before syncing the
 		// commit that increases the virtual sector count.
-		wal.mu.Unlock()
+		cm.mu.Unlock()
 		return errStorageFolderNotFound
 	}
 	wal.appendChange(stateChange{
 		SectorUpdates: []sectorUpdate{su},
 	})
-	wal.cm.sectorLocations[id] = location
-	syncChan := wal.syncChan
-	wal.mu.Unlock()
-	<-syncChan
+	cm.sectorLocations[id] = location
+	cm.mu.Unlock()
 
 	// Update the metadata on disk. Metadata is updated on disk after the sync
 	// so that there is no risk of obliterating the previous count in the event
 	// that the change is not fully committed during unclean shutdown.
-	err := wal.writeSectorMetadata(sf, su)
+	err := cm.writeSectorMetadata(sf, su)
 	if err != nil {
 		// Revert the sector update in the WAL to reflect the fact that adding
 		// the sector has failed.
 		su.Count--
 		location.count--
-		wal.mu.Lock()
+		cm.mu.Lock()
 		wal.appendChange(stateChange{
 			SectorUpdates: []sectorUpdate{su},
 		})
-		wal.cm.sectorLocations[id] = location
-		wal.mu.Unlock()
-		<-syncChan
+		cm.sectorLocations[id] = location
+		cm.mu.Unlock()
 		return build.ExtendErr("unable to write sector metadata during addSector call", err)
 	}
 	return nil
 }
 
 // managedDeleteSector will delete a sector (physical) from the contract manager.
-func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
+func (cm *ContractManager) managedDeleteSector(id sectorID) error {
 	// Write the sector delete to the WAL.
 	var location sectorLocation
-	var syncChan chan struct{}
 	var sf *storageFolder
 	err := func() error {
-		wal.mu.Lock()
-		defer wal.mu.Unlock()
+		cm.mu.Lock()
+		defer cm.mu.Unlock()
 
 		// Fetch the metadata related to the sector.
 		var exists bool
-		location, exists = wal.cm.sectorLocations[id]
+		location, exists = cm.sectorLocations[id]
 		if !exists {
 			return ErrSectorNotFound
 		}
-		sf, exists = wal.cm.storageFolders[location.storageFolder]
+		sf, exists = cm.storageFolders[location.storageFolder]
 		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
-			wal.cm.log.Critical("deleting a sector from a storage folder that does not exist?")
+			cm.log.Critical("deleting a sector from a storage folder that does not exist?")
 			return errStorageFolderNotFound
 		}
 
@@ -247,49 +237,46 @@ func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
 		})
 
 		// Delete the sector and mark the usage as available.
-		delete(wal.cm.sectorLocations, id)
+		delete(cm.sectorLocations, id)
 		sf.availableSectors[id] = location.index
 
 		// Block until the change has been committed.
-		syncChan = wal.syncChan
 		return nil
 	}()
 	if err != nil {
 		return err
 	}
-	<-syncChan
 
 	// Only update the usage after the sector delete has been committed to disk
 	// fully.
-	wal.mu.Lock()
+	cm.mu.Lock()
 	delete(sf.availableSectors, id)
 	sf.clearUsage(location.index)
-	wal.mu.Unlock()
+	cm.mu.Unlock()
 	return nil
 }
 
 // managedRemoveSector will remove a sector (virtual or physical) from the
 // contract manager.
-func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
+func (cm *ContractManager) managedRemoveSector(id sectorID) error {
 	// Inform the WAL of the removed sector.
 	var location sectorLocation
 	var su sectorUpdate
 	var sf *storageFolder
-	var syncChan chan struct{}
 	err := func() error {
-		wal.mu.Lock()
-		defer wal.mu.Unlock()
+		cm.mu.Lock()
+		defer cm.mu.Unlock()
 
 		// Grab the number of virtual sectors that have been committed with
 		// this root.
 		var exists bool
-		location, exists = wal.cm.sectorLocations[id]
+		location, exists = cm.sectorLocations[id]
 		if !exists {
 			return ErrSectorNotFound
 		}
-		sf, exists = wal.cm.storageFolders[location.storageFolder]
+		sf, exists = cm.storageFolders[location.storageFolder]
 		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
-			wal.cm.log.Critical("deleting a sector from a storage folder that does not exist?")
+			cm.log.Critical("deleting a sector from a storage folder that does not exist?")
 			return errStorageFolderNotFound
 		}
 
@@ -308,34 +295,31 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		// Update the in-memeory representation of the sector.
 		if location.count == 0 {
 			// Delete the sector and mark it as available.
-			delete(wal.cm.sectorLocations, id)
+			delete(cm.sectorLocations, id)
 			sf.availableSectors[id] = location.index
 		} else {
 			// Reduce the sector usage.
-			wal.cm.sectorLocations[id] = location
+			cm.sectorLocations[id] = location
 		}
-		syncChan = wal.syncChan
 		return nil
 	}()
 	if err != nil {
 		return err
 	}
-	// synchronize before updating the metadata or clearing the usage.
-	<-syncChan
 
 	// Update the metadata, and the usage.
 	if location.count != 0 {
-		err = wal.writeSectorMetadata(sf, su)
+		err = cm.writeSectorMetadata(sf, su)
 		if err != nil {
 			// Revert the previous change.
-			wal.mu.Lock()
+			cm.mu.Lock()
 			su.Count++
 			location.count++
 			wal.appendChange(stateChange{
 				SectorUpdates: []sectorUpdate{su},
 			})
-			wal.cm.sectorLocations[id] = location
-			wal.mu.Unlock()
+			cm.sectorLocations[id] = location
+			cm.mu.Unlock()
 			return build.ExtendErr("failed to write sector metadata", err)
 		}
 	}
@@ -345,20 +329,20 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 	// completed to prevent the actual sector data from being overwritten in
 	// the event of unclean shutdown.
 	if location.count == 0 {
-		wal.mu.Lock()
+		cm.mu.Lock()
 		sf.clearUsage(location.index)
 		delete(sf.availableSectors, id)
-		wal.mu.Unlock()
+		cm.mu.Unlock()
 	}
 	return nil
 }
 
 // writeSectorMetadata will take a sector update and write the related metadata
 // to disk.
-func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate) error {
+func (cm *ContractManager) writeSectorMetadata(sf *storageFolder, su sectorUpdate) error {
 	err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
 	if err != nil {
-		wal.cm.log.Printf("ERROR: unable to write sector metadata to folder %v when adding sector: %v\n", su.Folder, err)
+		cm.log.Printf("ERROR: unable to write sector metadata to folder %v when adding sector: %v\n", su.Folder, err)
 		atomic.AddUint64(&sf.atomicFailedWrites, 1)
 		return err
 	}
@@ -391,17 +375,17 @@ func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error 
 	// Hold a sector lock throughout the duration of the function, but release
 	// before syncing.
 	id := cm.managedSectorID(root)
-	cm.wal.managedLockSector(id)
-	defer cm.wal.managedUnlockSector(id)
+	cm.managedLockSector(id)
+	defer cm.managedUnlockSector(id)
 
 	// Determine whether the sector is virtual or physical.
-	cm.wal.mu.Lock()
+	cm.mu.Lock()
 	location, exists := cm.sectorLocations[id]
-	cm.wal.mu.Unlock()
+	cm.mu.Unlock()
 	if exists {
-		err = cm.wal.managedAddVirtualSector(id, location)
+		err = cm.managedAddVirtualSector(id, location)
 	} else {
-		err = cm.wal.managedAddPhysicalSector(id, sectorData, 1)
+		err = cm.managedAddPhysicalSector(id, sectorData, 1)
 	}
 	if err == errDiskTrouble {
 		cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
@@ -438,15 +422,15 @@ func (cm *ContractManager) AddSectorBatch(sectorRoots []crypto.Hash) error {
 				// Hold a sector lock throughout the duration of the function, but release
 				// before syncing.
 				id := cm.managedSectorID(root)
-				cm.wal.managedLockSector(id)
-				defer cm.wal.managedUnlockSector(id)
+				cm.managedLockSector(id)
+				defer cm.managedUnlockSector(id)
 
 				// Add the sector as virtual.
-				cm.wal.mu.Lock()
+				cm.mu.Lock()
 				location, exists := cm.sectorLocations[id]
-				cm.wal.mu.Unlock()
+				cm.mu.Unlock()
 				if exists {
-					cm.wal.managedAddVirtualSector(id, location)
+					cm.managedAddVirtualSector(id, location)
 				}
 			}(root)
 		}
@@ -467,10 +451,10 @@ func (cm *ContractManager) DeleteSector(root crypto.Hash) error {
 	}
 	defer cm.tg.Done()
 	id := cm.managedSectorID(root)
-	cm.wal.managedLockSector(id)
-	defer cm.wal.managedUnlockSector(id)
+	cm.managedLockSector(id)
+	defer cm.managedUnlockSector(id)
 
-	return cm.wal.managedDeleteSector(id)
+	return cm.managedDeleteSector(id)
 }
 
 // RemoveSector will remove a sector from the contract manager. If multiple
@@ -482,10 +466,10 @@ func (cm *ContractManager) RemoveSector(root crypto.Hash) error {
 	}
 	defer cm.tg.Done()
 	id := cm.managedSectorID(root)
-	cm.wal.managedLockSector(id)
-	defer cm.wal.managedUnlockSector(id)
+	cm.managedLockSector(id)
+	defer cm.managedUnlockSector(id)
 
-	return cm.wal.managedRemoveSector(id)
+	return cm.managedRemoveSector(id)
 }
 
 // RemoveSectorBatch is a non-ACID call to remove a bunch of sectors at once.
@@ -509,9 +493,9 @@ func (cm *ContractManager) RemoveSectorBatch(sectorRoots []crypto.Hash) error {
 		semaphore <- struct{}{}
 		go func(root crypto.Hash) {
 			id := cm.managedSectorID(root)
-			cm.wal.managedLockSector(id)
-			cm.wal.managedRemoveSector(id) // Error is ignored.
-			cm.wal.managedUnlockSector(id)
+			cm.managedLockSector(id)
+			cm.managedRemoveSector(id) // Error is ignored.
+			cm.managedUnlockSector(id)
 			<-semaphore
 			wg.Done()
 		}(root)

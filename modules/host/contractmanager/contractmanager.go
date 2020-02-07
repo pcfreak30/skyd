@@ -27,6 +27,7 @@ package contractmanager
 
 import (
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -34,6 +35,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // ContractManager is responsible for managing contracts that the host has with
@@ -96,9 +98,10 @@ type ContractManager struct {
 	dependencies  modules.Dependencies
 	staticAlerter *modules.GenericAlerter
 	log           *persist.Logger
+	mu            sync.Mutex
 	persistDir    string
 	tg            siasync.ThreadGroup
-	wal           writeAheadLog
+	wal           *writeaheadlog.WAL
 }
 
 // Close will cleanly shutdown the contract manager.
@@ -120,7 +123,6 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 
 		staticAlerter: modules.NewAlerter("contractmanager"),
 	}
-	cm.wal.cm = cm
 	cm.tg.AfterStop(func() {
 		dependencies.Destruct()
 	})
@@ -168,8 +170,8 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 	}
 	// Upon shudown, unload all of the files.
 	cm.tg.AfterStop(func() {
-		cm.wal.mu.Lock()
-		defer cm.wal.mu.Unlock()
+		cm.mu.Lock()
+		defer cm.mu.Unlock()
 
 		for _, sf := range cm.storageFolders {
 			// No storage folder to close if the folder is not available.
@@ -200,14 +202,6 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 			continue
 		}
 		cm.loadSectorLocations(sf)
-	}
-
-	// Launch the sync loop that periodically flushes changes from the WAL to
-	// disk.
-	err = cm.wal.spawnSyncLoop()
-	if err != nil {
-		cm.log.Println("ERROR: Unable to spawn the contract manager synchronization loop:", err)
-		return nil, errors.AddContext(err, "error while spawning contract manager sync loop")
 	}
 
 	// Spin up the thread that continuously looks for missing storage folders

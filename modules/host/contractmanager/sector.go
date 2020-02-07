@@ -122,14 +122,14 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 	}
 	defer cm.tg.Done()
 	id := cm.managedSectorID(root)
-	cm.wal.managedLockSector(id)
-	defer cm.wal.managedUnlockSector(id)
+	cm.managedLockSector(id)
+	defer cm.managedUnlockSector(id)
 
 	// Fetch the sector metadata.
-	cm.wal.mu.Lock()
+	cm.mu.Lock()
 	sl, exists1 := cm.sectorLocations[id]
 	sf, exists2 := cm.storageFolders[sl.storageFolder]
-	cm.wal.mu.Unlock()
+	cm.mu.Unlock()
 	if !exists1 {
 		return nil, ErrSectorNotFound
 	}
@@ -153,32 +153,32 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 }
 
 // managedLockSector grabs a sector lock.
-func (wal *writeAheadLog) managedLockSector(id sectorID) {
-	wal.mu.Lock()
-	sl, exists := wal.cm.lockedSectors[id]
+func (cm *ContractManager) managedLockSector(id sectorID) {
+	cm.mu.Lock()
+	sl, exists := cm.lockedSectors[id]
 	if exists {
 		sl.waiting++
 	} else {
 		sl = &sectorLock{
 			waiting: 1,
 		}
-		wal.cm.lockedSectors[id] = sl
+		cm.lockedSectors[id] = sl
 	}
-	wal.mu.Unlock()
+	cm.mu.Unlock()
 
 	// Block until the sector is available.
 	sl.mu.Lock()
 }
 
 // managedUnlockSector releases a sector lock.
-func (wal *writeAheadLog) managedUnlockSector(id sectorID) {
-	wal.mu.Lock()
-	defer wal.mu.Unlock()
+func (cm *ContractManager) managedUnlockSector(id sectorID) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 
 	// Release the lock on the sector.
-	sl, exists := wal.cm.lockedSectors[id]
+	sl, exists := cm.lockedSectors[id]
 	if !exists {
-		wal.cm.log.Critical("Unlock of sector that is not locked.")
+		cm.log.Critical("Unlock of sector that is not locked.")
 		return
 	}
 	sl.waiting--
@@ -186,6 +186,6 @@ func (wal *writeAheadLog) managedUnlockSector(id sectorID) {
 
 	// If nobody else is trying to lock the sector, perform garbage collection.
 	if sl.waiting == 0 {
-		delete(wal.cm.lockedSectors, id)
+		delete(cm.lockedSectors, id)
 	}
 }
