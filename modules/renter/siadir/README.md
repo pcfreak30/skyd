@@ -14,17 +14,17 @@ directory tree
 
 ## Subsystems
 The following subsystems help the SiaDir module execute its responsibilities:
- - [Persistance Subsystem](#persistance-subsystem)
+ - [Persistence Subsystem](#persistence-subsystem)
  - [File Format Subsystem](#file-format-subsystem)
  - [SiaDirSet Subsystem](#siadirset-subsystem)
  - [DirReader Subsystem](#dirreader-subsystem)
 
- ### Persistance Subsystem
+ ### Persistence Subsystem
  **Key Files**
 - [persist.go](./persist.go)
 - [persistwal.go](./persistwal.go)
 
-The Persistance subsystem is responsible for the disk interaction with the
+The Persistence subsystem is responsible for the disk interaction with the
 `.siadir` files and ensuring safe and performant ACID operations by using the
 [writeaheadlog](https://gitlab.com/NebulousLabs/writeaheadlog) package. There
 are two WAL updates that are used, deletion and metadata updates.
@@ -45,8 +45,6 @@ a new siadir is created.
  - `UpdateMetadata`
 
 **Inbound Complexities**
- - `callLoadSiaDirMetadata` is used to load the directory metadata from disk
-    - `SiaDirSet.readLockMetadata` will use this method to load the metadata from disk
  - `callDelete` deletes a SiaDir from disk
     - `SiaDirSet.Delete` uses `callDelete`
  - `LoadSiaDir` loads a SiaDir from disk
@@ -90,8 +88,6 @@ will hand out the existing object, otherwise it will try to load it from disk.
  - `Rename`
 
 **Outbound Complexities**
- - `readLockMetadata` will use `callLoadSiaDirMetadata` to load the metadata
-   from disk
  - `Delete` will use `callDelete` to delete the SiaDir once it has been acquired
    in the set
  - `open` calls `LoadSiaDir` to load the SiaDir from disk

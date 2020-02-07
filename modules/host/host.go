@@ -69,6 +69,7 @@ import (
 	"net"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -77,6 +78,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 )
 
 const (
@@ -93,10 +95,6 @@ var (
 		Header:  "Sia Host DB",
 		Version: "0.5.2",
 	}
-
-	// errHostClosed gets returned when a call is rejected due to the host
-	// having been closed.
-	errHostClosed = errors.New("call is disabled because the host is closed")
 
 	// Nil dependency errors.
 	errNilCS      = errors.New("host cannot use a nil state")
@@ -144,15 +142,17 @@ type Host struct {
 	dependencies  modules.Dependencies
 	modules.StorageManager
 
+	// Subsystems
+	staticAccountManager *accountManager
+
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
-	announced         bool
-	announceConfirmed bool
-	blockHeight       types.BlockHeight
-	publicKey         types.SiaPublicKey
-	secretKey         crypto.SecretKey
-	recentChange      modules.ConsensusChangeID
-	unlockHash        types.UnlockHash // A wallet address that can receive coins.
+	announced    bool
+	blockHeight  types.BlockHeight
+	publicKey    types.SiaPublicKey
+	secretKey    crypto.SecretKey
+	recentChange modules.ConsensusChangeID
+	unlockHash   types.UnlockHash // A wallet address that can receive coins.
 
 	// Host transient fields - these fields are either determined at startup or
 	// otherwise are not critical to always be correct.
@@ -168,14 +168,15 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// Utilities.
-	db         *persist.BoltDatabase
-	listener   net.Listener
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persistDir string
-	port       string
-	tg         siasync.ThreadGroup
+	// Misc state.
+	db            *persist.BoltDatabase
+	listener      net.Listener
+	log           *persist.Logger
+	mu            sync.RWMutex
+	staticMonitor *connmonitor.Monitor
+	persistDir    string
+	port          string
+	tg            siasync.ThreadGroup
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -234,13 +235,12 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 
 	// Create the host object.
 	h := &Host{
-		cs:            cs,
-		g:             g,
-		tpool:         tpool,
-		wallet:        wallet,
-		staticAlerter: modules.NewAlerter("host"),
-		dependencies:  dependencies,
-
+		cs:                       cs,
+		g:                        g,
+		tpool:                    tpool,
+		wallet:                   wallet,
+		staticAlerter:            modules.NewAlerter("host"),
+		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
 		persistDir: persistDir,
@@ -266,6 +266,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	if err != nil {
 		return nil, err
 	}
+
 	h.tg.AfterStop(func() {
 		err = h.log.Close()
 		if err != nil {
@@ -302,11 +303,26 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		}
 	})
 
+	// Add the account manager subsystem
+	h.staticAccountManager, err = h.newAccountManager()
+	if err != nil {
+		return nil, err
+	}
+
+	// Subscribe to the consensus set.
+	err = h.initConsensusSubscription()
+	if err != nil {
+		return nil, err
+	}
+
 	// Ensure the host is consistent by pruning any stale storage obligations.
 	if err := h.PruneStaleStorageObligations(); err != nil {
 		h.log.Println("Could not prune stale storage obligations:", err)
 		return nil, err
 	}
+
+	// Create bandwidth monitor
+	h.staticMonitor = connmonitor.NewMonitor()
 
 	// Initialize the networking. We need to hold the lock while doing so since
 	// the previous load subscribed the host to the consensus set.
@@ -346,14 +362,25 @@ func (h *Host) Close() error {
 // set by the user (host is configured through InternalSettings), and are the
 // values that get displayed to other hosts on the network.
 func (h *Host) ExternalSettings() modules.HostExternalSettings {
-	h.mu.Lock()
-	defer h.mu.Unlock()
 	err := h.tg.Add()
 	if err != nil {
 		build.Critical("Call to ExternalSettings after close")
 	}
 	defer h.tg.Done()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	return h.externalSettings()
+}
+
+// BandwidthCounters returns the Hosts's upload and download bandwidth
+func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
+	if err := h.tg.Add(); err != nil {
+		return 0, 0, time.Time{}, err
+	}
+	defer h.tg.Done()
+	readBytes, writeBytes := h.staticMonitor.Counts()
+	startTime := h.staticMonitor.StartTime()
+	return writeBytes, readBytes, startTime, nil
 }
 
 // WorkingStatus returns the working state of the host, where working is
@@ -376,13 +403,13 @@ func (h *Host) ConnectabilityStatus() modules.HostConnectabilityStatus {
 // FinancialMetrics returns information about the financial commitments,
 // rewards, and activities of the host.
 func (h *Host) FinancialMetrics() modules.HostFinancialMetrics {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
 	err := h.tg.Add()
 	if err != nil {
 		build.Critical("Call to FinancialMetrics after close")
 	}
 	defer h.tg.Done()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.financialMetrics
 }
 
@@ -396,13 +423,13 @@ func (h *Host) PublicKey() types.SiaPublicKey {
 
 // SetInternalSettings updates the host's internal HostInternalSettings object.
 func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
 	err := h.tg.Add()
 	if err != nil {
 		return err
 	}
 	defer h.tg.Done()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	// The host should not be accepting file contracts if it does not have an
 	// unlock hash.
@@ -443,12 +470,19 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 
 // InternalSettings returns the settings of a host.
 func (h *Host) InternalSettings() modules.HostInternalSettings {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
 	err := h.tg.Add()
 	if err != nil {
 		return modules.HostInternalSettings{}
 	}
 	defer h.tg.Done()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.settings
+}
+
+// BlockHeight returns the host's current blockheight.
+func (h *Host) BlockHeight() types.BlockHeight {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.blockHeight
 }

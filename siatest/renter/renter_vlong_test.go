@@ -14,8 +14,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -289,7 +288,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 
 	// Renew contracts by running out of funds
-	_, err = siatest.DrainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
+	_, err = siatest.DrainContractsByUploading(r, tg)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -456,7 +455,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to upload the file to.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+			if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 				continue
 			}
 			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
@@ -564,7 +563,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 					t.Fatal(err)
 				}
 				err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, false)
-				if err != nil && !strings.Contains(err.Error(), siafile.ErrPathOverload.Error()) {
+				if err != nil && !strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
 					t.Fatal(err)
 				}
 			}
@@ -592,7 +591,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
-			err = r.RenterDeletePost(sp)
+			err = r.RenterFileDeletePost(sp)
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
@@ -611,7 +610,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to create a dir in.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+			if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 				continue
 			}
 			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
@@ -644,7 +643,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to delete.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+			if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 				continue
 			}
 			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
@@ -667,7 +666,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				// NOTE we could probably avoid ignoring ErrPathOverload if we
 				// decided that `siadir.New` returns a potentially existing
 				// directory instead.
-				if err != nil && !strings.Contains(err.Error(), siadir.ErrPathOverload.Error()) {
+				if err != nil && !strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
 					t.Fatal(err)
 				}
 			} else {

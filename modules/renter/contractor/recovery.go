@@ -45,7 +45,7 @@ func (c *Contractor) newRecoveryScanner(rs proto.RenterSeed) *recoveryScanner {
 // filecontracts belonging to the wallet's seed. Once done, all recoverable
 // contracts should be known to the contractor after which it will periodically
 // try to recover them.
-func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.ConsensusChangeID, cancel <-chan struct{}) error {
+func (rs *recoveryScanner) threadedScan(cs modules.ConsensusSet, scanStart modules.ConsensusChangeID, cancel <-chan struct{}) error {
 	if err := rs.c.tg.Add(); err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 			defer fastrand.Read(rs[:])
 			// Validate the identifier.
 			hostKey, valid, err := csi.IsValid(rs, txn, encryptedHostKey)
-			if err != nil {
+			if err != nil && !errors.Contains(err, proto.ErrCSIDoesNotMatchSeed) {
 				c.log.Println("WARN: error validating the identifier:", err)
 				continue
 			}
@@ -171,7 +171,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	// Get the corresponding host.
 	host, ok, err := c.hdb.Host(rc.HostPublicKey)
 	if err != nil {
-		return errors.AddContext(err, "error geting host from hostdb:")
+		return errors.AddContext(err, "error getting host from hostdb:")
 	}
 	if !ok {
 		return errors.New("Can't recover contract with unknown host")

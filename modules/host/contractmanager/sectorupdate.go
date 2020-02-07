@@ -68,7 +68,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 				// None of the storage folders have enough room to house the
 				// sector.
 				wal.mu.Unlock()
-				return errors.New(modules.V1413HostOutOfStorageErrString)
+				return errors.New(modules.V1420HostOutOfStorageErrString)
 			}
 			defer sf.mu.RUnlock()
 
@@ -151,7 +151,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 		break
 	}
 	if len(storageFolders) < 1 {
-		return errors.New(modules.V1413HostOutOfStorageErrString)
+		return errors.New(modules.V1420HostOutOfStorageErrString)
 	}
 
 	// Wait for the synchronize.
@@ -461,7 +461,10 @@ func (cm *ContractManager) AddSectorBatch(sectorRoots []crypto.Hash) error {
 // storage proofs. If the amount of data removed is small, the risk is small.
 // This operation will not destabilize the contract manager.
 func (cm *ContractManager) DeleteSector(root crypto.Hash) error {
-	cm.tg.Add()
+	err := cm.tg.Add()
+	if err != nil {
+		return err
+	}
 	defer cm.tg.Done()
 	id := cm.managedSectorID(root)
 	cm.wal.managedLockSector(id)
@@ -473,7 +476,10 @@ func (cm *ContractManager) DeleteSector(root crypto.Hash) error {
 // RemoveSector will remove a sector from the contract manager. If multiple
 // copies of the sector exist, only one will be removed.
 func (cm *ContractManager) RemoveSector(root crypto.Hash) error {
-	cm.tg.Add()
+	err := cm.tg.Add()
+	if err != nil {
+		return err
+	}
 	defer cm.tg.Done()
 	id := cm.managedSectorID(root)
 	cm.wal.managedLockSector(id)

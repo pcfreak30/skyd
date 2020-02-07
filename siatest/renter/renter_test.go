@@ -82,7 +82,6 @@ func TestRenterOne(t *testing.T) {
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
-		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDirectories", testDirectories},
 	}
@@ -162,14 +161,14 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi.ChangeTime.Before(beforeUploadTime) || fi.ChangeTime.After(afterUploadTime) {
 		t.Fatal("ChangeTime was not within the correct interval")
 	}
-	if fi.ModTime.Before(beforeUploadTime) || fi.ModTime.After(afterUploadTime) {
-		t.Fatal("ModTime was not within the correct interval")
+	if fi.ModificationTime.Before(beforeUploadTime) || fi.ModificationTime.After(afterUploadTime) {
+		t.Fatal("ModificationTime was not within the correct interval")
 	}
 
-	// After uploading a file the AccessTime, ChangeTime and ModTime should be
+	// After uploading a file the AccessTime, ChangeTime and ModificationTime should be
 	// the same.
-	if fi.AccessTime != fi.ChangeTime || fi.ChangeTime != fi.ModTime {
-		t.Fatal("AccessTime, ChangeTime and ModTime are not the same")
+	if fi.AccessTime != fi.ChangeTime || fi.ChangeTime != fi.ModificationTime {
+		t.Fatal("AccessTime, ChangeTime and ModificationTime are not the same")
 	}
 
 	// The CreateTime should precede the other timestamps.
@@ -205,8 +204,8 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi.ChangeTime != fi2.ChangeTime {
 		t.Fatal("ChangeTime changed after download")
 	}
-	if fi.ModTime != fi2.ModTime {
-		t.Fatal("ModTime changed after download")
+	if fi.ModificationTime != fi2.ModificationTime {
+		t.Fatal("ModificationTime changed after download")
 	}
 
 	// TODO Once we can change the localPath using the API, check that it only
@@ -244,8 +243,8 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi2.AccessTime != fi3.AccessTime {
 		t.Fatal("AccessTime changed after download")
 	}
-	if fi2.ModTime != fi3.ModTime {
-		t.Fatal("ModTime changed after download")
+	if fi2.ModificationTime != fi3.ModificationTime {
+		t.Fatal("ModificationTime changed after download")
 	}
 }
 
@@ -296,10 +295,12 @@ func TestRenterFour(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
+		{"TestPauseAndResumeRepairAndUploads", testPauseAndResumeRepairAndUploads},
 		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
+		{"TestDirMode", testDirMode},
+		{"TestEscapeSiaPath", testEscapeSiaPath}, // Runs last because it uploads many files
 	}
 
 	// Run tests
@@ -555,7 +556,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check directory
-	rgd, err := r.RenterGetDir(rd.SiaPath())
+	rgd, err := r.RenterDirGet(rd.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,7 +598,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rgd, err = r.RenterGetDir(siaPath)
+	rgd, err = r.RenterDirGet(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +615,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rgd, err = r.RenterGetDir(siaPath)
+	rgd, err = r.RenterDirGet(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -636,7 +637,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Renamed directory should have 0 files and 1 sub directory.
-	rgd, err = r.RenterGetDir(newSiaPath)
+	rgd, err = r.RenterDirGet(newSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -648,7 +649,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// Subdir of renamed dir should have 0 files and 1 sub directory.
-	rgd, err = r.RenterGetDir(rgd.Directories[1].SiaPath)
+	rgd, err = r.RenterDirGet(rgd.Directories[1].SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -660,7 +661,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// SubSubdir of renamed dir should have 1 file and 0 sub directories.
-	rgd, err = r.RenterGetDir(rgd.Directories[1].SiaPath)
+	rgd, err = r.RenterDirGet(rgd.Directories[1].SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -843,8 +844,9 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		}
 		var found bool
 		for _, alert := range dag.Alerts {
+			expectedCause := fmt.Sprintf("Siafile '%v' has a health of %v", remoteFile.SiaPath().String(), f.MaxHealth)
 			if alert.Msg == renter.AlertMSGSiafileLowRedundancy &&
-				alert.Cause == renter.AlertCauseSiafileLowRedundancy(remoteFile.SiaPath(), f.Health) {
+				alert.Cause == expectedCause {
 				found = true
 			}
 		}
@@ -875,6 +877,136 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	// We should be able to download
 	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
+	}
+}
+
+// TestLocalRepairCorrupted tests if a renter repairs a file from disk after the
+// file on disk got corrupted.
+//
+// The test has certain timing contraints, in particular we wait 20 seconds at
+// the end to ensure that a file cannot be repaired. Because of these timing
+// constraints, the test is run standalone and without t.Parallel().
+func TestLocalRepairCorrupted(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a group for the subtests
+	gp := siatest.GroupParams{
+		Hosts:   3,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab the first of the group's renters
+	renterNode := tg.Renters()[0]
+
+	// Set fileSize and redundancy for upload
+	fileSize := int(modules.SectorSize) + siatest.Fuzz()
+	dataPieces := uint64(2)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+
+	// Upload file
+	localFile, remoteFile, err := renterNode.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Take down hosts until the file is unable to be repaired from remote. This
+	// will check that the local repair process is working.
+	var hostsRemoved uint64
+	hostsToRemove := parityPieces + 1
+	for hostsRemoved = 0; hostsRemoved < hostsToRemove; hostsRemoved++ {
+		hostToRemove := tg.Hosts()[0]
+		err := tg.RemoveNode(hostToRemove)
+		if err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
+	}
+	expectedRedundancy := float64(dataPieces-1) / float64(dataPieces)
+	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
+		t.Fatal("Redundancy isn't decreasing", err)
+	}
+	// Download should fail, there are not enough hosts online.
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err == nil {
+		t.Fatal("download is succeeding even though there are not enough hosts to carry the file.")
+		t.Log(err)
+	}
+	// Bring a host back up and see that the file completes a local repair.
+	_, err = tg.AddNodes(node.HostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostsRemoved--
+	err = renterNode.WaitForFileAvailable(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Corrupt the local file, so that repairs will cause problems.
+	b, err := localFile.Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(localFile.Path(), fastrand.Bytes(len(b)), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bring more hosts online, check that repair will failover to remote
+	// repair.
+	for hostsRemoved > 0 {
+		hostsRemoved--
+		_, err = tg.AddNodes(node.HostTemplate)
+		if err != nil {
+			t.Fatal("Failed to create a new host", err)
+		}
+	}
+	// File should get back to full health.
+	err = renterNode.WaitForUploadHealth(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify that a download works.
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bring hosts offline again. Now that the local file is corrupted,
+	// repairing should be impossible.
+	for hostsRemoved = 0; hostsRemoved < hostsToRemove; hostsRemoved++ {
+		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
+	}
+	// Wait for the redundancy to drop.
+	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
+		t.Fatal("Redundancy isn't decreasing", err)
+	}
+	// Bring a host back online so that the file can be repaired to be
+	// available. Because the local file is corrupt, the repair should be
+	// blocked.
+	_, err = tg.AddNodes(node.HostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostsRemoved--
+
+	// Give the renter some time to complete the repair. I'm not really sure if
+	// there's a better way than waiting to ensure that the repair loop has had
+	// a couple of iterations to attempt the repair.
+	time.Sleep(time.Second * 20)
+	file, err := renterNode.File(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.Available {
+		t.Fatal("file should not be available when its only source of repair data is corrupt")
 	}
 }
 
@@ -989,10 +1121,43 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		// Compare File result and Files Results
-		if !reflect.DeepEqual(files[i], rf.File) {
-			t.Fatalf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
+		// Compare File result and Files Results, check the fields which are
+		// expected to be stable between accesses of the file.
+		if files[i].Available != rf.File.Available {
+			t.Error("mismatch")
+		}
+		if files[i].CipherType != rf.File.CipherType {
+			t.Error("mismatch")
+		}
+		if files[i].CreateTime != rf.File.CreateTime {
+			t.Error("mismatch")
+		}
+		if files[i].Filesize != rf.File.Filesize {
+			t.Error("mismatch")
+		}
+		if files[i].LocalPath != rf.File.LocalPath {
+			t.Error("mismatch")
+		}
+		if files[i].FileMode != rf.File.FileMode {
+			t.Error("mismatch")
+		}
+		if files[i].NumStuckChunks != rf.File.NumStuckChunks {
+			t.Error("mismatch")
+		}
+		if files[i].OnDisk != rf.File.OnDisk {
+			t.Error("mismatch")
+		}
+		if files[i].Recoverable != rf.File.Recoverable {
+			t.Error("mismatch")
+		}
+		if files[i].Renewing != rf.File.Renewing {
+			t.Error("mismatch")
+		}
+		if files[i].SiaPath != rf.File.SiaPath {
+			t.Error("mismatch")
+		}
+		if files[i].Stuck != rf.File.Stuck {
+			t.Error("mismatch")
 		}
 	}
 }
@@ -1115,7 +1280,7 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 
-	// Upload file, creating a piece for each host in the group
+	// Upload a file, then try to overwrite the file with the force flag set.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
@@ -1128,7 +1293,7 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
 	}
 
-	// Upload file, creating a piece for each host in the group
+	// Upload file, then try to overwrite the file without the force flag set.
 	dataPieces = uint64(1)
 	parityPieces = uint64(len(tg.Hosts())) - dataPieces
 	fileSize = 100 + siatest.Fuzz()
@@ -1139,6 +1304,32 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
 	if err == nil {
 		t.Fatal("File overwritten without specifying 'force=true'")
+	}
+
+	// Try to upload a file with the force flag set.
+	dataPieces = uint64(1)
+	parityPieces = uint64(len(tg.Hosts())) - dataPieces
+	fileSize = 100 + siatest.Fuzz()
+	localFile, _, err = renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
+	if err == nil {
+		t.Fatal("File overwritten without specifying 'force=true'")
+	}
+
+	// Try to upload a file with the force flag set.
+	dataPieces = uint64(1)
+	parityPieces = uint64(len(tg.Hosts())) - dataPieces
+	fileSize = 100 + siatest.Fuzz()
+	localFile, _, err = renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
 	}
 }
 
@@ -1709,7 +1900,7 @@ func TestRenewFailing(t *testing.T) {
 
 		// If the host is the host in the disabled contract, then the test has
 		// passed.
-		if rc.DisabledContracts[0].HostPublicKey.String() != lockedHostPK.String() {
+		if !rc.DisabledContracts[0].HostPublicKey.Equals(lockedHostPK) {
 			return errors.New("Disbled contract host not the locked host")
 		}
 		return nil
@@ -1888,26 +2079,9 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 
-	// All contracts should be disabled.
+	// All contracts should be expired.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterDisabledContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have num of hosts expired contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.PassiveContracts) != 0 {
-			return fmt.Errorf("expected 0 passive contracts, got %v", len(rc.PassiveContracts))
-		}
-		if len(rc.RefreshedContracts) != 0 {
-			return fmt.Errorf("expected 0 refreshed contracts, got %v", len(rc.RefreshedContracts))
-		}
-		if len(rc.DisabledContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v disabled contracts, got %v", len(tg.Hosts()), len(rc.DisabledContracts))
-		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
@@ -2806,8 +2980,28 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	wg.Wait()
 }
 
-// testSetFileTrackingPath tests if changing the repairPath of a file works.
-func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
+// TestSetFileTrackingPath tests if changing the repairPath of a file works.
+func TestSetFileTrackingPath(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a group for the subtests
+	gp := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 	// Check that we have enough hosts for this test.
@@ -3063,7 +3257,7 @@ func TestUploadAfterDelete(t *testing.T) {
 	// closing the entry. That shouldn't cause issues.
 	for i := 0; i < 5; i++ {
 		// Delete the file.
-		if err := renter.RenterDeletePost(remoteFile.SiaPath()); err != nil {
+		if err := renter.RenterFileDeletePost(remoteFile.SiaPath()); err != nil {
 			t.Fatal(err)
 		}
 		// Upload the file again right after deleting it.
@@ -3071,11 +3265,34 @@ func TestUploadAfterDelete(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	// Create an empty directory on the renter called 'dir.sia'. This triggers
+	// an edge case where calling /renter/delete on that directory in an old
+	// version of the code would cause the directory to be deleted.
+	sp, err := modules.NewSiaPath("dir.sia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = renter.RenterDirCreatePost(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call delete file on that new dir.
+	err = renter.RenterFileDeletePost(sp)
+	if err == nil {
+		t.Fatal("calling 'delete file' on empty dir should return an error")
+	}
+	// Check that the dir still exists.
+	_, err = renter.RenterDirGet(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
-// TestSiafileCompatCode checks that legacy renters can upgrade to the latest
-// siafile format.
-func TestSiafileCompatCode(t *testing.T) {
+// TestSiafileCompatCodeV137 checks that legacy renters can upgrade from the
+// v137 siafile format.
+func TestSiafileCompatCodeV137(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -3132,7 +3349,7 @@ func TestSiafileCompatCode(t *testing.T) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the siafile is exactly where we would expect it.
-	expectedLocation := filepath.Join(renterDir, "siafiles", "sub1", "sub2", "testfile.sia")
+	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, "sub1", "sub2", "testfile.sia")
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
@@ -3165,8 +3382,8 @@ func TestSiafileCompatCode(t *testing.T) {
 		if sf.CreateTime.IsZero() {
 			return errors.New("CreateTime wasn't set correctly")
 		}
-		if sf.ModTime.IsZero() {
-			return errors.New("ModTime wasn't set correctly")
+		if sf.ModificationTime.IsZero() {
+			return errors.New("ModificationTime wasn't set correctly")
 		}
 		if sf.Available {
 			return errors.New("File shouldn't be available since we don't know the hosts")
@@ -3204,6 +3421,74 @@ func TestSiafileCompatCode(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSiafileCompatCodeV140 checks that legacy renters can upgrade from the
+// v140 siafile format.
+func TestSiafileCompatCodeV140(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get test directory
+	testDir := renterTestDir(t.Name())
+
+	// Copy the legacy settings file to the test directory.
+	renterDir := filepath.Join(testDir, "renter")
+	source := "../../compatibility/renter_v140.json"
+	destination := filepath.Join(renterDir, "renter.json")
+	if err := copyFile(source, destination); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare a legacy snapshots and siafiles folder which should be moved by
+	// the upgrade code.
+	siafilesDir := filepath.Join(renterDir, "siafiles")
+	snapshotsDir := filepath.Join(renterDir, "snapshots")
+	if err := os.MkdirAll(siafilesDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(snapshotsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Add a dummy snapshot and siafile to their corresponding folder.
+	dummySiafile := "foo.sia"
+	dummySnapshot := "bar.sia"
+	var f *os.File
+	var err error
+	if f, err = os.Create(filepath.Join(siafilesDir, dummySiafile)); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if f, err = os.Create(filepath.Join(snapshotsDir, dummySnapshot)); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	// Create new node with legacy sia file.
+	r, err := siatest.NewNode(node.AllModules(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the folders don't exist anymore.
+	if _, err := os.Stat(siafilesDir); !os.IsNotExist(err) {
+		t.Fatal("Error should be ErrNotExist but was", err)
+	}
+	if _, err := os.Stat(snapshotsDir); !os.IsNotExist(err) {
+		t.Fatal("Error should be ErrNotExist but was", err)
+	}
+	// Make sure the files are where we would expect them.
+	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, dummySiafile)
+	if _, err := os.Stat(expectedLocation); err != nil {
+		t.Fatal(err)
+	}
+	expectedLocation = filepath.Join(renterDir, modules.FileSystemRoot, modules.BackupRoot, dummySnapshot)
+	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -3612,7 +3897,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
 		}
 		hostContract := rcg.PassiveContracts[0]
-		if hostContract.HostPublicKey.String() != hpk.String() {
+		if !hostContract.HostPublicKey.Equals(hpk) {
 			return errors.New("Passive contract doesn't belong to the host")
 		}
 		return nil
@@ -3905,6 +4190,179 @@ func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testPauseAndResumeRepairAndUploads tests that the Renter's API endpoint to
+// pause and resume the repair and uploads works as intended
+func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+	numHost := len(tg.Hosts())
+	hostToAdd := 2
+
+	// Confirm that starting out the Renter's uploads are not paused
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rg.Settings.UploadsStatus.Paused {
+		t.Fatal("Renter's uploads are paused at the beginning of the test")
+	}
+	if !rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatalf("Pause end time should be null if the uploads are not paused but was %v", rg.Settings.UploadsStatus.PauseEndTime)
+	}
+
+	// Pause Repairs And Uploads with a high duration to ensure that the uploads
+	// and repairs don't start before we want them to
+	err = r.RenterUploadsPausePost(time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm the Renter's uploads are now paused
+	rg, err = r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rg.Settings.UploadsStatus.Paused {
+		t.Fatal("Renter's uploads are not paused but should be")
+	}
+	if rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatal("Pause end time should not be null if the uploads are paused")
+	}
+
+	// Try and Upload a file, the upload post should succeed but the upload
+	// progress of the file should never increase because the uploads are
+	// paused
+	_, rf, err := r.UploadNewFile(100, 1, uint64(numHost+hostToAdd-1), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		file, err := r.File(rf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if file.UploadProgress != 0 {
+			t.Fatal("UploadProgress is increasing, expected it to stay at 0:", file.UploadProgress)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Resume Repair
+	err = r.RenterUploadsResumePost()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm the Renter's uploads are no longer paused
+	rg, err = r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rg.Settings.UploadsStatus.Paused {
+		t.Fatal("Renter's uploads are still paused")
+	}
+	if !rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatalf("Pause end time should be null if the uploads are not paused but was %v", rg.Settings.UploadsStatus.PauseEndTime)
+	}
+
+	// Confirm Upload resumes and gets to the expected redundancy. There aren't
+	// enough hosts yet to get to the fullRedundancy
+	fullRedundancy := float64(numHost + hostToAdd)
+	expectedRedundancy := float64(numHost)
+	err = build.Retry(100, 250*time.Millisecond, func() error {
+		file, err := r.File(rf)
+		if err != nil {
+			return err
+		}
+		if file.Redundancy < expectedRedundancy {
+			return fmt.Errorf("redundancy should be %v but was %v", expectedRedundancy, file.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pause the repairs and uploads again
+	err = r.RenterUploadsPausePost(time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm the Renter's uploads are now paused
+	rg, err = r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rg.Settings.UploadsStatus.Paused {
+		t.Fatal("Renter's uploads are not paused but should be")
+	}
+	if rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatal("Pause end time should not be null if the uploads are paused")
+	}
+
+	// Update renter's allowance to require making contracts with the new hosts
+	allowance := rg.Settings.Allowance
+	allowance.Hosts = uint64(numHost + hostToAdd)
+	err = r.RenterPostAllowance(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add hosts so upload can get to full redundancy
+	_, err = tg.AddNodeN(node.HostTemplate, hostToAdd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm upload still hasn't reach full redundancy because repairs are
+	// paused
+	for i := 0; i < 5; i++ {
+		file, err := r.File(rf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if file.Redundancy == fullRedundancy {
+			t.Fatalf("File Redundancy %v has reached full redundancy %v but shouldn't have", file.Redundancy, fullRedundancy)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Resume Repair and Upload by calling pause again with a very should time
+	// duration so the repairs and uploads restart on their own
+	err = r.RenterUploadsPausePost(time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm file gets to full Redundancy
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		file, err := r.File(rf)
+		if err != nil {
+			return err
+		}
+		if file.Redundancy < fullRedundancy {
+			return fmt.Errorf("redundancy should be %v but was %v", fullRedundancy, file.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm the Renter's uploads are no longer paused
+	rg, err = r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rg.Settings.UploadsStatus.Paused {
+		t.Fatal("Renter's uploads are still paused")
+	}
+	if !rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatalf("Pause end time should be null if the uploads are not paused but was %v", rg.Settings.UploadsStatus.PauseEndTime)
+	}
+}
+
 // testDownloadServedFromDisk tests whether downloads will actually be served
 // from disk.
 func testDownloadServedFromDisk(t *testing.T, tg *siatest.TestGroup) {
@@ -3937,5 +4395,75 @@ func testDownloadServedFromDisk(t *testing.T, tg *siatest.TestGroup) {
 	_, err = r.StreamWithDiskFetch(rf, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testDirMode is a subtest that makes sure that various ways of creating a dir
+// all set the correct permissions.
+func testDirMode(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+
+	dirSP, err := modules.NewSiaPath("dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := renter.FilesDir().CreateDir(dirSP.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err := dir.NewFile(fileSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// The fileupload should have created a dir. That dir should have the same
+	// permissions as the file.
+	rd, err := renter.RenterDirGet(dirSP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	di := rd.Directories[0]
+	fi, err := lf.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if di.DirMode != fi.Mode() {
+		t.Fatalf("Expected folder permissions to be %v but was %v", fi.Mode(), di.DirMode)
+	}
+	// Test creating dir using endpoint.
+	dir2SP := modules.RandomSiaPath()
+	if err := renter.RenterDirCreatePost(dir2SP); err != nil {
+		t.Fatal(err)
+	}
+	rd, err = renter.RenterDirGet(dir2SP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	di = rd.Directories[0]
+	// The created dir should have the default permissions.
+	if di.DirMode != modules.DefaultDirPerm {
+		t.Fatalf("Expected folder permissions to be %v but was %v", modules.DefaultDirPerm, di.DirMode)
+	}
+	dir3SP := modules.RandomSiaPath()
+	mode := os.FileMode(0777)
+	if err := renter.RenterDirCreateWithModePost(dir3SP, mode); err != nil {
+		t.Fatal(err)
+	}
+	rd, err = renter.RenterDirGet(dir3SP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	di = rd.Directories[0]
+	// The created dir should have the specified permissions.
+	if di.DirMode != mode {
+		t.Fatalf("Expected folder permissions to be %v but was %v", mode, di.DirMode)
 	}
 }

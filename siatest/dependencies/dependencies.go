@@ -3,6 +3,7 @@ package dependencies
 import (
 	"net"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
@@ -16,6 +17,12 @@ type (
 	// DependencyLowFundsRenewalFail will cause contract renewal to fail due to low
 	// funds in the allowance.
 	DependencyLowFundsRenewalFail struct {
+		modules.ProductionDependencies
+	}
+
+	// DependencyLowFundsRefreshFail will cause contract renewal to fail due to low
+	// funds in the allowance.
+	DependencyLowFundsRefreshFail struct {
 		modules.ProductionDependencies
 	}
 
@@ -152,6 +159,11 @@ func (d *DependencyLowFundsRenewalFail) Disrupt(s string) bool {
 	return s == "LowFundsRenewal"
 }
 
+// Disrupt causes contract renewal to fail due to low allowance funds.
+func (d *DependencyLowFundsRefreshFail) Disrupt(s string) bool {
+	return s == "LowFundsRefresh"
+}
+
 // Disrupt returns true if the correct string is provided and if the flag was
 // set to true by calling fail on the dependency beforehand. After simulating a
 // crash the flag will be set to false and fail has to be called again for
@@ -248,4 +260,31 @@ func (d *dependencyCustomResolver) Disrupt(s string) bool {
 // Resolver creates a new custom resolver.
 func (d *dependencyCustomResolver) Resolver() modules.Resolver {
 	return customResolver{d.lookupIP}
+}
+
+// DependencyAddLatency will introduce a latency by sleeping for the
+// specified duration if the argument passed to Distrupt equals str.
+type DependencyAddLatency struct {
+	str      string
+	duration time.Duration
+	modules.ProductionDependencies
+}
+
+// newDependencyAddLatency creates a new DependencyAddLatency from a given
+// disrupt string and duration
+func newDependencyAddLatency(str string, d time.Duration) *DependencyAddLatency {
+	return &DependencyAddLatency{
+		str:      str,
+		duration: d,
+	}
+}
+
+// Disrupt will sleep for the specified duration if the correct string is
+// provided.
+func (d *DependencyAddLatency) Disrupt(s string) bool {
+	if s == d.str {
+		time.Sleep(d.duration)
+		return true
+	}
+	return false
 }

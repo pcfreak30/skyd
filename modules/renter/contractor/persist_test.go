@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -11,14 +12,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
-
-// memPersist implements the persister interface in-memory.
-type memPersist contractorPersist
-
-func (m *memPersist) save(data contractorPersist) error { *m = memPersist(data); return nil }
-func (m memPersist) load(data *contractorPersist) error { *data = contractorPersist(m); return nil }
 
 // TestSaveLoad tests that the contractor can save and load itself.
 func TestSaveLoad(t *testing.T) {
@@ -27,9 +23,11 @@ func TestSaveLoad(t *testing.T) {
 	}
 	t.Parallel()
 	// create contractor with mocked persist dependency
+	persistDir := build.TempDir("contractor", "mock")
+	os.MkdirAll(persistDir, 0700)
 	c := &Contractor{
-		persist: new(memPersist),
-		synced:  make(chan struct{}),
+		persistDir: persistDir,
+		synced:     make(chan struct{}),
 	}
 
 	c.staticWatchdog = newWatchdog(c)
@@ -63,6 +61,20 @@ func TestSaveLoad(t *testing.T) {
 		{1}: expectedFileContractStatus,
 	}
 
+	expectedArchivedContract := modules.ContractWatchStatus{
+		Archived:                  true,
+		FormationSweepHeight:      11,
+		ContractFound:             true,
+		LatestRevisionFound:       3883889,
+		StorageProofFoundAtHeight: 12312,
+		DoubleSpendHeight:         12333333,
+		WindowStart:               1111111231209,
+		WindowEnd:                 123808900,
+	}
+	c.staticWatchdog.archivedContracts = map[types.FileContractID]modules.ContractWatchStatus{
+		{2}: expectedArchivedContract,
+	}
+
 	c.oldContracts = map[types.FileContractID]modules.RenterContract{
 		{0}: {ID: types.FileContractID{0}, HostPublicKey: types.SiaPublicKey{Key: []byte("foo")}},
 		{1}: {ID: types.FileContractID{1}, HostPublicKey: types.SiaPublicKey{Key: []byte("bar")}},
@@ -86,7 +98,6 @@ func TestSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.hdb = stubHostDB{}
 	c.oldContracts = make(map[types.FileContractID]modules.RenterContract)
 	c.renewedFrom = make(map[types.FileContractID]types.FileContractID)
 	c.renewedTo = make(map[types.FileContractID]types.FileContractID)
@@ -114,8 +125,8 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal("contractor should be synced")
 	}
 	// use stdPersist instead of mock
-	c.persist = NewPersist(build.TempDir("contractor", t.Name()))
-	os.MkdirAll(build.TempDir("contractor", t.Name()), 0700)
+	c.persistDir = build.TempDir("contractor", t.Name())
+	os.MkdirAll(c.persistDir, 0700)
 
 	// COMPATv136 save the allowance but make sure that the newly added fields
 	// are 0. After loading them from disk they should be set to the default
@@ -263,6 +274,16 @@ func TestSaveLoad(t *testing.T) {
 	if contract.windowEnd != expectedFileContractStatus.windowEnd {
 		t.Fatal("watchdog not restored properly", contract)
 	}
+	if len(c.staticWatchdog.archivedContracts) != 1 {
+		t.Fatal("watchdog not restored properly", c.staticWatchdog.archivedContracts)
+	}
+	archivedContract, ok := c.staticWatchdog.archivedContracts[types.FileContractID{2}]
+	if !ok {
+		t.Fatal("watchdog not restored properly", c.staticWatchdog.archivedContracts)
+	}
+	if !reflect.DeepEqual(archivedContract, expectedArchivedContract) {
+		t.Fatal("Archived contract not restored properly", archivedContract)
+	}
 
 	// Check churnLimiter state.
 	aggregateChurn, maxChurn := c.staticChurnLimiter.managedAggregateAndMaxChurn()
@@ -285,6 +306,10 @@ func TestSaveLoad(t *testing.T) {
 // TestConvertPersist tests that contracts previously stored in the
 // .journal format can be converted to the .contract format.
 func TestConvertPersist(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	dir := build.TempDir(filepath.Join("contractor", t.Name()))
 	os.MkdirAll(dir, 0700)
 	// copy the test data into the temp folder
@@ -305,7 +330,7 @@ func TestConvertPersist(t *testing.T) {
 
 	// load the persist
 	var p contractorPersist
-	err = NewPersist(dir).load(&p)
+	err = persist.LoadJSON(persistMeta, &p, filepath.Join(dir, PersistFilename))
 	if err != nil {
 		t.Fatal(err)
 	}

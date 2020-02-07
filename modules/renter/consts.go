@@ -12,7 +12,7 @@ import (
 const (
 	// persistVersion defines the Sia version that the persistence was
 	// last updated
-	persistVersion = "1.4.0"
+	persistVersion = "1.4.2"
 )
 
 const (
@@ -26,6 +26,7 @@ const (
 // AlertCauseSiafileLowRedundancy creates a customized "cause" for a siafile
 // with a certain path and health.
 func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health float64) string {
+	siaPath, _ = siaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
 	return fmt.Sprintf("Siafile '%v' has a health of %v", siaPath.String(), health)
 }
 
@@ -240,22 +241,6 @@ var (
 		Dev:      20 * time.Second,
 		Standard: 15 * time.Minute,
 		Testing:  3 * time.Second,
-	}).(time.Duration)
-
-	// uploadPollTimeout defines the maximum amount of time the renter will poll
-	// for an upload to complete.
-	uploadPollTimeout = build.Select(build.Var{
-		Dev:      5 * time.Minute,
-		Standard: 60 * time.Minute,
-		Testing:  10 * time.Second,
-	}).(time.Duration)
-
-	// uploadPollInterval defines the renter's polling interval when waiting for
-	// file to upload.
-	uploadPollInterval = build.Select(build.Var{
-		Dev:      5 * time.Second,
-		Standard: 5 * time.Second,
-		Testing:  1 * time.Second,
 	}).(time.Duration)
 
 	// snapshotSyncSleepDuration defines how long the renter sleeps between

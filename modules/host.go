@@ -1,6 +1,8 @@
 package modules
 
 import (
+	"time"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -99,6 +101,10 @@ type (
 		MinSectorAccessPrice      types.Currency `json:"minsectoraccessprice"`
 		MinStoragePrice           types.Currency `json:"minstorageprice"`
 		MinUploadBandwidthPrice   types.Currency `json:"minuploadbandwidthprice"`
+
+		EphemeralAccountExpiry     uint64         `json:"ephemeralaccountexpiry"`
+		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
+		MaxEphemeralAccountRisk    types.Currency `json:"maxephemeralaccountrisk"`
 	}
 
 	// HostNetworkMetrics reports the quantity of each type of RPC call that
@@ -207,6 +213,9 @@ type (
 		// ExternalSettings returns the settings of the host as seen by an
 		// untrusted node querying the host for settings.
 		ExternalSettings() HostExternalSettings
+
+		// BandwidthCounters returns the Hosts's upload and download bandwidth
+		BandwidthCounters() (uint64, uint64, time.Time, error)
 
 		// FinancialMetrics returns the financial statistics of the host.
 		FinancialMetrics() HostFinancialMetrics

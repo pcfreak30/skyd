@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -211,7 +212,7 @@ func (tn *TestNode) RestartNode() error {
 // StartNode starts a TestNode from an active group
 func (tn *TestNode) StartNode() error {
 	// Create server
-	s, err := server.New(":0", tn.UserAgent, tn.Password, tn.params)
+	s, err := server.New(":0", tn.UserAgent, tn.Password, tn.params, time.Now())
 	if err != nil {
 		return err
 	}
@@ -286,10 +287,10 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 	var err error
 	if asyncSync {
 		var errChan <-chan error
-		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams)
+		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams, time.Now())
 		err = modules.PeekErr(errChan)
 	} else {
-		s, err = server.New(":0", userAgent, password, nodeParams)
+		s, err = server.New(":0", userAgent, password, nodeParams, time.Now())
 	}
 	if err != nil {
 		return nil, err
@@ -350,13 +351,13 @@ func (tn *TestNode) initRootDirs() error {
 	tn.downloadDir = &LocalDir{
 		path: filepath.Join(tn.RenterDir(), "downloads"),
 	}
-	if err := os.MkdirAll(tn.downloadDir.path, DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(tn.downloadDir.path, persist.DefaultDiskPermissionsTest); err != nil {
 		return err
 	}
 	tn.filesDir = &LocalDir{
-		path: filepath.Join(tn.RenterDir(), modules.SiapathRoot),
+		path: filepath.Join(tn.RenterDir(), "uploads"),
 	}
-	if err := os.MkdirAll(tn.filesDir.path, DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(tn.filesDir.path, persist.DefaultDiskPermissionsTest); err != nil {
 		return err
 	}
 	return nil

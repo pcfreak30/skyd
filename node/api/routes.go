@@ -49,6 +49,7 @@ func (api *API) buildHTTPRoutes() {
 	if api.gateway != nil {
 		router.GET("/gateway", api.gatewayHandlerGET)
 		router.POST("/gateway", api.gatewayHandlerPOST)
+		router.GET("/gateway/bandwidth", api.gatewayBandwidthHandlerGET)
 		router.POST("/gateway/connect/:netaddress", RequirePassword(api.gatewayConnectHandler, requiredPassword))
 		router.POST("/gateway/disconnect/:netaddress", RequirePassword(api.gatewayDisconnectHandler, requiredPassword))
 		router.GET("/gateway/blacklist", api.gatewayBlacklistHandlerGET)
@@ -63,6 +64,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/host/announce", RequirePassword(api.hostAnnounceHandler, requiredPassword)) // Announce the host to the network.
 		router.GET("/host/contracts", api.hostContractInfoHandler)                                // Get info about contracts.
 		router.GET("/host/estimatescore", api.hostEstimateScoreGET)
+		router.GET("/host/bandwidth", api.hostBandwidthHandlerGET)
 
 		// Calls pertaining to the storage manager that the host uses.
 		router.GET("/host/storage", api.storageHandler)
@@ -103,13 +105,9 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/prices", api.renterPricesHandler)
 		router.POST("/renter/recoveryscan", RequirePassword(api.renterRecoveryScanHandlerPOST, requiredPassword))
 		router.GET("/renter/recoveryscan", api.renterRecoveryScanHandlerGET)
-
-		// TODO: re-enable these routes once the new .sia format has been
-		// standardized and implemented.
-		// router.POST("/renter/load", RequirePassword(api.renterLoadHandler, requiredPassword))
-		// router.POST("/renter/loadascii", RequirePassword(api.renterLoadAsciiHandler, requiredPassword))
-		// router.GET("/renter/share", RequirePassword(api.renterShareHandler, requiredPassword))
-		// router.GET("/renter/shareascii", RequirePassword(api.renterShareAsciiHandler, requiredPassword))
+		router.GET("/renter/fuse", api.renterFuseHandlerGET)
+		router.POST("/renter/fuse/mount", RequirePassword(api.renterFuseMountHandlerPOST, requiredPassword))
+		router.POST("/renter/fuse/unmount", RequirePassword(api.renterFuseUnmountHandlerPOST, requiredPassword))
 
 		router.POST("/renter/delete/*siapath", RequirePassword(api.renterDeleteHandler, requiredPassword))
 		router.GET("/renter/download/*siapath", RequirePassword(api.renterDownloadHandler, requiredPassword))
@@ -119,8 +117,14 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/stream/*siapath", api.renterStreamHandler)
 		router.POST("/renter/upload/*siapath", RequirePassword(api.renterUploadHandler, requiredPassword))
 		router.GET("/renter/uploadready", api.renterUploadReadyHandler)
+		router.POST("/renter/uploads/pause", RequirePassword(api.renterUploadsPauseHandler, requiredPassword))
+		router.POST("/renter/uploads/resume", RequirePassword(api.renterUploadsResumeHandler, requiredPassword))
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
+
+		// Skynet endpoints
+		router.GET("/skynet/skylink/:skylink", api.skynetSkylinkHandlerGET)
+		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))
@@ -174,6 +178,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/wallet/verify/address/:addr", api.walletVerifyAddressHandler)
 		router.POST("/wallet/unlock", RequirePassword(api.walletUnlockHandler, requiredPassword))
 		router.POST("/wallet/changepassword", RequirePassword(api.walletChangePasswordHandler, requiredPassword))
+		router.GET("/wallet/verifypassword", RequirePassword(api.walletVerifyPasswordHandler, requiredPassword))
 		router.GET("/wallet/unlockconditions/:addr", RequirePassword(api.walletUnlockConditionsHandlerGET, requiredPassword))
 		router.POST("/wallet/unlockconditions", RequirePassword(api.walletUnlockConditionsHandlerPOST, requiredPassword))
 		router.GET("/wallet/unspent", RequirePassword(api.walletUnspentHandler, requiredPassword))

@@ -55,15 +55,21 @@ when performing file operations.
 The Renter has the following subsystems that help carry out its
 responsibilities.
  - [Filesystem Controllers](#filesystem-controllers)
- - [Persistance Subsystem](#persistance-subsystem)
+ - [Fuse Subsystem](#fuse-subsystem)
+ - [Fuse Manager Subsystem](#fuse-manager-subsystem)
+ - [Persistence Subsystem](#persistence-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
+ - [Download By Root Subsystem](#download-by-root-subsystem)
+ - [Linkfile Subsystem](#linkfile-subsystem)
+ - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
  - [Backup Subsystem](#backup-subsystem)
+ - [Refresh Paths Subsystem](#refresh-paths-subsystem)
 
 ### Filesystem Controllers
 **Key Files**
@@ -78,7 +84,70 @@ responsibilities.
  - `RenameFile` calls `callThreadedBubbleMetadata` on the current and new
    directories when a file is renamed
 
-### Persistance Subsystem
+### Fuse Subsystem
+**Key Files**
+ - [fuse.go](./fuse.go)
+
+The fuse subsystem enables mounting the renter as a virtual filesystem. When
+mounted, the kernel forwards I/O syscalls on files and folders to the userland
+code in this subsystem. For example, the `read` syscall is implemented by
+downloading data from Sia hosts.
+
+Fuse is implemented using the `hanwen/go-fuse/v2` series of packages, primarily
+`fs` and `fuse`. The fuse package recognizes a single node interface for files
+and folders, but the renter has two structs, one for files and another for
+folders. Each the fuseDirnode and the fuseFilenode implement the same Node
+interfaces.
+
+The fuse implementation is remarkably sensitive to small details. UID mistakes,
+slow load times, or missing/incorrect method implementations can often destroy
+an external application's ability to interact with fuse. Currently we use
+ranger, Nautilus, vlc/mpv, and siastream when testing if fuse is still working
+well. More programs may be added to this list as we discover more programs that
+have unique requirements for working with the fuse package.
+
+The siatest/renter suite has two packages which are useful for testing fuse. The
+first is [fuse\_test.go](../../siatest/renter/fuse_test.go), and the second is
+[fusemock\_test.go](../../siatest/renter/fusemock_test.go). The first file
+leverages a testgroup with a renter, a miner, and several hosts to mimic the Sia
+network, and then mounts a fuse folder which uses the full fuse implementation.
+The second file contains a hand-rolled implementation of a fake filesystem which
+implements the fuse interfaces. Both have a commented out sleep at the end of
+the test which, when uncommented, allows a developer to explore the final
+mounted fuse folder with any system application to see if things are working
+correctly.
+
+The mocked fuse is useful for debugging issues related to the fuse
+implementation. When using the renter implementation, it can be difficult to
+determine whether something is not working because there is a bug in the renter
+code, or whether something is not working because the fuse libraries are being
+used incorrectly. The mocked fuse is an easy way to replicate any desired
+behavior and check for misunderstandings that the programmer may have about how
+the fuse librires are meant to be used.
+
+### Fuse Manager Subsystem
+**Key Files**
+ - [fusemanager.go](./fusemanager.go)
+
+The fuse manager subsystem keeps track of multiple fuse directories that are
+mounted at the same time. It maintains a list of mountpoints, and maps to the
+fuse filesystem object that is mounted at those point. Only one folder can be
+mounted at each mountpoint, but the same folder can be mounted at many
+mountpoints.
+
+When debugging fuse, it can be helpful to enable the 'Debug' option when
+mounting a filesystem. This option is commented out in the fuse manager in
+production, but searching for 'Debug:' in the file will reveal the line that can
+be uncommented to enable debugging. Be warned that when debugging is enabled,
+fuse becomes incredibly verbose.
+
+Upon shutdown, the fuse manager will only attempt to unmount each folder one
+time. If the folder is busy or otherwise in use by another application, the
+unmount will fail and the user will have to manually unmount using `fusermount`
+or `umount` before that folder becomes available again. To the best of our
+current knowledge, there is no way to force an unmount.
+
+### Persistence Subsystem
 **Key Files**
  - [persist_compat.go](./persist_compat.go)
  - [persist.go](./persist.go)
@@ -337,6 +406,43 @@ price and total throughput.
 *TODO* 
   - fill out subsystem explanation
 
+### Linkfile Subsystem
+**Key Files**
+ - [linkfile.go](./linkfile.go)
+ - [linkfilefanout.go](./linkfilefanout.go)
+ - [linkfilefanoutfetch.go](./linkfilefanoutfetch.go)
+
+The linkfile system contains methods for encoding, decoding, uploading, and
+downloading linkfiles using Sialinks, and is one of the foundations underpinning
+Skynet.
+
+The linkfile format is a custom format which prepends metadata to a file such
+that the entire file and all associated metadata can be recovered knowing
+nothing more than a single sector root. That single sector root can be encoded
+alongside some compressed fetch offset and length information to create a
+sialink.
+
+**Outbound Complexities**
+ - callUploadStreamFromReader is used to upload new data to the Sia network when
+   creating linkfiles. This call appears three times in
+   [linkfile.go](./linkfile.go)
+
+### Stream Buffer Subsystem
+**Key Files**
+ - [streambuffer.go](./streambuffer.go)
+ - [streambufferlru.go](./streambufferlru.go)
+
+The stream buffer subsystem coordinates buffering for a set of streams. Each
+stream has an LRU which includes both the recently visited data as well as data
+that is being buffered in front of the current read position. The LRU is
+implemented in [streambufferlru.go](./streambufferlru.go).
+
+If there are multiple streams open from the same data source at once, they will
+share their cache. Each stream will maintain its own LRU, but the data is stored
+in a common stream buffer. The stream buffers draw their data from a data source
+interface, which allows multiple different types of data sources to use the
+stream buffer.
+
 ### Upload Subsystem
 **Key Files**
  - [directoryheap.go](./directoryheap.go)
@@ -369,12 +475,33 @@ merkle root and the contract revision.
    `uploadHeap` and then signals the heap's `newUploads` channel so that the
    Repair Loop will work through the heap and upload the chunks
 
+### Download By Root Subsystem
+**Key Files**
+ - [projectdownloadbyroot.go](./projectdownloadbyroot.go)
+ - [workerdownloadbyroot.go](./workerdownloadbyroot.go)
+
+The download by root subsystem exports a single method that allows a caller to
+download or partially download a sector from the Sia network knowing only the
+Merkle root of that sector, and not necessarily knowing which host on the
+network has that sector. The single exported method is 'DownloadByRoot'.
+
+This subsystem was created primarily as a facilitator for the sialinks of
+Skynet. Sialinks provide a merkle root and some offset+length information, but
+do not provide any information about which hosts are storing the sectors. The
+exported method of this subsystem will primarily be called by sialink methods,
+as opposed to being used directly by external users.
+
 ### Upload Streaming Subsystem
 **Key Files**
  - [uploadstreamer.go](./uploadstreamer.go)
 
 *TODO* 
   - fill out subsystem explanation
+
+**Inbound Complexities**
+ - The linkfile subsystem makes three calls to `callUploadStreamFromReader()` in
+   [linkfile.go](./linkfile.go)
+ - The snapshot subsystem makes a call to `callUploadStreamFromReader()`
 
 ### Health and Repair Subsystem
 **Key Files**
@@ -647,3 +774,16 @@ it up by finding a stuck chunk.
 The backup subsystem of the renter is responsible for creating local and remote
 backups of the user's data, such that all data is able to be recovered onto a
 new machine should the current machine + metadata be lost.
+
+### Refresh Paths Subsystem
+**Key Files**
+ - [refreshpaths.go](./refreshpaths.go)
+
+The refresh paths subsystem of the renter is a helper subsystem that tracks the
+minimum unique paths that need to be refreshed in order to refresh the entire
+affected portion of the file system.
+
+**Inbound Complexities** 
+ - `callAdd` is used to try and add a new path. 
+ - `callRefreshAll` is used to refresh all the directories corresponding to the
+   unique paths in order to update the filesystem

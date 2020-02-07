@@ -99,6 +99,21 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httpr
 	WriteJSON(w, hg)
 }
 
+// hostsBandwidthHandlerGET handles GET requests to the /host/bandwidth API endpoint,
+// returning bandwidth usage data from the host module
+func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	sent, receive, startTime, err := api.host.BandwidthCounters()
+	if err != nil {
+		WriteError(w, Error{"failed to get hosts's bandwidth usage " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, GatewayBandwidthGET{
+		Download:  receive,
+		Upload:    sent,
+		StartTime: startTime,
+	})
+}
+
 // parseHostSettings a request's query strings and returns a
 // modules.HostInternalSettings configured with the request's query string
 // parameters.
@@ -226,6 +241,30 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 			return modules.HostInternalSettings{}, err
 		}
 		settings.MinUploadBandwidthPrice = x
+	}
+	if req.FormValue("ephemeralaccountexpiry") != "" {
+		var x uint64
+		_, err := fmt.Sscan(req.FormValue("ephemeralaccountexpiry"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.EphemeralAccountExpiry = x
+	}
+	if req.FormValue("maxephemeralaccountbalance") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("maxephemeralaccountbalance"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MaxEphemeralAccountBalance = x
+	}
+	if req.FormValue("maxephemeralaccountrisk") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("maxephemeralaccountrisk"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MaxEphemeralAccountRisk = x
 	}
 
 	return settings, nil
