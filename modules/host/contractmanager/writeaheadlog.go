@@ -1,7 +1,8 @@
 package contractmanager
 
 import (
-	"gitlab.com/NebulousLabs/errors"
+	"path/filepath"
+
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -15,29 +16,29 @@ type (
 	}
 )
 
-func addStorageFolderUpdate(sf *storageFolder) writeaheadlog.Update {
-	panic("not implemented yet")
-	//	wal.appendChange(stateChange{
-	//		UnfinishedStorageFolderAdditions: []savedStorageFolder{sf.savedStorageFolder()},
-	//	})
-}
-
-func modifySectorUpdate(su sectorUpdate) writeaheadlog.Update {
-	panic("not implemented yet")
-}
-
-func (cm *ContractManager) prepareWalTxn(updates ...writeaheadlog.Update) (*writeaheadlog.Transaction, error) {
-	// Create the writeaheadlog transaction.
-	txn, err := cm.wal.NewTransaction(updates)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to create wal txn")
-	}
-	// No extra setup is required. Signal that it is done.
-	if err := <-txn.SignalSetupComplete(); err != nil {
-		return nil, errors.AddContext(err, "failed to signal setup completion")
-	}
-	return txn, nil
-}
+//func addStorageFolderUpdate(sf *storageFolder) writeaheadlog.Update {
+//	panic("not implemented yet")
+//	//	wal.appendChange(stateChange{
+//	//		UnfinishedStorageFolderAdditions: []savedStorageFolder{sf.savedStorageFolder()},
+//	//	})
+//}
+//
+//func modifySectorUpdate(su sectorUpdate) writeaheadlog.Update {
+//	panic("not implemented yet")
+//}
+//
+//func (cm *ContractManager) prepareWalTxn(updates ...writeaheadlog.Update) (*writeaheadlog.Transaction, error) {
+//	// Create the writeaheadlog transaction.
+//	txn, err := cm.wal.NewTransaction(updates)
+//	if err != nil {
+//		return nil, errors.AddContext(err, "failed to create wal txn")
+//	}
+//	// No extra setup is required. Signal that it is done.
+//	if err := <-txn.SignalSetupComplete(); err != nil {
+//		return nil, errors.AddContext(err, "failed to signal setup completion")
+//	}
+//	return txn, nil
+//}
 
 //type (
 //	// sectorUpdate is an idempotent update to the sector metadata.
@@ -88,3 +89,83 @@ func (cm *ContractManager) prepareWalTxn(updates ...writeaheadlog.Update) (*writ
 //		// sector data is already on-disk and synced.
 //		SectorUpdates []sectorUpdate
 //	}
+
+func applyUpdates(updates ...writeaheadlog.Update) error {
+	panic("not implemented yet")
+}
+
+func (cm *ContractManager) loadWal() error {
+	// Try opening the WAL file.
+	walFileName := filepath.Join(cm.persistDir, walFile)
+	txns, wal, err := writeaheadlog.New(walFileName)
+	if err != nil {
+		return err
+	}
+	cm.wal = wal
+	// Apply the unfinished transactions.
+	for _, txn := range txns {
+		if err := applyUpdates(txn.Updates...); err != nil {
+			return err
+		}
+	}
+	return nil
+	//	walFile, err := cm.dependencies.OpenFile(walFileName, os.O_RDONLY, 0600)
+	//	if err == nil {
+	//		// err == nil indicates that there is a WAL file, which means that the
+	//		// previous shutdown was not clean. Re-commit the changes in the WAL to
+	//		// bring the program back to consistency.
+	//		cm.log.Println("WARN: WAL file detected, performing recovery after unclean shutdown.")
+	//		err = wal.recoverWAL(walFile)
+	//		if err != nil {
+	//			return build.ExtendErr("failed to recover WAL", err)
+	//		}
+	//		err = walFile.Close()
+	//		if err != nil {
+	//			return build.ExtendErr("error closing WAL after performing a recovery", err)
+	//		}
+	//	} else if !os.IsNotExist(err) {
+	//		return build.ExtendErr("walFile was not opened successfully", err)
+	//	}
+	//	// err == os.IsNotExist, suggesting a successful, clean shutdown. No action
+	//	// is taken.
+	//
+	//	// Create the tmp settings file and initialize the first write to it. This
+	//	// is necessary before kicking off the sync loop.
+	//	wal.fileSettingsTmp, err = wal.cm.dependencies.CreateFile(filepath.Join(wal.cm.persistDir, settingsFileTmp))
+	//	if err != nil {
+	//		return build.ExtendErr("unable to prepare the settings temp file", err)
+	//	}
+	//	wal.cm.tg.AfterStop(func() {
+	//		wal.mu.Lock()
+	//		defer wal.mu.Unlock()
+	//		if wal.fileSettingsTmp == nil {
+	//			return
+	//		}
+	//		err := wal.fileSettingsTmp.Close()
+	//		if err != nil {
+	//			wal.cm.log.Println("ERROR: unable to close settings temporary file")
+	//			return
+	//		}
+	//		err = wal.cm.dependencies.RemoveFile(filepath.Join(wal.cm.persistDir, settingsFileTmp))
+	//		if err != nil {
+	//			wal.cm.log.Println("ERROR: unable to remove settings temporary file")
+	//			return
+	//		}
+	//	})
+	//	ss := cm.savedSettings()
+	//	b, err := json.MarshalIndent(ss, "", "\t")
+	//	if err != nil {
+	//		build.ExtendErr("unable to marshal settings data", err)
+	//	}
+	//	enc := json.NewEncoder(wal.fileSettingsTmp)
+	//	if err := enc.Encode(settingsMetadata.Header); err != nil {
+	//		build.ExtendErr("unable to write header to settings temp file", err)
+	//	}
+	//	if err := enc.Encode(settingsMetadata.Version); err != nil {
+	//		build.ExtendErr("unable to write version to settings temp file", err)
+	//	}
+	//	if _, err = wal.fileSettingsTmp.Write(b); err != nil {
+	//		build.ExtendErr("unable to write data settings temp file", err)
+	//	}
+	//	return nil
+}

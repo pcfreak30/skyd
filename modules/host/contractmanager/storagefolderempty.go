@@ -18,15 +18,15 @@ var (
 
 // managedMoveSector will move a sector from its current storage folder to
 // another.
-func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
-	wal.managedLockSector(id)
-	defer wal.managedUnlockSector(id)
+func (cm *ContractManager) managedMoveSector(id sectorID) error {
+	cm.managedLockSector(id)
+	defer cm.managedUnlockSector(id)
 
 	// Find the sector to be moved.
-	wal.mu.Lock()
-	oldLocation, exists1 := wal.cm.sectorLocations[id]
-	oldFolder, exists2 := wal.cm.storageFolders[oldLocation.storageFolder]
-	wal.mu.Unlock()
+	cm.mu.Lock()
+	oldLocation, exists1 := cm.sectorLocations[id]
+	oldFolder, exists2 := cm.storageFolders[oldLocation.storageFolder]
+	cm.mu.Unlock()
 	if !exists1 || !exists2 || atomic.LoadUint64(&oldFolder.atomicUnavailable) == 1 {
 		return errors.New("unable to find sector that is targeted for move")
 	}
@@ -49,9 +49,9 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 	}
 
 	// Place the sector into its new folder and add the atomic move to the WAL.
-	wal.mu.Lock()
-	storageFolders := wal.cm.availableStorageFolders()
-	wal.mu.Unlock()
+	cm.mu.Lock()
+	storageFolders := cm.availableStorageFolders()
+	cm.mu.Unlock()
 	for len(storageFolders) >= 1 {
 		var storageFolderIndex int
 		err := func() error {
@@ -61,13 +61,13 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			// modifying.
 
 			// Grab a vacant storage folder.
-			wal.mu.Lock()
+			cm.mu.Lock()
 			var sf *storageFolder
 			sf, storageFolderIndex = vacancyStorageFolder(storageFolders)
 			if sf == nil {
 				// None of the storage folders have enough room to house the
 				// sector.
-				wal.mu.Unlock()
+				cm.mu.Unlock()
 				return errors.New(modules.V1420HostOutOfStorageErrString)
 			}
 			defer sf.mu.RUnlock()
@@ -78,14 +78,14 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			// the storage folder.
 			sectorIndex, err := randFreeSector(sf.usage)
 			if err != nil {
-				wal.mu.Unlock()
-				wal.cm.log.Critical("a storage folder with full usage was returned from emptiestStorageFolder")
+				cm.mu.Unlock()
+				cm.log.Critical("a storage folder with full usage was returned from emptiestStorageFolder")
 				return err
 			}
 			// Set the usage, but mark it as uncommitted.
 			sf.setUsage(sectorIndex)
 			sf.availableSectors[id] = sectorIndex
-			wal.mu.Unlock()
+			cm.mu.Unlock()
 
 			// NOTE: The usage has been set, in the event of failure the usage
 			// must be cleared.
@@ -93,12 +93,12 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			// Try writing the new sector to disk.
 			err = writeSector(sf.sectorFile, sectorIndex, sectorData)
 			if err != nil {
-				wal.cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
+				cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
 				atomic.AddUint64(&sf.atomicFailedWrites, 1)
-				wal.mu.Lock()
+				cm.mu.Lock()
 				sf.clearUsage(sectorIndex)
 				delete(sf.availableSectors, id)
-				wal.mu.Unlock()
+				cm.mu.Unlock()
 				return errDiskTrouble
 			}
 
@@ -109,14 +109,14 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 				Folder: sf.index,
 				Index:  sectorIndex,
 			}
-			err = wal.writeSectorMetadata(sf, su)
+			err = cm.writeSectorMetadata(sf, su)
 			if err != nil {
-				wal.cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
+				cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
 				atomic.AddUint64(&sf.atomicFailedWrites, 1)
-				wal.mu.Lock()
+				cm.mu.Lock()
 				sf.clearUsage(sectorIndex)
 				delete(sf.availableSectors, id)
-				wal.mu.Unlock()
+				cm.mu.Unlock()
 				return errDiskTrouble
 			}
 
@@ -126,15 +126,15 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 				storageFolder: sf.index,
 				count:         oldLocation.count,
 			}
-			wal.mu.Lock()
-			wal.appendChange(stateChange{
+			cm.mu.Lock()
+			cm.appendChange(stateChange{
 				SectorUpdates: []sectorUpdate{oldSU, su},
 			})
 			oldFolder.clearUsage(oldLocation.index)
-			delete(wal.cm.sectorLocations, oldSU.ID)
+			delete(cm.sectorLocations, oldSU.ID)
 			delete(sf.availableSectors, id)
-			wal.cm.sectorLocations[id] = sl
-			wal.mu.Unlock()
+			cm.sectorLocations[id] = sl
+			cm.mu.Unlock()
 			return nil
 		}()
 		if err != nil && err.Error() == modules.V1420HostOutOfStorageErrString {
@@ -162,17 +162,17 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 // This function assumes that the storage folder has already been made
 // invisible to AddSector, and that this is the only thread that will be
 // interacting with the storage folder.
-func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoint uint32) (uint64, error) {
+func (cm *ContractManager) managedEmptyStorageFolder(sfIndex uint16, startingPoint uint32) (uint64, error) {
 	// Allow disk trouble simulation, for testing purposes
-	if wal.cm.dependencies.Disrupt("diskTrouble") {
-		wal.cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
+	if cm.dependencies.Disrupt("diskTrouble") {
+		cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
 		return 0, errDiskTrouble
 	}
 
 	// Grab the storage folder in question.
-	wal.mu.Lock()
-	sf, exists := wal.cm.storageFolders[sfIndex]
-	wal.mu.Unlock()
+	cm.mu.Lock()
+	sf, exists := cm.storageFolders[sfIndex]
+	cm.mu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		return 0, errBadStorageFolderIndex
 	}
@@ -199,13 +199,13 @@ func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoin
 			for {
 				select {
 				case id := <-workChan:
-					err := wal.managedMoveSector(id)
+					err := cm.managedMoveSector(id)
 					if err == errDiskTrouble {
-						wal.cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
+						cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
 					}
 					if err != nil {
 						atomic.AddUint64(&errCount, 1)
-						wal.cm.log.Println("Unable to write sector:", err)
+						cm.log.Println("Unable to write sector:", err)
 					}
 
 					wg.Done()
@@ -231,9 +231,9 @@ func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoin
 				copy(id[:], sectorLookupBytes[readHead:readHead+12])
 				// Reference the sector locations map to get the most
 				// up-to-date status for the sector.
-				wal.mu.Lock()
-				_, exists := wal.cm.sectorLocations[id]
-				wal.mu.Unlock()
+				cm.mu.Lock()
+				_, exists := cm.sectorLocations[id]
+				cm.mu.Unlock()
 				if !exists {
 					// The sector has been deleted, but the usage has not been
 					// updated yet. Safe to ignore.

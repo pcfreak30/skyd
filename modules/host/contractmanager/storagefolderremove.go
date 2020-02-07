@@ -15,33 +15,33 @@ type (
 
 // commitStorageFolderRemoval will finalize a storage folder removal from the
 // contract manager.
-func (wal *writeAheadLog) commitStorageFolderRemoval(sfr storageFolderRemoval) {
+func (cm *ContractManager) commitStorageFolderRemoval(sfr storageFolderRemoval) {
 	// Close any open file handles.
-	sf, exists := wal.cm.storageFolders[sfr.Index]
+	sf, exists := cm.storageFolders[sfr.Index]
 	if exists {
-		delete(wal.cm.storageFolders, sfr.Index)
+		delete(cm.storageFolders, sfr.Index)
 	}
 	if exists && sf.metadataFile != nil {
 		err := sf.metadataFile.Close()
 		if err != nil {
-			wal.cm.log.Printf("Error: unable to close metadata file as storage folder %v is removed\n", sf.path)
+			cm.log.Printf("Error: unable to close metadata file as storage folder %v is removed\n", sf.path)
 		}
 	}
 	if exists && sf.sectorFile != nil {
 		err := sf.sectorFile.Close()
 		if err != nil {
-			wal.cm.log.Printf("Error: unable to close sector file as storage folder %v is removed\n", sf.path)
+			cm.log.Printf("Error: unable to close sector file as storage folder %v is removed\n", sf.path)
 		}
 	}
 
 	// Delete the files.
-	err := wal.cm.dependencies.RemoveFile(filepath.Join(sfr.Path, metadataFile))
+	err := cm.dependencies.RemoveFile(filepath.Join(sfr.Path, metadataFile))
 	if err != nil {
-		wal.cm.log.Printf("Error: unable to remove metadata file as storage folder %v is removed\n", sfr.Path)
+		cm.log.Printf("Error: unable to remove metadata file as storage folder %v is removed\n", sfr.Path)
 	}
-	err = wal.cm.dependencies.RemoveFile(filepath.Join(sfr.Path, sectorFile))
+	err = cm.dependencies.RemoveFile(filepath.Join(sfr.Path, sectorFile))
 	if err != nil {
-		wal.cm.log.Printf("Error: unable to reomve sector file as storage folder %v is removed\n", sfr.Path)
+		cm.log.Printf("Error: unable to reomve sector file as storage folder %v is removed\n", sfr.Path)
 	}
 }
 

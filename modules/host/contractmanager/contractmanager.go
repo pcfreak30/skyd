@@ -163,7 +163,7 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 	}
 
 	// Load the WAL, repairing any corruption caused by unclean shutdown.
-	err = cm.wal.load()
+	err = cm.loadWal()
 	if err != nil {
 		cm.log.Println("ERROR: Unable to load the contract manager write-ahead-log:", err)
 		return nil, errors.AddContext(err, "error while loading the WAL at startup")
