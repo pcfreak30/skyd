@@ -57,15 +57,15 @@ placement of multiple file contracts across multiple disks.
 The host maintains a lookup table that maps from each sector root to the
 location on disk where the data is stored. This lookup table is global to the
 entire host, allowing callers to query data by sector root even if the caller
-does not have access to the contract that manages the sector. The host also allows
-callers to look up sector roots by providing a contract id and a sector offset
-within the contract, allowing callers to see data that is held at a specific
-location within a contract even if they do not know the sector root.
+does not have access to the contract that manages the sector. The host also
+allows callers to look up sector roots by providing a contract id and a sector
+offset within the contract, allowing callers to see data that is held at a
+specific location within a contract even if they do not know the sector root,
+and even if they are not the owners of that contract.
 
 Renters that wish to maintain privacy are expected to encrypt their data. The
-host is not expected to enforce any access controls over a contract. A contract
-cannot be updated without a signature from the owner of the data, however a
-contract can be accessed without a signature from the owner of the data.
+host is not expected to enforce any access controls over a contract, especially
+because there is no way to enforce that the host obeys the access controls.
 
 The host itself does not have a mapping from sector root to the contract that
 contains the sector. This means that data cannot be modified merely by knowing
@@ -122,7 +122,7 @@ type InstructionInfo struct {
 
 type Program struct {
 	// The contract specifies which contract is being modified by the MDM. The
-	// MDM also supports a special 'ReadOnly' mode, which can be triggered by
+	// MDM also supports a special 'read only' mode, which can be triggered by
 	// setting 'Contract' to the value 'ReadOnly'.
 	Contract types.FileContractID
 
@@ -134,14 +134,15 @@ type Program struct {
 Each instruction points to areas of the program data. Program data is uploaded
 sequentially, and instructions will be executed as soon as all of the program
 data necessary for that instruction is available. This allows the program to
-begin exection even before the entire program is uploaded.
+begin exection even before all of the input is uploaded, reducing latency for
+programs with a substantial amount of input.
 
 #### Output
 
 As the program executes, each instruction will produce output to be sent to the
-caller. The output will be sent to the caller as the program executes. This
-allows the program output to begin sending to the caller even as the program is
-still uploading and executing.
+caller. The output will be sent to the caller as the program executes, which
+will reduce the latency on the caller receiving any data, which is particularly
+useful for programs which contain multiple large Read operations.
 
 Instruction outputs take the following form:
 
@@ -154,7 +155,8 @@ type InstructionOutput struct {
 	//
 	// The error will be prefixed by 'invalid' if the error resulted from an
 	// invalid program, and the error will be prefixed by 'hosterr' if the error
-	// resulted from a host error such as a disk failure.
+	// resulted from a host error such as a disk failure. If the error resulted
+	// and interrupt signal, the error will be prefixed by 'interrupted'.
 	Error error
 
 	// The proof will be set to nil if there was an error, and also if no proof
@@ -180,15 +182,15 @@ to know the final state of the contract, the caller can send a signed version of
 the updated contract even before the program is done executing, as the caller
 should be able to derive the final state in advance. This allows the host to
 commit the updated state immediately upon completing the program instead of
-needing to wait for an extra network round trip, improving update performance.
+needing to wait for an extra network round trip, improving update latency.
 
 #### Execution Failures
 
 If a program instruction has an execution failure, the program will stop
 executing. Any changes will not be committed, and any updates to the file
 contract (pre-signed or not) will be dropped. An error will be returned by the
-MDM which indicates what type of execution failure occurred. There are two types
-of execution failures.
+MDM which indicates what type of execution failure occurred. There are three
+types of execution failures.
 
 The first type of execution failure is an invalid program failure. This can
 occur if a program attempts an illegal instruction or would reuqire consuming
@@ -199,17 +201,22 @@ The second type of execution failure is a host error failure. This can happen if
 a host experiences a disk error when performing a read or write, or has some
 other unexpected issue that did not result from an invalid instruction.
 
+The final type of execution failure is an interruption. The renter has the
+ability to send an interrupt signal which tells the host to stop executing a
+program.
+
 The MDM specifically is indifferent to whether the failure is due to an invalid
-program or a host error, however the higher level processes that instantiate the
-MDM and charge money for its execution depend on knowing whether the failure was
-a host error or an invalid program.
+program, a host error, or an interruption, however the higher level processes
+that instantiate the MDM and charge money for its execution depend on knowing
+whether the failure was a host error or an invalid program. Knowledge of who is
+at fault is also highly relevant to the renter.
 
 #### Interruption
 
 A program being executed may be interrupted. If an interrupt signal is received,
 the host will stop executing instructions, and will stop sending any output
 which has already been created. The first instruction to not execute will
-present an invalid program error in its output.
+present an interrupted program error in its output.
 
 Because of latency between the caller and the host, the interrupt signal may
 arrive late. If a contract update was pre-signed, sending an interrupt may fail
@@ -217,53 +224,61 @@ to prevent the update from being applied. The host will acknowledge the
 interrupt even if the signal arrives too late to prevent an update from being
 applied.
 
-Interrupts are particularly useful when reading data from the file contract. In
-the example case of video streaming, the renter will be attempting to cache data
-to improve the user experience. If the user seeks to a new part of the stream,
-the renter may with to cancel a read operation to fill the cache so that
-bandwidth is freed up to fetch data that is actively blocking the user from
-seeing the video stream.
+Interrupts are particularly useful when reading data from the host. In the
+example of video streaming, the renter will be attempting to cache data to
+improve the user experience, grabbing parts of the video that the user has not
+needed yet but is about to need soon. If the user suddenly seeks to a new part
+of the stream, these anticipatory fetches will no longer be relevant. Being able
+to cancel them will free up bandwidth to fetch data that the user needs
+immediately.
 
 ### Execution Modes
 
-#### ReadOnly Mode
+#### Read Only Mode
 
-If a program specifies an empty value for the 'Contract', the MDM will execute
-in ReadOnly mode. No lock is needed, no signatures are needed, and many ReadOnly
-MDMs can execute simultaneously. ReadOnly MDM instances can even execute in
-parallel to ReadWrite MDMs operating on the same data.
+If a program has the 'Contract' field set to the value 'ReadOnly', the MDM will
+execute in read only mode. No lock is needed, no signatures are needed, and many
+read only MDMs can execute simultaneously. Read only MDM instances can even
+execute in parallel to read-write MDMs operating on the same data.
 
-An immediate advantage to supporting a ReadOnly mode that is non-exclusive with
-ReadWrite mode is that a renter can upload and download from the same contract
+An immediate advantage to supporting a read only mode that is non-exclusive with
+read-write mode is that a renter can upload and download from the same contract
 at the same time, allowing a single host to simultaneously saturate both the
-upload bandwidth and the download bandwidth of a renter on a single connection.
-This also greatly improves the responsiveness of the renter for streaming
-downloads when a user is currently uploading large amounts of data.
+upload bandwidth and the download bandwidth of a renter on a single connection
+using a single contract. This also greatly improves the responsiveness of the
+renter for streaming downloads when a user is currently uploading large amounts
+of data.
 
-Another advantage of ReadOnly modes is that data publishing is better supported.
+Another advantage of read only mode is that data publishing is better supported.
 Many clients can read the same data at once, and a publisher can update the data
 concurrently without disrupting reads that are in progress or causing hiccups
 for their users.
 
-Race conditions between ReadOnly MDMs and ReadWrite MDMs are handled at the
-instruction level.
+Race conditions between read only programs and read-write programs are handled
+at the instruction level. Each instruction will gain exclusive access to the
+data on disk before performing a read or write, and then will release that
+exclusivity before finishing execution. This means that a single read only
+program which reads the exact same location multiple times may get different
+results each time. This caveat is exclusive to read only programs, as read-write
+programs have a lock on the contract which excludes all other read-write
+programs.
 
-#### ReadWrite Mode
+#### Read-Write Mode
 
-An MDM can be set to run in ReadWrite mode by setting the 'Contract' value of
+An MDM can be set to run in read-write mode by setting the 'Contract' value of
 the program equal to an existing file contract ID. When locking the contract,
 the caller must provide a signature that proves they have knowledge of the
-private key of the contract. An MDM running in ReadWrite mode has full access to
-all of the instructions in the MDM, including the ones that modify the contract
-data. Before the MDM starts running, an exclusive lock must be obtained on the
-contract that is being modified. The exclusive lock will not block ReadOnly
-MDMs, however it will block parallel attempts to PayByContract or RenewContract
-on the same contract.
+private key of the contract. An MDM running in read-write mode has full access
+to all of the instructions in the MDM, including the ones that modify the
+contract data. Before the MDM starts running, an exclusive lock must be obtained
+on the contract that is being modified. The exclusive lock will not block read
+only MDMs, however it will block other RPCs which need access to the contract,
+such as any RPC attempting to renew the contract.
 
 The contract lock will prevent all other processes from updating the contract
 because other processes that can update the contract may change the filesize or
-Merkle root, which would invalidate any updates and proofs made by the ReadWrite
-MDM.
+Merkle root, which would invalidate any updates and proofs made by the
+read-write MDM.
 
 The lock around the contract is held until the program is completed. If the
 caller has sent a valid presigned a file contract covering the update, the lock
@@ -272,8 +287,8 @@ send a pre-signed file contract, the lock will be held after the updated
 contract is sent to the caller for a signature, until the caller either accepts
 and returns a countersigned contract, rejects, or times out.
 
-In the event of a time-out or rejection, the changes are aborted and the lock is
-dropped.
+In the event of an error, a time-out, or a rejection, the changes are aborted
+and the lock is dropped.
 
 ### Resource Consumption and Resource Limits
 
@@ -354,10 +369,10 @@ encoded into the program data using Sia encoding.
 The return values of the program should be interpreted as a single struct, also
 encoded using Sia encoding.
 
-### ReadOnly Instructions
+### Read Only Instructions
 
-These are the instructions that are supported in ReadOnly mode. Note that these
-instructions may also be called in ReadWrite mode.
+These are the instructions that are supported in read only mode. Note that these
+instructions may also be called in read-write mode.
 
 #### Read
 
@@ -391,7 +406,7 @@ existed after the other MDM made a change.
 Consistency is only guaranteed within this instruction, there are no consistency
 guarantees between read instructions, even if they are on the same contract. The
 one exception to this is that consistency will be guaranteed if the Read is
-performed on a contract from a ReadWrite MDM that has a lock on the same
+performed on a contract from a read-write MDM that has a lock on the same
 contract being read.
 
 ```go
@@ -431,9 +446,9 @@ MDMCost{
 }
 ```
 
-### ReadWrite Instructions
+### Read-Write Instructions
 
-These instructions are only supported in ReadWrite mode. These instructions may
+These instructions are only supported in read-write mode. These instructions may
 only be called if the MDM has opened editing access on a file contract, and the
 ID of that file contract is an implicit parameter of every instruction. The
 contract being modified will be referred to as the 'parent contract'.
