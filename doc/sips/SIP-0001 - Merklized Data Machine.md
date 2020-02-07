@@ -144,6 +144,13 @@ caller. The output will be sent to the caller as the program executes, which
 will reduce the latency on the caller receiving any data, which is particularly
 useful for programs which contain multiple large Read operations.
 
+The act of sending the output is a blocking call for the program. The program
+will not continue to the next instruction until the subsystem which sends the
+output to the user has accepted the output (this does not necessarily mean that
+the output has been sent over the wire). This is a protection to prevent the
+host from allocating too much memory for outputs it wishes to send that have not
+been sent over the wire yet.
+
 Instruction outputs take the following form:
 
 ```go
@@ -293,64 +300,49 @@ and the lock is dropped.
 ### Resource Consumption and Resource Limits
 
 The MDM consumes resources on the host. To achieve fairness between programs and
-protect the host against Denial of Service attacks, several resources are
-tracked as the MDM executes, and each program is run with a limit for total
-consumption of each resource.
+protect the host against Denial of Service attacks, every instruction has a cost
+measured in siacoins. As the program is executed, the total cost of running the
+program is tallied up. The cost of each instruction must be computable before
+the instruction is executed. This allows the MDM to determine whether or not
+executing an instruction will cause the program budget to be exceeded prior to
+executing that instruction. If executing an instruction would exceed the program
+budget, the program will terminate at that instruction with an invalid program
+error. When converting from resources into a final price, a pricing table that
+is shared between the renter and the host is consulted.
 
-Each instruction needs to be able to pre-compute the total resource requirements
-for execution immediately prior to execution. If executing the instruction would
-put the MDM over any of its resource limits, the program will halt with an
-invalid program error.
+Execution cost is broken into two categories. The first is memory cost, and the
+second is instruction cost. Both costs are incurred each instruction. The memory
+cost is determined by the amount of memory that the program has currently
+allocated multiplied by the expected runtime of the instruction, which is a
+fixed value for each instruction. The second category is instruction cost, which
+is computed using an instruction-specific cost function.
 
-Five total resources are tracked. The host is able to price each resource, and
-the resources are chosen to allow hosts to roughly put a fair price on the
-execution of different types of programs even when each host is operating on
-different types of hardware. The five resources are:
+For the purposes of determining memory cost, the amount of memory consumed by a
+program is 1 MiB plus the size of the program input. The program input can be
+grown or shrunk using the 'Alloc' and 'Free' instructions. The program output is
+not considered as that is handled by the bandwidth layer. The amount of memory
+consumed is multiplied by the expected execution time of the next instruction to
+determine the total space-time cost of running that instruction. The space-time
+cost which is set by the price table is then multiplied by the memory price to
+determine the final memory cost in siacoins of executing that instruction. The
+expected execution time of an instruction is an intentionally rough value which
+is fixed per instruction. The value is rough because there is no easy way to
+predict the exact amount of time it takes to execute an instruction, so instead
+we settle for getting the rough order of magnitude correct. All of these values
+will be known before executing an instruction, meaning the memory cost of an
+instruction can be computed prior to executing the instruction.
 
-* Memory Consumption
-* Compute Power
-* Disk Accesses
-* Disk Reads
-* Disk Writes
+The instruction cost of an instruction is computed by a fixed function which is
+custom to each instruction. That function is a pure function which has as inputs
+the inputs of the instruction plus some values from the pricing table. The
+output of the function is the cost in siacoins of running the instruction. All
+of the inputs to the function are known prior to executing the instruction,
+which means that the instruction cost of an instruction can be computed in
+advance of executing the instruction.
 
-The bandwidth resources are tracked at the networking layer, and are therefore
-ignored by the MDM.
-
-All resources are tracked cumulatively, meaning that the totals count up as each
-instruction executes by the cost of that instruction. It is assumed that memory
-will not be able to be reclaimed until after the program has terminated. In
-particular, the output of an instruction may stick around long after the
-instruction executes because the output will be put in a queue to be sent to the
-caller, and this queue may take a while to process.
-
-Once the program has completed, the costs will be returned to the networking
-layer, which also handles pricing and will be responsible for charging the
-renter for the resources used.
-
-Instantiating the MDM has the following costs:
-
-```go
-MDMCost{
-	Compute:      1,
-	DiskAccesses: 1 access,
-	DiskRead:     0 bytes,
-	DiskWrite:    0 bytes,
-	Memory:       4 MiB + len(encodedProgram),
-}
-```
-
-Note that 1 compute cost corresponds to an estimated 2^17 hashes performed on
-data. Getting the sector root of a sector requires performing roughly 2^17
-hashes. Getting the Merkle root of a contract requires performing roughly
-(contractSize / 2^22) hashes, because every sector root needs to be combined
-together in a Merkle tree again. Assuming that 2^17 hashes incurs a cost of 1,
-the cost of computing the Merkle root of a contract is (contractSize / 2^39).
-Getting the Merkle root of a contract only incurs a cost greater than 1 once the
-size of the contract exceeds 512 GiB, and then goes up by 1 per 512 GiB.
-
-With more sophisticated cacheing of sector roots, the cost of getting the Merkle
-root of a contract can be eliminated, however as of SIP-0001, more sophisticated
-caching is not assumed.
+Instantiating a program also has a cost. This is a flat cost set in the pricing
+table that gets added to the total execution cost of a program before any
+insturctions are run.
 
 ## Supported Instructions
 
@@ -410,14 +402,17 @@ performed on a contract from a read-write MDM that has a lock on the same
 contract being read.
 
 ```go
-MDMCost{
-	Compute:      1 + (contractSize / 2^39),
-	DiskAccesses: 1,
-	DiskRead:     4 MiB,
-	DiskWrite:    0,
-	Memory:       4 MiB,
+// The CostFunc is a fixed cost for execution plus an additional cost that is
+// linear in the length of the read. ReadBaseCost is a value from the price
+// table, ReadLengthCost is a value from the price table, and ReadLength is one
+// of the inputs to the instruction.
+CostFunc(ReadBaseCost, ReadLengthCost, ReadLength) {
+	return ReadBaseCost + ReadLengthCost*ReadLength
 }
-```
+
+# Old Stuff
+
+Haven't updated the rest of the instructions yet.
 
 #### ReadSector
 
