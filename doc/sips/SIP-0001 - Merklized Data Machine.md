@@ -402,13 +402,57 @@ performed on a contract from a read-write MDM that has a lock on the same
 contract being read.
 
 ```go
-// The CostFunc is a fixed cost for execution plus an additional cost that is
-// linear in the length of the read. ReadBaseCost is a value from the price
-// table, ReadLengthCost is a value from the price table, and ReadLength is one
-// of the inputs to the instruction.
-CostFunc(ReadBaseCost, ReadLengthCost, ReadLength) {
-	return ReadBaseCost + ReadLengthCost*ReadLength
+// Cost is a fixed cost for execution plus an additional cost that is linear
+// in the length of the read. ReadBaseCost is a value from the price table,
+// ReadLengthCost is a value from the price table, and ReadLength is one of the
+// inputs to the instruction.
+func (ri *ReadInstruction) Cost(ReadBaseCost, ReadLengthCost, ReadLength) (cost, refund types.Currency) {
+	return ReadBaseCost + ReadLengthCost*ReadLength, types.ZeroCurrency
 }
+
+// Time is the amount of execution time that the instruction needs to run. This
+// operation is given a value of '1000' because it reads from disk. Though the
+// true execution time does depend on the type of hardware and the total amount
+// of data being read, this function is really only used to ensure that rough
+// memory costs are being considered.
+func (ri *ReadInstruction) Time() uint64 {
+	return 1000
+}
+```
+
+### Read-Write Instructions
+
+There are the instructions that are supported in read-write mode. Each
+instruction acts on a specific contract, and they act on the contract explicitly
+named by the program.
+
+### Price Table
+
+Below is an example price table that informs the costing of the MDM. As more
+instructions are added, the cost table will be extended.
+
+```go
+type MDMCostTable struct {
+	// InitializeProgramCost is the amount of cost that is incurred when a
+	// program starts to run.
+	InitializeProgramCost types.Currency
+
+	// MemoryTimeCost is the amount of cost that is incurred by the memory
+	// consumption of the program.
+	MemoryTimeCost types.Currency
+
+	// Cost values specific to the Read instruction.
+	ReadBaseCost   types.Currency
+	ReadLengthCost types.Currency
+}
+```
+
+
+
+
+
+
+
 
 # Old Stuff
 
