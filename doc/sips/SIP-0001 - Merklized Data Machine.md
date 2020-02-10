@@ -200,7 +200,7 @@ MDM which indicates what type of execution failure occurred. There are three
 types of execution failures.
 
 The first type of execution failure is an invalid program failure. This can
-occur if a program attempts an illegal instruction or would reuqire consuming
+occur if a program attempts an illegal instruction or would require consuming
 more resources than were budgeted for the program. An invalid program failure is
 also returned in the event of an interrupt.
 
