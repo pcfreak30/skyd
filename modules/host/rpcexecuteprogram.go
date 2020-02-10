@@ -69,18 +69,18 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPri
 		NewMerkleRoot: output.NewMerkleRoot,
 		NewSize:       output.NewSize,
 		Proof:         output.Proof,
-		Error:         "TODO",
+		Error:         output.Error.Error(),
 	})
 	if err != nil {
 		return errors.AddContext(err, "Failed to send output")
 	}
 
-	return nil
+	return err
 }
 
-// TODO: move this:
 // MDMStorageObligation wraps a host and storage obligation to satisfy the
 // mdm.StorageObligation interface.
+// TODO: move this
 type MDMStorageObligation struct {
 	so storageObligation
 	h  *Host
