@@ -20,11 +20,14 @@ import (
 // TestMarshalUnmarshalRPCPriceTable tests we can properly marshal and unmarshal
 // the RPC price table.
 func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
-	// create a price table
-	expiry := time.Now().Add(rpcPriceGuaranteePeriod).Unix()
-	pt := modules.NewRPCPriceTable(expiry)
-	pt.Costs[types.NewSpecifier("RPC1")] = types.NewCurrency64(1)
-	pt.Costs[types.NewSpecifier("RPC2")] = types.NewCurrency64(2)
+	pt := modules.RPCPriceTable{
+		Expiry:               time.Now().Add(1).Unix(),
+		UpdatePriceTableCost: types.SiacoinPrecision,
+		InitBaseCost:         types.SiacoinPrecision,
+		MemoryTimeCost:       types.SiacoinPrecision,
+		ReadBaseCost:         types.SiacoinPrecision,
+		ReadLengthCost:       types.SiacoinPrecision,
+	}
 
 	// marshal & unmarshal it
 	ptMar, err := json.Marshal(pt)
@@ -37,11 +40,10 @@ func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
 		t.Fatal("Failed to unmarshal RPC price table", err)
 	}
 
-	// check equality
 	if !reflect.DeepEqual(pt, ptUmar) {
 		t.Log("expected:", pt)
 		t.Log("actual:", ptUmar)
-		t.Fatal("Price tables not equal after marshaling")
+		t.Fatal("Unmarshaled table doesn't match expected one")
 	}
 }
 
@@ -102,9 +104,10 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			return
 		}
 
-		_, exists := pt.Costs[modules.RPCUpdatePriceTable]
-		if !exists {
-			t.Log("Expected the cost of the updatePriceTableRPC to be defined")
+		ptc := pt.UpdatePriceTableCost
+		if ptc.Equals(types.ZeroCurrency) {
+			t.Log(ptc)
+			t.Log("Expected the cost of the updatePriceTableRPC to be set")
 			atomic.AddUint64(&atomicErrors, 1)
 			return
 		}

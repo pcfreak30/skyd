@@ -92,7 +92,7 @@ func (p *paymentProcessor) ProcessFundEphemeralAccountRPC(stream siamux.Stream, 
 
 	// calculate the deposit amount, this equals to amount of money paid minus
 	// the cost of the RPC
-	cost := pt.Costs[modules.RPCFundEphemeralAccount]
+	cost := pt.FundEphemeralAccountCost
 	amount := recentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
 	var deposit types.Currency
 	if cost.Cmp(amount) <= 0 {

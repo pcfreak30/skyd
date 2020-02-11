@@ -282,26 +282,29 @@ func (h *Host) threadedUpdatePriceTable() {
 	}
 }
 
+// managedInternalSettings returns the settings of a host.
+func (h *Host) managedInternalSettings() modules.HostInternalSettings {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.settings
+}
+
 // managedUpdatePriceTable will recalculate the RPC costs and update the host's
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
+
 	// create a new RPC price table and set the expiry
 	priceTable := modules.NewRPCPriceTable(0) // expiry set on request
 
-	// TODO: move along, nothing to see here
-	// TODO: fix this disgusting mess with the RPC IDs
-	// recalculate the price for every RPC
-	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
-
-	priceTable.Costs[modules.RPCFundEphemeralAccount] = h.managedCalculateUpdatePriceTableRPCPrice()
-
-	// TODO: hardcoded MDM costs, needs a better place
+	// TODO: hardcoded MDM costs should be updated to use better values.
 	his := h.InternalSettings()
-	priceTable.Costs[modules.MDMComponentCompute] = types.ZeroCurrency
-	priceTable.Costs[modules.MDMComponentMemory] = types.ZeroCurrency
-	priceTable.Costs[modules.MDMOperationDiskAccess] = types.ZeroCurrency
-	priceTable.Costs[modules.MDMOperationDiskRead] = his.MinBaseRPCPrice
-	priceTable.Costs[modules.MDMOperationDiskWrite] = his.MinBaseRPCPrice
+	priceTable.InitBaseCost = his.MinBaseRPCPrice
+	priceTable.MemoryTimeCost = his.MinBaseRPCPrice
+	priceTable.ReadBaseCost = his.MinBaseRPCPrice
+	priceTable.ReadLengthCost = his.MinBaseRPCPrice
+
+	priceTable.UpdatePriceTableCost = h.managedCalculateUpdatePriceTableCost()
+	priceTable.FundEphemeralAccountCost = h.managedCalculateFundEphemeralAccountCost()
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -315,6 +318,7 @@ func (h *Host) managedUpdatePriceTable() {
 	if h.priceTableHeap.Len() == 0 {
 		return
 	}
+
 	// TODO: has bug - expires immediately
 	// oldest := heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
 	// for {
@@ -610,9 +614,7 @@ func (h *Host) InternalSettings() modules.HostInternalSettings {
 		return modules.HostInternalSettings{}
 	}
 	defer h.tg.Done()
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.settings
+	return h.managedInternalSettings()
 }
 
 // BlockHeight returns the host's current blockheight.

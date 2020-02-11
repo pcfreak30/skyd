@@ -100,13 +100,14 @@ func CalculateProgramCost(instructions []Instruction, dataLen uint64) (cost Cost
 	return
 }
 
-// ConvertCostToPrice uses a price table to convert a mdm.Cost to a types.Currency.
+// ConvertCostToPrice uses a price table to convert a mdm.Cost to a
+// types.Currency.
 func ConvertCostToPrice(cost Cost, pt *RPCPriceTable) (price types.Currency) {
-	price = price.Add(types.NewCurrency64(cost.Compute).Mul(pt.Costs[MDMComponentCompute]))
-	price = price.Add(types.NewCurrency64(cost.DiskAccesses).Mul(pt.Costs[MDMOperationDiskAccess]))
-	price = price.Add(types.NewCurrency64(cost.DiskRead).Mul(pt.Costs[MDMOperationDiskRead]))
-	price = price.Add(types.NewCurrency64(cost.DiskWrite).Mul(pt.Costs[MDMOperationDiskWrite]))
-	price = price.Add(types.NewCurrency64(cost.Memory).Mul(pt.Costs[MDMComponentMemory]))
+	// price = price.Add(types.NewCurrency64(cost.Compute).Mul(pt.Costs[MDMComponentCompute]))
+	// price = price.Add(types.NewCurrency64(cost.DiskAccesses).Mul(pt.Costs[MDMOperationDiskAccess]))
+	// price = price.Add(types.NewCurrency64(cost.DiskRead).Mul(pt.Costs[MDMOperationDiskRead]))
+	// price = price.Add(types.NewCurrency64(cost.DiskWrite).Mul(pt.Costs[MDMOperationDiskWrite]))
+	// price = price.Add(types.NewCurrency64(cost.Memory).Mul(pt.Costs[MDMComponentMemory]))
 	return
 }
 

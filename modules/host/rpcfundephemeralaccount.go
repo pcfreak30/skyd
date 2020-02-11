@@ -50,10 +50,10 @@ func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt *modules.
 	return nil
 }
 
-// managedCalculateUpdatePriceTableRPCPrice calculates the price for the
+// managedCalculateFundEphemeralAccountCost calculates the price for the
 // FundEphemeralAccountRPC. The price can be dependant on numerous factors.
 // Note: for now this is a fixed cost equaling the base RPC price.
-func (h *Host) managedCalculateFundEphemeralAccountPrice() types.Currency {
+func (h *Host) managedCalculateFundEphemeralAccountCost() types.Currency {
 	hIS := h.InternalSettings()
 	return hIS.MinBaseRPCPrice
 }

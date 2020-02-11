@@ -18,13 +18,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-var (
-	// errRPCNotAvailable is returned when the requested RPC is not available on
-	// the host. This is possible when a host runs an older version, or when it
-	// is not fully synced and disables its ephemeral account manager.
-	errRPCNotAvailable = errors.New("RPC not available on host")
-)
-
 // RPCClient interface lists all possible RPC that can be called on the host
 type RPCClient interface {
 	UpdatePriceTable(pp modules.PaymentProvider) (modules.RPCPriceTable, error)
@@ -95,7 +88,7 @@ func (c *hostRPCClient) UpdatePriceTable(pp modules.PaymentProvider) (modules.RP
 	}
 
 	// provide payment for the RPC
-	cost := updated.Costs[modules.RPCFundEphemeralAccount]
+	cost := updated.FundEphemeralAccountCost
 	_, err = pp.ProvidePaymentForRPC(modules.RPCUpdatePriceTable, cost, stream, c.managedBlockHeight())
 	if err != nil {
 		return modules.RPCPriceTable{}, err
@@ -108,10 +101,7 @@ func (c *hostRPCClient) UpdatePriceTable(pp modules.PaymentProvider) (modules.RP
 // successful will deposit the given amount into the specified account.
 func (c *hostRPCClient) FundEphemeralAccount(pp modules.PaymentProvider, pt modules.RPCPriceTable, id string, amount types.Currency) error {
 	// calculate the cost of the RPC
-	cost, available := pt.Costs[modules.RPCFundEphemeralAccount]
-	if !available {
-		return errors.AddContext(errRPCNotAvailable, fmt.Sprintf("Failed to fund ephemeral account %v", id))
-	}
+	cost := pt.FundEphemeralAccountCost
 
 	// get a stream
 	stream, err := c.r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))

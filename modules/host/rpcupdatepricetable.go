@@ -48,7 +48,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	}
 
 	// verify payment
-	expected := pt.Costs[modules.RPCUpdatePriceTable]
+	expected := pt.UpdatePriceTableCost
 	if amountPaid.Cmp(expected) < 0 {
 		return errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
 	}
@@ -56,10 +56,10 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	return nil
 }
 
-// managedCalculateUpdatePriceTableRPCPrice calculates the price for the
+// managedCalculateUpdatePriceTableCost calculates the price for the
 // UpdatePriceTableRPC. The price can be dependant on numerous factors.
 // Note: for now this is a fixed cost equaling the base RPC price.
-func (h *Host) managedCalculateUpdatePriceTableRPCPrice() types.Currency {
+func (h *Host) managedCalculateUpdatePriceTableCost() types.Currency {
 	hIS := h.InternalSettings()
 	return hIS.MinBaseRPCPrice
 }

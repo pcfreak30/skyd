@@ -10,23 +10,40 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-type (
-	// RPCPriceTable contains a list of costs associated to RPCs. It is uniquely
-	// identified by its uuid, and is given out by the host which guarantees the
-	// listed costs up until the expiry timestamp.
-	RPCPriceTable struct {
-		UUID   types.ShortSpecifier
-		Costs  map[types.Specifier]types.Currency
-		Expiry int64
-	}
+// RPCPriceTable contains the cost of executing a RPC on a host. Each host can
+// set its own prices for the individual MDM instructions and RPC costs.
+type RPCPriceTable struct {
+	// UUID is a specifier that uniquely identifies this price table
+	UUID types.ShortSpecifier
 
-	// rpcResponse is a helper type for encoding and decoding RPC response
-	// messages.
-	rpcResponse struct {
-		err  *RPCError
-		data interface{}
-	}
-)
+	// Expiry is a unix timestamp that specifies the time until which the
+	// MDMCostTable is valid.
+	Expiry int64 `json:"expiry"`
+
+	// UpdatePriceTableCost refers to the cost of fetching a new price table
+	// from the host.
+	UpdatePriceTableCost types.Currency `json:"updatepricetablecost"`
+
+	// FundEphemeralAccountCost refers to the cost of funding an ephemeral
+	// account on the host.
+	FundEphemeralAccountCost types.Currency `json:"fundephemeralaccountcost"`
+
+	// MDM related costs
+	//
+	// InitBaseCost is the amount of cost that is incurred when an MDM program
+	// starts to run. This doesn't include the memory used by the program data.
+	// The total cost to initialize a program is calculated as
+	// InitCost = InitiBaseCost + MemoryTimeCost * Time
+	InitBaseCost types.Currency `json:"initbasecost"`
+
+	// MemoryTimeCost is the amount of cost per byte per time that is incurred
+	// by the memory consumption of the program.
+	MemoryTimeCost types.Currency `json:"memorytimecost"`
+
+	// Cost values specific to the Read instruction.
+	ReadBaseCost   types.Currency `json:"readbasecost"`
+	ReadLengthCost types.Currency `json:"readlengthcost"`
+}
 
 var (
 	// ErrPriceTableExpired is returned when the RPC price is expired.
@@ -65,13 +82,19 @@ type (
 	RPCExecuteProgramRequest struct {
 		FileContractID types.FileContractID
 	}
+
+	// rpcResponse is a helper type for encoding and decoding RPC response
+	// messages.
+	rpcResponse struct {
+		err  *RPCError
+		data interface{}
+	}
 )
 
 // NewRPCPriceTable returns an empty RPC price table
 func NewRPCPriceTable(expiry int64) RPCPriceTable {
 	pt := RPCPriceTable{
 		Expiry: expiry,
-		Costs:  make(map[types.Specifier]types.Currency),
 	}
 	fastrand.Read(pt.UUID[:])
 	return pt
@@ -82,9 +105,6 @@ func NewRPCPriceTable(expiry int64) RPCPriceTable {
 // price table to the renter.
 func (pt *RPCPriceTable) Clone(expiry int64) *RPCPriceTable {
 	cloned := NewRPCPriceTable(expiry)
-	for k, v := range pt.Costs {
-		cloned.Costs[k] = v
-	}
 	fastrand.Read(cloned.UUID[:])
 	return &cloned
 }
