@@ -10,6 +10,10 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
+// TODO: the PayByEphemeralAccountResponse is redundant and is not used by the
+// renter in any way, it contains the exact some amount that the renter has
+// sent, perhaps we can drop it entirely.
+
 // paymentProcessor fulfills the PaymentProcessor interface on the host. It is
 // used by the RPCs to process a payment that is sent over a stream.
 type paymentProcessor struct {
@@ -144,15 +148,13 @@ func (p *paymentProcessor) payByEphemeralAccount(stream siamux.Stream) (types.Cu
 	// process the request
 	err := p.h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority)
 
-	// TODO: response props don't make sense
+	// send the response
 	err = modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{
-		Amount:                 pbear.Message.Amount,
-		AccountManagerResponse: "ok",
+		Amount: pbear.Message.Amount,
 	})
 	if err != nil {
 		return failTo("ProcessPaymentForRPC", "send PayByEphemeralAccountResponse", err)
 	}
-
 	return pbear.Message.Amount, nil
 }
 

@@ -71,7 +71,8 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		so:         so,
 		tg:         &mdm.tg,
 	}
-	// If the storage obligation is not locked the initialContractSize will be 0.
+	// If the storage obligation is not locked the finalContractSize will be
+	// 0.
 	if so.Locked() {
 		p.finalContractSize = so.ContractSize()
 	}

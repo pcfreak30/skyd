@@ -114,8 +114,6 @@ var (
 	errObligationUnlocked = errors.New("storage obligation is unlocked, and should not be getting unlocked")
 )
 
-type storageObligationStatus uint64
-
 // storageObligation contains all of the metadata related to a file contract
 // and the storage contained by the file contract.
 type storageObligation struct {
@@ -158,6 +156,10 @@ type storageObligation struct {
 	RevisionConstructed bool
 }
 
+// storageObligationStatus indicates the current status of a storage obligation
+type storageObligationStatus uint64
+
+// String converts a storageObligationStatus to a String.
 func (i storageObligationStatus) String() string {
 	if i == 0 {
 		return "obligationUnresolved"
@@ -172,6 +174,45 @@ func (i storageObligationStatus) String() string {
 		return "obligationFailed"
 	}
 	return "storageObligationStatus(" + strconv.FormatInt(int64(i), 10) + ")"
+}
+
+// MDMStorageObligation wraps a host and storage obligation to satisfy the
+// mdm.StorageObligation interface.
+type MDMStorageObligation struct {
+	so storageObligation
+	h  *Host
+}
+
+// newMDMStorageObligation returns a new MDMStorageObligation which wraps the
+// given storage obligation.
+func newMDMStorageObligation(so storageObligation, h *Host) *MDMStorageObligation {
+	return &MDMStorageObligation{so: so, h: h}
+}
+
+// ContractSize satisfies the mdm.StorageObligation interface.
+func (mso *MDMStorageObligation) ContractSize() uint64 {
+	if !mso.h.managedIsLockedStorageObligation(mso.so.id()) {
+		panic("TODO")
+	}
+	return mso.so.recentRevision().NewFileSize
+}
+
+// Locked satisfies the mdm.StorageObligation interface.
+func (mso *MDMStorageObligation) Locked() bool {
+	return mso.h.managedIsLockedStorageObligation(mso.so.id())
+}
+
+// MerkleRoot satisfies the mdm.StorageObligation interface.
+func (mso *MDMStorageObligation) MerkleRoot() crypto.Hash {
+	if mso.h.managedIsLockedStorageObligation(mso.so.id()) {
+		return mso.so.recentRevision().NewFileMerkleRoot
+	}
+	return crypto.Hash{}
+}
+
+// Update satisfies the mdm.StorageObligation interface.
+func (mso *MDMStorageObligation) Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+	return mso.h.modifyStorageObligation(mso.so, sectorsRemoved, sectorsGained, gainedSectorData)
 }
 
 // managedGetStorageObligation fetches a storage obligation from the database.

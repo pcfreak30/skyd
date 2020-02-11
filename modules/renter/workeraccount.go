@@ -135,13 +135,7 @@ func (a *account) paymentProvider() modules.PaymentProvider {
 			return types.ZeroCurrency, err
 		}
 
-		// TODO: redo the eaErr thing
-		var eaErr error
-		if payByResponse.AccountManagerResponse != "ok" {
-			eaErr = errors.New(payByResponse.AccountManagerResponse)
-		}
-
-		return payByResponse.Amount, eaErr
+		return payByResponse.Amount, nil
 	})
 }
 

@@ -95,8 +95,7 @@ type (
 	// PayByEphemeralAccountResponse is the object sent in response to the
 	// PayByEphemeralAccountRequest
 	PayByEphemeralAccountResponse struct {
-		Amount                 types.Currency
-		AccountManagerResponse string
+		Amount types.Currency
 	}
 
 	// PayByContractRequest holds all payment details to pay from a file

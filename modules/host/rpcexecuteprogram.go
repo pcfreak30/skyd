@@ -4,16 +4,22 @@ import (
 	"context"
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
 // managedRPCExecuteProgram will read a program from the stream and execute it
 // on the MDM.
-func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPriceTable, fcid types.FileContractID) error {
+func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPriceTable) error {
+	// read request
+	var epr modules.RPCExecuteProgramRequest
+	err := modules.RPCRead(stream, &epr)
+	if err != nil {
+		return errors.AddContext(err, "Failed to read RPCExecuteProgramRequest")
+
+	}
+
 	// process payment
 	pp := h.NewPaymentProcessor()
 	amountPaid, err := pp.ProcessPaymentForRPC(stream)
@@ -48,7 +54,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPri
 	}
 
 	// get storage obligation
-	so, err := h.managedGetStorageObligation(fcid)
+	so, err := h.managedGetStorageObligation(epr.FileContractID)
 	if err != nil {
 		return errors.AddContext(err, "Failed to get storage obligation")
 	}
@@ -76,42 +82,4 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPri
 	}
 
 	return err
-}
-
-// MDMStorageObligation wraps a host and storage obligation to satisfy the
-// mdm.StorageObligation interface.
-// TODO: move this
-type MDMStorageObligation struct {
-	so storageObligation
-	h  *Host
-}
-
-func newMDMStorageObligation(so storageObligation, h *Host) *MDMStorageObligation {
-	return &MDMStorageObligation{so: so, h: h}
-}
-
-// ContractSize satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) ContractSize() uint64 {
-	if !mso.h.managedIsLockedStorageObligation(mso.so.id()) {
-		panic("TODO")
-	}
-	return mso.so.recentRevision().NewFileSize
-}
-
-// Locked satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) Locked() bool {
-	return mso.h.managedIsLockedStorageObligation(mso.so.id())
-}
-
-// MerkleRoot satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) MerkleRoot() crypto.Hash {
-	if mso.h.managedIsLockedStorageObligation(mso.so.id()) {
-		return mso.so.recentRevision().NewFileMerkleRoot
-	}
-	return crypto.Hash{}
-}
-
-// Update satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
-	return mso.h.modifyStorageObligation(mso.so, sectorsRemoved, sectorsGained, gainedSectorData)
 }

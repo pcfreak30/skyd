@@ -14,6 +14,13 @@ package host
 // Incentive for the host to do such a thing is pretty low - they will still
 // have to keep all the files following a renew in order to get the money.
 
+// TODO: track new RPC calls using atomics
+// atomicFundAccountCalls      uint64
+// atomicUpdatePriceTableCalls uint64
+
+// TODO: we could be nice and return an RPC price table in the error response
+// when we receive an expired price table
+
 import (
 	"fmt"
 	"io"
@@ -26,8 +33,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
@@ -235,7 +242,7 @@ func (h *Host) initNetworking(address string) (err error) {
 	// Launch the listener.
 	go h.threadedListen(threadedListenerClosedChan)
 
-	if err := h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.handleStream); err != nil {
+	if err := h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.threadedHandleStream); err != nil {
 		return errors.AddContext(err, "Failed to subscribe to the SiaMux")
 	}
 	h.tg.OnStop(func() {
@@ -253,8 +260,8 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 	defer h.tg.Done()
 
-	// Close the conn on host.Close or when the method terminates, whichever comes
-	// first.
+	// Close the conn on host.Close or when the method terminates, whichever
+	// comes first.
 	connCloseChan := make(chan struct{})
 	defer close(connCloseChan)
 	go func() {
@@ -332,84 +339,80 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 }
 
-// handleStream handles incoming SiaMux streams.
-func (h *Host) handleStream(stream siamux.Stream) {
+// threadedHandleStream handles incoming SiaMux streams.
+func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	err := h.tg.Add()
 	if err != nil {
 		return
 	}
 	defer h.tg.Done()
 
-	// Close the conn on host.Close or when the method terminates, whichever
-	// comes first.
+	// close the stream when this method terminates
 	defer stream.Close()
 
-	// Set an initial duration that is generous, but finite. RPCs can extend
-	// this if desired.
-	// TODO: enable when implemented on SiaMux
-	//	err = stream.SetDeadline(time.Now().Add(5 * time.Minute))
-	//	if err != nil {
-	//		h.log.Println("WARN: could not set deadline on connection:", err)
-	//		return
-	//	}
+	// set an initial duration that is generous, but finite. RPCs can extend
+	// this if desired
+	err = stream.SetDeadline(time.Now().Add(5 * time.Minute))
+	if err != nil {
+		h.log.Println("WARN: could not set deadline on connection:", err)
+		return
+	}
 
+	// read the RPC id
 	var rpcID types.Specifier
-	var pt *modules.RPCPriceTable
 	err = modules.RPCRead(stream, &rpcID)
 	if err != nil {
-		// TODO
+		modules.RPCWriteError(stream, errors.New("Failed to read RPC id"))
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
-	fmt.Printf("TODO REMOVE: Processing RPC %v\n", string(rpcID[:]))
 
+	// TODO remove
+	fmt.Printf("Processing RPC %v\n", string(rpcID[:]))
+
+	// read the price table, the renter will send its pricetable UUID by means
+	// of identification, except for when it is updating its price table
+	var pt *modules.RPCPriceTable
 	if rpcID != modules.RPCUpdatePriceTable {
-		var rpcPTS types.ShortSpecifier
-		err = modules.RPCRead(stream, &rpcPTS)
+		var ptID types.ShortSpecifier
+		err = modules.RPCRead(stream, &ptID)
 		if err != nil {
-			// TODO
-			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			modules.RPCWriteError(stream, errors.New("Failed to read price table UUID"))
+			atomic.AddUint64(&h.atomicErroredCalls, 1)
 			return
 		}
 		var exists bool
-		pt, exists = h.uuidToPriceTable[rpcPTS]
+		pt, exists = h.uuidToPriceTable[ptID]
 		if !exists {
-			// TODO
-			atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+			modules.RPCWriteError(stream, errors.New(fmt.Sprintf("Could not find price table for UUID %v", ptID)))
+			atomic.AddUint64(&h.atomicErroredCalls, 1)
+			return
+		}
+		if pt.Expiry < time.Now().Unix() {
+			modules.RPCWriteError(stream, modules.ErrExpiredRPCPriceTable)
+			atomic.AddUint64(&h.atomicErroredCalls, 1)
 			return
 		}
 	}
 
-	// TODO: verify if current blockheight does not exceed the RPC price
-	// table's expiry. In which case we should not accept the RPC and
-	// indicate to the renter he has outdated prices.
 	switch rpcID {
 	case modules.RPCFundEphemeralAccount:
 		err = h.managedRPCFundEphemeralAccount(stream, pt)
 		err = errors.AddContext(err, "Failed to handle FundEphemeralAccountRPC")
 	case modules.RPCUpdatePriceTable:
-		// Note this RPC call will update the price table, this way the host
-		// has a copy of the same price table the renter has and can verify
-		// if the payment was sufficient.
 		err = h.managedRPCUpdatePriceTable(stream)
 		err = errors.AddContext(err, "Failed to handle UpdatePriceTableRPC")
 	case modules.RPCExecuteMDMProgram:
-		var epr modules.RPCExecuteProgramRequest
-		err = modules.RPCRead(stream, &epr)
-		if err != nil {
-			err = errors.AddContext(err, "Failed to read RPCExecuteProgramRequest")
-			break
-		}
-		err = h.managedRPCExecuteProgram(stream, pt, epr.FileContractID)
+		err = h.managedRPCExecuteProgram(stream, pt)
 		err = errors.AddContext(err, "Failed to handle DownloadRootRPC")
 	default:
-		// TODO: add logging
+		h.log.Debugf("WARN: incoming stream %v requested unknown RPC \"%v\"", stream.RemoteAddr().String(), rpcID)
+		err = errors.New(fmt.Sprintf("Unrecognized RPC id %v", rpcID))
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 	}
 
 	if err != nil {
 		modules.RPCWriteError(stream, err)
-		// TODO: add context to the error
 		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		h.managedLogError(err)
 	}

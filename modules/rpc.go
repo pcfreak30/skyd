@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"errors"
 	"io"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -28,6 +29,9 @@ type (
 )
 
 var (
+	// ErrPriceTableExpired is returned when the RPC price is expired.
+	ErrPriceTableExpired = errors.New("RPC price table was expired")
+
 	// RPCUpdatePriceTable specifier
 	RPCUpdatePriceTable = types.NewSpecifier("UpdatePriceTable")
 

@@ -90,7 +90,6 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, pa
 	}
 
 	// verify the host's signature
-	// TODO
 	hash := crypto.HashAll(rev)
 	var pk crypto.PublicKey
 	copy(pk[:], metadata.HostPublicKey.Key)
@@ -106,7 +105,8 @@ func (p *paymentProviderContract) ProvidePaymentForRPC(rpcID types.Specifier, pa
 	return payment, nil
 }
 
-// TODO
+// recordIntent will record an intent on the safe contract. This is dependant on
+// the given rpc ID, not every rpc needs an intent to be recorded.
 func recordIntent(rpcID types.Specifier, sc *proto.SafeContract, rev types.FileContractRevision, amount types.Currency) (*writeaheadlog.Transaction, error) {
 	switch rpcID {
 	case modules.RPCFundEphemeralAccount:
@@ -115,7 +115,7 @@ func recordIntent(rpcID types.Specifier, sc *proto.SafeContract, rev types.FileC
 	return nil, nil
 }
 
-// TODO
+// commitIntent will commit an intent on the safe contract.
 func commitIntent(rpcID types.Specifier, sc *proto.SafeContract, t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency) error {
 	switch rpcID {
 	case modules.RPCFundEphemeralAccount:
