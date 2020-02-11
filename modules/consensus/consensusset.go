@@ -8,6 +8,7 @@ package consensus
 
 import (
 	"errors"
+	"fmt"
 
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/demotemutex"
@@ -184,6 +185,7 @@ func consensusSetAsyncStartup(cs *ConsensusSet, bootstrap bool) error {
 	cs.mu.Lock()
 	cs.synced = true
 	cs.mu.Unlock()
+	fmt.Println("consensus startup done")
 	return nil
 }
 

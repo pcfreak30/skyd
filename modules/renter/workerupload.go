@@ -126,11 +126,13 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) {
 	onCooldown, _ := w.onUploadCooldown()
 	uploadTerminated := w.uploadTerminated
 	if !goodForUpload || uploadTerminated || onCooldown {
+		w.renter.repairLog.Println("DEBUG1GB: worker", w.staticHostPubKeyStr, "is dropping chunk", uc.index, "because goodForUpload", goodForUpload, "uploadTerminated", uploadTerminated, "onCoolDown", onCooldown)
 		// The worker should not be uploading, remove the chunk.
 		w.mu.Unlock()
 		w.managedDropChunk(uc)
 		return
 	}
+	w.renter.repairLog.Println("DEBUG1GB: worker", w.staticHostPubKeyStr, "is working on chunk", uc.index)
 	w.unprocessedChunks = append(w.unprocessedChunks, uc)
 	w.mu.Unlock()
 

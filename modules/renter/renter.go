@@ -884,6 +884,7 @@ func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
 	if r.deps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
+	fmt.Println("starting renter async")
 	// Subscribe to the consensus set in a separate goroutine.
 	done := make(chan struct{})
 	defer close(done)
@@ -904,6 +905,7 @@ func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
 	}
 	// Spin up the snapshot synchronization thread.
 	go r.threadedSynchronizeSnapshots()
+	fmt.Println("done renter async")
 	return nil
 }
 

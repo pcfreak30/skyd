@@ -11,9 +11,7 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -484,6 +482,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 	// Now that we have calculated the completed pieces for the chunk we can
 	// calculate the health of the chunk to avoid a call to ChunkHealth
 	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.minimumPieces) / float64(uuc.piecesNeeded-uuc.minimumPieces))
+	r.repairLog.Println("DEBUG1GB: health of chunk", uuc.index, "is", uuc.health)
 	return uuc, nil
 }
 
@@ -525,6 +524,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 	// Assemble chunk indexes, stuck Loop should only be adding stuck chunks and
 	// the repair loop should only be adding unstuck chunks
 	var chunkIndexes []uint64
+	r.repairLog.Println("DEBUG1GB: building chunk indexes")
 	for i := uint64(0); i < entry.NumChunks(); i++ {
 		stuck, err := entry.StuckChunkByIndex(i)
 		if err != nil {
@@ -535,6 +535,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 			chunkIndexes = append(chunkIndexes, i)
 		}
 	}
+	r.repairLog.Println("DEBUG1GB: chunk indexes:", chunkIndexes)
 
 	// Sanity check that we have chunk indices to go through
 	if len(chunkIndexes) == 0 {
@@ -544,7 +545,9 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 
 	// Build a map of host public keys. We assume that all entrys are the same.
 	pks := make(map[string]types.SiaPublicKey)
+	r.repairLog.Println("DEBUG1GB: grabbing hosts")
 	for _, pk := range entry.HostPublicKeys() {
+		r.repairLog.Println("DEBUG1GB: host", pk)
 		pks[string(pk.Key)] = pk
 	}
 
@@ -753,10 +756,11 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		// For normal repairs check if file is a worse health than the directory
 		// heap
 		fileHealth := file.Metadata().CachedHealth
-		if fileHealth < dirHeapHealth && target == targetUnstuckChunks {
-			worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
-			continue
-		}
+		r.repairLog.Println("DEBUG1GB: CachedHealth:", fileHealth)
+		// // if fileHealth < dirHeapHealth && target == targetUnstuckChunks {
+		// // 	worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
+		// // 	continue
+		// }
 
 		// Build unfinished chunks from file and add them to the temp heap if
 		// they are a worse health than the directory heap
@@ -899,58 +903,77 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 // TODO: Explore whether there is a way to perform the task below without
 // opening a full file entry for each file in the directory.
 func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[string]struct{}, target repairTarget) {
-	// Get Directory files
-	fileinfos, err := r.staticFileSystem.ReadDir(dirSiaPath)
-	if err != nil {
-		r.log.Println("WARN: could not read directory:", err)
-		return
-	}
+	// // Get Directory files
+	// fileinfos, err := r.staticFileSystem.ReadDir(dirSiaPath)
+	// if err != nil {
+	// 	r.log.Println("WARN: could not read directory:", err)
+	// 	return
+	// }
 	// Build files from fileinfos
 	var files []*filesystem.FileNode
-	for _, fi := range fileinfos {
-		// skip sub directories and non siafiles
-		ext := filepath.Ext(fi.Name())
-		if fi.IsDir() || ext != modules.SiaFileExtension {
-			continue
-		}
 
-		// Open SiaFile
-		siaPath, err := dirSiaPath.Join(strings.TrimSuffix(fi.Name(), ext))
+	// DEBUG - Keep adding same file to repair heap
+	fmt.Println("Addeding debug file to repair heap")
+	fsp, err := modules.NewSiaPath("sub1a/sub2c/1gb-59")
+	if err != nil {
+		fmt.Println("error creating siapath:", err)
+	} else {
+		file, err := r.staticFileSystem.OpenSiaFile(fsp)
 		if err != nil {
-			r.log.Println("WARN: could not create siaPath:", err)
-			continue
-		}
-		file, err := r.staticFileSystem.OpenSiaFile(siaPath)
-		if err != nil {
-			r.log.Println("WARN: could not open siafile:", err)
-			continue
-		}
-
-		// For stuck chunk repairs, check to see if file has stuck chunks
-		if target == targetStuckChunks && file.NumStuckChunks() == 0 {
-			// Close unneeded files
-			file.Close()
-			if err != nil {
-				r.log.Println("WARN: Could not close file:", err)
+			fmt.Println("Error opening file:", err)
+		} else {
+			files = append(files, file)
+			ignore := file.NumChunks() == file.NumStuckChunks() || file.Metadata().CachedHealth < RepairThreshold
+			if ignore {
+				r.repairLog.Println("WARNING: Would have ignored file 1gb-59")
 			}
-			continue
 		}
-		// For normal repairs, ignore files that don't have any unstuck chunks
-		// or are healthy.
-		//
-		// We can used the cached value of health because it is updated during
-		// bubble. Since the repair loop operates off of the metadata
-		// information updated by bubble this cached health is accurate enough
-		// to use in order to determine if a file has any chunks that need
-		// repair
-		ignore := file.NumChunks() == file.NumStuckChunks() || file.Metadata().CachedHealth < RepairThreshold
-		if target == targetUnstuckChunks && ignore {
-			file.Close()
-			continue
-		}
-
-		files = append(files, file)
 	}
+
+	// for _, fi := range fileinfos {
+	// 	// skip sub directories and non siafiles
+	// 	ext := filepath.Ext(fi.Name())
+	// 	if fi.IsDir() || ext != modules.SiaFileExtension {
+	// 		continue
+	// 	}
+
+	// 	// Open SiaFile
+	// 	siaPath, err := dirSiaPath.Join(strings.TrimSuffix(fi.Name(), ext))
+	// 	if err != nil {
+	// 		r.log.Println("WARN: could not create siaPath:", err)
+	// 		continue
+	// 	}
+	// 	file, err := r.staticFileSystem.OpenSiaFile(siaPath)
+	// 	if err != nil {
+	// 		r.log.Println("WARN: could not open siafile:", err)
+	// 		continue
+	// 	}
+
+	// 	// For stuck chunk repairs, check to see if file has stuck chunks
+	// 	if target == targetStuckChunks && file.NumStuckChunks() == 0 {
+	// 		// Close unneeded files
+	// 		file.Close()
+	// 		if err != nil {
+	// 			r.log.Println("WARN: Could not close file:", err)
+	// 		}
+	// 		continue
+	// 	}
+	// 	// For normal repairs, ignore files that don't have any unstuck chunks
+	// 	// or are healthy.
+	// 	//
+	// 	// We can used the cached value of health because it is updated during
+	// 	// bubble. Since the repair loop operates off of the metadata
+	// 	// information updated by bubble this cached health is accurate enough
+	// 	// to use in order to determine if a file has any chunks that need
+	// 	// repair
+	// 	ignore := file.NumChunks() == file.NumStuckChunks() || file.Metadata().CachedHealth < RepairThreshold
+	// 	if target == targetUnstuckChunks && ignore {
+	// 		file.Close()
+	// 		continue
+	// 	}
+
+	// 	files = append(files, file)
+	// }
 
 	// Check if any files were selected from directory
 	if len(files) == 0 {
@@ -1171,6 +1194,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		return
 	}
 	defer r.tg.Done()
+
+	// DEBUG add file chunks to heap
 
 	// Perpetual loop to scan for more files and add chunks to the uploadheap.
 	// The loop assumes that the heap has already been initialized (either at

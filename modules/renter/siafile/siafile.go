@@ -578,6 +578,10 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	defer sf.mu.Unlock()
 	// Update the cache.
 	defer func() {
+		fmt.Printf(`Getting health for %v
+		cachedhealth is %v
+		calculated health is %v
+		`, sf.siaFilePath, sf.staticMetadata.CachedHealth, h)
 		sf.staticMetadata.CachedHealth = h
 		sf.staticMetadata.CachedStuckHealth = sh
 	}()
