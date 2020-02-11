@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -33,7 +34,7 @@ type renterTester struct {
 	tpool   modules.TransactionPool
 	wallet  modules.Wallet
 
-	mux *modules.SiaMux
+	mux *siamux.SiaMux
 
 	renter *Renter
 	dir    string
@@ -232,7 +233,7 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 }
 
 // newRenterWithDependency creates a Renter with custom dependency
-func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *modules.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
+func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
 	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tpool, persistDir, deps)
 	if err := <-errChan; err != nil {
 		return nil, err

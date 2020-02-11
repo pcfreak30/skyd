@@ -19,7 +19,8 @@ type (
 	// InstructionSpecifier specifies the type of the instruction.
 	InstructionSpecifier types.Specifier
 
-	// MDMInstructionResponse.
+	// MDMInstructionResponse is the response object containing the result of an
+	// executed MDM instruction.
 	MDMInstructionResponse struct {
 		Error         string
 		NewSize       uint64

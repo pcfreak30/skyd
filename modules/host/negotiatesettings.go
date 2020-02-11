@@ -2,6 +2,7 @@ package host
 
 import (
 	"net"
+	"strconv"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -65,6 +66,11 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		maxCollateral = h.settings.CollateralBudget.Sub(h.financialMetrics.LockedStorageCollateral)
 	}
 
+	// Extract the port from the siamux's address
+	// TODO: can we safely ignore the errors here?
+	_, portStr, _ := net.SplitHostPort(h.staticMux.Address().String())
+	port, _ := strconv.ParseUint(portStr, 10, 64)
+
 	return modules.HostExternalSettings{
 		AcceptingContracts:   acceptingContracts,
 		MaxDownloadBatchSize: h.settings.MaxDownloadBatchSize,
@@ -90,7 +96,7 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		RevisionNumber: h.revisionNumber,
 		Version:        build.Version,
 
-		SiaMuxPort: h.staticMux.Port(),
+		SiaMuxPort: port,
 	}
 }
 
