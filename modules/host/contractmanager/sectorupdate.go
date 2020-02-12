@@ -53,7 +53,7 @@ func (cm *ContractManager) managedAddPhysicalSector(id sectorID, data []byte, co
 	cm.mu.Unlock()
 	for len(storageFolders) >= 1 {
 		var storageFolderIndex int
-		err := func() error {
+		err := func() (err error) {
 			// NOTE: Convention is broken when working with WAL lock here, due
 			// to the complexity required with managing both the WAL lock and
 			// the storage folder lock. Pay close attention when reviewing and
@@ -86,37 +86,32 @@ func (cm *ContractManager) managedAddPhysicalSector(id sectorID, data []byte, co
 			sf.availableSectors[id] = sectorIndex
 			cm.mu.Unlock()
 
-			// NOTE: The usage has been set, in the event of failure the usage
+			// The usage has been set, in the event of failure the usage
 			// must be cleared.
+			defer func() {
+				if err != nil {
+					cm.mu.Lock()
+					sf.clearUsage(sectorIndex)
+					delete(sf.availableSectors, id)
+					cm.mu.Unlock()
+				}
+			}()
 
-			// Try writing the new sector to disk.
-			err = writeSector(sf.sectorFile, sectorIndex, data)
-			if err != nil {
-				cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
-				atomic.AddUint64(&sf.atomicFailedWrites, 1)
-				cm.mu.Lock()
-				sf.clearUsage(sectorIndex)
-				delete(sf.availableSectors, id)
-				cm.mu.Unlock()
-				return errDiskTrouble
-			}
+			// Prepare writing the new sector to disk.
+			sectorDataUpdate := sectorDataUpdate(path, sectorIndex, data)
 
-			// Try writing the sector metadata to disk.
+			// Prepare writing the sector metadata to disk.
 			su := sectorUpdate{
 				Count:  count,
 				ID:     id,
 				Folder: sf.index,
 				Index:  sectorIndex,
 			}
-			err = cm.writeSectorMetadata(sf, su)
-			if err != nil {
-				cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
-				atomic.AddUint64(&sf.atomicFailedWrites, 1)
-				cm.mu.Lock()
-				sf.clearUsage(sectorIndex)
-				delete(sf.availableSectors, id)
-				cm.mu.Unlock()
-				return errDiskTrouble
+			sectorMetadataUpdate := sectorMetadataUpdate(sf, su)
+
+			// Apply updates.
+			if err := cm.createAndApplyTransaction(sectorDataUpdate, sectorMetadataUpdate); err != nil {
+				return err
 			}
 
 			// Sector added successfully, update the WAL and the state.
@@ -126,9 +121,6 @@ func (cm *ContractManager) managedAddPhysicalSector(id sectorID, data []byte, co
 				count:         count,
 			}
 			cm.mu.Lock()
-			wal.appendChange(stateChange{
-				SectorUpdates: []sectorUpdate{su},
-			})
 			delete(cm.storageFolders[su.Folder].availableSectors, id)
 			cm.sectorLocations[id] = sl
 			cm.mu.Unlock()

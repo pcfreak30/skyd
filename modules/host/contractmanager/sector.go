@@ -65,9 +65,14 @@ func readSector(f modules.File, sectorIndex uint32) ([]byte, error) {
 }
 
 // readFullMetadata will read a full sector metadata file into memory.
-func readFullMetadata(f modules.File, numSectors int) ([]byte, error) {
+func readFullMetadata(path string, deps modules.Dependencies, numSectors int) ([]byte, error) {
+	f, err := deps.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
 	sectorLookupBytes := make([]byte, numSectors*sectorMetadataDiskSize)
-	_, err := f.ReadAt(sectorLookupBytes, 0)
+	_, err = f.ReadAt(sectorLookupBytes, 0)
 	if err != nil {
 		return nil, build.ExtendErr("unable to read metadata file for target storage folder", err)
 	}
@@ -142,8 +147,15 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 		return nil, ErrSectorNotFound
 	}
 
+	// Open sector file.
+	f, err := cm.dependencies.Open(sf.sectorFile)
+	if err != nil {
+		atomic.AddUint64(&sf.atomicUnavailable, 1)
+		return nil, build.ExtendErr("unable to open sector file", err)
+	}
+	defer f.Close()
 	// Read the sector.
-	sectorData, err := readSector(sf.sectorFile, sl.index)
+	sectorData, err := readSector(f, sl.index)
 	if err != nil {
 		atomic.AddUint64(&sf.atomicFailedReads, 1)
 		return nil, build.ExtendErr("unable to fetch sector", err)

@@ -3,6 +3,7 @@ package contractmanager
 import (
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -14,7 +15,45 @@ type (
 		ID     sectorID
 		Index  uint32
 	}
+	// walUpdate wraps a writeaheadlog.Update and adds a file to be able to
+	// reuse open file handles when applying the update.
+	walUpdate struct {
+		writeaheadlog.Update
+		f modules.File
+	}
 )
+
+func sectorMetadataUpdate(sf *storageFolder, su sectorUpdate) walUpdate {
+	panic("not implemented yet")
+}
+
+func sectorDataUpdate(path string, sectorIndex uint32, data []byte) walUpdate {
+	panic("not implemented yet")
+}
+
+func (cm *ContractManager) createAndApplyTransaction(updates ...walUpdate) error {
+	panic("not implemented yet")
+}
+
+func (cm *ContractManager) applySectorDataUpdate(update writeaheadlog.Update) error {
+	panic("not implemented yet")
+	//	err = writeSector(sf.sectorFile, sectorIndex, data)
+	//	if err != nil {
+	//		cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
+	//		atomic.AddUint64(&sf.atomicFailedWrites, 1)
+	//		return errDiskTrouble
+	//	}
+}
+
+func (cm *ContractManager) applySectorMetadataUpdate(update writeaheadlog.Update) error {
+	panic("not implemented yet")
+	//	err = cm.writeSectorMetadata(sf, su)
+	//	if err != nil {
+	//		cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
+	//		atomic.AddUint64(&sf.atomicFailedWrites, 1)
+	//		return errDiskTrouble
+	//	}
+}
 
 //func addStorageFolderUpdate(sf *storageFolder) writeaheadlog.Update {
 //	panic("not implemented yet")

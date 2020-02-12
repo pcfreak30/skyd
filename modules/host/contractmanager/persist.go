@@ -78,21 +78,6 @@ func (cm *ContractManager) loadSettings() error {
 		sf.index = ss.StorageFolders[i].Index
 		sf.path = ss.StorageFolders[i].Path
 		sf.usage = ss.StorageFolders[i].Usage
-		sf.metadataFile, err = cm.dependencies.OpenFile(filepath.Join(ss.StorageFolders[i].Path, metadataFile), os.O_RDWR, 0700)
-		if err != nil {
-			// Mark the folder as unavailable and log an error.
-			atomic.StoreUint64(&sf.atomicUnavailable, 1)
-			cm.log.Printf("ERROR: unable to open the %v sector metadata file: %v\n", sf.path, err)
-		}
-		sf.sectorFile, err = cm.dependencies.OpenFile(filepath.Join(ss.StorageFolders[i].Path, sectorFile), os.O_RDWR, 0700)
-		if err != nil {
-			// Mark the folder as unavailable and log an error.
-			atomic.StoreUint64(&sf.atomicUnavailable, 1)
-			cm.log.Printf("ERROR: unable to open the %v sector file: %v\n", sf.path, err)
-			if sf.metadataFile != nil {
-				sf.metadataFile.Close()
-			}
-		}
 		sf.availableSectors = make(map[sectorID]uint32)
 		cm.storageFolders[sf.index] = sf
 	}
@@ -103,12 +88,10 @@ func (cm *ContractManager) loadSettings() error {
 // file and load the sector location information into memory.
 func (cm *ContractManager) loadSectorLocations(sf *storageFolder) {
 	// Read the sector lookup table for this storage folder into memory.
-	sectorLookupBytes, err := readFullMetadata(sf.metadataFile, len(sf.usage)*storageFolderGranularity)
+	sectorLookupBytes, err := readFullMetadata(sf.metadataFile, cm.dependencies, len(sf.usage)*storageFolderGranularity)
 	if err != nil {
 		atomic.AddUint64(&sf.atomicFailedReads, 1)
 		atomic.StoreUint64(&sf.atomicUnavailable, 1)
-		err = build.ComposeErrors(err, sf.metadataFile.Close())
-		err = build.ComposeErrors(err, sf.sectorFile.Close())
 		cm.log.Printf("ERROR: unable to read sector metadata for folder %v: %v\n", sf.path, err)
 		return
 	}
