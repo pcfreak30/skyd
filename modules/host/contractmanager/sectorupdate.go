@@ -98,7 +98,7 @@ func (cm *ContractManager) managedAddPhysicalSector(id sectorID, data []byte, co
 			}()
 
 			// Prepare writing the new sector to disk.
-			sectorDataUpdate := sectorDataUpdate(path, sectorIndex, data)
+			sectorDataUpdate := sectorDataUpdate(sf.sectorFile, sf.sectorFilePath, sectorIndex, data)
 
 			// Prepare writing the sector metadata to disk.
 			su := sectorUpdate{

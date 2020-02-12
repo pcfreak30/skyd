@@ -112,8 +112,10 @@ type storageFolder struct {
 	// An open file handle is kept so that writes can easily be made to the
 	// storage folder without needing to grab a new file handle. This also
 	// makes it easy to do delayed-syncing.
-	metadataFile modules.File
-	sectorFile   modules.File
+	metadataFile     modules.File
+	sectorFile       modules.File
+	metadataFilePath string
+	sectorFilePath   string
 }
 
 // mostSignificantBit returns the index of the most significant bit of an input
@@ -315,8 +317,10 @@ func (cm *ContractManager) threadedFolderRecheck() {
 		for _, sf := range cm.storageFolders {
 			if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 				var err1, err2 error
-				sf.metadataFile, err1 = cm.dependencies.OpenFile(filepath.Join(sf.path, metadataFile), os.O_RDWR, 0700)
-				sf.sectorFile, err2 = cm.dependencies.OpenFile(filepath.Join(sf.path, sectorFile), os.O_RDWR, 0700)
+				sf.metadataFilePath = filepath.Join(sf.path, metadataFile)
+				sf.sectorFilePath = filepath.Join(sf.path, sectorFile)
+				sf.metadataFile, err1 = cm.dependencies.OpenFile(sf.metadataFilePath, os.O_RDWR, 0700)
+				sf.sectorFile, err2 = cm.dependencies.OpenFile(sf.sectorFilePath, os.O_RDWR, 0700)
 				if err1 == nil && err2 == nil {
 					// The storage folder has been found, and loading can be
 					// completed.

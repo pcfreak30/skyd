@@ -79,10 +79,12 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 
 		// Create the files that get used with the storage folder.
 		var err error
+		sf.metadataFilePath = sectorLookupName
 		sf.metadataFile, err = cm.dependencies.CreateFile(sectorLookupName)
 		if err != nil {
 			return nil, build.ExtendErr("could not create storage folder file", err)
 		}
+		sf.sectorFilePath = sectorHousingName
 		sf.sectorFile, err = cm.dependencies.CreateFile(sectorHousingName)
 		if err != nil {
 			err = build.ComposeErrors(err, sf.metadataFile.Close())
@@ -227,12 +229,14 @@ func (cm *ContractManager) commitAddStorageFolder(ssf savedStorageFolder) {
 	}
 
 	var err error
-	sf.metadataFile, err = cm.dependencies.OpenFile(filepath.Join(sf.path, metadataFile), os.O_RDWR, 0700)
+	sf.metadataFilePath = filepath.Join(sf.path, metadataFile)
+	sf.metadataFile, err = cm.dependencies.OpenFile(sf.metadataFilePath, os.O_RDWR, 0700)
 	if err != nil {
 		cm.log.Println("Difficulties opening sector file for ", sf.path, ":", err)
 		return
 	}
-	sf.sectorFile, err = cm.dependencies.OpenFile(filepath.Join(sf.path, sectorFile), os.O_RDWR, 0700)
+	sf.sectorFilePath = filepath.Join(sf.path, sectorFile)
+	sf.sectorFile, err = cm.dependencies.OpenFile(sf.sectorFilePath, os.O_RDWR, 0700)
 	if err != nil {
 		cm.log.Println("Difficulties opening sector metadata file for", sf.path, ":", err)
 		sf.metadataFile.Close()

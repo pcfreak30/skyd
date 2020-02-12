@@ -180,6 +180,15 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 				// nil.
 				continue
 			}
+
+			err = sf.metadataFile.Close()
+			if err != nil {
+				cm.log.Println("Error closing the storage folder file handle", err)
+			}
+			err = sf.sectorFile.Close()
+			if err != nil {
+				cm.log.Println("Error closing the storage folder file handle", err)
+			}
 		}
 	})
 

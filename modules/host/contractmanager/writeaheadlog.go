@@ -27,7 +27,7 @@ func sectorMetadataUpdate(sf *storageFolder, su sectorUpdate) walUpdate {
 	panic("not implemented yet")
 }
 
-func sectorDataUpdate(path string, sectorIndex uint32, data []byte) walUpdate {
+func sectorDataUpdate(file modules.File, path string, sectorIndex uint32, data []byte) walUpdate {
 	panic("not implemented yet")
 }
 
