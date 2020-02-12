@@ -54,7 +54,7 @@ func (cm *ContractManager) managedMoveSector(id sectorID) error {
 	cm.mu.Unlock()
 	for len(storageFolders) >= 1 {
 		var storageFolderIndex int
-		err := func() error {
+		err := func() (err error) {
 			// NOTE: Convention is broken when working with WAL lock here, due
 			// to the complexity required with managing both the WAL lock and
 			// the storage folder lock. Pay close attention when reviewing and
@@ -87,37 +87,33 @@ func (cm *ContractManager) managedMoveSector(id sectorID) error {
 			sf.availableSectors[id] = sectorIndex
 			cm.mu.Unlock()
 
-			// NOTE: The usage has been set, in the event of failure the usage
+			// The usage has been set, in the event of failure the usage
 			// must be cleared.
+			defer func() {
+				if err != nil {
+					cm.mu.Lock()
+					sf.clearUsage(sectorIndex)
+					delete(sf.availableSectors, id)
+					cm.mu.Unlock()
+				}
+			}()
 
-			// Try writing the new sector to disk.
-			err = writeSector(sf.sectorFile, sectorIndex, sectorData)
-			if err != nil {
-				cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
-				atomic.AddUint64(&sf.atomicFailedWrites, 1)
-				cm.mu.Lock()
-				sf.clearUsage(sectorIndex)
-				delete(sf.availableSectors, id)
-				cm.mu.Unlock()
-				return errDiskTrouble
-			}
+			// Prepare writing the new sector to disk.
+			writeSectorUpdate := sectorDataUpdate(sf.sectorFile, sf.sectorFilePath, sectorIndex, sectorData)
 
-			// Try writing the sector metadata to disk.
+			// Prepare writing the sector metadata to disk.
 			su := sectorUpdate{
 				Count:  oldLocation.count,
 				ID:     id,
 				Folder: sf.index,
 				Index:  sectorIndex,
 			}
-			err = cm.writeSectorMetadata(sf, su)
+			writeSectorMetadataUpdate := sectorMetadataUpdate(sf, su)
+
+			// Apply changes.
+			err = cm.createAndApplyTransaction(writeSectorUpdate, writeSectorMetadataUpdate)
 			if err != nil {
-				cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
-				atomic.AddUint64(&sf.atomicFailedWrites, 1)
-				cm.mu.Lock()
-				sf.clearUsage(sectorIndex)
-				delete(sf.availableSectors, id)
-				cm.mu.Unlock()
-				return errDiskTrouble
+				return err
 			}
 
 			// Sector added successfully, update the WAL and the state.
@@ -127,9 +123,6 @@ func (cm *ContractManager) managedMoveSector(id sectorID) error {
 				count:         oldLocation.count,
 			}
 			cm.mu.Lock()
-			cm.appendChange(stateChange{
-				SectorUpdates: []sectorUpdate{oldSU, su},
-			})
 			oldFolder.clearUsage(oldLocation.index)
 			delete(cm.sectorLocations, oldSU.ID)
 			delete(sf.availableSectors, id)

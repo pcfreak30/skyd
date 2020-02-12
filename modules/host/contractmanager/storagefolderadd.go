@@ -103,7 +103,7 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 		// operation and the completed commitment to the unfinished storage
 		// folder addition (signaled by `<-syncChan` a few lines down).
 		update := addStorageFolderUpdate(sf)
-		txn, err := cm.prepareWalTxn(update)
+		txn, err := cm.createAndApplyTransaction(update)
 		if err != nil {
 			err = build.ComposeErrors(err, sf.metadataFile.Close())
 			err = build.ComposeErrors(err, cm.dependencies.RemoveFile(sectorLookupName))
