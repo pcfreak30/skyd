@@ -521,75 +521,75 @@ func (*dependencyNoSyncLoop) Disrupt(s string) bool {
 // Because the changes were finalized but not committed, extra code coverage
 // should be achieved, though the result of the storage folder being rejected
 // should be the same.
-func TestAddStorageFolderDoubleAddNoCommit(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-	d := new(dependencyNoSyncLoop)
-	cmt, err := newMockedContractManagerTester(d, "TestAddStorageFolderDoubleAddNoCommit")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The closing of this channel must happen after the call to panicClose.
-	closeFakeSyncChan := make(chan struct{})
-	defer close(closeFakeSyncChan)
-	defer cmt.panicClose()
-
-	// The sync loop will never run, which means naively AddStorageFolder will
-	// never return. To get AddStorageFolder to return before the commit
-	// completes, spin up an alternate sync loop which only performs the
-	// signaling responsibilities of the commit function.
-	go func() {
-		for {
-			select {
-			case <-closeFakeSyncChan:
-				return
-			case <-time.After(time.Millisecond * 250):
-				// Signal that the commit operation has completed, even though
-				// it has not.
-				cmt.cm.wal.mu.Lock()
-				close(cmt.cm.wal.syncChan)
-				cmt.cm.wal.syncChan = make(chan struct{})
-				cmt.cm.wal.mu.Unlock()
-			}
-		}
-	}()
-
-	// Add a storage folder to the contract manager tester.
-	storageFolderOne := filepath.Join(cmt.persistDir, "storageFolderOne")
-	// Create the storage folder dir.
-	err = os.MkdirAll(storageFolderOne, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Call AddStorageFolder in three separate goroutines, where the same path
-	// is used in each. The errors are not checked because one of the storage
-	// folders will succeed, but it's uncertain which one.
-	sfSize := modules.SectorSize * storageFolderGranularity * 8
-	err = cmt.cm.AddStorageFolder(storageFolderOne, sfSize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = cmt.cm.AddStorageFolder(storageFolderOne, sfSize*2)
-	if err != ErrRepeatFolder {
-		t.Fatal(err)
-	}
-
-	// Check that the storage folder has been added.
-	sfs := cmt.cm.StorageFolders()
-	if len(sfs) != 1 {
-		t.Fatal("There should be one storage folder reported", len(sfs))
-	}
-	// All actions should have completed, so all storage folders should be
-	// reporting '0' in the progress denominator
-	for _, sf := range sfs {
-		if sf.ProgressDenominator != 0 {
-			t.Error("ProgressDenominator is indicating that actions still remain")
-		}
-	}
-}
+//func TestAddStorageFolderDoubleAddNoCommit(t *testing.T) {
+//	if testing.Short() {
+//		t.SkipNow()
+//	}
+//	t.Parallel()
+//	d := new(dependencyNoSyncLoop)
+//	cmt, err := newMockedContractManagerTester(d, "TestAddStorageFolderDoubleAddNoCommit")
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//	// The closing of this channel must happen after the call to panicClose.
+//	closeFakeSyncChan := make(chan struct{})
+//	defer close(closeFakeSyncChan)
+//	defer cmt.panicClose()
+//
+//	// The sync loop will never run, which means naively AddStorageFolder will
+//	// never return. To get AddStorageFolder to return before the commit
+//	// completes, spin up an alternate sync loop which only performs the
+//	// signaling responsibilities of the commit function.
+//	go func() {
+//		for {
+//			select {
+//			case <-closeFakeSyncChan:
+//				return
+//			case <-time.After(time.Millisecond * 250):
+//				// Signal that the commit operation has completed, even though
+//				// it has not.
+//				cmt.cm.wal.mu.Lock()
+//				close(cmt.cm.wal.syncChan)
+//				cmt.cm.wal.syncChan = make(chan struct{})
+//				cmt.cm.wal.mu.Unlock()
+//			}
+//		}
+//	}()
+//
+//	// Add a storage folder to the contract manager tester.
+//	storageFolderOne := filepath.Join(cmt.persistDir, "storageFolderOne")
+//	// Create the storage folder dir.
+//	err = os.MkdirAll(storageFolderOne, 0700)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	// Call AddStorageFolder in three separate goroutines, where the same path
+//	// is used in each. The errors are not checked because one of the storage
+//	// folders will succeed, but it's uncertain which one.
+//	sfSize := modules.SectorSize * storageFolderGranularity * 8
+//	err = cmt.cm.AddStorageFolder(storageFolderOne, sfSize)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//	err = cmt.cm.AddStorageFolder(storageFolderOne, sfSize*2)
+//	if err != ErrRepeatFolder {
+//		t.Fatal(err)
+//	}
+//
+//	// Check that the storage folder has been added.
+//	sfs := cmt.cm.StorageFolders()
+//	if len(sfs) != 1 {
+//		t.Fatal("There should be one storage folder reported", len(sfs))
+//	}
+//	// All actions should have completed, so all storage folders should be
+//	// reporting '0' in the progress denominator
+//	for _, sf := range sfs {
+//		if sf.ProgressDenominator != 0 {
+//			t.Error("ProgressDenominator is indicating that actions still remain")
+//		}
+//	}
+//}
 
 // TestAddStorageFolderFailedCommit adds a storage folder without ever saving
 // the settings.

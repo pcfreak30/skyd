@@ -28,61 +28,61 @@ type (
 // findUnfinishedStorageFolderExtensions will scroll through a set of state
 // changes as pull out all of the storage folder extensions which have not yet
 // completed.
-func findUnfinishedStorageFolderExtensions(scs []stateChange) []unfinishedStorageFolderExtension {
-	// Use a map to figure out what unfinished storage folder extensions exist
-	// and use it to remove the ones that have terminated.
-	usfeMap := make(map[uint16]unfinishedStorageFolderExtension)
-	for _, sc := range scs {
-		for _, usfe := range sc.UnfinishedStorageFolderExtensions {
-			usfeMap[usfe.Index] = usfe
-		}
-		for _, sfe := range sc.StorageFolderExtensions {
-			delete(usfeMap, sfe.Index)
-		}
-		for _, index := range sc.ErroredStorageFolderExtensions {
-			delete(usfeMap, index)
-		}
-		for _, sfr := range sc.StorageFolderRemovals {
-			delete(usfeMap, sfr.Index)
-		}
-	}
-
-	// Return the active unifinished storage folder extensions as a slice.
-	usfes := make([]unfinishedStorageFolderExtension, 0, len(usfeMap))
-	for _, usfe := range usfeMap {
-		usfes = append(usfes, usfe)
-	}
-	return usfes
-}
+//func findUnfinishedStorageFolderExtensions(scs []stateChange) []unfinishedStorageFolderExtension {
+//	// Use a map to figure out what unfinished storage folder extensions exist
+//	// and use it to remove the ones that have terminated.
+//	usfeMap := make(map[uint16]unfinishedStorageFolderExtension)
+//	for _, sc := range scs {
+//		for _, usfe := range sc.UnfinishedStorageFolderExtensions {
+//			usfeMap[usfe.Index] = usfe
+//		}
+//		for _, sfe := range sc.StorageFolderExtensions {
+//			delete(usfeMap, sfe.Index)
+//		}
+//		for _, index := range sc.ErroredStorageFolderExtensions {
+//			delete(usfeMap, index)
+//		}
+//		for _, sfr := range sc.StorageFolderRemovals {
+//			delete(usfeMap, sfr.Index)
+//		}
+//	}
+//
+//	// Return the active unifinished storage folder extensions as a slice.
+//	usfes := make([]unfinishedStorageFolderExtension, 0, len(usfeMap))
+//	for _, usfe := range usfeMap {
+//		usfes = append(usfes, usfe)
+//	}
+//	return usfes
+//}
 
 // cleanupUnfinishedStorageFolderExtensions will reset any unsuccessful storage
 // folder extensions from the previous run.
-func (cm *ContractManager) cleanupUnfinishedStorageFolderExtensions(scs []stateChange) {
-	usfes := findUnfinishedStorageFolderExtensions(scs)
-	for _, usfe := range usfes {
-		sf, exists := cm.storageFolders[usfe.Index]
-		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
-			cm.log.Critical("unfinished storage folder extension exists where the storage folder does not exist")
-			continue
-		}
-
-		// Truncate the files back to their original size.
-		err := sf.metadataFile.Truncate(int64(len(sf.usage) * storageFolderGranularity * sectorMetadataDiskSize))
-		if err != nil {
-			cm.log.Printf("Error: unable to truncate metadata file as storage folder %v is resized\n", sf.path)
-		}
-		err = sf.sectorFile.Truncate(int64(modules.SectorSize * storageFolderGranularity * uint64(len(sf.usage))))
-		if err != nil {
-			cm.log.Printf("Error: unable to truncate sector file as storage folder %v is resized\n", sf.path)
-		}
-
-		// Append an error call to the changeset, indicating that the storage
-		// folder add was not completed successfully.
-		wal.appendChange(stateChange{
-			ErroredStorageFolderExtensions: []uint16{sf.index},
-		})
-	}
-}
+//func (cm *ContractManager) cleanupUnfinishedStorageFolderExtensions(scs []stateChange) {
+//	usfes := findUnfinishedStorageFolderExtensions(scs)
+//	for _, usfe := range usfes {
+//		sf, exists := cm.storageFolders[usfe.Index]
+//		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
+//			cm.log.Critical("unfinished storage folder extension exists where the storage folder does not exist")
+//			continue
+//		}
+//
+//		// Truncate the files back to their original size.
+//		err := sf.metadataFile.Truncate(int64(len(sf.usage) * storageFolderGranularity * sectorMetadataDiskSize))
+//		if err != nil {
+//			cm.log.Printf("Error: unable to truncate metadata file as storage folder %v is resized\n", sf.path)
+//		}
+//		err = sf.sectorFile.Truncate(int64(modules.SectorSize * storageFolderGranularity * uint64(len(sf.usage))))
+//		if err != nil {
+//			cm.log.Printf("Error: unable to truncate sector file as storage folder %v is resized\n", sf.path)
+//		}
+//
+//		// Append an error call to the changeset, indicating that the storage
+//		// folder add was not completed successfully.
+//		wal.appendChange(stateChange{
+//			ErroredStorageFolderExtensions: []uint16{sf.index},
+//		})
+//	}
+//}
 
 // commitStorageFolderExtension will apply a storage folder extension to the
 // state.
@@ -115,14 +115,7 @@ func (cm *ContractManager) growStorageFolder(index uint16, newSectorCount uint32
 
 	// Write the intention to increase the storage folder size to the WAL,
 	// providing enough information to allow a truncation if the growing fails.
-	cm.mu.Lock()
-	wal.appendChange(stateChange{
-		UnfinishedStorageFolderExtensions: []unfinishedStorageFolderExtension{{
-			Index:          index,
-			OldSectorCount: uint32(len(sf.usage)) * storageFolderGranularity,
-		}},
-	})
-	cm.mu.Unlock()
+	oldSectorCount := uint32(len(sf.usage)) * storageFolderGranularity
 
 	// Prepare variables for growing the storage folder.
 	currentHousingSize := int64(len(sf.usage)) * int64(modules.SectorSize) * storageFolderGranularity
@@ -150,33 +143,29 @@ func (cm *ContractManager) growStorageFolder(index uint16, newSectorCount uint32
 
 			// Signal in the WAL that the unfinished storage folder addition
 			// has failed.
-			wal.appendChange(stateChange{
-				ErroredStorageFolderExtensions: []uint16{sf.index},
-			})
+			err = build.ComposeErrors(err, cm.shrinkStorageFolder(index, oldSectorCount, true))
 		}
 	}(sf, currentMetadataSize, currentHousingSize)
 
 	// Extend the sector file and metadata file on disk.
 	atomic.StoreUint64(&sf.atomicProgressDenominator, uint64(housingWriteSize+metadataWriteSize))
 
+	var updates []walUpdate
 	stepCount := housingWriteSize / folderAllocationStepSize
 	for i := int64(0); i < stepCount; i++ {
-		err = sf.sectorFile.Truncate(currentHousingSize + (folderAllocationStepSize * (i + 1)))
-		if err != nil {
-			return build.ExtendErr("could not allocate storage folder", err)
-		}
+		updates = append(updates, truncateUpdate(sf.sectorFile, currentHousingSize+(folderAllocationStepSize*(i+1))))
 		// After each iteration, update the progress numerator.
+		// TODO: this is no longer accurate
 		atomic.AddUint64(&sf.atomicProgressNumerator, folderAllocationStepSize)
 	}
-	err = sf.sectorFile.Truncate(currentHousingSize + housingWriteSize)
-	if err != nil {
-		return build.ExtendErr("could not allocate sector data file", err)
-	}
+	updates = append(updates, truncateUpdate(sf.sectorFile, currentHousingSize+housingWriteSize))
 
 	// Write the metadata file.
-	err = sf.metadataFile.Truncate(currentMetadataSize + metadataWriteSize)
-	if err != nil {
-		return build.ExtendErr("could not allocate sector metadata file", err)
+	updates = append(updates, truncateUpdate(sf.metadataFile, currentMetadataSize+metadataWriteSize))
+
+	// Apply the changes.
+	if err := cm.createAndApplyTransaction(updates...); err != nil {
+		return err
 	}
 
 	// The file creation process is essentially complete at this point, report
@@ -213,15 +202,9 @@ func (cm *ContractManager) growStorageFolder(index uint16, newSectorCount uint32
 		return nil
 	}
 
-	// Storage folder growth has completed successfully, commit through the WAL
+	// Storage folder growth has completed successfully.
 	cm.mu.Lock()
 	cm.storageFolders[sf.index] = sf
-	wal.appendChange(stateChange{
-		StorageFolderExtensions: []storageFolderExtension{{
-			Index:          sf.index,
-			NewSectorCount: newSectorCount,
-		}},
-	})
 	cm.mu.Unlock()
 
 	// Set the progress back to '0'.

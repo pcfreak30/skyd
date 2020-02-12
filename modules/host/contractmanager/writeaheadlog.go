@@ -31,6 +31,18 @@ func sectorDataUpdate(file modules.File, path string, sectorIndex uint32, data [
 	panic("not implemented yet")
 }
 
+func truncateUpdate(file modules.File, newSize int64) walUpdate {
+	panic("not implemented yet")
+}
+
+func emptyStorageFolderUpdate(index uint16, startingPoint uint32) walUpdate {
+	panic("not implemented yet")
+	//	_, err := cm.managedEmptyStorageFolder(index, newSectorCount)
+	//	if err != nil && !force {
+	//		return err
+	//	}
+}
+
 func (cm *ContractManager) createAndApplyTransaction(updates ...walUpdate) error {
 	panic("not implemented yet")
 }

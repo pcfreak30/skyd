@@ -65,7 +65,7 @@ func readSector(f modules.File, sectorIndex uint32) ([]byte, error) {
 }
 
 // readFullMetadata will read a full sector metadata file into memory.
-func readFullMetadata(f modules.File, deps modules.Dependencies, numSectors int) ([]byte, error) {
+func readFullMetadata(f modules.File, numSectors int) ([]byte, error) {
 	sectorLookupBytes := make([]byte, numSectors*sectorMetadataDiskSize)
 	_, err := f.ReadAt(sectorLookupBytes, 0)
 	if err != nil {

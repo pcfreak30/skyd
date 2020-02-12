@@ -71,10 +71,7 @@ func (cm *ContractManager) shrinkStorageFolder(index uint16, newSectorCount uint
 	defer sf.mu.Unlock()
 
 	// Clear out the sectors in the storage folder.
-	_, err := cm.managedEmptyStorageFolder(index, newSectorCount)
-	if err != nil && !force {
-		return err
-	}
+	update := emptyStorageFolderUpdate(index, newSectorCount)
 
 	// Allow unclean shutdown to be simulated by returning before the state
 	// change gets committed.
@@ -84,13 +81,9 @@ func (cm *ContractManager) shrinkStorageFolder(index uint16, newSectorCount uint
 
 	// Submit a storage folder truncation to the WAL and wait until the update
 	// is synced.
-	cm.mu.Lock()
-	wal.appendChange(stateChange{
-		StorageFolderReductions: []storageFolderReduction{{
-			Index:          index,
-			NewSectorCount: newSectorCount,
-		}},
-	})
-	cm.mu.Unlock()
+	err := cm.createAndApplyTransaction(update)
+	if err != nil {
+		return err
+	}
 	return nil
 }

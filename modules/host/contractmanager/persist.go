@@ -106,7 +106,7 @@ func (cm *ContractManager) loadSettings() error {
 // file and load the sector location information into memory.
 func (cm *ContractManager) loadSectorLocations(sf *storageFolder) {
 	// Read the sector lookup table for this storage folder into memory.
-	sectorLookupBytes, err := readFullMetadata(sf.metadataFile, cm.dependencies, len(sf.usage)*storageFolderGranularity)
+	sectorLookupBytes, err := readFullMetadata(sf.metadataFile, len(sf.usage)*storageFolderGranularity)
 	if err != nil {
 		atomic.AddUint64(&sf.atomicFailedReads, 1)
 		atomic.StoreUint64(&sf.atomicUnavailable, 1)

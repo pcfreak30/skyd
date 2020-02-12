@@ -68,20 +68,9 @@ func (cm *ContractManager) RemoveStorageFolder(index uint16, force bool) error {
 	defer sf.mu.Unlock()
 
 	// Clear out the sectors in the storage folder.
-	_, err = cm.managedEmptyStorageFolder(index, 0)
-	if err != nil && !force {
-		return err
-	}
+	update := emptyStorageFolderUpdate(index, 0)
 
 	// Submit a storage folder removal to the WAL and wait until the update is
 	// synced.
-	cm.mu.Lock()
-	cm.wal.appendChange(stateChange{
-		StorageFolderRemovals: []storageFolderRemoval{{
-			Index: index,
-			Path:  sf.path,
-		}},
-	})
-	cm.mu.Unlock()
-	return nil
+	return cm.createAndApplyTransaction(update)
 }

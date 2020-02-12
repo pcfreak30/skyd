@@ -171,25 +171,20 @@ func (cm *ContractManager) managedAddVirtualSector(id sectorID, location sectorL
 		cm.mu.Unlock()
 		return errStorageFolderNotFound
 	}
-	wal.appendChange(stateChange{
-		SectorUpdates: []sectorUpdate{su},
-	})
 	cm.sectorLocations[id] = location
 	cm.mu.Unlock()
 
 	// Update the metadata on disk. Metadata is updated on disk after the sync
 	// so that there is no risk of obliterating the previous count in the event
 	// that the change is not fully committed during unclean shutdown.
-	err := cm.writeSectorMetadata(sf, su)
+	metadataUpdate := sectorMetadataUpdate(sf, su)
+	err := cm.createAndApplyTransaction(metadataUpdate)
 	if err != nil {
 		// Revert the sector update in the WAL to reflect the fact that adding
 		// the sector has failed.
 		su.Count--
 		location.count--
 		cm.mu.Lock()
-		wal.appendChange(stateChange{
-			SectorUpdates: []sectorUpdate{su},
-		})
 		cm.sectorLocations[id] = location
 		cm.mu.Unlock()
 		return build.ExtendErr("unable to write sector metadata during addSector call", err)
@@ -219,20 +214,21 @@ func (cm *ContractManager) managedDeleteSector(id sectorID) error {
 		}
 
 		// Inform the WAL of the sector update.
-		wal.appendChange(stateChange{
-			SectorUpdates: []sectorUpdate{{
-				Count:  0,
-				ID:     id,
-				Folder: location.storageFolder,
-				Index:  location.index,
-			}},
+		metadataUpdate := sectorMetadataUpdate(sf, sectorUpdate{
+			Count:  0,
+			ID:     id,
+			Folder: location.storageFolder,
+			Index:  location.index,
 		})
-
+		// Apply the update.
+		err := cm.createAndApplyTransaction(metadataUpdate)
+		if err != nil {
+			return err
+		}
 		// Delete the sector and mark the usage as available.
 		delete(cm.sectorLocations, id)
 		sf.availableSectors[id] = location.index
 
-		// Block until the change has been committed.
 		return nil
 	}()
 	if err != nil {
@@ -280,11 +276,13 @@ func (cm *ContractManager) managedRemoveSector(id sectorID) error {
 			Folder: location.storageFolder,
 			Index:  location.index,
 		}
-		wal.appendChange(stateChange{
-			SectorUpdates: []sectorUpdate{su},
-		})
+		sectorMetadataUpdate := sectorMetadataUpdate(sf, su)
+		err := cm.createAndApplyTransaction(sectorMetadataUpdate)
+		if err != nil {
+			return err
+		}
 
-		// Update the in-memeory representation of the sector.
+		// Update the in-memory representation of the sector.
 		if location.count == 0 {
 			// Delete the sector and mark it as available.
 			delete(cm.sectorLocations, id)
@@ -297,23 +295,6 @@ func (cm *ContractManager) managedRemoveSector(id sectorID) error {
 	}()
 	if err != nil {
 		return err
-	}
-
-	// Update the metadata, and the usage.
-	if location.count != 0 {
-		err = cm.writeSectorMetadata(sf, su)
-		if err != nil {
-			// Revert the previous change.
-			cm.mu.Lock()
-			su.Count++
-			location.count++
-			wal.appendChange(stateChange{
-				SectorUpdates: []sectorUpdate{su},
-			})
-			cm.sectorLocations[id] = location
-			cm.mu.Unlock()
-			return build.ExtendErr("failed to write sector metadata", err)
-		}
 	}
 
 	// Only update the usage after the sector removal has been committed to
