@@ -18,15 +18,16 @@ var (
 	// ErrInterrupted indicates that the program was interrupted during
 	// execution and couldn't finish.
 	ErrInterrupted = errors.New("execution of program was interrupted")
+
+	// ErrInsufficientBudget is the error returned if the remaining budget of a
+	// program is not sufficient to execute the next instruction.
+	ErrInsufficientBudget = errors.New("remaining budget is insufficient")
 )
 
 // programState contains some fields needed for the execution of instructions.
 // The program's state is captured when the program is created and remains the
 // same during the execution of the program.
 type programState struct {
-	// mdm related fields.
-	remainingBudget modules.Cost
-
 	// host related fields
 	blockHeight types.BlockHeight
 	host        Host
@@ -35,6 +36,9 @@ type programState struct {
 	sectorsRemoved   []crypto.Hash
 	sectorsGained    []crypto.Hash
 	gainedSectorData [][]byte
+
+	// budget related fields
+	priceTable modules.RPCPriceTable
 }
 
 // Program is a collection of instructions. Within a program, each instruction
@@ -47,8 +51,7 @@ type Program struct {
 	staticData         *programData
 	staticProgramState *programState
 
-	finalContractSize uint64 // contract size after executing all instructions
-	budget            modules.Cost
+	remainingBudget types.Currency
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -56,25 +59,20 @@ type Program struct {
 	tg *threadgroup.ThreadGroup
 }
 
-// ExecuteProgram initializes a new program from a set of instructions and a reader
-// which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget modules.Cost, so StorageObligation, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
+// ExecuteProgram initializes a new program from a set of instructions and a
+// reader which can be used to fetch the program's data and executes it.
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	p := &Program{
-		budget:     budget,
 		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
-			blockHeight:     mdm.host.BlockHeight(),
-			host:            mdm.host,
-			remainingBudget: budget,
+			blockHeight: mdm.host.BlockHeight(),
+			host:        mdm.host,
+			priceTable:  pt,
 		},
-		staticData: openProgramData(data, programDataLen),
-		so:         so,
-		tg:         &mdm.tg,
-	}
-	// If the storage obligation is not locked the finalContractSize will be
-	// 0.
-	if so.Locked() {
-		p.finalContractSize = so.ContractSize()
+		remainingBudget: budget,
+		staticData:      openProgramData(data, programDataLen),
+		so:              so,
+		tg:              &mdm.tg,
 	}
 
 	// Convert the instructions.
@@ -99,8 +97,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
 	// Make sure the budget covers the initial cost.
-	ps := p.staticProgramState
-	ps.remainingBudget, err = ps.remainingBudget.Sub(modules.InitCost(p.staticData.Len()))
+	p.remainingBudget, err = subtractFromBudget(p.remainingBudget, modules.InitCost(pt, p.staticData.Len()))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
@@ -113,7 +110,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		defer p.staticData.Close()
 		defer p.tg.Done()
 		defer close(p.outputChan)
-		p.executeInstructions(ctx, so.MerkleRoot())
+		p.executeInstructions(ctx, initialContractSize, initialMerkleRoot)
 	}()
 	// If the program is readonly there is no need to finalize it.
 	if p.readOnly() {
@@ -124,7 +121,11 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
-func (p *Program) executeInstructions(ctx context.Context, fcRoot crypto.Hash) {
+func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) {
+	output := Output{
+		NewSize:       fcSize,
+		NewMerkleRoot: fcRoot,
+	}
 	for _, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
@@ -132,9 +133,19 @@ func (p *Program) executeInstructions(ctx context.Context, fcRoot crypto.Hash) {
 			break
 		default:
 		}
+		// Subtract the cost of the instruction before running it.
+		cost, err := i.Cost()
+		if err != nil {
+			p.outputChan <- outputFromError(err)
+			return
+		}
+		p.remainingBudget, err = subtractFromBudget(p.remainingBudget, cost)
+		if err != nil {
+			p.outputChan <- outputFromError(err)
+			return
+		}
 		// Execute next instruction.
-		output := i.Execute(fcRoot)
-		fcRoot = output.NewMerkleRoot
+		output = i.Execute(output)
 		p.outputChan <- output
 		// Abort if the last output contained an error.
 		if output.Error != nil {
@@ -164,4 +175,13 @@ func (p *Program) readOnly() bool {
 		}
 	}
 	return true
+}
+
+// subtractFromBudget will subtract an amount of money from a budget. In case of
+// an underflow ErrInsufficientBudget and the unchanged budget are returned.
+func subtractFromBudget(budget, toSub types.Currency) (types.Currency, error) {
+	if toSub.Cmp(budget) > 0 {
+		return budget, ErrInsufficientBudget
+	}
+	return budget.Sub(toSub), nil
 }

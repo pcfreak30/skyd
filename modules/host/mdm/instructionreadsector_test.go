@@ -19,13 +19,18 @@ func TestInstructionReadSector(t *testing.T) {
 	defer mdm.Stop()
 
 	// Create a program to read a full sector from the host.
-	instructions, programData := NewReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, false) // TODO: use merkle
+	pt := newTestPriceTable()
+	readLen := modules.SectorSize
+	instructions, programData := NewReadSectorProgram(readLen, 0, crypto.Hash{}, false)
+	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
+
 	// Execute it.
 	ics := uint64(0) // initial contract size is 0 sectors.
 	imr := crypto.Hash{}
-	fastrand.Read(imr[:]) // random initial merkle root
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), instructions, modules.InitCost(dataLen).Add(modules.ReadSectorCost()), newTestStorageObligation(true, ics, imr), dataLen, bytes.NewReader(programData))
+	fastrand.Read(imr[:])                                                           // random initial merkle root
+	programCost := modules.InitCost(pt, dataLen).Add(modules.ReadCost(pt, readLen)) // use the cost of the program as the budget
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, programCost, newTestStorageObligation(true, ics, imr), ics, imr, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +69,8 @@ func TestInstructionReadSector(t *testing.T) {
 	instructions, programData = NewReadSectorProgram(length, offset, crypto.Hash{}, true)
 	dataLen = uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), instructions, modules.InitCost(dataLen).Add(modules.ReadSectorCost()), newTestStorageObligation(true, ics, imr), dataLen, bytes.NewReader(programData))
+	programCost = modules.InitCost(pt, dataLen).Add(modules.ReadCost(pt, length)) // use the cost of the program as the budget
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, programCost, newTestStorageObligation(true, ics, imr), ics, imr, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}

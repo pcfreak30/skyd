@@ -2,7 +2,6 @@ package host
 
 import (
 	"context"
-	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
@@ -17,12 +16,11 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPri
 	err := modules.RPCRead(stream, &epr)
 	if err != nil {
 		return errors.AddContext(err, "Failed to read RPCExecuteProgramRequest")
-
 	}
 
 	// process payment
 	pp := h.NewPaymentProcessor()
-	amountPaid, err := pp.ProcessPaymentForRPC(stream)
+	budget, err := pp.ProcessPaymentForRPC(stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to process payment")
 	}
@@ -41,17 +39,17 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPri
 		return errors.AddContext(err, "Failed to read dataLen")
 	}
 
-	// calculate the cost of the program.
-	cost, err := modules.CalculateProgramCost(instructions, dataLen)
-	if err != nil {
-		return errors.AddContext(err, "Failed to calculate program cost")
-	}
-	price := modules.ConvertCostToPrice(cost, pt)
+	// // calculate the cost of the program.
+	// cost, err := modules.CalculateProgramCost(instructions, dataLen)
+	// if err != nil {
+	// 	return errors.AddContext(err, "Failed to calculate program cost")
+	// }
+	// price := modules.ConvertCostToPrice(cost, pt)
 
-	// verify if payment was sufficient
-	if amountPaid.Cmp(price) < 0 {
-		return fmt.Errorf("The renter did not supply sufficient payment to cover the cost of the ExecuteProgramRPC. Expected: %v Actual: %v", price.HumanString(), amountPaid.HumanString())
-	}
+	// // verify if payment was sufficient
+	// if amountPaid.Cmp(price) < 0 {
+	// 	return fmt.Errorf("The renter did not supply sufficient payment to cover the cost of the ExecuteProgramRPC. Expected: %v Actual: %v", price.HumanString(), amountPaid.HumanString())
+	// }
 
 	// get storage obligation
 	so, err := h.managedGetStorageObligation(epr.FileContractID)
@@ -63,7 +61,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPri
 	mso := newMDMStorageObligation(so, h)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, instructions, cost, mso, dataLen, stream)
+	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, *pt, instructions, budget, mso, mso.ContractSize(), mso.MerkleRoot(), dataLen, stream)
 	if err != nil {
 		return errors.AddContext(err, "failed to execute program")
 	}

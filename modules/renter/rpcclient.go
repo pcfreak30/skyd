@@ -134,15 +134,8 @@ func (c *hostRPCClient) FundEphemeralAccount(pp modules.PaymentProvider, pt modu
 // the specified sector.
 func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool, fcid types.FileContractID) ([]byte, error) {
 	// create mdm program
+	programPrice := modules.ReadCost(pt, length)
 	instructions, programData := mdm.NewReadSectorProgram(length, offset, sectorRoot, merkleProof)
-
-	// calculate the cost of the RPC
-	dataLen := uint64(len(programData))
-	programCost, err := modules.CalculateProgramCost(instructions, dataLen)
-	if err != nil {
-		return nil, err
-	}
-	programPrice := modules.ConvertCostToPrice(programCost, &pt)
 
 	// get a stream
 	stream, err := c.r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, c.staticMuxAddress, modules.SiaPKToMuxPK(c.staticHostKey))
@@ -165,6 +158,7 @@ func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modu
 	}
 
 	// send instructions and the length of program data
+	dataLen := uint64(len(programData))
 	if err := modules.RPCWriteAll(stream, instructions, dataLen); err != nil {
 		return nil, err
 	}

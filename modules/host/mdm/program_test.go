@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -16,7 +17,8 @@ func TestNewEmptyProgram(t *testing.T) {
 	mdm := New(newTestHost())
 	var r io.Reader
 	// Execute the program.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, modules.InitCost(0), newTestStorageObligation(true, 0, crypto.Hash{}), 0, r)
+	pt := newTestPriceTable()
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, modules.InitCost(pt, 0), newTestStorageObligation(true, 0, crypto.Hash{}), 0, crypto.Hash{}, 0, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,26 +43,53 @@ func TestNewEmptyProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	var r io.Reader
 	// Execute the program.
-	_, _, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, modules.Cost{}, newTestStorageObligation(true, 0, crypto.Hash{}), 0, r)
-	if !errors.Contains(err, modules.ErrInsufficientBudget) {
+	pt := newTestPriceTable()
+	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, types.ZeroCurrency, newTestStorageObligation(true, 0, crypto.Hash{}), 0, crypto.Hash{}, 0, r)
+	if !errors.Contains(err, ErrInsufficientBudget) {
 		t.Fatal("missing error")
-	}
-	if !errors.Contains(err, modules.ErrInsufficientMemoryBudget) {
-		t.Fatal("missing error")
-	}
-	if !errors.Contains(err, modules.ErrInsufficientDiskAccessesBudget) {
-		t.Fatal("missing error")
-	}
-	if !errors.Contains(err, modules.ErrInsufficientComputeBudget) {
-		t.Fatal("missing error")
-	}
-	if errors.Contains(err, modules.ErrInsufficientDiskReadBudget) {
-		t.Fatal("wrong error")
-	}
-	if errors.Contains(err, modules.ErrInsufficientDiskWriteBudget) {
-		t.Fatal("wrong error")
 	}
 	if err == nil {
 		t.Fatal("ExecuteProgram should return an error")
+	}
+}
+
+// TestNewProgramLowBudget runs a program with instructions with insufficient
+// funds.
+func TestNewProgramLowBudget(t *testing.T) {
+	// Create MDM
+	mdm := New(newTestHost())
+	var r io.Reader
+	// Create instruction.
+	instructions, programData := NewReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, false)
+
+	dataLen := uint64(len(programData))
+
+	// Execute the program with enough money to init the mdm but not enough
+	// money to execute the first instruction.
+	pt := newTestPriceTable()
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.InitCost(pt, dataLen), newTestStorageObligation(true, 0, crypto.Hash{}), 0, crypto.Hash{}, dataLen, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first output should contain an error.
+	numOutputs := 0
+	numInsufficientBudgetErrs := 0
+	for output := range outputs {
+		if err := output.Error; errors.Contains(err, ErrInsufficientBudget) {
+			numInsufficientBudgetErrs++
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		numOutputs++
+	}
+	if numOutputs != 1 {
+		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
+	}
+	if numInsufficientBudgetErrs != 1 {
+		t.Fatalf("numInsufficientBudgetErrs was %v but should be %v", numInsufficientBudgetErrs, 1)
+	}
+	// Finalize should be nil for readonly programs.
+	if finalize != nil {
+		t.Fatal("finalize should be 'nil' for readonly programs")
 	}
 }
