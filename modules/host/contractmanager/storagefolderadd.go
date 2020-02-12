@@ -6,9 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -38,7 +36,7 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 
 	// Update the uncommitted state to include the storage folder, returning an
 	// error if any checks fail.
-	txn, err := func() (*writeaheadlog.Transaction, error) {
+	err := func() error {
 		// Check that the storage folder is not a duplicate. That requires
 		// first checking the contract manager and then checking the WAL. The
 		// number of storage folders are also counted, to make sure that the
@@ -48,13 +46,13 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 			// removed, however we refuse to add a replacement storage folder
 			// until the existing one has been removed entirely.
 			if sf.path == csf.path {
-				return nil, ErrRepeatFolder
+				return ErrRepeatFolder
 			}
 		}
 
 		// Check that there is room for another storage folder.
 		if uint64(len(cm.storageFolders)) > maximumStorageFolders {
-			return nil, errMaxStorageFolders
+			return errMaxStorageFolders
 		}
 
 		// Determine the index of the storage folder by scanning for an empty
@@ -72,7 +70,7 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 		}
 		if iterator == 65536 {
 			cm.log.Critical("Previous check indicated that there was room to add another storage folder, but folderLocations set is full.")
-			return nil, errMaxStorageFolders
+			return errMaxStorageFolders
 		}
 		// Assign the empty index to the storage folder.
 		sf.index = index
@@ -82,14 +80,14 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 		sf.metadataFilePath = sectorLookupName
 		sf.metadataFile, err = cm.dependencies.CreateFile(sectorLookupName)
 		if err != nil {
-			return nil, build.ExtendErr("could not create storage folder file", err)
+			return build.ExtendErr("could not create storage folder file", err)
 		}
 		sf.sectorFilePath = sectorHousingName
 		sf.sectorFile, err = cm.dependencies.CreateFile(sectorHousingName)
 		if err != nil {
 			err = build.ComposeErrors(err, sf.metadataFile.Close())
 			err = build.ComposeErrors(err, cm.dependencies.RemoveFile(sectorLookupName))
-			return nil, build.ExtendErr("could not create storage folder file", err)
+			return build.ExtendErr("could not create storage folder file", err)
 		}
 		// Establish the progress fields for the add operation in the storage
 		// folder.
@@ -102,16 +100,17 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 		// additions. There should be no chance of error between this append
 		// operation and the completed commitment to the unfinished storage
 		// folder addition (signaled by `<-syncChan` a few lines down).
-		update := addStorageFolderUpdate(sf)
-		txn, err := cm.createAndApplyTransaction(update)
-		if err != nil {
-			err = build.ComposeErrors(err, sf.metadataFile.Close())
-			err = build.ComposeErrors(err, cm.dependencies.RemoveFile(sectorLookupName))
-			err = build.ComposeErrors(err, sf.sectorFile.Close())
-			delete(cm.storageFolders, index)
-			return nil, err
-		}
-		return txn, nil
+		//		update := addStorageFolderUpdate(sf)
+		//		txn, err := cm.createAndApplyTransaction(update)
+		//		if err != nil {
+		//			err = build.ComposeErrors(err, sf.metadataFile.Close())
+		//			err = build.ComposeErrors(err, cm.dependencies.RemoveFile(sectorLookupName))
+		//			err = build.ComposeErrors(err, sf.sectorFile.Close())
+		//			delete(cm.storageFolders, index)
+		//			return nil, err
+		//		}
+		//		return txn, nil
+		return nil
 	}()
 	if err != nil {
 		return err
@@ -127,7 +126,7 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 	// additions. Because the WAL is append-only, a stateChange needs to be
 	// appended which indicates that the storage folder was unable to be added
 	// successfully.
-	defer func(sf *storageFolder, txn *writeaheadlog.Transaction) {
+	defer func(sf *storageFolder) {
 		if err != nil {
 			// Delete the storage folder from the storage folders map.
 			delete(cm.storageFolders, sf.index)
@@ -137,31 +136,26 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 			err = build.ComposeErrors(err, sf.metadataFile.Close())
 			err = build.ComposeErrors(err, cm.dependencies.RemoveFile(sectorLookupName))
 			err = build.ComposeErrors(err, cm.dependencies.RemoveFile(sectorHousingName))
-
-			// Cancel the wal transaction.
-			err = errors.Compose(err, txn.SignalUpdatesApplied())
 		}
-	}(sf, txn)
+	}(sf)
 
 	// Allocate the files on disk for the storage folder.
+	var updates []walUpdate
 	stepCount := sectorHousingSize / folderAllocationStepSize
-	for i := uint64(0); i < stepCount; i++ {
-		err = sf.sectorFile.Truncate(int64(folderAllocationStepSize * (i + 1)))
-		if err != nil {
-			return build.ExtendErr("could not allocate storage folder", err)
-		}
+	for i := int64(0); i < int64(stepCount); i++ {
+		updates = append(updates, truncateUpdate(sf.sectorFile, folderAllocationStepSize*(i+1)))
 		// After each iteration, update the progress numerator.
 		atomic.AddUint64(&sf.atomicProgressNumerator, folderAllocationStepSize)
 	}
-	err = sf.sectorFile.Truncate(int64(sectorHousingSize))
-	if err != nil {
-		return build.ExtendErr("could not allocate sector data file", err)
-	}
+
+	updates = append(updates, truncateUpdate(sf.sectorFile, int64(sectorHousingSize)))
 
 	// Write the metadata file.
-	err = sf.metadataFile.Truncate(int64(sectorLookupSize))
-	if err != nil {
-		return build.ExtendErr("could not allocate sector metadata file", err)
+	updates = append(updates, truncateUpdate(sf.metadataFile, int64(sectorLookupSize)))
+
+	// Apply the changes.
+	if err := cm.createAndApplyTransaction(updates...); err != nil {
+		return err
 	}
 
 	// The file creation process is essentially complete at this point, report
@@ -193,12 +187,6 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 	// Simulate power failure at this point for some testing scenarios.
 	if cm.dependencies.Disrupt("incompleteAddStorageFolder") {
 		return nil
-	}
-
-	// Storage folder addition has completed successfully, commit the addition
-	// through the WAL.
-	if err := txn.SignalUpdatesApplied(); err != nil {
-		return err
 	}
 
 	// Set the progress back to '0'.
