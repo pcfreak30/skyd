@@ -28,7 +28,7 @@ func TestInstructionReadSector(t *testing.T) {
 	// Execute it.
 	ics := uint64(0) // initial contract size is 0 sectors.
 	imr := crypto.Hash{}
-	fastrand.Read(imr[:])                                                           // random initial merkle root
+	fastrand.Read(imr[:])
 	programCost := modules.InitCost(pt, dataLen).Add(modules.ReadCost(pt, readLen)) // use the cost of the program as the budget
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, programCost, newTestStorageObligation(true, ics, imr), ics, imr, dataLen, r)
 	if err != nil {
@@ -68,6 +68,7 @@ func TestInstructionReadSector(t *testing.T) {
 	length := offset
 	instructions, programData = NewReadSectorProgram(length, offset, crypto.Hash{}, true)
 	dataLen = uint64(len(programData))
+	r = bytes.NewReader(programData)
 	// Execute it.
 	programCost = modules.InitCost(pt, dataLen).Add(modules.ReadCost(pt, length)) // use the cost of the program as the budget
 	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, programCost, newTestStorageObligation(true, ics, imr), ics, imr, dataLen, r)
