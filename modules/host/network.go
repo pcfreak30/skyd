@@ -389,8 +389,9 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 			atomic.AddUint64(&h.atomicErroredCalls, 1)
 			return
 		}
+
 		if pt.Expiry < time.Now().Unix() {
-			modules.RPCWriteError(stream, modules.ErrExpiredRPCPriceTable)
+			modules.RPCWriteError(stream, errors.AddContext(modules.ErrExpiredRPCPriceTable, fmt.Sprintf("expired: %v now %v", pt.Expiry, time.Now().Unix())))
 			atomic.AddUint64(&h.atomicErroredCalls, 1)
 			return
 		}

@@ -104,15 +104,17 @@ func NewRPCPriceTable(expiry int64) RPCPriceTable {
 // host will call this function on its price table every time it hands out a
 // price table to the renter.
 func (pt *RPCPriceTable) Clone(expiry int64) (*RPCPriceTable, error) {
-	cloned := NewRPCPriceTable(expiry)
-	fastrand.Read(cloned.UUID[:])
-
 	// clone the pricetable
+	var cloned RPCPriceTable
 	bytes := encoding.Marshal(*pt)
 	err := encoding.Unmarshal(bytes, &cloned)
 	if err != nil {
 		return nil, err
 	}
+
+	// update expiry and set a new UUID
+	cloned.Expiry = expiry
+	fastrand.Read(cloned.UUID[:])
 
 	return &cloned, nil
 }

@@ -94,7 +94,11 @@ func (w *worker) managedPerformFundAcountJob() bool {
 		return false
 	}
 
-	err = w.staticRPCClient.FundEphemeralAccount(pp, w.priceTable, w.staticAccount.staticID, job.amount)
+	w.mu.Lock()
+	pt := w.priceTable
+	w.mu.Unlock()
+
+	err = w.staticRPCClient.FundEphemeralAccount(pp, pt, w.staticAccount.staticID, job.amount)
 
 	if err != nil {
 		job.sendResult(types.ZeroCurrency, err)
