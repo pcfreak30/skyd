@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
@@ -129,53 +130,54 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	// whether successful or failed, the worker needs to be removed.
 	defer udc.managedRemoveWorker()
 
-	// TODO: use this on legacy hosts
-	// Fetch the sector. If fetching the sector fails, the worker needs to be
-	// unregistered with the chunk.
-	//	d, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
-	//	if err != nil {
-	//		w.renter.log.Debugln("worker failed to create downloader:", err)
-	//		udc.managedUnregisterWorker(w)
-	//		return true
-	//	}
-	//	defer d.Close()
-
-	// TODO gouging is checkd when pricetables are updated
-	// Before performing the download, check for price gouging.
-	//  allowance := w.renter.hostContractor.Allowance()
-	//	hostSettings := d.HostSettings()
-	//	err = checkDownloadGouging(allowance, hostSettings)
-	//	if err != nil {
-	//		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
-	//		udc.managedUnregisterWorker(w)
-	//		return true
-	//	}
-
-	c, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
-	if !exists {
-		// TODO
-	}
-
+	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 
-	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := w.staticRPCClient.DownloadSectorByRoot(w.staticAccount, w.priceTable, fetchOffset, fetchLength, root, false, c.ID) // TODO: enable proof
-	if err != nil {
-		w.renter.log.Debugln("worker failed to download sector:", err)
-		udc.managedUnregisterWorker(w)
-		return true
+	var err error
+	var pieceData []byte
+
+	// If host is >= 1.4.3, use the new RPC protocol.
+	if build.VersionCmp(w.staticHost.Version, "1.4.3") >= 0 {
+		// Fetch the sector. If fetching the sector fails, the worker needs to
+		// be unregistered with the chunk.
+		pieceData, err = w.staticRPCClient.DownloadSectorByRoot(w.staticAccount, w.priceTable, fetchOffset, fetchLength, root, false, w.staticHostFileContractID) // TODO: enable proof
+		if err != nil {
+			w.renter.log.Debugln("worker failed to download sector:", err)
+			udc.managedUnregisterWorker(w)
+			return true
+		}
+	} else {
+		// Fetch the sector. If fetching the sector fails, the worker needs to
+		// be unregistered with the chunk.
+		d, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
+		if err != nil {
+			w.renter.log.Debugln("worker failed to create downloader:", err)
+			udc.managedUnregisterWorker(w)
+			return true
+		}
+		defer d.Close()
+
+		// Before performing the download, check for price gouging.
+		allowance := w.renter.hostContractor.Allowance()
+		hostSettings := d.HostSettings()
+		err = checkDownloadGouging(allowance, hostSettings)
+		if err != nil {
+			w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
+			udc.managedUnregisterWorker(w)
+			return true
+		}
+
+		pieceData, err = d.Download(root, uint32(fetchOffset), uint32(fetchLength))
+		if err != nil {
+			w.renter.log.Debugln("worker failed to download sector:", err)
+			udc.managedUnregisterWorker(w)
+			return true
+		}
 	}
 
 	// TODO: remove
 	fmt.Printf("Download successful, data received %v\n", len(pieceData))
 
-	// TODO:
-	//	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
-	//	if err != nil {
-	//		w.renter.log.Debugln("worker failed to download sector:", err)
-	//		udc.managedUnregisterWorker(w)
-	//		return true
-	//	}
 	// TODO: Instead of adding the whole sector after the download completes,
 	// have the 'd.Sector' call add to this value ongoing as the sector comes
 	// in. Perhaps even include the data from creating the downloader and other

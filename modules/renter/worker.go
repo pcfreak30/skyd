@@ -49,8 +49,10 @@ import (
 type worker struct {
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
-	staticHostPubKey    types.SiaPublicKey
-	staticHostPubKeyStr string
+	staticHost               modules.HostDBEntry
+	staticHostPubKey         types.SiaPublicKey
+	staticHostPubKeyStr      string
+	staticHostFileContractID types.FileContractID
 
 	// Download variables that are not protected by a mutex, but also do not
 	// need to be protected by a mutex, as they are only accessed by the master
@@ -311,7 +313,7 @@ func (w *worker) scheduleRefillAccount() {
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) (*worker, error) {
-	he, ok, err := r.hostDB.Host(hostPubKey)
+	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
@@ -319,15 +321,22 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 		return nil, errors.New("host does not exist")
 	}
 
+	fc, exists := r.hostContractor.ContractByPublicKey(hostPubKey)
+	if !exists {
+		return nil, errors.New("filecontract not exist")
+	}
+
 	// TODO: calc balance target using host settings + renter imposed maximum
 
 	w := &worker{
-		staticHostPubKey:    hostPubKey,
-		staticHostPubKeyStr: hostPubKey.String(),
+		staticHost:               host,
+		staticHostPubKey:         hostPubKey,
+		staticHostPubKeyStr:      hostPubKey.String(),
+		staticHostFileContractID: fc.ID,
 
 		staticAccount:       openAccount(hostPubKey, r.hostContractor),
 		staticBalanceTarget: types.SiacoinPrecision,
-		staticRPCClient:     r.newRPCClient(he, bh),
+		staticRPCClient:     r.newRPCClient(host, bh),
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
