@@ -319,26 +319,27 @@ is computed using an instruction-specific cost function.
 
 For the purposes of determining memory cost, the amount of memory consumed by a
 program is 1 MiB plus the size of the program input. The program input can be
-grown or shrunk using the 'Alloc' and 'Free' instructions. The program output is
-not considered as that is handled by the bandwidth layer. The amount of memory
-consumed is multiplied by the expected execution time of the next instruction to
-determine the total space-time cost of running that instruction. The space-time
-cost which is set by the price table is then multiplied by the memory price to
-determine the final memory cost in siacoins of executing that instruction. The
-expected execution time of an instruction is an intentionally rough value which
-is fixed per instruction. The value is rough because there is no easy way to
-predict the exact amount of time it takes to execute an instruction, so instead
-we settle for getting the rough order of magnitude correct. All of these values
-will be known before executing an instruction, meaning the memory cost of an
-instruction can be computed prior to executing the instruction.
+grown or shrunk using the 'Alloc' and 'Free' instructions, which are not defined
+in this SIP. The program output is not considered as that is handled by the
+bandwidth layer. The amount of memory consumed is multiplied by the expected
+execution time of the next instruction to determine the total space-time cost of
+running that instruction. The space-time cost which is set by the price table is
+then multiplied by the memory price to determine the final memory cost in
+siacoins of executing that instruction. The expected execution time of an
+instruction is an intentionally rough value which is fixed per instruction. The
+value is rough because there is no easy way to predict the exact amount of time
+it takes to execute an instruction, so instead we settle for getting the rough
+order of magnitude correct. All of these values will be known before executing
+an instruction, meaning the memory cost of an instruction can be computed prior
+to executing the instruction.
 
-The instruction cost of an instruction is computed by a fixed function which is
-custom to each instruction. That function is a pure function which has as inputs
-the inputs of the instruction plus some values from the pricing table. The
-output of the function is the cost in siacoins of running the instruction. All
-of the inputs to the function are known prior to executing the instruction,
-which means that the instruction cost of an instruction can be computed in
-advance of executing the instruction.
+An instruction's cost is computed by a fixed function which is custom to each
+instruction. The cost function has as inputs the inputs of the instruction plus
+some values from the host pricing table, along with some information about the
+contract. The output of the cost function is the cost in siacoins of running the
+instruction. All of the inputs to the function are known prior to executing the
+instruction, which means that the instruction cost of an instruction can be
+computed in advance of executing the instruction.
 
 Instantiating a program also has a cost. This is a flat cost set in the pricing
 table that gets added to the total execution cost of a program before any
@@ -402,11 +403,11 @@ performed on a contract from a read-write MDM that has a lock on the same
 contract being read.
 
 ```go
-// Cost is a fixed cost for execution plus an additional cost that is linear
+// ReadCost is a fixed cost for execution plus an additional cost that is linear
 // in the length of the read. ReadBaseCost is a value from the price table,
 // ReadLengthCost is a value from the price table, and ReadLength is one of the
 // inputs to the instruction.
-func (ri *ReadInstruction) Cost(ReadBaseCost, ReadLengthCost, ReadLength) (cost, refund types.Currency) {
+func ReadCost(ReadBaseCost, ReadLengthCost, ReadLength) (cost, refund types.Currency) {
 	return ReadBaseCost + ReadLengthCost*ReadLength, types.ZeroCurrency
 }
 
@@ -415,8 +416,36 @@ func (ri *ReadInstruction) Cost(ReadBaseCost, ReadLengthCost, ReadLength) (cost,
 // true execution time does depend on the type of hardware and the total amount
 // of data being read, this function is really only used to ensure that rough
 // memory costs are being considered.
-func (ri *ReadInstruction) Time() uint64 {
+func ReadTime() uint64 {
 	return 1000
+}
+```
+
+#### Has Sector
+
+```go
+HasSector(sectorRoot crypto.Hash) []byte
+```
+
+HasSector will check whether or not a sector exists on the host. A single byte
+will be returned. A value of '1' indicates that the host does have the sector,
+and a value of '2' indicates that the host does not have the sector.
+
+Similar to the Read instruction, consecutive calls to HasSector within a single
+program may return different values if another program is modifying the contract
+which contains the sector.
+
+```go
+// HasSectorCost is a fixed price that is independent of the sector that is
+// being looked up.
+HasSectorCost(HasSectorBaseCost) (cost, refund types.Currency) {
+	return HasSectorBaseCost, types.ZeroCurrency
+}
+
+// HasSectorTime is just a memory access, and therefore takes very little time
+// to run.
+func HasSectorTime() uint64 {
+	return 1
 }
 ```
 
