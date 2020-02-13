@@ -17,7 +17,11 @@ import (
 func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// clone the host's price table and track it
 	h.mu.Lock()
-	pt := h.priceTable.Clone(time.Now().Add(rpcPriceGuaranteePeriod).Unix())
+	pt, err := h.priceTable.Clone(time.Now().Add(rpcPriceGuaranteePeriod).Unix())
+	if err != nil {
+		h.mu.Unlock()
+		return errors.AddContext(err, "Failed to clone the host price table")
+	}
 	h.uuidToPriceTable[pt.UUID] = pt
 	h.mu.Unlock()
 

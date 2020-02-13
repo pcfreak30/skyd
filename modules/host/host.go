@@ -292,7 +292,6 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // managedUpdatePriceTable will recalculate the RPC costs and update the host's
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
-
 	// create a new RPC price table and set the expiry
 	priceTable := modules.NewRPCPriceTable(0) // expiry set on request
 
@@ -303,21 +302,14 @@ func (h *Host) managedUpdatePriceTable() {
 	priceTable.ReadBaseCost = his.MinBaseRPCPrice
 	priceTable.ReadLengthCost = his.MinBaseRPCPrice
 
+	// decorate the cost for every RPC
 	priceTable.UpdatePriceTableCost = h.managedCalculateUpdatePriceTableCost()
 	priceTable.FundEphemeralAccountCost = h.managedCalculateFundEphemeralAccountCost()
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	// update the pricetable
+	h.mu.Lock()
 	h.priceTable = &priceTable
-	h.uuidToPriceTable[priceTable.UUID] = &priceTable
-	heap.Push(&h.priceTableHeap, priceTable)
-
-	// prune expired pricetables
-	if h.priceTableHeap.Len() == 0 {
-		return
-	}
+	h.mu.Unlock()
 
 	// TODO: has bug - expires immediately
 	// oldest := heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)

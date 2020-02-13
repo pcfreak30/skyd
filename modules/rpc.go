@@ -103,10 +103,18 @@ func NewRPCPriceTable(expiry int64) RPCPriceTable {
 // Clone returns a deep copy of the rpc price table with an updated expiry, the
 // host will call this function on its price table every time it hands out a
 // price table to the renter.
-func (pt *RPCPriceTable) Clone(expiry int64) *RPCPriceTable {
+func (pt *RPCPriceTable) Clone(expiry int64) (*RPCPriceTable, error) {
 	cloned := NewRPCPriceTable(expiry)
 	fastrand.Read(cloned.UUID[:])
-	return &cloned
+
+	// clone the pricetable
+	bytes := encoding.Marshal(*pt)
+	err := encoding.Unmarshal(bytes, &cloned)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cloned, nil
 }
 
 // RPCRead tries to read the given object from the stream.
