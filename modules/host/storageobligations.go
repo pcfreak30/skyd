@@ -42,6 +42,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -185,7 +186,7 @@ type MDMStorageObligation struct {
 
 // newMDMStorageObligation returns a new MDMStorageObligation which wraps the
 // given storage obligation.
-func newMDMStorageObligation(so storageObligation, h *Host) *MDMStorageObligation {
+func newMDMStorageObligation(so storageObligation, h *Host) mdm.StorageObligation {
 	return &MDMStorageObligation{so: so, h: h}
 }
 
@@ -210,8 +211,13 @@ func (mso *MDMStorageObligation) MerkleRoot() crypto.Hash {
 	return crypto.Hash{}
 }
 
+// SectorRoots satisfies the mdm.StorageObligation interface.
+func (mso *MDMStorageObligation) SectorRoots() []crypto.Hash {
+	return []crypto.Hash{}
+}
+
 // Update satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+func (mso *MDMStorageObligation) Update(sectorRoots, sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
 	return mso.h.modifyStorageObligation(mso.so, sectorsRemoved, sectorsGained, gainedSectorData)
 }
 

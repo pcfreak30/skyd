@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -21,9 +22,9 @@ type (
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
 	TestStorageObligation struct {
-		contractSize uint64
-		locked       bool
-		merkleRoot   crypto.Hash
+		sectorMap   map[crypto.Hash][]byte
+		sectorRoots []crypto.Hash
+		locked      bool
 	}
 )
 
@@ -33,11 +34,10 @@ func newTestHost() Host {
 	}
 }
 
-func newTestStorageObligation(locked bool, contractSize uint64, merkleRoot crypto.Hash) StorageObligation {
+func newTestStorageObligation(locked bool) *TestStorageObligation {
 	return &TestStorageObligation{
-		contractSize: contractSize,
-		locked:       locked,
-		merkleRoot:   merkleRoot,
+		locked:    locked,
+		sectorMap: make(map[crypto.Hash][]byte),
 	}
 }
 
@@ -63,7 +63,7 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 
 // ContractSize implements the StorageObligation interface.
 func (so *TestStorageObligation) ContractSize() uint64 {
-	return so.contractSize
+	return uint64(len(so.sectorRoots)) * modules.SectorSize
 }
 
 // Locked implements the StorageObligation interface.
@@ -73,11 +73,32 @@ func (so *TestStorageObligation) Locked() bool {
 
 // MerkleRoot implements the StorageObligation interface.
 func (so *TestStorageObligation) MerkleRoot() crypto.Hash {
-	return so.merkleRoot
+	if len(so.sectorRoots) == 0 {
+		return crypto.Hash{}
+	}
+	return cachedMerkleRoot(so.sectorRoots)
+}
+
+// SectorRoots implements the StorageObligation interface.
+func (so *TestStorageObligation) SectorRoots() []crypto.Hash {
+	return so.sectorRoots
 }
 
 // Update implements the StorageObligation interface
-func (so *TestStorageObligation) Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+	for _, removedSector := range sectorsRemoved {
+		if _, exists := so.sectorMap[removedSector]; !exists {
+			return errors.New("sector doesn't exist")
+		}
+		delete(so.sectorMap, removedSector)
+	}
+	for i, gainedSector := range sectorsGained {
+		if _, exists := so.sectorMap[gainedSector]; exists {
+			return errors.New("sector already exists")
+		}
+		so.sectorMap[gainedSector] = gainedSectorData[i]
+	}
+	so.sectorRoots = sectorRoots
 	return nil
 }
 

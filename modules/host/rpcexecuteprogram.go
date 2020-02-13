@@ -61,7 +61,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream, pt *modules.RPCPri
 	mso := newMDMStorageObligation(so, h)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, *pt, instructions, budget, mso, mso.ContractSize(), mso.MerkleRoot(), dataLen, stream)
+	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, *pt, instructions, budget, mso, dataLen, stream)
 	if err != nil {
 		return errors.AddContext(err, "failed to execute program")
 	}
