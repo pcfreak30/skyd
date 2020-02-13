@@ -293,7 +293,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
-	priceTable := modules.NewRPCPriceTable(0) // expiry set on request
+	priceTable := modules.NewRPCPriceTable(time.Now().Unix())
 
 	// TODO: hardcoded MDM costs should be updated to use better values.
 	his := h.InternalSettings()
