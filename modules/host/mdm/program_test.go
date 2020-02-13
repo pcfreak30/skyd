@@ -1,6 +1,7 @@
 package mdm
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"testing"
@@ -58,10 +59,10 @@ func TestNewEmptyProgramLowBudget(t *testing.T) {
 func TestNewProgramLowBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
-	var r io.Reader
+
 	// Create instruction.
 	instructions, programData := NewReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, false)
-
+	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
 
 	// Execute the program with enough money to init the mdm but not enough
