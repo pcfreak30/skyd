@@ -24,15 +24,32 @@ type (
 )
 
 func sectorMetadataUpdate(sf *storageFolder, su sectorUpdate) walUpdate {
-	panic("not implemented yet")
+	return walUpdate{
+		writeaheadlog.Update{
+			Name:         "",
+			Instructions: []byte{},
+		},
+		sf.metadataFile,
+	}
 }
 
 func sectorDataUpdate(file modules.File, path string, sectorIndex uint32, data []byte) walUpdate {
-	panic("not implemented yet")
+	return walUpdate{
+		writeaheadlog.Update{
+			Name:         "",
+			Instructions: []byte{},
+		},
+		file,
+	}
 }
 
-func truncateUpdate(file modules.File, newSize int64) walUpdate {
-	panic("not implemented yet")
+// truncateUpdate creates a update for the writeaheadlog which truncates a file
+// to the specified size.
+func truncateUpdate(file modules.File, path string, newSize int64) walUpdate {
+	return walUpdate{
+		writeaheadlog.TruncateUpdate(path, newSize),
+		file,
+	}
 }
 
 func emptyStorageFolderUpdate(index uint16, startingPoint uint32) walUpdate {
