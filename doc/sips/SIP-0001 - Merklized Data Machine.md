@@ -407,7 +407,7 @@ contract being read.
 // in the length of the read. ReadBaseCost is a value from the price table,
 // ReadLengthCost is a value from the price table, and ReadLength is one of the
 // inputs to the instruction.
-func ReadCost(ReadBaseCost, ReadLengthCost, ReadLength) (cost, refund types.Currency) {
+func ReadCost(ReadBaseCost, ReadLengthCost types.Currency, ReadLength uint64) (cost, refund types.Currency) {
 	return ReadBaseCost + ReadLengthCost*ReadLength, types.ZeroCurrency
 }
 
@@ -421,7 +421,7 @@ func ReadTime() uint64 {
 }
 ```
 
-#### Has Sector
+#### HasSector
 
 ```go
 HasSector(sectorRoot crypto.Hash) []byte
@@ -438,7 +438,7 @@ which contains the sector.
 ```go
 // HasSectorCost is a fixed price that is independent of the sector that is
 // being looked up.
-HasSectorCost(HasSectorBaseCost) (cost, refund types.Currency) {
+func HasSectorCost(HasSectorBaseCost types.Currency) (cost, refund types.Currency) {
 	return HasSectorBaseCost, types.ZeroCurrency
 }
 
@@ -446,6 +446,28 @@ HasSectorCost(HasSectorBaseCost) (cost, refund types.Currency) {
 // to run.
 func HasSectorTime() uint64 {
 	return 1
+}
+```
+
+#### SwapData
+
+```go
+SwapData(offset1, offset2, length uint64)
+```
+
+SwapData will read data from offset1, then read data from offset2, then write
+the data from offset1 to offset2, then write the data from offset2 to offset1.
+Each offset+length must exist entirely within the bounds of a sector, however
+offset1 and offset2 can be from different sectors.
+
+```go
+func SwapDataCost(SwapDataBaseCost, SwapDataLengthCost types.Currency, SwapDataLength uint64) (cost, refund types.Currency) {
+	return SwapDataBaseCost + SwapDataLengthCost*SwapDataLength, types.ZeroCurrency
+}
+
+// SwapDataTime is set to 10e3 because data must be read from two different
+// locations on disk
+func SwapDataTime() uint64 {
 }
 ```
 
