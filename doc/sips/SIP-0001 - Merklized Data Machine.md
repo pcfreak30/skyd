@@ -468,6 +468,7 @@ func SwapDataCost(SwapDataBaseCost, SwapDataLengthCost types.Currency, SwapDataL
 // SwapDataTime is set to 10e3 because data must be read from two different
 // locations on disk
 func SwapDataTime() uint64 {
+	return 5000
 }
 ```
 
