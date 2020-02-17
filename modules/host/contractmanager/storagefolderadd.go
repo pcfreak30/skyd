@@ -143,15 +143,15 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 	var updates []walUpdate
 	stepCount := sectorHousingSize / folderAllocationStepSize
 	for i := int64(0); i < int64(stepCount); i++ {
-		updates = append(updates, truncateUpdate(sf.sectorFile, folderAllocationStepSize*(i+1)))
+		updates = append(updates, truncateUpdate(sf.sectorFile, sf.sectorFilePath, folderAllocationStepSize*(i+1)))
 		// After each iteration, update the progress numerator.
 		atomic.AddUint64(&sf.atomicProgressNumerator, folderAllocationStepSize)
 	}
 
-	updates = append(updates, truncateUpdate(sf.sectorFile, int64(sectorHousingSize)))
+	updates = append(updates, truncateUpdate(sf.sectorFile, sf.sectorFilePath, int64(sectorHousingSize)))
 
 	// Write the metadata file.
-	updates = append(updates, truncateUpdate(sf.metadataFile, int64(sectorLookupSize)))
+	updates = append(updates, truncateUpdate(sf.metadataFile, sf.metadataFilePath, int64(sectorLookupSize)))
 
 	// Apply the changes.
 	if err := cm.createAndApplyTransaction(updates...); err != nil {

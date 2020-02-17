@@ -67,10 +67,13 @@ func truncateUpdate(file modules.File, path string, newSize int64) walUpdate {
 
 // emptyStorageFolderUpdate creates a WAL update for emptying out a storage
 // folder on disk.
-func emptyStorageFolderUpdate(index uint16, startingPoint uint32) writeaheadlog.Update {
-	return writeaheadlog.Update{
-		Name:         emptyStorageFolderUpdateName,
-		Instructions: encoding.MarshalAll(index, startingPoint),
+func emptyStorageFolderUpdate(index uint16, startingPoint uint32) walUpdate {
+	return walUpdate{
+		writeaheadlog.Update{
+			Name:         emptyStorageFolderUpdateName,
+			Instructions: encoding.MarshalAll(index, startingPoint),
+		},
+		nil, // no file needed
 	}
 }
 

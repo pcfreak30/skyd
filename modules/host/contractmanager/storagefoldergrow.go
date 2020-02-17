@@ -153,15 +153,15 @@ func (cm *ContractManager) growStorageFolder(index uint16, newSectorCount uint32
 	var updates []walUpdate
 	stepCount := housingWriteSize / folderAllocationStepSize
 	for i := int64(0); i < stepCount; i++ {
-		updates = append(updates, truncateUpdate(sf.sectorFile, currentHousingSize+(folderAllocationStepSize*(i+1))))
+		updates = append(updates, truncateUpdate(sf.sectorFile, sf.sectorFilePath, currentHousingSize+(folderAllocationStepSize*(i+1))))
 		// After each iteration, update the progress numerator.
 		// TODO: this is no longer accurate
 		atomic.AddUint64(&sf.atomicProgressNumerator, folderAllocationStepSize)
 	}
-	updates = append(updates, truncateUpdate(sf.sectorFile, currentHousingSize+housingWriteSize))
+	updates = append(updates, truncateUpdate(sf.sectorFile, sf.sectorFilePath, currentHousingSize+housingWriteSize))
 
 	// Write the metadata file.
-	updates = append(updates, truncateUpdate(sf.metadataFile, currentMetadataSize+metadataWriteSize))
+	updates = append(updates, truncateUpdate(sf.metadataFile, sf.metadataFilePath, currentMetadataSize+metadataWriteSize))
 
 	// Apply the changes.
 	if err := cm.createAndApplyTransaction(updates...); err != nil {
