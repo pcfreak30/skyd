@@ -87,7 +87,7 @@ func (cm *ContractManager) applyUpdates(updates ...walUpdate) error {
 		case sectorDataUpdateName:
 			err = cm.applySectorDataUpdate(update)
 		case emptyStorageFolderUpdateName:
-			panic("not implemented yet")
+			err = cm.applyEmptyStorageFolderUpdate(update)
 		}
 		if err != nil {
 			return errors.AddContext(err, "failed to apply update")
@@ -186,6 +186,29 @@ func (cm *ContractManager) applySectorMetadataUpdate(update walUpdate) error {
 		return errDiskTrouble
 	}
 	return f.Sync()
+}
+
+// applyEmptyStorageFolderUpdate applies an update to empty a sector's storage
+// folder.
+func (cm *ContractManager) applyEmptyStorageFolderUpdate(update walUpdate) error {
+	if update.Name != emptyStorageFolderUpdateName {
+		return fmt.Errorf("can't call applyEmptyStorageFolderUpdate on '%v' update", update.Name)
+	}
+	// Decode the instructions
+	var index uint16
+	var startingPoint uint32
+	err := encoding.UnmarshalAll(update.Instructions, &index, &startingPoint)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal emptyStorageFolderUpdate instructions")
+	}
+	// Empty storage folder.
+	_, err = cm.managedEmptyStorageFolder(index, startingPoint)
+	if err != nil {
+		cm.log.Printf("ERROR: Unable to empty storag folder %v: %v\n", index, err)
+		// atomic.AddUint64(&sf.atomicFailedWrites, 1) // TODO: move to caller
+		return errDiskTrouble
+	}
+	return nil
 }
 
 //func addStorageFolderUpdate(sf *storageFolder) writeaheadlog.Update {
