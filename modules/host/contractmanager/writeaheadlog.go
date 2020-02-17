@@ -3,8 +3,15 @@ package contractmanager
 import (
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"
+)
+
+var (
+	sectorMDUpdateName           = "SectorMetadataUpdate"
+	sectorDataUpdateName         = "SectorDataUpdate"
+	emptyStorageFolderUpdateName = "EmptyStorageFolderUpdate"
 )
 
 type (
@@ -23,28 +30,31 @@ type (
 	}
 )
 
+// sectorMetadataUpdate creates a WAL update for updating a storage folder's
+// metadata.
 func sectorMetadataUpdate(sf *storageFolder, su sectorUpdate) walUpdate {
 	return walUpdate{
 		writeaheadlog.Update{
-			Name:         "",
-			Instructions: []byte{},
+			Name:         sectorMDUpdateName,
+			Instructions: encoding.Marshal(su),
 		},
 		sf.metadataFile,
 	}
 }
 
+// sectorDataUpdate creates a WAL update for updating a sector's data.
 func sectorDataUpdate(file modules.File, path string, sectorIndex uint32, data []byte) walUpdate {
 	return walUpdate{
 		writeaheadlog.Update{
-			Name:         "",
-			Instructions: []byte{},
+			Name:         sectorDataUpdateName,
+			Instructions: encoding.MarshalAll(path, sectorIndex, data),
 		},
 		file,
 	}
 }
 
-// truncateUpdate creates a update for the writeaheadlog which truncates a file
-// to the specified size.
+// truncateUpdate creates a WAL update for the writeaheadlog which truncates a
+// file to the specified size.
 func truncateUpdate(file modules.File, path string, newSize int64) walUpdate {
 	return walUpdate{
 		writeaheadlog.TruncateUpdate(path, newSize),
@@ -52,12 +62,13 @@ func truncateUpdate(file modules.File, path string, newSize int64) walUpdate {
 	}
 }
 
-func emptyStorageFolderUpdate(index uint16, startingPoint uint32) walUpdate {
-	panic("not implemented yet")
-	//	_, err := cm.managedEmptyStorageFolder(index, newSectorCount)
-	//	if err != nil && !force {
-	//		return err
-	//	}
+// emptyStorageFolderUpdate creates a WAL update for emptying out a storage
+// folder on disk.
+func emptyStorageFolderUpdate(index uint16, startingPoint uint32) writeaheadlog.Update {
+	return writeaheadlog.Update{
+		Name:         emptyStorageFolderUpdateName,
+		Instructions: encoding.MarshalAll(index, startingPoint),
+	}
 }
 
 func (cm *ContractManager) createAndApplyTransaction(updates ...walUpdate) error {
