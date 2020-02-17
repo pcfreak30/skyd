@@ -37,6 +37,8 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 	// Update the uncommitted state to include the storage folder, returning an
 	// error if any checks fail.
 	err := func() error {
+		cm.mu.Lock()
+		defer cm.mu.Unlock()
 		// Check that the storage folder is not a duplicate. That requires
 		// first checking the contract manager and then checking the WAL. The
 		// number of storage folders are also counted, to make sure that the
