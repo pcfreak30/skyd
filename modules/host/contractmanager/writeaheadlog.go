@@ -333,7 +333,7 @@ func (cm *ContractManager) loadWal() error {
 			updates = append(updates, walUpdate{u, nil})
 		}
 		err := cm.applyUpdates(updates...)
-		if err != nil {
+		if err != nil && !errors.Contains(err, errBadStorageFolderIndex) {
 			return err
 		}
 		if err := txn.SignalUpdatesApplied(); err != nil {
