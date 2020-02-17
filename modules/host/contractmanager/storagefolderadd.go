@@ -3,7 +3,6 @@ package contractmanager
 import (
 	"os"
 	"path/filepath"
-	"sync"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -142,46 +141,46 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 	}(sf)
 
 	// Allocate the files on disk for the storage folder.
-	var updates []walUpdate
 	stepCount := sectorHousingSize / folderAllocationStepSize
 	for i := int64(0); i < int64(stepCount); i++ {
-		updates = append(updates, truncateUpdate(sf.sectorFile, sf.sectorFilePath, folderAllocationStepSize*(i+1)))
+		err = sf.sectorFile.Truncate(folderAllocationStepSize * (i + 1))
+		if err != nil {
+			return err
+		}
 		// After each iteration, update the progress numerator.
 		atomic.AddUint64(&sf.atomicProgressNumerator, folderAllocationStepSize)
 	}
 
-	updates = append(updates, truncateUpdate(sf.sectorFile, sf.sectorFilePath, int64(sectorHousingSize)))
-
-	// Write the metadata file.
-	updates = append(updates, truncateUpdate(sf.metadataFile, sf.metadataFilePath, int64(sectorLookupSize)))
-
-	// Apply the changes.
-	if err := cm.createAndApplyTransaction(updates...); err != nil {
+	err = sf.sectorFile.Truncate(int64(sectorHousingSize))
+	if err != nil {
 		return err
 	}
+
+	// Write the metadata file.
+	err = sf.metadataFile.Truncate(int64(sectorLookupSize))
 
 	// The file creation process is essentially complete at this point, report
 	// complete progress.
 	atomic.StoreUint64(&sf.atomicProgressNumerator, totalSize)
 
 	// Sync the files.
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		err := sf.metadataFile.Sync()
-		if err != nil {
-			cm.log.Println("could not synchronize allocated sector metadata file:", err)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		err := sf.sectorFile.Sync()
-		if err != nil {
-			cm.log.Println("could not synchronize allocated sector data file:", err)
-		}
-	}()
-	wg.Wait()
+	//	var wg sync.WaitGroup
+	//	wg.Add(2)
+	//	go func() {
+	//		defer wg.Done()
+	//		err := sf.metadataFile.Sync()
+	//		if err != nil {
+	//			cm.log.Println("could not synchronize allocated sector metadata file:", err)
+	//		}
+	//	}()
+	//	go func() {
+	//		defer wg.Done()
+	//		err := sf.sectorFile.Sync()
+	//		if err != nil {
+	//			cm.log.Println("could not synchronize allocated sector data file:", err)
+	//		}
+	//	}()
+	//	wg.Wait()
 
 	// TODO: Sync the directory as well (directory data changed as new files
 	// were added)
@@ -195,44 +194,6 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 	atomic.StoreUint64(&sf.atomicProgressNumerator, 0)
 	atomic.StoreUint64(&sf.atomicProgressDenominator, 0)
 	return nil
-}
-
-// commitAddStorageFolder integrates a pending AddStorageFolder call into the
-// state. commitAddStorageFolder should only be called during WAL recovery.
-func (cm *ContractManager) commitAddStorageFolder(ssf savedStorageFolder) {
-	sf, exists := cm.storageFolders[ssf.Index]
-	if exists {
-		if sf.metadataFile != nil {
-			sf.metadataFile.Close()
-		}
-		if sf.sectorFile != nil {
-			sf.sectorFile.Close()
-		}
-	}
-
-	sf = &storageFolder{
-		index: ssf.Index,
-		path:  ssf.Path,
-		usage: ssf.Usage,
-
-		availableSectors: make(map[sectorID]uint32),
-	}
-
-	var err error
-	sf.metadataFilePath = filepath.Join(sf.path, metadataFile)
-	sf.metadataFile, err = cm.dependencies.OpenFile(sf.metadataFilePath, os.O_RDWR, 0700)
-	if err != nil {
-		cm.log.Println("Difficulties opening sector file for ", sf.path, ":", err)
-		return
-	}
-	sf.sectorFilePath = filepath.Join(sf.path, sectorFile)
-	sf.sectorFile, err = cm.dependencies.OpenFile(sf.sectorFilePath, os.O_RDWR, 0700)
-	if err != nil {
-		cm.log.Println("Difficulties opening sector metadata file for", sf.path, ":", err)
-		sf.metadataFile.Close()
-		return
-	}
-	cm.storageFolders[sf.index] = sf
 }
 
 // AddStorageFolder adds a storage folder to the contract manager.
@@ -275,7 +236,8 @@ func (cm *ContractManager) AddStorageFolder(path string, size uint64) error {
 
 		availableSectors: make(map[sectorID]uint32),
 	}
-	err = cm.managedAddStorageFolder(newSF)
+	update := addStorageFolderUpdate(newSF)
+	err = cm.createAndApplyTransaction(update)
 	if err != nil {
 		cm.log.Println("Call to AddStorageFolder has failed:", err)
 		return err

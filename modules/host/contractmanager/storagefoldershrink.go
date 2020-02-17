@@ -75,6 +75,7 @@ func (cm *ContractManager) shrinkStorageFolder(index uint16, newSectorCount uint
 
 	// Allow unclean shutdown to be simulated by returning before the state
 	// change gets committed.
+	// TODO: Move this
 	if cm.dependencies.Disrupt("incompleteShrinkStorageFolder") {
 		return nil
 	}
