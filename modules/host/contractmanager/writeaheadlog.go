@@ -39,7 +39,7 @@ func sectorMetadataUpdate(sf *storageFolder, su sectorUpdate) walUpdate {
 	return walUpdate{
 		writeaheadlog.Update{
 			Name:         sectorMDUpdateName,
-			Instructions: encoding.Marshal(su),
+			Instructions: encoding.MarshalAll(sf.metadataFilePath, su),
 		},
 		sf.metadataFile,
 	}
@@ -74,6 +74,8 @@ func emptyStorageFolderUpdate(index uint16, startingPoint uint32) writeaheadlog.
 	}
 }
 
+// createAndApplyTransaction will create a transaction from the provided updates
+// and try to apply them in order.
 func (cm *ContractManager) createAndApplyTransaction(updates ...walUpdate) error {
 	panic("not implemented yet")
 }
@@ -100,6 +102,7 @@ func (cm *ContractManager) applySectorDataUpdate(f modules.File, update writeahe
 		}
 		defer f.Close()
 	}
+	// Write sector.
 	err = writeSector(f, sectorIndex, data)
 	if err != nil {
 		cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", path, err)
@@ -109,14 +112,35 @@ func (cm *ContractManager) applySectorDataUpdate(f modules.File, update writeahe
 	return nil
 }
 
-func (cm *ContractManager) applySectorMetadataUpdate(update writeaheadlog.Update) error {
-	panic("not implemented yet")
-	//	err = cm.writeSectorMetadata(sf, su)
-	//	if err != nil {
-	//		cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
-	//		atomic.AddUint64(&sf.atomicFailedWrites, 1)
-	//		return errDiskTrouble
-	//	}
+// applySectorMetadataUpdate applies an update to the sector's metadata. If no
+// file is provided it will try to open the file after decoding the path.
+func (cm *ContractManager) applySectorMetadataUpdate(f modules.File, update writeaheadlog.Update) error {
+	if update.Name != sectorMDUpdateName {
+		return fmt.Errorf("can't call applySectorMetadataUpdate on '%v' update", update.Name)
+	}
+	// Decode the instructions
+	var su sectorUpdate
+	var path string
+	err := encoding.UnmarshalAll(update.Instructions, &path, &su)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal applySectorMDUpdate instructions")
+	}
+	// Open the file if no file was passed in.
+	if f == nil {
+		f, err = cm.dependencies.OpenFile(path, os.O_RDWR, 0700)
+		if err != nil {
+			return errors.AddContext(err, "applySectorDataUpdate failed to open")
+		}
+		defer f.Close()
+	}
+	// Write metadata.
+	err = writeSectorMetadata(f, su.Index, su.ID, su.Count)
+	if err != nil {
+		cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", path, err)
+		// atomic.AddUint64(&sf.atomicFailedWrites, 1) // TODO: move to caller
+		return errDiskTrouble
+	}
+	return nil
 }
 
 //func addStorageFolderUpdate(sf *storageFolder) writeaheadlog.Update {
