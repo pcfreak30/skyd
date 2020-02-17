@@ -77,15 +77,55 @@ func emptyStorageFolderUpdate(index uint16, startingPoint uint32) walUpdate {
 	}
 }
 
+// applyUpdates applies the provided updates one by one.
+func (cm *ContractManager) applyUpdates(updates ...walUpdate) error {
+	for _, update := range updates {
+		var err error
+		switch update.Name {
+		case sectorMDUpdateName:
+			err = cm.applySectorMetadataUpdate(update)
+		case sectorDataUpdateName:
+			err = cm.applySectorDataUpdate(update)
+		case emptyStorageFolderUpdateName:
+			panic("not implemented yet")
+		}
+		if err != nil {
+			return errors.AddContext(err, "failed to apply update")
+		}
+	}
+	return nil
+}
+
 // createAndApplyTransaction will create a transaction from the provided updates
 // and try to apply them in order.
 func (cm *ContractManager) createAndApplyTransaction(updates ...walUpdate) error {
-	panic("not implemented yet")
+	// Create the writeaheadlog transaction.
+	wUpdates := make([]writeaheadlog.Update, 0, len(updates))
+	for _, update := range updates {
+		wUpdates = append(wUpdates, update.Update)
+	}
+	txn, err := cm.wal.NewTransaction(wUpdates)
+	if err != nil {
+		return errors.AddContext(err, "failed to create wal txn")
+	}
+	// No extra setup is required. Signal that it is done.
+	if err := <-txn.SignalSetupComplete(); err != nil {
+		return errors.AddContext(err, "failed to signal setup completion")
+	}
+	// Apply the updates.
+	if err := cm.applyUpdates(updates...); err != nil {
+		return errors.AddContext(err, "failed to apply updates")
+	}
+	// Updates are applied. Let the writeaheadlog know.
+	if err := txn.SignalUpdatesApplied(); err != nil {
+		return errors.AddContext(err, "failed to signal that updates are applied")
+	}
+	return nil
 }
 
 // applySectorDataUpdate applies an update to the sector's data. If no file is
 // provided it will try to open the file after decoding the path.
-func (cm *ContractManager) applySectorDataUpdate(f modules.File, update writeaheadlog.Update) error {
+func (cm *ContractManager) applySectorDataUpdate(update walUpdate) error {
 	if update.Name != sectorDataUpdateName {
 		return fmt.Errorf("can't call applySectorDataUpdate on '%v' update", update.Name)
 	}
@@ -98,6 +138,7 @@ func (cm *ContractManager) applySectorDataUpdate(f modules.File, update writeahe
 		return errors.AddContext(err, "failed to unmarshal applySectorDataUpdate instructions")
 	}
 	// Open the file if no file was passed in.
+	f := update.f
 	if f == nil {
 		f, err = cm.dependencies.OpenFile(path, os.O_RDWR, 0700)
 		if err != nil {
@@ -112,12 +153,12 @@ func (cm *ContractManager) applySectorDataUpdate(f modules.File, update writeahe
 		// atomic.AddUint64(&sf.atomicFailedWrites, 1) TODO: move to caller
 		return errDiskTrouble
 	}
-	return nil
+	return f.Sync()
 }
 
 // applySectorMetadataUpdate applies an update to the sector's metadata. If no
 // file is provided it will try to open the file after decoding the path.
-func (cm *ContractManager) applySectorMetadataUpdate(f modules.File, update writeaheadlog.Update) error {
+func (cm *ContractManager) applySectorMetadataUpdate(update walUpdate) error {
 	if update.Name != sectorMDUpdateName {
 		return fmt.Errorf("can't call applySectorMetadataUpdate on '%v' update", update.Name)
 	}
@@ -129,6 +170,7 @@ func (cm *ContractManager) applySectorMetadataUpdate(f modules.File, update writ
 		return errors.AddContext(err, "failed to unmarshal applySectorMDUpdate instructions")
 	}
 	// Open the file if no file was passed in.
+	f := update.f
 	if f == nil {
 		f, err = cm.dependencies.OpenFile(path, os.O_RDWR, 0700)
 		if err != nil {
@@ -143,7 +185,7 @@ func (cm *ContractManager) applySectorMetadataUpdate(f modules.File, update writ
 		// atomic.AddUint64(&sf.atomicFailedWrites, 1) // TODO: move to caller
 		return errDiskTrouble
 	}
-	return nil
+	return f.Sync()
 }
 
 //func addStorageFolderUpdate(sf *storageFolder) writeaheadlog.Update {
@@ -220,10 +262,6 @@ func (cm *ContractManager) applySectorMetadataUpdate(f modules.File, update writ
 //		SectorUpdates []sectorUpdate
 //	}
 
-func applyUpdates(updates ...writeaheadlog.Update) error {
-	panic("not implemented yet")
-}
-
 func (cm *ContractManager) loadWal() error {
 	// Try opening the WAL file.
 	walFileName := filepath.Join(cm.persistDir, walFile)
@@ -234,7 +272,14 @@ func (cm *ContractManager) loadWal() error {
 	cm.wal = wal
 	// Apply the unfinished transactions.
 	for _, txn := range txns {
-		if err := applyUpdates(txn.Updates...); err != nil {
+		updates := make([]walUpdate, 0, len(txn.Updates))
+		for _, u := range txn.Updates {
+			updates = append(updates, walUpdate{u, nil})
+		}
+		if err := cm.applyUpdates(updates...); err != nil {
+			return err
+		}
+		if err := txn.SignalUpdatesApplied(); err != nil {
 			return err
 		}
 	}
