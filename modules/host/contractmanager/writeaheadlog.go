@@ -1,10 +1,13 @@
 package contractmanager
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
@@ -75,14 +78,35 @@ func (cm *ContractManager) createAndApplyTransaction(updates ...walUpdate) error
 	panic("not implemented yet")
 }
 
-func (cm *ContractManager) applySectorDataUpdate(update writeaheadlog.Update) error {
-	panic("not implemented yet")
-	//	err = writeSector(sf.sectorFile, sectorIndex, data)
-	//	if err != nil {
-	//		cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
-	//		atomic.AddUint64(&sf.atomicFailedWrites, 1)
-	//		return errDiskTrouble
-	//	}
+// applySectorDataUpdate applies an update to the sector's data. If no file is
+// provided it will try to open the file after decoding the path.
+func (cm *ContractManager) applySectorDataUpdate(f modules.File, update writeaheadlog.Update) error {
+	if update.Name != sectorDataUpdateName {
+		return fmt.Errorf("can't call applySectorDataUpdate on '%v' update", update.Name)
+	}
+	// Decode the instructions.
+	var path string
+	var sectorIndex uint32
+	var data []byte
+	err := encoding.UnmarshalAll(update.Instructions, &path, &sectorIndex, &data)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal applySectorDataUpdate instructions")
+	}
+	// Open the file if no file was passed in.
+	if f == nil {
+		f, err = cm.dependencies.OpenFile(path, os.O_RDWR, 0700)
+		if err != nil {
+			return errors.AddContext(err, "applySectorDataUpdate failed to open")
+		}
+		defer f.Close()
+	}
+	err = writeSector(f, sectorIndex, data)
+	if err != nil {
+		cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", path, err)
+		// atomic.AddUint64(&sf.atomicFailedWrites, 1) TODO: move to caller
+		return errDiskTrouble
+	}
+	return nil
 }
 
 func (cm *ContractManager) applySectorMetadataUpdate(update writeaheadlog.Update) error {
