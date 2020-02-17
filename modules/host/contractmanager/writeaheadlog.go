@@ -151,7 +151,7 @@ func (cm *ContractManager) applySectorDataUpdate(update walUpdate) error {
 	if err != nil {
 		cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", path, err)
 		// atomic.AddUint64(&sf.atomicFailedWrites, 1) TODO: move to caller
-		return errDiskTrouble
+		return errors.Compose(err, errDiskTrouble)
 	}
 	return f.Sync()
 }
@@ -183,7 +183,7 @@ func (cm *ContractManager) applySectorMetadataUpdate(update walUpdate) error {
 	if err != nil {
 		cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", path, err)
 		// atomic.AddUint64(&sf.atomicFailedWrites, 1) // TODO: move to caller
-		return errDiskTrouble
+		return errors.Compose(err, errDiskTrouble)
 	}
 	return f.Sync()
 }
@@ -206,7 +206,7 @@ func (cm *ContractManager) applyEmptyStorageFolderUpdate(update walUpdate) error
 	if err != nil {
 		cm.log.Printf("ERROR: Unable to empty storag folder %v: %v\n", index, err)
 		// atomic.AddUint64(&sf.atomicFailedWrites, 1) // TODO: move to caller
-		return errDiskTrouble
+		return errors.Compose(err, errDiskTrouble)
 	}
 	return nil
 }
@@ -299,7 +299,10 @@ func (cm *ContractManager) loadWal() error {
 		for _, u := range txn.Updates {
 			updates = append(updates, walUpdate{u, nil})
 		}
-		if err := cm.applyUpdates(updates...); err != nil {
+		err := cm.applyUpdates(updates...)
+		if errors.Contains(err, errBadStorageFolderIndex) {
+			// If the folder doesn't exist ignore the error.
+		} else if err != nil {
 			return err
 		}
 		if err := txn.SignalUpdatesApplied(); err != nil {
