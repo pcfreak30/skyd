@@ -101,7 +101,7 @@ type ContractManager struct {
 	mu            sync.Mutex
 	persistDir    string
 	tg            siasync.ThreadGroup
-	wal           *writeaheadlog.WAL
+	staticWal     *writeaheadlog.WAL
 }
 
 // Close will cleanly shutdown the contract manager.

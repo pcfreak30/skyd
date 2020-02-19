@@ -4,22 +4,13 @@ import (
 	"path/filepath"
 )
 
-type (
-	// storageFolderRemoval indicates a storage folder that has been removed
-	// from the WAL.
-	storageFolderRemoval struct {
-		Index uint16
-		Path  string
-	}
-)
-
 // commitStorageFolderRemoval will finalize a storage folder removal from the
 // contract manager.
-func (cm *ContractManager) commitStorageFolderRemoval(sfr storageFolderRemoval) {
+func (cm *ContractManager) commitStorageFolderRemoval(index uint16, path string) {
 	// Close any open file handles.
-	sf, exists := cm.storageFolders[sfr.Index]
+	sf, exists := cm.storageFolders[index]
 	if exists {
-		delete(cm.storageFolders, sfr.Index)
+		delete(cm.storageFolders, index)
 	}
 	if exists && sf.metadataFile != nil {
 		err := sf.metadataFile.Close()
@@ -35,13 +26,13 @@ func (cm *ContractManager) commitStorageFolderRemoval(sfr storageFolderRemoval) 
 	}
 
 	// Delete the files.
-	err := cm.dependencies.RemoveFile(filepath.Join(sfr.Path, metadataFile))
+	err := cm.dependencies.RemoveFile(filepath.Join(path, metadataFile))
 	if err != nil {
-		cm.log.Printf("Error: unable to remove metadata file as storage folder %v is removed\n", sfr.Path)
+		cm.log.Printf("Error: unable to remove metadata file as storage folder %v is removed\n", path)
 	}
-	err = cm.dependencies.RemoveFile(filepath.Join(sfr.Path, sectorFile))
+	err = cm.dependencies.RemoveFile(filepath.Join(path, sectorFile))
 	if err != nil {
-		cm.log.Printf("Error: unable to reomve sector file as storage folder %v is removed\n", sfr.Path)
+		cm.log.Printf("Error: unable to reomve sector file as storage folder %v is removed\n", path)
 	}
 }
 
@@ -68,7 +59,7 @@ func (cm *ContractManager) RemoveStorageFolder(index uint16, force bool) error {
 	defer sf.mu.Unlock()
 
 	// Clear out the sectors in the storage folder.
-	update := emptyStorageFolderUpdate(index, 0)
+	update := removeStorageFolderUpdate(index, sf.path)
 
 	// Submit a storage folder removal to the WAL and wait until the update is
 	// synced.

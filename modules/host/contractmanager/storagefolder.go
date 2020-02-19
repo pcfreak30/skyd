@@ -398,10 +398,13 @@ func (cm *ContractManager) ResizeStorageFolder(index uint16, newSize uint64, for
 		return ErrNoResize
 	}
 	newSectorCount := uint32(newSize / modules.SectorSize)
+	var update walUpdate
 	if oldSize > newSize {
-		return cm.shrinkStorageFolder(index, newSectorCount, force)
+		update = shrinkStorageFolderUpdate(index, newSectorCount, force)
+	} else {
+		update = growStorageFolderUpdate(index, newSectorCount)
 	}
-	return cm.growStorageFolder(index, newSectorCount)
+	return cm.createAndApplyTransaction(update)
 }
 
 // StorageFolders will return a list of storage folders in the host, each

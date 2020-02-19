@@ -9,22 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-type (
-	// storageFolderExtension is the data saved to the WAL to indicate that a
-	// storage folder has been extended successfully.
-	storageFolderExtension struct {
-		Index          uint16
-		NewSectorCount uint32
-	}
-
-	// unfinishedStorageFolderExtension contains the data necessary to reverse
-	// a storage folder extension that has failed.
-	unfinishedStorageFolderExtension struct {
-		Index          uint16
-		OldSectorCount uint32
-	}
-)
-
 // findUnfinishedStorageFolderExtensions will scroll through a set of state
 // changes as pull out all of the storage folder extensions which have not yet
 // completed.
@@ -86,21 +70,21 @@ type (
 
 // commitStorageFolderExtension will apply a storage folder extension to the
 // state.
-func (cm *ContractManager) commitStorageFolderExtension(sfe storageFolderExtension) {
-	sf, exists := cm.storageFolders[sfe.Index]
+func (cm *ContractManager) commitStorageFolderExtension(index uint16, newSectorCount uint32) {
+	sf, exists := cm.storageFolders[index]
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		cm.log.Critical("ERROR: storage folder extension provided for storage folder that does not exist")
 		return
 	}
 
-	newUsageSize := sfe.NewSectorCount / storageFolderGranularity
+	newUsageSize := newSectorCount / storageFolderGranularity
 	appendUsage := make([]uint64, int(newUsageSize)-len(sf.usage))
 	sf.usage = append(sf.usage, appendUsage...)
 }
 
-// growStorageFolder will extend the storage folder files so that they may hold
-// more sectors.
-func (cm *ContractManager) growStorageFolder(index uint16, newSectorCount uint32) error {
+// managedGrowStorageFolder will extend the storage folder files so that they
+// may hold more sectors.
+func (cm *ContractManager) managedGrowStorageFolder(index uint16, newSectorCount uint32) error {
 	// Retrieve the specified storage folder.
 	cm.mu.Lock()
 	sf, exists := cm.storageFolders[index]
@@ -134,16 +118,11 @@ func (cm *ContractManager) growStorageFolder(index uint16, newSectorCount uint32
 	var err error
 	defer func(sf *storageFolder, housingSize, metadataSize int64) {
 		if err != nil {
-			cm.mu.Lock()
-			defer cm.mu.Unlock()
-
 			// Remove the leftover files from the failed operation.
 			err = build.ComposeErrors(err, sf.metadataFile.Truncate(housingSize))
 			err = build.ComposeErrors(err, sf.sectorFile.Truncate(metadataSize))
-
-			// Signal in the WAL that the unfinished storage folder addition
-			// has failed.
-			err = build.ComposeErrors(err, cm.shrinkStorageFolder(index, oldSectorCount, true))
+			_, errEmpty := cm.managedEmptyStorageFolder(index, oldSectorCount)
+			err = build.ComposeErrors(err, errEmpty)
 		}
 	}(sf, currentMetadataSize, currentHousingSize)
 
@@ -153,15 +132,24 @@ func (cm *ContractManager) growStorageFolder(index uint16, newSectorCount uint32
 	var updates []walUpdate
 	stepCount := housingWriteSize / folderAllocationStepSize
 	for i := int64(0); i < stepCount; i++ {
-		updates = append(updates, truncateUpdate(sf.sectorFile, sf.sectorFilePath, currentHousingSize+(folderAllocationStepSize*(i+1))))
+		err = sf.sectorFile.Truncate(currentHousingSize + (folderAllocationStepSize * (i + 1)))
+		if err != nil {
+			return err
+		}
 		// After each iteration, update the progress numerator.
 		// TODO: this is no longer accurate
 		atomic.AddUint64(&sf.atomicProgressNumerator, folderAllocationStepSize)
 	}
-	updates = append(updates, truncateUpdate(sf.sectorFile, sf.sectorFilePath, currentHousingSize+housingWriteSize))
+	err = sf.sectorFile.Truncate(currentHousingSize + housingWriteSize)
+	if err != nil {
+		return err
+	}
 
 	// Write the metadata file.
-	updates = append(updates, truncateUpdate(sf.metadataFile, sf.metadataFilePath, currentMetadataSize+metadataWriteSize))
+	err = sf.metadataFile.Truncate(currentMetadataSize + metadataWriteSize)
+	if err != nil {
+		return err
+	}
 
 	// Apply the changes.
 	if err := cm.createAndApplyTransaction(updates...); err != nil {

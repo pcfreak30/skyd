@@ -12,10 +12,12 @@ import (
 )
 
 var (
-	addStorageFolderUpdateName   = "AddStorageFolderUpdate"
-	sectorMDUpdateName           = "SectorMetadataUpdate"
-	sectorDataUpdateName         = "SectorDataUpdate"
-	emptyStorageFolderUpdateName = "EmptyStorageFolderUpdate"
+	addStorageFolderUpdateName    = "AddStorageFolderUpdate"
+	sectorMDUpdateName            = "SectorMetadataUpdate"
+	sectorDataUpdateName          = "SectorDataUpdate"
+	removeStorageFolderUpdateName = "RemoveStorageFolderUpdate"
+	growStorageFolderUpdateName   = "GrowStorageFolderUpdate"
+	shrinkStorageFolderUpdateName = "ShrinkStorageFolderUpdate"
 )
 
 type (
@@ -77,13 +79,37 @@ func truncateUpdate(file modules.File, path string, newSize int64) walUpdate {
 	}
 }
 
-// emptyStorageFolderUpdate creates a WAL update for emptying out a storage
+// removeStorageFolderUpdate creates a WAL update for emptying out a storage
 // folder on disk.
-func emptyStorageFolderUpdate(index uint16, startingPoint uint32) walUpdate {
+func removeStorageFolderUpdate(index uint16, path string) walUpdate {
 	return walUpdate{
 		writeaheadlog.Update{
-			Name:         emptyStorageFolderUpdateName,
-			Instructions: encoding.MarshalAll(index, startingPoint),
+			Name:         removeStorageFolderUpdateName,
+			Instructions: encoding.MarshalAll(index, path),
+		},
+		nil, // no file needed
+	}
+}
+
+// growStorageFolderUpdate creates a WAL update for growing out a storage
+// folder on disk.
+func growStorageFolderUpdate(index uint16, newSectorCount uint32) walUpdate {
+	return walUpdate{
+		writeaheadlog.Update{
+			Name:         growStorageFolderUpdateName,
+			Instructions: encoding.MarshalAll(index, newSectorCount),
+		},
+		nil, // no file needed
+	}
+}
+
+// shrinkStorageFolderUpdate creates a WAL update for shrinking a storage folder
+// on disk.
+func shrinkStorageFolderUpdate(index uint16, startingPoint uint32, force bool) walUpdate {
+	return walUpdate{
+		writeaheadlog.Update{
+			Name:         shrinkStorageFolderUpdateName,
+			Instructions: encoding.MarshalAll(index, startingPoint, force),
 		},
 		nil, // no file needed
 	}
@@ -100,8 +126,12 @@ func (cm *ContractManager) applyUpdates(updates ...walUpdate) error {
 			err = cm.applySectorMetadataUpdate(update)
 		case sectorDataUpdateName:
 			err = cm.applySectorDataUpdate(update)
-		case emptyStorageFolderUpdateName:
-			err = cm.applyEmptyStorageFolderUpdate(update)
+		case removeStorageFolderUpdateName:
+			err = cm.applyRemoveStorageFolderUpdate(update)
+		case shrinkStorageFolderUpdateName:
+			err = cm.applyShrinkStorageFolderUpdate(update)
+		case growStorageFolderUpdateName:
+			err = cm.applyGrowStorageFolderUpdate(update)
 		}
 		if err != nil {
 			return errors.AddContext(err, "applyUpdates:")
@@ -118,7 +148,7 @@ func (cm *ContractManager) createAndApplyTransaction(updates ...walUpdate) error
 	for _, update := range updates {
 		wUpdates = append(wUpdates, update.Update)
 	}
-	txn, err := cm.wal.NewTransaction(wUpdates)
+	txn, err := cm.staticWal.NewTransaction(wUpdates)
 	if err != nil {
 		return errors.AddContext(err, "failed to create wal txn")
 	}
@@ -137,6 +167,8 @@ func (cm *ContractManager) createAndApplyTransaction(updates ...walUpdate) error
 	return nil
 }
 
+// applyAddStorageFolderUpdate applies an update which adds a storage folder to
+// the contract manager.
 func (cm *ContractManager) applyAddStorageFolderUpdate(update walUpdate) error {
 	if update.Name != addStorageFolderUpdateName {
 		return fmt.Errorf("can't call applyAddStorageFolderUpdate on '%v' update", update.Name)
@@ -223,24 +255,77 @@ func (cm *ContractManager) applySectorMetadataUpdate(update walUpdate) error {
 
 // applyEmptyStorageFolderUpdate applies an update to empty a sector's storage
 // folder.
-func (cm *ContractManager) applyEmptyStorageFolderUpdate(update walUpdate) error {
-	if update.Name != emptyStorageFolderUpdateName {
+func (cm *ContractManager) applyRemoveStorageFolderUpdate(update walUpdate) error {
+	if update.Name != removeStorageFolderUpdateName {
 		return fmt.Errorf("can't call applyEmptyStorageFolderUpdate on '%v' update", update.Name)
 	}
 	// Decode the instructions
 	var index uint16
-	var startingPoint uint32
-	err := encoding.UnmarshalAll(update.Instructions, &index, &startingPoint)
+	var path string
+	err := encoding.UnmarshalAll(update.Instructions, &index, &path)
 	if err != nil {
 		return errors.AddContext(err, "failed to unmarshal emptyStorageFolderUpdate instructions")
 	}
 	// Empty storage folder.
-	_, err = cm.managedEmptyStorageFolder(index, startingPoint)
+	_, err = cm.managedEmptyStorageFolder(index, 0)
 	if err != nil {
-		cm.log.Printf("ERROR: Unable to empty storag folder %v: %v\n", index, err)
+		cm.log.Printf("ERROR: Unable to empty storage folder %v: %v\n", index, err)
 		// atomic.AddUint64(&sf.atomicFailedWrites, 1) // TODO: move to caller
 		return errors.AddContext(err, fmt.Sprintf("failed to empty storage folder at index %v", index))
 	}
+	// Commit the state.
+	cm.commitStorageFolderRemoval(index, path)
+	return nil
+}
+
+// applyShrinkStorageFolderUpdate applies an update to shrink a sector's storage
+// folder.
+func (cm *ContractManager) applyShrinkStorageFolderUpdate(update walUpdate) error {
+	if update.Name != shrinkStorageFolderUpdateName {
+		return fmt.Errorf("can't call applyShrinkStorageFolderUpdate on '%v' update", update.Name)
+	}
+	// Decode the instructions
+	var index uint16
+	var newSectorCount uint32
+	var force bool
+	err := encoding.UnmarshalAll(update.Instructions, &index, &newSectorCount, &force)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal shrinkStorageFolderUpdate instructions")
+	}
+	// Empty storage folder.
+	_, err = cm.managedEmptyStorageFolder(index, newSectorCount)
+	if err != nil && !force {
+		cm.log.Printf("ERROR: Unable to shrink storage folder %v: %v\n", index, err)
+		// atomic.AddUint64(&sf.atomicFailedWrites, 1) // TODO: move to caller
+		return errors.AddContext(err, fmt.Sprintf("failed to shrink storage folder at index %v", index))
+	}
+	// Commit the change to the state.
+	cm.commitStorageFolderReduction(index, newSectorCount)
+	return nil
+}
+
+// growStorageFolderUpdate applies an update to grow a sector's storage
+// folder.
+func (cm *ContractManager) applyGrowStorageFolderUpdate(update walUpdate) error {
+	if update.Name != growStorageFolderUpdateName {
+		return fmt.Errorf("can't call applyGrowStorageFolderUpdate on '%v' update", update.Name)
+	}
+	// Decode the instructions
+	var index uint16
+	var newSectorCount uint32
+	err := encoding.UnmarshalAll(update.Instructions, &index, &newSectorCount)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal shrinkStorageFolderUpdate instructions")
+	}
+	// Empty storage folder.
+	err = cm.managedGrowStorageFolder(index, newSectorCount)
+	if err != nil {
+		cm.log.Printf("ERROR: Unable to grow storage folder %v: %v\n", index, err)
+		// atomic.AddUint64(&sf.atomicFailedWrites, 1) // TODO: move to caller
+		return errors.AddContext(err, fmt.Sprintf("failed to grow storage folder at index %v", index))
+	}
+	// Commit the change to the state.
+	cm.commitStorageFolderExtension(index, newSectorCount)
 	return nil
 }
 
@@ -325,7 +410,7 @@ func (cm *ContractManager) loadWal() error {
 	if err != nil {
 		return err
 	}
-	cm.wal = wal
+	cm.staticWal = wal
 	// Apply the unfinished transactions.
 	for _, txn := range txns {
 		updates := make([]walUpdate, 0, len(txn.Updates))

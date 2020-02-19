@@ -1043,7 +1043,7 @@ func TestShrinkStorageFolderWAL(t *testing.T) {
 	capacity := sfs[0].Capacity + sfs[1].Capacity
 	capacityRemaining := sfs[0].CapacityRemaining + sfs[1].CapacityRemaining
 	if capacity != modules.SectorSize*storageFolderGranularity*5 {
-		t.Error("new storage folder is reporting the wrong capacity")
+		t.Error("new storage folder is reporting the wrong capacity", capacity, modules.SectorSize*storageFolderGranularity*5)
 	}
 	if capacityRemaining != modules.SectorSize*storageFolderGranularity*2 {
 		t.Error("new storage folder capacity remaining is reporting the wrong remaining capacity")
