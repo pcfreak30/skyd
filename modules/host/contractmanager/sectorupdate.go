@@ -1,13 +1,13 @@
 package contractmanager
 
 import (
-	"errors"
 	"sync"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // applyUpdateSector will commit a sector update to the contract manager,
@@ -98,7 +98,10 @@ func (cm *ContractManager) managedAddPhysicalSector(id sectorID, data []byte, co
 			}()
 
 			// Prepare writing the new sector to disk.
-			sectorDataUpdate := sectorDataUpdate(sf.sectorFile, sf.sectorFilePath, sectorIndex, data)
+			err = writeSector(sf.sectorFile, sectorIndex, data)
+			if err != nil {
+				return err
+			}
 
 			// Prepare writing the sector metadata to disk.
 			su := sectorUpdate{
@@ -107,10 +110,14 @@ func (cm *ContractManager) managedAddPhysicalSector(id sectorID, data []byte, co
 				Folder: sf.index,
 				Index:  sectorIndex,
 			}
-			sectorMetadataUpdate := sectorMetadataUpdate(sf, su)
+			err = writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+			if err != nil {
+				return err
+			}
 
-			// Apply updates.
-			if err := cm.createAndApplyTransaction(sectorDataUpdate, sectorMetadataUpdate); err != nil {
+			// Sync files.
+			err = errors.Compose(sf.sectorFile.Sync(), sf.metadataFile.Sync())
+			if err != nil {
 				return err
 			}
 
@@ -177,8 +184,7 @@ func (cm *ContractManager) managedAddVirtualSector(id sectorID, location sectorL
 	// Update the metadata on disk. Metadata is updated on disk after the sync
 	// so that there is no risk of obliterating the previous count in the event
 	// that the change is not fully committed during unclean shutdown.
-	metadataUpdate := sectorMetadataUpdate(sf, su)
-	err := cm.createAndApplyTransaction(metadataUpdate)
+	err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
 	if err != nil {
 		// Revert the sector update in the WAL to reflect the fact that adding
 		// the sector has failed.
@@ -189,7 +195,7 @@ func (cm *ContractManager) managedAddVirtualSector(id sectorID, location sectorL
 		cm.mu.Unlock()
 		return build.ExtendErr("unable to write sector metadata during addSector call", err)
 	}
-	return nil
+	return sf.metadataFile.Sync()
 }
 
 // managedDeleteSector will delete a sector (physical) from the contract manager.
@@ -214,14 +220,19 @@ func (cm *ContractManager) managedDeleteSector(id sectorID) error {
 		}
 
 		// Inform the WAL of the sector update.
-		metadataUpdate := sectorMetadataUpdate(sf, sectorUpdate{
+		su := sectorUpdate{
 			Count:  0,
 			ID:     id,
 			Folder: location.storageFolder,
 			Index:  location.index,
-		})
-		// Apply the update.
-		err := cm.createAndApplyTransaction(metadataUpdate)
+		}
+		// Inform the WAL of the sector update.
+		err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+		if err != nil {
+			return err
+		}
+		// Sync the file.
+		err = sf.metadataFile.Sync()
 		if err != nil {
 			return err
 		}
@@ -276,8 +287,11 @@ func (cm *ContractManager) managedRemoveSector(id sectorID) error {
 			Folder: location.storageFolder,
 			Index:  location.index,
 		}
-		sectorMetadataUpdate := sectorMetadataUpdate(sf, su)
-		err := cm.createAndApplyTransaction(sectorMetadataUpdate)
+		err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+		if err != nil {
+			return err
+		}
+		err = sf.metadataFile.Sync()
 		if err != nil {
 			return err
 		}

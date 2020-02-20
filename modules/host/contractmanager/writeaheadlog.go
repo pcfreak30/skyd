@@ -2,7 +2,6 @@ package contractmanager
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -13,11 +12,13 @@ import (
 
 var (
 	addStorageFolderUpdateName    = "AddStorageFolderUpdate"
-	sectorMDUpdateName            = "SectorMetadataUpdate"
-	sectorDataUpdateName          = "SectorDataUpdate"
+	addPhysicalSectorUpdateName   = "AddPhysicalSectorUpdate"
+	addVirtualSectorUpdateName    = "AddVirtualSectorUpdate"
 	removeStorageFolderUpdateName = "RemoveStorageFolderUpdate"
 	growStorageFolderUpdateName   = "GrowStorageFolderUpdate"
 	shrinkStorageFolderUpdateName = "ShrinkStorageFolderUpdate"
+	deleteSectorUpdateName        = "DeleteSectorUpdate"
+	removeSectorUpdateName        = "RemoveSectorUpdate"
 )
 
 type (
@@ -47,26 +48,43 @@ func addStorageFolderUpdate(sf *storageFolder) walUpdate {
 	}
 }
 
-// sectorMetadataUpdate creates a WAL update for updating a storage folder's
-// metadata.
-func sectorMetadataUpdate(sf *storageFolder, su sectorUpdate) walUpdate {
+func addPhysicalSectorUpate(id sectorID, data []byte, count uint16) walUpdate {
 	return walUpdate{
 		writeaheadlog.Update{
-			Name:         sectorMDUpdateName,
-			Instructions: encoding.MarshalAll(sf.metadataFilePath, su),
+			Name:         addPhysicalSectorUpdateName,
+			Instructions: encoding.MarshalAll(id, data, count),
 		},
-		sf.metadataFile,
+		nil,
 	}
 }
 
-// sectorDataUpdate creates a WAL update for updating a sector's data.
-func sectorDataUpdate(file modules.File, path string, sectorIndex uint32, data []byte) walUpdate {
+func addVirtualSectorUpate(id sectorID, location sectorLocation) walUpdate {
 	return walUpdate{
 		writeaheadlog.Update{
-			Name:         sectorDataUpdateName,
-			Instructions: encoding.MarshalAll(path, sectorIndex, data),
+			Name:         addVirtualSectorUpdateName,
+			Instructions: encoding.MarshalAll(id, location),
 		},
-		file,
+		nil,
+	}
+}
+
+func deleteSectorUpdate(id sectorID) walUpdate {
+	return walUpdate{
+		writeaheadlog.Update{
+			Name:         deleteSectorUpdateName,
+			Instructions: encoding.MarshalAll(id),
+		},
+		nil,
+	}
+}
+
+func removeSectorUpdate(id sectorID) walUpdate {
+	return walUpdate{
+		writeaheadlog.Update{
+			Name:         removeSectorUpdateName,
+			Instructions: encoding.MarshalAll(id),
+		},
+		nil,
 	}
 }
 
@@ -122,16 +140,20 @@ func (cm *ContractManager) applyUpdates(updates ...walUpdate) error {
 		switch update.Name {
 		case addStorageFolderUpdateName:
 			err = cm.applyAddStorageFolderUpdate(update)
-		case sectorMDUpdateName:
-			err = cm.applySectorMetadataUpdate(update)
-		case sectorDataUpdateName:
-			err = cm.applySectorDataUpdate(update)
+		case addPhysicalSectorUpdateName:
+			err = cm.applyAddPhysicalSectorUpdate(update)
+		case addVirtualSectorUpdateName:
+			err = cm.applyAddVirtualSectorUpdate(update)
 		case removeStorageFolderUpdateName:
 			err = cm.applyRemoveStorageFolderUpdate(update)
 		case shrinkStorageFolderUpdateName:
 			err = cm.applyShrinkStorageFolderUpdate(update)
 		case growStorageFolderUpdateName:
 			err = cm.applyGrowStorageFolderUpdate(update)
+		case deleteSectorUpdateName:
+			err = cm.applyDeleteSectorUpdate(update)
+		case removeSectorUpdateName:
+			err = cm.applyRemoveSectorUpdate(update)
 		}
 		if err != nil {
 			return errors.AddContext(err, "applyUpdates:")
@@ -187,71 +209,6 @@ func (cm *ContractManager) applyAddStorageFolderUpdate(update walUpdate) error {
 
 		availableSectors: make(map[sectorID]uint32),
 	})
-}
-
-// applySectorDataUpdate applies an update to the sector's data. If no file is
-// provided it will try to open the file after decoding the path.
-func (cm *ContractManager) applySectorDataUpdate(update walUpdate) error {
-	if update.Name != sectorDataUpdateName {
-		return fmt.Errorf("can't call applySectorDataUpdate on '%v' update", update.Name)
-	}
-	// Decode the instructions.
-	var path string
-	var sectorIndex uint32
-	var data []byte
-	err := encoding.UnmarshalAll(update.Instructions, &path, &sectorIndex, &data)
-	if err != nil {
-		return errors.AddContext(err, "failed to unmarshal applySectorDataUpdate instructions")
-	}
-	// Open the file if no file was passed in.
-	f := update.f
-	if f == nil {
-		f, err = cm.dependencies.OpenFile(path, os.O_RDWR, 0700)
-		if err != nil {
-			return errors.AddContext(err, "applySectorDataUpdate failed to open")
-		}
-		defer f.Close()
-	}
-	// Write sector.
-	err = writeSector(f, sectorIndex, data)
-	if err != nil {
-		cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", path, err)
-		// atomic.AddUint64(&sf.atomicFailedWrites, 1) TODO: move to caller
-		return errors.Compose(err, errDiskTrouble)
-	}
-	return f.Sync()
-}
-
-// applySectorMetadataUpdate applies an update to the sector's metadata. If no
-// file is provided it will try to open the file after decoding the path.
-func (cm *ContractManager) applySectorMetadataUpdate(update walUpdate) error {
-	if update.Name != sectorMDUpdateName {
-		return fmt.Errorf("can't call applySectorMetadataUpdate on '%v' update", update.Name)
-	}
-	// Decode the instructions
-	var su sectorUpdate
-	var path string
-	err := encoding.UnmarshalAll(update.Instructions, &path, &su)
-	if err != nil {
-		return errors.AddContext(err, "failed to unmarshal applySectorMDUpdate instructions")
-	}
-	// Open the file if no file was passed in.
-	f := update.f
-	if f == nil {
-		f, err = cm.dependencies.OpenFile(path, os.O_RDWR, 0700)
-		if err != nil {
-			return errors.AddContext(err, "applySectorDataUpdate failed to open")
-		}
-		defer f.Close()
-	}
-	// Write metadata.
-	err = writeSectorMetadata(f, su.Index, su.ID, su.Count)
-	if err != nil {
-		cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", path, err)
-		// atomic.AddUint64(&sf.atomicFailedWrites, 1) // TODO: move to caller
-		return errors.Compose(err, errDiskTrouble)
-	}
-	return f.Sync()
 }
 
 // applyEmptyStorageFolderUpdate applies an update to empty a sector's storage
@@ -328,6 +285,69 @@ func (cm *ContractManager) applyGrowStorageFolderUpdate(update walUpdate) error 
 	// Commit the change to the state.
 	cm.commitStorageFolderExtension(index, newSectorCount)
 	return nil
+}
+
+// applyDeleteSectorUpdate applies an update which deletes a sector from the
+// contract manager.
+func (cm *ContractManager) applyDeleteSectorUpdate(update walUpdate) error {
+	if update.Name != deleteSectorUpdateName {
+		return fmt.Errorf("can't call applyDeleteSectorUpdate on '%v' update", update.Name)
+	}
+	// Decode the instructions.
+	var id sectorID
+	err := encoding.UnmarshalAll(update.Instructions, &id)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal deleteSectorUpdate instructions")
+	}
+	return cm.managedDeleteSector(id)
+}
+
+// applyRemoveSectorUpdate applies an update which removes a sector from the
+// contract manager.
+func (cm *ContractManager) applyRemoveSectorUpdate(update walUpdate) error {
+	if update.Name != removeSectorUpdateName {
+		return fmt.Errorf("can't call applyRemoveSectorUpdate on '%v' update", update.Name)
+	}
+	// Decode the instructions.
+	var id sectorID
+	err := encoding.UnmarshalAll(update.Instructions, &id)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal removeSectorUpdate instructions")
+	}
+	return cm.managedRemoveSector(id)
+}
+
+// applyAddStorageFolderUpdate applies an update which adds a storage folder to
+// the contract manager.
+func (cm *ContractManager) applyAddPhysicalSectorUpdate(update walUpdate) error {
+	if update.Name != addPhysicalSectorUpdateName {
+		return fmt.Errorf("can't call applyAddStorageFolderUpdate on '%v' update", update.Name)
+	}
+	// Decode the instructions.
+	var id sectorID
+	var data []byte
+	var count uint16
+	err := encoding.UnmarshalAll(update.Instructions, &id, &data, &count)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal addAddPhysicalSectorUpdate instructions")
+	}
+	return cm.managedAddPhysicalSector(id, data, count)
+}
+
+// applyAddVirtualFolderUpdate applies an update which adds a storage folder to
+// the contract manager.
+func (cm *ContractManager) applyAddVirtualSectorUpdate(update walUpdate) error {
+	if update.Name != addVirtualSectorUpdateName {
+		return fmt.Errorf("can't call applyAddStorageFolderUpdate on '%v' update", update.Name)
+	}
+	// Decode the instructions.
+	var id sectorID
+	var location sectorLocation
+	err := encoding.UnmarshalAll(update.Instructions, &id, &location)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal addAddVirtualSectorUpdate instructions")
+	}
+	return cm.managedAddVirtualSector(id, location)
 }
 
 // loadWal loads the wal and applies any unfinished transactions to disk.
