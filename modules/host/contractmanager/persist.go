@@ -49,11 +49,20 @@ func (cm *ContractManager) initSettings() error {
 	fastrand.Read(cm.sectorSalt[:])
 
 	// Ensure that the initialized defaults have stuck.
+	err := cm.saveSettings()
+	if err != nil {
+		cm.log.Println("ERROR: unable to initialize settings file for contract manager:", err)
+		return errors.AddContext(err, "error saving contract manager after initialization")
+	}
+	return nil
+}
+
+// saveSettings saves the contract manager's settings to disk.
+func (cm *ContractManager) saveSettings() error {
 	ss := cm.savedSettings()
 	err := persist.SaveJSON(settingsMetadata, &ss, filepath.Join(cm.persistDir, settingsFile))
 	if err != nil {
-		cm.log.Println("ERROR: unable to initialize settings file for contract manager:", err)
-		return build.ExtendErr("error saving contract manager after initialization", err)
+		return errors.AddContext(err, "error saving contract manager")
 	}
 	return nil
 }

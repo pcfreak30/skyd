@@ -137,7 +137,8 @@ func (cm *ContractManager) applyUpdates(updates ...walUpdate) error {
 			return errors.AddContext(err, "applyUpdates:")
 		}
 	}
-	return nil
+	// Update settings after updates are applied.
+	return cm.saveSettings()
 }
 
 // createAndApplyTransaction will create a transaction from the provided updates
