@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -158,6 +159,15 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 
 	// Write the metadata file.
 	err = sf.metadataFile.Truncate(int64(sectorLookupSize))
+	if err != nil {
+		return err
+	}
+
+	// Sync changes.
+	err = errors.Compose(sf.sectorFile.Sync(), sf.metadataFile.Sync())
+	if err != nil {
+		return err
+	}
 
 	// The file creation process is essentially complete at this point, report
 	// complete progress.

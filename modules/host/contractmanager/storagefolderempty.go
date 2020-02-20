@@ -1,12 +1,12 @@
 package contractmanager
 
 import (
-	"errors"
 	"sync"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -99,7 +99,10 @@ func (cm *ContractManager) managedMoveSector(id sectorID) error {
 			}()
 
 			// Prepare writing the new sector to disk.
-			writeSectorUpdate := sectorDataUpdate(sf.sectorFile, sf.sectorFilePath, sectorIndex, sectorData)
+			err = writeSector(sf.sectorFile, sectorIndex, sectorData)
+			if err != nil {
+				return err
+			}
 
 			// Prepare writing the sector metadata to disk.
 			su := sectorUpdate{
@@ -108,10 +111,13 @@ func (cm *ContractManager) managedMoveSector(id sectorID) error {
 				Folder: sf.index,
 				Index:  sectorIndex,
 			}
-			writeSectorMetadataUpdate := sectorMetadataUpdate(sf, su)
+			err = writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+			if err != nil {
+				return err
+			}
 
-			// Apply changes.
-			err = cm.createAndApplyTransaction(writeSectorUpdate, writeSectorMetadataUpdate)
+			// Sync files.
+			err = errors.Compose(sf.sectorFile.Sync(), sf.metadataFile.Sync())
 			if err != nil {
 				return err
 			}

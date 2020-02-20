@@ -129,7 +129,6 @@ func (cm *ContractManager) managedGrowStorageFolder(index uint16, newSectorCount
 	// Extend the sector file and metadata file on disk.
 	atomic.StoreUint64(&sf.atomicProgressDenominator, uint64(housingWriteSize+metadataWriteSize))
 
-	var updates []walUpdate
 	stepCount := housingWriteSize / folderAllocationStepSize
 	for i := int64(0); i < stepCount; i++ {
 		err = sf.sectorFile.Truncate(currentHousingSize + (folderAllocationStepSize * (i + 1)))
@@ -148,11 +147,6 @@ func (cm *ContractManager) managedGrowStorageFolder(index uint16, newSectorCount
 	// Write the metadata file.
 	err = sf.metadataFile.Truncate(currentMetadataSize + metadataWriteSize)
 	if err != nil {
-		return err
-	}
-
-	// Apply the changes.
-	if err := cm.createAndApplyTransaction(updates...); err != nil {
 		return err
 	}
 
