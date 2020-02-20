@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -9,7 +8,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -377,7 +378,10 @@ func (api *API) storageFoldersAddHandler(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	err = api.host.AddStorageFolder(folderPath, folderSize)
-	if err != nil {
+	if errors.Contains(err, contractmanager.ErrRepeatFolder) {
+		WriteError(w, Error{contractmanager.ErrRepeatFolder.Error()}, http.StatusBadRequest)
+		return
+	} else if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
