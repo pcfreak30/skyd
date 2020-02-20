@@ -435,7 +435,10 @@ func (api *API) storageFoldersRemoveHandler(w http.ResponseWriter, req *http.Req
 
 	force := req.FormValue("force") == "true"
 	err = api.host.RemoveStorageFolder(uint16(folderIndex), force)
-	if err != nil {
+	if errors.Contains(err, contractmanager.ErrPartialRelocation) {
+		WriteError(w, Error{contractmanager.ErrPartialRelocation.Error()}, http.StatusBadRequest)
+		return
+	} else if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
