@@ -98,7 +98,7 @@ func (cm *ContractManager) managedAddPhysicalSector(id sectorID, data []byte, co
 			}()
 
 			// Prepare writing the new sector to disk.
-			err = writeSector(sf.sectorFile, sectorIndex, data)
+			err = cm.writeSector(sf, sectorIndex, data)
 			if err != nil {
 				return err
 			}
@@ -110,7 +110,7 @@ func (cm *ContractManager) managedAddPhysicalSector(id sectorID, data []byte, co
 				Folder: sf.index,
 				Index:  sectorIndex,
 			}
-			err = writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+			err = cm.writeSectorMetadata(sf, su)
 			if err != nil {
 				return err
 			}
@@ -184,7 +184,7 @@ func (cm *ContractManager) managedAddVirtualSector(id sectorID, location sectorL
 	// Update the metadata on disk. Metadata is updated on disk after the sync
 	// so that there is no risk of obliterating the previous count in the event
 	// that the change is not fully committed during unclean shutdown.
-	err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+	err := cm.writeSectorMetadata(sf, su)
 	if err != nil {
 		// Revert the sector update in the WAL to reflect the fact that adding
 		// the sector has failed.
@@ -227,7 +227,7 @@ func (cm *ContractManager) managedDeleteSector(id sectorID) error {
 			Index:  location.index,
 		}
 		// Inform the WAL of the sector update.
-		err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+		err := cm.writeSectorMetadata(sf, su)
 		if err != nil {
 			return err
 		}
@@ -287,7 +287,7 @@ func (cm *ContractManager) managedRemoveSector(id sectorID) error {
 			Folder: location.storageFolder,
 			Index:  location.index,
 		}
-		err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+		err := cm.writeSectorMetadata(sf, su)
 		if err != nil {
 			return err
 		}
@@ -330,6 +330,19 @@ func (cm *ContractManager) writeSectorMetadata(sf *storageFolder, su sectorUpdat
 	err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
 	if err != nil {
 		cm.log.Printf("ERROR: unable to write sector metadata to folder %v when adding sector: %v\n", su.Folder, err)
+		atomic.AddUint64(&sf.atomicFailedWrites, 1)
+		return err
+	}
+	atomic.AddUint64(&sf.atomicSuccessfulWrites, 1)
+	return nil
+}
+
+// writeSectorMetadata will take a sector update and write the related metadata
+// to disk.
+func (cm *ContractManager) writeSector(sf *storageFolder, sectorIndex uint32, data []byte) error {
+	err := writeSector(sf.sectorFile, sectorIndex, data)
+	if err != nil {
+		cm.log.Printf("ERROR: unable to write sector data to folder when adding sector: %v\n", err)
 		atomic.AddUint64(&sf.atomicFailedWrites, 1)
 		return err
 	}

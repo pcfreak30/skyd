@@ -98,7 +98,7 @@ func (cm *ContractManager) managedMoveSector(id sectorID) error {
 			}()
 
 			// Prepare writing the new sector to disk.
-			err = writeSector(sf.sectorFile, sectorIndex, sectorData)
+			err = cm.writeSector(sf, sectorIndex, sectorData)
 			if err != nil {
 				return err
 			}
@@ -110,7 +110,7 @@ func (cm *ContractManager) managedMoveSector(id sectorID) error {
 				Folder: sf.index,
 				Index:  sectorIndex,
 			}
-			err = writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+			err = cm.writeSectorMetadata(sf, su)
 			if err != nil {
 				return err
 			}
