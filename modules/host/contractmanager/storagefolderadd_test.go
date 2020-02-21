@@ -1,7 +1,6 @@
 package contractmanager
 
 import (
-	"errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestAddStorageFolder tries to add a storage folder to the contract manager,
@@ -479,7 +479,7 @@ func TestAddStorageFolderDoubleAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = cmt.cm.AddStorageFolder(storageFolderOne, sfSize*2)
-	if err != ErrRepeatFolder {
+	if !errors.Contains(err, ErrRepeatFolder) {
 		t.Fatal(err)
 	}
 
@@ -660,10 +660,6 @@ type dependencySFAddNoFinish struct {
 // soon as it is created.
 func (d *dependencySFAddNoFinish) Disrupt(s string) bool {
 	if s == "storageFolderAddFinish" {
-		return true
-	}
-	if s == "cleanWALFile" {
-		// Prevent the WAL file from being removed.
 		return true
 	}
 	return false

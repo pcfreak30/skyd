@@ -1,13 +1,13 @@
 package contractmanager
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestGrowStorageFolder checks that a storage folder can be successfully
@@ -349,9 +349,6 @@ func (*dependencyGrowNoFinalize) Disrupt(s string) bool {
 	if s == "incompleteGrowStorageFolder" {
 		return true
 	}
-	if s == "cleanWALFile" {
-		return true
-	}
 	return false
 }
 
@@ -397,7 +394,7 @@ func TestGrowStorageFolderShutdownAfterWrite(t *testing.T) {
 	// Increase the size of the storage folder, to large enough that it will
 	// fail.
 	err = cmt.cm.ResizeStorageFolder(sfIndex, modules.SectorSize*storageFolderGranularity*25, false)
-	if err != nil {
+	if !errors.Contains(err, errIncompleteGrowFolder) {
 		t.Fatal(err)
 	}
 
@@ -426,10 +423,10 @@ func TestGrowStorageFolderShutdownAfterWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uint64(mfi.Size()) != sectorMetadataDiskSize*storageFolderGranularity*3 {
+	if uint64(mfi.Size()) != sectorMetadataDiskSize*storageFolderGranularity*25 {
 		t.Error("metadata file is the wrong size:", mfi.Size(), sectorMetadataDiskSize*storageFolderGranularity*3)
 	}
-	if uint64(sfi.Size()) != modules.SectorSize*storageFolderGranularity*3 {
+	if uint64(sfi.Size()) != modules.SectorSize*storageFolderGranularity*25 {
 		t.Error("sector file is the wrong size:", sfi.Size(), modules.SectorSize*storageFolderGranularity*3)
 	}
 }
@@ -443,10 +440,6 @@ type dependencyLeaveWAL struct {
 
 // disrupt will prevent the WAL file from being removed at shutdown.
 func (dlw *dependencyLeaveWAL) Disrupt(s string) bool {
-	if s == "cleanWALFile" {
-		return true
-	}
-
 	dlw.mu.Lock()
 	triggered := dlw.triggered
 	dlw.mu.Unlock()

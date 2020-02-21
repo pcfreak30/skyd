@@ -57,19 +57,20 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 	}
 
 	// Block until the allowance has finished forming contracts.
-	err = build.Retry(50, time.Millisecond*250, func() error {
+	err = build.Retry(10, time.Second, func() error {
+		st.miner.AddBlock()
 		var rc RenterContracts
 		err = st.getAPI("/renter/contracts", &rc)
 		if err != nil {
 			return errors.New("couldn't get renter stats")
 		}
 		if len(rc.Contracts) != 1 {
-			return errors.New("no contracts")
+			return fmt.Errorf("expected 1 contract but got %v", len(rc.Contracts))
 		}
 		return nil
 	})
 	if err != nil {
-		t.Fatal("allowance setting failed")
+		t.Fatal("allowance setting failed", err)
 	}
 
 	filesize := int(1024)

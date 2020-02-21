@@ -9,64 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// findUnfinishedStorageFolderExtensions will scroll through a set of state
-// changes as pull out all of the storage folder extensions which have not yet
-// completed.
-//func findUnfinishedStorageFolderExtensions(scs []stateChange) []unfinishedStorageFolderExtension {
-//	// Use a map to figure out what unfinished storage folder extensions exist
-//	// and use it to remove the ones that have terminated.
-//	usfeMap := make(map[uint16]unfinishedStorageFolderExtension)
-//	for _, sc := range scs {
-//		for _, usfe := range sc.UnfinishedStorageFolderExtensions {
-//			usfeMap[usfe.Index] = usfe
-//		}
-//		for _, sfe := range sc.StorageFolderExtensions {
-//			delete(usfeMap, sfe.Index)
-//		}
-//		for _, index := range sc.ErroredStorageFolderExtensions {
-//			delete(usfeMap, index)
-//		}
-//		for _, sfr := range sc.StorageFolderRemovals {
-//			delete(usfeMap, sfr.Index)
-//		}
-//	}
-//
-//	// Return the active unifinished storage folder extensions as a slice.
-//	usfes := make([]unfinishedStorageFolderExtension, 0, len(usfeMap))
-//	for _, usfe := range usfeMap {
-//		usfes = append(usfes, usfe)
-//	}
-//	return usfes
-//}
-
-// cleanupUnfinishedStorageFolderExtensions will reset any unsuccessful storage
-// folder extensions from the previous run.
-//func (cm *ContractManager) cleanupUnfinishedStorageFolderExtensions(scs []stateChange) {
-//	usfes := findUnfinishedStorageFolderExtensions(scs)
-//	for _, usfe := range usfes {
-//		sf, exists := cm.storageFolders[usfe.Index]
-//		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
-//			cm.log.Critical("unfinished storage folder extension exists where the storage folder does not exist")
-//			continue
-//		}
-//
-//		// Truncate the files back to their original size.
-//		err := sf.metadataFile.Truncate(int64(len(sf.usage) * storageFolderGranularity * sectorMetadataDiskSize))
-//		if err != nil {
-//			cm.log.Printf("Error: unable to truncate metadata file as storage folder %v is resized\n", sf.path)
-//		}
-//		err = sf.sectorFile.Truncate(int64(modules.SectorSize * storageFolderGranularity * uint64(len(sf.usage))))
-//		if err != nil {
-//			cm.log.Printf("Error: unable to truncate sector file as storage folder %v is resized\n", sf.path)
-//		}
-//
-//		// Append an error call to the changeset, indicating that the storage
-//		// folder add was not completed successfully.
-//		wal.appendChange(stateChange{
-//			ErroredStorageFolderExtensions: []uint16{sf.index},
-//		})
-//	}
-//}
+var errIncompleteGrowFolder = errors.New("incompleteGrowStorageFolder")
 
 // commitStorageFolderExtension will apply a storage folder extension to the
 // state.
@@ -93,6 +36,12 @@ func (cm *ContractManager) managedGrowStorageFolder(index uint16, newSectorCount
 	cm.mu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		return errStorageFolderNotFound
+	}
+
+	// Simulate power failure at this point for some testing scenarios. The
+	// growth operation has been added to the WAL but was not yet executed.
+	if cm.dependencies.Disrupt("incompleteGrowStorageFolder") {
+		return errIncompleteGrowFolder
 	}
 
 	// Lock the storage folder for the duration of the operation.
@@ -179,11 +128,6 @@ func (cm *ContractManager) managedGrowStorageFolder(index uint16, newSectorCount
 		err = build.ComposeErrors(err1, err2)
 		cm.log.Println("cound not synchronize storage folder extensions:", err)
 		return build.ExtendErr("unable to synchronize storage folder extensions", err)
-	}
-
-	// Simulate power failure at this point for some testing scenarios.
-	if cm.dependencies.Disrupt("incompleteGrowStorageFolder") {
-		return nil
 	}
 
 	// Storage folder growth has completed successfully.

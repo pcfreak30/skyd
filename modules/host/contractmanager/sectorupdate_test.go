@@ -362,10 +362,6 @@ func (d *dependencyNoSettingsSave) Disrupt(s string) bool {
 		// WAL from being overwritten.
 		return true
 	}
-	if s == "cleanWALFile" {
-		// Prevent the WAL file from being removed.
-		return true
-	}
 	return false
 }
 

@@ -70,7 +70,6 @@ func (cm *ContractManager) managedMoveSector(id sectorID) error {
 				cm.mu.Unlock()
 				return errors.New(modules.V1420HostOutOfStorageErrString)
 			}
-			defer sf.mu.RUnlock()
 
 			// Grab a sector from the storage folder. WAL lock cannot be
 			// released between grabbing the storage folder and grabbing a

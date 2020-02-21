@@ -710,9 +710,6 @@ func (*dependencyShrinkNoFinalize) Disrupt(s string) bool {
 	if s == "incompleteShrinkStorageFolder" {
 		return true
 	}
-	if s == "cleanWALFile" {
-		return true
-	}
 	return false
 }
 
