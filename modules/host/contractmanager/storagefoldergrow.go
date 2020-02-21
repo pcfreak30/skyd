@@ -70,7 +70,9 @@ import (
 
 // commitStorageFolderExtension will apply a storage folder extension to the
 // state.
-func (cm *ContractManager) commitStorageFolderExtension(index uint16, newSectorCount uint32) {
+func (cm *ContractManager) managedCommitStorageFolderExtension(index uint16, newSectorCount uint32) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	sf, exists := cm.storageFolders[index]
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		cm.log.Critical("ERROR: storage folder extension provided for storage folder that does not exist")

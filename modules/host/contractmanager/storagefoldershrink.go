@@ -6,9 +6,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// commitStorageFolderReduction commits a storage folder reduction to the state
-// and filesystem.
-func (cm *ContractManager) commitStorageFolderReduction(index uint16, newSectorCount uint32) {
+// managedCommitStorageFolderReduction commits a storage folder reduction to the
+// state and filesystem.
+func (cm *ContractManager) managedCommitStorageFolderReduction(index uint16, newSectorCount uint32) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	sf, exists := cm.storageFolders[index]
 	if !exists {
 		cm.log.Critical("ERROR: storage folder reduction established for a storage folder that does not exist")

@@ -4,9 +4,11 @@ import (
 	"path/filepath"
 )
 
-// commitStorageFolderRemoval will finalize a storage folder removal from the
-// contract manager.
-func (cm *ContractManager) commitStorageFolderRemoval(index uint16, path string) {
+// managedCmmitStorageFolderRemoval will finalize a storage folder removal from
+// the contract manager.
+func (cm *ContractManager) managedCommitStorageFolderRemoval(index uint16, path string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	// Close any open file handles.
 	sf, exists := cm.storageFolders[index]
 	if exists {

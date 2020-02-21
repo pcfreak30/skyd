@@ -62,7 +62,7 @@ func addVirtualSectorUpate(id sectorID, location sectorLocation) walUpdate {
 	return walUpdate{
 		writeaheadlog.Update{
 			Name:         addVirtualSectorUpdateName,
-			Instructions: encoding.MarshalAll(id, location),
+			Instructions: encoding.MarshalAll(id, location.index, location.storageFolder, location.count),
 		},
 		nil,
 	}
@@ -232,7 +232,7 @@ func (cm *ContractManager) applyRemoveStorageFolderUpdate(update walUpdate) erro
 		return errors.AddContext(err, fmt.Sprintf("failed to empty storage folder at index %v", index))
 	}
 	// Commit the state.
-	cm.commitStorageFolderRemoval(index, path)
+	cm.managedCommitStorageFolderRemoval(index, path)
 	return nil
 }
 
@@ -258,7 +258,7 @@ func (cm *ContractManager) applyShrinkStorageFolderUpdate(update walUpdate) erro
 		return errors.AddContext(err, fmt.Sprintf("failed to shrink storage folder at index %v", index))
 	}
 	// Commit the change to the state.
-	cm.commitStorageFolderReduction(index, newSectorCount)
+	cm.managedCommitStorageFolderReduction(index, newSectorCount)
 	return nil
 }
 
@@ -283,7 +283,7 @@ func (cm *ContractManager) applyGrowStorageFolderUpdate(update walUpdate) error 
 		return errors.AddContext(err, fmt.Sprintf("failed to grow storage folder at index %v", index))
 	}
 	// Commit the change to the state.
-	cm.commitStorageFolderExtension(index, newSectorCount)
+	cm.managedCommitStorageFolderExtension(index, newSectorCount)
 	return nil
 }
 
@@ -343,7 +343,7 @@ func (cm *ContractManager) applyAddVirtualSectorUpdate(update walUpdate) error {
 	// Decode the instructions.
 	var id sectorID
 	var location sectorLocation
-	err := encoding.UnmarshalAll(update.Instructions, &id, &location)
+	err := encoding.UnmarshalAll(update.Instructions, &id, &location.index, &location.storageFolder, &location.count)
 	if err != nil {
 		return errors.AddContext(err, "failed to unmarshal addAddVirtualSectorUpdate instructions")
 	}
