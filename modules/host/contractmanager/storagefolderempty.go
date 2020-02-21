@@ -176,6 +176,10 @@ func (cm *ContractManager) managedEmptyStorageFolder(sfIndex uint16, startingPoi
 		return 0, errBadStorageFolderIndex
 	}
 
+	// Lock the storage folder for the duration of the operation.
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+
 	// Read the sector lookup bytes into memory; we'll need them to figure out
 	// what sectors are in which locations.
 	sectorLookupBytes, err := readFullMetadata(sf.metadataFile, len(sf.usage)*storageFolderGranularity)
