@@ -369,11 +369,13 @@ func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error 
 	cm.mu.Lock()
 	location, exists := cm.sectorLocations[id]
 	cm.mu.Unlock()
+	var update walUpdate
 	if exists {
-		err = cm.managedAddVirtualSector(id, location)
+		update = addVirtualSectorUpate(id, location)
 	} else {
-		err = cm.managedAddPhysicalSector(id, sectorData, 1)
+		update = addPhysicalSectorUpate(id, sectorData, 1)
 	}
+	err = cm.createAndApplyTransaction(update)
 	if err == errDiskTrouble {
 		cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
 	}
@@ -416,9 +418,11 @@ func (cm *ContractManager) AddSectorBatch(sectorRoots []crypto.Hash) error {
 				cm.mu.Lock()
 				location, exists := cm.sectorLocations[id]
 				cm.mu.Unlock()
+				var update walUpdate
 				if exists {
-					cm.managedAddVirtualSector(id, location)
+					update = addVirtualSectorUpate(id, location)
 				}
+				_ = cm.createAndApplyTransaction(update)
 			}(root)
 		}
 	}()

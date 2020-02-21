@@ -559,7 +559,7 @@ func TestFolderRechecker(t *testing.T) {
 		t.Error("Not enough failures reported for absent storage folder")
 	}
 	if sfs[0].Capacity != sfs[0].CapacityRemaining+modules.SectorSize {
-		t.Error("One sector's worth of capacity should be consumed:", sfs[0].Capacity, sfs[0].CapacityRemaining)
+		t.Error("One sector's worth of capacity should be consumed:", sfs[0].Capacity, sfs[0].CapacityRemaining+modules.SectorSize)
 	}
 
 	// Move the storage folder back to where the contract manager can see it.

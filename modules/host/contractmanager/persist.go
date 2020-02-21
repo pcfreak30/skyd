@@ -67,6 +67,13 @@ func (cm *ContractManager) saveSettings() error {
 	return nil
 }
 
+// managedSaveSettings saves the contract manager's settings to disk.
+func (cm *ContractManager) managedSaveSettings() error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	return cm.saveSettings()
+}
+
 // loadSettings will load the contract manager settings.
 func (cm *ContractManager) loadSettings() error {
 	var ss savedSettings

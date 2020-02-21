@@ -160,7 +160,7 @@ func (cm *ContractManager) applyUpdates(updates ...walUpdate) error {
 		}
 	}
 	// Update settings after updates are applied.
-	return cm.saveSettings()
+	return cm.managedSaveSettings()
 }
 
 // createAndApplyTransaction will create a transaction from the provided updates
