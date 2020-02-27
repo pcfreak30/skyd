@@ -2,7 +2,6 @@ package contractmanager
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -122,41 +121,4 @@ func (d *dependencyErroredStartup) Disrupt(s string) bool {
 		return true
 	}
 	return false
-}
-
-// TestNewContractManagerErroredStartup uses disruption to simulate an error
-// during startup, allowing the test to verify that the cleanup code ran
-// correctly.
-func TestNewContractManagerErroredStartup(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a new contract manager where the startup gets disrupted.
-	d := new(dependencyErroredStartup)
-	testdir := build.TempDir(modules.ContractManagerDir, "TestNewContractManagerErroredStartup")
-	cmd := filepath.Join(testdir, modules.ContractManagerDir)
-	_, err := newContractManager(d, cmd)
-	if err == nil || err.Error() != "startup disrupted" {
-		t.Fatal("expecting contract manager startup to be disrupted:", err)
-	}
-
-	// Verify that shutdown was triggered correctly - tmp files should be gone,
-	// WAL file should also be gone.
-	walFileName := filepath.Join(cmd, walFile)
-	walFileTmpName := filepath.Join(cmd, walFileTmp)
-	settingsFileTmpName := filepath.Join(cmd, settingsFileTmp)
-	_, err = os.Stat(walFileName)
-	if !os.IsNotExist(err) {
-		t.Error("file should have been removed:", err)
-	}
-	_, err = os.Stat(walFileTmpName)
-	if !os.IsNotExist(err) {
-		t.Error("file should have been removed:", err)
-	}
-	_, err = os.Stat(settingsFileTmpName)
-	if !os.IsNotExist(err) {
-		t.Error("file should have been removed:", err)
-	}
 }

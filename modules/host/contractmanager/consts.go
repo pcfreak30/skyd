@@ -31,20 +31,9 @@ const (
 	// manager's settings.
 	settingsFile = "contractmanager.json"
 
-	// settingsFileTmp is the name of the file that is used to hold unfinished
-	// writes to the contract manager's settings. After this file is completed,
-	// a copy-on-write operation is performed to make sure that the contract
-	// manager's persistent settings are updated atomically.
-	settingsFileTmp = "contractmanager.json_temp"
-
 	// walFile is the name of the file that is used to save the write ahead log
 	// for the contract manager.
 	walFile = "contractmanager.wal"
-
-	// walFileTmp is used for incomplete writes to the WAL. Data could be
-	// interrupted by power outages, etc., and is therefore written to a
-	// temporary file before being atomically renamed to the correct name.
-	walFileTmp = "contractmanager.wal_temp"
 )
 
 const (
