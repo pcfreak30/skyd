@@ -255,11 +255,13 @@ func TestRemoveStorageFolderConcurrentAddSector(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		adderWG.Add(1)
 		go func() {
+			defer adderWG.Done()
 			for {
 				root, data := randSector()
 				err := cmt.cm.AddSector(root, data)
 				if err != nil {
 					t.Error(err)
+					return
 				}
 				sliceLock.Lock()
 				roots = append(roots, root)
@@ -269,7 +271,6 @@ func TestRemoveStorageFolderConcurrentAddSector(t *testing.T) {
 				// See if we are done.
 				select {
 				case <-adderTerminator:
-					adderWG.Done()
 					return
 				default:
 					continue

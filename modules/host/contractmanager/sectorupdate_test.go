@@ -357,11 +357,6 @@ func (d *dependencyNoSettingsSave) Disrupt(s string) bool {
 		// Prevent the settings file from being saved.
 		return true
 	}
-	if s == "walRename" && d.triggered {
-		// Prevent the WAL from being renamed, which will prevent the existing
-		// WAL from being overwritten.
-		return true
-	}
 	return false
 }
 
