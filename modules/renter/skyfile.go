@@ -481,6 +481,11 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 		return modules.Skylink{}, errors.AddContext(err, "failed to build the skylink")
 	}
 
+	// Don't do the upload during a dryrun.
+	if lup.DryRun {
+		return skylink, nil
+	}
+
 	// Upload the base sector.
 	err = r.managedUploadBaseSector(lup, baseSector, skylink)
 	if err != nil {

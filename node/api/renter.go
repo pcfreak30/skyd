@@ -1960,6 +1960,17 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
+	// Parse whether the upload is a dryrun.
+	var dryRun bool
+	dryRunStr := queryForm.Get("dryrun")
+	if dryRunStr != "" {
+		root, err = strconv.ParseBool(dryRunStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'dryrun' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Parse out the intended siapath.
 	var siaPath modules.SiaPath
 	siaPathStr := ps.ByName("siapath")
@@ -2057,6 +2068,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	lup := modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
 		Force:               force,
+		DryRun:              dryRun,
 		BaseChunkRedundancy: redundancy,
 		FileMetadata:        lfm,
 	}
