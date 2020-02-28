@@ -42,6 +42,7 @@ var (
 	skynetLsRecursive         bool   // List files of folder recursively.
 	skynetLsRoot              bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadRoot          bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadDryRun        bool   // Don't upload files to Skynet, just get the Skylink.
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
 
@@ -308,6 +309,7 @@ func main() {
 	root.AddCommand(skynetCmd)
 	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetDownloadCmd, skynetConvertCmd, skynetBlacklistCmd, skynetPinCmd, skynetUnpinCmd)
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetUploadCmd.Flags().BoolVar(&skynetUploadDryRun, "dry-run", false, "Dry-run doesn't upload files to Skynet, but will retturn Skylinks.")
 	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")

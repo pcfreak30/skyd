@@ -2522,6 +2522,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
 		Root:    skynetUploadRoot,
+		DryRun:  skynetUploadDryRun,
 
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: sourceName,

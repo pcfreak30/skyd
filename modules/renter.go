@@ -1100,6 +1100,10 @@ type SkyfileUploadParameters struct {
 	// from system root, or if the path should be from /var/skynet.
 	Root bool `json:"root"`
 
+	// DryRun disables uploading to Skynet but still returns the Skylink that
+	// would be produced if an upload was actually completed.
+	DryRun bool `json:"dryrun"`
+
 	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
 	// meaning that only the redundancy needs to be configured by the user.
 	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`

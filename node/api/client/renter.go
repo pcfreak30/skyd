@@ -822,6 +822,8 @@ func (c *Client) SkynetSkyfilePostCustom(lup modules.SkyfileUploadParameters, he
 	values.Set("basechunkredundancy", redundancyStr)
 	rootStr := fmt.Sprintf("%t", lup.Root)
 	values.Set("root", rootStr)
+	dryRunStr := fmt.Sprintf("%t", lup.DryRun)
+	values.Set("dryrun", dryRunStr)
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
