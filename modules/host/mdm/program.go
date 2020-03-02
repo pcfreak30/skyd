@@ -18,10 +18,6 @@ var (
 	// ErrInterrupted indicates that the program was interrupted during
 	// execution and couldn't finish.
 	ErrInterrupted = errors.New("execution of program was interrupted")
-
-	// ErrInsufficientBudget is the error returned if the remaining budget of a
-	// program is not sufficient to execute the next instruction.
-	ErrInsufficientBudget = errors.New("remaining budget is insufficient")
 )
 
 // programState contains some fields needed for the execution of instructions.
@@ -57,12 +53,26 @@ type Program struct {
 	staticData         *programData
 	staticProgramState *programState
 
-	remainingBudget types.Currency
+	staticBudget    types.Currency
+	executionCost   types.Currency
+	potentialRefund types.Currency // refund if the program isn't committed
+	usedMemory      uint64
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
 
 	tg *threadgroup.ThreadGroup
+}
+
+// outputFromError is a convenience function to wrap an error in an Output.
+func outputFromError(err error, cost, refund types.Currency) Output {
+	return Output{
+		output: output{
+			Error: err,
+		},
+		ExecutionCost:   cost,
+		PotentialRefund: refund,
+	}
 }
 
 // ExecuteProgram initializes a new program from a set of instructions and a
@@ -76,10 +86,10 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 			priceTable:  pt,
 			merkleRoots: so.SectorRoots(),
 		},
-		remainingBudget: budget,
-		staticData:      openProgramData(data, programDataLen),
-		so:              so,
-		tg:              &mdm.tg,
+		staticBudget: budget,
+		staticData:   openProgramData(data, programDataLen),
+		so:           so,
+		tg:           &mdm.tg,
 	}
 
 	// Convert the instructions.
@@ -89,6 +99,8 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		switch i.Specifier {
 		case modules.SpecifierAppend:
 			instruction, err = p.staticDecodeAppendInstruction(i)
+		case modules.SpecifierHasSector:
+			instruction, err = p.staticDecodeHasSectorInstruction(i)
 		case modules.SpecifierReadSector:
 			instruction, err = p.staticDecodeReadSectorInstruction(i)
 		default:
@@ -105,12 +117,11 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		err = errors.New("contract needs to be locked for a program with one or more write instructions")
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
-	// Make sure the budget covers the initial cost.
-	p.remainingBudget, err = subtractFromBudget(p.remainingBudget, modules.InitCost(pt, p.staticData.Len()))
+	// Increment the execution cost of the program.
+	err = p.addCost(modules.MDMInitCost(pt, p.staticData.Len()))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
-
 	// Execute all the instructions.
 	if err := p.tg.Add(); err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
@@ -131,31 +142,43 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
 func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) {
-	output := Output{
+	output := output{
 		NewSize:       fcSize,
 		NewMerkleRoot: fcRoot,
 	}
 	for _, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
-			p.outputChan <- outputFromError(ErrInterrupted)
+			p.outputChan <- outputFromError(ErrInterrupted, p.executionCost, p.potentialRefund)
 			break
 		default:
 		}
-		// Subtract the cost of the instruction before running it.
-		cost, err := i.Cost()
+		// Add the memory the next instruction is going to allocate to the
+		// total.
+		p.usedMemory += i.Memory()
+		memoryCost := MemoryCost(p.staticProgramState.priceTable, p.usedMemory, i.Time())
+		// Get the instruction cost and refund.
+		instructionCost, refund, err := i.Cost()
 		if err != nil {
-			p.outputChan <- outputFromError(err)
+			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
 			return
 		}
-		p.remainingBudget, err = subtractFromBudget(p.remainingBudget, cost)
+		cost := memoryCost.Add(instructionCost)
+		// Increment the cost.
+		err = p.addCost(cost)
 		if err != nil {
-			p.outputChan <- outputFromError(err)
+			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
 			return
 		}
+		// Add the instruction's potential refund to the total.
+		p.potentialRefund = p.potentialRefund.Add(refund)
 		// Execute next instruction.
 		output = i.Execute(output)
-		p.outputChan <- output
+		p.outputChan <- Output{
+			output:          output,
+			ExecutionCost:   p.executionCost,
+			PotentialRefund: p.potentialRefund,
+		}
 		// Abort if the last output contained an error.
 		if output.Error != nil {
 			break
@@ -166,9 +189,15 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 // managedFinalize commits the changes made by the program to disk. It should
 // only be called after the channel returned by Execute is closed.
 func (p *Program) managedFinalize() error {
+	// Compute the memory cost of finalizing the program.
+	memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * modules.MDMTimeCommit)
+	err := p.addCost(memoryCost)
+	if err != nil {
+		return err
+	}
 	// Commit the changes to the storage obligation.
 	ps := p.staticProgramState
-	err := p.so.Update(ps.merkleRoots, ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
+	err = p.so.Update(ps.merkleRoots, ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
 	if err != nil {
 		return err
 	}
@@ -186,11 +215,23 @@ func (p *Program) readOnly() bool {
 	return true
 }
 
+// addCost increases the cost of the program by 'cost'. If as a result the cost
+// becomes larger than the budget of the program, ErrMDMInsufficientBudget is
+// returned.
+func (p *Program) addCost(cost types.Currency) error {
+	newExecutionCost := p.executionCost.Add(cost)
+	if p.staticBudget.Cmp(newExecutionCost) < 0 {
+		return modules.ErrMDMInsufficientBudget
+	}
+	p.executionCost = newExecutionCost
+	return nil
+}
+
 // subtractFromBudget will subtract an amount of money from a budget. In case of
-// an underflow ErrInsufficientBudget and the unchanged budget are returned.
+// an underflow ErrMDMInsufficientBudget and the unchanged budget are returned.
 func subtractFromBudget(budget, toSub types.Currency) (types.Currency, error) {
 	if toSub.Cmp(budget) > 0 {
-		return budget, ErrInsufficientBudget
+		return budget, modules.ErrMDMInsufficientBudget
 	}
 	return budget.Sub(toSub), nil
 }

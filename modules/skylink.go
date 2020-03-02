@@ -121,16 +121,29 @@ func validateAndParseV1Bitfield(bitfield uint16) (offset uint64, fetchSize uint6
 	return offset, fetchSize, nil
 }
 
+// Bitfield returns the bitfield of a skylink.
+func (sl *Skylink) Bitfield() uint16 {
+	return sl.bitfield
+}
+
 // LoadString converts from a string and loads the result into sl.
 func (sl *Skylink) LoadString(s string) error {
-	// Trim any parameters that may exist after an ampersand. Eventually, it
+	// Trim any parameters that may exist after a question mark. Eventually, it
 	// will be possible to parse these separately as additional/optional
-	// arguments, for now anything after an ampersand is just ignored.
-	splits := strings.SplitN(s, "&", 2)
+	// arguments, for now anything after a question mark is just ignored.
+	splits := strings.SplitN(s, "?", 2)
 	// No need to check if there is an element returned by strings.SplitN, so
-	// long as the second arg is not-nil (in this case, '&'), SplitN cannot
+	// long as the second arg is not-nil (in this case, '?'), SplitN cannot
 	// return an empty slice.
 	base := splits[0]
+
+	// The base can still contain a path to a nested file within the siafile.
+	// This is however not part of the skylink and gets trimmed.
+	splits = strings.Split(base, "/")
+	if len(splits) > 1 {
+		base = splits[0]
+	}
+
 	// Input check, ensure that this string is the expected size.
 	if len(base) != encodedSkylinkSize {
 		return errors.New("not a skylink, skylinks are always 46 bytes")

@@ -47,6 +47,7 @@ type RPCPriceTable struct {
 	// Cost values specific to the Write instruction.
 	WriteBaseCost   types.Currency `json:"writebasecost"`
 	WriteLengthCost types.Currency `json:"writelengthcost"`
+	WriteStoreCost  types.Currency `json:"writestorecost"`
 }
 
 var (

@@ -81,6 +81,12 @@ func (h *Host) establishDefaults() error {
 	var pk crypto.PublicKey
 	msk := h.staticMux.PrivateKey()
 	mpk := h.staticMux.PublicKey()
+
+	// Sanity check that the mux's key are the same length as the host keys
+	// before copying them
+	if len(sk) != len(msk) || len(pk) != len(mpk) {
+		build.Critical("Expected the siamux keys to be of equal length as the host keys")
+	}
 	copy(sk[:], msk[:])
 	copy(pk[:], mpk[:])
 
@@ -162,7 +168,7 @@ func (h *Host) load() error {
 	// the most recent version, but older versions need to be updated to the
 	// more recent structures.
 	p := new(persistence)
-	err = h.dependencies.LoadFile(persistMetadata, p, filepath.Join(h.persistDir, settingsFile))
+	err = h.dependencies.LoadFile(modules.Hostv143PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
 	if err == nil {
 		// Copy in the persistence.
 		h.loadPersistObject(p)
@@ -173,16 +179,16 @@ func (h *Host) load() error {
 		// Attempt an upgrade from V112 to V120.
 		err = h.upgradeFromV112ToV120()
 		if err != nil {
-			h.log.Println("WARNING: v112 to v120 host upgrade failed, trying v120 to v130 next", err)
+			h.log.Println("WARNING: v112 to v120 host upgrade failed, trying v120 to v143 next", err)
 		}
-		// Then upgrade from V120 to V130.
-		err = h.upgradeFromV120ToV130()
+		// Then upgrade from V120 to V143.
+		err = h.upgradeFromV120ToV143()
 		if err != nil {
-			h.log.Println("WARNING: v120 to v130 host upgrade failed, nothing left to try", err)
+			h.log.Println("WARNING: v120 to v143 host upgrade failed, nothing left to try", err)
 			return err
 		}
 
-		h.log.Println("SUCCESS: successfully upgraded host to v130")
+		h.log.Println("SUCCESS: successfully upgraded host to v143")
 	} else {
 		return err
 	}
@@ -217,5 +223,5 @@ func (h *Host) load() error {
 
 // saveSync stores all of the persist data to disk and then syncs to disk.
 func (h *Host) saveSync() error {
-	return persist.SaveJSON(persistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
+	return persist.SaveJSON(modules.Hostv143PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
 }

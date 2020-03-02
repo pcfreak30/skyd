@@ -6,6 +6,8 @@ import (
 	"unicode/utf8"
 )
 
+// TODO: remove ShortSpecifier.
+
 const (
 	// SpecifierLen is the length in bytes of a Specifier.
 	SpecifierLen = 16
@@ -77,7 +79,7 @@ func (t Specifier) MarshalText() (text []byte, err error) {
 }
 
 // UnmarshalText implements the TextUnmarshaler interface
-func (t Specifier) UnmarshalText(text []byte) error {
+func (t *Specifier) UnmarshalText(text []byte) error {
 	// Note that we validate using SpecifierLen, in the case of short specifiers
 	// this validation won't error for short specifiers that are too long in
 	// size.

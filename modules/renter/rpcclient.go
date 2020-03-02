@@ -134,7 +134,8 @@ func (c *hostRPCClient) FundEphemeralAccount(pp modules.PaymentProvider, pt modu
 // the specified sector.
 func (c *hostRPCClient) DownloadSectorByRoot(pp modules.PaymentProvider, pt modules.RPCPriceTable, offset, length uint64, sectorRoot crypto.Hash, merkleProof bool, fcid types.FileContractID) ([]byte, error) {
 	// create mdm program
-	programPrice := modules.ReadCost(pt, length)
+	// TODO handle refund
+	programPrice, _ := modules.MDMReadCost(pt, length)
 	instructions, programData := mdm.NewReadSectorProgram(length, offset, sectorRoot, merkleProof)
 
 	// get a stream

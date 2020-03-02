@@ -1,7 +1,6 @@
 package mdm
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"testing"
@@ -19,7 +18,7 @@ func TestNewEmptyProgram(t *testing.T) {
 	var r io.Reader
 	// Execute the program.
 	pt := newTestPriceTable()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, modules.InitCost(pt, 0), newTestStorageObligation(true), 0, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, modules.MDMInitCost(pt, 0), newTestStorageObligation(true), 0, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +45,7 @@ func TestNewEmptyProgramLowBudget(t *testing.T) {
 	// Execute the program.
 	pt := newTestPriceTable()
 	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, types.ZeroCurrency, newTestStorageObligation(true), 0, r)
-	if !errors.Contains(err, ErrInsufficientBudget) {
+	if !errors.Contains(err, modules.ErrMDMInsufficientBudget) {
 		t.Fatal("missing error")
 	}
 	if err == nil {
@@ -61,14 +60,11 @@ func TestNewProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 
 	// Create instruction.
-	instructions, programData := NewReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, false)
-	r := bytes.NewReader(programData)
-	dataLen := uint64(len(programData))
-
+	pt := newTestPriceTable()
+	instructions, r, dataLen, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
-	pt := newTestPriceTable()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.InitCost(pt, dataLen), newTestStorageObligation(true), dataLen, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.MDMInitCost(pt, dataLen), newTestStorageObligation(true), dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +72,7 @@ func TestNewProgramLowBudget(t *testing.T) {
 	numOutputs := 0
 	numInsufficientBudgetErrs := 0
 	for output := range outputs {
-		if err := output.Error; errors.Contains(err, ErrInsufficientBudget) {
+		if err := output.Error; errors.Contains(err, modules.ErrMDMInsufficientBudget) {
 			numInsufficientBudgetErrs++
 		} else if err != nil {
 			t.Fatal(err)

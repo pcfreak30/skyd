@@ -106,13 +106,6 @@ var (
 	errNilGateway = errors.New("host cannot use nil gateway")
 	errNilSiaMux  = errors.New("host cannot use nil siamux")
 
-	// persistMetadata is the header that gets written to the persist file, and
-	// is used to recognize other persist files.
-	persistMetadata = persist.Metadata{
-		Header:  "Sia Host",
-		Version: "1.3.0",
-	}
-
 	// updatePriceTableFrequency is the frequency with which we update the
 	// host's RPC price table
 	updatePriceTableFrequency = build.Select(build.Var{

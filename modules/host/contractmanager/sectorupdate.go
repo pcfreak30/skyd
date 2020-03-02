@@ -366,6 +366,22 @@ func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate
 	return nil
 }
 
+// HasSector will returns whether or not the sector exists in the contract
+// manager.
+func (cm *ContractManager) HasSector(sectorRoot crypto.Hash) bool {
+	// Acquire a lock
+	id := cm.managedSectorID(sectorRoot)
+	cm.wal.managedLockSector(id)
+	defer cm.wal.managedUnlockSector(id)
+
+	// Check if the sector exists
+	cm.wal.mu.Lock()
+	_, exists := cm.sectorLocations[id]
+	cm.wal.mu.Unlock()
+
+	return exists
+}
+
 // AddSector will add a sector to the contract manager.
 func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error {
 	var registerHostDiskTrouble bool
