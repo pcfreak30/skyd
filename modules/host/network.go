@@ -375,7 +375,7 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	// of identification, except for when it is updating its price table
 	var pt *modules.RPCPriceTable
 	if rpcID != modules.RPCUpdatePriceTable {
-		var ptID types.ShortSpecifier
+		var ptID types.Specifier
 		err = modules.RPCRead(stream, &ptID)
 		if err != nil {
 			modules.RPCWriteError(stream, errors.New("Failed to read price table UUID"))

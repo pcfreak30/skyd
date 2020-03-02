@@ -189,7 +189,7 @@ type Host struct {
 	// conditions specific to the RPC in question. Examples of such conditions
 	// are congestion, load, liquidity, etc.
 	priceTable       *modules.RPCPriceTable
-	uuidToPriceTable map[types.ShortSpecifier]*modules.RPCPriceTable
+	uuidToPriceTable map[types.Specifier]*modules.RPCPriceTable
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -318,9 +318,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
-		uuidToPriceTable:         make(map[types.ShortSpecifier]*modules.RPCPriceTable),
+		uuidToPriceTable:         make(map[types.Specifier]*modules.RPCPriceTable),
 
-		persistDir:     persistDir,
+		persistDir: persistDir,
 	}
 	h.staticMDM = mdm.New(h)
 
