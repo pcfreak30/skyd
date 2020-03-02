@@ -64,7 +64,6 @@ package host
 // TODO: update_test.go has commented out tests.
 
 import (
-	"container/heap"
 	"errors"
 	"fmt"
 	"net"
@@ -190,7 +189,6 @@ type Host struct {
 	// conditions specific to the RPC in question. Examples of such conditions
 	// are congestion, load, liquidity, etc.
 	priceTable       *modules.RPCPriceTable
-	priceTableHeap   priceTableHeap
 	uuidToPriceTable map[types.ShortSpecifier]*modules.RPCPriceTable
 
 	// Misc state.
@@ -202,24 +200,6 @@ type Host struct {
 	persistDir    string
 	port          string
 	tg            siasync.ThreadGroup
-}
-
-type priceTableHeap []*modules.RPCPriceTable
-
-// Implementation of heap.Interface for priceTableHeap.
-func (pth priceTableHeap) Len() int           { return len(pth) }
-func (pth priceTableHeap) Less(i, j int) bool { return pth[i].Expiry < pth[j].Expiry }
-func (pth priceTableHeap) Swap(i, j int)      { pth[i], pth[j] = pth[j], pth[i] }
-func (pth *priceTableHeap) Push(x interface{}) {
-	rpt := x.(modules.RPCPriceTable)
-	*pth = append(*pth, &rpt)
-}
-func (pth *priceTableHeap) Pop() interface{} {
-	old := *pth
-	n := len(old)
-	pt := old[n-1]
-	*pth = old[0 : n-1]
-	return pt
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -303,22 +283,6 @@ func (h *Host) managedUpdatePriceTable() {
 	h.mu.Lock()
 	h.priceTable = &priceTable
 	h.mu.Unlock()
-
-	// TODO: has bug - expires immediately
-	// oldest := heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
-	// for {
-	// 	if oldest.Expiry < time.Now().Unix() {
-	// 		heap.Push(&h.priceTableHeap, oldest)
-	// 		break
-	// 	}
-
-	// 	fmt.Println("DELETING")
-	// 	delete(h.uuidToPriceTable, oldest.UUID)
-	// 	if h.priceTableHeap.Len() == 0 {
-	// 		return
-	// 	}
-	// 	oldest = heap.Pop(&h.priceTableHeap).(*modules.RPCPriceTable)
-	// }
 }
 
 // newHost returns an initialized Host, taking a set of dependencies as input.
@@ -356,11 +320,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 		uuidToPriceTable:         make(map[types.ShortSpecifier]*modules.RPCPriceTable),
 
-		priceTableHeap: make(priceTableHeap, 0),
 		persistDir:     persistDir,
 	}
 	h.staticMDM = mdm.New(h)
-	heap.Init(&h.priceTableHeap)
 
 	// Call stop in the event of a partial startup.
 	var err error
