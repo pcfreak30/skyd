@@ -22,6 +22,7 @@ README files should be reviewed.
  - Proto
  - SiaDir
  - SiaFile
+ - Skynet Blacklist
 
 ### Contractor
 The Contractor manages the Renter's contracts and is responsible for all
@@ -51,6 +52,11 @@ The SiaFile module is the code that defines what a file is on the Sia network.
 It also manages accesses and updates to the file, ensuring safety and ACIDity
 when performing file operations.
 
+### Skynet Blacklist
+The Skynet Blacklist module manages the list of skylinks that the Renter wants
+blacklisted. It also manages persisting the blacklist in a ACID and performant
+manner.
+
 ## Subsystems
 The Renter has the following subsystems that help carry out its
 responsibilities.
@@ -63,7 +69,7 @@ responsibilities.
  - [Download Subsystem](#download-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
  - [Download By Root Subsystem](#download-by-root-subsystem)
- - [Linkfile Subsystem](#linkfile-subsystem)
+ - [Skyfile Subsystem](#skyfile-subsystem)
  - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
@@ -406,26 +412,26 @@ price and total throughput.
 *TODO* 
   - fill out subsystem explanation
 
-### Linkfile Subsystem
+### Skyfile Subsystem
 **Key Files**
- - [linkfile.go](./linkfile.go)
- - [linkfilefanout.go](./linkfilefanout.go)
- - [linkfilefanoutfetch.go](./linkfilefanoutfetch.go)
+ - [skyfile.go](./skyfile.go)
+ - [skyfilefanout.go](./skyfilefanout.go)
+ - [skyfilefanoutfetch.go](./skyfilefanoutfetch.go)
 
-The linkfile system contains methods for encoding, decoding, uploading, and
-downloading linkfiles using Sialinks, and is one of the foundations underpinning
+The skyfile system contains methods for encoding, decoding, uploading, and
+downloading skyfiles using Skylinks, and is one of the foundations underpinning
 Skynet.
 
-The linkfile format is a custom format which prepends metadata to a file such
+The skyfile format is a custom format which prepends metadata to a file such
 that the entire file and all associated metadata can be recovered knowing
 nothing more than a single sector root. That single sector root can be encoded
 alongside some compressed fetch offset and length information to create a
-sialink.
+skylink.
 
 **Outbound Complexities**
  - callUploadStreamFromReader is used to upload new data to the Sia network when
-   creating linkfiles. This call appears three times in
-   [linkfile.go](./linkfile.go)
+   creating skyfiles. This call appears three times in
+   [skyfile.go](./skyfile.go)
 
 ### Stream Buffer Subsystem
 **Key Files**
@@ -485,10 +491,10 @@ download or partially download a sector from the Sia network knowing only the
 Merkle root of that sector, and not necessarily knowing which host on the
 network has that sector. The single exported method is 'DownloadByRoot'.
 
-This subsystem was created primarily as a facilitator for the sialinks of
-Skynet. Sialinks provide a merkle root and some offset+length information, but
+This subsystem was created primarily as a facilitator for the skylinks of
+Skynet. Skylinks provide a merkle root and some offset+length information, but
 do not provide any information about which hosts are storing the sectors. The
-exported method of this subsystem will primarily be called by sialink methods,
+exported method of this subsystem will primarily be called by skylink methods,
 as opposed to being used directly by external users.
 
 ### Upload Streaming Subsystem
@@ -499,8 +505,8 @@ as opposed to being used directly by external users.
   - fill out subsystem explanation
 
 **Inbound Complexities**
- - The linkfile subsystem makes three calls to `callUploadStreamFromReader()` in
-   [linkfile.go](./linkfile.go)
+ - The skyfile subsystem makes three calls to `callUploadStreamFromReader()` in
+   [skyfile.go](./skyfile.go)
  - The snapshot subsystem makes a call to `callUploadStreamFromReader()`
 
 ### Health and Repair Subsystem

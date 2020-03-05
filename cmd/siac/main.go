@@ -26,6 +26,7 @@ var (
 	initForce                 bool   // destroy and re-encrypt the wallet on init if it already exists
 	initPassword              bool   // supply a custom password when creating a wallet
 	renterAllContracts        bool   // Show all active and expired contracts
+	renterDeleteRoot          bool   // Delete path start from root instead of the user homedir.
 	renterDownloadAsync       bool   // Downloads files asynchronously
 	renterDownloadRecursive   bool   // Downloads folders recursively.
 	renterFuseMountAllowOther bool   // Mount fuse with 'AllowOther' set to true.
@@ -35,6 +36,8 @@ var (
 	renterShowHistory         bool   // Show download history in addition to download queue.
 	renterVerbose             bool   // Show additional info about the renter
 	siaDir                    string // Path to sia data dir
+	skynetBlacklistRemove     bool   // Remove a skylink from the Skynet Blacklist.
+	skynetUnpinRoot           bool   // Use root as the base instead of the Skynet folder.
 	skynetDownloadPortal      string // Portal to use when trying to download a skylink.
 	skynetLsRecursive         bool   // List files of folder recursively.
 	skynetLsRoot              bool   // Use root as the base instead of the Skynet folder.
@@ -42,20 +45,24 @@ var (
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
 
-	allowanceFunds                     string // amount of money to be used within a period
-	allowancePeriod                    string // length of period
-	allowanceHosts                     string // number of hosts to form contracts with
-	allowanceRenewWindow               string // renew window of allowance
-	allowanceExpectedStorage           string // expected storage stored on hosts before redundancy
-	allowanceExpectedUpload            string // expected data uploaded within period
-	allowanceExpectedDownload          string // expected data downloaded within period
-	allowanceExpectedRedundancy        string // expected redundancy of most uploaded files
-	allowanceMaxRPCPrice               string // maximum allowed base price for RPCs
-	allowanceMaxContractPrice          string // maximum allowed price to form a contract
-	allowanceMaxDownloadBandwidthPrice string // max allowed price to download data from a host
-	allowanceMaxSectorAccessPrice      string // max allowed price to access a sector on a host
-	allowanceMaxStoragePrice           string // max allowed price to store data on a host
-	allowanceMaxUploadBandwidthPrice   string // max allowed price to upload data to a host
+	dataPieces   string // the number of data pieces a files should be uploaded with
+	parityPieces string // the number of parity pieces a files should be uploaded with
+
+	allowanceFunds                         string // amount of money to be used within a period
+	allowancePeriod                        string // length of period
+	allowanceHosts                         string // number of hosts to form contracts with
+	allowanceRenewWindow                   string // renew window of allowance
+	allowancePaymentContractInitialFunding string // initial price to pay to create a payment contract
+	allowanceExpectedStorage               string // expected storage stored on hosts before redundancy
+	allowanceExpectedUpload                string // expected data uploaded within period
+	allowanceExpectedDownload              string // expected data downloaded within period
+	allowanceExpectedRedundancy            string // expected redundancy of most uploaded files
+	allowanceMaxRPCPrice                   string // maximum allowed base price for RPCs
+	allowanceMaxContractPrice              string // maximum allowed price to form a contract
+	allowanceMaxDownloadBandwidthPrice     string // max allowed price to download data from a host
+	allowanceMaxSectorAccessPrice          string // max allowed price to access a sector on a host
+	allowanceMaxStoragePrice               string // max allowed price to store data on a host
+	allowanceMaxUploadBandwidthPrice       string // max allowed price to upload data to a host
 )
 
 var (
@@ -269,17 +276,21 @@ func main() {
 	renterCmd.Flags().BoolVarP(&renterVerbose, "verbose", "v", false, "Show additional renter info such as allowance details")
 	renterContractsCmd.Flags().BoolVarP(&renterAllContracts, "all", "A", false, "Show all expired contracts in addition to active contracts")
 	renterDownloadsCmd.Flags().BoolVarP(&renterShowHistory, "history", "H", false, "Show download history in addition to the download queue")
+	renterFilesDeleteCmd.Flags().BoolVar(&renterDeleteRoot, "root", false, "Delete files and folders from root instead of from the user home directory")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadAsync, "async", "A", false, "Download file asynchronously")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadRecursive, "recursive", "R", false, "Download folder recursively")
 	renterFilesListCmd.Flags().BoolVarP(&renterListVerbose, "verbose", "v", false, "Show additional file info such as redundancy")
 	renterFilesListCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
 	renterFilesListCmd.Flags().BoolVar(&renterListRoot, "root", false, "List files and folders from root instead of from the user home directory")
+	renterFilesUploadCmd.Flags().StringVar(&dataPieces, "data-pieces", "", "the number of data pieces a files should be uploaded with")
+	renterFilesUploadCmd.Flags().StringVar(&parityPieces, "parity-pieces", "", "the number of parity pieces a files should be uploaded with")
 	renterExportCmd.AddCommand(renterExportContractTxnsCmd)
 
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceFunds, "amount", "", "amount of money in allowance, specified in currency units")
 	renterSetAllowanceCmd.Flags().StringVar(&allowancePeriod, "period", "", "period of allowance in blocks (b), hours (h), days (d) or weeks (w)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceHosts, "hosts", "", "number of hosts the renter will spread the uploaded data across")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceRenewWindow, "renew-window", "", "renew window in blocks (b), hours (h), days (d) or weeks (w)")
+	renterSetAllowanceCmd.Flags().StringVar(&allowancePaymentContractInitialFunding, "payment-contract-initial-funding", "", "Setting this will cause the renter to form payment contracts, making it a Skynet portal.")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedStorage, "expected-storage", "", "expected storage in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
@@ -295,11 +306,13 @@ func main() {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetDownloadCmd, skynetConvertCmd)
+	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetDownloadCmd, skynetConvertCmd, skynetBlacklistCmd, skynetPinCmd, skynetUnpinCmd)
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetBlacklistCmd.Flags().BoolVar(&skynetBlacklistRemove, "remove", false, "Remove the skylink from the blacklist")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
@@ -318,7 +331,7 @@ func main() {
 	// initialize client
 	root.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
 	root.PersistentFlags().StringVarP(&httpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
-	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", build.DefaultSiaDir(), "location of the sia directory")
+	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
 	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
 	// Check if the api password environment variable is set.
@@ -326,6 +339,16 @@ func main() {
 	if apiPassword != "" {
 		httpClient.Password = apiPassword
 		fmt.Println("Using SIA_API_PASSWORD environment variable")
+	}
+
+	// If siaDir is not set, use the environment variable provided.
+	if siaDir == "" {
+		siaDir = os.Getenv("SIA_DATA_DIR")
+		if siaDir != "" {
+			fmt.Println("Using SIA_DATA_DIR environment variable")
+		} else {
+			siaDir = build.DefaultSiaDir()
+		}
 	}
 
 	// If the API password wasn't set we try to read it from the file. This must

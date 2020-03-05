@@ -113,14 +113,23 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+
+	// create a siamux
+	testdir := build.TempDir("contractor", t.Name())
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// create testing trio
-	_, c, m, err := newTestingTrio(t.Name())
+	h, c, m, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// this test requires two hosts: create another one
-	h, err := newTestingHost(build.TempDir("hostdata", ""), c.cs.(modules.ConsensusSet), c.tpool.(modules.TransactionPool))
+	h, err = newTestingHost(build.TempDir("hostdata", ""), c.cs.(modules.ConsensusSet), c.tpool.(modules.TransactionPool), mux)
 	if err != nil {
 		t.Fatal(err)
 	}

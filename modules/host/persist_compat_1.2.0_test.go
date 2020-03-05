@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -20,35 +22,63 @@ const (
 	v112Host = "v112Host.tar.gz"
 )
 
-// loadExistingHostWithNewDeps will create all of the dependencies for a host, then load
-// the host on top of the given directory.
-func loadExistingHostWithNewDeps(modulesDir, hostDir string) (modules.Host, error) {
-	testdir := build.TempDir(modules.HostDir, modulesDir)
-
-	// Create the host dependencies.
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+// loadExistingHostWithNewDeps will create all of the dependencies for a host,
+// then load the host on top of the given directory.
+func loadExistingHostWithNewDeps(modulesDir, siaMuxDir, hostDir string) (modules.Host, error) {
+	// Create the siamux
+	mux, err := modules.NewSiaMux(siaMuxDir, modulesDir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+
+	// Create the host dependencies.
+	g, err := gateway.New("localhost:0", false, filepath.Join(modulesDir, modules.GatewayDir))
+	if err != nil {
+		return nil, err
+	}
+	cs, errChan := consensus.New(g, false, filepath.Join(modulesDir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(modulesDir, modules.TransactionPoolDir))
 	if err != nil {
 		return nil, err
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
+	w, err := wallet.New(cs, tp, filepath.Join(modulesDir, modules.WalletDir))
 	if err != nil {
 		return nil, err
 	}
 
 	// Create the host.
-	h, err := NewCustomHost(modules.ProdDependencies, cs, g, tp, w, "localhost:0", hostDir)
+	h, err := NewCustomHost(modules.ProdDependencies, cs, g, tp, w, mux, "localhost:0", hostDir)
 	if err != nil {
 		return nil, err
 	}
+
+	pubKey := mux.PublicKey()
+	if !bytes.Equal(h.publicKey.Key, pubKey[:]) {
+		return nil, errors.New("host and siamux pubkeys don't match")
+	}
+	privKey := mux.PrivateKey()
+	if !bytes.Equal(h.secretKey[:], privKey[:]) {
+		return nil, errors.New("host and siamux privkeys don't match")
+	}
 	return h, nil
+}
+
+// loadHostPersistenceFile will copy the host's persistence file from the old
+// location to the new location.
+func loadHostPersistenceFile(oldPath, newPath, newDir string) error {
+	err := os.MkdirAll(newDir, 0700)
+	if err != nil {
+		return err
+	}
+
+	err = os.Symlink(oldPath, newPath)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // TestV112StorageManagerUpgrade creates a host with a legacy storage manager,
@@ -93,9 +123,21 @@ func TestV112StorageManagerUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	testDir := filepath.Join(t.Name(), "newDeps")
+	modulesDir := build.TempDir(modules.HostDir, testDir)
+
+	// Copy over the host persistence file to the appropriate location, this
+	// ensures the siamux picks this up and triggers its compatibility flow for
+	// v112 as well.
+	src := filepath.Join(legacyHost, settingsFile)
+	dst := filepath.Join(modulesDir, modules.HostDir, settingsFile)
+	dstDir := filepath.Join(modulesDir, modules.HostDir)
+	loadHostPersistenceFile(src, dst, dstDir)
+
 	// Patching complete. Proceed to create the host and verify that the
 	// upgrade went smoothly.
-	host, err := loadExistingHostWithNewDeps(filepath.Join(t.Name(), "newDeps"), legacyHost)
+	siaMuxDir := filepath.Join(modulesDir, modules.SiaMuxDir)
+	host, err := loadExistingHostWithNewDeps(modulesDir, siaMuxDir, legacyHost)
 	if err != nil {
 		t.Fatal(err)
 	}

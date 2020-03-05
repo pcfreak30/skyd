@@ -1,8 +1,10 @@
 package modules
 
-import "gitlab.com/NebulousLabs/Sia/types"
+import (
+	"encoding/binary"
 
-import "encoding/binary"
+	"gitlab.com/NebulousLabs/Sia/types"
+)
 
 type (
 	// Instruction specifies a generic instruction used as an input to
@@ -15,12 +17,36 @@ type (
 	InstructionSpecifier types.Specifier
 )
 
+// MDM instruction cost component specifiers
+var (
+	MDMComponentCompute    = types.NewSpecifier("Compute")
+	MDMComponentMemory     = types.NewSpecifier("Memory")
+	MDMOperationDiskAccess = types.NewSpecifier("DiskAccess")
+	MDMOperationDiskRead   = types.NewSpecifier("DiskRead")
+	MDMOperationDiskWrite  = types.NewSpecifier("DiskWrite")
+)
+
 const (
-	// RPCIReadSectorLen is the expected length of the 'Args' of an Instruction.
+	// RPCIHasSectorLen is the expected length of the 'Args' of a HasSector
+	// instruction.
+	RPCIHasSectorLen = 8
+
+	// RPCIReadSectorLen is the expected length of the 'Args' of a ReadSector
+	// instruction.
 	RPCIReadSectorLen = 25
+
+	// RPCIAppendLen is the expected length of the 'Args' of an Append
+	// instructon.
+	RPCIAppendLen = 9
 )
 
 var (
+	// SpecifierAppend is the specifier for the Append RPC.
+	SpecifierAppend = InstructionSpecifier{'A', 'p', 'p', 'e', 'n', 'd'}
+
+	// SpecifierHasSector is the specifier for the ReadSector RPC.
+	SpecifierHasSector = InstructionSpecifier{'H', 'a', 's', 'S', 'e', 'c', 't', 'o', 'r'}
+
 	// SpecifierReadSector is the specifier for the ReadSector RPC.
 	SpecifierReadSector = InstructionSpecifier{'R', 'e', 'a', 'd', 'S', 'e', 'c', 't', 'o', 'r'}
 )

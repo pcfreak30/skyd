@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -21,17 +22,17 @@ type instructionReadSector struct {
 
 // NewReadSectorInstruction creates a modules.Instruction from arguments.
 func NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset uint64, merkleProof bool) modules.Instruction {
-	rsi := modules.Instruction{
+	i := modules.Instruction{
 		Specifier: modules.SpecifierReadSector,
 		Args:      make([]byte, modules.RPCIReadSectorLen),
 	}
-	binary.LittleEndian.PutUint64(rsi.Args[:8], merkleRootOffset)
-	binary.LittleEndian.PutUint64(rsi.Args[8:16], offsetOffset)
-	binary.LittleEndian.PutUint64(rsi.Args[16:24], lengthOffset)
+	binary.LittleEndian.PutUint64(i.Args[:8], merkleRootOffset)
+	binary.LittleEndian.PutUint64(i.Args[8:16], offsetOffset)
+	binary.LittleEndian.PutUint64(i.Args[16:24], lengthOffset)
 	if merkleProof {
-		rsi.Args[24] = 1
+		i.Args[24] = 1
 	}
-	return rsi
+	return i
 }
 
 // staticDecodeReadSectorInstruction creates a new 'ReadSector' instruction from the
@@ -53,10 +54,9 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 	lengthOffset := binary.LittleEndian.Uint64(instruction.Args[16:24])
 	return &instructionReadSector{
 		commonInstruction: commonInstruction{
-			staticContractSize: p.finalContractSize,
-			staticData:         p.staticData,
-			staticMerkleProof:  instruction.Args[24] == 1,
-			staticState:        p.staticProgramState,
+			staticData:        p.staticData,
+			staticMerkleProof: instruction.Args[24] == 1,
+			staticState:       p.staticProgramState,
 		},
 		lengthOffset:     lengthOffset,
 		merkleRootOffset: rootOffset,
@@ -64,32 +64,22 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 	}, nil
 }
 
-// Cost returns the cost of executing this instruction.
-func (i *instructionReadSector) Cost() Cost {
-	return ReadSectorCost()
-}
-
 // Execute executes the 'Read' instruction.
-func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
-	// Subtract cost from budget beforehand.
-	var err error
-	i.staticState.remainingBudget, err = i.staticState.remainingBudget.Sub(ReadSectorCost())
-	if err != nil {
-		return outputFromError(err)
-	}
+func (i *instructionReadSector) Execute(previousOutput output) output {
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 	offset, err := i.staticData.Uint64(i.offsetOffset)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 	sectorRoot, err := i.staticData.Hash(i.merkleRootOffset)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
+
 	// Validate the request.
 	switch {
 	case offset+length > modules.SectorSize:
@@ -100,15 +90,15 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 		err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
 	}
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 
-	// Fetch the requested data.
-	sectorData, err := i.staticState.host.ReadSector(sectorRoot)
+	ps := i.staticState
+	sectorData, err := ps.sectors.readSector(ps.host, sectorRoot)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
-	data := sectorData[offset : offset+length]
+	readData := sectorData[offset : offset+length]
 
 	// Construct the Merkle proof, if requested.
 	var proof []crypto.Hash
@@ -119,15 +109,36 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 	}
 
 	// Return the output.
-	return Output{
-		NewSize:       i.staticContractSize, // size stays the same
-		NewMerkleRoot: fcRoot,               // root stays the same
-		Output:        data,
+	return output{
+		NewSize:       previousOutput.NewSize,       // size stays the same
+		NewMerkleRoot: previousOutput.NewMerkleRoot, // root stays the same
+		Output:        readData,
 		Proof:         proof,
 	}
+}
+
+// Cost returns the cost of a ReadSector instruction.
+func (i *instructionReadSector) Cost() (types.Currency, types.Currency, error) {
+	length, err := i.staticData.Uint64(i.lengthOffset)
+	if err != nil {
+		return types.ZeroCurrency, types.ZeroCurrency, err
+	}
+	cost, refund := ReadCost(i.staticState.priceTable, length)
+	return cost, refund, nil
+}
+
+// Memory returns the memory allocated by the 'ReadSector' instruction beyond
+// the lifetime of the instruction.
+func (i *instructionReadSector) Memory() uint64 {
+	return ReadMemory()
 }
 
 // ReadOnly for the 'ReadSector' instruction is 'true'.
 func (i *instructionReadSector) ReadOnly() bool {
 	return true
+}
+
+// Time returns the execution time of a 'ReadSector' instruction.
+func (i *instructionReadSector) Time() uint64 {
+	return TimeReadSector
 }

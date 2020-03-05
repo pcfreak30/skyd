@@ -10,13 +10,13 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // newReadSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash) ([]modules.Instruction, io.Reader, uint64) {
+func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, io.Reader, uint64, types.Currency, types.Currency, uint64) {
 	instructions := []modules.Instruction{
 		NewReadSectorInstruction(0, 8, 16, true),
 	}
@@ -24,7 +24,14 @@ func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash) ([]modu
 	binary.LittleEndian.PutUint64(data[:8], length)
 	binary.LittleEndian.PutUint64(data[8:16], offset)
 	copy(data[16:], merkleRoot[:])
-	return instructions, bytes.NewReader(data), uint64(len(data))
+
+	// Compute cost and used memory.
+	cost, refund := ReadCost(pt, length)
+	usedMemory := ReadMemory()
+	memoryCost := MemoryCost(pt, usedMemory, TimeReadSector+TimeCommit)
+	initCost := InitCost(pt, uint64(len(data)))
+	cost = cost.Add(memoryCost).Add(initCost)
+	return instructions, bytes.NewReader(data), uint64(len(data)), cost, refund, usedMemory
 }
 
 // TestInstructionReadSector tests executing a program with a single
@@ -35,12 +42,16 @@ func TestInstructionReadSector(t *testing.T) {
 	defer mdm.Stop()
 
 	// Create a program to read a full sector from the host.
-	instructions, r, dataLen := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{})
+	pt := newTestPriceTable()
+	readLen := modules.SectorSize
 	// Execute it.
-	ics := 10 * modules.SectorSize // initial contract size is 10 sectors.
-	imr := crypto.Hash{}
-	fastrand.Read(imr[:]) // random initial merkle root
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), instructions, InitCost(dataLen).Add(ReadSectorCost()), newTestStorageObligation(true), ics, imr, dataLen, r)
+	so := newTestStorageObligation(true)
+	so.sectorRoots = randomSectorRoots(10)
+	instructions, r, dataLen, cost, refund, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
+	// Execute it.
+	ics := so.ContractSize()
+	imr := so.MerkleRoot()
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +74,12 @@ func TestInstructionReadSector(t *testing.T) {
 		if uint64(len(output.Output)) != modules.SectorSize {
 			t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(output.Output))
 		}
+		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.PotentialRefund.Equals(refund) {
+			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
+		}
 		sectorData = output.Output
 		numOutputs++
 	}
@@ -76,9 +93,9 @@ func TestInstructionReadSector(t *testing.T) {
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
-	instructions, r, dataLen = newReadSectorProgram(length, offset, crypto.Hash{})
+	instructions, r, dataLen, cost, refund, usedMemory = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), instructions, InitCost(dataLen).Add(ReadSectorCost()), newTestStorageObligation(true), ics, imr, dataLen, r)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,6 +119,12 @@ func TestInstructionReadSector(t *testing.T) {
 		}
 		if !bytes.Equal(output.Output, sectorData[modules.SectorSize/2:]) {
 			t.Fatal("output should match the second half of the sector data")
+		}
+		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.PotentialRefund.Equals(refund) {
+			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
 		}
 		numOutputs++
 	}

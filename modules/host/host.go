@@ -79,6 +79,7 @@ import (
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 const (
@@ -102,12 +103,13 @@ var (
 	errNilWallet  = errors.New("host cannot use a nil wallet")
 	errNilGateway = errors.New("host cannot use nil gateway")
 
-	// persistMetadata is the header that gets written to the persist file, and is
-	// used to recognize other persist files.
-	persistMetadata = persist.Metadata{
-		Header:  "Sia Host",
-		Version: "1.2.0",
-	}
+	// rpcPriceGuaranteePeriod defines the amount of time a host will guarantee
+	// its prices to the renter.
+	rpcPriceGuaranteePeriod = build.Select(build.Var{
+		Standard: 10 * time.Minute,
+		Dev:      1 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // A Host contains all the fields necessary for storing files for clients and
@@ -139,6 +141,7 @@ type Host struct {
 	tpool         modules.TransactionPool
 	wallet        modules.Wallet
 	staticAlerter *modules.GenericAlerter
+	staticMux     *siamux.SiaMux
 	dependencies  modules.Dependencies
 	modules.StorageManager
 
@@ -167,6 +170,13 @@ type Host struct {
 	// storage obligations can be long-running, and each storage obligation can
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
+
+	// The price table contains a set of RPC costs, along with an expiry that
+	// dictates up until what time the host guarantees the prices that are
+	// listed. These host's RPC prices are dynamic, and are subject to various
+	// conditions specific to the RPC in question. Examples of such conditions
+	// are congestion, load, liquidity, etc.
+	priceTable modules.RPCPriceTable
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -213,12 +223,41 @@ func (h *Host) checkUnlockHash() error {
 	return nil
 }
 
+// managedInternalSettings returns the settings of a host.
+func (h *Host) managedInternalSettings() modules.HostInternalSettings {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.settings
+}
+
+// managedUpdatePriceTable will recalculate the RPC costs and update the host's
+// price table accordingly.
+func (h *Host) managedUpdatePriceTable() {
+	// create a new RPC price table and set the expiry
+	his := h.managedInternalSettings()
+	priceTable := modules.RPCPriceTable{
+		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+		UpdatePriceTableCost: h.managedCalculateUpdatePriceTableRPCPrice(),
+
+		// TODO: hardcoded MDM costs should be updated to use better values.
+		InitBaseCost:   his.MinBaseRPCPrice,
+		MemoryTimeCost: his.MinBaseRPCPrice,
+		ReadBaseCost:   his.MinBaseRPCPrice,
+		ReadLengthCost: his.MinBaseRPCPrice,
+	}
+
+	// update the pricetable
+	h.mu.Lock()
+	h.priceTable = priceTable
+	h.mu.Unlock()
+}
+
 // newHost returns an initialized Host, taking a set of dependencies as input.
 // By making the dependencies an argument of the 'new' call, the host can be
 // mocked such that the dependencies can return unexpected errors or unique
 // behaviors during testing, enabling easier testing of the failure modes of
 // the Host.
-func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, listenerAddress string, persistDir string) (*Host, error) {
+func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (*Host, error) {
 	// Check that all the dependencies were provided.
 	if cs == nil {
 		return nil, errNilCS
@@ -240,6 +279,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		tpool:                    tpool,
 		wallet:                   wallet,
 		staticAlerter:            modules.NewAlerter("host"),
+		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
@@ -333,24 +373,28 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		h.log.Println("Could not initialize host networking:", err)
 		return nil, err
 	}
+
+	// Initialize the RPC price table.
+	h.managedUpdatePriceTable()
+
 	return h, nil
 }
 
 // New returns an initialized Host.
-func New(cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
-	return newHost(modules.ProdDependencies, new(modules.ProductionDependencies), cs, g, tpool, wallet, address, persistDir)
+func New(cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, address string, persistDir string) (*Host, error) {
+	return newHost(modules.ProdDependencies, new(modules.ProductionDependencies), cs, g, tpool, wallet, mux, address, persistDir)
 }
 
 // NewCustomHost returns an initialized Host using the provided dependencies.
-func NewCustomHost(deps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
-	return newHost(deps, new(modules.ProductionDependencies), cs, g, tpool, wallet, address, persistDir)
+func NewCustomHost(deps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, address string, persistDir string) (*Host, error) {
+	return newHost(deps, new(modules.ProductionDependencies), cs, g, tpool, wallet, mux, address, persistDir)
 }
 
 // NewCustomTestHost allows passing in both host dependencies and storage
 // manager dependencies. Used solely for testing purposes, to allow dependency
 // injection into the host's submodules.
-func NewCustomTestHost(deps modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
-	return newHost(deps, smDeps, cs, g, tpool, wallet, address, persistDir)
+func NewCustomTestHost(deps modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, address string, persistDir string) (*Host, error) {
+	return newHost(deps, smDeps, cs, g, tpool, wallet, mux, address, persistDir)
 }
 
 // Close shuts down the host.
@@ -475,9 +519,7 @@ func (h *Host) InternalSettings() modules.HostInternalSettings {
 		return modules.HostInternalSettings{}
 	}
 	defer h.tg.Done()
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.settings
+	return h.managedInternalSettings()
 }
 
 // BlockHeight returns the host's current blockheight.

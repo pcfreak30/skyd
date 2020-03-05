@@ -3,6 +3,7 @@ module gitlab.com/NebulousLabs/Sia
 go 1.13
 
 require (
+	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da
 	github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf
 	github.com/hanwen/go-fuse/v2 v2.0.2
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
@@ -12,7 +13,7 @@ require (
 	github.com/klauspost/reedsolomon v1.9.3
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/cobra v0.0.5
-	github.com/xtaci/smux v0.0.0-00010101000000-000000000000
+	github.com/xtaci/smux v1.3.3
 	gitlab.com/NebulousLabs/bolt v1.4.0
 	gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
@@ -22,6 +23,7 @@ require (
 	gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27
+	gitlab.com/NebulousLabs/siamux v0.0.0-20200210134842-f0a0c6f85ec7
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8
 	golang.org/x/crypto v0.0.0-20200117160349-530e935923ad

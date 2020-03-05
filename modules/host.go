@@ -4,12 +4,36 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 const (
 	// HostDir names the directory that contains the host persistence.
 	HostDir = "host"
+
+	// HostSettingsFile is the name of the host's persistence file.
+	HostSettingsFile = "host.json"
+)
+
+var (
+	// Hostv112PersistMetadata is the header of the v112 host persist file.
+	Hostv112PersistMetadata = persist.Metadata{
+		Header:  "Sia Host",
+		Version: "0.5",
+	}
+
+	// Hostv120PersistMetadata is the header of the v120 host persist file.
+	Hostv120PersistMetadata = persist.Metadata{
+		Header:  "Sia Host",
+		Version: "1.2.0",
+	}
+
+	// Hostv143PersistMetadata is the header of the v143 host persist file.
+	Hostv143PersistMetadata = persist.Metadata{
+		Header:  "Sia Host",
+		Version: "1.4.3",
+	}
 )
 
 var (
@@ -241,6 +265,10 @@ type (
 		// ReadSector will read a sector from the host, returning the bytes that
 		// match the input sector root.
 		ReadSector(sectorRoot crypto.Hash) ([]byte, error)
+
+		// ReadPartialSector will read a sector from the storage manager, returning the
+		// 'length' bytes at offset 'offset' that match the input sector root.
+		ReadPartialSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error)
 
 		// RemoveSector will remove a sector from the host. The height at which
 		// the sector expires should be provided, so that the auto-expiry
