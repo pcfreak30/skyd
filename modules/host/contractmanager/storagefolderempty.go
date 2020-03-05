@@ -174,6 +174,8 @@ func (cm *ContractManager) managedEmptyStorageFolder(sfIndex uint16, startingPoi
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		return 0, errBadStorageFolderIndex
 	}
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
 
 	// Read the sector lookup bytes into memory; we'll need them to figure out
 	// what sectors are in which locations.

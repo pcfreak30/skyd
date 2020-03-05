@@ -602,10 +602,10 @@ func TestShrinkStorageFolderIncompleteWriteForce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if uint64(mfi.Size()) != sectorMetadataDiskSize*storageFolderGranularity*2 {
-		t.Error("metadata file is the wrong size")
+		t.Error("metadata file is the wrong size", mfi.Size(), sectorMetadataDiskSize*storageFolderGranularity*2)
 	}
 	if uint64(sfi.Size()) != modules.SectorSize*storageFolderGranularity*2 {
-		t.Error("sector file is the wrong size")
+		t.Error("sector file is the wrong size", mfi.Size(), modules.SectorSize*storageFolderGranularity*2)
 	}
 
 	// Data was lost. Count the number of sectors that are still available.
