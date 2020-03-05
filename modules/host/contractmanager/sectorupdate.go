@@ -458,7 +458,8 @@ func (cm *ContractManager) DeleteSector(root crypto.Hash) error {
 	cm.managedLockSector(id)
 	defer cm.managedUnlockSector(id)
 
-	return cm.managedDeleteSector(id)
+	update := deleteSectorUpdate(id)
+	return cm.createAndApplyTransaction(update)
 }
 
 // RemoveSector will remove a sector from the contract manager. If multiple
@@ -473,7 +474,8 @@ func (cm *ContractManager) RemoveSector(root crypto.Hash) error {
 	cm.managedLockSector(id)
 	defer cm.managedUnlockSector(id)
 
-	return cm.managedRemoveSector(id)
+	update := removeSectorUpdate(id)
+	return cm.createAndApplyTransaction(update)
 }
 
 // RemoveSectorBatch is a non-ACID call to remove a bunch of sectors at once.
@@ -498,7 +500,8 @@ func (cm *ContractManager) RemoveSectorBatch(sectorRoots []crypto.Hash) error {
 		go func(root crypto.Hash) {
 			id := cm.managedSectorID(root)
 			cm.managedLockSector(id)
-			cm.managedRemoveSector(id) // Error is ignored.
+			update := removeSectorUpdate(id)
+			cm.createAndApplyTransaction(update) // Error is ignored.
 			cm.managedUnlockSector(id)
 			<-semaphore
 			wg.Done()

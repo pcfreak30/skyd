@@ -1403,7 +1403,7 @@ func TestDeleteSectorVirtual(t *testing.T) {
 	// internals directly to determine that the sector got added to the right
 	// locations, and that the usage information was updated correctly.
 	if len(cmt.cm.sectorLocations) != 1 {
-		t.Fatal("there should be one sector reported in the sectorLocations map")
+		t.Fatal("there should be one sector reported in the sectorLocations map", len(cmt.cm.sectorLocations))
 	}
 	if len(cmt.cm.storageFolders) != 1 {
 		t.Fatal("storage folder not being reported correctly")
@@ -1458,7 +1458,7 @@ func TestDeleteSectorVirtual(t *testing.T) {
 	// internals directly to determine that the sector got added to the right
 	// locations, and that the usage information was updated correctly.
 	if len(cmt.cm.sectorLocations) != 1 {
-		t.Fatal("there should be one sector reported in the sectorLocations map")
+		t.Fatal("there should be one sector reported in the sectorLocations map", len(cmt.cm.sectorLocations))
 	}
 	if len(cmt.cm.storageFolders) != 1 {
 		t.Fatal("storage folder not being reported correctly")
