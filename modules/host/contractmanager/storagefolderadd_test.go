@@ -713,11 +713,11 @@ func TestAddStorageFolderUnfinishedCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Check that the storage folder was properly removed - incomplete storage
-	// folder adds should be removed upon startup.
+	// Check that the storage folder was properly created - incomplete storage
+	// folder adds should be created upon startup.
 	sfs = cmt.cm.StorageFolders()
-	if len(sfs) != 0 {
-		t.Error("Storage folder add should have failed.")
+	if len(sfs) != 1 {
+		t.Error("Storage folder add should have succeeded.")
 	}
 	// Check that the storage folder is empty - because the operation failed,
 	// any files that got created should have been removed.
@@ -725,8 +725,8 @@ func TestAddStorageFolderUnfinishedCreate(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if len(files) != 0 {
-		t.Error("there should not be any files in the storage folder because the AddStorageFolder operation failed:", len(files))
+	if len(files) != 2 {
+		t.Error("there should be two files in the storage folder", len(files))
 		t.Error(len(files))
 		for _, file := range files {
 			t.Error(file.Name())
