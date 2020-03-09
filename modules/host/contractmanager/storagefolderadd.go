@@ -3,9 +3,9 @@ package contractmanager
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -98,20 +98,6 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 		// Add the storage folder to the list of storage folders.
 		cm.storageFolders[index] = sf
 
-		// Add the storage folder to the list of unfinished storage folder
-		// additions. There should be no chance of error between this append
-		// operation and the completed commitment to the unfinished storage
-		// folder addition (signaled by `<-syncChan` a few lines down).
-		//		update := addStorageFolderUpdate(sf)
-		//		txn, err := cm.createAndApplyTransaction(update)
-		//		if err != nil {
-		//			err = build.ComposeErrors(err, sf.metadataFile.Close())
-		//			err = build.ComposeErrors(err, cm.dependencies.RemoveFile(sectorLookupName))
-		//			err = build.ComposeErrors(err, sf.sectorFile.Close())
-		//			delete(cm.storageFolders, index)
-		//			return nil, err
-		//		}
-		//		return txn, nil
 		return nil
 	}()
 	if err != nil {
@@ -123,11 +109,11 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 		return nil
 	}
 
-	// If there's an error in the rest of the function, the storage folder
-	// needs to be removed from the list of unfinished storage folder
-	// additions. Because the WAL is append-only, a stateChange needs to be
-	// appended which indicates that the storage folder was unable to be added
-	// successfully.
+	// If there's an error in the rest of the function, we need to stop
+	// execution to avoid further corruption.
+	// TODO: replace the following code with a custom error that we check for in
+	// the calling function to panic? We can't continue execution to avoid
+	// having the in-memory state diverge from the on-disk state.
 	defer func(sf *storageFolder) {
 		if err != nil {
 			// Delete the storage folder from the storage folders map.
@@ -163,34 +149,28 @@ func (cm *ContractManager) managedAddStorageFolder(sf *storageFolder) error {
 		return err
 	}
 
-	// Sync changes.
-	err = errors.Compose(sf.sectorFile.Sync(), sf.metadataFile.Sync())
-	if err != nil {
-		return err
-	}
-
 	// The file creation process is essentially complete at this point, report
 	// complete progress.
 	atomic.StoreUint64(&sf.atomicProgressNumerator, totalSize)
 
 	// Sync the files.
-	//	var wg sync.WaitGroup
-	//	wg.Add(2)
-	//	go func() {
-	//		defer wg.Done()
-	//		err := sf.metadataFile.Sync()
-	//		if err != nil {
-	//			cm.log.Println("could not synchronize allocated sector metadata file:", err)
-	//		}
-	//	}()
-	//	go func() {
-	//		defer wg.Done()
-	//		err := sf.sectorFile.Sync()
-	//		if err != nil {
-	//			cm.log.Println("could not synchronize allocated sector data file:", err)
-	//		}
-	//	}()
-	//	wg.Wait()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		err := sf.metadataFile.Sync()
+		if err != nil {
+			cm.log.Println("could not synchronize allocated sector metadata file:", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		err := sf.sectorFile.Sync()
+		if err != nil {
+			cm.log.Println("could not synchronize allocated sector data file:", err)
+		}
+	}()
+	wg.Wait()
 
 	// TODO: Sync the directory as well (directory data changed as new files
 	// were added)
