@@ -2617,16 +2617,27 @@ func gettheskylinkoftheexistingfile(sp modules.SiaPath) (skylink string, err err
 			return
 		}
 	}
+	fmt.Println(" >>> 2")
 	rf, err := httpClient.RenterFileRootGet(targetSiaPath)
-	// only continue if there is no error and the file has a skylink
-	if err == nil && len(rf.File.Skylinks) > 0 {
-
-		// TODO: compare the merkle roots of the two files
-
-		skylink = rf.File.Skylinks[0] // return the first skylink available
-		err = nil                     // we recovered successfully
-		return
+	if err != nil {
+		return "", errors.AddContext(err, "failed to fetch the existing file")
 	}
+	if len(rf.File.Skylinks) == 0 {
+		return "", errors.New("the existing file doesn't have skylinks")
+	}
+	fmt.Println(" >>> 3", rf.File.Skylinks)
+
+	sl := modules.Skylink{}
+	err = sl.LoadString(rf.File.Skylinks[0])
+	if err != nil {
+		return "", errors.AddContext(err, "failed to read the existing file's skylink")
+	}
+	fmt.Println(sl.MerkleRoot())
+
+	// TODO: compare the merkle roots of the two files
+
+	skylink = rf.File.Skylinks[0] // return the first skylink available
+	err = nil                     // we recovered successfully
 	return
 }
 
