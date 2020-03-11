@@ -2577,6 +2577,20 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		Reader: file,
 	}
 	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
+	// If the error is that a file with the same name already exists attempt to
+	// recover from it - if the files have the same merkle roots we can ignore
+	// the error and return the skylink of the existing file.
+	//
+	// We can't use errors.Contains() here because skynetSkyfileHandlerPOST
+	// converts the errors.Error into an api.Error.
+	if err != nil && strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
+		link, e := gettheskylinkoftheexistingfile(sup.SiaPath)
+		if e == nil {
+			// we recovered from the collision
+			err = nil
+			skylink = link
+		}
+	}
 	if err != nil {
 		die("could not upload file to Skynet:", err)
 	}
@@ -2592,6 +2606,28 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		}
 	}
 	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
+}
+
+// TODO: Rename and add docstring
+func gettheskylinkoftheexistingfile(sp modules.SiaPath) (skylink string, err error) {
+	targetSiaPath := sp
+	if !skynetUploadRoot {
+		targetSiaPath, err = modules.NewSiaPath(filepath.Join(modules.SkynetFolder.Path, sp.Path))
+		if err != nil {
+			return
+		}
+	}
+	rf, err := httpClient.RenterFileRootGet(targetSiaPath)
+	// only continue if there is no error and the file has a skylink
+	if err == nil && len(rf.File.Skylinks) > 0 {
+
+		// TODO: compare the merkle roots of the two files
+
+		skylink = rf.File.Skylinks[0] // return the first skylink available
+		err = nil                     // we recovered successfully
+		return
+	}
+	return
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
