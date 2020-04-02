@@ -262,12 +262,6 @@ func ComputeValuedTransactions(pts []modules.ProcessedTransaction, blockHeight t
 		if len(pt.Transaction.FileContracts) > 0 {
 			// A contract doesn't generate incoming value for the wallet.
 			st.ConfirmedIncomingValue = types.ZeroCurrency
-			// A contract with a revision doesn't have outgoing value since the
-			// outgoing value is determined by the latest revision.
-			_, hasRevision := revisionMap[pt.Transaction.FileContractID(0)]
-			if hasRevision {
-				st.ConfirmedOutgoingValue = types.ZeroCurrency
-			}
 			sts = append(sts, st)
 			continue
 		}
@@ -279,11 +273,9 @@ func ComputeValuedTransactions(pts []modules.ProcessedTransaction, blockHeight t
 			build.Critical(err)
 			return nil, err
 		}
-		// If the revision isn't the latest one, it has neither incoming nor
-		// outgoing value.
+		// If the revision isn't the latest one, it has not incoming value.
 		if rev.NewRevisionNumber != latestRev.NewRevisionNumber {
 			st.ConfirmedIncomingValue = types.ZeroCurrency
-			st.ConfirmedOutgoingValue = types.ZeroCurrency
 			sts = append(sts, st)
 			continue
 		}
@@ -291,6 +283,7 @@ func ComputeValuedTransactions(pts []modules.ProcessedTransaction, blockHeight t
 		// don't count the incoming value.
 		if blockHeight <= rev.NewWindowEnd+types.MaturityDelay {
 			st.ConfirmedIncomingValue = types.ZeroCurrency
+			st.ConfirmedOutgoingValue = types.ZeroCurrency
 			sts = append(sts, st)
 			continue
 		}
