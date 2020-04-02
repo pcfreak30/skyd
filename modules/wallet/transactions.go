@@ -273,14 +273,15 @@ func ComputeValuedTransactions(pts []modules.ProcessedTransaction, blockHeight t
 			build.Critical(err)
 			return nil, err
 		}
-		// If the revision isn't the latest one, it has not incoming value.
+		// If the revision isn't the latest one, it has not incoming value,
+		// but include a historical transaction.
 		if rev.NewRevisionNumber != latestRev.NewRevisionNumber {
 			st.ConfirmedIncomingValue = types.ZeroCurrency
 			sts = append(sts, st)
 			continue
 		}
 		// It is the latest but if it hasn't reached maturiy height yet we
-		// don't count the incoming value.
+		// don't count the incoming or outgoing value.
 		if blockHeight <= rev.NewWindowEnd+types.MaturityDelay {
 			st.ConfirmedIncomingValue = types.ZeroCurrency
 			st.ConfirmedOutgoingValue = types.ZeroCurrency
