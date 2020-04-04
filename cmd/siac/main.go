@@ -348,12 +348,7 @@ func main() {
 
 	// If siaDir is not set, use the environment variable provided.
 	if siaDir == "" {
-		siaDir = os.Getenv(cmd.SiaDataDir)
-		if siaDir != "" {
-			fmt.Println("Using SIA_DATA_DIR environment variable")
-		} else {
-			siaDir = build.DefaultSiaDir()
-		}
+		siaDir = build.DefaultSiaDir()
 	}
 
 	// If the API password wasn't set we try to read it from the file. This must
