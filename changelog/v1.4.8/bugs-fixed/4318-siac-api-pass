@@ -1,0 +1,1 @@
+- Do not use SIA_DATA_DIR to read the api password in siac
