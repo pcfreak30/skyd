@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 
@@ -102,6 +103,10 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
 
+	// Optimize writes by wrapping buffering writes to the stream. This has as a
+	// result less bandwidth is consumed and the overall RPC cost is less.
+	bufferedStream := bufio.NewWriterSize(stream, int(modules.SectorSize))
+
 	// Handle outputs.
 	executionFailed := false
 	numOutputs := 0
@@ -143,17 +148,22 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		executionFailed = output.Error != nil
 
 		// Send the response to the peer.
-		err = modules.RPCWrite(stream, resp)
+		err = modules.RPCWrite(bufferedStream, resp)
 		if err != nil {
 			return errors.AddContext(err, "failed to send output to peer")
 		}
 
 		// Write output.
-		_, err = stream.Write(output.Output)
+		_, err = bufferedStream.Write(output.Output)
 		if err != nil {
 			return errors.AddContext(err, "failed to send output data to peer")
 		}
 	}
+	err = bufferedStream.Flush()
+	if err != nil {
+		return errors.AddContext(err, "failed to send data to peer")
+	}
+
 	// Sanity check that we received at least 1 output.
 	if numOutputs == 0 {
 		err := errors.New("program returned 0 outputs - should never happen")

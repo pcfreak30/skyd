@@ -118,7 +118,6 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	if err != nil {
 		return nil, limit, err
 	}
-
 	// Receive payment confirmation.
 	var pc modules.PayByEphemeralAccountResponse
 	err = modules.RPCRead(stream, &pc)
