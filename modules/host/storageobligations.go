@@ -645,7 +645,10 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	var added []crypto.Hash
 	var err error
 	for sectorRoot, data := range sectorsGained {
+		// Unlock during the AddSector call to allow concurrent batching
+		h.mu.Unlock()
 		err = h.AddSector(sectorRoot, data)
+		h.mu.Lock()
 		if err != nil {
 			break
 		}
