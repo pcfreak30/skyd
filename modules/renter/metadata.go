@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -17,16 +18,34 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 )
 
-// bubbleStatus indicates the status of a bubble being executed on a
-// directory
-type bubbleStatus int
-
-// bubbleError, bubbleInit, bubbleActive, and bubblePending are the constants
-// used to determine the status of a bubble being executed on a directory
+// metadataUpdateError, metadataUpdateInit, metadataUpdateActive, and
+// metadataUpdatePending are the constants used to determine the status of a
+// metadataUpdate being executed on a directory
 const (
-	bubbleError bubbleStatus = iota
-	bubbleActive
-	bubblePending
+	metadataUpdateError metadataUpdateStatus = iota
+	metadataUpdateActive
+	metadataUpdatePending
+)
+
+type (
+	// metadataUpdateStatus tracks whether there is an active or pending update
+	// needed for a particular siapath. 'active' means that there is an update
+	// in progress, but the update does not need to be repeated when the update
+	// is completed.
+	//
+	// 'pending' means that another update needs to be completed whenever
+	// resources are available. There may be an active update as well, but the
+	// active update is likely to have missed a recent change and therefore the
+	// update needs to be run again.
+	metadataUpdateStatus int
+
+	// metadataUpdater handles the scheduling and launching of metadata updates
+	// in the renter.
+	metadataUpdater struct {
+		pendingUpdates map[string]metadataUpdateStatus
+
+		mu sync.Mutex
+	}
 )
 
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the

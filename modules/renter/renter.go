@@ -197,16 +197,6 @@ type Renter struct {
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
 
-	// bubbleUpdates are active and pending bubbles that need to be executed on
-	// directories in order to keep the renter's directory tree metadata up to
-	// date
-	//
-	// A bubble is the process of updating a directory's metadata and then
-	// moving on to its parent directory so that any changes in metadata are
-	// properly reflected throughout the filesystem.
-	bubbleUpdates   map[string]bubbleStatus
-	bubbleUpdatesMu sync.Mutex
-
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies
@@ -223,6 +213,7 @@ type Renter struct {
 	staticFuseManager     renterFuseManager
 	staticSkykeyManager   *skykey.SkykeyManager
 	staticStreamBufferSet *streamBufferSet
+	staticMetadataUpdater *metadataUpdater
 	tg                    threadgroup.ThreadGroup
 	tpool                 modules.TransactionPool
 	wal                   *writeaheadlog.WAL
