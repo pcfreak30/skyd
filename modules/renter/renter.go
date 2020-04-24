@@ -961,7 +961,14 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
 	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
-		go r.threadedUpdateRenterHealth()
+		err := r.tg.Add()
+		if err != nil {
+			return nil, err
+		}
+		go func() {
+			r.threadedUpdateRenterHealth()
+			r.tg.Done()
+		}()
 	}
 	// Unsubscribe on shutdown.
 	err = r.tg.OnStop(func() error {
