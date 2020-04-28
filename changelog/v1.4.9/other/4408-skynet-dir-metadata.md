@@ -1,0 +1,1 @@
+- Skynet information such as number of skyfiles and total size of all skyfiles has been added to the siadir metadata.
