@@ -177,6 +177,7 @@ type (
 		OnDisk              bool
 		Redundancy          float64
 		Size                uint64
+		Skylinks            []string
 		StuckHealth         float64
 		UID                 SiafileUID
 	}
@@ -535,6 +536,13 @@ func (sf *SiaFile) Size() uint64 {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return uint64(sf.staticMetadata.FileSize)
+}
+
+// Skylinks returns the file's skylinks.
+func (sf *SiaFile) Skylinks() []string {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.Skylinks
 }
 
 // UpdateUniqueID creates a new random uid for the SiaFile.

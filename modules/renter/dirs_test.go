@@ -211,7 +211,7 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
 	if len(files) != 1 {
-		t.Fatal("Expected 1 FileInfos but got", len(files))
+		t.Fatal("Expected 1 FileInfo but got", len(files))
 	}
 
 	// Refresh the directories.
@@ -227,8 +227,10 @@ func TestRenterListDirectory(t *testing.T) {
 		}
 		root := directories[0]
 		// Check the aggregate and siadir fields.
-		if root.AggregateNumSubDirs != 4 {
-			return fmt.Errorf("Expected 4 subdirs in aggregate but got %v", root.AggregateNumSubDirs)
+		//
+		// Expecting /home, /home/user, /var, /var/skynet, /snapshots, /foo
+		if root.AggregateNumSubDirs != 6 {
+			return fmt.Errorf("Expected 6 subdirs in aggregate but got %v", root.AggregateNumSubDirs)
 		}
 		if root.NumSubDirs != 4 {
 			return fmt.Errorf("Expected 4 subdirs but got %v", root.NumSubDirs)
@@ -241,6 +243,9 @@ func TestRenterListDirectory(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify that the directory information matches the on disk information
 	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
@@ -310,6 +315,9 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	if md.AggregateNumFiles != di.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, di.AggregateNumFiles)
 	}
+	if md.AggregateNumSkyfiles != di.AggregateNumSkyfiles {
+		return fmt.Errorf("AggregateNumSkyfiles not equal, %v and %v", md.AggregateNumSkyfiles, di.AggregateNumSkyfiles)
+	}
 	if md.AggregateNumStuckChunks != di.AggregateNumStuckChunks {
 		return fmt.Errorf("AggregateNumStuckChunks not equal, %v and %v", md.AggregateNumStuckChunks, di.AggregateNumStuckChunks)
 	}
@@ -318,6 +326,9 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	}
 	if md.AggregateSize != di.AggregateSize {
 		return fmt.Errorf("AggregateSizes not equal, %v and %v", md.AggregateSize, di.AggregateSize)
+	}
+	if md.AggregateSkynetSize != di.AggregateSkynetSize {
+		return fmt.Errorf("AggregateSkynetSizes not equal, %v and %v", md.AggregateSkynetSize, di.AggregateSkynetSize)
 	}
 	if md.NumStuckChunks != di.AggregateNumStuckChunks {
 		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, di.AggregateNumStuckChunks)
@@ -346,6 +357,9 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	if md.NumFiles != di.NumFiles {
 		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, di.NumFiles)
 	}
+	if md.NumSkyfiles != di.NumSkyfiles {
+		return fmt.Errorf("NumSkyfiles not equal, %v and %v", md.NumSkyfiles, di.NumSkyfiles)
+	}
 	if md.NumStuckChunks != di.NumStuckChunks {
 		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, di.NumStuckChunks)
 	}
@@ -354,6 +368,9 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	}
 	if md.Size != di.DirSize {
 		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, di.DirSize)
+	}
+	if md.SkynetSize != di.SkynetSize {
+		return fmt.Errorf("SkynetSizes not equal, %v and %v", md.SkynetSize, di.SkynetSize)
 	}
 	if md.StuckHealth != di.StuckHealth {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, di.StuckHealth)

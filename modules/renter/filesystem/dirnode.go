@@ -583,9 +583,11 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
 		AggregateMostRecentModTime:   metadata.AggregateModTime,
 		AggregateNumFiles:            metadata.AggregateNumFiles,
+		AggregateNumSkyfiles:         metadata.AggregateNumSkyfiles,
 		AggregateNumStuckChunks:      metadata.AggregateNumStuckChunks,
 		AggregateNumSubDirs:          metadata.AggregateNumSubDirs,
 		AggregateSize:                metadata.AggregateSize,
+		AggregateSkynetSize:          metadata.AggregateSkynetSize,
 		AggregateStuckHealth:         metadata.AggregateStuckHealth,
 
 		// SiaDir Fields
@@ -597,9 +599,11 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		DirMode:             metadata.Mode,
 		MostRecentModTime:   metadata.ModTime,
 		NumFiles:            metadata.NumFiles,
+		NumSkyfiles:         metadata.NumSkyfiles,
 		NumStuckChunks:      metadata.NumStuckChunks,
 		NumSubDirs:          metadata.NumSubDirs,
 		DirSize:             metadata.Size,
+		SkynetSize:          metadata.SkynetSize,
 		StuckHealth:         metadata.StuckHealth,
 		SiaPath:             siaPath,
 		UID:                 n.staticUID,

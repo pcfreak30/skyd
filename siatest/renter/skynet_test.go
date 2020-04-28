@@ -1896,7 +1896,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		}
 		_, err = r.RenterFileRootGet(skyfilePath)
 		if err == nil || !strings.Contains(err.Error(), "path does not exist") {
-			t.Fatal(errors.New("Skyfile not deleted after dry run."))
+			t.Fatal(errors.New("skyfile not deleted after dry run"))
 		}
 
 		sup.DryRun = false
@@ -2212,5 +2212,138 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if skykeyGet.Skykey != sk2Str {
 		t.Fatal("Expected same result from  unsafe client")
+	}
+}
+
+// TestSkynetListDirectory verifies that the renter properly lists the Skynet
+// metadata counts for directories.
+func TestSkynetListDirectory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a testgroup.
+	gp := siatest.GroupParams{
+		Hosts:   3,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Grab the first of the group's renters
+	r := tg.Renters()[0]
+
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(100 + siatest.Fuzz())
+	filesize := modules.SectorSize // smallest possible size of a skyfile
+	// Need it to be a reader.
+	reader := bytes.NewReader(data)
+	// Call the upload skyfile client call.
+	filename := "testList"
+	uploadSiaPath, err := modules.NewSiaPath("testListPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Quick fuzz on the force value so that sometimes it is set, sometimes it
+	// is not.
+	var force bool
+	if fastrand.Intn(2) == 0 {
+		force = true
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               force,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: filename,
+			Mode:     0640, // Intentionally does not match any defaults.
+		},
+		Reader: reader,
+	}
+
+	// Upload the skyfile.
+	_, _, err = r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a regular file which should not be counted as a Skyfile.
+	_, _, err = r.UploadNewFile(100, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for root directory to show proper number of files and subdirs.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get root dir.
+		rd, err := r.RenterDirRootGet(modules.RootSiaPath())
+		if err != nil {
+			return err
+		}
+		root := rd.Directories[0]
+		// Get skydir.
+		rd, err = r.RenterDirRootGet(modules.SkynetFolder)
+		if err != nil {
+			return err
+		}
+		skydir := rd.Directories[0]
+
+		// Check the aggregate and siadir fields on the root.
+		//
+		// Expecting /home, /home/user, /var, /var/skynet, /snapshots
+		if root.AggregateNumSubDirs != 5 {
+			return fmt.Errorf("Expected 5 subdirs in aggregate but got %v", root.AggregateNumSubDirs)
+		}
+		if root.NumSubDirs != 3 {
+			return fmt.Errorf("Expected 3 subdirs but got %v", root.NumSubDirs)
+		}
+		if root.AggregateNumFiles != 2 {
+			return fmt.Errorf("Expected %v files in aggregate but got %v", 2, root.AggregateNumFiles)
+		}
+		if root.NumFiles != 0 {
+			return fmt.Errorf("Expected %v files but got %v", 0, root.NumFiles)
+		}
+
+		// Check Skynet fields on the root.
+		if root.AggregateNumSkyfiles != 1 {
+			return fmt.Errorf("Expected %v skyfiles in aggregate on the root but got %v", 1, root.AggregateNumSkyfiles)
+		}
+		if root.NumSkyfiles != 0 {
+			return fmt.Errorf("Expected %v skyfiles on the root but got %v", 0, root.NumSkyfiles)
+		}
+		if root.AggregateSkynetSize != filesize {
+			return fmt.Errorf("Expected root aggregate skynet size %v but got %v", filesize, root.AggregateSkynetSize)
+		}
+		if root.SkynetSize != 0 {
+			return fmt.Errorf("Expected root skynet size %v but got %v", 0, root.SkynetSize)
+		}
+
+		// Check Skynet fields in the skydir.
+		if skydir.AggregateNumSkyfiles != 1 {
+			return fmt.Errorf("Expected %v skyfiles in aggregate on the skydir but got %v", 1, skydir.AggregateNumSkyfiles)
+		}
+		if skydir.NumSkyfiles != 1 {
+			return fmt.Errorf("Expected %v skyfiles on the skydir but got %v", 1, skydir.NumSkyfiles)
+		}
+		if skydir.AggregateSkynetSize != filesize {
+			return fmt.Errorf("Expected aggregate skynet size %v on the skydir but got %v", filesize, skydir.AggregateSkynetSize)
+		}
+		if skydir.SkynetSize != filesize {
+			return fmt.Errorf("Expected skynet size %v on the skydir but got %v", filesize, skydir.SkynetSize)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

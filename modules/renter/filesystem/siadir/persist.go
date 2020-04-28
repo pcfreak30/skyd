@@ -307,10 +307,12 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.AggregateMinRedundancy = metadata.AggregateMinRedundancy
 	sd.metadata.AggregateModTime = metadata.AggregateModTime
 	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
+	sd.metadata.AggregateNumSkyfiles = metadata.AggregateNumSkyfiles
 	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
 	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
 	sd.metadata.AggregateRemoteHealth = metadata.AggregateRemoteHealth
 	sd.metadata.AggregateSize = metadata.AggregateSize
+	sd.metadata.AggregateSkynetSize = metadata.AggregateSkynetSize
 	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
 
 	sd.metadata.Health = metadata.Health
@@ -319,10 +321,12 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.ModTime = metadata.ModTime
 	sd.metadata.Mode = metadata.Mode
 	sd.metadata.NumFiles = metadata.NumFiles
+	sd.metadata.NumSkyfiles = metadata.NumSkyfiles
 	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
 	sd.metadata.NumSubDirs = metadata.NumSubDirs
 	sd.metadata.RemoteHealth = metadata.RemoteHealth
 	sd.metadata.Size = metadata.Size
+	sd.metadata.SkynetSize = metadata.SkynetSize
 	sd.metadata.StuckHealth = metadata.StuckHealth
 
 	sd.metadata.Version = metadata.Version

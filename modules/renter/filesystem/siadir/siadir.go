@@ -48,6 +48,8 @@ type (
 		//
 		// NumFiles is the total number of siafiles in a siadir
 		//
+		// NumSkyfiles is the total number of skyfiles in a siadir
+		//
 		// NumStuckChunks is the sum of all the Stuck Chunks of any of the
 		// siafiles in the siadir
 		//
@@ -55,21 +57,26 @@ type (
 		//
 		// Size is the total amount of data stored in the siafiles of the siadir
 		//
+		// SkynetSize is the total amount of Skynet data stored in the skyfiles
+		// of the siadir
+		//
 		// StuckHealth is the health of the most in need siafile in the siadir,
 		// stuck or not stuck
 
-		// The following fields are aggregate values of the siadir. These values are
-		// the totals of the siadir and any sub siadirs, or are calculated based on
-		// all the values in the subtree
+		// The following fields are aggregate values of the siadir. These values
+		// are the totals of the siadir and any sub siadirs, or are calculated
+		// based on all the values in the subtree
 		AggregateHealth              float64   `json:"aggregatehealth"`
 		AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
 		AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
 		AggregateModTime             time.Time `json:"aggregatemodtime"`
 		AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+		AggregateNumSkyfiles         uint64    `json:"aggregatenumskyfiles"`
 		AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 		AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
 		AggregateRemoteHealth        float64   `json:"aggregateremotehealth"`
 		AggregateSize                uint64    `json:"aggregatesize"`
+		AggregateSkynetSize          uint64    `json:"aggregateskynetsize"`
 		AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 
 		// The following fields are information specific to the siadir that is not
@@ -80,10 +87,12 @@ type (
 		Mode                os.FileMode `json:"mode"`
 		ModTime             time.Time   `json:"modtime"`
 		NumFiles            uint64      `json:"numfiles"`
+		NumSkyfiles         uint64      `json:"numskyfiles"`
 		NumStuckChunks      uint64      `json:"numstuckchunks"`
 		NumSubDirs          uint64      `json:"numsubdirs"`
 		RemoteHealth        float64     `json:"remotehealth"`
 		Size                uint64      `json:"size"`
+		SkynetSize          uint64      `json:"skynetsize"`
 		StuckHealth         float64     `json:"stuckhealth"`
 
 		// Version is the used version of the header file.

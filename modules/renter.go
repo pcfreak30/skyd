@@ -328,9 +328,11 @@ type DirectoryInfo struct {
 	AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
 	AggregateMostRecentModTime   time.Time `json:"aggregatemostrecentmodtime"`
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+	AggregateNumSkyfiles         uint64    `json:"aggregatenumskyfiles"`
 	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
 	AggregateSize                uint64    `json:"aggregatesize"`
+	AggregateSkynetSize          uint64    `json:"aggregateskynetsize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 
 	// The following fields are information specific to the siadir that is not
@@ -343,10 +345,12 @@ type DirectoryInfo struct {
 	DirMode             os.FileMode `json:"mode,siamismatch"` // Field is called DirMode for fuse compatibility
 	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
 	NumFiles            uint64      `json:"numfiles"`
+	NumSkyfiles         uint64      `json:"numskyfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
 	SiaPath             SiaPath     `json:"siapath"`
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
+	SkynetSize          uint64      `json:"skynetsize"`
 	StuckHealth         float64     `json:"stuckhealth"`
 	UID                 uint64      `json:"uid"`
 }

@@ -61,10 +61,12 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		AggregateMinRedundancy:       math.MaxFloat64,
 		AggregateModTime:             time.Time{},
 		AggregateNumFiles:            uint64(0),
+		AggregateNumSkyfiles:         uint64(0),
 		AggregateNumStuckChunks:      uint64(0),
 		AggregateNumSubDirs:          uint64(0),
 		AggregateRemoteHealth:        siadir.DefaultDirHealth,
 		AggregateSize:                uint64(0),
+		AggregateSkynetSize:          uint64(0),
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
 
 		Health:              siadir.DefaultDirHealth,
@@ -72,10 +74,12 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		MinRedundancy:       math.MaxFloat64,
 		ModTime:             time.Time{},
 		NumFiles:            uint64(0),
+		NumSkyfiles:         uint64(0),
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
 		RemoteHealth:        siadir.DefaultDirHealth,
 		Size:                uint64(0),
+		SkynetSize:          uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
 	}
 	// Read directory
@@ -137,6 +141,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 
 			// Update aggregate fields.
 			metadata.AggregateNumFiles++
+			if len(fileMetadata.Skylinks) > 0 {
+				metadata.AggregateNumSkyfiles++
+				metadata.AggregateSkynetSize += fileMetadata.Size
+			}
 			metadata.AggregateNumStuckChunks += fileMetadata.NumStuckChunks
 			metadata.AggregateSize += fileMetadata.Size
 
@@ -152,6 +160,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				metadata.ModTime = fileMetadata.ModTime
 			}
 			metadata.NumFiles++
+			if len(fileMetadata.Skylinks) > 0 {
+				metadata.NumSkyfiles++
+				metadata.SkynetSize += fileMetadata.Size
+			}
 			metadata.NumStuckChunks += fileMetadata.NumStuckChunks
 			if !fileMetadata.OnDisk {
 				metadata.RemoteHealth = math.Max(metadata.RemoteHealth, fileMetadata.Health)
@@ -179,9 +191,11 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 
 			// Update aggregate fields.
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
+			metadata.AggregateNumSkyfiles += dirMetadata.AggregateNumSkyfiles
 			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateSize += dirMetadata.AggregateSize
+			metadata.AggregateSkynetSize += dirMetadata.AggregateSkynetSize
 
 			// Add 1 to the AggregateNumSubDirs to account for this subdirectory.
 			metadata.AggregateNumSubDirs++
@@ -270,6 +284,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 		OnDisk:              onDisk,
 		Redundancy:          redundancy,
 		Size:                sf.Size(),
+		Skylinks:            sf.Skylinks(),
 		StuckHealth:         stuckHealth,
 		UID:                 sf.UID(),
 	}, sf.SaveMetadata()
