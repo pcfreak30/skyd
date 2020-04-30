@@ -67,7 +67,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 		timeExtension := uint64((endHeight + host.WindowSize) - lastRev.NewWindowEnd)
 		basePrice = host.StoragePrice.Mul64(lastRev.NewFileSize).Mul64(timeExtension)    // cost of already uploaded data that needs to be covered by the renewed contract.
 		baseCollateral = host.Collateral.Mul64(lastRev.NewFileSize).Mul64(timeExtension) // same as basePrice.
-		cs.staticLog.Printf("Trying renew with timeExtension %v, basePrice %v, and baseCollateral %v", timeExtension, basePrice.Div(types.SiacoinPrecision), baseCollateral.Div(types.SiacoinPrecision))
+		cs.staticLog.Printf("Trying renew with \n\t\ttimeExtension %v\n\t\tbasePrice %v\n\t\tbaseCollateral %v\n\t\tfileSize: %v", timeExtension, basePrice.Mul64(1e3).Div(types.SiacoinPrecision), baseCollateral.Mul64(1e3).Div(types.SiacoinPrecision), lastRev.NewFileSize)
 		cs.staticLog.Printf("Host storage price is %v per tb per mo", host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte).Div(types.SiacoinPrecision))
 	}
 
@@ -338,8 +338,8 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 	var basePrice, baseCollateral types.Currency
 	if endHeight+host.WindowSize > lastRev.NewWindowEnd {
 		timeExtension := uint64((endHeight + host.WindowSize) - lastRev.NewWindowEnd)
-		basePrice = host.StoragePrice.Mul64(lastRev.NewFileSize).Mul64(timeExtension)    // cost of already uploaded data that needs to be covered by the renewed contract.
-		baseCollateral = host.Collateral.Mul64(lastRev.NewFileSize).Mul64(timeExtension) // same as basePrice.
+		basePrice = host.StoragePrice.Mul64(lastRev.NewFileSize).Mul64(timeExtension)
+		baseCollateral = host.Collateral.Mul64(lastRev.NewFileSize).Mul64(timeExtension)
 	}
 
 	// Calculate the anticipated transaction fee.
