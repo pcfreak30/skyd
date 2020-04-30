@@ -170,13 +170,13 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 		RenterKey:    lastRev.UnlockConditions.PublicKeys[0],
 	}
 	if err := s.writeRequest(modules.RPCLoopRenewContract, req); err != nil {
-		return modules.RenterContract{}, nil, types.Transaction{}, nil, errors.AddContext(err, "host rejected initial contract")
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, errors.AddContext(err, "unable to send initial contract")
 	}
 
 	// Read the host's response.
 	var resp modules.LoopContractAdditions
 	if err := s.readResponse(&resp, modules.RPCMinLen); err != nil {
-		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, errors.AddContext(err, "host rejected initial contract")
 	}
 
 	// Incorporate host's modifications.
@@ -237,7 +237,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 		RevisionSignature:  revisionTxn.TransactionSignatures[0],
 	}
 	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
-		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, errors.AddContext(err, "unable to send acceptance and signatures")
 	}
 
 	// Read the host acceptance and signatures.
