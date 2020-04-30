@@ -934,7 +934,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.managedPrunedRedundantAddressRange()
 	err = c.managedMarkContractsUtility()
 	if err != nil {
-		c.log.Println("exiting")
+		c.log.Println("exiting", err)
 		c.log.Debugln("Unable to mark contract utilities:", err)
 		return
 	}
