@@ -416,9 +416,12 @@ func contractorAsyncStartup(c *Contractor, cs modules.ConsensusSet) error {
 	// Kick off some early maintenance once async startup is done. This is for
 	// debugging only.
 	go func () {
-		time.Sleep(time.Minute)
-		c.log.Println("Kicking off a debugging maintenance cycle")
-		c.threadedContractMaintenance()
+		// Just keep trying until it works, sheesh
+		for {
+			time.Sleep(time.Minute)
+			c.log.Println("Kicking off a debugging maintenance cycle")
+			c.threadedContractMaintenance()
+		}
 	}()
 	return nil
 }
