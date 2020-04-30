@@ -885,12 +885,15 @@ func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtil
 func (c *Contractor) threadedContractMaintenance() {
 	err := c.tg.Add()
 	if err != nil {
+		c.log.Println("exiting")
 		return
 	}
 	defer c.tg.Done()
+	c.log.Println("maintenance is starting")
 
 	// No contract maintenance unless contractor is synced.
 	if !c.managedSynced() {
+		c.log.Debugln("existing")
 		c.log.Debugln("Skipping contract maintenance since consensus isn't synced yet")
 		return
 	}
@@ -904,6 +907,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	if build.Release == "testing" {
 		c.maintenanceLock.Lock()
 	} else if !c.maintenanceLock.TryLock() {
+		c.log.Println("exiting")
 		c.log.Debugln("maintenance lock could not be obtained")
 		return
 	}
@@ -930,11 +934,13 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.managedPrunedRedundantAddressRange()
 	err = c.managedMarkContractsUtility()
 	if err != nil {
+		c.log.Println("exiting")
 		c.log.Debugln("Unable to mark contract utilities:", err)
 		return
 	}
 	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
 	if err != nil {
+		c.log.Println("exiting")
 		c.log.Debugln("Unable to update hostdb contracts:", err)
 		return
 	}
@@ -945,6 +951,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	wantedHosts := c.allowance.Hosts
 	c.mu.RUnlock()
 	if wantedHosts <= 0 {
+		c.log.Println("exiting")
 		c.log.Debugln("Exiting contract maintenance because the number of desired hosts is <= zero.")
 		return
 	}
@@ -975,6 +982,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 	// Iterate through the contracts again, figuring out which contracts to
 	// renew and how much extra funds to renew them with.
+	c.log.Println("maintenance is viewall")
 	for _, contract := range c.staticContracts.ViewAll() {
 		c.log.Debugln("Examining a contract:", contract.HostPublicKey, contract.ID)
 		// Skip any host that does not match our whitelist/blacklist filter
@@ -1133,13 +1141,16 @@ func (c *Contractor) threadedContractMaintenance() {
 	// contracts that need to be renewed because they have exhausted their funds
 	// (refreshSet). If there is not enough money available, the more expensive
 	// contracts will be skipped.
+	c.log.Println("maintenance is renewal")
 	for _, renewal := range renewSet {
 		// Return here if an interrupt or kill signal has been sent.
 		select {
 		case <-c.tg.StopChan():
 			c.log.Println("returning because the renter was stopped")
+		c.log.Println("exiting")
 			return
 		case <-c.interruptMaintenance:
+		c.log.Println("exiting")
 			c.log.Println("returning because maintenance was interrupted")
 			return
 		default:
@@ -1149,6 +1160,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
 			c.log.Println("Contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
+		c.log.Println("exiting")
 			return
 		}
 
@@ -1177,13 +1189,16 @@ func (c *Contractor) threadedContractMaintenance() {
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 	}
 	for _, renewal := range refreshSet {
+		c.log.Println("maintenance is refreshal")
 		// Return here if an interrupt or kill signal has been sent.
 		select {
 		case <-c.tg.StopChan():
 			c.log.Println("returning because the renter was stopped")
+		c.log.Println("exiting")
 			return
 		case <-c.interruptMaintenance:
 			c.log.Println("returning because maintenance was interrupted")
+		c.log.Println("exiting")
 			return
 		default:
 		}
@@ -1192,6 +1207,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
 			c.log.Println("contractor is attempting to refresh contracts that have run out of funds, however the wallet is locked")
+		c.log.Println("exiting")
 			return
 		}
 
@@ -1230,6 +1246,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.mu.RUnlock()
 	if neededContracts <= 0 && allowance.PaymentContractInitialFunding.IsZero() {
 		c.log.Debugln("do not seem to need more contracts")
+		c.log.Println("exiting")
 		return
 	}
 	if neededContracts > 0 {
@@ -1266,6 +1283,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	hosts, err := c.hdb.RandomHosts(neededContracts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
+		c.log.Println("exiting")
 		return
 	}
 	c.log.Debugln("trying to form contracts with hosts, pulled this many hosts from hostdb:", len(hosts))
@@ -1313,6 +1331,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
 			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
+		c.log.Println("exiting")
 			return
 		}
 
@@ -1363,6 +1382,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		})
 		if err != nil {
 			c.log.Println("Failed to update the contract utilities", err)
+		c.log.Println("exiting")
 			return
 		}
 		c.mu.Lock()
@@ -1376,6 +1396,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Portals will need to form additional contracts with any hosts that they
 	// do not currently have contracts with. All other nodes can exit here.
 	if allowance.PaymentContractInitialFunding.IsZero() {
+		c.log.Println("exiting")
 		return
 	}
 
