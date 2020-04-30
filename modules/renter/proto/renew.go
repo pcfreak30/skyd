@@ -67,6 +67,8 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 		timeExtension := uint64((endHeight + host.WindowSize) - lastRev.NewWindowEnd)
 		basePrice = host.StoragePrice.Mul64(lastRev.NewFileSize).Mul64(timeExtension)    // cost of already uploaded data that needs to be covered by the renewed contract.
 		baseCollateral = host.Collateral.Mul64(lastRev.NewFileSize).Mul64(timeExtension) // same as basePrice.
+		cs.staticLog.Printf("Trying renew with timeExtension %v, basePrice %v, and baseCollateral %v", timeExtension, basePrice.Div(types.SiacoinPrecision), baseCollateral.Div(types.SiacoinPrecision))
+		cs.staticLog.Printf("Host storage price is %v per tb per mo", host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte).Div(types.SiacoinPrecision))
 	}
 
 	// Calculate the anticipated transaction fee.
@@ -79,6 +81,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	if err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
+	cs.staticLog.Printf("host payout assumed to be %v", hostPayout.Div(types.SiacoinPrecision))
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// check for negative currency
@@ -167,7 +170,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 		RenterKey:    lastRev.UnlockConditions.PublicKeys[0],
 	}
 	if err := s.writeRequest(modules.RPCLoopRenewContract, req); err != nil {
-		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, errors.AddContext(err, "host rejected initial contract")
 	}
 
 	// Read the host's response.

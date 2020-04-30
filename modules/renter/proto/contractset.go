@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -29,6 +30,7 @@ type ContractSet struct {
 	mu        sync.Mutex
 	rl        *ratelimit.RateLimit
 	wal       *writeaheadlog.WAL
+	staticLog *persist.Logger
 }
 
 // Acquire looks up the contract for the specified host key and locks it before
@@ -215,6 +217,10 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	}
 	// Set the initial rate limit to 'unlimited' bandwidth with 4kib packets.
 	cs.rl = ratelimit.NewRateLimit(0, 0, 0)
+	cs.staticLog, err = persist.NewFileLogger(filepath.Join(dir, "contractset.log"))
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create logger for contract set")
+	}
 
 	// Before loading the contract files apply the updates which were meant to
 	// create new contracts and filter them out.
