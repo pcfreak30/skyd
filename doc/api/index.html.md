@@ -3115,10 +3115,10 @@ Path to the directory on the sia network
   "directories": [
     {
       "aggregatenumfiles":        3,    // uint64
+      "aggregatenumstuckchunks":  4,    // uint64
       "aggregatenumskyfiles":     0,    // uint64
       "aggregatesize":            4096, // uint64
       "aggregateskynetsize":      0,    // uint64
-      "aggregatenumstuckchunks":  4,    // uint64
 
       "health":                   1.0,  // float64
       "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00", // timestamp
@@ -3142,6 +3142,9 @@ Path to the directory on the sia network
 **aggregatenumfiles** | uint64  
 the total number of files in the sub directory tree
 
+**aggregatenumstuckchunks** | uint64  
+the total number of stuck chunks in the sub directory tree
+
 **aggregatenumskyfiles** | uint64  
 the total number of skyfiles in the sub directory tree
 
@@ -3150,9 +3153,6 @@ the total size in bytes of files in the sub directory tree
 
 **aggregateskynetsize** | uint64  
 the total size in bytes of skyfiles in the sub directory tree
-
-**aggregatenumstuckchunks** | uint64  
-the total number of stuck chunks in the sub directory tree
 
 **health** | float64  
 This is the worst health of any of the files or subdirectories. Health is the

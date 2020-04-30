@@ -34,6 +34,9 @@ func equalMetadatas(md, md2 Metadata) error {
 	if md.AggregateNumFiles != md2.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, md2.AggregateNumFiles)
 	}
+	if md.AggregateNumSkyfiles != md2.AggregateNumSkyfiles {
+		return fmt.Errorf("AggregateNumSkyfiles not equal, %v and %v", md.AggregateNumSkyfiles, md2.AggregateNumSkyfiles)
+	}
 	if md.AggregateNumStuckChunks != md2.AggregateNumStuckChunks {
 		return fmt.Errorf("AggregateNumStuckChunks not equal, %v and %v", md.AggregateNumStuckChunks, md2.AggregateNumStuckChunks)
 	}
@@ -45,6 +48,9 @@ func equalMetadatas(md, md2 Metadata) error {
 	}
 	if md.AggregateSize != md2.AggregateSize {
 		return fmt.Errorf("AggregateSizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
+	}
+	if md.AggregateSkynetSize != md2.AggregateSkynetSize {
+		return fmt.Errorf("AggregateSkynetSizes not equal, %v and %v", md.AggregateSkynetSize, md2.AggregateSkynetSize)
 	}
 	if md.AggregateStuckHealth != md2.AggregateStuckHealth {
 		return fmt.Errorf("AggregateStuckHealths not equal, %v and %v", md.AggregateStuckHealth, md2.AggregateStuckHealth)
@@ -66,6 +72,9 @@ func equalMetadatas(md, md2 Metadata) error {
 	if md.NumFiles != md2.NumFiles {
 		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, md2.NumFiles)
 	}
+	if md.NumSkyfiles != md2.NumSkyfiles {
+		return fmt.Errorf("NumSkyfiles not equal, %v and %v", md.NumSkyfiles, md2.NumSkyfiles)
+	}
 	if md.NumStuckChunks != md2.NumStuckChunks {
 		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, md2.NumStuckChunks)
 	}
@@ -77,6 +86,9 @@ func equalMetadatas(md, md2 Metadata) error {
 	}
 	if md.Size != md2.Size {
 		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, md2.Size)
+	}
+	if md.SkynetSize != md2.SkynetSize {
+		return fmt.Errorf("SkynetSizes not equal, %v and %v", md.SkynetSize, md2.SkynetSize)
 	}
 	if md.StuckHealth != md2.StuckHealth {
 		return fmt.Errorf("StuckHealths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)

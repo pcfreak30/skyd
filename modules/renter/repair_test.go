@@ -31,9 +31,17 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
 	if md1.AggregateNumFiles != md2.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md1.AggregateNumFiles, md2.AggregateNumFiles)
 	}
-	// Check Size
+	// Check AggregateNumSkyfiles
+	if md1.AggregateNumSkyfiles != md2.AggregateNumSkyfiles {
+		return fmt.Errorf("AggregateNumSkyfiles not equal, %v and %v", md1.AggregateNumSkyfiles, md2.AggregateNumSkyfiles)
+	}
+	// Check AggregateSize
 	if md1.AggregateSize != md2.AggregateSize {
 		return fmt.Errorf("aggregate sizes not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
+	}
+	// Check AggregateSkynetSize
+	if md1.AggregateSkynetSize != md2.AggregateSkynetSize {
+		return fmt.Errorf("aggregate skynet sizes not equal, %v and %v", md1.AggregateSkynetSize, md2.AggregateSkynetSize)
 	}
 	// Check Health
 	if md1.Health != md2.Health {
@@ -54,6 +62,18 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
 	// Check NumFiles
 	if md1.NumFiles != md2.NumFiles {
 		return fmt.Errorf("NumFiles not equal, %v and %v", md1.NumFiles, md2.NumFiles)
+	}
+	// Check NumSkyfiles
+	if md1.NumSkyfiles != md2.NumSkyfiles {
+		return fmt.Errorf("NumSkyfiles not equal, %v and %v", md1.NumSkyfiles, md2.NumSkyfiles)
+	}
+	// Check Size
+	if md1.Size != md2.Size {
+		return fmt.Errorf("sizes not equal, %v and %v", md1.Size, md2.Size)
+	}
+	// Check SkynetSize
+	if md1.SkynetSize != md2.SkynetSize {
+		return fmt.Errorf("skynet sizes not equal, %v and %v", md1.SkynetSize, md2.SkynetSize)
 	}
 	// Check NumStuckChunks
 	if md1.NumStuckChunks != md2.NumStuckChunks {

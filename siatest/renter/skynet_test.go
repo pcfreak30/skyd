@@ -561,7 +561,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		SiaPath: modules.RandomSiaPath(),
 	}
 
-	// Try and convert to a Skyfile, this should fail due to the the original
+	// Try and convert to a Skyfile, this should fail due to the original
 	// siafile being a N-of-M redundancy
 	skylink, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
@@ -2243,12 +2243,12 @@ func TestSkynetListDirectory(t *testing.T) {
 
 	// Create some data to upload as a skyfile.
 	data := fastrand.Bytes(100 + siatest.Fuzz())
-	filesize := modules.SectorSize // smallest possible size of a skyfile
+	filesize1 := modules.SectorSize // smallest possible size of a skyfile
 	// Need it to be a reader.
 	reader := bytes.NewReader(data)
 	// Call the upload skyfile client call.
 	filename := "testList"
-	uploadSiaPath, err := modules.NewSiaPath("testListPath")
+	uploadSiaPath, err := modules.NewSiaPath("testListPath1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2277,7 +2277,27 @@ func TestSkynetListDirectory(t *testing.T) {
 	}
 
 	// Upload a regular file which should not be counted as a Skyfile.
-	_, _, err = r.UploadNewFile(100, 1, 1, false)
+	filesize2 := uint64(100)
+	_, _, err = r.UploadNewFileBlocking(int(filesize2), 1, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload and convert a regular file to a Skyfile, the original file should
+	// remain and be counted as it has an associated skylink.
+	uploadSiaPath, err = modules.NewSiaPath("testListPath3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup = modules.SkyfileUploadParameters{
+		SiaPath: uploadSiaPath,
+	}
+	filesize3 := uint64(200)
+	_, remoteFile, err := r.UploadNewFileBlocking(int(filesize3), 1, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2301,44 +2321,50 @@ func TestSkynetListDirectory(t *testing.T) {
 		//
 		// Expecting /home, /home/user, /var, /var/skynet, /snapshots
 		if root.AggregateNumSubDirs != 5 {
-			return fmt.Errorf("Expected 5 subdirs in aggregate but got %v", root.AggregateNumSubDirs)
+			return fmt.Errorf("Expected 5 aggregate subdirs but got %v", root.AggregateNumSubDirs)
 		}
 		if root.NumSubDirs != 3 {
 			return fmt.Errorf("Expected 3 subdirs but got %v", root.NumSubDirs)
 		}
-		if root.AggregateNumFiles != 2 {
-			return fmt.Errorf("Expected %v files in aggregate but got %v", 2, root.AggregateNumFiles)
+		if root.AggregateNumFiles != 4 {
+			return fmt.Errorf("Expected %v aggregate files but got %v", 4, root.AggregateNumFiles)
 		}
 		if root.NumFiles != 0 {
 			return fmt.Errorf("Expected %v files but got %v", 0, root.NumFiles)
 		}
+		if root.AggregateSize != filesize1+filesize2+filesize3+modules.SectorSize {
+			return fmt.Errorf("Expected %v aggregate size but got %v", filesize1+filesize2+filesize3+modules.SectorSize, root.AggregateSize)
+		}
+		if root.DirSize != 0 {
+			return fmt.Errorf("Expected %v size but got %v", 0, root.DirSize)
+		}
 
 		// Check Skynet fields on the root.
-		if root.AggregateNumSkyfiles != 1 {
-			return fmt.Errorf("Expected %v skyfiles in aggregate on the root but got %v", 1, root.AggregateNumSkyfiles)
+		if root.AggregateNumSkyfiles != 3 {
+			return fmt.Errorf("Expected %v aggregate skyfiles on the root but got %v", 3, root.AggregateNumSkyfiles)
 		}
 		if root.NumSkyfiles != 0 {
 			return fmt.Errorf("Expected %v skyfiles on the root but got %v", 0, root.NumSkyfiles)
 		}
-		if root.AggregateSkynetSize != filesize {
-			return fmt.Errorf("Expected root aggregate skynet size %v but got %v", filesize, root.AggregateSkynetSize)
+		if root.AggregateSkynetSize != filesize1+filesize3+modules.SectorSize {
+			return fmt.Errorf("Expected root aggregate skynet size %v but got %v", filesize1+filesize3+modules.SectorSize, root.AggregateSkynetSize)
 		}
 		if root.SkynetSize != 0 {
 			return fmt.Errorf("Expected root skynet size %v but got %v", 0, root.SkynetSize)
 		}
 
 		// Check Skynet fields in the skydir.
-		if skydir.AggregateNumSkyfiles != 1 {
-			return fmt.Errorf("Expected %v skyfiles in aggregate on the skydir but got %v", 1, skydir.AggregateNumSkyfiles)
+		if skydir.AggregateNumSkyfiles != 2 {
+			return fmt.Errorf("Expected %v aggregate skyfiles on the skydir but got %v", 2, skydir.AggregateNumSkyfiles)
 		}
-		if skydir.NumSkyfiles != 1 {
-			return fmt.Errorf("Expected %v skyfiles on the skydir but got %v", 1, skydir.NumSkyfiles)
+		if skydir.NumSkyfiles != 2 {
+			return fmt.Errorf("Expected %v skyfiles on the skydir but got %v", 2, skydir.NumSkyfiles)
 		}
-		if skydir.AggregateSkynetSize != filesize {
-			return fmt.Errorf("Expected aggregate skynet size %v on the skydir but got %v", filesize, skydir.AggregateSkynetSize)
+		if skydir.AggregateSkynetSize != filesize1+modules.SectorSize {
+			return fmt.Errorf("Expected aggregate skynet size %v on the skydir but got %v", filesize1+modules.SectorSize, skydir.AggregateSkynetSize)
 		}
-		if skydir.SkynetSize != filesize {
-			return fmt.Errorf("Expected skynet size %v on the skydir but got %v", filesize, skydir.SkynetSize)
+		if skydir.SkynetSize != filesize1+modules.SectorSize {
+			return fmt.Errorf("Expected skynet size %v on the skydir but got %v", filesize1+modules.SectorSize, skydir.SkynetSize)
 		}
 
 		return nil

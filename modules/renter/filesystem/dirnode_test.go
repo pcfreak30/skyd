@@ -30,6 +30,9 @@ func checkMetadataInit(md siadir.Metadata) error {
 	if md.AggregateNumFiles != 0 {
 		return fmt.Errorf("SiaDir AggregateNumFiles not set properly: got %v expected 0", md.AggregateNumFiles)
 	}
+	if md.AggregateNumSkyfiles != 0 {
+		return fmt.Errorf("SiaDir AggregateNumSkyfiles not set properly: got %v expected 0", md.AggregateNumSkyfiles)
+	}
 	if md.AggregateNumStuckChunks != 0 {
 		return fmt.Errorf("SiaDir AggregateNumStuckChunks not initialized properly, expected 0, got %v", md.AggregateNumStuckChunks)
 	}
@@ -41,6 +44,9 @@ func checkMetadataInit(md siadir.Metadata) error {
 	}
 	if md.AggregateSize != 0 {
 		return fmt.Errorf("SiaDir AggregateSize not set properly: got %v expected 0", md.AggregateSize)
+	}
+	if md.AggregateSkynetSize != 0 {
+		return fmt.Errorf("SiaDir AggregateSkynetSize not set properly: got %v expected 0", md.AggregateSkynetSize)
 	}
 
 	// Check SiaDir Fields
@@ -59,6 +65,9 @@ func checkMetadataInit(md siadir.Metadata) error {
 	if md.NumFiles != 0 {
 		return fmt.Errorf("SiaDir NumFiles not initialized properly, expected 0, got %v", md.NumFiles)
 	}
+	if md.NumSkyfiles != 0 {
+		return fmt.Errorf("SiaDir NumSkyfiles not initialized properly, expected 0, got %v", md.NumSkyfiles)
+	}
 	if md.NumStuckChunks != 0 {
 		return fmt.Errorf("SiaDir NumStuckChunks not initialized properly, expected 0, got %v", md.NumStuckChunks)
 	}
@@ -70,6 +79,9 @@ func checkMetadataInit(md siadir.Metadata) error {
 	}
 	if md.Size != 0 {
 		return fmt.Errorf("SiaDir Size not set properly: got %v expected 0", md.Size)
+	}
+	if md.SkynetSize != 0 {
+		return fmt.Errorf("SiaDir SkynetSize not set properly: got %v expected 0", md.SkynetSize)
 	}
 	return nil
 }
@@ -94,6 +106,9 @@ func equalMetadatas(md, md2 siadir.Metadata) error {
 	if md.AggregateNumFiles != md2.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, md2.AggregateNumFiles)
 	}
+	if md.AggregateNumSkyfiles != md2.AggregateNumSkyfiles {
+		return fmt.Errorf("AggregateNumSkyfiles not equal, %v and %v", md.AggregateNumSkyfiles, md2.AggregateNumSkyfiles)
+	}
 	if md.AggregateNumStuckChunks != md2.AggregateNumStuckChunks {
 		return fmt.Errorf("AggregateNumStuckChunks not equal, %v and %v", md.AggregateNumStuckChunks, md2.AggregateNumStuckChunks)
 	}
@@ -102,6 +117,9 @@ func equalMetadatas(md, md2 siadir.Metadata) error {
 	}
 	if md.AggregateSize != md2.AggregateSize {
 		return fmt.Errorf("AggregateSizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
+	}
+	if md.AggregateSkynetSize != md2.AggregateSkynetSize {
+		return fmt.Errorf("AggregateSkynetSizes not equal, %v and %v", md.AggregateSkynetSize, md2.AggregateSkynetSize)
 	}
 	if md.AggregateStuckHealth != md2.AggregateStuckHealth {
 		return fmt.Errorf("AggregateStuckHealths not equal, %v and %v", md.AggregateStuckHealth, md2.AggregateStuckHealth)
@@ -123,6 +141,9 @@ func equalMetadatas(md, md2 siadir.Metadata) error {
 	if md.NumFiles != md2.NumFiles {
 		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, md2.NumFiles)
 	}
+	if md.NumSkyfiles != md2.NumSkyfiles {
+		return fmt.Errorf("NumSkyfiles not equal, %v and %v", md.NumSkyfiles, md2.NumSkyfiles)
+	}
 	if md.NumStuckChunks != md2.NumStuckChunks {
 		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, md2.NumStuckChunks)
 	}
@@ -131,6 +152,9 @@ func equalMetadatas(md, md2 siadir.Metadata) error {
 	}
 	if md.Size != md2.Size {
 		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, md2.Size)
+	}
+	if md.SkynetSize != md2.SkynetSize {
+		return fmt.Errorf("SkynetSizes not equal, %v and %v", md.SkynetSize, md2.SkynetSize)
 	}
 	if md.StuckHealth != md2.StuckHealth {
 		return fmt.Errorf("StuckHealths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
@@ -198,9 +222,11 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	metadataUpdate.AggregateMinRedundancy = 2.2
 	metadataUpdate.AggregateModTime = checkTime
 	metadataUpdate.AggregateNumFiles = 11
+	metadataUpdate.AggregateNumSkyfiles = 22
 	metadataUpdate.AggregateNumStuckChunks = 15
 	metadataUpdate.AggregateNumSubDirs = 5
 	metadataUpdate.AggregateSize = 2432
+	metadataUpdate.AggregateSkynetSize = 2222
 	metadataUpdate.AggregateStuckHealth = 5
 	// SiaDir fields
 	metadataUpdate.Health = 4
@@ -208,9 +234,11 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	metadataUpdate.MinRedundancy = 2
 	metadataUpdate.ModTime = checkTime
 	metadataUpdate.NumFiles = 5
+	metadataUpdate.NumSkyfiles = 4
 	metadataUpdate.NumStuckChunks = 6
 	metadataUpdate.NumSubDirs = 4
 	metadataUpdate.Size = 223
+	metadataUpdate.SkynetSize = 111
 	metadataUpdate.StuckHealth = 2
 
 	err = fs.UpdateDirMetadata(sp, metadataUpdate)
