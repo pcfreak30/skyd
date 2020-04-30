@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -414,8 +415,11 @@ func contractorAsyncStartup(c *Contractor, cs modules.ConsensusSet) error {
 
 	// Kick off some early maintenance once async startup is done. This is for
 	// debugging only.
-	c.log.Println("Kicking off a debugging maintenance cycle")
-	go c.threadedContractMaintenance()
+	go func () {
+		time.Sleep(time.Minute)
+		c.log.Println("Kicking off a debugging maintenance cycle")
+		c.threadedContractMaintenance()
+	}()
 	return nil
 }
 
