@@ -411,6 +411,11 @@ func contractorAsyncStartup(c *Contractor, cs modules.ConsensusSet) error {
 	if err != nil {
 		return err
 	}
+
+	// Kick off some early maintenance once async startup is done. This is for
+	// debugging only.
+	c.log.Println("Kicking off a debugging maintenance cycle")
+	go c.threadedContractMaintenance()
 	return nil
 }
 

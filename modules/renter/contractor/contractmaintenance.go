@@ -612,6 +612,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
+	c.log.Printf("Renewing with params: funding %v, start height %v, end height %v", params.Funding, params.StartHeight, params.EndHeight)
 	newContract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 	if err != nil {
 		txnBuilder.Drop() // return unused outputs to wallet
@@ -729,7 +730,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// on renewing it and set goodForRenew to false.
 	c.log.Debugln("calling managedRenew on contract", id)
 	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight, hostSettings)
-	c.log.Debugln("managedRenew has returned with error:", errRenew)
+	c.log.Printf("managedRenew failed: with amount %v and endHeight %v and err %v", amount, endHeight, errRenew)
 	if errRenew != nil {
 		// Increment the number of failed renews for the contract if it
 		// was the host's fault.
