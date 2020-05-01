@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -170,6 +171,7 @@ func UnrecognizedCallHandler(w http.ResponseWriter, req *http.Request) {
 // WriteError an error to the API caller.
 func WriteError(w http.ResponseWriter, err Error, code int) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	debug.PrintStack() //xxx
 	w.WriteHeader(code)
 	encodingErr := json.NewEncoder(w).Encode(err)
 	if _, isJsonErr := encodingErr.(*json.SyntaxError); isJsonErr {
