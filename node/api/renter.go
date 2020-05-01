@@ -1633,6 +1633,7 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 	w.Header().Set("ID", string(id))
 	// Start download.
 	if err := start(); err != nil {
+		fmt.Println("xxx start error:", err)
 		WriteError(w, Error{"download failed: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
