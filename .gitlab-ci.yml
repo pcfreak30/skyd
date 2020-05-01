@@ -151,5 +151,5 @@ build:
 siatest-tests-nightly:
   <<: *default_params
   script:
-    - make test-vlong run=TestGlobalRatelimitRenter pkgs="./siatest/daemon"
+    - make test-vlong run=TestGlobalRatelimitRenter pkgs="./siatest/daemon" count=100
 
