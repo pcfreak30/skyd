@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -40,6 +41,18 @@ const (
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
 )
+
+// The SkynetPerformanceStats are stateful and tracked globally, bound by a
+// mutex.
+var (
+	skynetPerformanceStats   *SkynetPerformanceStats
+	skynetPerformanceStatsMu sync.Mutex
+)
+
+// Initialize the global performance tracking.
+func init() {
+	skynetPerformanceStats = NewSkynetPerformanceStats()
+}
 
 type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
@@ -79,6 +92,8 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
+		PerformanceStats SkynetPerformanceStats
+
 		UploadStats SkynetStats   `json:"uploadstats"`
 		VersionInfo SkynetVersion `json:"versioninfo"`
 	}
