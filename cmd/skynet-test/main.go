@@ -158,7 +158,7 @@ func downloadFileSet(dir modules.SiaPath, expectedFetchSize uint64, threads uint
 
 		// Launch the downloading thread.
 		wg.Add(1)
-		go func() {
+		go func(i int) {
 			// Make room for the next thread.
 			defer func() {
 				threadPool <-struct{}{}
@@ -187,7 +187,7 @@ func downloadFileSet(dir modules.SiaPath, expectedFetchSize uint64, threads uint
 			// Download and discard the result, we only care about the speeds,
 			// not the data.
 			io.Copy(ioutil.Discard, reader)
-		}()
+		}(i)
 	}
 	wg.Wait()
 
@@ -199,7 +199,7 @@ func downloadFileSet(dir modules.SiaPath, expectedFetchSize uint64, threads uint
 }
 
 func main() {
-	fmt.Println("Skynet performance analysis tool.\n")
+	fmt.Printf("Skynet performance analysis tool.\n\n")
 
 	/* TODO: Parse a port number from the flags.
 		// Parse flags.
@@ -266,7 +266,7 @@ func main() {
 		fmt.Println("Unable to upload 10mb files:", err)
 		return
 	}
-	fmt.Println("10mb files are ready to go.\n")
+	fmt.Printf("10mb files are ready to go.\n\n")
 
 	fmt.Printf("Beginning download testing. Each test is %v files\n\n", filesPerDir)
 

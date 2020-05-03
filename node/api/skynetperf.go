@@ -21,9 +21,9 @@ type (
 		N240ms  float64 `json:"n240ms"`
 		N500ms  float64 `json:"n500ms"`
 		N1000ms float64 `json:"n1000ms"`
-		N2000ms float64 `json:n2000ms"`
-		NLong   float64 `json:nlong"` // Requests taking longer than 2 seconds.
-		NErr    float64 `json:nerr"`  // Requests that errored out.
+		N2000ms float64 `json:"n2000ms"`
+		NLong   float64 `json:"nlong"` // Requests taking longer than 2 seconds.
+		NErr    float64 `json:"nerr"`  // Requests that errored out.
 	}
 
 	// HalfLifeDistribution contains a set of RequestTimeDistributions with
