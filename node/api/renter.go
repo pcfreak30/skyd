@@ -1931,17 +1931,31 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	// Call the renter to upload the file.
+	// Figure out whether to use the user siapath or the root siapath.
+	root := false
+	if r := queryForm.Get("root"); r != "" {
+		root, err = strconv.ParseBool(r)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'repair' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse the siapath and rebase to the user siapath if needed.
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
+
+	// Call the renter to upload the file.
 	up := modules.FileUploadParams{
 		SiaPath:     siaPath,
 		ErasureCode: ec,

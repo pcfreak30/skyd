@@ -595,6 +595,20 @@ func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath modules.SiaPath, da
 	return err
 }
 
+// RenterUploadStreamRootPost uploads data using a stream. Data is uploaded
+// using the root siapath of the renter, instead of the user homedir.
+func (c *Client) RenterUploadStreamRootPost(r io.Reader, siaPath modules.SiaPath, dataPieces, parityPieces uint64, force bool) error {
+	sp := escapeSiaPath(siaPath)
+	values := url.Values{}
+	values.Set("datapieces", strconv.FormatUint(dataPieces, 10))
+	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
+	values.Set("force", strconv.FormatBool(force))
+	values.Set("stream", strconv.FormatBool(true))
+	values.Set("root", strconv.FormatBool(true))
+	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
+	return err
+}
+
 // RenterUploadStreamRepairPost a siafile using a stream. If the data provided
 // by r is not the same as the previously uploaded data, the data will be
 // corrupted.

@@ -4040,6 +4040,10 @@ Delete potential existing file at siapath.
 Repair existing file from stream. Can't be specified together with datapieces,
 paritypieces and force.
 
+**root** | boolean  
+Whether or not the privided siapath should use the user's homedir or the root
+directory of the filesystem.
+
 ### Response
 
 standard success or error response. See [standard
