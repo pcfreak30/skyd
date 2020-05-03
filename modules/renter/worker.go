@@ -67,6 +67,7 @@ type worker struct {
 	// Cached value for the contract utility, updated infrequently.
 	cachedContractID      types.FileContractID
 	cachedContractUtility modules.ContractUtility
+	cachedHostVersion     string
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
@@ -180,15 +181,22 @@ func (w *worker) managedBlockUntilReady() bool {
 // 'false' will be returned if the cache cannot be updated, signaling that the
 // worker should exit.
 func (w *worker) managedUpdateCache() bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
+	// TODO: There must be a faster/better way to look up the host version.
+	hdbEntry, exists, err := w.renter.Host(w.staticHostPubKey)
+	if err != nil || !exists {
+		return false
+	}
 	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
 	if !exists {
 		return false
 	}
+
+	w.mu.Lock()
 	w.cachedContractID = renterContract.ID
 	w.cachedContractUtility = renterContract.Utility
+	w.cachedHostVersion = hdbEntry.Version
+	w.mu.Unlock()
+
 	return true
 }
 

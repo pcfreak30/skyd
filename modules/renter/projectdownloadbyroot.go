@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
@@ -171,12 +172,28 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 		return
 	}
 
-	// Download a single byte to see if the root is available.
-	_, err := w.Download(pdbr.staticRoot, 0, 1)
-	if err != nil {
-		w.renter.log.Debugln("worker failed a download by root job:", err)
-		pdbr.managedRemoveWorker(w)
-		return
+	w.mu.Lock()
+	hostVersion := w.cachedHostVersion
+	w.mu.Unlock()
+
+	if build.VersionCmp(hostVersion, "1.4.8") < 0 {
+		// Download a single byte to see if the root is available.
+		_, err := w.Download(pdbr.staticRoot, 0, 1)
+		if err != nil {
+			w.renter.log.Debugln("worker failed a download by root job:", err)
+			pdbr.managedRemoveWorker(w)
+			return
+		}
+	} else {
+		// Download a single byte to see if the root is available.
+		hasSectorTime := time.Now()
+		_, err := w.Download(pdbr.staticRoot, 0, 1)
+		if err != nil {
+			w.renter.log.Debugln("worker failed a download by root job:", err)
+			pdbr.managedRemoveWorker(w)
+			return
+		}
+		fmt.Println("Time to sector lookup by download 1 byte:", time.Since(hasSectorTime))
 	}
 
 	// The host has the root. Check in with the project and see if the root
