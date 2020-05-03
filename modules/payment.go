@@ -52,8 +52,7 @@ var (
 	ErrWithdrawalInvalidSignature = errors.New("ephemeral account withdrawal message signature is invalid")
 )
 
-// PaymentProcessor is the interface implemented when receiving payment for an
-// RPC.
+// PaymentProcessor is the interface implemented to handle RPC payments.
 type PaymentProcessor interface {
 	// ProcessPayment takes a stream and handles the payment request objects
 	// sent by the caller. Returns an object that implements the PaymentDetails

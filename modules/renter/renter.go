@@ -107,6 +107,8 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
 
+	modules.PaymentProvider
+
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract
 
@@ -206,6 +208,12 @@ type Renter struct {
 	// properly reflected throughout the filesystem.
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
+
+	// blockHeight is cached on the renter, this is used to update the state of
+	// the workers every time consensus changes. We keep this as state on the
+	// renter to avoid that the worker has to fetch the block height from the
+	// renter for every RPC call that is paid from an ephemeral account.
+	blockHeight types.BlockHeight
 
 	// Utilities.
 	cs                    modules.ConsensusSet
@@ -430,13 +438,6 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	return est, allowance, nil
 }
 
-// managedRPCClient returns an RPC client for the host with given key
-func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
-	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
-	return &MockRPCClient{}, nil
-}
-
 // managedContractUtilityMaps returns a set of maps that contain contract
 // information. Information about which contracts are offline, goodForRenew are
 // available, as well as a full list of contracts keyed by their public key.
@@ -464,6 +465,23 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 		offline[pkString] = r.hostContractor.IsOffline(contract.HostPublicKey)
 	}
 	return offline, goodForRenew, contracts
+}
+
+// managedNewStream returns a new stream to the host with given public key. Note
+// this is a utility function and should not be called in a high performance
+// environment because it performs a db lookup.
+func (r *Renter) managedNewStream(hostKey types.SiaPublicKey) (siamux.Stream, error) {
+	entry, found, err := r.hostDB.Host(hostKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "Failed to fetch host from hostDB")
+	}
+	if !found {
+		return nil, errors.New("Host not found in hostDB")
+	}
+
+	hostMuxAddress := fmt.Sprintf("%s:%s", entry.NetAddress.Host(), entry.HostExternalSettings.SiaMuxPort)
+
+	return r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, hostMuxAddress, modules.SiaPKToMuxPK(hostKey))
 }
 
 // managedRenterContractsAndUtilities grabs the pubkeys of the hosts that the
@@ -778,7 +796,27 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
+
+	// Update the block height on the renter
+	for _, block := range cc.RevertedBlocks {
+		if block.ID() != types.GenesisID {
+			r.blockHeight--
+		}
+	}
+	for _, block := range cc.AppliedBlocks {
+		if block.ID() != types.GenesisID {
+			r.blockHeight++
+		}
+	}
+	bh := r.blockHeight
 	r.mu.Unlock(id)
+
+	// Notify all rpc clients of the new block height
+	if cc.Synced {
+		for _, w := range r.staticWorkerPool.workers {
+			w.UpdateBlockHeight(bh)
+		}
+	}
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the
