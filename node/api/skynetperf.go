@@ -168,10 +168,10 @@ func (hld *HalfLifeDistribution) Update() {
 	// The denominator on the rate is divided by two so that the full category
 	// represents the number of requests within that period of time, instead of
 	// being off by a factor of two.
-	oneMinuteMult := math.Pow(0.5, timePassed/float64(time.Minute/2))
-	fiveMinuteMult := math.Pow(0.5, timePassed/float64(5*time.Minute/2))
-	fifteenMinuteMult := math.Pow(0.5, timePassed/float64(15*time.Minute/2))
-	twentyFourHourMult := math.Pow(0.5, timePassed/float64(24*60*time.Minute/2))
+	oneMinuteMult := math.Pow(0.5, timePassed/float64(time.Minute))
+	fiveMinuteMult := math.Pow(0.5, timePassed/float64(5*time.Minute))
+	fifteenMinuteMult := math.Pow(0.5, timePassed/float64(15*time.Minute))
+	twentyFourHourMult := math.Pow(0.5, timePassed/float64(24*60*time.Minute))
 
 	buckets := []*RequestTimeDistribution{&hld.OneMinute, &hld.FiveMinutes, &hld.FifteenMinutes, &hld.TwentyFourHours}
 	multiples := []float64{oneMinuteMult, fiveMinuteMult, fifteenMinuteMult, twentyFourHourMult}

@@ -164,29 +164,37 @@ func downloadFileSet(dir modules.SiaPath, expectedFetchSize uint64, threads uint
 				threadPool <-struct{}{}
 			}()
 			// Clear the wait group.
-			wg.Done()
+			defer wg.Done()
 
 			// Figure out the siapath of the dir.
 			siaPath, err := dir.Join(strconv.Itoa(i))
 			if err != nil {
+				fmt.Println("Dir error:", err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			// Figure out the skylink for the file.
 			rf, err := c.RenterFileRootGet(siaPath)
 			if err != nil {
+				fmt.Println("Error geting file info:", err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			// Get a reader / stream for the download.
 			reader, err := c.SkynetSkylinkReaderGet(rf.File.Skylinks[0])
 			if err != nil {
+				fmt.Println("Error geting skylink reader:", err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			// Download and discard the result, we only care about the speeds,
 			// not the data.
-			io.Copy(ioutil.Discard, reader)
+			_, err = io.Copy(ioutil.Discard, reader)
+			if err != nil {
+				fmt.Println("Error performing download:", err)
+				atomic.AddUint64(&atomicDownloadErrors, 1)
+				return
+			}
 		}(i)
 	}
 	wg.Wait()
