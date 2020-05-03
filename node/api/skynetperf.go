@@ -43,6 +43,12 @@ type (
 	// request size and time window, to give a good picture of how well requests
 	// are performing on Skynet.
 	SkynetPerformanceStats struct {
+		// TimeToFirstByte only refers to downloads.
+		TimeToFirstByte HalfLifeDistribution `json:"timetofirstbyte"`
+
+		// Buckets based on how large a file is. The bucket size represents the
+		// maximum size of a file in that bucket. A file will be placed in the
+		// smallest bucket that it can fit into.
 		Download64KB  HalfLifeDistribution `json:"download64kb"`
 		Download1MB   HalfLifeDistribution `json:"download1mb"`
 		Download4MB   HalfLifeDistribution `json:"download4mb"`
@@ -65,6 +71,8 @@ func NewHalfLifeDistribution() HalfLifeDistribution {
 // ready for use.
 func NewSkynetPerformanceStats() *SkynetPerformanceStats {
 	return &SkynetPerformanceStats{
+		TimeToFirstByte: NewHalfLifeDistribution(),
+
 		Download64KB:  NewHalfLifeDistribution(),
 		Download1MB:   NewHalfLifeDistribution(),
 		Download4MB:   NewHalfLifeDistribution(),
@@ -92,7 +100,7 @@ func (hld *HalfLifeDistribution) AddRequest(speed time.Duration) {
 	}
 
 	// Add to the appropriate bucket based on time.
-	if speed < 60*time.Millisecond {
+	if speed <= 60*time.Millisecond {
 		hld.OneMinute.N60ms++
 		hld.FiveMinutes.N60ms++
 		hld.FifteenMinutes.N60ms++
@@ -100,7 +108,7 @@ func (hld *HalfLifeDistribution) AddRequest(speed time.Duration) {
 		hld.Lifetime.N60ms++
 		return
 	}
-	if speed < 120*time.Millisecond {
+	if speed <= 120*time.Millisecond {
 		hld.OneMinute.N120ms++
 		hld.FiveMinutes.N120ms++
 		hld.FifteenMinutes.N120ms++
@@ -108,7 +116,7 @@ func (hld *HalfLifeDistribution) AddRequest(speed time.Duration) {
 		hld.Lifetime.N120ms++
 		return
 	}
-	if speed < 240*time.Millisecond {
+	if speed <= 240*time.Millisecond {
 		hld.OneMinute.N240ms++
 		hld.FiveMinutes.N240ms++
 		hld.FifteenMinutes.N240ms++
@@ -116,7 +124,7 @@ func (hld *HalfLifeDistribution) AddRequest(speed time.Duration) {
 		hld.Lifetime.N240ms++
 		return
 	}
-	if speed < 500*time.Millisecond {
+	if speed <= 500*time.Millisecond {
 		hld.OneMinute.N500ms++
 		hld.FiveMinutes.N500ms++
 		hld.FifteenMinutes.N500ms++
@@ -124,7 +132,7 @@ func (hld *HalfLifeDistribution) AddRequest(speed time.Duration) {
 		hld.Lifetime.N500ms++
 		return
 	}
-	if speed < 1000*time.Millisecond {
+	if speed <= 1000*time.Millisecond {
 		hld.OneMinute.N1000ms++
 		hld.FiveMinutes.N1000ms++
 		hld.FifteenMinutes.N1000ms++
@@ -132,7 +140,7 @@ func (hld *HalfLifeDistribution) AddRequest(speed time.Duration) {
 		hld.Lifetime.N1000ms++
 		return
 	}
-	if speed < 2000*time.Millisecond {
+	if speed <= 2000*time.Millisecond {
 		hld.OneMinute.N2000ms++
 		hld.FiveMinutes.N2000ms++
 		hld.FifteenMinutes.N2000ms++
@@ -157,10 +165,13 @@ func (hld *HalfLifeDistribution) Update() {
 	timePassed := float64(time.Since(hld.LastUpdate))
 	hld.LastUpdate = time.Now()
 
-	oneMinuteMult := math.Pow(0.5, timePassed/float64(time.Minute))
-	fiveMinuteMult := math.Pow(0.5, timePassed/float64(5*time.Minute))
-	fifteenMinuteMult := math.Pow(0.5, timePassed/float64(15*time.Minute))
-	twentyFourHourMult := math.Pow(0.5, timePassed/float64(24*60*time.Minute))
+	// The denominator on the rate is divided by two so that the full category
+	// represents the number of requests within that period of time, instead of
+	// being off by a factor of two.
+	oneMinuteMult := math.Pow(0.5, timePassed/float64(time.Minute/2))
+	fiveMinuteMult := math.Pow(0.5, timePassed/float64(5*time.Minute/2))
+	fifteenMinuteMult := math.Pow(0.5, timePassed/float64(15*time.Minute/2))
+	twentyFourHourMult := math.Pow(0.5, timePassed/float64(24*60*time.Minute/2))
 
 	buckets := []*RequestTimeDistribution{&hld.OneMinute, &hld.FiveMinutes, &hld.FifteenMinutes, &hld.TwentyFourHours}
 	multiples := []float64{oneMinuteMult, fiveMinuteMult, fifteenMinuteMult, twentyFourHourMult}
@@ -182,4 +193,17 @@ func (sps *SkynetPerformanceStats) Copy() SkynetPerformanceStats {
 	// Currently there are no pointers within the struct, it is safe to just
 	// return a dereferenced copy.
 	return *sps
+}
+
+// Update will update all half life distributions.
+func (sps *SkynetPerformanceStats) Update() {
+	sps.TimeToFirstByte.Update()
+
+	sps.Download64KB.Update()
+	sps.Download1MB.Update()
+	sps.Download4MB.Update()
+	sps.DownloadLarge.Update()
+
+	sps.Upload4MB.Update()
+	sps.UploadLarge.Update()
 }

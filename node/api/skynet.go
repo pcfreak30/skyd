@@ -92,7 +92,7 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		PerformanceStats SkynetPerformanceStats
+		PerformanceStats SkynetPerformanceStats `json:"performancestats"`
 
 		UploadStats SkynetStats   `json:"uploadstats"`
 		VersionInfo SkynetVersion `json:"versioninfo"`
@@ -223,6 +223,9 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Start the timer for the performance measurement.
+	startTime := time.Now()
+
 	strLink := ps.ByName("skylink")
 	strLink = strings.TrimPrefix(strLink, "/")
 
@@ -349,6 +352,36 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+
+	// Metadata has been parsed successfully, stop the time here for TTFB.
+	// Metadata was fetched from Skynet itself.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
+
+	// No more errors, defer a function to record the total performance time.
+	defer func() {
+		skynetPerformanceStatsMu.Lock()
+		defer skynetPerformanceStatsMu.Unlock()
+
+		_, fetchSize, err := skylink.OffsetAndFetchSize()
+		if err != nil {
+			return
+		}
+		if fetchSize <= 64e3 {
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 1e6 {
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 4e6 {
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			return
+		}
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+	}()
 
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
@@ -718,7 +751,21 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 		version += "-" + build.ReleaseTag
 	}
 
-	WriteJSON(w, SkynetStatsGET{UploadStats: stats, VersionInfo: SkynetVersion{Version: version, GitRevision: build.GitRevision}})
+	// Grab a copy of the performance stats.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.Update()
+	perfStats := skynetPerformanceStats.Copy()
+	skynetPerformanceStatsMu.Unlock()
+
+	WriteJSON(w, SkynetStatsGET{
+		PerformanceStats: perfStats,
+
+		UploadStats: stats,
+		VersionInfo: SkynetVersion{
+			Version:     version,
+			GitRevision: build.GitRevision,
+		},
+	})
 }
 
 // serveTar serves skyfiles as a tar by reading them from r and writing the

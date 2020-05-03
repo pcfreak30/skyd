@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -51,8 +53,21 @@ func (uc *UnsafeClient) Get(resource string, obj interface{}) error {
 
 // New creates a new Client using the provided address.
 func New(address string) *Client {
+	// Except for testing builds, try to automatically fetch the siad password.
+	pw := ""
+	if build.Release != "testing" {
+		var err error
+		pw, err = build.APIPassword()
+		if err != nil {
+			// TODO: New() here definitely needs to return an error.
+			panic(err)
+		}
+	}
+
+	// Create and return the client.
 	return &Client{
-		Address: address,
+		Address:  address,
+		Password: pw,
 	}
 }
 
