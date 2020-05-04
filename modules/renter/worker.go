@@ -227,7 +227,7 @@ func (w *worker) threadedWorkLoop() {
 	lastCacheUpdate := time.Now()
 
 	// Fetch the host's most recent price table
-	if build.VersionCmp(w.staticHostVersion, "1.5.0") >= 0 {
+	if build.VersionCmp(w.staticHostVersion, "1.4.8") >= 0 {
 		// update the price table using FC payments to initialize the price
 		// table, regardless whether or not the EA has sufficient balance
 		err := w.managedUpdatePriceTable(w.renter.hostContractor)
@@ -269,7 +269,7 @@ func (w *worker) threadedWorkLoop() {
 		}
 
 		// Check if the account needs to be refilled.
-		if build.VersionCmp(w.staticHostVersion, "1.5.0") >= 0 {
+		if build.VersionCmp(w.staticHostVersion, "1.4.8") >= 0 {
 			w.managedTryRefillAccount()
 		}
 
