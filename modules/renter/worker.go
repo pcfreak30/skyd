@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -601,6 +602,47 @@ func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountR
 	}
 
 	return resp, nil
+}
+
+func (w *worker) managedHasSector(merkleRoot crypto.Hash) (bool, error) {
+	// create a new stream
+	stream, err := w.staticNewStream()
+	if err != nil {
+		return false, errors.AddContext(err, "Unable to create a new stream")
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
+		}
+	}()
+
+	// grab some variables
+	w.mu.Lock()
+	pt := w.priceTable
+	w.mu.Unlock()
+
+	// create the program
+	pb := modules.NewProgramBuilder(&pt)
+	pb.AddHasSectorInstruction(merkleRoot)
+	program, programData := pb.Program()
+	cost, _, _ := pb.Cost(true)
+
+	// exeucte it
+	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	if err != nil {
+		return false, err
+	}
+
+	// return the response
+	var hasSector bool
+	for _, resp := range responses {
+		if resp.Error != nil {
+			return false, resp.Error
+		}
+		hasSector = resp.Output[0] == 1
+		break
+	}
+	return hasSector, nil
 }
 
 // managedUpdateBlockHeight is called by the renter when it processes a
