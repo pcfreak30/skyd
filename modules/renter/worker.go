@@ -71,6 +71,10 @@ type worker struct {
 	cachedContractUtility modules.ContractUtility
 	cachedHostVersion     string
 
+	// Price table information for EA interactions with the host.
+	priceTable modules.RPCPriceTable
+	priceTableUpdateTime time.Time
+
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
 	downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
@@ -188,6 +192,9 @@ func (w *worker) managedBlockUntilReady() bool {
 // worker should exit.
 func (w *worker) managedUpdateCache() bool {
 	// TODO: There must be a faster/better way to look up the host version.
+	// Also, I wonder what happens if the host upgrades their version partway
+	// through. The worker hopefully switches gracefully to using the new
+	// protocols.
 	hdbEntry, exists, err := w.renter.Host(w.staticHostPubKey)
 	if err != nil || !exists {
 		return false
@@ -284,8 +291,15 @@ func (w *worker) threadedWorkLoop() {
 			lastCacheUpdate = time.Now()
 		}
 
-		// Check if the account needs to be refilled.
-		w.scheduleRefillAccount()
+		w.mu.Lock()
+		version := w.cachedHostVersion
+		w.mu.Unlock()
+		if build.VersionCmp(version, "1.4.8") >= 0 {
+			// Check if the account needs to be refilled.
+			w.staticScheduleRefillAccount()
+			// Check if the price table needs to be updated.
+			w.managedUpdatePriceTable()
+		}
 
 		// Perform any job to fund the account
 		workAttempted := w.managedPerformFundAcountJob()
@@ -345,10 +359,49 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
-// scheduleRefillAccount will check if the account needs to be refilled,
+// mangedUpdatePriceTable will update the price table that the worker has with
+// the host if necessary.
+//
+// TODO: This needs to return whether or not work was completed, and also needs
+// to return whether or not the pt update failed.
+func (w *worker) managedUpdatePriceTable() {
+	/*
+	w.mu.Lock()
+	timeSinceUpdate := time.Since(w.priceTableUpdateTime)
+	w.mu.Unlock()
+	// TODO: Const
+	if timeSinceUpdate < time.Minute {
+		return
+	}
+
+	// Update the price table.
+	fmt.Println("worker updating price table")
+	stream, err := w.renter.managedNewStream(w.staticHostPubKey)
+	if err != nil {
+		// TODO: Worker should probably die.
+		fmt.Println("unable to create stream:", err)
+		return
+	}
+	fmt.Println("got stream, doing the update pt rpc")
+	pt, err := w.staticRPCClient.UpdatePriceTable(w.staticAccount, stream)
+	fmt.Println("update pt rpc done")
+	if err != nil {
+		fmt.Println("error updating price table", err)
+		return
+	}
+	fmt.Println("worker price table update success")
+
+	w.mu.Lock()
+	w.priceTable = pt
+	w.priceTableUpdateTime = time.Now()
+	w.mu.Unlock()
+	*/
+}
+
+// staticScheduleRefillAccount will check if the account needs to be refilled,
 // and will schedule a fund account job if so. This is called every time the
 // worker spends from the account.
-func (w *worker) scheduleRefillAccount() {
+func (w *worker) staticScheduleRefillAccount() {
 	// Calculate the threshold, if the account's available balance is below this
 	// threshold, we want to trigger a refill. We only refill if we drop below a
 	// threshold because we want to avoid refilling every time we drop 1 hasting
@@ -359,13 +412,15 @@ func (w *worker) scheduleRefillAccount() {
 	// threshold
 	balance := w.staticAccount.AvailableBalance()
 	if balance.Cmp(threshold) >= 0 {
+		fmt.Println("EA is over the amount that we need", balance, threshold)
 		return
 	}
+	fmt.Println("trying to fill up  the EA ++++++++++++++++++++++++++++")
 
 	// If it's below the threshold, calculate the refill amount and enqueue a
 	// new fund account job
 	refill := w.staticBalanceTarget.Sub(balance)
-	_ = w.callQueueFundAccount(refill)
+	w.callQueueFundAccount(refill)
 
 	// TODO: handle result chan
 	// TODO: add cooldown in case of failure
@@ -402,7 +457,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 		staticHostMuxAddress: hostMuxAddress,
 
 		staticAccount:       account,
-		staticBalanceTarget: types.ZeroCurrency,
+		staticBalanceTarget: types.SiacoinPrecision.Div64(10),
 		staticRPCClient:     rpcClient,
 
 		killChan: make(chan struct{}),

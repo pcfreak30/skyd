@@ -78,9 +78,7 @@ func (wp *workerPool) callUpdate() {
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 
-	id := wp.renter.mu.RLock()
-	bh := wp.renter.blockHeight
-	wp.renter.mu.RUnlock(id)
+	bh := wp.renter.cs.Height()
 
 	// Lock the worker pool for the duration of updating its fields.
 	wp.mu.Lock()

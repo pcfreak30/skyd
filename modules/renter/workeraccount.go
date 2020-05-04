@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -62,7 +63,9 @@ func (a *account) AvailableBalance() types.Currency {
 // ProvidePayment takes a stream and various payment details and handles the
 // payment by sending and processing payment request and response objects.
 // Returns an error in case of failure.
-func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, blockHeight types.BlockHeight) error {
+//
+// acctID is ignored.
+func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, acctID modules.AccountID, blockHeight types.BlockHeight) error {
 	// NOTE: we purposefully do not verify if the account has sufficient funds.
 	// Seeing as withdrawals are a blocking action on the host, it is perfectly
 	// ok to trigger them from an account with insufficient balance.
@@ -70,28 +73,34 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	// TODO (follow-up !4256) cover with test yet
 
 	// create a withdrawal message
+	fmt.Println("creating withdrawal message with bh:", blockHeight)
 	msg := newWithdrawalMessage(a.staticID, amount, blockHeight)
 	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)
 
 	// send PaymentRequest
 	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
+		fmt.Println("error on write, couldn't get the payment request message through to the host")
 		return err
 	}
 
 	// send PayByEphemeralAccountRequest
+	fmt.Println("writing pay by ea request")
 	err = modules.RPCWrite(stream, modules.PayByEphemeralAccountRequest{
 		Message:   msg,
 		Signature: sig,
 	})
 	if err != nil {
+		fmt.Println("error on write, couldn't get the pay by ea request written")
 		return err
 	}
 
 	// receive PayByEphemeralAccountResponse
+	fmt.Println("waiting for pay by ea response")
 	var payByResponse modules.PayByEphemeralAccountResponse
 	err = modules.RPCRead(stream, &payByResponse)
 	if err != nil {
+		fmt.Println("error on read, couldn't get the pay by ea response read")
 		return err
 	}
 	return nil

@@ -11,6 +11,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
+	"gitlab.com/NebulousLabs/Sia/types"
+
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
@@ -174,6 +177,7 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 
 	w.mu.Lock()
 	hostVersion := w.cachedHostVersion
+	priceTable := &w.priceTable
 	w.mu.Unlock()
 
 	if build.VersionCmp(hostVersion, "1.4.8") < 0 {
@@ -185,11 +189,21 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 			return
 		}
 	} else {
-		// Download a single byte to see if the root is available.
 		hasSectorTime := time.Now()
-		_, err := w.Download(pdbr.staticRoot, 0, 1)
+
+		stream, err := w.renter.managedNewStream(w.staticHostPubKey)
 		if err != nil {
-			w.renter.log.Debugln("worker failed a download by root job:", err)
+			fmt.Println("failed to create a stream to the host:", err)
+			pdbr.managedRemoveWorker(w)
+			return
+		}
+		data := make([]byte, crypto.HashSize)
+		copy(data[:], pdbr.staticRoot[:])
+		program := []modules.Instruction{mdm.NewHasSectorInstruction(0)}
+		cost, _ := modules.MDMHasSectorCost(priceTable)
+		responses, err := w.staticRPCClient.ExecuteProgram(w.staticAccount, stream, priceTable, program, data, types.FileContractID{}, cost)
+		if err != nil || len(responses) != 1 || len(responses[0].Output) != 1 || responses[0].Output[0] != 1 {
+			fmt.Println("failed to execute program", err, responses)
 			pdbr.managedRemoveWorker(w)
 			return
 		}

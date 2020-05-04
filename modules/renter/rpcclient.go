@@ -5,6 +5,7 @@ package renter
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"sync"
 
@@ -48,6 +49,8 @@ type programResponse struct {
 }
 
 // ExecuteProgram performs the ExecuteProgramRPC on the host
+//
+// TODO: Verify the proofs in the repsponses.
 func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Stream, pt *modules.RPCPriceTable, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
 	// close the stream
 	defer func() {
@@ -149,6 +152,12 @@ func (c *rpcClient) FundAccount(pp modules.PaymentProvider, stream siamux.Stream
 	}
 
 	// provide payment
+	if c == nil {
+		fmt.Println("oh no, c is nil")
+	}
+	if pp == nil {
+		fmt.Println("oh no, pp is nil")
+	}
 	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, c.managedBlockHeight())
 	if err != nil {
 		return
@@ -165,6 +174,7 @@ func (c *rpcClient) UpdatePriceTable(pp modules.PaymentProvider, stream siamux.S
 	defer func() {
 		cErr := stream.Close()
 		if cErr != nil {
+			fmt.Println("error closing the stream")
 			err = errors.Compose(err, cErr)
 			pt = modules.RPCPriceTable{}
 		}
@@ -173,6 +183,7 @@ func (c *rpcClient) UpdatePriceTable(pp modules.PaymentProvider, stream siamux.S
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
+		fmt.Println("error doing the first write, the price table update write")
 		return
 	}
 
@@ -180,12 +191,14 @@ func (c *rpcClient) UpdatePriceTable(pp modules.PaymentProvider, stream siamux.S
 	var uptr modules.RPCUpdatePriceTableResponse
 	err = modules.RPCRead(stream, &uptr)
 	if err != nil {
+		fmt.Println("error doing the first read, where we get the price table response")
 		return
 	}
 
 	// decode the JSON
 	err = json.Unmarshal(uptr.PriceTableJSON, &pt)
 	if err != nil {
+		fmt.Println("bad decode")
 		return
 	}
 
@@ -193,8 +206,10 @@ func (c *rpcClient) UpdatePriceTable(pp modules.PaymentProvider, stream siamux.S
 	// TODO: (follow-up) this should negatively affect the host's score
 
 	// provide payment
+	fmt.Println("performing the payment")
 	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, c.staticRefundAccount, c.managedBlockHeight())
-	return
+	fmt.Println("payment performing is done")
+	return pt, err
 }
 
 // UpdateBlockHeight is called by the renter when it processes a consensus

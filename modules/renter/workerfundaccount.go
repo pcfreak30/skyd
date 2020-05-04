@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -45,6 +46,12 @@ func (job *fundAccountJob) sendResult(funded types.Currency, err error) {
 		err:    err,
 	}
 
+	if err != nil {
+		fmt.Println("error funding EA:", err)
+	} else {
+		fmt.Println("funded EA:", funded)
+	}
+
 	select {
 	case job.resultChan <- result:
 		close(job.resultChan)
@@ -56,6 +63,7 @@ func (job *fundAccountJob) sendResult(funded types.Currency, err error) {
 // queue. A channel will be returned, this channel will have the result of the
 // job returned down it when the job is completed.
 func (w *worker) callQueueFundAccount(amount types.Currency) chan fundAccountJobResult {
+	fmt.Println("doing a queue to fund an EA")
 	resultChan := make(chan fundAccountJobResult)
 	w.staticFundAccountJobQueue.mu.Lock()
 	w.staticFundAccountJobQueue.queue = append(w.staticFundAccountJobQueue.queue, &fundAccountJob{
@@ -100,17 +108,20 @@ func (w *worker) managedPerformFundAcountJob() bool {
 	// Fetch a stream
 	stream, err := w.newStream()
 	if err != nil {
+		fmt.Println("unable to get fund EA stream")
 		return false
 	}
 	defer stream.Close()
 
 	// TODO: handle response
 	// TODO: pass in actual PT
-	_, err = w.staticRPCClient.FundAccount(nil, stream, modules.RPCPriceTable{}, w.staticAccount.staticID, job.amount)
+	_, err = w.staticRPCClient.FundAccount(w.staticAccount, stream, modules.RPCPriceTable{}, w.staticAccount.staticID, job.amount)
 	if err != nil {
+		fmt.Println("error funding the EA:", err)
 		job.sendResult(types.ZeroCurrency, err)
 		return true
 	}
+	fmt.Println("no error funding EA")
 	job.sendResult(job.amount, nil)
 	return true
 }

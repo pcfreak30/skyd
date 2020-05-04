@@ -240,10 +240,13 @@ func cleanCloseHandler(next http.Handler) http.Handler {
 // UserAgent that contains the specified string.
 func RequireUserAgent(h http.Handler, ua string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		/* - TODO: disabled for easier debugging - reading json from Firefox is
+		* nice.
 		if !strings.Contains(req.UserAgent(), ua) && !isUnrestricted(req) {
 			WriteError(w, Error{"Browser access disabled due to security vulnerability. Use Sia-UI or siac."}, http.StatusBadRequest)
 			return
 		}
+		*/
 		h.ServeHTTP(w, req)
 	})
 }
