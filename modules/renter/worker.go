@@ -604,7 +604,8 @@ func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountR
 	return resp, nil
 }
 
-func (w *worker) managedHasSector(merkleRoot crypto.Hash) (bool, error) {
+// managedHasSector returns whether or not the host has a sector with given root
+func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
@@ -623,7 +624,7 @@ func (w *worker) managedHasSector(merkleRoot crypto.Hash) (bool, error) {
 
 	// create the program
 	pb := modules.NewProgramBuilder(&pt)
-	pb.AddHasSectorInstruction(merkleRoot)
+	pb.AddHasSectorInstruction(sectorRoot)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
@@ -643,6 +644,48 @@ func (w *worker) managedHasSector(merkleRoot crypto.Hash) (bool, error) {
 		break
 	}
 	return hasSector, nil
+}
+
+// managedReadSector returns the sector data for given root
+func (w *worker) managedReadSector(sectorRoot crypto.Hash) ([]byte, error) {
+	// create a new stream
+	stream, err := w.staticNewStream()
+	if err != nil {
+		return nil, errors.AddContext(err, "Unable to create a new stream")
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
+		}
+	}()
+
+	// grab some variables
+	w.mu.Lock()
+	pt := w.priceTable
+	w.mu.Unlock()
+
+	// create the program
+	pb := modules.NewProgramBuilder(&pt)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
+	program, programData := pb.Program()
+	cost, _, _ := pb.Cost(true)
+
+	// exeucte it
+	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	if err != nil {
+		return nil, err
+	}
+
+	// return the response
+	var sectorData []byte
+	for _, resp := range responses {
+		if resp.Error != nil {
+			return nil, resp.Error
+		}
+		sectorData = resp.Output
+		break
+	}
+	return sectorData, nil
 }
 
 // managedUpdateBlockHeight is called by the renter when it processes a
