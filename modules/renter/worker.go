@@ -75,6 +75,7 @@ type worker struct {
 	staticHostFCID       types.FileContractID
 
 	// Cached value for the contract utility, updated infrequently.
+	cachedContractID      types.FileContractID
 	cachedContractUtility modules.ContractUtility
 
 	// Cached blockheight, updated by the renter when consensus changes. We
@@ -95,9 +96,11 @@ type worker struct {
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
-	downloadChunks     []*unfinishedDownloadChunk // Yet unprocessed work items.
-	downloadMu         sync.Mutex
-	downloadTerminated bool // Has downloading been terminated for this worker?
+	downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
+	downloadMu                  sync.Mutex
+	downloadTerminated          bool      // Has downloading been terminated for this worker?
+	downloadConsecutiveFailures int       // How many failures in a row?
+	downloadRecentFailure       time.Time // How recent was the last failure?
 
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
@@ -131,6 +134,44 @@ type worker struct {
 	mu       sync.Mutex
 	renter   *Renter
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
+}
+
+// status returns the status of the worker.
+func (w *worker) status() modules.WorkerStatus {
+	downloadOnCoolDown := w.onDownloadCooldown()
+	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
+
+	var uploadCoolDownErr string
+	if w.uploadRecentFailureErr != nil {
+		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
+	}
+
+	return modules.WorkerStatus{
+		// Contract Information
+		ContractID:      w.cachedContractID,
+		ContractUtility: w.cachedContractUtility,
+		HostPubKey:      w.staticHostPubKey,
+
+		// Download information
+		DownloadOnCoolDown: downloadOnCoolDown,
+		DownloadQueueSize:  len(w.downloadChunks),
+		DownloadTerminated: w.downloadTerminated,
+
+		// Upload information
+		UploadCoolDownError: uploadCoolDownErr,
+		UploadCoolDownTime:  uploadCoolDownTime,
+		UploadOnCoolDown:    uploadOnCoolDown,
+		UploadQueueSize:     len(w.unprocessedChunks),
+		UploadTerminated:    w.uploadTerminated,
+
+		// Ephemeral Account information
+		AvailableBalance: w.staticAccount.managedAvailableBalance(),
+		BalanceTarget:    w.staticBalanceTarget,
+
+		// Job Queues
+		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
+		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
+	}
 }
 
 // managedBlockUntilReady will block until the worker has internet connectivity.
@@ -171,11 +212,12 @@ func (w *worker) managedUpdateCache() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	utility, exists := w.renter.hostContractor.ContractUtility(w.staticHostPubKey)
+	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
 	if !exists {
 		return false
 	}
-	w.cachedContractUtility = utility
+	w.cachedContractID = renterContract.ID
+	w.cachedContractUtility = renterContract.Utility
 	return true
 }
 
@@ -348,7 +390,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 	// calculate the host's mux address
 	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
 
-	return &worker{
+	w := &worker{
 		staticHostPubKey:     hostPubKey,
 		staticHostPubKeyStr:  hostPubKey.String(),
 		staticHostMuxAddress: hostMuxAddress,
@@ -364,7 +406,13 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
-	}, nil
+	}
+	// Get the worker cache set up before returning the worker. This prvents a
+	// race condition in some tests.
+	if !w.managedUpdateCache() {
+		return nil, errors.New("unable to build cache for worker")
+	}
+	return w, nil
 }
 
 // threadedUpdateBlockHeightOnWorkers is called on consensus change and updates
