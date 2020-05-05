@@ -183,7 +183,7 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 
 	// create the program
 	pt := w.staticHostPrices.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(&pt)
 	pb.AddHasSectorInstruction(sectorRoot)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
@@ -281,7 +281,7 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 
 	// create the program
 	pt := w.staticHostPrices.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(&pt)
 	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
