@@ -59,7 +59,11 @@ func main() {
 		return
 	}
 
-	c = client.New(addr)
+	c, err = client.New(addr)
+	if err != nil {
+		fmt.Println("Unable to create Sia client:", err)
+		return
+	}
 
 	// Establish the directories that we will be using for testing.
 	dirBasePath, err := modules.NewSiaPath(testSiaDir)
