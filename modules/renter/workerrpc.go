@@ -190,7 +190,7 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 
 	// add bandwidth cost
 	// TODO: figure out bandwidth cost
-	cost = cost.Add(types.SiacoinPrecision.Div64(10))
+	cost = cost.Add(types.SiacoinPrecision.Div64(1e3))
 
 	// exeucte it
 	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
@@ -288,7 +288,7 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 
 	// add bandwidth cost
 	// TODO: figure out bandwidth cost
-	cost = cost.Add(types.SiacoinPrecision.Div64(10))
+	cost = cost.Add(types.SiacoinPrecision.Div64(1e3))
 
 	// exeucte it
 	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
