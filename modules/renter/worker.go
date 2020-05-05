@@ -36,6 +36,12 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const (
+	// renterHostProtocolVersion is the version threshold at which to use the
+	// new renter-host protocol
+	renterHostProtocolVersion = "1.4.8"
+)
+
 var (
 	// workerCacheUpdateFrequency specifies how much time must pass before the
 	// worker updates its cache.
@@ -364,7 +370,7 @@ func (r *Renter) threadedUpdateBlockHeightOnWorkers() {
 
 // managedTryRefillAccount will check if the account needs to be refilled
 func (w *worker) managedTryRefillAccount() {
-	if build.VersionCmp(w.staticHostVersion, "1.5.0") >= 0 {
+	if build.VersionCmp(w.staticHostVersion, renterHostProtocolVersion) < 0 {
 		return
 	}
 
@@ -392,7 +398,7 @@ func (w *worker) managedTryRefillAccount() {
 
 // managedTryUpdatePriceTable will check if the price table needs to be updated
 func (w *worker) managedTryUpdatePriceTable() {
-	if build.VersionCmp(w.staticHostVersion, "1.5.0") >= 0 {
+	if build.VersionCmp(w.staticHostVersion, renterHostProtocolVersion) < 0 {
 		return
 	}
 

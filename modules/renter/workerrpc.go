@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -158,6 +159,44 @@ func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountR
 	return resp, nil
 }
 
+// managedHasSector returns whether or not the host has a sector with given root
+func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
+	// create a new stream
+	stream, err := w.staticNewStream()
+	if err != nil {
+		return false, errors.AddContext(err, "Unable to create a new stream")
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
+		}
+	}()
+
+	// create the program
+	pt := w.staticHostPrices.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddHasSectorInstruction(sectorRoot)
+	program, programData := pb.Program()
+	cost, _, _ := pb.Cost(true)
+
+	// exeucte it
+	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	if err != nil {
+		return false, err
+	}
+
+	// return the response
+	var hasSector bool
+	for _, resp := range responses {
+		if resp.Error != nil {
+			return false, resp.Error
+		}
+		hasSector = resp.Output[0] == 1
+		break
+	}
+	return hasSector, nil
+}
+
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) managedUpdatePriceTable() error {
 	// create a new stream
@@ -208,6 +247,44 @@ func (w *worker) managedUpdatePriceTable() error {
 	// update the price table
 	w.staticHostPrices.managedUpdatePriceTable(pt)
 	return nil
+}
+
+// managedReadSector returns the sector data for given root
+func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error) {
+	// create a new stream
+	stream, err := w.staticNewStream()
+	if err != nil {
+		return nil, errors.AddContext(err, "Unable to create a new stream")
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
+		}
+	}()
+
+	// create the program
+	pt := w.staticHostPrices.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
+	program, programData := pb.Program()
+	cost, _, _ := pb.Cost(true)
+
+	// exeucte it
+	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	if err != nil {
+		return nil, err
+	}
+
+	// return the response
+	var sectorData []byte
+	for _, resp := range responses {
+		if resp.Error != nil {
+			return nil, resp.Error
+		}
+		sectorData = resp.Output
+		break
+	}
+	return sectorData, nil
 }
 
 // staticNewStream returns a new stream to the worker's host
