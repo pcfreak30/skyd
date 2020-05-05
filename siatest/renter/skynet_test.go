@@ -55,22 +55,22 @@ func TestSkynet(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestSkynetBasic", Test: testSkynetBasic},
-		{Name: "TestConvertSiaFile", Test: testConvertSiaFile},
-		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
-		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
-		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
-		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
-		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
-		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
-		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
-		{Name: "TestSkynetPortals", Test: testSkynetPortals},
-		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
-		{Name: "TestSkynetStats", Test: testSkynetStats},
-		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
-		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
-		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		{Name: "TestRenameSiaPath", Test: testRenameSiaPath},
-		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers}, // Run last since it adds a renter with no workers
+		// {Name: "TestConvertSiaFile", Test: testConvertSiaFile},
+		// {Name: "TestSkynetSkykey", Test: testSkynetSkykey},
+		// {Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
+		// {Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
+		// {Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
+		// {Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
+		// {Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
+		// {Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
+		// {Name: "TestSkynetPortals", Test: testSkynetPortals},
+		// {Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
+		// {Name: "TestSkynetStats", Test: testSkynetStats},
+		// {Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
+		// {Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
+		// {Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		// {Name: "TestRenameSiaPath", Test: testRenameSiaPath},
+		// {Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers}, // Run last since it adds a renter with no workers
 	}
 
 	// Run tests

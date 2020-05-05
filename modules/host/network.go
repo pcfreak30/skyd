@@ -354,10 +354,12 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 	var found bool
 	pt, found := h.staticPriceTables.managedGet(uid)
 	if !found {
+		fmt.Println("NOT TRACKED")
 		return nil, ErrPriceTableNotFound
 	}
 	// make sure the table isn't expired.
 	if pt.Expiry < time.Now().Unix() {
+		fmt.Println("EXPIRED")
 		return nil, ErrPriceTableExpired
 	}
 	return pt, nil

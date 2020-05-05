@@ -2,6 +2,7 @@ package renter
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -101,6 +102,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 // managedFundAccount will call the fundAccountRPC on the host and if successful
 // will deposit the given amount into the worker's ephemeral account.
 func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountResponse, error) {
+	fmt.Println("FUNDING EA")
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
@@ -156,11 +158,18 @@ func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountR
 		return modules.FundAccountResponse{}, err
 	}
 
+	fmt.Println("FUND EA SUCCESS")
 	return resp, nil
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
 func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
+	fmt.Println("HAS SECTOR", sectorRoot)
+	var hasSector bool
+	defer func() {
+		fmt.Println("HAS SECTOR", hasSector)
+	}()
+
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
@@ -179,15 +188,20 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
+	// add bandwidth cost
+	// TODO: figure out bandwidth cost
+	cost = cost.Add(types.SiacoinPrecision.Div64(10))
+
 	// exeucte it
-	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
 	if err != nil {
+		fmt.Printf("execute program err %v\n", err)
 		return false, err
 	}
 
 	// return the response
-	var hasSector bool
 	for _, resp := range responses {
+		fmt.Printf("processing response, output: %v err: %v\n", resp.Output, resp.Error)
 		if resp.Error != nil {
 			return false, resp.Error
 		}
@@ -199,6 +213,7 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) managedUpdatePriceTable() error {
+	fmt.Println("UPDATING PT")
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
@@ -246,11 +261,13 @@ func (w *worker) managedUpdatePriceTable() error {
 
 	// update the price table
 	w.staticHostPrices.managedUpdatePriceTable(pt)
+	fmt.Println("PT RECEIVED", pt)
 	return nil
 }
 
 // managedReadSector returns the sector data for given root
 func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error) {
+	fmt.Println("READ SECTOR", sectorRoot, offset, length)
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
@@ -269,9 +286,14 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
+	// add bandwidth cost
+	// TODO: figure out bandwidth cost
+	cost = cost.Add(types.SiacoinPrecision.Div64(10))
+
 	// exeucte it
-	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
 	if err != nil {
+		fmt.Println("READ SECTOR ERR", err)
 		return nil, err
 	}
 

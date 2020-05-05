@@ -72,6 +72,7 @@ type worker struct {
 	staticHostPubKeyStr  string
 	staticHostMuxAddress string
 	staticHostVersion    string
+	staticHostFCID       types.FileContractID
 
 	// Cached value for the contract utility, updated infrequently.
 	cachedContractUtility modules.ContractUtility
@@ -228,6 +229,16 @@ func (w *worker) threadedWorkLoop() {
 	}
 	lastCacheUpdate := time.Now()
 
+	// Fetch the host's price table
+	err := w.managedUpdatePriceTable()
+	if err != nil {
+		msg := "Worker is being insta-killed because the host's prices could not be fetched"
+		build.Critical(msg)
+		w.renter.log.Println(msg)
+		return
+		// TODO: add retry mechanism
+	}
+
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
 	// work is attempted, the loop resets to check for higher priority work
@@ -323,6 +334,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 		return nil, errors.New("host does not exist")
 	}
 
+	contract, ok := r.hostContractor.ContractByPublicKey(hostPubKey)
+	if !ok {
+		return nil, errors.New("contract not found")
+	}
+
 	// set the balance target to 1SC
 	//
 	// TODO: check that the balance target  makes sense in function of the
@@ -338,6 +354,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 		staticHostMuxAddress: hostMuxAddress,
 		staticHostVersion:    host.Version,
 		staticHostPrices:     hostPrices{},
+		staticHostFCID:       contract.ID,
 
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,

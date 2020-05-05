@@ -65,6 +65,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// after payment has been received, track the price table in the host's list
 	// of price tables
 	h.staticPriceTables.managedTrack(&pt)
+	fmt.Println("TRACKED PT", pt.UID)
 
 	// refund the money we didn't use.
 	refund := payment.Amount().Sub(pt.UpdatePriceTableCost)
