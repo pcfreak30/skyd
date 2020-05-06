@@ -929,12 +929,12 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.managedPrunedRedundantAddressRange()
 	err = c.managedMarkContractsUtility()
 	if err != nil {
-		c.log.Debugln("Unable to mark contract utilities:", err)
+		c.log.Println("Unable to mark contract utilities:", err)
 		return
 	}
 	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
 	if err != nil {
-		c.log.Debugln("Unable to update hostdb contracts:", err)
+		c.log.Println("Unable to update hostdb contracts:", err)
 		return
 	}
 
