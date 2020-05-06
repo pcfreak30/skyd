@@ -180,7 +180,8 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 		return
 	}
 
-	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) >= 0 {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) == 0 {
+		/*
 		// Execute a HasSector program on the host to see if the root is
 		// available.
 		hasSector, err := w.managedHasSector(pdbr.staticRoot)
@@ -193,7 +194,8 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 			pdbr.managedRemoveWorker(w)
 			return
 		}
-	} else {
+		*/
+		hasSectorStart := time.Now()
 		// Download a single byte to see if the root is available.
 		_, err := w.Download(pdbr.staticRoot, 0, 1)
 		if err != nil {
@@ -201,6 +203,18 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 			pdbr.managedRemoveWorker(w)
 			return
 		}
+		fmt.Println(w.staticHostPubKeyStr, time.Since(hasSectorStart))
+	} else {
+		fmt.Println(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion)
+		hasSectorStart := time.Now()
+		// Download a single byte to see if the root is available.
+		_, err := w.Download(pdbr.staticRoot, 0, 1)
+		if err != nil {
+			w.renter.log.Debugln("worker failed a download by root job:", err)
+			pdbr.managedRemoveWorker(w)
+			return
+		}
+		fmt.Println("v147 host:", w.staticHostPubKeyStr, time.Since(hasSectorStart))
 	}
 
 	// The host has the root. Check in with the project and see if the root
