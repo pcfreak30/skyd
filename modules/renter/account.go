@@ -161,8 +161,10 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 }
 
 // managedTryRefill will check if the available balance is below the
-// given threshold, if that is the case it flips the 'refilling' flag to ensure
-// the same account is not being refilled twice
+// given threshold, if that is the case we add the refill amount to the pending
+// deposits and return 'true'. We have to increment pendingDeposits while
+// holding the lock to ensure concurrent calls to `managedTryRefill` does not
+// return twice (providing refillAmount is sufficiently large).
 func (a *account) managedTryRefill(threshold, refillAmount types.Currency) bool {
 	a.staticMu.Lock()
 	defer a.staticMu.Unlock()

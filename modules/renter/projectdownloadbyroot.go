@@ -148,7 +148,7 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	var err error
 	var data []byte
 
-	if build.VersionCmp(w.staticHostVersion, renterHostProtocolVersion) >= 0 {
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) >= 0 {
 		data, err = w.managedReadSector(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
 	} else {
 		data, err = w.Download(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
@@ -181,7 +181,7 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 		return
 	}
 
-	if build.VersionCmp(w.staticHostVersion, renterHostProtocolVersion) >= 0 {
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) >= 0 {
 		// Execute a HasSector program on the host to see if the root is
 		// available.
 		hasSector, err := w.managedHasSector(pdbr.staticRoot)

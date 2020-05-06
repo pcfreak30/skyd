@@ -59,6 +59,7 @@ func main() {
 		return
 	}
 
+	var err error
 	c, err = client.New(addr)
 	if err != nil {
 		fmt.Println("Unable to create Sia client:", err)

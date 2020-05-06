@@ -37,9 +37,9 @@ import (
 )
 
 const (
-	// renterHostProtocolVersion is the version threshold at which to use the
-	// new renter-host protocol
-	renterHostProtocolVersion = "1.4.8"
+	// compatRHProtocolVersion is the minimum version a host must have in order
+	// to ensure we can use the new renter host protocol
+	compatRHProtocolVersion = "1.5.0"
 )
 
 var (
@@ -74,14 +74,14 @@ type worker struct {
 	staticHostVersion    string
 	staticHostFCID       types.FileContractID
 
-	// Cached value for the contract utility, updated infrequently.
-	cachedContractID      types.FileContractID
-	cachedContractUtility modules.ContractUtility
-
 	// Cached blockheight, updated by the renter when consensus changes. We
 	// cache it on the worker to avoid fetching it from consensus on every RPC
 	// call that requires to know the current block height.
 	cachedBlockHeight types.BlockHeight
+
+	// Cached value for the contract utility, updated infrequently.
+	cachedContractID      types.FileContractID
+	cachedContractUtility modules.ContractUtility
 
 	// Download variables that are not protected by a mutex, but also do not
 	// need to be protected by a mutex, as they are only accessed by the master
@@ -272,13 +272,11 @@ func (w *worker) threadedWorkLoop() {
 	lastCacheUpdate := time.Now()
 
 	// Fetch the host's price table
-	err := w.managedUpdatePriceTable()
-	if err != nil {
-		msg := "Worker is being insta-killed because the host's prices could not be fetched"
-		build.Critical(msg)
-		w.renter.log.Println(msg)
-		return
-		// TODO: add retry mechanism
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) >= 0 {
+		if err := w.managedUpdatePriceTable(); err != nil {
+			w.renter.log.Println("Worker is being insta-killed because the host's prices could not be fetched")
+			return
+		}
 	}
 
 	// Primary work loop. There are several types of jobs that the worker can
@@ -427,16 +425,15 @@ func (r *Renter) threadedUpdateBlockHeightOnWorkers() {
 	// grab the current block height and have all workers cache it
 	blockHeight := r.cs.Height()
 	for _, worker := range r.staticWorkerPool.managedWorkers() {
-		worker.mu.Lock()
-		worker.cachedBlockHeight = blockHeight
-		worker.mu.Unlock()
+		worker.managedUpdateBlockHeight(blockHeight)
 	}
 }
 
 // managedTryRefillAccount will check if the account needs to be refilled
 func (w *worker) managedTryRefillAccount() {
-	if build.VersionCmp(w.staticHostVersion, renterHostProtocolVersion) < 0 {
-		return
+	// check host version
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
 	}
 
 	// set refill threshold at half the balance target
@@ -449,10 +446,9 @@ func (w *worker) managedTryRefillAccount() {
 			return
 		}
 		go func() {
-			var err error
 			defer w.renter.tg.Done()
-			defer w.staticAccount.managedCommitDeposit(refillAmount, err == nil)
 			_, err = w.managedFundAccount(refillAmount)
+			w.staticAccount.managedCommitDeposit(refillAmount, err == nil)
 			if err != nil {
 				w.renter.log.Println("ERROR: failed to refill account", err)
 				// TODO: add cooldown mechanism
@@ -463,8 +459,9 @@ func (w *worker) managedTryRefillAccount() {
 
 // managedTryUpdatePriceTable will check if the price table needs to be updated
 func (w *worker) managedTryUpdatePriceTable() {
-	if build.VersionCmp(w.staticHostVersion, renterHostProtocolVersion) < 0 {
-		return
+	// check host version
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
 	}
 
 	if w.staticHostPrices.managedTryUpdate() {
@@ -482,6 +479,13 @@ func (w *worker) managedTryUpdatePriceTable() {
 			}
 		}()
 	}
+}
+
+// managedUpdateBlockHeight sets the given block height on the worker
+func (w *worker) managedUpdateBlockHeight(blockHeight types.BlockHeight) {
+	w.mu.Lock()
+	w.cachedBlockHeight = blockHeight
+	w.mu.Unlock()
 }
 
 // hostPrices is a helper struct that wraps a priceTable and adds its own
