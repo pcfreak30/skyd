@@ -168,22 +168,22 @@ func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountR
 		return modules.FundAccountResponse{}, err
 	}
 
-	fmt.Println("FUND EA SUCCESS")
+	fmt.Println("FUNDED EA", w.staticHostPubKeyStr)
 	return resp, nil
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
-func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
-	fmt.Println("HAS SECTOR", sectorRoot)
-	var hasSector bool
+func (w *worker) managedHasSector(sectorRoot crypto.Hash) (hasSector bool, err error) {
 	defer func() {
-		fmt.Println("HAS SECTOR", hasSector)
+		fmt.Printf("Executed HasSector program for: \nroot:%v \noutput:%v \nerror:%v\n\n", sectorRoot, hasSector, err)
 	}()
 
 	// create a new stream
-	stream, err := w.staticNewStream()
+	var stream siamux.Stream
+	stream, err = w.staticNewStream()
 	if err != nil {
-		return false, errors.AddContext(err, "Unable to create a new stream")
+		err = errors.AddContext(err, "Unable to create a new stream")
+		return
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -203,17 +203,18 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	cost = cost.Add(types.SiacoinPrecision.Div64(1e3))
 
 	// exeucte it
-	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
+	var responses []programResponse
+	responses, err = w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
 	if err != nil {
-		fmt.Printf("execute program err %v\n", err)
-		return false, err
+		err = errors.AddContext(err, "Unable to execute program")
+		return
 	}
 
 	// return the response
 	for _, resp := range responses {
-		fmt.Printf("processing response, output: %v err: %v\n", resp.Output, resp.Error)
 		if resp.Error != nil {
-			return false, resp.Error
+			err = errors.AddContext(resp.Error, "Output error")
+			return
 		}
 		hasSector = resp.Output[0] == 1
 		break
@@ -275,13 +276,18 @@ func (w *worker) managedUpdatePriceTable() error {
 
 	// update the price table
 	w.staticHostPrices.managedUpdatePriceTable(pt)
-	fmt.Println("PT RECEIVED", pt)
+	fmt.Println("UPDATED PT", w.staticHostPubKeyStr)
 	return nil
 }
 
 // managedReadSector returns the sector data for given root
 func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error) {
-	fmt.Println("READ SECTOR", sectorRoot, offset, length)
+	var err error
+
+	defer func() {
+		fmt.Printf("Executed ReadSector program for: \nroot: %v \noffset:%v \nlength:%v \nerror:%v\n\n", sectorRoot, offset, length, err)
+	}()
+
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
@@ -307,7 +313,6 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	// exeucte it
 	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
 	if err != nil {
-		fmt.Println("READ SECTOR ERR", err)
 		return nil, err
 	}
 

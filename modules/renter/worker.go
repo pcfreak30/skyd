@@ -39,7 +39,7 @@ import (
 const (
 	// compatRHProtocolVersion is the minimum version a host must have in order
 	// to ensure we can use the new renter host protocol
-	compatRHProtocolVersion = "1.5.0"
+	compatRHProtocolVersion = "1.4.8"
 )
 
 var (
@@ -365,18 +365,13 @@ func (w *worker) threadedWorkLoop() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.BlockHeight, account *account) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileContractID, blockHeight types.BlockHeight, account *account) (*worker, error) {
 	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
 	if !ok {
 		return nil, errors.New("host does not exist")
-	}
-
-	contract, ok := r.hostContractor.ContractByPublicKey(hostPubKey)
-	if !ok {
-		return nil, errors.New("contract not found")
 	}
 
 	// set the balance target to 1SC
@@ -394,7 +389,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 		staticHostMuxAddress: hostMuxAddress,
 		staticHostVersion:    host.Version,
 		staticHostPrices:     hostPrices{},
-		staticHostFCID:       contract.ID,
+		staticHostFCID:       hostFCID,
 
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
@@ -433,7 +428,7 @@ func (r *Renter) threadedUpdateBlockHeightOnWorkers() {
 func (w *worker) managedTryRefillAccount() {
 	// check host version
 	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
-		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
+		return
 	}
 
 	// set refill threshold at half the balance target
@@ -461,7 +456,7 @@ func (w *worker) managedTryRefillAccount() {
 func (w *worker) managedTryUpdatePriceTable() {
 	// check host version
 	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
-		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
+		return
 	}
 
 	if w.staticHostPrices.managedTryUpdate() {
