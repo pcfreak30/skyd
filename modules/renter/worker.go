@@ -73,7 +73,6 @@ type worker struct {
 	staticHostPubKeyStr  string
 	staticHostMuxAddress string
 	staticHostVersion    string
-	staticHostFCID       types.FileContractID
 
 	// Cached blockheight, updated by the renter when consensus changes. We
 	// cache it on the worker to avoid fetching it from consensus on every RPC
