@@ -23,7 +23,7 @@ type programResponse struct {
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
 func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) ([]programResponse, error) {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
 	}
 
@@ -107,16 +107,24 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 
 // managedFundAccount will call the fundAccountRPC on the host and if successful
 // will deposit the given amount into the worker's ephemeral account.
-func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountResponse, error) {
+func (w *worker) managedFundAccount(amount types.Currency) (resp modules.FundAccountResponse, err error) {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
 	}
 
+	// track the deposit
+	w.staticAccount.managedTrackDeposit(amount)
+	defer func() {
+		w.staticAccount.managedCommitDeposit(amount, err == nil)
+	}()
+
 	// create a new stream
-	stream, err := w.staticNewStream()
+	var stream siamux.Stream
+	stream, err = w.staticNewStream()
 	if err != nil {
-		return modules.FundAccountResponse{}, errors.AddContext(err, "Unable to create a new stream")
+		err = errors.AddContext(err, "Unable to create a new stream")
+		return
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -132,51 +140,45 @@ func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountR
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
 
 	// send price table uid
 	pt := w.staticHostPrices.managedPriceTable()
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
 
 	// send fund account request
 	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: w.staticAccount.staticID})
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
 
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, bh)
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
 
 	// receive FundAccountResponse
-	var resp modules.FundAccountResponse
 	err = modules.RPCRead(stream, &resp)
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
 
 	fmt.Println("FUNDED EA", w.staticHostPubKeyStr)
-	return resp, nil
+	return
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
-func (w *worker) managedHasSector(sectorRoot crypto.Hash) (hasSector bool, err error) {
-	defer func() {
-		fmt.Printf("Executed HasSector program for: \nroot:%v \noutput:%v \nerror:%v\n\n", sectorRoot, hasSector, err)
-	}()
-
+func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	// create a new stream
 	var stream siamux.Stream
-	stream, err = w.staticNewStream()
+	stream, err := w.staticNewStream()
 	if err != nil {
-		err = errors.AddContext(err, "Unable to create a new stream")
-		return
+		return false, errors.AddContext(err, "Unable to create a new stream")
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -195,15 +197,14 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (hasSector bool, err e
 	var responses []programResponse
 	responses, err = w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
 	if err != nil {
-		err = errors.AddContext(err, "Unable to execute program")
-		return
+		return false, errors.AddContext(err, "Unable to execute program")
 	}
 
 	// return the response
+	var hasSector bool
 	for _, resp := range responses {
 		if resp.Error != nil {
-			err = errors.AddContext(resp.Error, "Output error")
-			return
+			return false, errors.AddContext(resp.Error, "Output error")
 		}
 		hasSector = resp.Output[0] == 1
 		break
@@ -211,10 +212,48 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (hasSector bool, err e
 	return hasSector, nil
 }
 
+// managedReadSector returns the sector data for given root
+func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error) {
+	// create a new stream
+	stream, err := w.staticNewStream()
+	if err != nil {
+		return nil, errors.AddContext(err, "Unable to create a new stream")
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
+		}
+	}()
+
+	// create the program
+	pt := w.staticHostPrices.managedPriceTable()
+	pb := modules.NewProgramBuilder(&pt)
+	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
+	program, programData := pb.Program()
+	cost, _, _ := pb.Cost(true)
+
+	// exeucte it
+	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
+	if err != nil {
+		return nil, err
+	}
+
+	// return the response
+	var sectorData []byte
+	for _, resp := range responses {
+		if resp.Error != nil {
+			return nil, resp.Error
+		}
+		sectorData = resp.Output
+		break
+	}
+	return sectorData, nil
+}
+
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) managedUpdatePriceTable() error {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
 	}
 
@@ -264,53 +303,9 @@ func (w *worker) managedUpdatePriceTable() error {
 	}
 
 	// update the price table
-	w.staticHostPrices.managedUpdatePriceTable(pt)
+	w.staticHostPrices.managedUpdate(pt)
 	fmt.Println("UPDATED PT", w.staticHostPubKeyStr)
 	return nil
-}
-
-// managedReadSector returns the sector data for given root
-func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error) {
-	var err error
-
-	defer func() {
-		fmt.Printf("Executed ReadSector program for: \nroot: %v \noffset:%v \nlength:%v \nerror:%v\n\n", sectorRoot, offset, length, err)
-	}()
-
-	// create a new stream
-	stream, err := w.staticNewStream()
-	if err != nil {
-		return nil, errors.AddContext(err, "Unable to create a new stream")
-	}
-	defer func() {
-		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
-		}
-	}()
-
-	// create the program
-	pt := w.staticHostPrices.managedPriceTable()
-	pb := modules.NewProgramBuilder(&pt)
-	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
-	program, programData := pb.Program()
-	cost, _, _ := pb.Cost(true)
-
-	// exeucte it
-	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
-	if err != nil {
-		return nil, err
-	}
-
-	// return the response
-	var sectorData []byte
-	for _, resp := range responses {
-		if resp.Error != nil {
-			return nil, resp.Error
-		}
-		sectorData = resp.Output
-		break
-	}
-	return sectorData, nil
 }
 
 // staticNewStream returns a new stream to the worker's host

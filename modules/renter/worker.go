@@ -36,12 +36,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const (
-	// compatRHProtocolVersion is the minimum version a host must have in order
-	// to ensure we can use the new renter host protocol
-	compatRHProtocolVersion = "1.4.8"
-)
-
 var (
 	// workerCacheUpdateFrequency specifies how much time must pass before the
 	// worker updates its cache.
@@ -82,17 +76,6 @@ type worker struct {
 	// Cached value for the contract utility, updated infrequently.
 	cachedContractID      types.FileContractID
 	cachedContractUtility modules.ContractUtility
-
-	// Download variables that are not protected by a mutex, but also do not
-	// need to be protected by a mutex, as they are only accessed by the master
-	// thread for the worker.
-	//
-	// The 'owned' prefix here indicates that only the master thread for the
-	// object (in this case, 'threadedWorkLoop') is allowed to access these
-	// variables. Because only that thread is allowed to access the variables,
-	// that thread is able to access these variables without a mutex.
-	ownedDownloadConsecutiveFailures int       // How many failures in a row?
-	ownedDownloadRecentFailure       time.Time // How recent was the last failure?
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
@@ -272,7 +255,7 @@ func (w *worker) threadedWorkLoop() {
 	lastCacheUpdate := time.Now()
 
 	// Fetch the host's price table
-	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) >= 0 {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) >= 0 {
 		if err := w.managedUpdatePriceTable(); err != nil {
 			w.renter.log.Println("Worker is being insta-killed because the host's prices could not be fetched")
 			return
@@ -427,39 +410,31 @@ func (r *Renter) threadedUpdateBlockHeightOnWorkers() {
 // managedTryRefillAccount will check if the account needs to be refilled
 func (w *worker) managedTryRefillAccount() {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		return
 	}
 
-	// set refill threshold at half the balance target
+	// refill if the balance is less than half the balance target
+	balance := w.staticAccount.managedAvailableBalance()
 	threshold := w.staticBalanceTarget.Div64(2)
-	refillAmount := threshold
-	if w.staticAccount.managedTryRefill(threshold, refillAmount) {
-		err := w.renter.tg.Add()
+	if balance.Cmp(threshold) < 0 {
+		amount := w.staticBalanceTarget.Sub(balance)
+		_, err := w.managedFundAccount(amount)
 		if err != nil {
-			w.renter.log.Println(err)
-			return
+			w.renter.log.Println("ERROR: failed to refill account", err)
+			// TODO: add cooldown mechanism
 		}
-		go func() {
-			defer w.renter.tg.Done()
-			_, err = w.managedFundAccount(refillAmount)
-			w.staticAccount.managedCommitDeposit(refillAmount, err == nil)
-			if err != nil {
-				w.renter.log.Println("ERROR: failed to refill account", err)
-				// TODO: add cooldown mechanism
-			}
-		}()
 	}
 }
 
 // managedTryUpdatePriceTable will check if the price table needs to be updated
 func (w *worker) managedTryUpdatePriceTable() {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		return
 	}
 
-	if w.staticHostPrices.managedTryUpdate() {
+	if w.staticHostPrices.managedNeedsUpdate() {
 		err := w.managedUpdatePriceTable()
 		if err != nil {
 			w.renter.log.Println("ERROR: failed to update price table", err)
@@ -476,14 +451,11 @@ func (w *worker) managedUpdateBlockHeight(blockHeight types.BlockHeight) {
 }
 
 // hostPrices is a helper struct that wraps a priceTable and adds its own
-// separate mutex. It contains a flag 'updating' which indicates whether or not
-// we are currently in the process of updating the pricetable. It also has an
-// 'updateAt' property that is set when a price table is updated and is set to
-// the time when we want to update the host prices.
+// separate mutex. It has an 'updateAt' property that is set when a price table
+// is updated and is set to the time when we want to update the host prices.
 type hostPrices struct {
 	priceTable modules.RPCPriceTable
 	updateAt   int64
-	updating   bool
 	staticMu   sync.Mutex
 }
 
@@ -494,28 +466,21 @@ func (hp *hostPrices) managedPriceTable() modules.RPCPriceTable {
 	return hp.priceTable
 }
 
-// managedTryUpdate is a helper function that checks whether or not we have to
+// managedNeedsUpdate is a helper function that checks whether or not we have to
 // update the price table. If so, it flips the 'updating' flag on the hostPrices
 // object to ensure we only try this once.
-func (hp *hostPrices) managedTryUpdate() bool {
+func (hp *hostPrices) managedNeedsUpdate() bool {
 	hp.staticMu.Lock()
 	defer hp.staticMu.Unlock()
-
-	if !hp.updating && time.Now().Unix() >= hp.updateAt {
-		hp.updating = true
-		return true
-	}
-	return false
+	return time.Now().Unix() >= hp.updateAt
 }
 
-// managedUpdatePriceTable is a helper function that sets the priceTable and
+// managedUpdate is a helper function that sets the priceTable and
 // calculates when we should try and update the price table again. It flips the
 // 'updating' flag to false.
-func (hp *hostPrices) managedUpdatePriceTable(pt modules.RPCPriceTable) {
+func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
 	hp.staticMu.Lock()
 	defer hp.staticMu.Unlock()
-
 	hp.priceTable = pt
 	hp.updateAt = time.Now().Unix() + (pt.Expiry-time.Now().Unix())/2
-	hp.updating = false
 }

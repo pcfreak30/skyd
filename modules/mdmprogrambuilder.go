@@ -104,7 +104,11 @@ func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.C
 
 	// Add the bandwidth cost
 	bandwidthCost := pb.staticPT.DownloadBandwidthCost.Mul64(pb.downloadBandwidth).Add(pb.staticPT.UploadBandwidthCost.Mul64(pb.uploadBandwidth))
-	cost = cost.Add(bandwidthCost.Mul64(100)) // TODO remove
+	cost = cost.Add(bandwidthCost)
+
+	// Multiply to ensure we have sufficient bandwidth
+	// TODO: remove when #4117 and !4444 are done
+	cost = cost.Mul64(100)
 
 	return cost, pb.potentialRefund, pb.riskedCollateral
 }
