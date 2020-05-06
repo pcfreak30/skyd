@@ -129,13 +129,6 @@ func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountR
 	bh := w.cachedBlockHeight
 	w.mu.Unlock()
 
-	// close the stream
-	defer func() {
-		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
-		}
-	}()
-
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
@@ -197,10 +190,6 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (hasSector bool, err e
 	pb.AddHasSectorInstruction(sectorRoot)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
-
-	// add bandwidth cost
-	// TODO: figure out bandwidth cost
-	cost = cost.Add(types.SiacoinPrecision.Div64(1e3))
 
 	// exeucte it
 	var responses []programResponse
@@ -305,10 +294,6 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
-
-	// add bandwidth cost
-	// TODO: figure out bandwidth cost
-	cost = cost.Add(types.SiacoinPrecision.Div64(1e3))
 
 	// exeucte it
 	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)

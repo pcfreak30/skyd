@@ -103,24 +103,27 @@ func main() {
 		return
 	}
 	fmt.Println("64kb files are ready to go.")
-	err = uploadFileSet(dir1mbPath, 982e3, 983040)
-	if err != nil {
-		fmt.Println("Unable to upload 1mb files:", err)
-		return
+
+	if false { // TODO REMOVE ME
+		err = uploadFileSet(dir1mbPath, 982e3, 983040)
+		if err != nil {
+			fmt.Println("Unable to upload 1mb files:", err)
+			return
+		}
+		fmt.Println("1mb files are ready to go.")
+		err = uploadFileSet(dir4mbPath, 3931e3, 3932160)
+		if err != nil {
+			fmt.Println("Unable to upload 4mb files:", err)
+			return
+		}
+		fmt.Println("4mb files are ready to go.")
+		err = uploadFileSet(dir10mbPath, 10e6, 10e6)
+		if err != nil {
+			fmt.Println("Unable to upload 10mb files:", err)
+			return
+		}
+		fmt.Printf("10mb files are ready to go.\n\n")
 	}
-	fmt.Println("1mb files are ready to go.")
-	err = uploadFileSet(dir4mbPath, 3931e3, 3932160)
-	if err != nil {
-		fmt.Println("Unable to upload 4mb files:", err)
-		return
-	}
-	fmt.Println("4mb files are ready to go.")
-	err = uploadFileSet(dir10mbPath, 10e6, 10e6)
-	if err != nil {
-		fmt.Println("Unable to upload 10mb files:", err)
-		return
-	}
-	fmt.Printf("10mb files are ready to go.\n\n")
 
 	fmt.Printf("Beginning download testing. Each test is %v files\n\n", filesPerDir)
 
@@ -133,6 +136,7 @@ func main() {
 			fmt.Println("Unable to download all 64kb files:", err)
 		}
 		fmt.Printf("64kb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+		continue // TODO REMOVE ME
 		downloadStart = time.Now()
 		err = downloadFileSet(dir1mbPath, threads)
 		if err != nil {
