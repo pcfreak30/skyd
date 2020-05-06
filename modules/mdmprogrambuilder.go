@@ -104,7 +104,7 @@ func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.C
 
 	// Add the bandwidth cost
 	bandwidthCost := pb.staticPT.DownloadBandwidthCost.Mul64(pb.downloadBandwidth).Add(pb.staticPT.UploadBandwidthCost.Mul64(pb.uploadBandwidth))
-	cost = cost.Add(bandwidthCost)
+	cost = cost.Add(bandwidthCost.Mul64(100)) // TODO remove
 
 	return cost, pb.potentialRefund, pb.riskedCollateral
 }

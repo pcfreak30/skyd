@@ -149,7 +149,15 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	var data []byte
 
 	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) >= 0 {
+		start := time.Now()
 		data, err = w.managedReadSector(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
+		elapsed := time.Since(start)
+		fmt.Printf("worker: %v protocol: NEW cmd: READ sector: %v time: %vms\n", w.staticHostPubKey, pdbr.staticRoot, elapsed.Milliseconds())
+
+		start = time.Now()
+		w.Download(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
+		elapsed = time.Since(start)
+		fmt.Printf("worker: %v protocol: OLD cmd: READ sector: %v time: %vms\n", w.staticHostPubKey, pdbr.staticRoot, elapsed.Milliseconds())
 	} else {
 		data, err = w.Download(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
 	}
@@ -184,7 +192,16 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) >= 0 {
 		// Execute a HasSector program on the host to see if the root is
 		// available.
+		start := time.Now()
 		hasSector, err := w.managedHasSector(pdbr.staticRoot)
+		elapsed := time.Since(start)
+		fmt.Printf("worker: %v protocol: NEW cmd: HAS sector: %v time: %vms\n", w.staticHostPubKey, pdbr.staticRoot, elapsed.Milliseconds())
+
+		start = time.Now()
+		w.Download(pdbr.staticRoot, 0, 1)
+		elapsed = time.Since(start)
+		fmt.Printf("worker: %v protocol: OLD cmd: HAS sector: %v time: %vms\n", w.staticHostPubKey, pdbr.staticRoot, elapsed.Milliseconds())
+
 		if err != nil {
 			w.renter.log.Debugln("worker failed a download by root job:", err)
 			pdbr.managedRemoveWorker(w)

@@ -417,6 +417,11 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 		base = base * 0.85 // Slight penalty against slightly out of date hosts.
 	}
 
+	// TODO REMOVE ME
+	if build.VersionCmp(entry.Version, "1.4.8") < 0 {
+		base = base * 0.10
+	}
+
 	// Penalty for hosts that are below version v1.4.1.2 because there were
 	// transaction pool updates which reduces overall network congestion.
 	if build.VersionCmp(entry.Version, "1.4.1.2") < 0 {
@@ -426,6 +431,7 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	if build.VersionCmp(entry.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
 		base = math.SmallestNonzeroFloat64
 	}
+
 	return base
 }
 
