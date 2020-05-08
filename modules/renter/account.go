@@ -1,6 +1,8 @@
 package renter
 
 import (
+	"bytes"
+	"io"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -8,7 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
@@ -87,7 +88,7 @@ func (r *Renter) newAccount(hostKey types.SiaPublicKey) (*account, error) {
 // ProvidePayment takes a stream and various payment details and handles the
 // payment by sending and processing payment request and response objects.
 // Returns an error in case of failure.
-func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (a *account) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}
@@ -99,20 +100,30 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	msg := newWithdrawalMessage(a.staticID, amount, blockHeight)
 	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)
 
-	// send PaymentRequest
-	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
+	// write PaymentRequest
+	err := modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
 		return err
 	}
 
-	// send PayByEphemeralAccountRequest
-	err = modules.RPCWrite(stream, modules.PayByEphemeralAccountRequest{
+	// write PayByEphemeralAccountRequest
+	err = modules.RPCWrite(buffer, modules.PayByEphemeralAccountRequest{
 		Message:   msg,
 		Signature: sig,
 	})
 	if err != nil {
 		return err
 	}
+
+	// write contents of the buffer
+	_, err = stream.Write(buffer.Bytes())
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

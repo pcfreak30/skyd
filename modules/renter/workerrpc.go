@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 
@@ -51,15 +52,18 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	bh := w.cachedBlockHeight
 	w.mu.Unlock()
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// write the specifier
-	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	err = modules.RPCWrite(buffer, modules.RPCExecuteProgram)
 	if err != nil {
 		return
 	}
 
-	// send price table uid
+	// write price table uid
 	pt := w.staticHostPrices.managedPriceTable()
-	err = modules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		return
 	}
@@ -72,19 +76,25 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// provide payment
-	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
+	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
 	if err != nil {
 		return
 	}
 
 	// send the execute program request.
-	err = modules.RPCWrite(stream, epr)
+	err = modules.RPCWrite(buffer, epr)
 	if err != nil {
 		return
 	}
 
 	// send the programData.
-	_, err = stream.Write(data)
+	_, err = buffer.Write(data)
+	if err != nil {
+		return
+	}
+
+	// write the contents of our buffer
+	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		return
 	}
@@ -156,21 +166,30 @@ func (w *worker) managedFundAccount(amount types.Currency) (resp modules.FundAcc
 	bh := w.cachedBlockHeight
 	w.mu.Unlock()
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// write the specifier
-	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
 	if err != nil {
 		return
 	}
 
-	// send price table uid
+	// write price table uid
 	pt := w.staticHostPrices.managedPriceTable()
-	err = modules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		return
 	}
 
-	// send fund account request
-	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: w.staticAccount.staticID})
+	// write fund account request
+	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: w.staticAccount.staticID})
+	if err != nil {
+		return
+	}
+
+	// write contents of the buffer
+	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		return
 	}
