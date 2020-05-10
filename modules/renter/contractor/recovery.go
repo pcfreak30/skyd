@@ -190,6 +190,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	if err != nil {
 		return err
 	}
+	defer s.Unlock() // TODO: Do we need this? Will closing the session unlock the contract?
 	// Build a transaction for the revision.
 	revTxn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{rev},
