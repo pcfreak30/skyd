@@ -18,7 +18,6 @@ import (
 const withdrawalValidityPeriod = 6
 
 type (
-
 	// account represents a renter's ephemeral account on a host.
 	account struct {
 		staticID        modules.AccountID
@@ -27,6 +26,7 @@ type (
 		staticSecretKey crypto.SecretKey
 
 		balance            types.Currency
+		negativeBalance    types.Currency
 		pendingWithdrawals types.Currency
 		pendingDeposits    types.Currency
 
@@ -133,6 +133,10 @@ func (a *account) managedAvailableBalance() types.Currency {
 	defer a.staticMu.Unlock()
 
 	total := a.balance.Add(a.pendingDeposits)
+	if total.Cmp(a.negativeBalance) <= 0 {
+		return types.ZeroCurrency
+	}
+	total = total.Sub(a.negativeBalance)
 	if a.pendingWithdrawals.Cmp(total) < 0 {
 		return total.Sub(a.pendingWithdrawals)
 	}
@@ -152,7 +156,13 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 
 	// reflect the successful deposit in the balance field
 	if success {
-		a.balance = a.balance.Add(amount)
+		if amount.Cmp(a.negativeBalance) <= 0 {
+			a.negativeBalance = a.negativeBalance.Sub(amount)
+		} else {
+			amount = amount.Sub(a.negativeBalance)
+			a.negativeBalance = types.ZeroCurrency
+			a.balance = a.balance.Add(amount)
+		}
 	}
 }
 
@@ -169,7 +179,13 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 
 	// reflect the successful withdrawal in the balance field
 	if success {
-		a.balance = a.balance.Sub(amount)
+		if a.balance.Cmp(amount) >= 0 {
+			a.balance = a.balance.Sub(amount)
+		} else {
+			amount = amount.Sub(a.balance)
+			a.balance = types.ZeroCurrency
+			a.negativeBalance = a.negativeBalance.Add(amount)
+		}
 	}
 }
 

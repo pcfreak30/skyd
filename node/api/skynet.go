@@ -32,12 +32,15 @@ const (
 	// resolved within the given amount of time, it times out. This is used for
 	// Skynet routes where a request times out if the DownloadByRoot project
 	// does not finish in due time.
-	DefaultSkynetRequestTimeout = 30 * time.Second
+	DefaultSkynetRequestTimeout = 90 * time.Second
 
 	// MaxSkynetRequestTimeout is the maximum a user is allowed to set as
 	// request timeout. This to prevent an attack vector where the attacker
 	// could cause a go-routine leak by creating a bunch of requests with very
 	// high timeouts.
+	//
+	// TODO: Make this an actual duration and convert any incoming ints to it,
+	// that will be safer.
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
 )
 

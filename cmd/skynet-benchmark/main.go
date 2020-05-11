@@ -29,7 +29,7 @@ const (
 	dir4mb  = "4mb"
 	dir10mb = "10mb"
 
-	filesPerDir = 200
+	filesPerDir = 100
 )
 
 var (

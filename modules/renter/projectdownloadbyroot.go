@@ -46,9 +46,10 @@ type jobDownloadByRoot struct {
 // coordinate fetching the root among the workers that have the root.
 type projectDownloadByRoot struct {
 	// Information about the data that is being retrieved.
-	staticRoot   crypto.Hash
-	staticLength uint64
-	staticOffset uint64
+	staticRoot      crypto.Hash
+	staticLength    uint64
+	staticOffset    uint64
+	staticStartTime time.Time
 
 	// rootFound is a bool indicating that data has been discovered on the
 	// network and is actively being fetched. If rootFound is set to true, any
@@ -149,7 +150,13 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	var err error
 
 	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) == 0 {
+		downloadStart := time.Now()
 		data, err = w.managedReadSector(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
+		if err != nil {
+			fmt.Printf("v148 %v MME Download Time (%v) (failed): %v - %v\n", w.staticHostPubKeyStr, pdbr.staticLength, time.Since(downloadStart), err)
+		} else {
+			fmt.Printf("v148 %v MME Download Time (%v): %v\n", w.staticHostPubKeyStr, pdbr.staticLength, time.Since(downloadStart))
+		}
 	} else {
 		data, err = w.Download(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
 	}
@@ -174,8 +181,14 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 // data by merkle root for a worker. The first stage consists of determining
 // whether or not the worker's host has the merkle root in question.
 func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) == 0 {
+		fmt.Printf("v148 %v starting job\n", w.staticHostPubKeyStr)
+	}
 	// Check if the project is already completed, do no more work if so.
 	if pdbr.staticComplete() {
+		if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) == 0 {
+			fmt.Printf("v148 %v aborting job b/c complete: %v\n", w.staticHostPubKeyStr, time.Since(pdbr.staticStartTime))
+		}
 		pdbr.managedRemoveWorker(w)
 		return
 	}
@@ -183,16 +196,20 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) == 0 {
 		// Execute a HasSector program on the host to see if the root is
 		// available.
+		hasSectorStart := time.Now()
 		hasSector, err := w.managedHasSector(pdbr.staticRoot)
 		if err != nil {
 			w.renter.log.Debugln("worker failed a download by root job:", err)
+			fmt.Printf("v148 %v MME Has Sector Time (failed w error): %v - err: %v\n", w.staticHostPubKeyStr, time.Since(hasSectorStart), err)
 			pdbr.managedRemoveWorker(w)
 			return
 		}
 		if !hasSector {
+			fmt.Printf("v148 %v MME Has Sector Time (failed): %v\n", w.staticHostPubKeyStr, time.Since(hasSectorStart))
 			pdbr.managedRemoveWorker(w)
 			return
 		}
+		fmt.Printf("v148 %v MME Has Sector Time: %v\n", w.staticHostPubKeyStr, time.Since(hasSectorStart))
 	} else {
 		// Download a single byte to see if the root is available.
 		_, err := w.Download(pdbr.staticRoot, 0, 1)
@@ -316,9 +333,10 @@ func (pdbr *projectDownloadByRoot) staticComplete() bool {
 func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
 	// Create the download by root project.
 	pdbr := &projectDownloadByRoot{
-		staticRoot:   root,
-		staticLength: length,
-		staticOffset: offset,
+		staticRoot:      root,
+		staticLength:    length,
+		staticOffset:    offset,
+		staticStartTime: time.Now(),
 
 		workersRegistered: make(map[string]struct{}),
 
