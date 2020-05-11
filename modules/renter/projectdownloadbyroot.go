@@ -331,6 +331,13 @@ func (pdbr *projectDownloadByRoot) staticComplete() bool {
 // DownloadByRoot will spin up a project to locate a root and then download that
 // root.
 func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	if !r.memoryManager.Request(length, true) {
+		return nil, errors.New("renter shut down before memory could be allocated for the project")
+	}
+	defer r.memoryManager.Return(length)
+
 	// Create the download by root project.
 	pdbr := &projectDownloadByRoot{
 		staticRoot:      root,
