@@ -202,7 +202,7 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	// take into account bandwidth costs
 	var ulBandwidth uint64 = 20 << 10 // 20KiB
 	var dlBandwidth uint64 = 20 << 10 // 20KiB
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(&pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// exeucte it
@@ -236,7 +236,7 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	// take into account bandwidth costs
 	var ulBandwidth uint64 = 20 << 10                              // 20KiB
 	var dlBandwidth uint64 = uint64(float64(length)*1.01) + 10<<10 // (readSize * 1.01 + 10kb)
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(&pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// exeucte it

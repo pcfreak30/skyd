@@ -225,7 +225,7 @@ func MDMReadMemory() uint64 {
 
 // MDMBandwidthCost computes the total bandwidth cost given a price table and
 // used up- and download bandwidth.
-func MDMBandwidthCost(pt RPCPriceTable, uploadBandwidth, downloadBandwidth uint64) types.Currency {
+func MDMBandwidthCost(pt *RPCPriceTable, uploadBandwidth, downloadBandwidth uint64) types.Currency {
 	uploadCost := pt.UploadBandwidthCost.Mul64(uploadBandwidth)
 	downloadCost := pt.DownloadBandwidthCost.Mul64(downloadBandwidth)
 	return uploadCost.Add(downloadCost)
