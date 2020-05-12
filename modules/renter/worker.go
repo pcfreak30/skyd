@@ -161,8 +161,9 @@ func (w *worker) managedBlockUntilReady() bool {
 	}
 
 	// Check internet connectivity. If the worker does not have internet
-	// connectivity, block until connectivity is restored.
-	for !w.renter.g.Online() {
+	// connectivity, block until connectivity is restored. If the consensus set
+	// is not synced, block until the consensus set is synced.
+	for !w.renter.g.Online() || !w.renter.cs.Synced() {
 		select {
 		case <-w.renter.tg.StopChan():
 			return false
