@@ -75,7 +75,7 @@ type (
 		// Job queues for the worker.
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
 		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
-		staticJobQueueHasSector      jobQueueHasSector
+		staticJobQueueHasSector      *jobQueueHasSector
 
 		// Upload variables.
 		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -113,12 +113,13 @@ type (
 		staticBlockHeight     types.BlockHeight
 		staticContractID      types.FileContractID
 		staticContractUtility modules.ContractUtility
+		staticHostHeight      types.BlockHeight
 		staticHostVersion     string
+		staticSynced          bool
 
 		staticLastUpdate time.Time
 	}
 )
-
 
 // status returns the status of the worker.
 func (w *worker) status() modules.WorkerStatus {
@@ -167,7 +168,7 @@ func (w *worker) status() modules.WorkerStatus {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileContractID, blockHeight types.BlockHeight) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileContractID) (*worker, error) {
 	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -201,10 +202,19 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
 
+		// Initialize the read and write limits for the async worker tasks.
+		// These may be updated in real time as the worker collects metrics
+		// about itself.
+		staticLoopState: workerLoopState{
+			atomicReadDataLimit:  10e6,
+			atomicWriteDataLimit: 10e6,
+		},
+
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}
+	w.newJobQueueHasSector()
 	// Get the worker cache set up before returning the worker. This prvents a
 	// race condition in some tests.
 	if !w.staticTryUpdateCache() {
@@ -223,7 +233,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 func (w *worker) staticTryUpdateCache() bool {
 	// Check if an update is necessary. If not, return success.
 	cache := w.staticCache()
-	if cache == nil || time.Since(cache.staticLastUpdate) < workerCacheUpdateFrequency {
+	if cache != nil && time.Since(cache.staticLastUpdate) < workerCacheUpdateFrequency {
 		return true
 	}
 

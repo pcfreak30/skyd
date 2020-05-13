@@ -37,6 +37,29 @@ type (
 	}
 )
 
+// newJobQueueHasSector will initialize a has sector job queue for the worker.
+// This is only meant to be run once at startup.
+func (w *worker) newJobQueueHasSector() {
+	// Sanity check that there is no existing job queue.
+	if w.staticJobQueueHasSector != nil {
+		w.renter.log.Critical("incorred call on newJobQueueHasSector")
+	}
+	w.staticJobQueueHasSector = &jobQueueHasSector{
+		staticWorker: w,
+	}
+}
+
+// staticCanceled is a convenience function to check whether a job has been
+// canceled.
+func (j *jobHasSector) staticCanceled() bool {
+	select{
+	case <-j.canceled:
+		return true
+	default:
+		return false
+	}
+}
+
 // callAdd will add a job to the queue. False will be returned if the job cannot
 // be queued because the worker has been killed.
 func (jq *jobQueueHasSector) callAdd(job jobHasSector) bool {
@@ -65,12 +88,10 @@ func (jq *jobQueueHasSector) callNext() (func(), uint64, uint64) {
 		jq.jobs = jq.jobs[1:]
 
 		// Break out of the loop only if this job has not been canceled.
-		select {
-		case <-job.canceled:
+		if job.staticCanceled() {
 			continue
-		default:
-			break
 		}
+		break
 	}
 	jq.mu.Unlock()
 
@@ -141,15 +162,14 @@ func (w *worker) managedKillJobsHasSector() {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	for _, job := range jq.jobs {
-		response := jobResponseHasSector{
-			err: errors.New("worker killed"),
-		}
-
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
-		go func() {
-			job.responseChan <- response
-		}()
+		go func(j jobHasSector) {
+			response := jobResponseHasSector{
+				err: errors.New("worker killed"),
+			}
+			j.responseChan <- response
+		}(job)
 	}
 	jq.killed = true
 	jq.jobs = nil

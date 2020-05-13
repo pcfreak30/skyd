@@ -1,10 +1,5 @@
 package renter
 
-// TODO: Make sure the worker inits with a read data limit and a write data
-// limit.
-
-// TODO: Make sure to init the hasSectorJobs
-
 import (
 	"sync/atomic"
 	"time"
