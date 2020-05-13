@@ -106,7 +106,9 @@ type (
 		wakeChan chan struct{} // Worker will check queues if given a wake signal.
 	}
 
-	// workerCache contains all of the cached values for the worker.
+	// workerCache contains all of the cached values for the worker. Every field
+	// must be static because this object is saved and loaded using
+	// atomic.Pointer.
 	workerCache struct {
 		staticBlockHeight     types.BlockHeight
 		staticContractID      types.FileContractID
