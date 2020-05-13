@@ -89,7 +89,6 @@ func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.C
 	if !pb.readonly && finalized {
 		cost = cost.Add(MDMMemoryCost(pb.staticPT, pb.usedMemory, MDMTimeCommit))
 	}
-
 	return cost, pb.potentialRefund, pb.riskedCollateral
 }
 
