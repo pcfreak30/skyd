@@ -22,8 +22,9 @@ type programResponse struct {
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
 func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
-		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
+	cache := w.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
+		build.Critical("Executing new RHP RPC on host with version", cache.staticHostVersion)
 	}
 
 	// track the withdrawal
@@ -47,9 +48,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// grab some variables from the worker
-	w.mu.Lock()
-	bh := w.cachedBlockHeight
-	w.mu.Unlock()
+	bh := cache.staticBlockHeight
 
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
@@ -128,8 +127,9 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 // will deposit the given amount into the worker's ephemeral account.
 func (w *worker) managedFundAccount(amount types.Currency) (resp modules.FundAccountResponse, err error) {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
-		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
+	cache := w.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
+		build.Critical("Executing new RHP RPC on host with version", cache.staticHostVersion)
 	}
 
 	// track the deposit
@@ -152,9 +152,7 @@ func (w *worker) managedFundAccount(amount types.Currency) (resp modules.FundAcc
 	}()
 
 	// grab some variables from the worker
-	w.mu.Lock()
-	bh := w.cachedBlockHeight
-	w.mu.Unlock()
+	bh := cache.staticBlockHeight
 
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
@@ -187,53 +185,6 @@ func (w *worker) managedFundAccount(amount types.Currency) (resp modules.FundAcc
 		return
 	}
 	return
-}
-
-// managedHasSector returns whether or not the host has a sector with given root
-func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
-	// create a new stream
-	var stream siamux.Stream
-	stream, err := w.staticNewStream()
-	if err != nil {
-		return false, errors.AddContext(err, "Unable to create a new stream")
-	}
-	defer func() {
-		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
-		}
-	}()
-
-	// create the program
-	pt := w.staticHostPrices.managedPriceTable()
-	pb := modules.NewProgramBuilder(&pt)
-	pb.AddHasSectorInstruction(sectorRoot)
-	program, programData := pb.Program()
-	cost, _, _ := pb.Cost(true)
-
-	// take into account bandwidth costs
-	cost = cost.Add(pb.BandwidthCost())
-
-	// TODO temporarily increase budget to ensure it is sufficient to cover the
-	// cost, until we have defined the true bandwidth cost of the new protocol
-	cost = cost.Mul64(10)
-
-	// exeucte it
-	var responses []programResponse
-	responses, err = w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
-	if err != nil {
-		return false, errors.AddContext(err, "Unable to execute program")
-	}
-
-	// return the response
-	var hasSector bool
-	for _, resp := range responses {
-		if resp.Error != nil {
-			return false, errors.AddContext(resp.Error, "Output error")
-		}
-		hasSector = resp.Output[0] == 1
-		break
-	}
-	return hasSector, nil
 }
 
 // managedReadSector returns the sector data for given root
@@ -282,16 +233,22 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 }
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
-func (w *worker) managedUpdatePriceTable() error {
+//
+// TODO: No error is returned, instead need to specify an error in the price
+// table object and create a cooldown process.
+//
+// TODO: Switch PT to doing all atomics.
+func (w *worker) managedUpdatePriceTable() {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
-		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
+	cache := w.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
+		build.Critical("Executing new RHP RPC on host with version", cache.staticHostVersion)
 	}
 
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
-		return errors.AddContext(err, "Unable to create a new stream")
+		return
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -300,28 +257,26 @@ func (w *worker) managedUpdatePriceTable() error {
 	}()
 
 	// grab some variables from the worker
-	w.mu.Lock()
-	bh := w.cachedBlockHeight
-	w.mu.Unlock()
+	bh := cache.staticBlockHeight
 
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
-		return err
+		return
 	}
 
 	// receive the price table
 	var uptr modules.RPCUpdatePriceTableResponse
 	err = modules.RPCRead(stream, &uptr)
 	if err != nil {
-		return err
+		return
 	}
 
 	// decode the JSON
 	var pt modules.RPCPriceTable
 	err = json.Unmarshal(uptr.PriceTableJSON, &pt)
 	if err != nil {
-		return err
+		return
 	}
 
 	// TODO: (follow-up) perform gouging check
@@ -330,12 +285,11 @@ func (w *worker) managedUpdatePriceTable() error {
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, bh)
 	if err != nil {
-		return err
+		return
 	}
 
 	// update the price table
 	w.staticHostPrices.managedUpdate(pt)
-	return nil
 }
 
 // staticNewStream returns a new stream to the worker's host

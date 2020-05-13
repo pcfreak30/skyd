@@ -780,10 +780,6 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
-
-	if cc.Synced {
-		go r.threadedUpdateBlockHeightOnWorkers()
-	}
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the

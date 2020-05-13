@@ -103,13 +103,20 @@ func checkDownloadGouging(allowance modules.Allowance, hostSettings modules.Host
 	return nil
 }
 
+// TODO: Probably sloppy, clean up.
+func (w *worker) managedHasDownloadJob() bool {
+	w.downloadMu.Lock()
+	defer w.downloadMu.Unlock()
+	return len(w.downloadChunks) > 0
+}
+
 // managedPerformDownloadChunkJob will perform some download work if any is
 // available, returning false if no work is available.
-func (w *worker) managedPerformDownloadChunkJob() bool {
+func (w *worker) managedPerformDownloadChunkJob() {
 	w.downloadMu.Lock()
 	if len(w.downloadChunks) == 0 {
 		w.downloadMu.Unlock()
-		return false
+		return
 	}
 	udc := w.downloadChunks[0]
 	w.downloadChunks = w.downloadChunks[1:]
@@ -123,7 +130,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	// from the chunk entirely, or because the worker has been put on standby.
 	udc = w.managedProcessDownloadChunk(udc)
 	if udc == nil {
-		return true
+		return
 	}
 	// Worker is being given a chance to work. After the work is complete,
 	// whether successful or failed, the worker needs to be removed.
@@ -135,7 +142,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	if err != nil {
 		w.renter.log.Debugln("worker failed to create downloader:", err)
 		udc.managedUnregisterWorker(w)
-		return true
+		return
 	}
 	defer d.Close()
 
@@ -146,7 +153,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	if err != nil {
 		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
 		udc.managedUnregisterWorker(w)
-		return true
+		return
 	}
 
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
@@ -155,7 +162,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)
-		return true
+		return
 	}
 	// TODO: Instead of adding the whole sector after the download completes,
 	// have the 'd.Sector' call add to this value ongoing as the sector comes
@@ -173,7 +180,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	if err != nil {
 		w.renter.log.Debugln("worker failed to decrypt piece:", err)
 		udc.managedUnregisterWorker(w)
-		return true
+		return
 	}
 
 	// Mark the piece as completed. Perform chunk recovery if we newly have
@@ -200,7 +207,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 		if err := w.renter.tg.Add(); err != nil {
 			w.renter.log.Debugln("worker failed to decrypt piece:", err)
 			udc.mu.Unlock()
-			return true
+			return
 		}
 		go func() {
 			defer w.renter.tg.Done()
@@ -208,7 +215,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 		}()
 	}
 	udc.mu.Unlock()
-	return true
+	return
 }
 
 // managedKillDownloading will drop all of the download work given to the

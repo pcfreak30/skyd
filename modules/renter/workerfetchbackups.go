@@ -41,6 +41,13 @@ type fetchBackupsJobResult struct {
 	uploadedBackups []modules.UploadedBackup
 }
 
+// TODO: probably sloppy, clean up.
+func (queue *fetchBackupsJobQueue) managedHasJob() bool {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	return len(queue.queue) > 0
+}
+
 // managedLen returns the length of the fetchBackupsJobQueue queue
 func (queue *fetchBackupsJobQueue) managedLen() int {
 	queue.mu.Lock()
@@ -134,13 +141,13 @@ func (w *worker) managedKillFetchBackupsJobs() {
 // Testing happens via an integration test. siatest/renter/TestRemoteBackup has
 // a test where a backup is fetched from a host, an action which reaches this
 // code.
-func (w *worker) managedPerformFetchBackupsJob() bool {
+func (w *worker) managedPerformFetchBackupsJob() {
 	// Check whether there is any work to be performed.
 	var resultChan chan fetchBackupsJobResult
 	w.staticFetchBackupsJobQueue.mu.Lock()
 	if len(w.staticFetchBackupsJobQueue.queue) == 0 {
 		w.staticFetchBackupsJobQueue.mu.Unlock()
-		return false
+		return
 	}
 	resultChan = w.staticFetchBackupsJobQueue.queue[0]
 	w.staticFetchBackupsJobQueue.queue = w.staticFetchBackupsJobQueue.queue[1:]
@@ -153,7 +160,7 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 			err: errors.AddContext(err, "unable to acquire session"),
 		}
 		resultChan <- result
-		return true
+		return
 	}
 	defer session.Close()
 
@@ -166,7 +173,7 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 			err: errors.AddContext(err, "price gouging check failed for fetch backups job"),
 		}
 		resultChan <- result
-		return true
+		return
 	}
 
 	backups, err := w.renter.callFetchHostBackups(session)
@@ -175,5 +182,5 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 		err:             errors.AddContext(err, "unable to download snapshot table"),
 	}
 	resultChan <- result
-	return true
+	return
 }
