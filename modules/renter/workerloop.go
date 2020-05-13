@@ -61,7 +61,7 @@ func (wls *workerLoopState) staticFinishSerialJob() {
 func (w *worker) externLaunchSerialJob(job func()) {
 	// Mark that there is now a job running.
 	atomic.StoreUint64(&w.staticLoopState.atomicSerialJobRunning, 1)
-	go func() {
+	fn := func() {
 		// Execute the job in a goroutine.
 		job()
 		// After the job has executed, update to indicate that no serial job
@@ -70,7 +70,12 @@ func (w *worker) externLaunchSerialJob(job func()) {
 		// After updating to indicate that no serial job is running, wake the
 		// worker to check for a new serial job.
 		w.staticWake()
-	}()
+	}
+	err := w.renter.tg.Launch(fn)
+	if err != nil {
+		// Renter has closed, job will not be executed.
+		return
+	}
 }
 
 // externTryLaunchSerialJob will attempt to launch a serial job on the worker.
@@ -132,7 +137,7 @@ func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 	// Add the resource requirements to the worker loop state.
 	atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, readSize)
 	atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, writeSize)
-	go func() {
+	fn := func() {
 		job()
 		// Subtract the outstanding data now that the job is complete. Atomic
 		// subtraction works by adding and using some bit tricks.
@@ -141,7 +146,14 @@ func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 		// Wake the worker to run any additional async jobs that may have been
 		// blocked / ignored because there was not enough bandwidth available.
 		w.staticWake()
-	}()
+	}
+	err := w.renter.tg.Launch(fn)
+	if err != nil {
+		// Renter has closed, but we want to represent that the work was
+		// processed anyway - returning true indicates that the worker should
+		// continue processing jobs.
+		return true
+	}
 	return true
 }
 
