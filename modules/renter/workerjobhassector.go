@@ -129,12 +129,11 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
-	// Add bandwidth costs to the budget.
-	//
-	// TODO temporarily increase budget to ensure it is sufficient to cover the
-	// cost, until we have defined the true bandwidth cost of the new protocol
-	cost = cost.Add(pb.BandwidthCost())
-	cost = cost.Mul64(10)
+	// take into account bandwidth costs
+	var ulBandwidth uint64 = 20 << 10 // 20KiB
+	var dlBandwidth uint64 = 20 << 10 // 20KiB
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
 	//

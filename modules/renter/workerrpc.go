@@ -143,11 +143,10 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	cost, _, _ := pb.Cost(true)
 
 	// take into account bandwidth costs
-	cost = cost.Add(pb.BandwidthCost())
-
-	// TODO temporarily increase budget to ensure it is sufficient to cover the
-	// cost, until we have defined the true bandwidth cost of the new protocol
-	cost = cost.Mul64(10)
+	var ulBandwidth uint64 = 20 << 10                              // 20KiB
+	var dlBandwidth uint64 = uint64(float64(length)*1.01) + 10<<10 // (readSize * 1.01 + 10kb)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	cost = cost.Add(bandwidthCost)
 
 	// exeucte it
 	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
