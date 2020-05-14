@@ -181,6 +181,10 @@ func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 // The worker will not allow more than a certain amount of bandwidth to be
 // queued at once to prevent jobs from being spread too thin and sharing too
 // much bandwidth.
+//
+// TODO: If we are ignoring async tasks because of version issues, etc, we
+// should be making sure to toss all of our async tasks so that projects fail
+// instead of stall.
 func (w *worker) externTryLaunchAsyncJob() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
 	//
@@ -195,7 +199,13 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return false
 	}
 
-	// TODO: If the account is empty, can't do async jobs.
+	// TODO: There should probably be some check here that the account is in
+	// working condition before attempting async jobs, but I couldn't quite
+	// figure out what that condition is. It seems okay to both attempt to use
+	// an account if we are having trouble refilling it, and also okay to
+	// attempt using the account if the balance is low. And, "low" is poorly
+	// defined in this context, because we don't have a job we are attempting.
+	// Maybe this needs to be handled on a per-job level?
 
 	// Verify that the worker has not reached its limits for doing multiple
 	// jobs at once.
