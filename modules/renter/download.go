@@ -409,10 +409,12 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 // Start starts a download previously created with `managedNewDownload`.
 func (d *download) Start() error {
 	// Nothing more to do for 0-byte files or 0-length downloads.
+	println("download starting")
 	if d.staticLength == 0 {
 		d.markComplete()
 		return nil
 	}
+	println("download more than 0 bytes")
 
 	// Determine which chunks to download.
 	params := d.staticParams
@@ -433,6 +435,7 @@ func (d *download) Start() error {
 
 	// For each chunk, assemble a mapping from the contract id to the index of
 	// the piece within the chunk that the contract is responsible for.
+	println("making chunk maps")
 	chunkMaps := make([]map[string]downloadPieceInfo, maxChunk-minChunk+1)
 	for chunkIndex := minChunk; chunkIndex <= maxChunk; chunkIndex++ {
 		// Create the map.
@@ -456,6 +459,7 @@ func (d *download) Start() error {
 	}
 
 	// Queue the downloads for each chunk.
+	println("queuing the chunks")
 	writeOffset := int64(0) // where to write a chunk within the download destination.
 	d.chunksRemaining += maxChunk - minChunk + 1
 	for i := minChunk; i <= maxChunk; i++ {
@@ -518,12 +522,14 @@ func (d *download) Start() error {
 
 		// Add this chunk to the chunk heap, and notify the download loop that
 		// there is work to do.
+		println("download chunk going into download heap", i)
 		d.r.managedAddChunkToDownloadHeap(udc)
 		select {
 		case d.r.newDownloads <- struct{}{}:
 		default:
 		}
 	}
+	println("all chunks in heap")
 	return nil
 }
 

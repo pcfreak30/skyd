@@ -19,12 +19,18 @@ const (
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
 // set its own prices for the individual MDM instructions and RPC costs.
+//
+// TODO: Add the host height, this helps to understand message expirys.
 type RPCPriceTable struct {
 	// UID is a specifier that uniquely identifies this price table
 	UID UniqueID `json:"uid"`
 
 	// Expiry is a unix timestamp that specifies the time until which the
 	// MDMCostTable is valid.
+	//
+	// TODO: We need to be careful with how we set this, because the timestamp
+	// between the host and the renter can be different. We may want to use a
+	// block height instead of a timestamp.
 	Expiry int64 `json:"expiry"`
 
 	// UpdatePriceTableCost refers to the cost of fetching a new price table

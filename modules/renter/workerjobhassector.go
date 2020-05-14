@@ -52,7 +52,7 @@ func (w *worker) newJobQueueHasSector() {
 // staticCanceled is a convenience function to check whether a job has been
 // canceled.
 func (j *jobHasSector) staticCanceled() bool {
-	select{
+	select {
 	case <-j.canceled:
 		return true
 	default:
@@ -123,7 +123,7 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	//
 	// TODO: Switch the price table to being fetched statically using atomic
 	// pointers.
-	pt := w.staticHostPrices.managedPriceTable()
+	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt)
 	pb.AddHasSectorInstruction(sectorRoot)
 	program, programData := pb.Program()

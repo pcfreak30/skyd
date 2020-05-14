@@ -1,5 +1,11 @@
 package renter
 
+// TODO: The way it's currently written, I believe the worker will discard all
+// async tasks until it has a price table and understands the account funding.
+// The worker should probably have in it's early startup routine (before
+// entering the work loop proper) a blocking attempt to get a PT and fill an
+// account.
+
 // worker.go defines a worker with a work loop. Each worker is connected to a
 // single host, and the work loop will listen for jobs and then perform them.
 //
@@ -17,7 +23,6 @@ package renter
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -26,16 +31,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
-)
-
-var (
-	// workerCacheUpdateFrequency specifies how much time must pass before the
-	// worker updates its cache.
-	workerCacheUpdateFrequency = build.Select(build.Var{
-		Dev:      time.Second * 5,
-		Standard: time.Minute,
-		Testing:  time.Second,
-	}).(time.Duration)
 )
 
 type (
@@ -55,7 +50,8 @@ type (
 	worker struct {
 		// atomicCache contains a pointer to the latest cache in the worker.
 		// Atomics are used to minimze lock contention on the worker object.
-		atomicCache unsafe.Pointer // points to a workerCache object
+		atomicCache      unsafe.Pointer // points to a workerCache object
+		atomicPriceTable unsafe.Pointer // points to a workerPriceTable object
 
 		// The host pub key also serves as an id for the worker, as there is only
 		// one worker per host.
@@ -91,33 +87,16 @@ type (
 		staticAccount       *account
 		staticBalanceTarget types.Currency
 
-		// TODO: document
+		// The loop state contains information about the worker loop. It is
+		// mostly atomic variables that the worker uses to ratelimit the
+		// launching of async jobs.
 		staticLoopState workerLoopState
-
-		// The staticHostPrices hold information about the price table. It has its
-		// own mutex becaus we check if we need to update the price table in every
-		// iteration of the worker loop.
-		staticHostPrices hostPrices
 
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 		mu       sync.Mutex
 		renter   *Renter
 		wakeChan chan struct{} // Worker will check queues if given a wake signal.
-	}
-
-	// workerCache contains all of the cached values for the worker. Every field
-	// must be static because this object is saved and loaded using
-	// atomic.Pointer.
-	workerCache struct {
-		staticBlockHeight     types.BlockHeight
-		staticContractID      types.FileContractID
-		staticContractUtility modules.ContractUtility
-		staticHostHeight      types.BlockHeight
-		staticHostVersion     string
-		staticSynced          bool
-
-		staticLastUpdate time.Time
 	}
 )
 
@@ -196,7 +175,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 		staticHostPubKey:     hostPubKey,
 		staticHostPubKeyStr:  hostPubKey.String(),
 		staticHostMuxAddress: hostMuxAddress,
-		staticHostPrices:     hostPrices{},
 		staticHostFCID:       hostFCID,
 
 		staticAccount:       account,
@@ -214,6 +192,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}
+	w.newPriceTable()
 	w.newJobQueueHasSector()
 	// Get the worker cache set up before returning the worker. This prvents a
 	// race condition in some tests.
@@ -221,56 +200,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 		return nil, errors.New("unable to build cache for worker")
 	}
 	return w, nil
-}
-
-// staticUpdateCache will perform a cache update on the worker.
-//
-// 'false' will be returned if the cache cannot be updated, signaling that the
-// worker should exit.
-//
-// TODO: When updating the block height, take into account whether or not we are
-// synced. Might make sense to add a staticSynced variable to the workerCache.
-func (w *worker) staticTryUpdateCache() bool {
-	// Check if an update is necessary. If not, return success.
-	cache := w.staticCache()
-	if cache != nil && time.Since(cache.staticLastUpdate) < workerCacheUpdateFrequency {
-		return true
-	}
-
-	// Grab the host to check the version.
-	host, ok, err := w.renter.hostDB.Host(w.staticHostPubKey)
-	if !ok || err != nil {
-		w.renter.log.Printf("Worker %v could not update the cache, hostdb found host with %v and %v values", w.staticHostPubKeyStr, ok, err)
-		return false
-	}
-
-	// Grab the renter contract from the host contractor.
-	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
-	if !exists {
-		w.renter.log.Printf("Worker %v could not update the cache, host not found in contractor", w.staticHostPubKeyStr)
-		return false
-	}
-
-	// Create the cache object.
-	cache = &workerCache{
-		staticBlockHeight:     w.renter.cs.Height(),
-		staticContractID:      renterContract.ID,
-		staticContractUtility: renterContract.Utility,
-		staticHostVersion:     host.Version,
-
-		staticLastUpdate: time.Now(),
-	}
-
-	// Atomically store the cache object in the worker.
-	ptr := unsafe.Pointer(cache)
-	atomic.StorePointer(&w.atomicCache, ptr)
-	return true
-}
-
-// staticCache returns the current worker cache object.
-func (w *worker) staticCache() *workerCache {
-	ptr := atomic.LoadPointer(&w.atomicCache)
-	return (*workerCache)(ptr)
 }
 
 // staticKilled is a convenience function to determine if a worker has been
@@ -314,7 +243,7 @@ func (w *worker) managedAccountNeedsRefill() bool {
 // TODO: Needs to do cooldowns and error handling and stuff.
 func (w *worker) managedRefillAccount() {
 	// check if price table is valid
-	if w.staticHostPrices.managedPriceTable().Expiry <= time.Now().Unix() {
+	if w.staticPriceTable().staticPriceTable.Expiry <= time.Now().Unix() {
 		w.renter.log.Println("ERROR: failed to refill account, current price table is expired")
 		return
 	}
@@ -328,44 +257,4 @@ func (w *worker) managedRefillAccount() {
 		// TODO: add cooldown mechanism
 	}
 	return
-}
-
-// hostPrices is a helper struct that wraps a priceTable and adds its own
-// separate mutex. It has an 'updateAt' property that is set when a price table
-// is updated and is set to the time when we want to update the host prices.
-type hostPrices struct {
-	priceTable modules.RPCPriceTable
-	updateAt   int64
-	staticMu   sync.Mutex
-}
-
-// managedPriceTable returns the current price table
-func (hp *hostPrices) managedPriceTable() modules.RPCPriceTable {
-	hp.staticMu.Lock()
-	defer hp.staticMu.Unlock()
-	return hp.priceTable
-}
-
-// managedNeedsUpdate is a helper function that checks whether or not we have to
-// update the price table. If so, it flips the 'updating' flag on the hostPrices
-// object to ensure we only try this once.
-//
-// TODO: This needs to check the host version, which means it needs to be
-// switched to be a method on the worker.
-//
-// TODO: Should consider cooldowns.
-func (hp *hostPrices) managedNeedsUpdate() bool {
-	hp.staticMu.Lock()
-	defer hp.staticMu.Unlock()
-	return time.Now().Unix() >= hp.updateAt
-}
-
-// managedUpdate is a helper function that sets the priceTable and
-// calculates when we should try and update the price table again. It flips the
-// 'updating' flag to false.
-func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
-	hp.staticMu.Lock()
-	defer hp.staticMu.Unlock()
-	hp.priceTable = pt
-	hp.updateAt = time.Now().Unix() + (pt.Expiry-time.Now().Unix())/2
 }
