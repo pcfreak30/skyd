@@ -1,5 +1,10 @@
 package renter
 
+// TODO: The price table update is currently always using payByFC, we should
+// probably switch that over to payByEA when the EA is all set to get better
+// throughput on the contract. That's fairly complicated to implement, so it's
+// not being added for now.
+
 import (
 	"sync/atomic"
 	"time"
@@ -98,8 +103,6 @@ func (w *worker) externTryLaunchSerialJob() {
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
 	if w.staticPriceTable().staticNeedsUpdate() {
-		// TODO: If the price table updater uses EAs, we can actually do this in
-		// the async loop.
 		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
 	}
@@ -258,9 +261,17 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillJobsDownloadByRoot()
 	defer w.managedKillJobsHasSector()
 
-	// TODO: Should probably do a first attempt at the price table and at the
-	// account refill / account setup (figure out how much balance we have with
-	// the host) before we start the full loop.
+	// The worker cannot execute any async tasks unles the price table of the
+	// host is known, the balance of the worker account is known, and the
+	// account has sufficient funds in it.
+	w.externLaunchSerialJob(w.staticUpdatePriceTable)
+	// TODO: Do a balance query on the host right here. Even if we had a clean
+	// shutdown and know the exact balance, we should still be asking the host
+	// what our balance is, because we don't want the host to be able to
+	// distinguish between the times that we know our balance and the times that
+	// we don't. Checking right at startup also allows us to give a quick
+	// honesty check on the host.
+	w.externLaunchSerialJob(w.managedRefillAccount)
 
 	// The worker will continuously perform jobs in a loop.
 	for {

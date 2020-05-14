@@ -65,14 +65,26 @@ func (w *worker) managedRefillAccount() {
 	defer func() {
 		w.staticAccount.managedCommitDeposit(amount, err == nil)
 
-		// If the error is not nil, increment the cooldown.
-		if err != nil {
-			w.staticAccount.mu.Lock()
-			w.staticAccount.cooldownUntil = cooldownUntil(w.staticAccount.consecutiveFailures)
-			w.staticAccount.consecutiveFailures++
-			w.staticAccount.recentErr = err
-			w.staticAccount.mu.Unlock()
+		// Nothing to do if there is no error.
+		if err == nil {
+			return
 		}
+
+		// If the error is not nil, increment the cooldown.
+		cd := cooldownUntil(w.staticAccount.consecutiveFailures)
+		w.staticAccount.mu.Lock()
+		w.staticAccount.cooldownUntil = cd
+		w.staticAccount.consecutiveFailures++
+		w.staticAccount.recentErr = err
+		w.staticAccount.mu.Unlock()
+
+		// Create a goroutine to wake the worker when the account is ready to be
+		// refilled again.
+		go func() {
+			sleepDuration := cd.Sub(time.Now())
+			time.Sleep(sleepDuration)
+			w.staticWake()
+		}()
 	}()
 
 	// create a new stream

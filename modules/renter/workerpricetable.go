@@ -84,6 +84,17 @@ func (wpt *workerPriceTable) staticValid() bool {
 // the price table should be set to blank, which means that it will fail the
 // staticValid() check.
 func (w *worker) staticUpdatePriceTable() {
+	// Create a goroutine to wake the worker when the time has come to check
+	// the price table again.
+	defer func() {
+		go func() {
+			updateTime := w.staticPriceTable().staticUpdateTime
+			sleepDuration := updateTime.Sub(time.Now())
+			time.Sleep(sleepDuration)
+			w.staticWake()
+		}()
+	}()
+
 	// Check the host version.
 	//
 	// TODO: After the protocol is stable, switch to '<=' instead of '!='.
