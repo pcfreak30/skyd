@@ -89,7 +89,6 @@ func (w *worker) externLaunchSerialJob(job func()) {
 func (w *worker) externTryLaunchSerialJob() {
 	// If there is already a serial job running, that job has exclusivity, do
 	// nothing.
-	println("tlsj")
 	if w.staticLoopState.staticSerialJobRunning() {
 		return
 	}
@@ -98,41 +97,29 @@ func (w *worker) externTryLaunchSerialJob() {
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
-	println("checking if pt needs update")
 	if w.staticPriceTable().staticNeedsUpdate() {
-		println("pt uptdate")
 		// TODO: If the price table updater uses EAs, we can actually do this in
 		// the async loop.
 		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
 	}
-	println("checking if acct needs refill")
 	if w.managedAccountNeedsRefill() {
-		println("acct refill")
 		w.externLaunchSerialJob(w.managedRefillAccount)
 		return
 	}
-	println("needs fetch backups")
 	if w.staticFetchBackupsJobQueue.managedHasJob() {
-		println("yep fechting backups")
 		w.externLaunchSerialJob(w.managedPerformFetchBackupsJob)
 		return
 	}
-	println("needs download by root")
 	if w.staticJobQueueDownloadByRoot.managedHasJob() {
-		println("dbr yep")
 		w.externLaunchSerialJob(w.managedLaunchJobDownloadByRoot)
 		return
 	}
-	println("needs download")
 	if w.managedHasDownloadJob() {
-		println("worker is starting a download job: ", w.staticHostPubKeyStr)
 		w.externLaunchSerialJob(w.managedPerformDownloadChunkJob)
 		return
 	}
-	println("needs upload")
 	if w.managedHasUploadJob() {
-		println("upload yep")
 		w.externLaunchSerialJob(w.managedPerformUploadChunkJob)
 		return
 	}
