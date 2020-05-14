@@ -321,9 +321,9 @@ func TestAccountUncleanShutdown(t *testing.T) {
 	// create a number accounts
 	accounts := openRandomTestAccountsOnRenter(r)
 	for _, account := range accounts {
-		account.staticMu.Lock()
+		account.mu.Lock()
 		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
-		account.staticMu.Unlock()
+		account.mu.Unlock()
 	}
 
 	// close the renter and reload it with a dependency that interrupts the

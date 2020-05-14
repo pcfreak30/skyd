@@ -26,7 +26,6 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -220,41 +219,4 @@ func (w *worker) staticWake() {
 	case w.wakeChan <- struct{}{}:
 	default:
 	}
-}
-
-// TODO: Should consider cooldowns.
-func (w *worker) managedAccountNeedsRefill() bool {
-	// check host version
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
-		return false
-	}
-
-	// check if refill is necessary
-	balance := w.staticAccount.managedAvailableBalance()
-	if balance.Cmp(w.staticBalanceTarget.Div64(2)) >= 0 {
-		return false
-	}
-	return true
-}
-
-// managedTryRefillAccount will check if the account needs to be refilled
-//
-// TODO: Needs to do cooldowns and error handling and stuff.
-func (w *worker) managedRefillAccount() {
-	// check if price table is valid
-	if w.staticPriceTable().staticPriceTable.Expiry <= time.Now().Unix() {
-		w.renter.log.Println("ERROR: failed to refill account, current price table is expired")
-		return
-	}
-
-	// the account balance dropped to below half the balance target, refill
-	balance := w.staticAccount.managedAvailableBalance()
-	amount := w.staticBalanceTarget.Sub(balance)
-	_, err := w.managedFundAccount(amount)
-	if err != nil {
-		w.renter.log.Println("ERROR: failed to refill account", err)
-		// TODO: add cooldown mechanism
-	}
-	return
 }

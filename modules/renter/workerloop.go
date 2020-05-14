@@ -261,6 +261,10 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillJobsDownloadByRoot()
 	defer w.managedKillJobsHasSector()
 
+	// TODO: Should probably do a first attempt at the price table and at the
+	// account refill / account setup (figure out how much balance we have with
+	// the host) before we start the full loop.
+
 	// The worker will continuously perform jobs in a loop.
 	for {
 		// There are certain conditions under which the worker should either

@@ -57,14 +57,14 @@ type (
 // managedPersist will write the account to the given file at the account's
 // offset
 func (a *account) managedPersist() error {
-	a.staticMu.Lock()
+	a.mu.Lock()
 	accountData := accountPersistence{
 		AccountID: a.staticID,
 		Balance:   a.balance,
 		HostKey:   a.staticHostKey,
 		SecretKey: a.staticSecretKey,
 	}
-	a.staticMu.Unlock()
+	a.mu.Unlock()
 	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
 	return err
 }

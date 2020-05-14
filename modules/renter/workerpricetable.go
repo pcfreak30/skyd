@@ -12,29 +12,30 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // hostPrices is a helper struct that wraps a priceTable and adds its own
 // separate mutex. It has an 'updateAt' property that is set when a price table
 // is updated and is set to the time when we want to update the host prices.
-type workerPriceTable struct {
-	// The actual price table.
-	staticPriceTable modules.RPCPriceTable
+type (
+	workerPriceTable struct {
+		// The actual price table.
+		staticPriceTable modules.RPCPriceTable
 
-	// The next time that the worker should try to update the price table.
-	staticUpdateTime time.Time
+		// The next time that the worker should try to update the price table.
+		staticUpdateTime time.Time
 
-	// The number of consecutive failures that the worker has experienced in
-	// trying to fetch the price table. This number is used to inform
-	// staticUpdateTime, a larger number of consecutive failures will result in
-	// greater backoff on fetching the price table.
-	staticConsecutiveFailures uint64
+		// The number of consecutive failures that the worker has experienced in
+		// trying to fetch the price table. This number is used to inform
+		// staticUpdateTime, a larger number of consecutive failures will result in
+		// greater backoff on fetching the price table.
+		staticConsecutiveFailures uint64
 
-	// staticRecentErr specifies the most recent error that the price table
-	// update has failed with.
-	staticRecentErr error
-}
+		// staticRecentErr specifies the most recent error that the price table
+		// update has failed with.
+		staticRecentErr error
+	}
+)
 
 // managedNeedsUpdate is a helper function that checks whether or not we have to
 // update the price table. If so, it flips the 'updating' flag on the hostPrices
@@ -74,25 +75,6 @@ func (wpt *workerPriceTable) staticValid() bool {
 	return wpt.staticPriceTable.Expiry < time.Now().Unix()
 }
 
-// priceTableCooldownTime returns the next time at which the price table should
-// be updated based on the number of consecutive failures the price table
-// updater has experienced.
-func priceTableCooldownTime(consecutiveFailures uint64) time.Time {
-	// Cap the number of consecutive failures to 10.
-	if consecutiveFailures > 10 {
-		consecutiveFailures = 10
-	}
-
-	// Get a random cooldown time between 0 and 10e3 milliseconds.
-	randCooldown := time.Duration(fastrand.Intn(10e3)) * time.Millisecond
-	// Double the cooldown time for each consecutive failure, max possible
-	// cooldown time of ~3 hours.
-	for i := uint64(0); i < consecutiveFailures; i++ {
-		randCooldown *= 2
-	}
-	return time.Now().Add(randCooldown)
-}
-
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 //
 // TODO: No error is returned, instead need to specify an error in the price
@@ -113,7 +95,7 @@ func (w *worker) staticUpdatePriceTable() {
 		// longer speaks a valid protocol so we should invalidate the price
 		// table.
 		pt := &workerPriceTable{
-			staticUpdateTime:          priceTableCooldownTime(currentPT.staticConsecutiveFailures),
+			staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
 			staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
 			staticRecentErr:           errors.New("host version is not compatible, unable to fetch price table"),
 		}
@@ -133,7 +115,7 @@ func (w *worker) staticUpdatePriceTable() {
 			// table, need to make a new one.
 			pt := &workerPriceTable{
 				staticPriceTable:          currentPT.staticPriceTable,
-				staticUpdateTime:          priceTableCooldownTime(currentPT.staticConsecutiveFailures),
+				staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
 				staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
 				staticRecentErr:           err,
 			}

@@ -1,7 +1,10 @@
 package renter
 
+// TODO: move some (all?) of this code to workeraccount.go ?
+
 import (
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -30,8 +33,12 @@ type (
 		pendingWithdrawals types.Currency
 		pendingDeposits    types.Currency
 
+		consecutiveFailures uint64
+		cooldownUntil       time.Time
+		recentErr           error
+
 		staticFile modules.File
-		staticMu   sync.RWMutex
+		mu         sync.Mutex
 	}
 )
 
@@ -125,13 +132,10 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	return nil
 }
 
-// managedAvailableBalance returns the amount of money that is available to
+// availableBalance returns the amount of money that is available to
 // spend. It is calculated by taking into account pending spends and pending
 // funds.
-func (a *account) managedAvailableBalance() types.Currency {
-	a.staticMu.Lock()
-	defer a.staticMu.Unlock()
-
+func (a *account) availableBalance() types.Currency {
 	total := a.balance.Add(a.pendingDeposits)
 	if total.Cmp(a.negativeBalance) <= 0 {
 		return types.ZeroCurrency
@@ -143,13 +147,22 @@ func (a *account) managedAvailableBalance() types.Currency {
 	return types.ZeroCurrency
 }
 
+// managedAvailableBalance returns the amount of money that is available to
+// spend. It is calculated by taking into account pending spends and pending
+// funds.
+func (a *account) managedAvailableBalance() types.Currency {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.availableBalance()
+}
+
 // managedCommitDeposit commits a pending deposit, either after success or
 // failure. Depending on the outcome the given amount will be added to the
 // balance or not. If the pending delta is zero, and we altered the account
 // balance, we update the account.
 func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
-	a.staticMu.Lock()
-	defer a.staticMu.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
 	// (no need to sanity check - the implementation of 'Sub' does this for us)
 	a.pendingDeposits = a.pendingDeposits.Sub(amount)
@@ -171,8 +184,8 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 // balance or not. If the pending delta is zero, and we altered the account
 // balance, we update the account.
 func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
-	a.staticMu.Lock()
-	defer a.staticMu.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
 	// (no need to sanity check - the implementation of 'Sub' does this for us)
 	a.pendingWithdrawals = a.pendingWithdrawals.Sub(amount)
@@ -192,16 +205,16 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 // managedTrackDeposit keeps track of pending deposits by adding the given
 // amount to the 'pendingDeposits' field.
 func (a *account) managedTrackDeposit(amount types.Currency) {
-	a.staticMu.Lock()
-	defer a.staticMu.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.pendingDeposits = a.pendingDeposits.Add(amount)
 }
 
 // managedTrackWithdrawal keeps track of pending withdrawals by adding the given
 // amount to the 'pendingWithdrawals' field.
 func (a *account) managedTrackWithdrawal(amount types.Currency) {
-	a.staticMu.Lock()
-	defer a.staticMu.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
 }
 
