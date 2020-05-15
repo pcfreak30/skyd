@@ -53,7 +53,6 @@ type (
 
 		// The host pub key also serves as an id for the worker, as there is only
 		// one worker per host.
-		staticHostFCID       types.FileContractID
 		staticHostPubKey     types.SiaPublicKey
 		staticHostPubKeyStr  string
 		staticHostMuxAddress string
@@ -146,7 +145,7 @@ func (w *worker) status() modules.WorkerStatus {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileContractID) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -171,7 +170,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 		staticHostPubKey:     hostPubKey,
 		staticHostPubKeyStr:  hostPubKey.String(),
 		staticHostMuxAddress: host.HostExternalSettings.SiaMuxAddress(),
-		staticHostFCID:       hostFCID,
 
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,

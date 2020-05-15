@@ -156,10 +156,13 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	//
 	// TODO: Are we expecting more than one response? Should we check that there
 	// was only one response?
+	//
+	// TODO: for this program we don't actually need the file contract - v149
+	// only.
 	println(".. executing program")
 	var hasSector bool
 	var responses []programResponse
-	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
+	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	println(".. program execution finished")
 	if err != nil {
 		println(".. program failed")

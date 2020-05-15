@@ -145,7 +145,10 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	cost = cost.Add(bandwidthCost)
 
 	// exeucte it
-	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
+	//
+	// TODO: for this program we don't actually need the file contract - v149
+	// only.
+	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	if err != nil {
 		return nil, err
 	}
