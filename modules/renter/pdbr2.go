@@ -15,7 +15,10 @@ import (
 // memory from the memory manager.
 func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
 	// Create a channel to time out the project.
-	timeoutChan := time.After(timeout)
+	var timeoutChan <-chan time.Time
+	if timeout > 0 {
+		timeoutChan = time.After(timeout)
+	}
 
 	// Get the full list of workers that could potentially download the root.
 	workers := r.staticWorkerPool.callWorkers()

@@ -771,6 +771,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	skyfileEstablishDefaults(&lup)
 
 	// Fetch the leading chunk.
+	println("timeout:", timeout)
 	baseSector, err := r.DownloadByRoot2(skylink.MerkleRoot(), 0, modules.SectorSize, timeout)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch base sector of skylink")
