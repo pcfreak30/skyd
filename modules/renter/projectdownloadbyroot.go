@@ -150,7 +150,7 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	var err error
 
 	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) == 0 {
+	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) == 0 {
 		downloadStart := time.Now()
 		data, err = w.managedReadSector(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
 		if err != nil {
@@ -183,19 +183,19 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 // whether or not the worker's host has the merkle root in question.
 func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) == 0 {
+	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) == 0 {
 		fmt.Printf("v148 %v starting job\n", w.staticHostPubKeyStr)
 	}
 	// Check if the project is already completed, do no more work if so.
 	if pdbr.staticComplete() {
-		if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) == 0 {
+		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) == 0 {
 			fmt.Printf("v148 %v aborting job b/c complete: %v\n", w.staticHostPubKeyStr, time.Since(pdbr.staticStartTime))
 		}
 		pdbr.managedRemoveWorker(w)
 		return
 	}
 
-	if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) == 0 {
+	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) == 0 {
 		// Execute a HasSector program on the host to see if the root is
 		// available.
 		hasSectorStart := time.Now()

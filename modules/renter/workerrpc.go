@@ -22,7 +22,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	println("... starting program execute")
 	// check host version
 	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
+	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
 		build.Critical("Executing new RHP RPC on host with version", cache.staticHostVersion)
 	}
 	println("...got past version check")
