@@ -6,9 +6,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// cooldownUntil returns the next time at which the price table should
-// be updated based on the number of consecutive failures the price table
-// updater has experienced.
+// cooldownUntil returns the next time a job should be attempted given the
+// number of consecutive failures in attempting this type of job.
 func cooldownUntil(consecutiveFailures uint64) time.Time {
 	// Cap the number of consecutive failures to 10.
 	//
