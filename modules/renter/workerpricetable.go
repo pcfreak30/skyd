@@ -76,13 +76,6 @@ func (wpt *workerPriceTable) staticValid() bool {
 }
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
-//
-// TODO: No error is returned, instead need to specify an error in the price
-// table object and create a cooldown process.
-//
-// TODO: If the host is not at a version that supports fetching the price table,
-// the price table should be set to blank, which means that it will fail the
-// staticValid() check.
 func (w *worker) staticUpdatePriceTable() {
 	// Create a goroutine to wake the worker when the time has come to check
 	// the price table again.
