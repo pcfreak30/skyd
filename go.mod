@@ -33,3 +33,5 @@ require (
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
+
+replace gitlab.com/NebulousLabs/siamux => ../siamux

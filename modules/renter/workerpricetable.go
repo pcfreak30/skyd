@@ -113,6 +113,7 @@ func (w *worker) staticUpdatePriceTable() {
 	var err error
 	defer func() {
 		if err != nil {
+			println(" <><><><><><><><><> price table update failed: ", err.Error())
 			// Because of race conditions, can't modify the existing price
 			// table, need to make a new one.
 			pt := &workerPriceTable{

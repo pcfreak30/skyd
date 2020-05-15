@@ -165,7 +165,7 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	println(".. program execution finished")
 	if err != nil {
-		println(".. program failed")
+		println(".. &&&&&&& program failed: ", err.Error())
 		return false, errors.AddContext(err, "Unable to execute program")
 	}
 	for _, resp := range responses {
