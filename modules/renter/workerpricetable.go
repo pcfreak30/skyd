@@ -14,10 +14,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// hostPrices is a helper struct that wraps a priceTable and adds its own
-// separate mutex. It has an 'updateAt' property that is set when a price table
-// is updated and is set to the time when we want to update the host prices.
 type (
+	// workerPriceTable contains a price table and some information related to
+	// retrieveing the next update.
 	workerPriceTable struct {
 		// The actual price table.
 		staticPriceTable modules.RPCPriceTable
@@ -37,9 +36,8 @@ type (
 	}
 )
 
-// managedNeedsUpdate is a helper function that checks whether or not we have to
-// update the price table. If so, it flips the 'updating' flag on the hostPrices
-// object to ensure we only try this once.
+// staticNeedsUpdate is a helper function that determines whether the price
+// table should be updated.
 func (wpt *workerPriceTable) staticNeedsUpdate() bool {
 	return time.Now().After(wpt.staticUpdateTime)
 }
