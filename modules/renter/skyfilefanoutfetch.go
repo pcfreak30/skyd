@@ -61,7 +61,7 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 	//
 	// TODO: Ideally would be able to insert 'doneChan' as a cancelChan on the
 	// DownloadByRoot call.
-	pieceData, err := fcs.staticRenter.DownloadByRoot(pieceRoot, 0, modules.SectorSize, fcs.staticTimeout)
+	pieceData, err := fcs.staticRenter.DownloadByRoot2(pieceRoot, 0, modules.SectorSize, fcs.staticTimeout)
 	if err != nil {
 		fcs.managedFailPiece()
 		fcs.staticRenter.log.Debugf("fanout piece download failed for chunk %v, piece %v, root %v of a fanout download file: %v", fcs.staticChunkIndex, pieceIndex, pieceRoot, err)

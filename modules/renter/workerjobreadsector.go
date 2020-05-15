@@ -66,6 +66,7 @@ func (j *jobReadSector) staticCanceled() bool {
 // callAdd will add a job to the queue. False will be returned if the job cannot
 // be queued because the worker has been killed.
 func (jq *jobReadSectorQueue) callAdd(job jobReadSector) bool {
+	defer jq.staticWorker.staticWake()
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 

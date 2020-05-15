@@ -66,6 +66,7 @@ func (j *jobHasSector) staticCanceled() bool {
 // callAdd will add a job to the queue. False will be returned if the job cannot
 // be queued because the worker has been killed.
 func (jq *jobHasSectorQueue) callAdd(job jobHasSector) bool {
+	defer jq.staticWorker.staticWake()
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
@@ -78,6 +79,7 @@ func (jq *jobHasSectorQueue) callAdd(job jobHasSector) bool {
 
 // callNext will provide the next jobHasSector from the set of jobs.
 func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
+	println("getting the next job")
 	var job jobHasSector
 	jq.mu.Lock()
 	for {
@@ -100,7 +102,9 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 
 	// Create the actual job that will be run by the async job launcher.
 	jobFn := func() {
+		println(".starting job")
 		available, err := jq.staticWorker.managedHasSector(job.sector)
+		println(".got the sector")
 		response := &jobHasSectorResponse{
 			staticAvailable: available,
 			staticErr:       err,
@@ -111,11 +115,13 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
 		go func() {
+			println(".sending the response")
 			job.responseChan <- response
 		}()
 	}
 
 	// Return the job along with the bandwidth estimates for completing the job.
+	println("returning said job")
 	ulBandwidth, dlBandwidth := programHasSectorBandwidth()
 	return jobFn, ulBandwidth, dlBandwidth
 }
@@ -133,6 +139,7 @@ func programHasSectorBandwidth() (ulBandwidth, dlBandwidth uint64) {
 
 // managedHasSector returns whether or not the host has a sector with given root
 func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
+	println(".. has sector in progress")
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt)
@@ -149,19 +156,24 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	//
 	// TODO: Are we expecting more than one response? Should we check that there
 	// was only one response?
+	println(".. executing program")
 	var hasSector bool
 	var responses []programResponse
 	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
+	println(".. program execution finished")
 	if err != nil {
+		println(".. program failed")
 		return false, errors.AddContext(err, "Unable to execute program")
 	}
 	for _, resp := range responses {
 		if resp.Error != nil {
+			println(".. bad resp")
 			return false, errors.AddContext(resp.Error, "Output error")
 		}
 		hasSector = resp.Output[0] == 1
 		break
 	}
+	println(".. program success")
 	return hasSector, nil
 }
 

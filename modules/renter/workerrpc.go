@@ -19,26 +19,35 @@ type programResponse struct {
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
 func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
+	println("... starting program execute")
 	// check host version
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		build.Critical("Executing new RHP RPC on host with version", cache.staticHostVersion)
 	}
+	println("...got past version check")
 
 	// track the withdrawal
 	// TODO: this is very naive and does not consider refunds at all
 	w.staticAccount.managedTrackWithdrawal(cost)
+	println("...withdrawal tracked")
 	defer func() {
+		println("|||defer attempt?")
 		w.staticAccount.managedCommitWithdrawal(cost, err == nil)
+		println("|||defer successs?")
 	}()
 
 	// create a new stream
 	var stream siamux.Stream
+	println(" www trying to get a new stream")
 	stream, err = w.staticNewStream()
+	println(" www got out of new stream")
 	if err != nil {
+		println("---error opening stream?", err.Error())
 		err = errors.AddContext(err, "Unable to create a new stream")
 		return
 	}
+	println("... stream opened")
 	defer func() {
 		if err := stream.Close(); err != nil {
 			w.renter.log.Println("ERROR: failed to close stream", err)
@@ -49,12 +58,14 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	bh := cache.staticBlockHeight
 
 	// write the specifier
+	println("...writing the execute program thingy")
 	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
 	if err != nil {
 		return
 	}
 
 	// send price table uid
+	println("... writing pt")
 	pt := w.staticPriceTable().staticPriceTable
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
@@ -69,6 +80,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// provide payment
+	println("... providing payment")
 	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
 	if err != nil {
 		return
@@ -81,6 +93,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// send the programData.
+	println("... writing program data")
 	_, err = stream.Write(data)
 	if err != nil {
 		return
@@ -91,6 +104,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// merged.
 
 	// receive PayByEphemeralAccountResponse
+	println("... paying by response")
 	var payByResponse modules.PayByEphemeralAccountResponse
 	err = modules.RPCRead(stream, &payByResponse)
 	if err != nil {
@@ -98,6 +112,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// read the responses.
+	println("... reading responses")
 	responses = make([]programResponse, len(epr.Program))
 	for i := range responses {
 		err = modules.RPCRead(stream, &responses[i])
