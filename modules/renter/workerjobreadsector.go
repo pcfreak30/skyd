@@ -101,13 +101,7 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 
 	// Create the actual job that will be run by the async job launcher.
 	jobFn := func() {
-		println(job.offset, " :: ", job.length)
 		data, err := jq.staticWorker.managedReadSector(job.sector, job.offset, job.length)
-		println(len(data))
-		println(err == nil)
-		if err != nil {
-			println(err.Error())
-		}
 		response := &jobReadSectorResponse{
 			staticData: data,
 			staticErr:  err,

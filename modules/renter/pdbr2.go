@@ -31,8 +31,6 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
 	}
 
-	println("starting async dbr: ", len(workers))
-
 	// TODO: For now we filter out any workers that cannot do the v148 protocol.
 	// Need to change this so that we submit jobs appropritately (through a
 	// serial HasSector and DownloadSector) so that all workers can scan the
@@ -41,14 +39,12 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	for _, worker := range workers {
 		cache := worker.staticCache()
 		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) != 0 {
-			println("skipping worker: ", cache.staticHostVersion, minAsyncVersion)
 			continue
 		}
 		workers[total] = worker
 		total++
 	}
 	workers = workers[:total]
-	println("num qualified workers: ", len(workers))
 
 	// Create a channel to receive all of the results from the workers. The
 	// channel is buffered with one slot per worker, so that the workers do not
@@ -59,14 +55,11 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	cancelChan := make(chan struct{})
 	defer func() {
 		// Automatically cancel the work when the function exits.
-		println("cancelling the cancel chan")
 		close(cancelChan)
 	}()
 
 	// Send the work to all of the workers.
-	println("adding jobs to the workers")
 	for _, worker := range workers {
-		println("adding job to one worker")
 		jhs := jobHasSector{
 			canceled:     cancelChan,
 			sector:       root,
@@ -82,11 +75,9 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	// attempt to download the root. If that download is successful, cancel all
 	// of the other work. If the download is not successful, go back to looping
 	// through the responses.
-	println("going through the responses")
 	for responses < len(workers) {
 		// Check for the timeout. This is done separately to ensure the timeout
 		// has priority.
-		println("checking timeout")
 		select {
 		case <-timeoutChan:
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
@@ -94,10 +85,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		}
 
 		// Block for a response, and also wait for the timeout.
-		println("waiting on resp chan")
 		var resp *jobHasSectorResponse
-		println("))))))))))))))))))")
-		println(responseChan)
 		select {
 		case resp = <-responseChan:
 			responses++
@@ -105,20 +93,12 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
 
-		println("__________ ___ ___ ___ __ got a response")
 		if resp == nil || resp.staticErr != nil {
-			if resp.staticErr != nil {
-				println("worker failout: ", resp.staticErr.Error())
-			} else {
-				println("nil resp sent")
-			}
 			continue
 		}
-		println("response is positive")
 
 		// This worker has found the sector root! Queue a job on the worker to
 		// perform the download.
-		println("doing the has sector job")
 		readSectorRespChan := make(chan *jobReadSectorResponse)
 		jrs := jobReadSector{
 			canceled:     cancelChan,
@@ -140,8 +120,6 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
 		if readSectorResp != nil && readSectorResp.staticErr == nil {
-			println("returning the data!")
-			println(len(readSectorResp.staticData))
 			return readSectorResp.staticData, nil
 		}
 	}

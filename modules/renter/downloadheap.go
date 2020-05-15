@@ -130,7 +130,6 @@ func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownload
 	udc.workersRemaining = len(r.staticWorkerPool.workers)
 	udc.mu.Unlock()
 	for _, worker := range r.staticWorkerPool.workers {
-		println("chunk is going to a worker: ", worker.staticHostPubKeyStr)
 		worker.callQueueDownloadChunk(udc)
 	}
 	r.staticWorkerPool.mu.RUnlock()
@@ -153,7 +152,6 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 		}
 		nextChunk := heap.Pop(r.downloadHeap).(*unfinishedDownloadChunk)
 		if !nextChunk.download.staticComplete() {
-			println("popping a download chunk out of the download heap:", nextChunk.staticChunkIndex)
 			return nextChunk
 		}
 	}
@@ -306,7 +304,6 @@ LOOP:
 			}
 
 			// Get the required memory to download this chunk.
-			println("getting memory for chunk")
 			if !r.managedAcquireMemoryForDownloadChunk(nextChunk) {
 				// The renter shut down before memory could be acquired.
 				return
@@ -316,7 +313,6 @@ LOOP:
 				continue
 			}
 			// Distribute the chunk to workers.
-			println("distributing chunk to workers")
 			r.managedDistributeDownloadChunkToWorkers(nextChunk)
 		}
 

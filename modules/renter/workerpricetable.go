@@ -112,7 +112,6 @@ func (w *worker) staticUpdatePriceTable() {
 			staticRecentErr:           errors.New("host version is not compatible, unable to fetch price table"),
 		}
 		w.staticSetPriceTable(pt)
-		println("pt update failed because version cmp")
 		return
 	}
 
@@ -124,7 +123,6 @@ func (w *worker) staticUpdatePriceTable() {
 	var err error
 	defer func() {
 		if err != nil {
-			println(" <><><><><><><><><> price table update failed: ", err.Error())
 			// Because of race conditions, can't modify the existing price
 			// table, need to make a new one.
 			pt := &workerPriceTable{
@@ -140,7 +138,6 @@ func (w *worker) staticUpdatePriceTable() {
 	// Get a stream.
 	stream, err := w.staticNewStream()
 	if err != nil {
-		println("stream failed: ", err.Error())
 		return
 	}
 	defer func() {
@@ -150,14 +147,12 @@ func (w *worker) staticUpdatePriceTable() {
 		streamCloseErr := stream.Close()
 		if streamCloseErr != nil {
 			w.renter.log.Println("ERROR: failed to close stream", streamCloseErr)
-			println("stream close failed: ", streamCloseErr.Error())
 		}
 	}()
 
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
-		println("rpc write failed: ", err.Error())
 		return
 	}
 
@@ -165,7 +160,6 @@ func (w *worker) staticUpdatePriceTable() {
 	var uptr modules.RPCUpdatePriceTableResponse
 	err = modules.RPCRead(stream, &uptr)
 	if err != nil {
-		println("rpc read failed: ", err.Error())
 		return
 	}
 
@@ -173,7 +167,6 @@ func (w *worker) staticUpdatePriceTable() {
 	var pt modules.RPCPriceTable
 	err = json.Unmarshal(uptr.PriceTableJSON, &pt)
 	if err != nil {
-		println("json unmarshal failed: ", err.Error())
 		return
 	}
 
@@ -182,7 +175,6 @@ func (w *worker) staticUpdatePriceTable() {
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, cache.staticBlockHeight)
 	if err != nil {
-		println("provide payment failed: ", err.Error())
 		return
 	}
 
@@ -196,7 +188,6 @@ func (w *worker) staticUpdatePriceTable() {
 	// TODO: Why is this here?
 	bogusReadErr := modules.RPCRead(stream, struct{}{})
 	if bogusReadErr == nil || !strings.Contains(bogusReadErr.Error(), io.ErrClosedPipe.Error()) {
-		println("unexpected err on rpc read: ", bogusReadErr.Error())
 		w.renter.log.Println("ERROR: expected io.ErrClosedPipe, instead received err:", bogusReadErr)
 	}
 
@@ -209,6 +200,5 @@ func (w *worker) staticUpdatePriceTable() {
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,
 	}
-	println("setting the price table???")
 	w.staticSetPriceTable(wpt)
 }

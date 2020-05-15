@@ -70,10 +70,6 @@ func (jq *jobHasSectorQueue) callAdd(job jobHasSector) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	if job.responseChan == nil {
-		println("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
-	}
-
 	if jq.killed {
 		return false
 	}
@@ -83,7 +79,6 @@ func (jq *jobHasSectorQueue) callAdd(job jobHasSector) bool {
 
 // callNext will provide the next jobHasSector from the set of jobs.
 func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
-	println("getting the next job")
 	var job jobHasSector
 	jq.mu.Lock()
 	for {
@@ -106,9 +101,7 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 
 	// Create the actual job that will be run by the async job launcher.
 	jobFn := func() {
-		println(".starting job")
 		available, err := jq.staticWorker.managedHasSector(job.sector)
-		println(".got the sector")
 		response := &jobHasSectorResponse{
 			staticAvailable: available,
 			staticErr:       err,
@@ -119,15 +112,11 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
 		go func() {
-			println(".sending the response")
-			println("**************")
-			println(job.responseChan)
 			job.responseChan <- response
 		}()
 	}
 
 	// Return the job along with the bandwidth estimates for completing the job.
-	println("returning said job")
 	ulBandwidth, dlBandwidth := programHasSectorBandwidth()
 	return jobFn, ulBandwidth, dlBandwidth
 }
@@ -145,7 +134,6 @@ func programHasSectorBandwidth() (ulBandwidth, dlBandwidth uint64) {
 
 // managedHasSector returns whether or not the host has a sector with given root
 func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
-	println(".. has sector in progress")
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt)
@@ -165,24 +153,19 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	//
 	// TODO: for this program we don't actually need the file contract - v149
 	// only.
-	println(".. executing program")
 	var hasSector bool
 	var responses []programResponse
 	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
-	println(".. program execution finished")
 	if err != nil {
-		println(".. &&&&&&& program failed: ", err.Error())
 		return false, errors.AddContext(err, "Unable to execute program")
 	}
 	for _, resp := range responses {
 		if resp.Error != nil {
-			println(".. bad resp")
 			return false, errors.AddContext(resp.Error, "Output error")
 		}
 		hasSector = resp.Output[0] == 1
 		break
 	}
-	println(".. program success")
 	return hasSector, nil
 }
 

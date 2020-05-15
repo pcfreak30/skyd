@@ -185,14 +185,12 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	cache := w.staticCache()
 	if build.VersionCmp(minAsyncVersion, cache.staticHostVersion) != 0 {
 		w.managedDumpAsyncJobs()
-		println("bad version in worker, async job not launching")
 		return false
 	}
 
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
 		w.managedDumpAsyncJobs()
-		println("bad price table in worker, async job not launching")
 		return false
 	}
 
@@ -224,7 +222,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
 	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
 	if readOutstanding > readLimit || writeOutstanding > writeLimit {
-		println("worker async stuff not ready, job not launching")
 		// Worker does not need to dump jobs, it is making progress, it's just
 		// not launching any new jobs until its current jobs finish up.
 		return false
@@ -232,11 +229,9 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 
 	// Check every potential async job that can be launched.
 	if w.externLaunchAsyncJob(w.staticJobHasSectorQueue.callNext) {
-		println("launching a has sector job - !!!!!!!!!!!!!!!!!!!")
 		return true
 	}
 	if w.externLaunchAsyncJob(w.staticJobReadSectorQueue.callNext) {
-		println("launching a read sector job - ---------------------------------------------------------")
 		return true
 	}
 	return false
@@ -311,7 +306,6 @@ func (w *worker) threadedWorkLoop() {
 
 	// The worker will continuously perform jobs in a loop.
 	for {
-		println("worker top loop")
 		// There are certain conditions under which the worker should either
 		// block or exit. This function will block until those conditions are
 		// met, returning 'true' when the worker can proceed and 'false' if the
@@ -329,7 +323,6 @@ func (w *worker) threadedWorkLoop() {
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up
 		// to run a job, this call is non-blocking.
-		println("worker try serial job")
 		w.externTryLaunchSerialJob()
 
 		// Attempt to launch an async job. If the async job launches
@@ -342,7 +335,6 @@ func (w *worker) threadedWorkLoop() {
 		// large amount of bandwidth are all running simultaneously. If the
 		// jobs are tiny in terms of resource footprints, the worker will allow
 		// more of them to be running at once.
-		println("worker try async job")
 		if w.externTryLaunchAsyncJob() {
 			continue
 		}
@@ -351,7 +343,6 @@ func (w *worker) threadedWorkLoop() {
 		//    + New work has been submitted
 		//    + The worker is killed
 		//    + The renter is stopped
-		println("worker sleep now")
 		select {
 		case <-w.wakeChan:
 			continue
