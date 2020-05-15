@@ -21,7 +21,6 @@ package renter
 // not run out, it maintains a balance target by refilling it when necessary.
 
 import (
-	"fmt"
 	"sync"
 	"time"
 	"unsafe"
@@ -168,13 +167,10 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 	// amount of MDM programs it can run with that amount of money
 	balanceTarget := types.SiacoinPrecision
 
-	// calculate the host's mux address
-	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
-
 	w := &worker{
 		staticHostPubKey:     hostPubKey,
 		staticHostPubKeyStr:  hostPubKey.String(),
-		staticHostMuxAddress: hostMuxAddress,
+		staticHostMuxAddress: host.HostExternalSettings.SiaMuxAddress(),
 		staticHostFCID:       hostFCID,
 
 		staticAccount:       account,
