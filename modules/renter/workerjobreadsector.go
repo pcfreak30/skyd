@@ -88,7 +88,7 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 		}
 
 		// Grab the next job.
-		job := jq.jobs[0]
+		job = jq.jobs[0]
 		jq.jobs = jq.jobs[1:]
 
 		// Break out of the loop only if this job has not been canceled.

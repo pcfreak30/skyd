@@ -128,6 +128,8 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			return nil, errors.New("could not get sector by root, timeout reached")
 		}
 		if resp == nil || readSectorResp.staticErr != nil {
+			println("returning the data!")
+			println(len(readSectorResp.staticData))
 			return readSectorResp.staticData, nil
 		}
 	}
