@@ -165,6 +165,24 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	return sectorData, nil
 }
 
+// managedDumpJobsReadSector will release all remaining ReadSector jobs as failed.
+func (w *worker) managedDumpJobsReadSector() {
+	jq := w.staticJobReadSectorQueue // Convenience variable
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	for _, job := range jq.jobs {
+		// Send the response in a goroutine so that the worker resources can be
+		// released faster.
+		go func(j jobReadSector) {
+			response := &jobReadSectorResponse{
+				staticErr: errors.New("worker is dumping all read sector jobs"),
+			}
+			j.responseChan <- response
+		}(job)
+	}
+	jq.jobs = nil
+}
+
 // managedKillJobsReadSector will release all remaining ReadSector jobs as failed.
 func (w *worker) managedKillJobsReadSector() {
 	jq := w.staticJobReadSectorQueue // Convenience variable

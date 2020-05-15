@@ -184,12 +184,14 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// TODO: After the protocol is stable, switch to '<=' instead of '!='
 	cache := w.staticCache()
 	if build.VersionCmp(minAsyncVersion, cache.staticHostVersion) != 0 {
+		w.managedDumpAsyncJobs()
 		println("bad version in worker, async job not launching")
 		return false
 	}
 
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
+		w.managedDumpAsyncJobs()
 		println("bad price table in worker, async job not launching")
 		return false
 	}
@@ -223,6 +225,8 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
 	if readOutstanding > readLimit || writeOutstanding > writeLimit {
 		println("worker async stuff not ready, job not launching")
+		// Worker does not need to dump jobs, it is making progress, it's just
+		// not launching any new jobs until its current jobs finish up.
 		return false
 	}
 
@@ -267,6 +271,13 @@ func (w *worker) managedBlockUntilReady() bool {
 	return true
 }
 
+// managedDumpAsyncJobs will drop all of the worker's async jobs because the
+// worker has not met sufficient conditions to retain async jobs.
+func (w *worker) managedDumpAsyncJobs() {
+	w.managedDumpJobsHasSector()
+	w.managedDumpJobsReadSector()
+}
+
 // threadedWorkLoop is a perpetual loop run by the worker that accepts new jobs
 // and performs them. Work is divided into two types of work, serial work and
 // async work. Serial work requires exclusive access to the worker's contract,
@@ -279,19 +290,24 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillJobsDownloadByRoot()
 	defer w.managedKillJobsHasSector()
+	defer w.managedKillJobsReadSector()
 	defer w.managedKillJobsDownloadByRoot()
 
 	// The worker cannot execute any async tasks unles the price table of the
 	// host is known, the balance of the worker account is known, and the
-	// account has sufficient funds in it.
-	w.externLaunchSerialJob(w.staticUpdatePriceTable)
+	// account has sufficient funds in it. This update is done as a blocking
+	// update to ensure nothing else runs until the price table is available.
+	w.staticUpdatePriceTable()
 	// TODO: Do a balance query on the host right here. Even if we had a clean
 	// shutdown and know the exact balance, we should still be asking the host
 	// what our balance is, because we don't want the host to be able to
 	// distinguish between the times that we know our balance and the times that
 	// we don't. Checking right at startup also allows us to give a quick
 	// honesty check on the host.
-	w.externLaunchSerialJob(w.managedRefillAccount)
+	//
+	// This update is done as a blocking update to ensure nothing else runs
+	// until the account has filled.
+	w.managedRefillAccount()
 
 	// The worker will continuously perform jobs in a loop.
 	for {

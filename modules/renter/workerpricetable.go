@@ -70,7 +70,7 @@ func (w *worker) staticSetPriceTable(pt *workerPriceTable) {
 // before the current time, and the price table expiry defaults to the zero
 // time.
 func (wpt *workerPriceTable) staticValid() bool {
-	return wpt.staticPriceTable.Expiry < time.Now().Unix()
+	return wpt.staticPriceTable.Expiry > time.Now().Unix()
 }
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
@@ -102,6 +102,7 @@ func (w *worker) staticUpdatePriceTable() {
 			staticRecentErr:           errors.New("host version is not compatible, unable to fetch price table"),
 		}
 		w.staticSetPriceTable(pt)
+		println("pt update failed because version cmp")
 		return
 	}
 
@@ -198,5 +199,6 @@ func (w *worker) staticUpdatePriceTable() {
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,
 	}
+	println("setting the price table???")
 	w.staticSetPriceTable(wpt)
 }

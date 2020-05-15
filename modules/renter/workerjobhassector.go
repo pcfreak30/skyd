@@ -70,6 +70,10 @@ func (jq *jobHasSectorQueue) callAdd(job jobHasSector) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
+	if job.responseChan == nil {
+		println("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
+	}
+
 	if jq.killed {
 		return false
 	}
@@ -89,7 +93,7 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 		}
 
 		// Grab the next job.
-		job := jq.jobs[0]
+		job = jq.jobs[0]
 		jq.jobs = jq.jobs[1:]
 
 		// Break out of the loop only if this job has not been canceled.
@@ -116,6 +120,8 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 		// released faster.
 		go func() {
 			println(".sending the response")
+			println("**************")
+			println(job.responseChan)
 			job.responseChan <- response
 		}()
 	}
@@ -178,6 +184,24 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	}
 	println(".. program success")
 	return hasSector, nil
+}
+
+// managedDumpJobsHasSector will release all remaining HasSector jobs as failed.
+func (w *worker) managedDumpJobsHasSector() {
+	jq := w.staticJobHasSectorQueue // Convenience variable
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	for _, job := range jq.jobs {
+		// Send the response in a goroutine so that the worker resources can be
+		// released faster.
+		go func(j jobHasSector) {
+			response := &jobHasSectorResponse{
+				staticErr: errors.New("worker is dumping all has sector jobs"),
+			}
+			j.responseChan <- response
+		}(job)
+	}
+	jq.jobs = nil
 }
 
 // managedKillJobsHasSector will release all remaining HasSector jobs as failed.

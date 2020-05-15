@@ -84,6 +84,8 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// Block for a response, and also wait for the timeout.
 		println("waiting on resp chan")
 		var resp *jobHasSectorResponse
+		println("))))))))))))))))))")
+		println(responseChan)
 		select {
 		case resp = <-responseChan:
 			responses++
@@ -91,7 +93,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			return nil, errors.New("could not get sector by root, timeout reached")
 		}
 
-		println("got a response")
+		println("__________ ___ ___ ___ __ got a response")
 		if resp == nil || resp.staticErr != nil {
 			if resp.staticErr != nil {
 				println("worker failout: ", resp.staticErr.Error())
