@@ -14,6 +14,16 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// updateTimeInterval defines the amount of time after which we'll update the
+// host's prices. This is a temporary variable and will be replaced when we add
+// a duration to the host's price table. For now it's just half of the
+// rpcPriceGuaranteePeriod set on the host
+var updateTimeInterval = build.Select(build.Var{
+	Standard: 5 * time.Minute,
+	Dev:      3 * time.Minute,
+	Testing:  7 * time.Second,
+}).(time.Duration)
+
 type (
 	// workerPriceTable contains a price table and some information related to
 	// retrieveing the next update.
@@ -195,7 +205,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// TODO: Do something smarter for the update time than 5 minutes.
 	wpt := &workerPriceTable{
 		staticPriceTable:          pt,
-		staticUpdateTime:          time.Now().Add(5 * time.Minute),
+		staticUpdateTime:          time.Now().Add(updateTimeInterval),
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,
 	}
