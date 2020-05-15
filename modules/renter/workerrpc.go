@@ -4,7 +4,6 @@ import (
 	"io"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -120,50 +119,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		}
 	}
 	return
-}
-
-// managedReadSector returns the sector data for given root
-func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error) {
-	// create a new stream
-	stream, err := w.staticNewStream()
-	if err != nil {
-		return nil, errors.AddContext(err, "Unable to create a new stream")
-	}
-	defer func() {
-		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
-		}
-	}()
-
-	// create the program
-	pt := w.staticPriceTable().staticPriceTable
-	pb := modules.NewProgramBuilder(&pt)
-	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
-	program, programData := pb.Program()
-	cost, _, _ := pb.Cost(true)
-
-	// take into account bandwidth costs
-	var ulBandwidth uint64 = 20 << 10                              // 20KiB
-	var dlBandwidth uint64 = uint64(float64(length)*1.01) + 10<<10 // (readSize * 1.01 + 10kb)
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
-	cost = cost.Add(bandwidthCost)
-
-	// exeucte it
-	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
-	if err != nil {
-		return nil, err
-	}
-
-	// return the response
-	var sectorData []byte
-	for _, resp := range responses {
-		if resp.Error != nil {
-			return nil, resp.Error
-		}
-		sectorData = resp.Output
-		break
-	}
-	return sectorData, nil
 }
 
 // staticNewStream returns a new stream to the worker's host

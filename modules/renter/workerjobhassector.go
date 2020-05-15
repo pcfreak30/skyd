@@ -16,13 +16,14 @@ type (
 	// jobHasSector contains information about a hasSector query.
 	jobHasSector struct {
 		canceled     chan struct{}             // Can signal that the job has been canceled
-		sector       crypto.Hash               // Which sector is being looked up
-		responseChan chan jobResponseHasSector // Channel to send a response down
+		responseChan chan *jobHasSectorResponse // Channel to send a response down
+
+		sector crypto.Hash
 	}
 
-	// jobQueueHasSector is a list of hasSector queries that have been assigned
+	// jobHasSectorQueue is a list of hasSector queries that have been assigned
 	// to the worker.
-	jobQueueHasSector struct {
+	jobHasSectorQueue struct {
 		killed bool
 		jobs   []jobHasSector
 
@@ -30,21 +31,23 @@ type (
 		mu           sync.Mutex
 	}
 
-	// jobResponseHasSector contains the result of a hasSector query.
-	jobResponseHasSector struct {
-		available bool
-		err       error
+	// jobHasSectorResponse contains the result of a hasSector query.
+	jobHasSectorResponse struct {
+		staticAvailable bool
+		staticErr       error
+
+		staticWorker *worker
 	}
 )
 
-// newJobQueueHasSector will initialize a has sector job queue for the worker.
+// newJobHasSectorQueue will initialize a has sector job queue for the worker.
 // This is only meant to be run once at startup.
-func (w *worker) newJobQueueHasSector() {
+func (w *worker) newJobHasSectorQueue() {
 	// Sanity check that there is no existing job queue.
-	if w.staticJobQueueHasSector != nil {
-		w.renter.log.Critical("incorred call on newJobQueueHasSector")
+	if w.staticJobHasSectorQueue != nil {
+		w.renter.log.Critical("incorred call on newJobHasSectorQueue")
 	}
-	w.staticJobQueueHasSector = &jobQueueHasSector{
+	w.staticJobHasSectorQueue = &jobHasSectorQueue{
 		staticWorker: w,
 	}
 }
@@ -62,7 +65,7 @@ func (j *jobHasSector) staticCanceled() bool {
 
 // callAdd will add a job to the queue. False will be returned if the job cannot
 // be queued because the worker has been killed.
-func (jq *jobQueueHasSector) callAdd(job jobHasSector) bool {
+func (jq *jobHasSectorQueue) callAdd(job jobHasSector) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
@@ -74,7 +77,7 @@ func (jq *jobQueueHasSector) callAdd(job jobHasSector) bool {
 }
 
 // callNext will provide the next jobHasSector from the set of jobs.
-func (jq *jobQueueHasSector) callNext() (func(), uint64, uint64) {
+func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 	var job jobHasSector
 	jq.mu.Lock()
 	for {
@@ -98,9 +101,11 @@ func (jq *jobQueueHasSector) callNext() (func(), uint64, uint64) {
 	// Create the actual job that will be run by the async job launcher.
 	jobFn := func() {
 		available, err := jq.staticWorker.managedHasSector(job.sector)
-		response := jobResponseHasSector{
-			available: available,
-			err:       err,
+		response := &jobHasSectorResponse{
+			staticAvailable: available,
+			staticErr:       err,
+
+			staticWorker: jq.staticWorker,
 		}
 
 		// Send the response in a goroutine so that the worker resources can be
@@ -111,18 +116,24 @@ func (jq *jobQueueHasSector) callNext() (func(), uint64, uint64) {
 	}
 
 	// Return the job along with the bandwidth estimates for completing the job.
-	//
-	// TODO: These values are overly conservative, once we've got the protocol
-	// more optimized we can bring these down.
-	return jobFn, 20e3, 20e3
+	ulBandwidth, dlBandwidth := programHasSectorBandwidth()
+	return jobFn, ulBandwidth, dlBandwidth
+}
+
+// programHasSectorBandwidth returns the bandwidth that gets consumed by a
+// HasSector program.
+//
+// TODO: These values are overly conservative, once we've got the protocol more
+// optimized we can bring these down.
+func programHasSectorBandwidth() (ulBandwidth, dlBandwidth uint64) {
+	ulBandwidth = 20e3
+	dlBandwidth = 20e3
+	return
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
 func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	// Create the program.
-	//
-	// TODO: Switch the price table to being fetched statically using atomic
-	// pointers.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt)
 	pb.AddHasSectorInstruction(sectorRoot)
@@ -130,8 +141,7 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	cost, _, _ := pb.Cost(true)
 
 	// take into account bandwidth costs
-	var ulBandwidth uint64 = 20 << 10 // 20KiB
-	var dlBandwidth uint64 = 20 << 10 // 20KiB
+	ulBandwidth, dlBandwidth := programHasSectorBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
@@ -157,15 +167,15 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 
 // managedKillJobsHasSector will release all remaining HasSector jobs as failed.
 func (w *worker) managedKillJobsHasSector() {
-	jq := w.staticJobQueueHasSector // Convenience variable
+	jq := w.staticJobHasSectorQueue // Convenience variable
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	for _, job := range jq.jobs {
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
 		go func(j jobHasSector) {
-			response := jobResponseHasSector{
-				err: errors.New("worker killed"),
+			response := &jobHasSectorResponse{
+				staticErr: errors.New("worker killed"),
 			}
 			j.responseChan <- response
 		}(job)

@@ -1,0 +1,128 @@
+package renter
+
+import (
+	"time"
+
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+
+	"gitlab.com/NebulousLabs/errors"
+)
+
+
+// managedDownloadByRoot will fetch data using the merkle root of that data.
+// Unlike the exported version of this function, this function does not request
+// memory from the memory manager.
+func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	// Create a channel to time out the project.
+	timeoutChan := time.After(timeout)
+
+	// Get the full list of workers that could potentially download the root.
+	workers := r.staticWorkerPool.callWorkers()
+
+	// TODO: For now we filter out any workers that cannot do the v148 protocol.
+	// Need to change this so that we submit jobs appropritately (through a
+	// serial HasSector and DownloadSector) so that all workers can scan the
+	// network and all files can be found.
+	total := 0
+	for _, worker := range workers {
+		cache := worker.staticCache()
+		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) != 0 {
+			continue
+		}
+		workers[total] = worker
+		total++
+	}
+	workers = workers[:total]
+
+	// Create a channel to receive all of the results from the workers. The
+	// channel is buffered with one slot per worker, so that the workers do not
+	// have to block when returning the result of the job.
+	responseChan := make(chan *jobHasSectorResponse, len(workers))
+	responses := 0
+	// Create a channel to signal when the job has been completed.
+	cancelChan := make(chan struct{})
+	defer func() {
+		// Automatically cancel the work when the function exits.
+		close(cancelChan)
+	}()
+
+	// Send the work to all of the workers.
+	for _, worker := range workers {
+		jhs := jobHasSector{
+			canceled:     cancelChan,
+			sector:       root,
+			responseChan: responseChan,
+		}
+		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
+			responses++
+		}
+	}
+
+	// Run a loop to get responses, and then if a worker has found the root,
+	// attempt to download the root. If that download is successful, cancel all
+	// of the other work. If the download is not successful, go back to looping
+	// through the responses.
+	for responses < len(workers) {
+		// Check for the timeout. This is done separately to ensure the timeout
+		// has priority.
+		select {
+		case <-timeoutChan:
+			return nil, errors.New("could not get sector by root, timout reached")
+		default:
+		}
+
+		// Block for a response, and also wait for the timeout.
+		var resp *jobHasSectorResponse
+		select {
+		case resp = <-responseChan:
+			responses++
+		case <-timeoutChan:
+			return nil, errors.New("could not get sector by root, timeout reached")
+		}
+		if resp == nil || resp.staticErr != nil {
+			continue
+		}
+
+		// This worker has found the sector root! Queue a job on the worker to
+		// perform the download.
+		readSectorRespChan := make(chan *jobReadSectorResponse)
+		jrs := jobReadSector {
+			canceled: cancelChan,
+			responseChan: readSectorRespChan,
+
+			length: length,
+			offset: offset,
+			sector: root,
+		}
+		if !resp.staticWorker.staticJobReadSectorQueue.callAdd(jrs) {
+			continue
+		}
+
+		// Wait for a response, respect the timeout.
+		var readSectorResp *jobReadSectorResponse
+		select {
+		case readSectorResp = <-readSectorRespChan:
+		case <-timeoutChan:
+			return nil, errors.New("could not get sector by root, timeout reached")
+		}
+		if resp == nil || readSectorResp.staticErr != nil {
+			return readSectorResp.staticData, nil
+		}
+	}
+
+	// All workers have failed.
+	return nil, errors.New("could not get sector by root, all workers have failed")
+}
+
+// DownloadByRoot2 will fetch data using the merkle root of that data. This uses
+// all of the async worker primitives to improve speed and throughput.
+func (r *Renter) DownloadByRoot2(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	if !r.memoryManager.Request(length, true) {
+		return nil, errors.New("renter shut down before memory could be allocated for the project")
+	}
+	defer r.memoryManager.Return(length)
+	return r.managedDownloadByRoot(root, offset, length, timeout)
+}

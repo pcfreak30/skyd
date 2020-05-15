@@ -70,7 +70,8 @@ type (
 		// Job queues for the worker.
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
 		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
-		staticJobQueueHasSector      *jobQueueHasSector
+		staticJobHasSectorQueue      *jobHasSectorQueue
+		staticJobReadSectorQueue     *jobReadSectorQueue
 
 		// Upload variables.
 		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -192,7 +193,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 		renter:   r,
 	}
 	w.newPriceTable()
-	w.newJobQueueHasSector()
+	w.newJobHasSectorQueue()
+	w.newJobReadSectorQueue()
 	// Get the worker cache set up before returning the worker. This prvents a
 	// race condition in some tests.
 	if !w.staticTryUpdateCache() {

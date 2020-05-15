@@ -133,21 +133,21 @@ func (w *worker) externTryLaunchSerialJob() {
 // the job starts and finishes.
 func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 	// Get the job and its resource requirements.
-	job, readSize, writeSize := getJob()
+	job, uploadBandwidth, downloadBandwidth := getJob()
 	if job == nil {
 		// No job available.
 		return false
 	}
 
 	// Add the resource requirements to the worker loop state.
-	atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, readSize)
-	atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, writeSize)
+	atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, downloadBandwidth)
+	atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, uploadBandwidth)
 	fn := func() {
 		job()
 		// Subtract the outstanding data now that the job is complete. Atomic
 		// subtraction works by adding and using some bit tricks.
-		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, ^uint64(readSize-1))
-		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, ^uint64(writeSize-1))
+		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, ^uint64(downloadBandwidth-1))
+		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, ^uint64(uploadBandwidth-1))
 		// Wake the worker to run any additional async jobs that may have been
 		// blocked / ignored because there was not enough bandwidth available.
 		w.staticWake()
@@ -174,7 +174,8 @@ func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 //
 // TODO: If we are ignoring async tasks because of version issues, etc, we
 // should be making sure to toss all of our async tasks so that projects fail
-// instead of stall.
+// instead of stall. Same goes if there are intractable PT issues or intractable
+// account issues.
 func (w *worker) externTryLaunchAsyncJob() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
 	//
@@ -196,6 +197,19 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// attempt using the account if the balance is low. And, "low" is poorly
 	// defined in this context, because we don't have a job we are attempting.
 	// Maybe this needs to be handled on a per-job level?
+	//
+	// Should probably just not allow anything to happen if the account is too
+	// low. Maybe the jobs can decide for themselves on a per-job basis? I guess
+	// that depends on how confident we are that the accounts will not drop
+	// below a critical level.
+	//
+	// Maybe it's fine to just ignore or tag on a timeout. This worker will be
+	// wasting bandwidth, but at least it's not getting too much in the way.
+	//
+	// So, actually what we should probably do is check if both the account is
+	// below some critical level, and simultaneously check if there has been
+	// recent errors in trying to refill the account. If both conditions are
+	// true, we kill all async tasks.
 
 	// Verify that the worker has not reached its limits for doing multiple
 	// jobs at once.
@@ -208,14 +222,12 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	}
 
 	// Check every potential async job that can be launched.
-	if w.externLaunchAsyncJob(w.staticJobQueueHasSector.callNext) {
+	if w.externLaunchAsyncJob(w.staticJobHasSectorQueue.callNext) {
 		return true
 	}
-	/*
-		if w.externLaunchAsyncJob(w.staticReadSectorJobs.callNext) {
-			return true
-		}
-	*/
+	if w.externLaunchAsyncJob(w.staticJobReadSectorQueue.callNext) {
+		return true
+	}
 	return false
 }
 
@@ -260,6 +272,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillJobsDownloadByRoot()
 	defer w.managedKillJobsHasSector()
+	defer w.managedKillJobsDownloadByRoot()
 
 	// The worker cannot execute any async tasks unles the price table of the
 	// host is known, the balance of the worker account is known, and the
