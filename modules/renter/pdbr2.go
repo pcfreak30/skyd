@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -8,7 +9,6 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 )
-
 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
 // Unlike the exported version of this function, this function does not request
@@ -120,8 +120,8 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// perform the download.
 		println("doing the has sector job")
 		readSectorRespChan := make(chan *jobReadSectorResponse)
-		jrs := jobReadSector {
-			canceled: cancelChan,
+		jrs := jobReadSector{
+			canceled:     cancelChan,
 			responseChan: readSectorRespChan,
 
 			length: length,

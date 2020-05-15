@@ -15,7 +15,7 @@ import (
 type (
 	// jobHasSector contains information about a hasSector query.
 	jobHasSector struct {
-		canceled     chan struct{}             // Can signal that the job has been canceled
+		canceled     chan struct{}              // Can signal that the job has been canceled
 		responseChan chan *jobHasSectorResponse // Channel to send a response down
 
 		sector crypto.Hash

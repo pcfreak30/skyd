@@ -15,7 +15,7 @@ import (
 type (
 	// jobReadSector contains information about a hasSector query.
 	jobReadSector struct {
-		canceled     chan struct{}                // Can signal that the job has been canceled
+		canceled     chan struct{}               // Can signal that the job has been canceled
 		responseChan chan *jobReadSectorResponse // Channel to send a response down
 
 		length uint64
@@ -110,7 +110,7 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 		}
 		response := &jobReadSectorResponse{
 			staticData: data,
-			staticErr:       err,
+			staticErr:  err,
 		}
 
 		// Send the response in a goroutine so that the worker resources can be
