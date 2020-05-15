@@ -20,8 +20,17 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		timeoutChan = time.After(timeout)
 	}
 
+	// Apply the timeout to the project. A timeout of 0 will be ignored.
+	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
+		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+	}
+
 	// Get the full list of workers that could potentially download the root.
 	workers := r.staticWorkerPool.callWorkers()
+	if len(workers) == 0 {
+		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
+	}
+
 	println("starting async dbr: ", len(workers))
 
 	// TODO: For now we filter out any workers that cannot do the v148 protocol.
@@ -80,7 +89,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		println("checking timeout")
 		select {
 		case <-timeoutChan:
-			return nil, errors.New("could not get sector by root, timout reached")
+			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		default:
 		}
 
@@ -93,7 +102,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		case resp = <-responseChan:
 			responses++
 		case <-timeoutChan:
-			return nil, errors.New("could not get sector by root, timeout reached")
+			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
 
 		println("__________ ___ ___ ___ __ got a response")
@@ -128,7 +137,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		select {
 		case readSectorResp = <-readSectorRespChan:
 		case <-timeoutChan:
-			return nil, errors.New("could not get sector by root, timeout reached")
+			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
 		if readSectorResp != nil && readSectorResp.staticErr == nil {
 			println("returning the data!")
@@ -138,7 +147,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	}
 
 	// All workers have failed.
-	return nil, errors.New("could not get sector by root, all workers have failed")
+	return nil, ErrRootNotFound
 }
 
 // DownloadByRoot2 will fetch data using the merkle root of that data. This uses
@@ -150,5 +159,9 @@ func (r *Renter) DownloadByRoot2(root crypto.Hash, offset, length uint64, timeou
 		return nil, errors.New("renter shut down before memory could be allocated for the project")
 	}
 	defer r.memoryManager.Return(length)
-	return r.managedDownloadByRoot(root, offset, length, timeout)
+	data, err := r.managedDownloadByRoot(root, offset, length, timeout)
+	if errors.Contains(err, ErrProjectTimedOut) {
+		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	}
+	return data, err
 }

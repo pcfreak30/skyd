@@ -21,7 +21,7 @@ var (
 	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
 
 	// ErrProjectTimedOut is returned when the project timed out
-	ErrProjectTimedOut = errors.New("project timed out")
+	ErrProjectTimedOut = errors.New("could not get sector by root, timeout reached")
 )
 
 // jobDownloadByRoot contains all of the information necessary to execute a
