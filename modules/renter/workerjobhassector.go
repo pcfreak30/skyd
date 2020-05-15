@@ -93,10 +93,10 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 		jq.jobs = jq.jobs[1:]
 
 		// Break out of the loop only if this job has not been canceled.
-		if job.staticCanceled() {
-			continue
+		if !job.staticCanceled() {
+			break
 		}
-		break
+		continue
 	}
 	jq.mu.Unlock()
 

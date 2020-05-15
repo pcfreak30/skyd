@@ -333,7 +333,6 @@ func (w *worker) threadedWorkLoop() {
 
 		// Block until:
 		//    + New work has been submitted
-		//    + The cache timer fires
 		//    + The worker is killed
 		//    + The renter is stopped
 		println("worker sleep now")
