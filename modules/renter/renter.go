@@ -209,12 +209,6 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
-	// Account management.
-	accounts           map[string]*account
-	accountsClosed     bool
-	staticAccountsWg   sync.WaitGroup
-	staticAccountsFile modules.File
-
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies

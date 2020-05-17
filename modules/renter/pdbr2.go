@@ -17,7 +17,7 @@ type projectDownloadByRootMetrics struct {
 	totalTime   float64
 	numRequests float64
 
-	decayedTime   float64
+	decayedTime     float64
 	decayedRequests float64
 
 	mu sync.Mutex
@@ -118,88 +118,88 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	}
 
 	/*
-	// This variant of the loop will download sequentially from every single
-	// worker, allowing us to get a proper profile.
-	var goodWs []*worker
-BOB:
-	for responses < len(workers) {
-		// Block for a response, and also wait for the timeout.
-		var resp *jobHasSectorResponse
-		select {
-		case resp = <-responseChan:
-			responses++
-		case <-timeoutChan:
-			// Don't wait forever, workers that don't come back fast enough
-			// don't count.
-			println("breaking because timer is done")
-			break BOB
-		}
-		println("got a response")
+			// This variant of the loop will download sequentially from every single
+			// worker, allowing us to get a proper profile.
+			var goodWs []*worker
+		BOB:
+			for responses < len(workers) {
+				// Block for a response, and also wait for the timeout.
+				var resp *jobHasSectorResponse
+				select {
+				case resp = <-responseChan:
+					responses++
+				case <-timeoutChan:
+					// Don't wait forever, workers that don't come back fast enough
+					// don't count.
+					println("breaking because timer is done")
+					break BOB
+				}
+				println("got a response")
 
-		// Add this worker to the set of workers that we can use if it has the
-		// sector.
-		if resp != nil && resp.staticErr == nil && resp.staticAvailable {
-			println("adding a good w")
-			goodWs = append(goodWs, resp.staticWorker)
-		}
-	}
+				// Add this worker to the set of workers that we can use if it has the
+				// sector.
+				if resp != nil && resp.staticErr == nil && resp.staticAvailable {
+					println("adding a good w")
+					goodWs = append(goodWs, resp.staticWorker)
+				}
+			}
 
-	// Go through each worker sequentially and perform the download. The workers
-	// will track themselves how fast they go.
-	println("going through the good ws")
-	for _, w := range goodWs {
-		println("starting a new worker")
-		start := time.Now()
-		readSectorRespChan := make(chan *jobReadSectorResponse)
-		jrs := jobReadSector{
-			canceled:     cancelChan,
-			responseChan: readSectorRespChan,
+			// Go through each worker sequentially and perform the download. The workers
+			// will track themselves how fast they go.
+			println("going through the good ws")
+			for _, w := range goodWs {
+				println("starting a new worker")
+				start := time.Now()
+				readSectorRespChan := make(chan *jobReadSectorResponse)
+				jrs := jobReadSector{
+					canceled:     cancelChan,
+					responseChan: readSectorRespChan,
 
-			length: length,
-			offset: offset,
-			sector: root,
-		}
-		if !w.staticJobReadSectorQueue.callAdd(jrs) {
-			continue
-		}
+					length: length,
+					offset: offset,
+					sector: root,
+				}
+				if !w.staticJobReadSectorQueue.callAdd(jrs) {
+					continue
+				}
 
-		// Wait for a response, respect the timeout.
-		var readSectorResp *jobReadSectorResponse
-		workerTimeoutChan := time.After(time.Second * 90)
-		select {
-		case readSectorResp = <-readSectorRespChan:
-		case <-workerTimeoutChan:
-			continue
-		}
-		if readSectorResp != nil && readSectorResp.staticErr == nil {
-			pm.managedAddDatapoint(time.Since(start))
-			fmt.Printf("%v: Sector data received: %v\n", w.staticHostPubKeyStr, time.Since(start))
-			continue
-		}
-	}
+				// Wait for a response, respect the timeout.
+				var readSectorResp *jobReadSectorResponse
+				workerTimeoutChan := time.After(time.Second * 90)
+				select {
+				case readSectorResp = <-readSectorRespChan:
+				case <-workerTimeoutChan:
+					continue
+				}
+				if readSectorResp != nil && readSectorResp.staticErr == nil {
+					pm.managedAddDatapoint(time.Since(start))
+					fmt.Printf("%v: Sector data received: %v\n", w.staticHostPubKeyStr, time.Since(start))
+					continue
+				}
+			}
 
-	// Print out the fastest times yet seen by any worker.
-	fmt.Println()
-	fmt.Println()
-	fmt.Println("starting worker dump")
-	for _, worker := range r.staticWorkerPool.callWorkers() {
-		// Ignore old workers.
-		cache := worker.staticCache()
-		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) != 0 {
-			continue
-		}
+			// Print out the fastest times yet seen by any worker.
+			fmt.Println()
+			fmt.Println()
+			fmt.Println("starting worker dump")
+			for _, worker := range r.staticWorkerPool.callWorkers() {
+				// Ignore old workers.
+				cache := worker.staticCache()
+				if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) != 0 {
+					continue
+				}
 
-		jq := worker.staticJobReadSectorQueue
-		jq.mu.Lock()
-		fastestJob := jq.fastestJob
-		jq.mu.Unlock()
-		hasBeenValid := atomic.LoadUint64(&worker.atomicPriceTableHasBeenValid) == 1
-		fmt.Printf("%v: HasBeenValid: %v, Fastest Job: %v\n", worker.staticHostPubKey, hasBeenValid, fastestJob)
-	}
-	fmt.Println()
-	fmt.Println()
+				jq := worker.staticJobReadSectorQueue
+				jq.mu.Lock()
+				fastestJob := jq.fastestJob
+				jq.mu.Unlock()
+				hasBeenValid := atomic.LoadUint64(&worker.atomicPriceTableHasBeenValid) == 1
+				fmt.Printf("%v: HasBeenValid: %v, Fastest Job: %v\n", worker.staticHostPubKey, hasBeenValid, fastestJob)
+			}
+			fmt.Println()
+			fmt.Println()
 
-	println("got through all of the good ws, now printlng the worker dump")
+			println("got through all of the good ws, now printlng the worker dump")
 	*/
 
 	// Run a loop to get responses, and then if a worker has found the root,
@@ -252,7 +252,7 @@ BOB:
 		// If we are not being told to use our best worker, and also our best
 		// worker is not predicted to start running before the average job time,
 		// look for another worker.
-		if !useBestWorker && pm.managedAverageDownloadTime() < time.Since(start) + bestWorkerTime {
+		if !useBestWorker && pm.managedAverageDownloadTime() < time.Since(start)+bestWorkerTime {
 			continue
 		}
 

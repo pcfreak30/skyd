@@ -36,7 +36,7 @@ type (
 		//
 		// TODO: Break this apart into buckets based on download size.
 		totalJobTime float64
-		totalJobs float64
+		totalJobs    float64
 
 		fastestJob time.Duration
 
@@ -137,7 +137,7 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 		// released faster. Need to check if the job was canceled so that the
 		// memory can be released.
 		go func() {
-			select{
+			select {
 			case job.responseChan <- response:
 			case <-job.canceled:
 			}

@@ -136,7 +136,6 @@ func (c *Contractor) managedCriticalUtilityChecks(contract modules.RenterContrac
 	_, renewed := c.renewedTo[contract.ID]
 	c.mu.RUnlock()
 
-
 	report := true
 	if isOffline(host) || build.VersionCmp(host.Version, "1.4.8") != 0 {
 		report = false

@@ -149,17 +149,17 @@ func main() {
 	downloadStart := time.Now()
 	for _, threads := range threadss {
 		/*
-		err = downloadFileSet(dir64kbPath, exactSize64kb, threads)
-		if err != nil {
-			fmt.Println("Unable to download all 64kb files:", err)
-		}
-		fmt.Printf("64kb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
-		downloadStart = time.Now()
-		err = downloadFileSet(dir1mbPath, exactSize1mb, threads)
-		if err != nil {
-			fmt.Println("Unable to download all 1mb files:", err)
-		}
-		fmt.Printf("1mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+			err = downloadFileSet(dir64kbPath, exactSize64kb, threads)
+			if err != nil {
+				fmt.Println("Unable to download all 64kb files:", err)
+			}
+			fmt.Printf("64kb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+			downloadStart = time.Now()
+			err = downloadFileSet(dir1mbPath, exactSize1mb, threads)
+			if err != nil {
+				fmt.Println("Unable to download all 1mb files:", err)
+			}
+			fmt.Printf("1mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
 		*/
 		downloadStart = time.Now()
 		err = downloadFileSet(dir4mbPath, exactSize4mb, threads)
@@ -168,13 +168,13 @@ func main() {
 		}
 		fmt.Printf("4mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
 		/*
-		downloadStart = time.Now()
-		err = downloadFileSet(dir10mbPath, exactSize10mb, threads)
-		if err != nil {
-			fmt.Println("Unable to download all 10mb files:", err)
-		}
-		fmt.Printf("10mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
-		downloadStart = time.Now()
+			downloadStart = time.Now()
+			err = downloadFileSet(dir10mbPath, exactSize10mb, threads)
+			if err != nil {
+				fmt.Println("Unable to download all 10mb files:", err)
+			}
+			fmt.Printf("10mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+			downloadStart = time.Now()
 		*/
 		fmt.Println()
 	}
