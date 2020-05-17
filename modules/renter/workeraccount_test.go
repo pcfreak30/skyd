@@ -296,12 +296,13 @@ func TestAccountSave(t *testing.T) {
 	// verify the accounts got reloaded properly
 	am := r.staticAccountManager
 	am.mu.Lock()
+	accountsLen := len(am.accounts)
 	am.mu.Unlock()
-	if len(am.accounts) != len(accounts) {
+	if accountsLen != len(accounts) {
 		t.Errorf("Unexpected amount of accounts, %v != %v", len(am.accounts), len(accounts))
 	}
 	for _, account := range accounts {
-		reloaded, err := r.staticAccountManager.managedOpenAccount(account.staticHostKey)
+		reloaded, err := am.managedOpenAccount(account.staticHostKey)
 		if err != nil {
 			t.Error(err)
 		}
@@ -309,7 +310,6 @@ func TestAccountSave(t *testing.T) {
 			t.Error("Unexpected account ID")
 		}
 	}
-	am.mu.Unlock()
 }
 
 // TestAccountUncleanShutdown verifies that accounts are dropped if the accounts
@@ -520,6 +520,7 @@ func openRandomTestAccountsOnRenter(r *Renter) []*account {
 		}
 		account, err := r.staticAccountManager.managedOpenAccount(hostKey)
 		if err != nil {
+			// TODO: Have this function return an error.
 			panic(err)
 		}
 		accounts = append(accounts, account)

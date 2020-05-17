@@ -158,11 +158,11 @@ func (am *accountManager) managedOpenAccount(hostKey types.SiaPublicKey) (acc *a
 	// 'externActive' variables of the account. See the rest of this functions
 	// implementation to understand how they are used in practice.
 	am.mu.Lock()
-	acc, ok := am.accounts[hostKey.String()]
-	if ok {
+	acc, exists := am.accounts[hostKey.String()]
+	if exists {
+		am.mu.Unlock()
 		<-acc.staticReady
 		if acc.externActive {
-			am.mu.Unlock()
 			return acc, nil
 		}
 	}
@@ -291,6 +291,10 @@ func (am *accountManager) load() error {
 
 	// Ensure that when the renter is shut down, the save and close function
 	// runs.
+	if am.staticRenter.deps.Disrupt("InterruptAccountSaveOnShutdown") {
+		// Dependency injection to simulate an unclean shutdown.
+		return nil
+	}
 	err = am.staticRenter.tg.AfterStop(am.managedSaveAndClose)
 	if err != nil {
 		return errors.AddContext(err, "unable to schedule a save and close with the thread group")
@@ -406,16 +410,21 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 		return nil, errors.AddContext(err, "failed to load account bytes")
 	}
 
-	return &account{
+	acc := &account{
 		staticID:        accountData.AccountID,
 		staticHostKey:   accountData.HostKey,
 		staticSecretKey: accountData.SecretKey,
 
 		balance: accountData.Balance,
 
+		staticReady:  make(chan struct{}),
+		externActive: true,
+
 		staticOffset: offset,
 		staticFile:   am.staticFile,
-	}, nil
+	}
+	close(acc.staticReady)
+	return acc, nil
 }
 
 // updateMetadata writes the given metadata to the accounts file.
