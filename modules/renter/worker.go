@@ -1,11 +1,5 @@
 package renter
 
-// TODO: The way it's currently written, I believe the worker will discard all
-// async tasks until it has a price table and understands the account funding.
-// The worker should probably have in it's early startup routine (before
-// entering the work loop proper) a blocking attempt to get a PT and fill an
-// account.
-
 // worker.go defines a worker with a work loop. Each worker is connected to a
 // single host, and the work loop will listen for jobs and then perform them.
 //
