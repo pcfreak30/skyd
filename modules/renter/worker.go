@@ -157,7 +157,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 
 	// open the account
-	account, err := r.managedOpenAccount(hostPubKey)
+	account, err := r.staticAccountManager.managedOpenAccount(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not open account")
 	}

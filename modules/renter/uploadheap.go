@@ -12,7 +12,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"

@@ -8,11 +8,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -53,8 +51,8 @@ type (
 		//
 		// 'externActive' can be accessed freely once 'staticReady' has been
 		// closed.
-		staticReady chan struct{}
-		externtActive bool
+		staticReady  chan struct{}
+		externActive bool
 
 		// Utils. The offset refers to the offset within the file that the
 		// account uses.
@@ -242,7 +240,7 @@ func (w *worker) managedRefillAccount() {
 	// either reached the remove machine or failed.
 	//
 	// At the same time that we track the deposit, we defer a function to check
-	// the error on the deposit 
+	// the error on the deposit
 	w.staticAccount.managedTrackDeposit(amount)
 	var err error
 	defer func() {
@@ -256,7 +254,8 @@ func (w *worker) managedRefillAccount() {
 
 		// If the error is not nil, increment the cooldown.
 		w.staticAccount.mu.Lock()
-		w.staticAccount.cooldownUntil = cooldownUntil(w.staticAccount.consecutiveFailures)
+		cd := cooldownUntil(w.staticAccount.consecutiveFailures)
+		w.staticAccount.cooldownUntil = cd
 		w.staticAccount.consecutiveFailures++
 		w.staticAccount.recentErr = err
 		w.staticAccount.mu.Unlock()
@@ -264,9 +263,9 @@ func (w *worker) managedRefillAccount() {
 		// Launch a goroutine to wake the worker when the cooldown has ended, so
 		// that the worker will try as fast as possible to put funds back into
 		// the account.
-		w.staticRenter.staticTG.Launch(func () {
+		w.renter.tg.Launch(func() {
 			sleepDuration := cd.Sub(time.Now())
-			if w.staticRenter.staticTG.Sleep(sleepDuration) {
+			if w.renter.tg.Sleep(sleepDuration) {
 				w.staticWake()
 			}
 		})

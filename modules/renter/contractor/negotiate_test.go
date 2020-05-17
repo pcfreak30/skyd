@@ -72,7 +72,7 @@ func newContractorTester(name string) (*contractorTester, closeFn, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	mux, err := modules.NewSiaMux(filepath.Join(testdir, modules.RenterDir), testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(filepath.Join(testdir, modules.RenterDir), testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, err
 	}

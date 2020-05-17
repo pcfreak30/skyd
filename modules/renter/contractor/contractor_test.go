@@ -52,7 +52,7 @@ func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.T
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
-	mux, err := modules.NewSiaMux(filepath.Join(testdir, modules.SiaMuxDir), testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(filepath.Join(testdir, modules.SiaMuxDir), testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
