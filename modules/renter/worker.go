@@ -50,6 +50,8 @@ type (
 		// Atomics are used to minimze lock contention on the worker object.
 		atomicCache      unsafe.Pointer // points to a workerCache object
 		atomicPriceTable unsafe.Pointer // points to a workerPriceTable object
+		atomicPriceTableHasBeenValid uint64 // TODO
+		atomicStreamHasBeenValid uint64 // TODO
 
 		// The host pub key also serves as an id for the worker, as there is only
 		// one worker per host.

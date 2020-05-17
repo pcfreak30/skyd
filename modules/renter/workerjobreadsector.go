@@ -5,6 +5,7 @@ package renter
 
 import (
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -28,6 +29,16 @@ type (
 	jobReadSectorQueue struct {
 		killed bool
 		jobs   []jobReadSector
+
+		// These float64s are converted time.Duration values. They are float64
+		// to get better precision on the exponential decay which gets applied
+		// with each new data point.
+		//
+		// TODO: Break this apart into buckets based on download size.
+		totalJobTime float64
+		totalJobs float64
+
+		fastestJob time.Duration
 
 		staticWorker *worker
 		mu           sync.Mutex
@@ -101,22 +112,49 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 
 	// Create the actual job that will be run by the async job launcher.
 	jobFn := func() {
+		// Track how long the job takes.
+		start := time.Now()
 		data, err := jq.staticWorker.managedReadSector(job.sector, job.offset, job.length)
+		jobTime := time.Since(start)
 		response := &jobReadSectorResponse{
 			staticData: data,
 			staticErr:  err,
 		}
 
+		// Update the metrics in the read sector queue based on the amount of
+		// time the read took.
+		jq.mu.Lock()
+		jq.totalJobTime *= 0.9
+		jq.totalJobs *= 0.9
+		jq.totalJobTime += float64(jobTime)
+		jq.totalJobs++
+		if err == nil && len(data) > 3e6 && (jobTime < jq.fastestJob || jq.fastestJob == 0) {
+			jq.fastestJob = jobTime
+		}
+		jq.mu.Unlock()
+
 		// Send the response in a goroutine so that the worker resources can be
-		// released faster.
+		// released faster. Need to check if the job was canceled so that the
+		// memory can be released.
 		go func() {
-			job.responseChan <- response
+			select{
+			case job.responseChan <- response:
+			case <-job.canceled:
+			}
 		}()
 	}
 
 	// Return the job along with the bandwidth estimates for completing the job.
 	ulBandwidth, dlBandwidth := programReadSectorBandwidth(job.offset, job.length)
 	return jobFn, ulBandwidth, dlBandwidth
+}
+
+// TODO: Have this take a size of a file as input.
+func (jq *jobReadSectorQueue) callAverageJobTime() time.Duration {
+	jq.mu.Lock()
+	avg := time.Duration(jq.totalJobTime / jq.totalJobs)
+	jq.mu.Unlock()
+	return avg
 }
 
 // programReadSectorBandwidth returns the bandwidth that gets consumed by a

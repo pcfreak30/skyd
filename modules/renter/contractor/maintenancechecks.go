@@ -1,8 +1,10 @@
 package contractor
 
 import (
+	"fmt"
 	"math/big"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -134,34 +136,58 @@ func (c *Contractor) managedCriticalUtilityChecks(contract modules.RenterContrac
 	_, renewed := c.renewedTo[contract.ID]
 	c.mu.RUnlock()
 
+
+	report := true
+	if isOffline(host) || build.VersionCmp(host.Version, "1.4.8") != 0 {
+		report = false
+	}
+
 	// A contract that has been renewed should be set to !GFU and !GFR.
 	u, needsUpdate := c.renewedCheck(contract.Utility, renewed)
 	if needsUpdate {
+		if report {
+			fmt.Printf("zzz %v failed renewd check\n", host.PublicKey.String())
+		}
 		return u, needsUpdate
 	}
 
 	u, needsUpdate = c.badContractCheck(contract.Utility)
 	if needsUpdate {
+		if report {
+			fmt.Printf("zzz %v failed bad contract check\n", host.PublicKey.String())
+		}
 		return u, needsUpdate
 	}
 
 	u, needsUpdate = c.offlineCheck(contract, host)
 	if needsUpdate {
+		if report {
+			fmt.Printf("zzz %v failed offline check\n", host.PublicKey.String())
+		}
 		return u, needsUpdate
 	}
 
 	u, needsUpdate = c.upForRenewalCheck(contract, renewWindow, blockHeight)
 	if needsUpdate {
+		if report {
+			fmt.Printf("zzz %v failed up for renewal\n", host.PublicKey.String())
+		}
 		return u, needsUpdate
 	}
 
 	u, needsUpdate = c.sufficientFundsCheck(contract, host, period)
 	if needsUpdate {
+		if report {
+			fmt.Printf("zzz %v failed sufficient funds\n", host.PublicKey.String())
+		}
 		return u, needsUpdate
 	}
 
 	u, needsUpdate = c.outOfStorageCheck(contract, blockHeight)
 	if needsUpdate {
+		if report {
+			fmt.Printf("zzz %v failed out of storage\n", host.PublicKey.String())
+		}
 		return u, needsUpdate
 	}
 

@@ -109,12 +109,12 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 
 // newTestingContractor is a helper function that creates a ready-to-use
 // contractor.
-func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool) (*Contractor, closeFn, error) {
+func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (*Contractor, closeFn, error) {
 	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
 		return nil, nil, err
 	}
-	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
+	hdb, errChan := hostdb.New(g, cs, tp, mux, filepath.Join(testdir, "hostdb"))
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}
@@ -191,7 +191,7 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contr
 	if err != nil {
 		return nil, nil, nil, nil, build.ExtendErr("error creating testing host", err)
 	}
-	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp)
+	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp, mux)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

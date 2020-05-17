@@ -117,7 +117,7 @@ var (
 	// maxScanSleep is the maximum amount of time that the hostdb will sleep
 	// between performing scans of the hosts.
 	maxScanSleep = build.Select(build.Var{
-		Standard: time.Hour * 8,
+		Standard: time.Minute * 20,
 		Dev:      time.Minute * 10,
 		Testing:  time.Second * 5,
 	}).(time.Duration)
@@ -133,7 +133,7 @@ var (
 	// minScanSleep is the minimum amount of time that the hostdb will sleep
 	// between performing scans of the hosts.
 	minScanSleep = build.Select(build.Var{
-		Standard: time.Hour + time.Minute*20,
+		Standard: time.Minute*10,
 		Dev:      time.Minute * 3,
 		Testing:  time.Second * 1,
 	}).(time.Duration)

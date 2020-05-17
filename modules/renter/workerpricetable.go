@@ -10,8 +10,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // updateTimeInterval defines the amount of time after which we'll update the
@@ -46,10 +44,16 @@ type (
 	}
 )
 
-// staticNeedsUpdate is a helper function that determines whether the price
-// table should be updated.
-func (wpt *workerPriceTable) staticNeedsUpdate() bool {
-	return time.Now().After(wpt.staticUpdateTime)
+// staticNeedsPriceTableUpdate is a helper function that determines whether the
+// price table should be updated.
+func (w *worker) staticNeedsPriceTableUpdate() bool {
+	// Check the version.
+	//
+	// TODO: '<'
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) != 0 {
+		return false
+	}
+	return time.Now().After(w.staticPriceTable().staticUpdateTime)
 }
 
 // newPriceTable will initialize a price table for the worker.
@@ -85,35 +89,24 @@ func (wpt *workerPriceTable) staticValid() bool {
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) staticUpdatePriceTable() {
-	// Create a goroutine to wake the worker when the time has come to check
-	// the price table again.
+	// This function should not be running if the price table is not out of date
+	// yet.
+	updateTime := w.staticPriceTable().staticUpdateTime
+	currentTime := time.Now()
+	if currentTime.Before(updateTime) {
+		build.Critical("price table is being updated prematurely")
+	}
+
+	// Create a goroutine to wake the worker when the time has come to check the
+	// price table again. Be careful when handling potential underflows.
 	defer func() {
 		go func() {
 			updateTime := w.staticPriceTable().staticUpdateTime
-			sleepDuration := updateTime.Sub(time.Now())
-			time.Sleep(sleepDuration)
+			currentTime := time.Now()
+			time.Sleep(updateTime.Sub(currentTime))
 			w.staticWake()
 		}()
 	}()
-
-	// Check the host version.
-	//
-	// TODO: After the protocol is stable, switch to '<=' instead of '!='.
-	cache := w.staticCache()
-	currentPT := w.staticPriceTable()
-	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) != 0 {
-		// Host is not a supported version, set the price table to be invalid.
-		// This will potentially overwrite a valid price table, but the host no
-		// longer speaks a valid protocol so we should invalidate the price
-		// table.
-		pt := &workerPriceTable{
-			staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
-			staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
-			staticRecentErr:           errors.New("host version is not compatible, unable to fetch price table"),
-		}
-		w.staticSetPriceTable(pt)
-		return
-	}
 
 	// All remaining errors represent short term issues with the host, so the
 	// price table should be updated to represent the failure, but should retain
@@ -121,6 +114,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// performing tasks even though it's having trouble getting a new price
 	// table.
 	var err error
+	currentPT := w.staticPriceTable()
 	defer func() {
 		if err != nil {
 			// Because of race conditions, can't modify the existing price
@@ -173,7 +167,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// TODO: Check for gouging before paying.
 
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, cache.staticBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
 		return
 	}

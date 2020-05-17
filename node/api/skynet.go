@@ -32,7 +32,7 @@ const (
 	// resolved within the given amount of time, it times out. This is used for
 	// Skynet routes where a request times out if the DownloadByRoot project
 	// does not finish in due time.
-	DefaultSkynetRequestTimeout = 90 * time.Second
+	DefaultSkynetRequestTimeout = 30 * time.Second
 
 	// MaxSkynetRequestTimeout is the maximum a user is allowed to set as
 	// request timeout. This to prevent an attack vector where the attacker

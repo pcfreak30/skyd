@@ -104,7 +104,7 @@ func (w *worker) externTryLaunchSerialJob() {
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
-	if w.staticPriceTable().staticNeedsUpdate() {
+	if w.staticNeedsPriceTableUpdate() {
 		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
 	}
@@ -193,6 +193,9 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		w.managedDumpAsyncJobs()
 		return false
 	}
+
+	// Mark that the worker has had a valid price table at some point.
+	atomic.StoreUint64(&w.atomicPriceTableHasBeenValid, 1)
 
 	// TODO: There should probably be some check here that the account is in
 	// working condition before attempting async jobs, but I couldn't quite
@@ -288,21 +291,24 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillJobsReadSector()
 	defer w.managedKillJobsDownloadByRoot()
 
-	// The worker cannot execute any async tasks unles the price table of the
-	// host is known, the balance of the worker account is known, and the
-	// account has sufficient funds in it. This update is done as a blocking
-	// update to ensure nothing else runs until the price table is available.
-	w.staticUpdatePriceTable()
-	// TODO: Do a balance query on the host right here. Even if we had a clean
-	// shutdown and know the exact balance, we should still be asking the host
-	// what our balance is, because we don't want the host to be able to
-	// distinguish between the times that we know our balance and the times that
-	// we don't. Checking right at startup also allows us to give a quick
-	// honesty check on the host.
-	//
-	// This update is done as a blocking update to ensure nothing else runs
-	// until the account has filled.
-	w.managedRefillAccount()
+	// TODO: '>='
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) == 0 {
+		// The worker cannot execute any async tasks unles the price table of the
+		// host is known, the balance of the worker account is known, and the
+		// account has sufficient funds in it. This update is done as a blocking
+		// update to ensure nothing else runs until the price table is available.
+		w.staticUpdatePriceTable()
+		// TODO: Do a balance query on the host right here. Even if we had a clean
+		// shutdown and know the exact balance, we should still be asking the host
+		// what our balance is, because we don't want the host to be able to
+		// distinguish between the times that we know our balance and the times that
+		// we don't. Checking right at startup also allows us to give a quick
+		// honesty check on the host.
+		//
+		// This update is done as a blocking update to ensure nothing else runs
+		// until the account has filled.
+		w.managedRefillAccount()
+	}
 
 	// The worker will continuously perform jobs in a loop.
 	for {

@@ -1,9 +1,11 @@
 package contractor
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -251,9 +253,17 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			continue
 		}
 
+		report := true
+		if isOffline(host) || build.VersionCmp(host.Version, "v1.4.8") != 0 {
+			report = false
+		}
+
 		// Do critical contract checks and update the utility if any checks fail.
 		u, needsUpdate = c.managedCriticalUtilityChecks(contract, host)
 		if needsUpdate {
+			if report {
+				fmt.Printf("zzz %v failed cricial checks\n", host.PublicKey.String())
+			}
 			err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
 			if err != nil {
 				c.log.Println("Unable to acquire and update contract utility:", err)
@@ -294,6 +304,9 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		}
 
 		// All checks passed, marking contract as GFU and GFR.
+		if report {
+			fmt.Printf("zzz %v passed all checks, should be gfu and gfr\n", host.PublicKey.String())
+		}
 		if !u.GoodForUpload || !u.GoodForRenew {
 			c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", u.GoodForUpload, u.GoodForRenew, contract.ID)
 		}

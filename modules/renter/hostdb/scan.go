@@ -26,7 +26,7 @@ var (
 	// between scans in order for a new scan to be accepted into the hostdb as
 	// part of the scan history.
 	scanTimeElapsedRequirement = build.Select(build.Var{
-		Standard: 60 * time.Minute,
+		Standard: 6 * time.Minute,
 		Dev:      2 * time.Minute,
 		Testing:  500 * time.Millisecond,
 	}).(time.Duration)
@@ -218,6 +218,7 @@ func (hdb *HostDB) queueScan(entry modules.HostDBEntry) {
 func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	// If the scan failed because we don't have Internet access, toss out this update.
 	if netErr != nil && !hdb.gateway.Online() {
+		println("skipping update because gateway is not online")
 		return
 	}
 
@@ -260,10 +261,17 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		newTimestamp := time.Now()
 		prevTimestamp := newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Timestamp
 		if newTimestamp.After(prevTimestamp.Add(scanTimeElapsedRequirement)) {
+			if netErr != nil {
+				fmt.Printf("%v is adding a failed scan\n", entry.PublicKey.String())
+			} else {
+				fmt.Printf("%v is adding a successful scan\n", entry.PublicKey.String())
+			}
 			if newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Success && netErr != nil {
 				hdb.staticLog.Printf("Host %v is being downgraded from an online host to an offline host: %v\n", newEntry.PublicKey.String(), netErr)
 			}
 			newEntry.ScanHistory = append(newEntry.ScanHistory, modules.HostDBScan{Timestamp: newTimestamp, Success: netErr == nil})
+		} else {
+			println("skipping this scan because it's too recent")
 		}
 	}
 
@@ -363,6 +371,7 @@ func (hdb *HostDB) staticLookupIPNets(address modules.NetAddress) (ipNets []stri
 // managedScanHost will connect to a host and grab the settings, verifying
 // uptime and updating to the host's preferences.
 func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
+	println("scanning host:", entry.PublicKey.String())
 	// Request settings from the queued host entry.
 	netAddr := entry.NetAddress
 	pubKey := entry.PublicKey
@@ -388,9 +397,9 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 	}
 
 	// Update historic interactions of entry if necessary
-	hdb.mu.RLock()
+	hdb.mu.Lock()
 	updateHostHistoricInteractions(&entry, hdb.blockHeight)
-	hdb.mu.RUnlock()
+	hdb.mu.Unlock()
 
 	var settings modules.HostExternalSettings
 	var latency time.Duration
@@ -453,7 +462,27 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			if err := s.ReadResponse(&resp, maxSettingsLen); err != nil {
 				return err
 			}
-			return json.Unmarshal(resp.Settings, &settings)
+			err = json.Unmarshal(resp.Settings, &settings)
+			if err != nil {
+				return err
+			}
+
+			// Try opening a connection to the siamux.
+			//
+			// TODO: This is only meant to be in play _after_ enough hosts on the
+			// network have upgraded to v1.4.9.
+			stream, err := hdb.staticMux.NewStream(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), modules.SiaPKToMuxPK(entry.PublicKey))
+			if err != nil {
+				fmt.Printf("%v could not open stream: %v\n", entry.PublicKey, err)
+				return err
+			}
+			err = stream.Close()
+			if err != nil {
+				fmt.Printf("%v could not close stream: %v\n", entry.PublicKey, err)
+				return err
+			}
+			fmt.Printf("%v was successful in using stream: %v\n", entry.PublicKey, err)
+			return nil
 		}()
 		if tryNewProtoErr == nil {
 			return nil
@@ -522,6 +551,23 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			BaseRPCPrice:      types.ZeroCurrency,
 			SectorAccessPrice: types.ZeroCurrency,
 		}
+
+		// Try opening a connection to the siamux.
+		//
+		// TODO: This is only meant to be in play _after_ enough hosts on the
+		// network have upgraded to v1.4.9.
+		stream, err := hdb.staticMux.NewStream(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), modules.SiaPKToMuxPK(entry.PublicKey))
+		if err != nil {
+			fmt.Printf("%v could not open stream: %v\n", entry.PublicKey, err)
+			return err
+		}
+		err = stream.Close()
+		if err != nil {
+			fmt.Printf("%v could not close stream: %v\n", entry.PublicKey, err)
+			return err
+		}
+		fmt.Printf("%v was successful in using stream: %v\n", entry.PublicKey, err)
+
 		return nil
 	}()
 	if err != nil {

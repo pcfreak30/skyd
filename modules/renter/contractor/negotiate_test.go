@@ -72,7 +72,11 @@ func newContractorTester(name string) (*contractorTester, closeFn, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, modules.RenterDir))
+	mux, err := modules.NewSiaMux(filepath.Join(testdir, modules.RenterDir), testdir, "localhost:0")
+	if err != nil {
+		return nil, nil, err
+	}
+	hdb, errChan := hostdb.New(g, cs, tp, mux, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}
@@ -106,7 +110,7 @@ func newContractorTester(name string) (*contractorTester, closeFn, error) {
 	}
 
 	cf := func() error {
-		return errors.Compose(c.Close(), m.Close(), hdb.Close(), w.Close(), tp.Close(), cs.Close(), g.Close())
+		return errors.Compose(c.Close(), m.Close(), hdb.Close(), w.Close(), tp.Close(), mux.Close(), cs.Close(), g.Close())
 	}
 	return ct, cf, nil
 }
