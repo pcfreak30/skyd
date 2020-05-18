@@ -1,24 +1,10 @@
 package renter
 
-// TODO: The price table update is currently always using payByFC, we should
-// probably switch that over to payByEA when the EA is all set to get better
-// throughput on the contract. That's fairly complicated to implement, so it's
-// not being added for now.
-
 import (
 	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-)
-
-const (
-	// TODO: potentially switch this to being a global. Don't think we need it
-	// in modules but I know there is one in modules. Maybe delete the one in
-	// modules?
-	//
-	// TODO: This should be changed back to .8 before deploying on prod.
-	minAsyncVersion = "1.4.8"
 )
 
 type (

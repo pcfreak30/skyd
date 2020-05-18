@@ -168,7 +168,6 @@ type renterFuseManager interface {
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
-
 	// Skynet Management
 	staticSkynetBlacklist *skynetblacklist.SkynetBlacklist
 	staticSkynetPortals   *skynetportals.SkynetPortals

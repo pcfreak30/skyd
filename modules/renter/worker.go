@@ -25,6 +25,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const (
+	// minAsyncVersion defines the minimum version that is supported
+	minAsyncVersion = "1.4.9"
+)
+
 type (
 	// A worker listens for work on a certain host.
 	//
