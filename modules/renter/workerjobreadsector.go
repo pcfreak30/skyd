@@ -13,6 +13,17 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const (
+	// jobReadSectorPerformanceDecay defines how much decay gets applied to the
+	// historic performance of jobReadSector each time new data comes back.
+	// Setting a low value makes the performance more volatile. If the worker
+	// tends to have inconsistent performance, having the decay be a low value
+	// (0.9 or lower) will be highly detrimental. A higher decay means that the
+	// predictor tends to be more accurate over time, but is less responsive to
+	// things like network load.
+	jobReadSectorPerformanceDecay = 0.95
+)
+
 type (
 	// jobReadSector contains information about a hasSector query.
 	jobReadSector struct {
@@ -25,7 +36,8 @@ type (
 	}
 
 	// jobReadSectorQueue is a list of hasSector queries that have been assigned
-	// to the worker.
+	// to the worker. The queue also tracks performance metrics, which can then
+	// be used by projects to optimize job scheduling between workers.
 	jobReadSectorQueue struct {
 		killed bool
 		jobs   []jobReadSector
@@ -33,11 +45,10 @@ type (
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
-		//
-		// TODO: Break this apart into buckets based on download size.
 		totalJobTime float64
 		totalJobs    float64
 
+		// TODO: This is really just for curiosity.
 		fastestJob time.Duration
 
 		staticWorker *worker
