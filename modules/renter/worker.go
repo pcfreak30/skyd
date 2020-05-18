@@ -38,17 +38,15 @@ type (
 	// interacted with exclusively by the primary worker thread, and only one of
 	// those ever exists at a time.
 	//
-	// The workers have a concept of 'cooldown' for uploads and downloads. If a
-	// download or upload operation fails, the assumption is that future attempts
-	// are also likely to fail, because whatever condition resulted in the failure
-	// will still be present until some time has passed. Without any cooldowns,
-	// uploading and downloading with flaky hosts in the worker sets has
-	// substantially reduced overall performance and throughput.
+	// The workers have a concept of 'cooldown' for the jobs it performs. If a
+	// job fails, the assumption is that future attempts are also likely to
+	// fail, because whatever condition resulted in the failure will still be
+	// present until some time has passed.
 	worker struct {
 		// atomicCache contains a pointer to the latest cache in the worker.
 		// Atomics are used to minimze lock contention on the worker object.
-		atomicCache                  unsafe.Pointer // points to a workerCache object
-		atomicPriceTable             unsafe.Pointer // points to a workerPriceTable object
+		atomicCache      unsafe.Pointer // points to a workerCache object
+		atomicPriceTable unsafe.Pointer // points to a workerPriceTable object
 
 		// The host pub key also serves as an id for the worker, as there is only
 		// one worker per host.
