@@ -95,7 +95,6 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 		if !job.staticCanceled() {
 			break
 		}
-		continue
 	}
 	jq.mu.Unlock()
 
