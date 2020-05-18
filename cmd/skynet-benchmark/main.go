@@ -22,7 +22,7 @@ import (
 const (
 	// The SiaPath that will be used by the program to upload and store all of
 	// the files when performing test downloads.
-	testSiaDir = "var/skynet-benchmark-30x"
+	testSiaDir = "var/skynet-benchmark"
 
 	// A range of files of different sizes.
 	dir64kb = "64kb"
@@ -47,7 +47,7 @@ const (
 	fetchSize10mb = 10e6 // Once over 4 MB, fetch size doesn't matter, can use exact sizes.
 
 	// The total number of files of each size that we download during testing.
-	filesPerDir = 286
+	filesPerDir = 200
 )
 
 var (
@@ -145,37 +145,33 @@ func main() {
 	fmt.Printf("Beginning download testing. Each test is %v files\n\n", filesPerDir)
 
 	// Download all of the 64kb files.
-	threadss := []uint64{6} // threadss is the plural of threads
+	threadss := []uint64{1, 4, 16, 64} // threadss is the plural of threads
 	downloadStart := time.Now()
 	for _, threads := range threadss {
-		/*
-			err = downloadFileSet(dir64kbPath, exactSize64kb, threads)
-			if err != nil {
-				fmt.Println("Unable to download all 64kb files:", err)
-			}
-			fmt.Printf("64kb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
-			downloadStart = time.Now()
-			err = downloadFileSet(dir1mbPath, exactSize1mb, threads)
-			if err != nil {
-				fmt.Println("Unable to download all 1mb files:", err)
-			}
-			fmt.Printf("1mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
-		*/
+		err = downloadFileSet(dir64kbPath, exactSize64kb, threads)
+		if err != nil {
+			fmt.Println("Unable to download all 64kb files:", err)
+		}
+		fmt.Printf("64kb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+		downloadStart = time.Now()
+		err = downloadFileSet(dir1mbPath, exactSize1mb, threads)
+		if err != nil {
+			fmt.Println("Unable to download all 1mb files:", err)
+		}
+		fmt.Printf("1mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
 		downloadStart = time.Now()
 		err = downloadFileSet(dir4mbPath, exactSize4mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 4mb files:", err)
 		}
 		fmt.Printf("4mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
-		/*
-			downloadStart = time.Now()
-			err = downloadFileSet(dir10mbPath, exactSize10mb, threads)
-			if err != nil {
-				fmt.Println("Unable to download all 10mb files:", err)
-			}
-			fmt.Printf("10mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
-			downloadStart = time.Now()
-		*/
+		downloadStart = time.Now()
+		err = downloadFileSet(dir10mbPath, exactSize10mb, threads)
+		if err != nil {
+			fmt.Println("Unable to download all 10mb files:", err)
+		}
+		fmt.Printf("10mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+		downloadStart = time.Now()
 		fmt.Println()
 	}
 }
@@ -212,21 +208,21 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) error {
 			// Figure out the siapath of the dir.
 			siaPath, err := dir.Join(strconv.Itoa(i))
 			if err != nil {
-				// fmt.Println("Dir error:", err)
+				fmt.Println("Dir error:", err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			// Figure out the skylink for the file.
 			rf, err := c.RenterFileRootGet(siaPath)
 			if err != nil {
-				// fmt.Println("Error getting file info:", err)
+				fmt.Println("Error getting file info:", err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			// Get a reader / stream for the download.
 			reader, err := c.SkynetSkylinkReaderGet(rf.File.Skylinks[0])
 			if err != nil {
-				// fmt.Println("Error getting skylink reader:", err)
+				fmt.Println("Error getting skylink reader:", err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
@@ -235,17 +231,17 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) error {
 			// not the data.
 			data, err := ioutil.ReadAll(reader)
 			if err != nil {
-				// fmt.Printf("Error performing download, only got %v bytes: %v\n", len(data), err)
+				fmt.Printf("Error performing download, only got %v bytes: %v\n", len(data), err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			if len(data) != fileSize {
-				// fmt.Printf("Error performing download, got %v bytes when expecting %v\n", len(data), fileSize)
+				fmt.Printf("Error performing download, got %v bytes when expecting %v\n", len(data), fileSize)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			if len(data) != fileSize {
-				// fmt.Printf("Error performing download, got %v bytes when expecting %v\n", len(data), fileSize)
+				fmt.Printf("Error performing download, got %v bytes when expecting %v\n", len(data), fileSize)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
@@ -336,10 +332,9 @@ func uploadFileSet(dir modules.SiaPath, fileSize uint64, expectedFetchSize uint6
 		buf := bytes.NewReader(fastrand.Bytes(int(fileSize)))
 		// Fill out the upload parameters.
 		sup := modules.SkyfileUploadParameters{
-			BaseChunkRedundancy: 30,
-			SiaPath:             sp,
-			Root:                true,
-			Force:               true, // This will overwrite other files in the dir.
+			SiaPath: sp,
+			Root:    true,
+			Force:   true, // This will overwrite other files in the dir.
 
 			FileMetadata: modules.SkyfileMetadata{
 				Filename: strconv.Itoa(i) + ".rand",
