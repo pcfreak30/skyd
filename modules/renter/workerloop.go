@@ -159,15 +159,8 @@ func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 // The worker will not allow more than a certain amount of bandwidth to be
 // queued at once to prevent jobs from being spread too thin and sharing too
 // much bandwidth.
-//
-// TODO: If we are ignoring async tasks because of version issues, etc, we
-// should be making sure to toss all of our async tasks so that projects fail
-// instead of stall. Same goes if there are intractable PT issues or intractable
-// account issues.
 func (w *worker) externTryLaunchAsyncJob() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
-	//
-	// TODO: After the protocol is stable, switch to '<=' instead of '!='
 	cache := w.staticCache()
 	if build.VersionCmp(minAsyncVersion, cache.staticHostVersion) != 0 {
 		w.managedDumpAsyncJobs()
@@ -183,26 +176,11 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// Mark that the worker has had a valid price table at some point.
 	atomic.StoreUint64(&w.atomicPriceTableHasBeenValid, 1)
 
-	// TODO: There should probably be some check here that the account is in
-	// working condition before attempting async jobs, but I couldn't quite
-	// figure out what that condition is. It seems okay to both attempt to use
-	// an account if we are having trouble refilling it, and also okay to
-	// attempt using the account if the balance is low. And, "low" is poorly
-	// defined in this context, because we don't have a job we are attempting.
-	// Maybe this needs to be handled on a per-job level?
-	//
-	// Should probably just not allow anything to happen if the account is too
-	// low. Maybe the jobs can decide for themselves on a per-job basis? I guess
-	// that depends on how confident we are that the accounts will not drop
-	// below a critical level.
-	//
-	// Maybe it's fine to just ignore or tag on a timeout. This worker will be
-	// wasting bandwidth, but at least it's not getting too much in the way.
-	//
-	// So, actually what we should probably do is check if both the account is
-	// below some critical level, and simultaneously check if there has been
-	// recent errors in trying to refill the account. If both conditions are
-	// true, we kill all async tasks.
+	// If the account is on cooldown, drop all async jobs.
+	if w.staticAccount.managedOnCooldown() {
+		w.managedDumpAsyncJobs()
+		return false
+	}
 
 	// Verify that the worker has not reached its limits for doing multiple
 	// jobs at once.
@@ -277,7 +255,6 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillJobsReadSector()
 	defer w.managedKillJobsDownloadByRoot()
 
-	// TODO: '>='
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) == 0 {
 		// The worker cannot execute any async tasks unles the price table of the
 		// host is known, the balance of the worker account is known, and the

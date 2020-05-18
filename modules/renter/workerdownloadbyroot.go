@@ -11,9 +11,7 @@ type jobQueueDownloadByRoot struct {
 	mu    sync.Mutex
 }
 
-// managedLen returns the length of the jobQueueDownloadByRoot queue
-//
-// TODO: probably sloppy, clean up.
+// managedHasJob returns true if there is a job that the worker could perform.
 func (queue *jobQueueDownloadByRoot) managedHasJob() bool {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()

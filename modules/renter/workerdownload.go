@@ -103,7 +103,8 @@ func checkDownloadGouging(allowance modules.Allowance, hostSettings modules.Host
 	return nil
 }
 
-// TODO: Probably sloppy, clean up.
+// managedHasDownloadJob will return true if the worker has a download job that
+// it could potentially perform.
 func (w *worker) managedHasDownloadJob() bool {
 	w.downloadMu.Lock()
 	defer w.downloadMu.Unlock()

@@ -41,7 +41,8 @@ type fetchBackupsJobResult struct {
 	uploadedBackups []modules.UploadedBackup
 }
 
-// TODO: probably sloppy, clean up.
+// managedHasJob returns true if there is a job in the queue that the worker
+// could potentially perform.
 func (queue *fetchBackupsJobQueue) managedHasJob() bool {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()

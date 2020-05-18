@@ -142,7 +142,8 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 	return true
 }
 
-// TODO: Probably sloppy, clean up.
+// managedHasUploadJob returns true if there is upload work available for the
+// worker.
 func (w *worker) managedHasUploadJob() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
