@@ -45,8 +45,8 @@ type (
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
-		totalJobTime float64
-		totalJobs    float64
+		weightedJobTime       float64
+		weightedJobsCompleted float64
 
 		// TODO: This is really just for curiosity.
 		fastestJob time.Duration
@@ -62,12 +62,23 @@ type (
 	}
 )
 
+// programReadSectorBandwidth returns the bandwidth that gets consumed by a
+// ReadSector program.
+//
+// TODO: These values are overly conservative, once we've got the protocol more
+// optimized we can bring these down.
+func programReadSectorBandwidth(offset, length uint64) (ulBandwidth, dlBandwidth uint64) {
+	ulBandwidth = 1 << 15                              // 32 KiB
+	dlBandwidth = uint64(float64(length)*1.01) + 1<<14 // (readSize * 1.01 + 16 KiB)
+	return
+}
+
 // newJobReadSectorQueue will initialize a queue for downloading sectors by
 // their root for the worker. This is only meant to be run once at startup.
 func (w *worker) newJobReadSectorQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadSectorQueue != nil {
-		w.renter.log.Critical("incorred call on newJobReadSectorQueue")
+		w.renter.log.Critical("incorret call on newJobReadSectorQueue")
 	}
 	w.staticJobReadSectorQueue = &jobReadSectorQueue{
 		staticWorker: w,
@@ -88,15 +99,23 @@ func (j *jobReadSector) staticCanceled() bool {
 // callAdd will add a job to the queue. False will be returned if the job cannot
 // be queued because the worker has been killed.
 func (jq *jobReadSectorQueue) callAdd(job jobReadSector) bool {
-	defer jq.staticWorker.staticWake()
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-
 	if jq.killed {
 		return false
 	}
 	jq.jobs = append(jq.jobs, job)
+	jq.staticWorker.staticWake()
 	return true
+}
+
+// callAverageJobTime will return the recent perforamcne of the worker
+// attempting to complete read sector jobs.
+func (jq *jobReadSectorQueue) callAverageJobTime() time.Duration {
+	jq.mu.Lock()
+	avg := time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
+	jq.mu.Unlock()
+	return avg
 }
 
 // callNext will provide the next jobReadSector from the set of jobs.
@@ -114,10 +133,9 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 		jq.jobs = jq.jobs[1:]
 
 		// Break out of the loop only if this job has not been canceled.
-		if job.staticCanceled() {
-			continue
+		if !job.staticCanceled() {
+			break
 		}
-		break
 	}
 	jq.mu.Unlock()
 
@@ -132,51 +150,35 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 			staticErr:  err,
 		}
 
-		// Update the metrics in the read sector queue based on the amount of
-		// time the read took.
-		jq.mu.Lock()
-		jq.totalJobTime *= 0.9
-		jq.totalJobs *= 0.9
-		jq.totalJobTime += float64(jobTime)
-		jq.totalJobs++
-		if err == nil && len(data) > 3e6 && (jobTime < jq.fastestJob || jq.fastestJob == 0) {
-			jq.fastestJob = jobTime
-		}
-		jq.mu.Unlock()
-
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster. Need to check if the job was canceled so that the
-		// memory can be released.
-		go func() {
+		// goroutine will exit.
+		jq.staticWorker.renter.tg.Launch(func() {
+			// We don't listen on the tg stopChan because it is assumed that the
+			// project which issued the job will close job.canceled when the tg
+			// stops.
 			select {
 			case job.responseChan <- response:
 			case <-job.canceled:
 			}
-		}()
+		})
+
+		// Update the metrics in the read sector queue based on the amount of
+		// time the read took.
+		jq.mu.Lock()
+		jq.weightedJobTime *= jobReadSectorPerformanceDecay
+		jq.weightedJobsCompleted *= jobReadSectorPerformanceDecay
+		jq.weightedJobTime += float64(jobTime)
+		jq.weightedJobsCompleted++
+		if err == nil && len(data) > 3e6 && (jobTime < jq.fastestJob || jq.fastestJob == 0) {
+			jq.fastestJob = jobTime
+		}
+		jq.mu.Unlock()
 	}
 
 	// Return the job along with the bandwidth estimates for completing the job.
 	ulBandwidth, dlBandwidth := programReadSectorBandwidth(job.offset, job.length)
 	return jobFn, ulBandwidth, dlBandwidth
-}
-
-// TODO: Have this take a size of a file as input.
-func (jq *jobReadSectorQueue) callAverageJobTime() time.Duration {
-	jq.mu.Lock()
-	avg := time.Duration(jq.totalJobTime / jq.totalJobs)
-	jq.mu.Unlock()
-	return avg
-}
-
-// programReadSectorBandwidth returns the bandwidth that gets consumed by a
-// ReadSector program.
-//
-// TODO: These values are overly conservative, once we've got the protocol more
-// optimized we can bring these down.
-func programReadSectorBandwidth(offset, length uint64) (ulBandwidth, dlBandwidth uint64) {
-	ulBandwidth = 1 << 15                              // 32 KiB
-	dlBandwidth = uint64(float64(length)*1.01) + 1<<14 // (readSize * 1.01 + 16 KiB)
-	return
 }
 
 // managedReadSector returns the sector data for given root
@@ -222,12 +224,16 @@ func (w *worker) managedDumpJobsReadSector() {
 	for _, job := range jq.jobs {
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
-		go func(j jobReadSector) {
+		j := job
+		w.renter.tg.Launch(func() {
 			response := &jobReadSectorResponse{
 				staticErr: errors.New("worker is dumping all read sector jobs"),
 			}
-			j.responseChan <- response
-		}(job)
+			select {
+			case j.responseChan <- response:
+			case <-j.canceled:
+			}
+		})
 	}
 	jq.jobs = nil
 }
@@ -240,12 +246,16 @@ func (w *worker) managedKillJobsReadSector() {
 	for _, job := range jq.jobs {
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
-		go func(j jobReadSector) {
+		j := job
+		w.renter.tg.Launch(func() {
 			response := &jobReadSectorResponse{
 				staticErr: errors.New("worker killed"),
 			}
-			j.responseChan <- response
-		}(job)
+			select {
+			case j.responseChan <- response:
+			case <-j.canceled:
+			}
+		})
 	}
 	jq.killed = true
 	jq.jobs = nil

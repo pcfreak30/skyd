@@ -5,11 +5,19 @@ package renter
 
 import (
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
+)
+
+const (
+	// jobHasSectorPerformanceDecay defines how much the average performance is
+	// decayed each time a new datapoint is added. The jobs use an exponential
+	// weighted average.
+	jobHasSectorPerformanceDecay = 0.9
 )
 
 type (
@@ -27,6 +35,11 @@ type (
 		killed bool
 		jobs   []jobHasSector
 
+		// These variables contain an exponential weighted average of the
+		// worker's recent performance for jobHasSectorQueue.
+		weightedJobTime       float64
+		weightedJobsCompleted float64
+
 		staticWorker *worker
 		mu           sync.Mutex
 	}
@@ -36,16 +49,30 @@ type (
 		staticAvailable bool
 		staticErr       error
 
+		// The worker is included in the response so that the caller can listen
+		// on one channel for a bunch of workers and still know which worker
+		// successfully found the sector root.
 		staticWorker *worker
 	}
 )
+
+// programHasSectorBandwidth returns the bandwidth that gets consumed by a
+// HasSector program.
+//
+// TODO: These values are overly conservative, once we've got the protocol more
+// optimized we can bring these down.
+func programHasSectorBandwidth() (ulBandwidth, dlBandwidth uint64) {
+	ulBandwidth = 20e3
+	dlBandwidth = 20e3
+	return
+}
 
 // newJobHasSectorQueue will initialize a has sector job queue for the worker.
 // This is only meant to be run once at startup.
 func (w *worker) newJobHasSectorQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobHasSectorQueue != nil {
-		w.renter.log.Critical("incorred call on newJobHasSectorQueue")
+		w.renter.log.Critical("incorret call on newJobHasSectorQueue")
 	}
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
 		staticWorker: w,
@@ -66,15 +93,22 @@ func (j *jobHasSector) staticCanceled() bool {
 // callAdd will add a job to the queue. False will be returned if the job cannot
 // be queued because the worker has been killed.
 func (jq *jobHasSectorQueue) callAdd(job jobHasSector) bool {
-	defer jq.staticWorker.staticWake()
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-
 	if jq.killed {
 		return false
 	}
 	jq.jobs = append(jq.jobs, job)
+	jq.staticWorker.staticWake()
 	return true
+}
+
+// callAverageJobTime will return the recent performance of the worker
+// attempting to complete has sector jobs.
+func (jq *jobHasSectorQueue) callAverageJobTime() time.Duration {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
 }
 
 // callNext will provide the next jobHasSector from the set of jobs.
@@ -100,7 +134,9 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 
 	// Create the actual job that will be run by the async job launcher.
 	jobFn := func() {
+		start := time.Now()
 		available, err := jq.staticWorker.managedHasSector(job.sector)
+		jobTime := time.Since(start)
 		response := &jobHasSectorResponse{
 			staticAvailable: available,
 			staticErr:       err,
@@ -109,26 +145,30 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 		}
 
 		// Send the response in a goroutine so that the worker resources can be
-		// released faster.
-		go func() {
-			job.responseChan <- response
-		}()
+		// released faster. Need to check if the job was canceled so that the
+		// goroutine will exit.
+		jq.staticWorker.renter.tg.Launch(func() {
+			// We don't listen on the tg stopChan because it is assumed that the
+			// project which issued the job will close job.canceled when the tg
+			// stops.
+			select {
+			case job.responseChan <- response:
+			case <-job.canceled:
+			}
+		})
+
+		// Update the performance stats.
+		jq.mu.Lock()
+		jq.weightedJobTime *= jobHasSectorPerformanceDecay
+		jq.weightedJobsCompleted *= jobHasSectorPerformanceDecay
+		jq.weightedJobTime += float64(jobTime)
+		jq.weightedJobsCompleted++
+		jq.mu.Unlock()
 	}
 
 	// Return the job along with the bandwidth estimates for completing the job.
 	ulBandwidth, dlBandwidth := programHasSectorBandwidth()
 	return jobFn, ulBandwidth, dlBandwidth
-}
-
-// programHasSectorBandwidth returns the bandwidth that gets consumed by a
-// HasSector program.
-//
-// TODO: These values are overly conservative, once we've got the protocol more
-// optimized we can bring these down.
-func programHasSectorBandwidth() (ulBandwidth, dlBandwidth uint64) {
-	ulBandwidth = 20e3
-	dlBandwidth = 20e3
-	return
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
@@ -176,12 +216,16 @@ func (w *worker) managedDumpJobsHasSector() {
 	for _, job := range jq.jobs {
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
-		go func(j jobHasSector) {
+		j := job
+		w.renter.tg.Launch(func() {
 			response := &jobHasSectorResponse{
 				staticErr: errors.New("worker is dumping all has sector jobs"),
 			}
-			j.responseChan <- response
-		}(job)
+			select {
+			case j.responseChan <- response:
+			case <-j.canceled:
+			}
+		})
 	}
 	jq.jobs = nil
 }
@@ -194,12 +238,16 @@ func (w *worker) managedKillJobsHasSector() {
 	for _, job := range jq.jobs {
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
-		go func(j jobHasSector) {
+		j := job
+		w.renter.tg.Launch(func() {
 			response := &jobHasSectorResponse{
 				staticErr: errors.New("worker killed"),
 			}
-			j.responseChan <- response
-		}(job)
+			select {
+			case j.responseChan <- response:
+			case <-j.canceled:
+			}
+		})
 	}
 	jq.killed = true
 	jq.jobs = nil

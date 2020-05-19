@@ -210,7 +210,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	var bestWorkerTime time.Duration
 	useBestWorkerTimer := time.After(pm.managedAverageDownloadTime()) // TODO: Switch to timer with cleanup
 	useBestWorker := false
-	for responses < len(workers) {
+	for responses < len(workers) || bestWorker != nil {
 		// Check for the timeout. This is done separately to ensure the timeout
 		// has priority.
 		select {
@@ -223,25 +223,42 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// Block for a response, and also wait for the timeout. If the response
 		// indicatese that the sector was located, print a success.
 		var resp *jobHasSectorResponse
-		select {
-		case <-useBestWorkerTimer:
+		if responses < len(workers) {
+			select {
+			case <-useBestWorkerTimer:
+				useBestWorker = true
+			case resp = <-responseChan:
+				responses++
+			case <-timeoutChan:
+				fmt.Println("TIMEOUT")
+				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+			}
+		} else {
 			useBestWorker = true
-		case resp = <-responseChan:
-			responses++
-		case <-timeoutChan:
-			fmt.Println("TIMEOUT")
-			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
 
 		// Check for the edge case where this reponse did not end up with a
 		// worker that can perform the download.
 		if (resp == nil || resp.staticErr != nil || !resp.staticAvailable) && (!useBestWorker || bestWorker == nil) {
+			if resp == nil {
+				println("nil resp")
+				continue
+			}
+			if resp.staticErr != nil {
+				println("resp err", resp.staticErr.Error())
+				continue
+			}
+			if !resp.staticAvailable {
+				println("worker does not have sector")
+				continue
+			}
 			continue
 		}
 		fmt.Printf("%v: HasSector positive response received: %v\n", root, time.Since(start))
 
 		// Replace the best worker with this worker if this worker is better.
 		if resp != nil && resp.staticErr == nil && resp.staticAvailable {
+			println("updating best worker")
 			avgDLTime := resp.staticWorker.staticJobReadSectorQueue.callAverageJobTime()
 			if bestWorkerTime == 0 || avgDLTime < bestWorkerTime {
 				bestWorkerTime = avgDLTime
@@ -253,8 +270,10 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// worker is not predicted to start running before the average job time,
 		// look for another worker.
 		if !useBestWorker && pm.managedAverageDownloadTime() < time.Since(start)+bestWorkerTime {
+			println("moving on, this worker is probably not the best")
 			continue
 		}
+		println("a worker is now trying")
 
 		// This worker has found the sector root! Queue a job on the worker to
 		// perform the download.
