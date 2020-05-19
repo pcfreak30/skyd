@@ -35,6 +35,10 @@ type (
 		killed bool
 		jobs   []jobHasSector
 
+		// Cooldown variables.
+		cooldownUntil time.Time
+		consecutiveFailures uint64
+
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobHasSectorQueue.
 		weightedJobTime       float64
@@ -95,9 +99,16 @@ func (j *jobHasSector) staticCanceled() bool {
 func (jq *jobHasSectorQueue) callAdd(job jobHasSector) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
+
+	// Check if the queue has been killed.
 	if jq.killed {
 		return false
 	}
+	// Check if the queue is on cooldown.
+	if jq.cooldownUntil.After(time.Now()) {
+		return false
+	}
+
 	jq.jobs = append(jq.jobs, job)
 	jq.staticWorker.staticWake()
 	return true
@@ -157,8 +168,21 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 			}
 		})
 
-		// Update the performance stats.
+		// If the job fails, go on cooldown. Skip updating the performacne
+		// metrics.
+		if err != nil {
+			jq.mu.Lock()
+			jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
+			jq.consecutiveFailures++
+			jq.mu.Unlock()
+			jq.staticWorker.managedDumpJobsHasSector()
+			return
+		}
+
+		// Update the performance stats. There was no error, so the consecutive
+		// failures value can be reset.
 		jq.mu.Lock()
+		jq.consecutiveFailures = 0
 		jq.weightedJobTime *= jobHasSectorPerformanceDecay
 		jq.weightedJobsCompleted *= jobHasSectorPerformanceDecay
 		jq.weightedJobTime += float64(jobTime)

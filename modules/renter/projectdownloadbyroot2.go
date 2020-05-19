@@ -259,7 +259,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// Replace the best worker with this worker if this worker is better.
 		if resp != nil && resp.staticErr == nil && resp.staticAvailable {
 			println("updating best worker")
-			avgDLTime := resp.staticWorker.staticJobReadSectorQueue.callAverageJobTime()
+			avgDLTime := resp.staticWorker.staticJobReadSectorQueue.callAverageJobTime(length)
 			if bestWorkerTime == 0 || avgDLTime < bestWorkerTime {
 				bestWorkerTime = avgDLTime
 				bestWorker = resp.staticWorker

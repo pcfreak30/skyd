@@ -42,11 +42,19 @@ type (
 		killed bool
 		jobs   []jobReadSector
 
+		// Cooldown variables.
+		cooldownUntil time.Time
+		consecutiveFailures uint64
+
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
-		weightedJobTime       float64
-		weightedJobsCompleted float64
+		weightedJobTime64k       float64
+		weightedJobTime1m        float64
+		weightedJobTime4m        float64
+		weightedJobsCompleted64k float64
+		weightedJobsCompleted1m  float64
+		weightedJobsCompleted4m  float64
 
 		// TODO: This is really just for curiosity.
 		fastestJob time.Duration
@@ -101,21 +109,39 @@ func (j *jobReadSector) staticCanceled() bool {
 func (jq *jobReadSectorQueue) callAdd(job jobReadSector) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
+
+	// Check if the queue has been killed.
 	if jq.killed {
 		return false
 	}
+	// Check if the queue is on cooldown.
+	if jq.cooldownUntil.After(time.Now()) {
+		return false
+	}
+
 	jq.jobs = append(jq.jobs, job)
 	jq.staticWorker.staticWake()
 	return true
 }
 
 // callAverageJobTime will return the recent perforamcne of the worker
-// attempting to complete read sector jobs.
-func (jq *jobReadSectorQueue) callAverageJobTime() time.Duration {
+// attempting to complete read sector jobs. The call distinguishes based on the
+// size of the job, breaking the jobs into 3 categories: less than 64kb, less
+// than 1mb, and up to a full sector in size.
+//
+// The breakout is performed because low latency, low throughput workers are
+// common, and will have very different performance characteristics across the
+// three categories.
+func (jq *jobReadSectorQueue) callAverageJobTime(length uint64) time.Duration {
 	jq.mu.Lock()
-	avg := time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
-	jq.mu.Unlock()
-	return avg
+	defer jq.mu.Unlock()
+	if length <= 1<<16 {
+		return time.Duration(jq.weightedJobTime64k / jq.weightedJobsCompleted64k)
+	} else if length <= 1<<20 {
+		return time.Duration(jq.weightedJobTime1m / jq.weightedJobsCompleted1m)
+	} else {
+		return time.Duration(jq.weightedJobTime4m / jq.weightedJobsCompleted4m)
+	}
 }
 
 // callNext will provide the next jobReadSector from the set of jobs.
@@ -163,15 +189,37 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 			}
 		})
 
+		// If the job fails, go on cooldown.
+		if err != nil {
+			jq.mu.Lock()
+			jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
+			jq.consecutiveFailures++
+			jq.mu.Unlock()
+			jq.staticWorker.managedDumpJobsReadSector()
+			return
+		}
+
 		// Update the metrics in the read sector queue based on the amount of
-		// time the read took.
+		// time the read took. Stats should only be added if the job did not
+		// result in an error. Because there was no failure, the consecutive
+		// failures stat can be reset.
 		jq.mu.Lock()
-		jq.weightedJobTime *= jobReadSectorPerformanceDecay
-		jq.weightedJobsCompleted *= jobReadSectorPerformanceDecay
-		jq.weightedJobTime += float64(jobTime)
-		jq.weightedJobsCompleted++
-		if err == nil && len(data) > 3e6 && (jobTime < jq.fastestJob || jq.fastestJob == 0) {
-			jq.fastestJob = jobTime
+		jq.consecutiveFailures = 0
+		if job.length < 1<<16 {
+			jq.weightedJobTime64k *= jobReadSectorPerformanceDecay
+			jq.weightedJobsCompleted64k *= jobReadSectorPerformanceDecay
+			jq.weightedJobTime64k += float64(jobTime)
+			jq.weightedJobsCompleted64k++
+		} else if job.length < 1 << 20 {
+			jq.weightedJobTime1m *= jobReadSectorPerformanceDecay
+			jq.weightedJobsCompleted1m *= jobReadSectorPerformanceDecay
+			jq.weightedJobTime1m += float64(jobTime)
+			jq.weightedJobsCompleted1m++
+		} else {
+			jq.weightedJobTime4m *= jobReadSectorPerformanceDecay
+			jq.weightedJobsCompleted4m *= jobReadSectorPerformanceDecay
+			jq.weightedJobTime4m += float64(jobTime)
+			jq.weightedJobsCompleted4m++
 		}
 		jq.mu.Unlock()
 	}

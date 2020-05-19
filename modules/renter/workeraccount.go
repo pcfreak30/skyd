@@ -257,6 +257,9 @@ func (w *worker) managedRefillAccount() {
 		// account.
 		w.staticAccount.managedCommitDeposit(amount, err == nil)
 		if err == nil {
+			w.staticAccount.mu.Lock()
+			w.staticAccount.consecutiveFailures = 0
+			w.staticAccount.mu.Unlock()
 			return
 		}
 
