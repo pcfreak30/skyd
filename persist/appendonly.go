@@ -95,9 +95,8 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 	aop.mu.Lock()
 	defer aop.mu.Unlock()
 
-	filepath := aop.FilePath()
 	// Truncate the file to remove any corrupted data that may have been added.
-	err := os.Truncate(filepath, int64(aop.metadata.Length))
+	err := os.Truncate(aop.staticPath, int64(aop.metadata.Length))
 	if err != nil {
 		return 0, errors.AddContext(err, "could not truncate file before write")
 	}
@@ -165,7 +164,7 @@ func (aop *AppendOnlyPersist) init() error {
 	}
 
 	// Create the persist file.
-	f, err := os.OpenFile(aop.FilePath(), os.O_RDWR|os.O_CREATE, defaultFilePermissions)
+	f, err := os.OpenFile(aop.staticPath, os.O_RDWR|os.O_CREATE, defaultFilePermissions)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
@@ -188,8 +187,7 @@ func (aop *AppendOnlyPersist) init() error {
 // load loads the persist file from disk, returning the non-metadata bytes.
 func (aop *AppendOnlyPersist) load() (io.Reader, error) {
 	// Open File
-	filepath := aop.FilePath()
-	f, err := os.OpenFile(filepath, os.O_RDWR, defaultFilePermissions)
+	f, err := os.OpenFile(aop.staticPath, os.O_RDWR, defaultFilePermissions)
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
 		return nil, err
@@ -220,7 +218,7 @@ func (aop *AppendOnlyPersist) load() (io.Reader, error) {
 	}
 
 	// Truncate the file to remove any corrupted data that may have been added.
-	err = os.Truncate(filepath, int64(aop.metadata.Length))
+	err = os.Truncate(aop.staticPath, int64(aop.metadata.Length))
 	if err != nil {
 		return nil, err
 	}

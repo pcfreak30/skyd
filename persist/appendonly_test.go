@@ -15,6 +15,10 @@ import (
 )
 
 var (
+	// testingDir is the directory that contains all of the files and folders
+	// created during testing.
+	testingDir = "appendonlypersist"
+
 	// testHeader is the header specifier for testing.
 	testHeader = types.NewSpecifier("TestHeader\n")
 	// testVersion is the version specifier for testing
@@ -29,7 +33,7 @@ func TestWrite(t *testing.T) {
 	t.Parallel()
 
 	// Create a new AppendOnlyPersist.
-	testdir := build.TempDir("appendonlypersist", t.Name())
+	testdir := build.TempDir(testingDir, t.Name())
 	filename := "test"
 	aop, reader, err := NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
 	if err != nil {
@@ -173,7 +177,7 @@ func TestMarshalMetadata(t *testing.T) {
 	t.Parallel()
 
 	// Create persist file
-	testdir := build.TempDir("appendonlypersist", t.Name())
+	testdir := build.TempDir(testingDir, t.Name())
 	testfile := "testpersist"
 	err := os.MkdirAll(testdir, defaultDirPermissions)
 	if err != nil {

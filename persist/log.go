@@ -98,7 +98,7 @@ func (cf *closeableFile) Close() error {
 	}
 
 	// Ensure that all data has actually hit the disk.
-	if err := cf.Sync(); err != nil {
+	if err := cf.File.Sync(); err != nil {
 		return err
 	}
 	cf.closed = true

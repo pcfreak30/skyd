@@ -78,7 +78,10 @@ pkgs = ./build \
 release-pkgs = ./cmd/siac ./cmd/siad
 
 # lockcheckpkgs are the packages that are checked for locking violations.
-lockcheckpkgs = ./modules/renter/hostdb
+lockcheckpkgs = ./modules/renter/hostdb \
+	./modules/renter/skynetblacklist \
+	./modules/renter/skynetportals \
+	./persist
 
 # run determines which tests run when running any variation of 'make test'.
 run = .

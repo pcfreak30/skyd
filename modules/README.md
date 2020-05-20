@@ -14,7 +14,6 @@ The modules package is the top-level package for all modules. It contains the in
 
 ## Subsystems
 - [Alert System](#alert-system)
-- [Append-Only Persist](#append-only-persist)
 - [Dependencies](#dependencies)
 - [Negotiate](#negotiate)
 - [Network Addresses](#network-addresses)
