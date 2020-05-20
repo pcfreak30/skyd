@@ -166,13 +166,13 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
 	cache := w.staticCache()
 	if build.VersionCmp(minAsyncVersion, cache.staticHostVersion) != 0 {
-		w.managedDumpAsyncJobs()
+		w.managedDiscardAsyncJobs()
 		return false
 	}
 
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
-		w.managedDumpAsyncJobs()
+		w.managedDiscardAsyncJobs()
 		return false
 	}
 
@@ -181,7 +181,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 
 	// If the account is on cooldown, drop all async jobs.
 	if w.staticAccount.managedOnCooldown() {
-		w.managedDumpAsyncJobs()
+		w.managedDiscardAsyncJobs()
 		return false
 	}
 
@@ -236,11 +236,11 @@ func (w *worker) managedBlockUntilReady() bool {
 	return true
 }
 
-// managedDumpAsyncJobs will drop all of the worker's async jobs because the
+// managedDiscardAsyncJobs will drop all of the worker's async jobs because the
 // worker has not met sufficient conditions to retain async jobs.
-func (w *worker) managedDumpAsyncJobs() {
-	w.managedDumpJobsHasSector()
-	w.managedDumpJobsReadSector()
+func (w *worker) managedDiscardAsyncJobs() {
+	w.managedDiscardJobsHasSector()
+	w.managedDiscardJobsReadSector()
 }
 
 // threadedWorkLoop is a perpetual loop run by the worker that accepts new jobs

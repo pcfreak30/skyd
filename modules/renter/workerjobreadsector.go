@@ -1,8 +1,5 @@
 package renter
 
-// workerjobdownloadroot.go defines the job to download a sector from a host
-// using the root.
-
 import (
 	"sync"
 	"time"
@@ -21,18 +18,18 @@ const (
 	// (0.9 or lower) will be highly detrimental. A higher decay means that the
 	// predictor tends to be more accurate over time, but is less responsive to
 	// things like network load.
-	jobReadSectorPerformanceDecay = 0.95
+	jobReadSectorPerformanceDecay = 0.9
 )
 
 type (
 	// jobReadSector contains information about a hasSector query.
 	jobReadSector struct {
-		canceled     chan struct{}               // Can signal that the job has been canceled
-		responseChan chan *jobReadSectorResponse // Channel to send a response down
+		staticCanceledChan chan struct{}               // Can signal that the job has been canceled
+		staticResponseChan chan *jobReadSectorResponse // Channel to send a response down
 
-		length uint64
-		offset uint64
-		sector crypto.Hash
+		staticLength uint64
+		staticOffset uint64
+		staticSector crypto.Hash
 	}
 
 	// jobReadSectorQueue is a list of hasSector queries that have been assigned
@@ -43,7 +40,7 @@ type (
 		jobs   []jobReadSector
 
 		// Cooldown variables.
-		cooldownUntil time.Time
+		cooldownUntil       time.Time
 		consecutiveFailures uint64
 
 		// These float64s are converted time.Duration values. They are float64
@@ -55,9 +52,6 @@ type (
 		weightedJobsCompleted64k float64
 		weightedJobsCompleted1m  float64
 		weightedJobsCompleted4m  float64
-
-		// TODO: This is really just for curiosity.
-		fastestJob time.Duration
 
 		staticWorker *worker
 		mu           sync.Mutex
@@ -97,7 +91,7 @@ func (w *worker) newJobReadSectorQueue() {
 // canceled.
 func (j *jobReadSector) staticCanceled() bool {
 	select {
-	case <-j.canceled:
+	case <-j.staticCanceledChan:
 		return true
 	default:
 		return false
@@ -115,7 +109,7 @@ func (jq *jobReadSectorQueue) callAdd(job jobReadSector) bool {
 		return false
 	}
 	// Check if the queue is on cooldown.
-	if jq.cooldownUntil.After(time.Now()) {
+	if time.Now().Before(jq.cooldownUntil) {
 		return false
 	}
 
@@ -169,7 +163,7 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 	jobFn := func() {
 		// Track how long the job takes.
 		start := time.Now()
-		data, err := jq.staticWorker.managedReadSector(job.sector, job.offset, job.length)
+		data, err := jq.staticWorker.managedReadSector(job.staticSector, job.staticOffset, job.staticLength)
 		jobTime := time.Since(start)
 		response := &jobReadSectorResponse{
 			staticData: data,
@@ -184,8 +178,8 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 			// project which issued the job will close job.canceled when the tg
 			// stops.
 			select {
-			case job.responseChan <- response:
-			case <-job.canceled:
+			case job.staticResponseChan <- response:
+			case <-job.staticCanceledChan:
 			}
 		})
 
@@ -195,7 +189,7 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 			jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 			jq.consecutiveFailures++
 			jq.mu.Unlock()
-			jq.staticWorker.managedDumpJobsReadSector()
+			jq.staticWorker.managedDiscardJobsReadSector()
 			return
 		}
 
@@ -205,12 +199,12 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 		// failures stat can be reset.
 		jq.mu.Lock()
 		jq.consecutiveFailures = 0
-		if job.length < 1<<16 {
+		if job.staticLength <= 1<<16 {
 			jq.weightedJobTime64k *= jobReadSectorPerformanceDecay
 			jq.weightedJobsCompleted64k *= jobReadSectorPerformanceDecay
 			jq.weightedJobTime64k += float64(jobTime)
 			jq.weightedJobsCompleted64k++
-		} else if job.length < 1 << 20 {
+		} else if job.staticLength <= 1<<20 {
 			jq.weightedJobTime1m *= jobReadSectorPerformanceDecay
 			jq.weightedJobsCompleted1m *= jobReadSectorPerformanceDecay
 			jq.weightedJobTime1m += float64(jobTime)
@@ -225,7 +219,7 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 	}
 
 	// Return the job along with the bandwidth estimates for completing the job.
-	ulBandwidth, dlBandwidth := programReadSectorBandwidth(job.offset, job.length)
+	ulBandwidth, dlBandwidth := programReadSectorBandwidth(job.staticOffset, job.staticLength)
 	return jobFn, ulBandwidth, dlBandwidth
 }
 
@@ -264,8 +258,9 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	return sectorData, nil
 }
 
-// managedDumpJobsReadSector will release all remaining ReadSector jobs as failed.
-func (w *worker) managedDumpJobsReadSector() {
+// managedDiscardJobsReadSector will release all remaining ReadSector jobs as
+// failed.
+func (w *worker) managedDiscardJobsReadSector() {
 	jq := w.staticJobReadSectorQueue // Convenience variable
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
@@ -278,8 +273,8 @@ func (w *worker) managedDumpJobsReadSector() {
 				staticErr: errors.New("worker is dumping all read sector jobs"),
 			}
 			select {
-			case j.responseChan <- response:
-			case <-j.canceled:
+			case j.staticResponseChan <- response:
+			case <-j.staticCanceledChan:
 			}
 		})
 	}
@@ -300,8 +295,8 @@ func (w *worker) managedKillJobsReadSector() {
 				staticErr: errors.New("worker killed"),
 			}
 			select {
-			case j.responseChan <- response:
-			case <-j.canceled:
+			case j.staticResponseChan <- response:
+			case <-j.staticCanceledChan:
 			}
 		})
 	}

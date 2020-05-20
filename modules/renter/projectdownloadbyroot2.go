@@ -95,7 +95,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	// Create a channel to receive all of the results from the workers. The
 	// channel is buffered with one slot per worker, so that the workers do not
 	// have to block when returning the result of the job.
-	responseChan := make(chan *jobHasSectorResponse, len(workers))
+	staticResponseChan := make(chan *jobHasSectorResponse, len(workers))
 	responses := 0
 	// Create a channel to signal when the job has been completed.
 	cancelChan := make(chan struct{})
@@ -107,9 +107,9 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	// Send the work to all of the workers.
 	for _, worker := range workers {
 		jhs := jobHasSector{
-			canceled:     cancelChan,
-			sector:       root,
-			responseChan: responseChan,
+			staticCanceledChan:     cancelChan,
+			staticSector:       root,
+			staticResponseChan: staticResponseChan,
 		}
 		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
 			responses++
@@ -126,7 +126,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 				// Block for a response, and also wait for the timeout.
 				var resp *jobHasSectorResponse
 				select {
-				case resp = <-responseChan:
+				case resp = <-staticResponseChan:
 					responses++
 				case <-timeoutChan:
 					// Don't wait forever, workers that don't come back fast enough
@@ -152,12 +152,12 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 				start := time.Now()
 				readSectorRespChan := make(chan *jobReadSectorResponse)
 				jrs := jobReadSector{
-					canceled:     cancelChan,
-					responseChan: readSectorRespChan,
+					staticCanceledChan:     cancelChan,
+					staticResponseChan: readSectorRespChan,
 
 					length: length,
 					offset: offset,
-					sector: root,
+					staticSector: root,
 				}
 				if !w.staticJobReadSectorQueue.callAdd(jrs) {
 					continue
@@ -227,7 +227,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			select {
 			case <-useBestWorkerTimer:
 				useBestWorker = true
-			case resp = <-responseChan:
+			case resp = <-staticResponseChan:
 				responses++
 			case <-timeoutChan:
 				fmt.Println("TIMEOUT")
@@ -279,12 +279,12 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// perform the download.
 		readSectorRespChan := make(chan *jobReadSectorResponse)
 		jrs := jobReadSector{
-			canceled:     cancelChan,
-			responseChan: readSectorRespChan,
+			staticCanceledChan:     cancelChan,
+			staticResponseChan: readSectorRespChan,
 
-			length: length,
-			offset: offset,
-			sector: root,
+			staticLength: length,
+			staticOffset: offset,
+			staticSector: root,
 		}
 		if !bestWorker.staticJobReadSectorQueue.callAdd(jrs) {
 			// TODO: This is why we need a list of best workers, if this guy
@@ -322,13 +322,9 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 					continue
 				}
 
-				jq := worker.staticJobReadSectorQueue
-				jq.mu.Lock()
-				fastestJob := jq.fastestJob
-				jq.mu.Unlock()
 				hasBeenValid := atomic.LoadUint64(&worker.atomicPriceTableHasBeenValid) == 1
 				hasStreams := atomic.LoadUint64(&worker.atomicStreamHasBeenValid) == 1
-				fmt.Printf("%v: HasBeenValid: %v:%v, Fastest Job: %v\n", worker.staticHostPubKey, hasStreams, hasBeenValid, fastestJob)
+				fmt.Printf("%v: HasBeenValid: %v:%v\n", worker.staticHostPubKey, hasStreams, hasBeenValid)
 			}
 			fmt.Println()
 			fmt.Println()
