@@ -204,6 +204,11 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
+	// Stateful variables related to projects the worker can launch. Typically
+	// projects manage all of their own state, but for example they may track
+	// metrics across running the project multiple times.
+	staticProjectDownloadByRootManager *projectDownloadByRootManager
+
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies

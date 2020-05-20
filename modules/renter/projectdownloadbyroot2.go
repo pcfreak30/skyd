@@ -11,50 +11,111 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// TODO: Polish this up, add length based buckets.
-type projectDownloadByRootMetrics struct {
-	totalTime   float64
-	numRequests float64
+const (
+	// projectDownloadByRootPerformanceDecay defines the amount of decay that is
+	// applied to the exponential weigted average used to compute the
+	// performance of the download by root projects that have run recently.
+	projectDownloadByRootPerformanceDecay = 0.9
+)
 
-	decayedTime     float64
-	decayedRequests float64
+// projectDownloadByRootManager tracks metrics across multiple runs of
+// DownloadByRoot projects, and is used by the projects to set expectations for
+// performance.
+//
+// We put downloads into 3 different buckets for performance because the
+// performance characterstics are very different depending on which bucket you
+// are in.
+type projectDownloadByRootManager struct {
+	// Aggregate values for download by root projects. These are typically used
+	// for research purposes, as opposed to being used in real time.
+	totalTime64k   time.Duration
+	totalTime1m    time.Duration
+	totalTime4m    time.Duration
+	totalRequests64k uint64
+	totalRequests1m  uint64
+	totalRequests4m  uint64
+
+	// Decayed values track the recent performance of jobs in each bucket. These
+	// values are generally used to help select workers when scheduling work,
+	// because they are more responsive to changing network conditions.
+	decayedTime64k     float64
+	decayedTime1m      float64
+	decayedTime4m      float64
+	decayedRequests64k float64
+	decayedRequests1m  float64
+	decayedRequests4m  float64
 
 	mu sync.Mutex
 }
 
-// TODO
-func (m *projectDownloadByRootMetrics) managedAddDatapoint(timeElapsed time.Duration) {
+// managedRecordProjectTime adds a download to the historic values of the
+// project manager. It takes a length so that it knows which bucket to put the
+// data in.
+func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, timeElapsed time.Duration) {
+	var bucket uint64
+	var recentAvg time.Duration
+	var totalAvg time.Duration
+	var totalRequests uint64
 	m.mu.Lock()
-	m.totalTime += float64(timeElapsed)
-	m.numRequests++
-	m.decayedTime *= 0.9
-	m.decayedRequests *= 0.9
-	m.decayedTime += float64(timeElapsed)
-	m.decayedRequests++
-	reqs := m.numRequests
-	avg := m.totalTime / m.numRequests / float64(time.Millisecond)
-	decReq := m.decayedRequests
-	decAvg := m.decayedTime / m.decayedRequests / float64(time.Millisecond)
+	if length <= 1 << 16 {
+		m.totalTime64k += timeElapsed
+		m.totalRequests64k++
+		m.decayedTime64k *= projectDownloadByRootPerformanceDecay
+		m.decayedRequests64k *= projectDownloadByRootPerformanceDecay
+		m.decayedTime64k += float64(timeElapsed)
+		m.decayedRequests64k++
+		bucket = 1 << 16
+		recentAvg = time.Duration(m.decayedTime64k / m.decayedRequests64k)
+		totalAvg = m.totalTime64k / time.Duration(m.totalRequests64k)
+		totalRequests = m.totalRequests64k
+	} else if length <= 1 << 20 {
+		m.totalTime1m += timeElapsed
+		m.totalRequests1m++
+		m.decayedTime1m *= projectDownloadByRootPerformanceDecay
+		m.decayedRequests1m *= projectDownloadByRootPerformanceDecay
+		m.decayedTime1m += float64(timeElapsed)
+		m.decayedRequests1m++
+		bucket = 1 << 20
+		recentAvg = time.Duration(m.decayedTime1m / m.decayedRequests1m)
+		totalAvg = m.totalTime1m / time.Duration(m.totalRequests1m)
+		totalRequests = m.totalRequests1m
+	} else {
+		m.totalTime4m += timeElapsed
+		m.totalRequests4m++
+		m.decayedTime4m *= projectDownloadByRootPerformanceDecay
+		m.decayedRequests4m *= projectDownloadByRootPerformanceDecay
+		m.decayedTime4m += float64(timeElapsed)
+		m.decayedRequests4m++
+		bucket = 1 << 22
+		recentAvg = time.Duration(m.decayedTime4m / m.decayedRequests4m)
+		totalAvg = m.totalTime4m / time.Duration(m.totalRequests4m)
+		totalRequests = m.totalRequests4m
+	}
 	m.mu.Unlock()
-	fmt.Println("Average Performance:", avg, "ms over", reqs, "requests")
-	fmt.Println("Recent Performance:", decAvg, "ms over", decReq, "requests")
+	fmt.Printf("Bucket %v has had recent performance %v, and historic performance %v over %v requests\n", bucket, recentAvg, totalAvg, totalRequests)
 }
 
-// TODO:
-func (m *projectDownloadByRootMetrics) managedAverageDownloadTime() time.Duration {
+// mangedAverageProjectTime will return the average download time that prjects
+// have had for the given length.
+func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) time.Duration {
+	var avg time.Duration
 	m.mu.Lock()
-	avg := time.Duration(m.decayedTime / m.decayedRequests)
+	if length <= 1 << 16 {
+		avg = time.Duration(m.decayedTime64k / m.decayedRequests64k)
+	} else if length <= 1 << 20 {
+		avg = time.Duration(m.decayedTime1m / m.decayedRequests1m)
+	} else {
+		avg = time.Duration(m.decayedTime4m / m.decayedRequests4m)
+	}
 	m.mu.Unlock()
 	return avg
 }
-
-// TODO: add as element of renter instead of global var
-var pm projectDownloadByRootMetrics
 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
 // Unlike the exported version of this function, this function does not request
 // memory from the memory manager.
 func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	pm := r.staticProjectDownloadByRootManager
 	start := time.Now()
 
 	// Create a channel to time out the project.
@@ -106,7 +167,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	// Send the work to all of the workers.
 	for _, worker := range workers {
 		jhs := jobHasSector{
-			staticCanceledChan:     cancelChan,
+			staticCanceledChan: cancelChan,
 			staticSector:       root,
 			staticResponseChan: staticResponseChan,
 		}
@@ -116,98 +177,13 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		}
 	}
 
-	/*
-			// This variant of the loop will download sequentially from every single
-			// worker, allowing us to get a proper profile.
-			var goodWs []*worker
-		BOB:
-			for responses < len(workers) {
-				// Block for a response, and also wait for the timeout.
-				var resp *jobHasSectorResponse
-				select {
-				case resp = <-staticResponseChan:
-					responses++
-				case <-timeoutChan:
-					// Don't wait forever, workers that don't come back fast enough
-					// don't count.
-					println("breaking because timer is done")
-					break BOB
-				}
-				println("got a response")
-
-				// Add this worker to the set of workers that we can use if it has the
-				// sector.
-				if resp != nil && resp.staticErr == nil && resp.staticAvailable {
-					println("adding a good w")
-					goodWs = append(goodWs, resp.staticWorker)
-				}
-			}
-
-			// Go through each worker sequentially and perform the download. The workers
-			// will track themselves how fast they go.
-			println("going through the good ws")
-			for _, w := range goodWs {
-				println("starting a new worker")
-				start := time.Now()
-				readSectorRespChan := make(chan *jobReadSectorResponse)
-				jrs := jobReadSector{
-					staticCanceledChan:     cancelChan,
-					staticResponseChan: readSectorRespChan,
-
-					length: length,
-					offset: offset,
-					staticSector: root,
-				}
-				if !w.staticJobReadSectorQueue.callAdd(jrs) {
-					continue
-				}
-
-				// Wait for a response, respect the timeout.
-				var readSectorResp *jobReadSectorResponse
-				workerTimeoutChan := time.After(time.Second * 90)
-				select {
-				case readSectorResp = <-readSectorRespChan:
-				case <-workerTimeoutChan:
-					continue
-				}
-				if readSectorResp != nil && readSectorResp.staticErr == nil {
-					pm.managedAddDatapoint(time.Since(start))
-					fmt.Printf("%v: Sector data received: %v\n", w.staticHostPubKeyStr, time.Since(start))
-					continue
-				}
-			}
-
-			// Print out the fastest times yet seen by any worker.
-			fmt.Println()
-			fmt.Println()
-			fmt.Println("starting worker dump")
-			for _, worker := range r.staticWorkerPool.callWorkers() {
-				// Ignore old workers.
-				cache := worker.staticCache()
-				if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) != 0 {
-					continue
-				}
-
-				jq := worker.staticJobReadSectorQueue
-				jq.mu.Lock()
-				fastestJob := jq.fastestJob
-				jq.mu.Unlock()
-				hasBeenValid := atomic.LoadUint64(&worker.atomicPriceTableHasBeenValid) == 1
-				fmt.Printf("%v: HasBeenValid: %v, Fastest Job: %v\n", worker.staticHostPubKey, hasBeenValid, fastestJob)
-			}
-			fmt.Println()
-			fmt.Println()
-
-			println("got through all of the good ws, now printlng the worker dump")
-	*/
-
 	// Run a loop to get responses, and then if a worker has found the root,
 	// attempt to download the root. If that download is successful, cancel all
 	// of the other work. If the download is not successful, go back to looping
 	// through the responses.
 	var bestWorker *worker
 	var bestWorkerTime time.Duration
-	useBestWorkerTimer := time.After(pm.managedAverageDownloadTime()) // TODO: Switch to timer with cleanup
+	useBestWorkerTimer := time.After(pm.managedAverageProjectTime(length)) // TODO: Switch to timer with cleanup
 	useBestWorker := false
 	for responses < len(workers) || bestWorker != nil {
 		// Check for the timeout. This is done separately to ensure the timeout
@@ -268,7 +244,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// If we are not being told to use our best worker, and also our best
 		// worker is not predicted to start running before the average job time,
 		// look for another worker.
-		if !useBestWorker && pm.managedAverageDownloadTime() < time.Since(start)+bestWorkerTime {
+		if !useBestWorker && pm.managedAverageProjectTime(length) < time.Since(start)+bestWorkerTime {
 			println("moving on, this worker is probably not the best")
 			continue
 		}
@@ -278,7 +254,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// perform the download.
 		readSectorRespChan := make(chan *jobReadSectorResponse)
 		jrs := jobReadSector{
-			staticCanceledChan:     cancelChan,
+			staticCanceledChan: cancelChan,
 			staticResponseChan: readSectorRespChan,
 
 			staticLength: length,
@@ -307,7 +283,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			continue
 		}
 		if readSectorResp != nil && readSectorResp.staticErr == nil {
-			pm.managedAddDatapoint(time.Since(start))
+			pm.managedRecordProjectTime(length, time.Since(start))
 			fmt.Printf("%v: Sector data received: %v\n", root, time.Since(start))
 			return readSectorResp.staticData, nil
 		}
