@@ -902,6 +902,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
+		staticProjectDownloadByRootManager: new(projectDownloadByRootManager),
+
 		cs:                    cs,
 		deps:                  deps,
 		g:                     g,
