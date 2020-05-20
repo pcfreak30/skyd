@@ -3,7 +3,6 @@ package renter
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -310,24 +309,6 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		if readSectorResp != nil && readSectorResp.staticErr == nil {
 			pm.managedAddDatapoint(time.Since(start))
 			fmt.Printf("%v: Sector data received: %v\n", root, time.Since(start))
-
-			// Print out the fastest times yet seen by any worker.
-			fmt.Println()
-			fmt.Println()
-			fmt.Println("starting worker dump")
-			for _, worker := range r.staticWorkerPool.callWorkers() {
-				// Ignore old workers.
-				cache := worker.staticCache()
-				if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) != 0 {
-					continue
-				}
-
-				hasBeenValid := atomic.LoadUint64(&worker.atomicPriceTableHasBeenValid) == 1
-				hasStreams := atomic.LoadUint64(&worker.atomicStreamHasBeenValid) == 1
-				fmt.Printf("%v: HasBeenValid: %v:%v\n", worker.staticHostPubKey, hasStreams, hasBeenValid)
-			}
-			fmt.Println()
-			fmt.Println()
 			return readSectorResp.staticData, nil
 		}
 		fmt.Printf("%v: Sector data fetch failed: %v\n", root, time.Since(start))

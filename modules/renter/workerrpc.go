@@ -3,7 +3,6 @@ package renter
 import (
 	"fmt"
 	"io"
-	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -133,6 +132,5 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 		fmt.Printf("%v: failed to get new stream on host: %v\n", w.staticHostPubKeyStr, err)
 		return nil, err
 	}
-	atomic.StoreUint64(&w.atomicStreamHasBeenValid, 1)
 	return stream, nil
 }

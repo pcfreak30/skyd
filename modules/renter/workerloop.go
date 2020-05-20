@@ -176,9 +176,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return false
 	}
 
-	// Mark that the worker has had a valid price table at some point.
-	atomic.StoreUint64(&w.atomicPriceTableHasBeenValid, 1)
-
 	// If the account is on cooldown, drop all async jobs.
 	if w.staticAccount.managedOnCooldown() {
 		w.managedDiscardAsyncJobs()
