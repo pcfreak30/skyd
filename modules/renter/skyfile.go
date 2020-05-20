@@ -432,7 +432,8 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticSkynetBlacklist.UpdateBlacklist(additions, removals)
+	err = r.staticSkynetBlacklist.UpdateBlacklist(additions, removals)
+	return errors.AddContext(err, fmt.Sprintf("unable to update Skynet blacklist persistence at '%v'", r.staticSkynetBlacklist.FilePath()))
 }
 
 // Portals returns the list of known skynet portals.
@@ -452,7 +453,8 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticSkynetPortals.UpdatePortals(additions, removals)
+	err = r.staticSkynetPortals.UpdatePortals(additions, removals)
+	return errors.AddContext(err, fmt.Sprintf("unable to update Skynet portal list persistence at '%v'", r.staticSkynetPortals.FilePath()))
 }
 
 // uploadSkyfileReadLeadingChunk will read the leading chunk of a skyfile. If

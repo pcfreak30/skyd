@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -40,56 +41,50 @@ func TestPersist(t *testing.T) {
 
 	// Create a new SkynetPortals
 	testdir := testDir(t.Name())
-	pl, err := New(testdir)
+	sp, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	filename := filepath.Join(testdir, persistFile)
-	if filename != pl.staticAop.FilePath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, pl.staticAop.FilePath())
+	if filename != sp.staticAop.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.staticAop.FilePath())
 	}
 
 	// There should be no portals in the list
-	if len(pl.portals) != 0 {
-		t.Fatal("Expected portals list to be empty but found:", len(pl.portals))
+	if len(sp.portals) != 0 {
+		t.Fatal("Expected portals list to be empty but found:", len(sp.portals))
 	}
 
-	// Update portals list
+	// Try adding and removing the same address.
 	portal := modules.SkynetPortal{
 		Address: "localhost:9980",
 		Public:  true,
 	}
 	add := []modules.SkynetPortal{portal}
-	remove := []modules.NetAddress{portal.Address}
-	err = pl.UpdatePortals(add, remove)
-	if err != nil {
-		t.Fatal(err)
+	upperAddress := modules.NetAddress(strings.ToUpper(string(portal.Address)))
+	remove := []modules.NetAddress{upperAddress}
+	err = sp.UpdatePortals(add, remove)
+	if !errors.Contains(err, ErrInexistentPortal) {
+		t.Fatalf("Expected err %v, got %v", ErrInexistentPortal, err)
 	}
 
-	// Portals list should be empty because we added and then removed the same
-	// portal
-	if len(pl.portals) != 0 {
-		t.Fatal("Expected portals list to be empty but found:", len(pl.portals))
+	// Portals list should remain empty.
+	if len(sp.portals) != 0 {
+		t.Fatal("Expected portals list to be empty but found:", len(sp.portals))
 	}
 
-	// Verify that the correct number of portals were persisted to verify no
-	// portals are being truncated
-	if err := checkNumPersistedPortals(filename, 2); err != nil {
-		t.Errorf("error verifying correct number of portals: %v", err)
-	}
-
-	// Add the portal again
-	err = pl.UpdatePortals(add, []modules.NetAddress{})
+	// Add the portal.
+	err = sp.UpdatePortals(add, []modules.NetAddress{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// There should be 1 element in the portals list now
-	if len(pl.portals) != 1 {
-		t.Fatal("Expected 1 element in the portals list but found:", len(pl.portals))
+	if len(sp.portals) != 1 {
+		t.Fatal("Expected 1 element in the portals list but found:", len(sp.portals))
 	}
-	public, ok := pl.portals[portal.Address]
+	public, ok := sp.portals[portal.Address]
 	if public != portal.Public {
 		t.Fatalf("Expected publicness of portal listed in portals list to be %v but was %v", portal.Public, public)
 	}
@@ -99,22 +94,22 @@ func TestPersist(t *testing.T) {
 
 	// Load a new Skynet Portals List to verify the contents from disk get loaded
 	// properly
-	pl2, err := New(testdir)
+	sp2, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify that the correct number of portals were persisted to verify no
 	// portals are being truncated
-	if err := checkNumPersistedPortals(filename, 3); err != nil {
+	if err := checkNumPersistedPortals(filename, 1); err != nil {
 		t.Fatalf("error verifying correct number of portals: %v", err)
 	}
 
 	// There should be 1 element in the portals list
-	if len(pl2.portals) != 1 {
-		t.Fatal("Expected 1 element in the portals list but found:", len(pl2.portals))
+	if len(sp2.portals) != 1 {
+		t.Fatal("Expected 1 element in the portals list but found:", len(sp2.portals))
 	}
-	public, ok = pl2.portals[portal.Address]
+	public, ok = sp2.portals[portal.Address]
 	if public != portal.Public {
 		t.Fatalf("Expected publicness of portal listed in portals list to be %v but was %v", portal.Public, public)
 	}
@@ -122,44 +117,75 @@ func TestPersist(t *testing.T) {
 		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
 	}
 
-	// Add the portal again
-	err = pl2.UpdatePortals(add, []modules.NetAddress{})
+	// Try adding a duplicate portal.
+	err = sp2.UpdatePortals(add, []modules.NetAddress{})
+	if !errors.Contains(err, ErrDuplicateAddition) {
+		t.Fatalf("Expected err %v, got %v", ErrDuplicateAddition, err)
+	}
+	portal = modules.SkynetPortal{
+		Address: "LOCALHOST:990",
+		Public:  false,
+	}
+	err = sp2.UpdatePortals([]modules.SkynetPortal{portal, portal}, []modules.NetAddress{})
+	if !errors.Contains(err, ErrDuplicateAddition) {
+		t.Fatalf("Expected err %v, got %v", ErrDuplicateAddition, err)
+	}
+
+	// Try removing a portal that doesn't exist.
+	err = sp2.UpdatePortals([]modules.SkynetPortal{}, []modules.NetAddress{portal.Address})
+	if !errors.Contains(err, ErrInexistentPortal) {
+		t.Fatalf("Expected err %v, got %v", ErrInexistentPortal, err)
+	}
+
+	// Add a new portal.
+	err = sp2.UpdatePortals([]modules.SkynetPortal{portal}, []modules.NetAddress{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// There should still only be 1 element in the portal list
-	if len(pl2.portals) != 1 {
-		t.Fatal("Expected 1 element in the portal list but found:", len(pl2.portals))
+	// There should be 2 elements in the portal list.
+	if len(sp2.portals) != 2 {
+		t.Fatal("Expected 2 elements in the portal list but found:", len(sp2.portals))
 	}
-	public, ok = pl2.portals[portal.Address]
+	address := modules.NetAddress(strings.ToLower(string(portal.Address)))
+	public, ok = sp2.portals[address]
 	if public != portal.Public {
 		t.Fatalf("Expected publicness of portal listed in portals list to be %v but was %v", portal.Public, public)
 	}
 	if !ok {
-		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
+		t.Fatalf("Expected address %v to be listed in portals list", address)
+	}
+
+	// Try adding the same portal with different case.
+	portal2 := modules.SkynetPortal{
+		Address: "Localhost:990",
+		Public:  false,
+	}
+	err = sp2.UpdatePortals([]modules.SkynetPortal{portal2, portal2}, []modules.NetAddress{})
+	if !errors.Contains(err, ErrDuplicateAddition) {
+		t.Fatalf("Expected err %v, got %v", ErrDuplicateAddition, err)
 	}
 
 	// Load another new Skynet Portals List to verify the contents from disk get
 	// loaded properly
-	pl3, err := New(testdir)
+	sp3, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify that the correct number of portals were persisted to verify no
 	// portals are being truncated
-	if err := checkNumPersistedPortals(filename, 4); err != nil {
+	if err := checkNumPersistedPortals(filename, 2); err != nil {
 		t.Fatalf("error verifying correct number of portals: %v", err)
 	}
 
-	// There should be 1 element in the portals list
-	if len(pl3.portals) != 1 {
-		t.Fatal("Expected 1 element in the portals list but found:", len(pl3.portals))
+	// There should be 2 elements in the portals list
+	if len(sp3.portals) != 2 {
+		t.Fatal("Expected 2 elements in the portals list but found:", len(sp3.portals))
 	}
-	public, ok = pl3.portals[portal.Address]
+	public, ok = sp3.portals[address]
 	if !ok {
-		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
+		t.Fatalf("Expected address %v to be listed in portals list", address)
 	}
 }
 
@@ -173,19 +199,19 @@ func TestPersistCorruption(t *testing.T) {
 
 	// Create a new SkynetPortalList
 	testdir := testDir(t.Name())
-	pl, err := New(testdir)
+	sp, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	filename := filepath.Join(testdir, persistFile)
-	if filename != pl.staticAop.FilePath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, pl.staticAop.FilePath())
+	if filename != sp.staticAop.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.staticAop.FilePath())
 	}
 
 	// There should be no portals in the list
-	if len(pl.portals) != 0 {
-		t.Fatal("Expected portals list to be empty but found:", len(pl.portals))
+	if len(sp.portals) != 0 {
+		t.Fatal("Expected portals list to be empty but found:", len(sp.portals))
 	}
 
 	// Append a bunch of random data to the end of the portals list file to test
@@ -210,8 +236,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize := fi.Size()
-	if uint64(filesize) <= pl.staticAop.PersistLength() {
-		t.Fatalf("Expected file size greater than %v, got %v", pl.staticAop.PersistLength(), filesize)
+	if uint64(filesize) <= sp.staticAop.PersistLength() {
+		t.Fatalf("Expected file size greater than %v, got %v", sp.staticAop.PersistLength(), filesize)
 	}
 
 	// Update portals list
@@ -220,8 +246,7 @@ func TestPersistCorruption(t *testing.T) {
 		Public:  true,
 	}
 	add := []modules.SkynetPortal{portal}
-	remove := []modules.NetAddress{portal.Address}
-	err = pl.UpdatePortals(add, remove)
+	err = sp.UpdatePortals(add, []modules.NetAddress{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,29 +258,17 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if uint64(filesize) != pl.staticAop.PersistLength() {
-		t.Fatalf("Expected file size %v, got %v", pl.staticAop.PersistLength(), filesize)
-	}
-
-	// Portals list should be empty because we added and then removed the same
-	// portal
-	if len(pl.portals) != 0 {
-		t.Fatal("Expected portals list to be empty but found:", len(pl.portals))
-	}
-
-	// Add the portal again
-	err = pl.UpdatePortals(add, []modules.NetAddress{})
-	if err != nil {
-		t.Fatal(err)
+	if uint64(filesize) != sp.staticAop.PersistLength() {
+		t.Fatalf("Expected file size %v, got %v", sp.staticAop.PersistLength(), filesize)
 	}
 
 	// There should be 1 element in the portals list now
-	if len(pl.portals) != 1 {
-		t.Fatal("Expected 1 element in the portals list but found:", len(pl.portals))
+	if len(sp.portals) != 1 {
+		t.Fatal("Expected 1 element in the portals list but found:", len(sp.portals))
 	}
-	public, ok := pl.portals[portal.Address]
+	public, ok := sp.portals[portal.Address]
 	if public != portal.Public {
-		t.Fatalf("Expected publicness of portal listed in portals list to be %v but was %v", portal.Public, public)
+		t.Fatalf("Expected publicity of portal listed in portals list to be %v but was %v", portal.Public, public)
 	}
 	if !ok {
 		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
@@ -263,16 +276,16 @@ func TestPersistCorruption(t *testing.T) {
 
 	// Load a new Skynet Portals List to verify the contents from disk get loaded
 	// properly
-	pl2, err := New(testdir)
+	sp2, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// There should be 1 element in the portals list
-	if len(pl2.portals) != 1 {
-		t.Fatal("Expected 1 element in the portals list but found:", len(pl2.portals))
+	if len(sp2.portals) != 1 {
+		t.Fatal("Expected 1 element in the portals list but found:", len(sp2.portals))
 	}
-	public, ok = pl2.portals[portal.Address]
+	public, ok = sp2.portals[portal.Address]
 	if public != portal.Public {
 		t.Fatalf("Expected publicness of portal listed in portals list to be %v but was %v", portal.Public, public)
 	}
@@ -280,19 +293,23 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
 	}
 
-	// Add the portal again
-	err = pl2.UpdatePortals(add, []modules.NetAddress{})
+	// Add a new portal.
+	portal = modules.SkynetPortal{
+		Address: "test.com:990",
+		Public:  false,
+	}
+	err = sp2.UpdatePortals([]modules.SkynetPortal{portal}, []modules.NetAddress{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// There should still only be 1 element in the portal list
-	if len(pl2.portals) != 1 {
-		t.Fatal("Expected 1 element in the portal list but found:", len(pl2.portals))
+	// There should be 2 elements in the portal list
+	if len(sp2.portals) != 2 {
+		t.Fatal("Expected 2 elements in the portal list but found:", len(sp2.portals))
 	}
-	public, ok = pl2.portals[portal.Address]
+	public, ok = sp2.portals[portal.Address]
 	if public != portal.Public {
-		t.Fatalf("Expected publicness of portal listed in portals list to be %v but was %v", portal.Public, public)
+		t.Fatalf("Expected publicity of portal listed in portals list to be %v but was %v", portal.Public, public)
 	}
 	if !ok {
 		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
@@ -300,16 +317,16 @@ func TestPersistCorruption(t *testing.T) {
 
 	// Load another new Skynet Portals List to verify the contents from disk get
 	// loaded properly
-	pl3, err := New(testdir)
+	sp3, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// There should be 1 element in the portals list
-	if len(pl3.portals) != 1 {
-		t.Fatal("Expected 1 element in the portals list but found:", len(pl3.portals))
+	// There should be 2 elements in the portals list.
+	if len(sp3.portals) != 2 {
+		t.Fatal("Expected 2 elements in the portals list but found:", len(sp3.portals))
 	}
-	public, ok = pl3.portals[portal.Address]
+	public, ok = sp3.portals[portal.Address]
 	if !ok {
 		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
 	}
@@ -320,13 +337,13 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if uint64(filesize) != pl3.staticAop.PersistLength() {
-		t.Fatalf("Expected file size %v, got %v", pl3.staticAop.PersistLength(), filesize)
+	if uint64(filesize) != sp3.staticAop.PersistLength() {
+		t.Fatalf("Expected file size %v, got %v", sp3.staticAop.PersistLength(), filesize)
 	}
 
 	// Verify that the correct number of portals were persisted to verify no
 	// portals are being truncated
-	if err := checkNumPersistedPortals(filename, 4); err != nil {
+	if err := checkNumPersistedPortals(filename, 2); err != nil {
 		t.Fatalf("error verifying correct number of portals: %v", err)
 	}
 }

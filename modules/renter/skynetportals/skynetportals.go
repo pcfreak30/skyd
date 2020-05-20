@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	// persistFile is the name of the persist file
+	// persistFile is the name of the persist file.
 	persistFile string = "skynetportals"
 
 	// persistSize is the size of a persisted portal in the portals list. It is
@@ -24,6 +24,13 @@ const (
 )
 
 var (
+	// ErrDuplicateAddition is the error indicating a duplicate addition.
+	ErrDuplicateAddition = errors.New("duplicate addition")
+
+	// ErrInexistentPortal is the error indicating a portal being removed does
+	// not already exist.
+	ErrInexistentPortal = errors.New("inexistent portal")
+
 	// ErrSkynetPortalsValidation is the error returned when validation of
 	// changes to the Skynet portals list fails.
 	ErrSkynetPortalsValidation = errors.New("could not validate additions and removals")
@@ -81,6 +88,11 @@ func (sp *SkynetPortals) Close() error {
 	return sp.staticAop.Close()
 }
 
+// FilePath returns the filepath of the persistence.
+func (sp *SkynetPortals) FilePath() string {
+	return sp.staticAop.FilePath()
+}
+
 // Portals returns the list of known Skynet portals.
 func (sp *SkynetPortals) Portals() []modules.SkynetPortal {
 	sp.mu.Lock()
@@ -103,35 +115,34 @@ func (sp *SkynetPortals) UpdatePortals(additions []modules.SkynetPortal, removal
 	defer sp.mu.Unlock()
 
 	// Convert portal addresses to lowercase for case-insensitivity.
-	addPortals := make([]modules.SkynetPortal, len(additions))
+	// TODO: test this
 	for i, portalInfo := range additions {
 		address := modules.NetAddress(strings.ToLower(string(portalInfo.Address)))
-		portalInfo.Address = address
-		addPortals[i] = portalInfo
+		additions[i].Address = address
 	}
-	removePortals := make([]modules.NetAddress, len(removals))
 	for i, address := range removals {
 		address = modules.NetAddress(strings.ToLower(string(address)))
-		removePortals[i] = address
+		removals[i] = address
 	}
 
 	// Validate now before we start making changes.
-	err := sp.validatePortalChanges(additions, removals)
+	err := sp.validateChanges(additions, removals)
 	if err != nil {
 		return errors.AddContext(err, ErrSkynetPortalsValidation.Error())
 	}
 
 	buf, err := sp.marshalObjects(additions, removals)
 	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", sp.staticAop.FilePath()))
+		return errors.AddContext(err, "unable to marshal additions and removals")
 	}
 	_, err = sp.staticAop.Write(buf.Bytes())
-	return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", sp.staticAop.FilePath()))
+	return errors.AddContext(err, "unable to write to persistence")
 }
 
 // marshalObjects marshals the given objects into a byte buffer.
 //
-// NOTE: this method does not check for duplicate additions or removals
+// NOTE: this method does not check for duplicate additions. We
+// assume the input has been validated.
 func (sp *SkynetPortals) marshalObjects(additions []modules.SkynetPortal, removals []modules.NetAddress) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
@@ -153,7 +164,7 @@ func (sp *SkynetPortals) marshalObjects(additions []modules.SkynetPortal, remova
 		// Remove portal from map
 		public, exists := sp.portals[address]
 		if !exists {
-			return bytes.Buffer{}, fmt.Errorf("address %v does not exist", address)
+			return bytes.Buffer{}, errors.AddContext(ErrInexistentPortal, fmt.Sprintf("address %v not found", address))
 		}
 		delete(sp.portals, address)
 
@@ -233,31 +244,37 @@ func (pe *persistEntry) UnmarshalSia(r io.Reader) error {
 	return err
 }
 
-// validatePortalChanges validates the changes to be made to the Skynet portals
-// list.
-func (sp *SkynetPortals) validatePortalChanges(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
-	// Check for nil input
+// validateChanges validates the changes to be made to the Skynet portals list.
+func (sp *SkynetPortals) validateChanges(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
+	// Check for nil input.
 	if len(additions)+len(removals) == 0 {
 		return errors.New("no portals being added or removed")
 	}
 
-	additionsMap := make(map[modules.NetAddress]struct{})
+	// Check additions.
+	seenAdditions := make(map[modules.NetAddress]struct{})
 	for _, addition := range additions {
 		address := addition.Address
 		if err := address.IsStdValid(); err != nil {
-			return errors.New("invalid network address: " + err.Error())
+			return errors.AddContext(err, "invalid network address")
 		}
-		additionsMap[address] = struct{}{}
+
+		if _, exists := sp.portals[address]; exists {
+			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("address %s not found", address))
+		}
+		if _, exists := seenAdditions[address]; exists {
+			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("address %s not found", address))
+		}
+		seenAdditions[address] = struct{}{}
 	}
-	// Check that each removal is valid.
-	for _, removalAddress := range removals {
-		if err := removalAddress.IsStdValid(); err != nil {
-			return errors.New("invalid network address: " + err.Error())
+	// Check removals. Each portal must already exist in the list.
+	for _, address := range removals {
+		if err := address.IsStdValid(); err != nil {
+			return errors.AddContext(err, "invalid network address")
 		}
-		if _, exists := sp.portals[removalAddress]; !exists {
-			if _, added := additionsMap[removalAddress]; !added {
-				return errors.New("address " + string(removalAddress) + " not already present in list of portals or being added")
-			}
+
+		if _, exists := sp.portals[address]; !exists {
+			return errors.AddContext(ErrInexistentPortal, fmt.Sprintf("address %s not found", address))
 		}
 	}
 	return nil

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	// persistFile is the name of the persist file
+	// persistFile is the name of the persist file.
 	persistFile string = "skynetblacklist"
 
 	// persistSize is the size of a persisted merkleroot in the blacklist. It is
@@ -24,6 +24,13 @@ const (
 )
 
 var (
+	// ErrDuplicateAddition is the error indicating a duplicate addition.
+	ErrDuplicateAddition = errors.New("duplicate addition")
+
+	// ErrInexistentSkylink is the error indicating a skylink being removed does
+	// not already exist.
+	ErrInexistentSkylink = errors.New("inexistent skylink")
+
 	// metadataHeader is the header of the metadata for the persist file
 	metadataHeader = types.NewSpecifier("SkynetBlacklist\n")
 
@@ -88,6 +95,11 @@ func (sb *SkynetBlacklist) Close() error {
 	return sb.staticAop.Close()
 }
 
+// FilePath returns the filepath of the persistence.
+func (sb *SkynetBlacklist) FilePath() string {
+	return sb.staticAop.FilePath()
+}
+
 // IsBlacklisted indicates if a skylink is currently blacklisted
 func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
 	sb.mu.Lock()
@@ -102,17 +114,24 @@ func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []modules.Skylink
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
+	// Validate now before we start making changes.
+	err := sb.validateChanges(additions, removals)
+	if err != nil {
+		return errors.AddContext(err, "could not validate the changes to the blacklist")
+	}
+
 	buf, err := sb.marshalObjects(additions, removals)
 	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.staticAop.FilePath()))
+		return errors.AddContext(err, "unable to marshal additions and removals")
 	}
 	_, err = sb.staticAop.Write(buf.Bytes())
-	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.staticAop.FilePath()))
+	return errors.AddContext(err, "unable to write to persistence")
 }
 
 // marshalObjects marshals the given objects into a byte buffer.
 //
-// NOTE: this method does not check for duplicate additions or removals
+// NOTE: this method does not check for duplicate additions or inexistent
+// removals. We assume the input has been validated.
 func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
@@ -171,4 +190,32 @@ func unmarshalObjects(reader io.Reader) (map[crypto.Hash]struct{}, error) {
 		blacklist[pe.MerkleRoot] = struct{}{}
 	}
 	return blacklist, nil
+}
+
+// validateChanges validates the changes to be made to the Skynet blacklist.
+func (sb *SkynetBlacklist) validateChanges(additions, removals []modules.Skylink) error {
+	// Check for nil input.
+	if len(additions)+len(removals) == 0 {
+		return errors.New("no skylinks being added or removed")
+	}
+
+	// Check additions.
+	seenAdditions := make(map[crypto.Hash]struct{})
+	for _, addition := range additions {
+		mr := addition.MerkleRoot()
+		if _, exists := sb.merkleRoots[mr]; exists {
+			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("skylink %s not found", addition))
+		}
+		if _, exists := seenAdditions[mr]; exists {
+			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("skylink %s not found", addition))
+		}
+		seenAdditions[mr] = struct{}{}
+	}
+	// Check removals. Each skylink must already exist in the list.
+	for _, removal := range removals {
+		if _, exists := sb.merkleRoots[removal.MerkleRoot()]; !exists {
+			return errors.AddContext(ErrInexistentSkylink, fmt.Sprintf("skylink %s not found", removal))
+		}
+	}
+	return nil
 }
