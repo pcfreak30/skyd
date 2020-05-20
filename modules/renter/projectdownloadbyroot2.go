@@ -115,21 +115,40 @@ func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) 
 // Unlike the exported version of this function, this function does not request
 // memory from the memory manager.
 func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	// Convenience variable.
 	pm := r.staticProjectDownloadByRootManager
+	// Track the total duration of the project.
 	start := time.Now()
 
-	// Create a channel to time out the project.
-	var timeoutChan <-chan time.Time
-	if timeout > 0 {
-		// TODO: Switch to a timer that we can drain.
-		println("there is a timeout: ", timeout)
-		timeoutChan = time.After(timeout)
-	}
-
-	// Apply the timeout to the project. A timeout of 0 will be ignored.
+	// Potentially force a timeout via a disrupt for testing.
 	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
+
+	// Create a channel to time out the project. Use a nil channel if the
+	// timeout is zero, so that the timeout never fires.
+	var timeoutChan <-chan time.Time
+	if timeout > 0 {
+		timer := time.NewTimer(timeout)
+		timeoutChan = timer.C
+
+		// Defer a function to clean up the timer so nothing else in the
+		// function needs to worry about it.
+		defer func() {
+			if !timer.Stop() {
+				<-timer.C
+			}
+		}()
+	}
+
+	// Create a channel to signal to workers when the job has been completed.
+	// This will cause any workers who have not yet started the job to ignore it
+	// instead of doing duplicate work.
+	cancelChan := make(chan struct{})
+	defer func() {
+		// Automatically cancel the work when the function exits.
+		close(cancelChan)
+	}()
 
 	// Get the full list of workers that could potentially download the root.
 	workers := r.staticWorkerPool.callWorkers()
@@ -137,121 +156,170 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
 	}
 
-	// TODO: For now we filter out any workers that cannot do the v148 protocol.
-	// Need to change this so that we submit jobs appropritately (through a
-	// serial HasSector and DownloadSector) so that all workers can scan the
-	// network and all files can be found.
-	total := 0
-	for _, worker := range workers {
-		cache := worker.staticCache()
-		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) != 0 {
-			continue
-		}
-		workers[total] = worker
-		total++
-	}
-	workers = workers[:total]
-
 	// Create a channel to receive all of the results from the workers. The
 	// channel is buffered with one slot per worker, so that the workers do not
-	// have to block when returning the result of the job.
+	// have to block when returning the result of the job, even if this thread
+	// is not listening.
 	staticResponseChan := make(chan *jobHasSectorResponse, len(workers))
-	responses := 0
-	// Create a channel to signal when the job has been completed.
-	cancelChan := make(chan struct{})
-	defer func() {
-		// Automatically cancel the work when the function exits.
-		close(cancelChan)
-	}()
 
-	// Send the work to all of the workers.
+	// Filter out all workers that do not support the new protocol. It has been
+	// determined that hosts who do not support the async protocol are not worth
+	// supporting in the new download by root code - it'll remove pretty much
+	// all of the performance advantages. Skynet is being forced to fully
+	// migrate to the async protocol.
+	numAsyncWorkers := 0
 	for _, worker := range workers {
+		cache := worker.staticCache()
+		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
+			continue
+		}
 		jhs := jobHasSector{
 			staticCanceledChan: cancelChan,
 			staticSector:       root,
 			staticResponseChan: staticResponseChan,
 		}
 		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
-			responses++
+			// This will filter out any workers that are on cooldown or
+			// otherwise can't participate in the project.
 			continue
 		}
+		workers[numAsyncWorkers] = worker
+		numAsyncWorkers++
 	}
+	workers = workers[:numAsyncWorkers]
 
-	// Run a loop to get responses, and then if a worker has found the root,
-	// attempt to download the root. If that download is successful, cancel all
-	// of the other work. If the download is not successful, go back to looping
-	// through the responses.
-	var bestWorker *worker
-	var bestWorkerTime time.Duration
-	useBestWorkerTimer := time.After(pm.managedAverageProjectTime(length)) // TODO: Switch to timer with cleanup
+	// Create a timer that is used to determine when the project should stop
+	// looking for a better worker, and instead go use the best worker it has
+	// found so far.
+	//
+	// Currently, we track the recent historical performance of projects using
+	// an exponential weighted average. Workers also track their recent
+	// performance using an exponential weighted average. Using these two
+	// values, we can determine whether using a worker is likely to result in
+	// better than historic average performance.
+	//
+	// If a worker does look like it can be used to achieve better than average
+	// performance, we will use that worker immediately. Otherwise, we will wait
+	// for a better worker to appear.
+	//
+	// After we have spent half of the whole historic time waiting for better
+	// workers to appear, we give up and use the best worker that we have found
+	// so far.
+	useBestWorkerChan := make(chan struct{})
+	useBestWorkerTimer := time.AfterFunc(pm.managedAverageProjectTime(length)/2, func() {
+		close(useBestWorkerChan)
+	})
+	// Clean up the timer.
+	defer func() {
+		useBestWorkerTimer.Stop()
+	}()
+
+	// Run a loop to receive responses from the workers as they figure out
+	// whether or not they have the sector we are looking for. The loop needs to
+	// run until we have tried every worker, which means that the number of
+	// responses must be equal to the number of workers, and the length of the
+	// usable workers map must be 0.
+	//
+	// The usable workers map is a map from the iteration that we found the
+	// worker to the worker. We use a map because it makes it easy to see the
+	// length, is simple enough to implement, and iterating over a whole map
+	// with 30 or so elements in it is not too costly. It is also easy to delete
+	// elements from a map as workers fail.
+	responses := 0
+	usableWorkers := make(map[int]*worker)
 	useBestWorker := false
-	for responses < len(workers) || bestWorker != nil {
+	for responses < len(workers) || len(usableWorkers) > 0 {
 		// Check for the timeout. This is done separately to ensure the timeout
 		// has priority.
 		select {
 		case <-timeoutChan:
-			fmt.Println("TIMEOUT")
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		default:
 		}
 
-		// Block for a response, and also wait for the timeout. If the response
-		// indicatese that the sector was located, print a success.
 		var resp *jobHasSectorResponse
-		if responses < len(workers) {
+		if len(usableWorkers) > 0 && responses < numAsyncWorkers {
+			// There are usable workers, and there are also workers that have
+			// not reported back yet. Because we have usable workers, we want to
+			// listen on the useBestWorkerChan.
 			select {
-			case <-useBestWorkerTimer:
+			case <-useBestWorkerChan:
 				useBestWorker = true
 			case resp = <-staticResponseChan:
 				responses++
 			case <-timeoutChan:
-				fmt.Println("TIMEOUT")
+				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+			}
+		} else if len(usableWorkers) == 0 {
+			// There are no usable workers, which means there's no point
+			// listening on the useBestWorkerChan.
+			select {
+			case resp = <-staticResponseChan:
+				responses++
+			case <-timeoutChan:
 				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 			}
 		} else {
+			// All workers have responded, which means we should now use the
+			// best worker that we have to attempt the download. No need to wait
+			// for a signal.
 			useBestWorker = true
 		}
 
-		// Check for the edge case where this reponse did not end up with a
-		// worker that can perform the download.
-		if (resp == nil || resp.staticErr != nil || !resp.staticAvailable) && (!useBestWorker || bestWorker == nil) {
-			if resp == nil {
-				println("nil resp")
-				continue
-			}
-			if resp.staticErr != nil {
-				println("resp err", resp.staticErr.Error())
-				continue
-			}
-			if !resp.staticAvailable {
-				println("worker does not have sector")
-				continue
-			}
+		// If we received a response from a worker that is not useful for
+		// completing the project, go back to blocking. This check is ignored if
+		// we are supposed to use the best worker.
+		if (resp == nil || resp.staticErr != nil || !resp.staticAvailable) && !useBestWorker {
 			continue
 		}
-		fmt.Printf("%v: HasSector positive response received: %v\n", root, time.Since(start))
 
-		// Replace the best worker with this worker if this worker is better.
+		// If there was a positive response, add this worker to the set of
+		// usable workers. Check whether or not this worker is expected to
+		// finish better than the average project time. If so, set a flag so
+		// that the download continues even if we aren't yet ready to use the
+		// best known worker.
+		goodEnough := false
 		if resp != nil && resp.staticErr == nil && resp.staticAvailable {
-			println("updating best worker")
-			avgDLTime := resp.staticWorker.staticJobReadSectorQueue.callAverageJobTime(length)
-			if bestWorkerTime == 0 || avgDLTime < bestWorkerTime {
-				bestWorkerTime = avgDLTime
-				bestWorker = resp.staticWorker
-			}
+			w := resp.staticWorker
+			jq := w.staticJobReadSectorQueue
+			usableWorkers[responses] = w
+			goodEnough = time.Since(start) + jq.callAverageJobTime(length) < pm.managedAverageProjectTime(length)
+			fmt.Printf("%v: HasSector positive response received: %v\n", w.staticHostPubKeyStr, time.Since(start))
 		}
 
-		// If we are not being told to use our best worker, and also our best
-		// worker is not predicted to start running before the average job time,
-		// look for another worker.
-		if !useBestWorker && pm.managedAverageProjectTime(length) < time.Since(start)+bestWorkerTime {
-			println("moving on, this worker is probably not the best")
+		// Determine whether to move forward with the download or wait for more
+		// workers. If the useBestWorker flag is set, we will move forward with
+		// the download. If the most recent worker has an average job time that
+		// would expect us to complete this job faster than usual, we can move
+		// forward with that worker.
+		//
+		// This conditional is  set up as an inverse so that we can continue
+		// rather than putting all of the logic inside a big if block.
+		if !useBestWorker && !goodEnough {
 			continue
 		}
-		println("a worker is now trying")
+		// If there are no usable workers, continue.
+		if len(usableWorkers) == 0 {
+			continue
+		}
 
-		// This worker has found the sector root! Queue a job on the worker to
-		// perform the download.
+		// Scan through the set of workers to find the best worker.
+		var bestWorkerIndex int
+		var bestWorker *worker
+		var bestWorkerTime time.Duration
+		for i, w := range usableWorkers {
+			wTime := w.staticJobReadSectorQueue.callAverageJobTime(length)
+			if bestWorkerTime == 0 || wTime < bestWorkerTime {
+				bestWorkerTime = wTime
+				bestWorkerIndex = i
+				bestWorker = w
+			}
+		}
+		// Delete this worker from the set of usable workers, because if this
+		// download fails, the worker shouldn't be used again.
+		delete(usableWorkers, bestWorkerIndex)
+
+		// Queue the job to download the sector root.
 		readSectorRespChan := make(chan *jobReadSectorResponse)
 		jrs := jobReadSector{
 			staticCanceledChan: cancelChan,
@@ -262,36 +330,40 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			staticSector: root,
 		}
 		if !bestWorker.staticJobReadSectorQueue.callAdd(jrs) {
-			// TODO: This is why we need a list of best workers, if this guy
-			// gets killed we're pretty sunk.
 			continue
 		}
 
-		// Wait for a response, respect the timeout.
+		// Wait for a response from the worker.
 		//
-		// TODO: the aggression timeout is causing a memory leak.
+		// TODO: This worker is currently a single point of failure, if the
+		// worker takes longer to respond than the lookup timeout, the project
+		// will fail even though there are potentially more workers to be using.
+		// I think the best way to fix this is to swich to the multi-worker
+		// paradigm, where we use multiple workers to fetch a single sector
+		// root.
 		var readSectorResp *jobReadSectorResponse
-		workerTimeoutChan := time.After(time.Second * 9)
 		select {
 		case readSectorResp = <-readSectorRespChan:
 		case <-timeoutChan:
-			fmt.Println("TIMEOUT")
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
-		case <-workerTimeoutChan:
-			// This worker is too slow try another one.
-			fmt.Printf("%v: Sector data fetch failed due to aggressive worker timeout: %v\n", root, time.Since(start))
+		}
+
+		// If the read sector job was not successful, move on to the next
+		// worker.
+		if readSectorResp == nil || readSectorResp.staticErr != nil {
+			fmt.Printf("%v: Sector data fetch failed: %v\n", root, time.Since(start))
 			continue
 		}
-		if readSectorResp != nil && readSectorResp.staticErr == nil {
-			pm.managedRecordProjectTime(length, time.Since(start))
-			fmt.Printf("%v: Sector data received: %v\n", root, time.Since(start))
-			return readSectorResp.staticData, nil
-		}
-		fmt.Printf("%v: Sector data fetch failed: %v\n", root, time.Since(start))
+
+		// We got a good response! Record the total project time and return the
+		// data.
+		pm.managedRecordProjectTime(length, time.Since(start))
+		fmt.Printf("%v: Sector data received: %v\n", root, time.Since(start))
+		return readSectorResp.staticData, nil
 	}
 
 	// All workers have failed.
-	fmt.Println("NOT FOUND")
+	fmt.Println("Not found, all workers have failed.")
 	return nil, ErrRootNotFound
 }
 
