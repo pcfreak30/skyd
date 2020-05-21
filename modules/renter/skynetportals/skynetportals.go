@@ -258,9 +258,12 @@ func (sp *SkynetPortals) validateChanges(additions []modules.SkynetPortal, remov
 			return errors.AddContext(err, "invalid network address")
 		}
 
-		if _, exists := sp.portals[address]; exists {
+		// Allow additions only if it is to change the public status.
+		public, exists := sp.portals[address]
+		if exists && public == addition.Public {
 			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("address %s not found", address))
 		}
+		// Check for duplicate portals within the ones being added.
 		if _, exists := seenAdditions[address]; exists {
 			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("address %s not found", address))
 		}

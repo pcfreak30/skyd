@@ -25,6 +25,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -1546,16 +1547,22 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortal{}
 	remove = []modules.NetAddress{portal1.Address}
 	err = r.SkynetPortalsPost(add, remove)
-	if !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
-		t.Fatal("portal should fail to be removed")
+	if err == nil {
+		t.Fatal("Expected portal removal to fail")
+	}
+	if !strings.Contains(err.Error(), skynetportals.ErrInexistentPortal.Error()) {
+		t.Fatalf("Expected err %v, got %v", skynetportals.ErrInexistentPortal, err)
 	}
 
 	// Try to add and remove a portal at the same time.
 	add = []modules.SkynetPortal{portal2}
 	remove = []modules.NetAddress{portal2.Address}
 	err = r.SkynetPortalsPost(add, remove)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("Expected adding and removing a portal at the same time to fail")
+	}
+	if !strings.Contains(err.Error(), skynetportals.ErrInexistentPortal.Error()) {
+		t.Fatalf("Expected err %v, got %v", skynetportals.ErrInexistentPortal, err)
 	}
 
 	// Verify that the portal was not added.
@@ -1610,8 +1617,11 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortal{portal3}
 	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
+	if err == nil {
+		t.Fatal("Expected portal list update to fail")
+	}
 	if !strings.Contains(err.Error(), "missing port in address") {
-		t.Fatal("expected 'missing port' error")
+		t.Fatal("Expected 'missing port' error")
 	}
 
 	// Test adding an existing portal with an uppercase address.
@@ -1620,17 +1630,19 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortal{portalUpper}
 	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
-	// This does not currently return an error.
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("Expected adding an existing portal with an uppercase address to fail")
+	}
+	if !strings.Contains(err.Error(), skynetportals.ErrDuplicateAddition.Error()) {
+		t.Fatalf("Expected err %v, got %v", skynetportals.ErrDuplicateAddition, err)
 	}
 
 	spg, err = r.SkynetPortalsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(spg.Portals) != 2 {
-		t.Fatalf("Incorrect number of portals, expected %v got %v", 2, len(spg.Portals))
+	if len(spg.Portals) != 1 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
 	}
 }
 

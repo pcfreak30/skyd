@@ -203,9 +203,11 @@ func (sb *SkynetBlacklist) validateChanges(additions, removals []modules.Skylink
 	seenAdditions := make(map[crypto.Hash]struct{})
 	for _, addition := range additions {
 		mr := addition.MerkleRoot()
+		// Don't allow duplicate additions.
 		if _, exists := sb.merkleRoots[mr]; exists {
 			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("skylink %s not found", addition))
 		}
+		// Check for duplicate links within the ones being added.
 		if _, exists := seenAdditions[mr]; exists {
 			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("skylink %s not found", addition))
 		}
