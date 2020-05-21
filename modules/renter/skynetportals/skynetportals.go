@@ -115,7 +115,6 @@ func (sp *SkynetPortals) UpdatePortals(additions []modules.SkynetPortal, removal
 	defer sp.mu.Unlock()
 
 	// Convert portal addresses to lowercase for case-insensitivity.
-	// TODO: test this
 	for i, portalInfo := range additions {
 		address := modules.NetAddress(strings.ToLower(string(portalInfo.Address)))
 		additions[i].Address = address

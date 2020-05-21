@@ -17,6 +17,7 @@ import (
 )
 
 var (
+	// testPersistFile contains the location of the compatibility test file.
 	testPersistFile = filepath.Join("testdata", persistFile)
 )
 
