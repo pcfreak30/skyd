@@ -27,9 +27,9 @@ var (
 	// ErrDuplicateAddition is the error indicating a duplicate addition.
 	ErrDuplicateAddition = errors.New("duplicate addition")
 
-	// ErrInexistentPortal is the error indicating a portal being removed does
-	// not already exist.
-	ErrInexistentPortal = errors.New("inexistent portal")
+	// ErrNotExist is the error indicating a portal being removed does not
+	// already exist.
+	ErrNotExist = errors.New("portal does not exist")
 
 	// ErrSkynetPortalsValidation is the error returned when validation of
 	// changes to the Skynet portals list fails.
@@ -163,7 +163,7 @@ func (sp *SkynetPortals) marshalObjects(additions []modules.SkynetPortal, remova
 		// Remove portal from map
 		public, exists := sp.portals[address]
 		if !exists {
-			return bytes.Buffer{}, errors.AddContext(ErrInexistentPortal, fmt.Sprintf("address %v not found", address))
+			return bytes.Buffer{}, errors.AddContext(ErrNotExist, fmt.Sprintf("address %v not found", address))
 		}
 		delete(sp.portals, address)
 
@@ -261,11 +261,11 @@ func (sp *SkynetPortals) validateChanges(additions []modules.SkynetPortal, remov
 		// Allow additions only if it is to change the public status.
 		public, exists := sp.portals[address]
 		if exists && public == addition.Public {
-			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("address %s not found", address))
+			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("address %s already exists", address))
 		}
 		// Check for duplicate portals within the ones being added.
 		if _, exists := seenAdditions[address]; exists {
-			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("address %s not found", address))
+			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("address %s is being added twice", address))
 		}
 		seenAdditions[address] = struct{}{}
 	}
@@ -276,7 +276,7 @@ func (sp *SkynetPortals) validateChanges(additions []modules.SkynetPortal, remov
 		}
 
 		if _, exists := sp.portals[address]; !exists {
-			return errors.AddContext(ErrInexistentPortal, fmt.Sprintf("address %s not found", address))
+			return errors.AddContext(ErrNotExist, fmt.Sprintf("address %s not found", address))
 		}
 	}
 	return nil

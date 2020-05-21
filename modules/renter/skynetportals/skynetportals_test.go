@@ -70,8 +70,8 @@ func TestPersist(t *testing.T) {
 	upperAddress := modules.NetAddress(strings.ToUpper(string(portal.Address)))
 	remove := []modules.NetAddress{upperAddress}
 	err = sp.UpdatePortals(add, remove)
-	if !errors.Contains(err, ErrInexistentPortal) {
-		t.Fatalf("Expected err %v, got %v", ErrInexistentPortal, err)
+	if !errors.Contains(err, ErrNotExist) {
+		t.Fatalf("Expected err %v, got %v", ErrNotExist, err)
 	}
 
 	// Portals list should remain empty.
@@ -142,8 +142,8 @@ func TestPersist(t *testing.T) {
 
 	// Try removing a portal that doesn't exist.
 	err = sp2.UpdatePortals([]modules.SkynetPortal{}, []modules.NetAddress{portal.Address})
-	if !errors.Contains(err, ErrInexistentPortal) {
-		t.Fatalf("Expected err %v, got %v", ErrInexistentPortal, err)
+	if !errors.Contains(err, ErrNotExist) {
+		t.Fatalf("Expected err %v, got %v", ErrNotExist, err)
 	}
 
 	// Add a new portal.

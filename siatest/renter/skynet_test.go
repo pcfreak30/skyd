@@ -1550,8 +1550,8 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	if err == nil {
 		t.Fatal("Expected portal removal to fail")
 	}
-	if !strings.Contains(err.Error(), skynetportals.ErrInexistentPortal.Error()) {
-		t.Fatalf("Expected err %v, got %v", skynetportals.ErrInexistentPortal, err)
+	if !strings.Contains(err.Error(), skynetportals.ErrNotExist.Error()) {
+		t.Fatalf("Expected err %v, got %v", skynetportals.ErrNotExist, err)
 	}
 
 	// Try to add and remove a portal at the same time.
@@ -1561,8 +1561,8 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	if err == nil {
 		t.Fatal("Expected adding and removing a portal at the same time to fail")
 	}
-	if !strings.Contains(err.Error(), skynetportals.ErrInexistentPortal.Error()) {
-		t.Fatalf("Expected err %v, got %v", skynetportals.ErrInexistentPortal, err)
+	if !strings.Contains(err.Error(), skynetportals.ErrNotExist.Error()) {
+		t.Fatalf("Expected err %v, got %v", skynetportals.ErrNotExist, err)
 	}
 
 	// Verify that the portal was not added.

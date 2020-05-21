@@ -27,9 +27,9 @@ var (
 	// ErrDuplicateAddition is the error indicating a duplicate addition.
 	ErrDuplicateAddition = errors.New("duplicate addition")
 
-	// ErrInexistentSkylink is the error indicating a skylink being removed does
+	// ErrNotExist is the error indicating a skylink being removed does
 	// not already exist.
-	ErrInexistentSkylink = errors.New("inexistent skylink")
+	ErrNotExist = errors.New("skylink does not exist")
 
 	// metadataHeader is the header of the metadata for the persist file
 	metadataHeader = types.NewSpecifier("SkynetBlacklist\n")
@@ -205,18 +205,18 @@ func (sb *SkynetBlacklist) validateChanges(additions, removals []modules.Skylink
 		mr := addition.MerkleRoot()
 		// Don't allow duplicate additions.
 		if _, exists := sb.merkleRoots[mr]; exists {
-			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("skylink %s not found", addition))
+			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("skylink %s already exists", addition))
 		}
 		// Check for duplicate links within the ones being added.
 		if _, exists := seenAdditions[mr]; exists {
-			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("skylink %s not found", addition))
+			return errors.AddContext(ErrDuplicateAddition, fmt.Sprintf("skylink %s is being added twice", addition))
 		}
 		seenAdditions[mr] = struct{}{}
 	}
 	// Check removals. Each skylink must already exist in the list.
 	for _, removal := range removals {
 		if _, exists := sb.merkleRoots[removal.MerkleRoot()]; !exists {
-			return errors.AddContext(ErrInexistentSkylink, fmt.Sprintf("skylink %s not found", removal))
+			return errors.AddContext(ErrNotExist, fmt.Sprintf("skylink %s not found", removal))
 		}
 	}
 	return nil

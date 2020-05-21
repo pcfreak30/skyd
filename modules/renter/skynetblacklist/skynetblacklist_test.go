@@ -67,8 +67,8 @@ func TestPersist(t *testing.T) {
 	add := []modules.Skylink{skylink}
 	remove := []modules.Skylink{skylink}
 	err = sb.UpdateBlacklist(add, remove)
-	if !errors.Contains(err, ErrInexistentSkylink) {
-		t.Fatalf("Expected err %v, got %v", ErrInexistentSkylink, err)
+	if !errors.Contains(err, ErrNotExist) {
+		t.Fatalf("Expected err %v, got %v", ErrNotExist, err)
 	}
 
 	// Blacklist should remain empty.
@@ -134,8 +134,8 @@ func TestPersist(t *testing.T) {
 
 	// Try removing a skylink that doesn't exist.
 	err = sb2.UpdateBlacklist([]modules.Skylink{}, []modules.Skylink{skylink})
-	if !errors.Contains(err, ErrInexistentSkylink) {
-		t.Fatalf("Expected err %v, got %v", ErrInexistentSkylink, err)
+	if !errors.Contains(err, ErrNotExist) {
+		t.Fatalf("Expected err %v, got %v", ErrNotExist, err)
 	}
 
 	// Add a new skylink.
