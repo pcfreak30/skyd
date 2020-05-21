@@ -16,6 +16,10 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+var (
+	testPersistFile = filepath.Join("testdata", persistFile)
+)
+
 // testDir is a helper function for creating the testing directory
 func testDir(name string) string {
 	return build.TempDir("skynetblacklist", name)
@@ -86,6 +90,10 @@ func TestPersist(t *testing.T) {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
+	if err = sb.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Load a new Skynet Blacklist to verify the contents from disk get loaded
 	// properly
 	sb2, err := New(testdir)
@@ -144,6 +152,10 @@ func TestPersist(t *testing.T) {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
+	if err = sb2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Load another new Skynet Blacklist to verify the contents from disk get loaded
 	// properly
 	sb3, err := New(testdir)
@@ -164,6 +176,97 @@ func TestPersist(t *testing.T) {
 	_, ok = sb3.merkleRoots[skylink.MerkleRoot()]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
+	}
+
+	if err = sb3.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPersistCompatibility tests the compatibility of a saved Skynet blacklist.
+func TestPersistCompatibility(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Copy the test file to the temp testing dir.
+	testdir := testDir(t.Name())
+	err := os.MkdirAll(testdir, 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testfile := filepath.Join(testdir, persistFile)
+	err = build.CopyFile(testPersistFile, testfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Load the file from the temp testing dir (we'll be making changes).
+	sb, err := New(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be a skylink in the blacklist.
+	if len(sb.merkleRoots) != 1 {
+		t.Fatalf("Expected 1 skylink in blacklist at but found %v", len(sb.merkleRoots))
+	}
+
+	// Add an existing skylink, should be an error.
+	mr := crypto.HashObject("asdf")
+	skylink, err := modules.NewSkylinkV1(mr, 4096, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = sb.UpdateBlacklist([]modules.Skylink{skylink}, []modules.Skylink{})
+	if !errors.Contains(err, ErrDuplicateAddition) {
+		t.Fatalf("Expected err %v, got %v", ErrDuplicateAddition, err)
+	}
+
+	// Add a new skylink.
+	mr = crypto.HashObject("fdsa")
+	skylink2, err := modules.NewSkylinkV1(mr, 4096, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = sb.UpdateBlacklist([]modules.Skylink{skylink2}, []modules.Skylink{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = sb.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load a new Skynet Blacklist to verify the contents from disk get loaded
+	// properly
+	sb2, err := New(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the correct number of links were persisted to verify no links
+	// are being truncated
+	if err := checkNumPersistedLinks(sb2.FilePath(), 2); err != nil {
+		t.Errorf("error verifying correct number of links: %v", err)
+	}
+
+	// There should be 2 elements in the blacklist
+	if len(sb2.merkleRoots) != 2 {
+		t.Fatal("Expected 2 elements in the blacklist but found:", len(sb2.merkleRoots))
+	}
+	_, ok := sb2.merkleRoots[skylink.MerkleRoot()]
+	if !ok {
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
+	}
+	_, ok = sb2.merkleRoots[skylink2.MerkleRoot()]
+	if !ok {
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink2.MerkleRoot())
+	}
+
+	if err = sb2.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -245,6 +348,10 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
+	if err = sb.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Load a new Skynet Blacklist to verify the contents from disk get loaded
 	// properly
 	sb2, err := New(testdir)
@@ -281,6 +388,10 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
+	if err = sb2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Load another new Skynet Blacklist to verify the contents from disk get loaded
 	// properly
 	sb3, err := New(testdir)
@@ -311,6 +422,10 @@ func TestPersistCorruption(t *testing.T) {
 	// are being truncated
 	if err = checkNumPersistedLinks(filename, 2); err != nil {
 		t.Errorf("error verifying correct number of links: %v", err)
+	}
+
+	if err = sb3.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -10,7 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	siaPersist "gitlab.com/NebulousLabs/Sia/persist"
 )
 
 const numTestingGateways = 3
@@ -30,7 +29,7 @@ func TestLoad(t *testing.T) {
 		NodeStats: make(map[modules.NetAddress]nodeStats),
 	}
 
-	err := siaPersist.LoadJSON(persistMetadata, &data, testPersistFile)
+	err := persist.LoadJSON(persistMetadata, &data, testPersistFile)
 	if err != nil {
 		t.Fatal("Error loading persisted node set: ", err)
 	}
@@ -206,7 +205,7 @@ func TestRestartScanner(t *testing.T) {
 	// affected the persisted set.
 	ns.persistData()
 	var testData2 persistData
-	err = siaPersist.LoadJSON(persistMetadata, &testData2, ns.persistFile)
+	err = persist.LoadJSON(persistMetadata, &testData2, ns.persistFile)
 	if err != nil {
 		t.Fatal("error loading persist after scan: ", err)
 	}

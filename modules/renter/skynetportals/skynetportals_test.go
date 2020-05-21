@@ -15,6 +15,10 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+var (
+	testPersistFile = filepath.Join("testdata", persistFile)
+)
+
 // testDir is a helper function for creating the testing directory
 func testDir(name string) string {
 	return build.TempDir("skynetportals", name)
@@ -92,6 +96,10 @@ func TestPersist(t *testing.T) {
 		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
 	}
 
+	if err = sp.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Load a new Skynet Portals List to verify the contents from disk get loaded
 	// properly
 	sp2, err := New(testdir)
@@ -166,6 +174,10 @@ func TestPersist(t *testing.T) {
 		t.Fatalf("Expected err %v, got %v", ErrDuplicateAddition, err)
 	}
 
+	if err = sp2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Load another new Skynet Portals List to verify the contents from disk get
 	// loaded properly
 	sp3, err := New(testdir)
@@ -186,6 +198,96 @@ func TestPersist(t *testing.T) {
 	public, ok = sp3.portals[address]
 	if !ok {
 		t.Fatalf("Expected address %v to be listed in portals list", address)
+	}
+
+	if err = sp3.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPersistCompatibility tests the compatibility of a saved Skynet portal
+// list.
+func TestPersistCompatibility(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Copy the test file to the temp testing dir.
+	testdir := testDir(t.Name())
+	err := os.MkdirAll(testdir, 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testfile := filepath.Join(testdir, persistFile)
+	err = build.CopyFile(testPersistFile, testfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Load the file from the temp testing dir (we'll be making changes).
+	sp, err := New(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be a portal in the list.
+	if len(sp.portals) != 1 {
+		t.Fatalf("Expected 1 portal in list at but found %v", len(sp.portals))
+	}
+
+	// Add an existing portal, should be an error.
+	portal := modules.SkynetPortal{
+		Address: "siasky.net:443",
+		Public:  true,
+	}
+	err = sp.UpdatePortals([]modules.SkynetPortal{portal}, []modules.NetAddress{})
+	if !errors.Contains(err, ErrDuplicateAddition) {
+		t.Fatalf("Expected err %v, got %v", ErrDuplicateAddition, err)
+	}
+
+	// Add a new portal.
+	portal2 := modules.SkynetPortal{
+		Address: "localhost:990",
+		Public:  false,
+	}
+	err = sp.UpdatePortals([]modules.SkynetPortal{portal2}, []modules.NetAddress{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = sp.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load a new Skynet portal list to verify the contents from disk get loaded
+	// properly.
+	sp2, err := New(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the correct number of portals were persisted to verify no
+	// portals are being truncated.
+	if err := checkNumPersistedPortals(sp2.FilePath(), 2); err != nil {
+		t.Errorf("error verifying correct number of portals: %v", err)
+	}
+
+	// There should be 2 elements in the blacklist
+	if len(sp2.portals) != 2 {
+		t.Fatal("Expected 2 elements in the portal list but found:", len(sp2.portals))
+	}
+	_, ok := sp2.portals[portal.Address]
+	if !ok {
+		t.Fatalf("Expected address %v to be listed", portal.Address)
+	}
+	_, ok = sp2.portals[portal2.Address]
+	if !ok {
+		t.Fatalf("Expected address %v to be listed", portal2.Address)
+	}
+
+	if err = sp2.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -274,6 +376,10 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
 	}
 
+	if err = sp.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Load a new Skynet Portals List to verify the contents from disk get loaded
 	// properly
 	sp2, err := New(testdir)
@@ -315,6 +421,10 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
 	}
 
+	if err = sp2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Load another new Skynet Portals List to verify the contents from disk get
 	// loaded properly
 	sp3, err := New(testdir)
@@ -345,6 +455,10 @@ func TestPersistCorruption(t *testing.T) {
 	// portals are being truncated
 	if err := checkNumPersistedPortals(filename, 2); err != nil {
 		t.Fatalf("error verifying correct number of portals: %v", err)
+	}
+
+	if err = sp3.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
