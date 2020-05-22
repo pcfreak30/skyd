@@ -1174,6 +1174,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 	// Work through the heap repairing chunks until heap is empty for
 	// smallRepairs or heap drops below minUploadHeapSize for larger repairs, or
 	// until the total amount of time spent in one repair iteration has elapsed.
+	println("repair loop outer")
 	for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.Now().After(repairBreakTime) {
 		select {
 		case <-r.tg.StopChan():
@@ -1198,6 +1199,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 
 		// Check if there is work by trying to pop off the next chunk from the
 		// heap.
+		println("popping the next chunk from the heap")
 		nextChunk := r.uploadHeap.managedPop()
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
@@ -1288,6 +1290,7 @@ func (r *Renter) threadedUploadAndRepair() {
 	// work through the full heap quickly because the user keeps uploading new
 	// files and keeping a minimum number of chunks in the repair heap.
 	resetTime := time.Now().Add(repairLoopResetFrequency)
+	println("entering upload and repair loop")
 	for {
 		// Return if the renter has shut down.
 		select {
@@ -1297,6 +1300,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Wait until the contractor is synced.
+		println("blocking until synced")
 		if !r.managedBlockUntilSynced() {
 			// The renter shut down before the contract was synced.
 			return
@@ -1304,12 +1308,15 @@ func (r *Renter) threadedUploadAndRepair() {
 
 		// Wait until the renter is online to proceed. This function will return
 		// 'false' if the renter has shut down before being online.
+		println("blockign until online")
 		if !r.managedBlockUntilOnline() {
 			return
 		}
 
 		// Check if repair process has been paused
+		println("checking for a paused loop")
 		if r.uploadHeap.managedIsPaused() {
+			println("there is a pause")
 			r.repairLog.Println("Repairs and Uploads have been paused")
 			// Block until the repair process is restarted
 			select {
@@ -1320,6 +1327,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			}
 			// Reset the upload heap and the directory heap now that has been
 			// resumed
+			println("pause finished, do a reset and resume")
 			err := r.uploadHeap.managedReset()
 			if err != nil {
 				r.repairLog.Println("WARN: there was an error resetting the upload heap:", err)
@@ -1340,11 +1348,13 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Refresh the worker set.
+		println("refreshing the set of workers")
 		hosts := r.managedRefreshHostsAndWorkers()
 
 		// If enough time has elapsed to trigger a directory reset, reset the
 		// directory.
 		if time.Now().After(resetTime) {
+			println("doing a reset and resume")
 			resetTime = time.Now().Add(repairLoopResetFrequency)
 			r.directoryHeap.managedReset()
 			err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
@@ -1358,6 +1368,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// storing system files and chunks such as those related to snapshot
 		// backups is different from the siafileset that stores non-system files
 		// and chunks.
+		println("doing the backup folder part of the heap")
 		heapLen := r.uploadHeap.managedLen()
 		r.managedBuildChunkHeap(modules.BackupFolder, hosts, targetBackupChunks)
 		numBackupChunks := r.uploadHeap.managedLen() - heapLen
@@ -1368,7 +1379,9 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Check if there is work to do. If the filesystem is healthy and the
 		// heap is empty, there is no work to do and the thread should block
 		// until there is work to do.
+		println("getting a sense of the health")
 		dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
+		println(dirHeapHealth)
 		if r.uploadHeap.managedLen() == 0 && dirHeapHealth < RepairThreshold {
 			// TODO: This has a tiny window where it might be dumping out chunks
 			// that need health, if the upload call is appending to the
@@ -1379,10 +1392,12 @@ func (r *Renter) threadedUploadAndRepair() {
 			// the chunks into the heap. Then, even if a reset is triggered,
 			// because a rapid bubble has already completed updating the health
 			// of the root dir, it will be considered fairly.
+			println("doing a reset on the heap")
 			r.directoryHeap.managedReset()
 
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.
+			println("blocking because the heap is healthy")
 			select {
 			case <-r.uploadHeap.newUploads:
 				r.repairLog.Debugln("repair loop triggered by new upload channel")
@@ -1392,6 +1407,7 @@ func (r *Renter) threadedUploadAndRepair() {
 				return
 			}
 
+			println("pushing unexplored chunks into the heap, received a signal to restart")
 			err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
 			if err != nil {
 				// If there is an error initializing the directory heap log
@@ -1407,6 +1423,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Add chunks to heap.
+		println("adding chunks to the heap")
 		dirSiaPaths, err := r.managedAddChunksToHeap(hosts)
 		if err != nil {
 			// Log the error but don't sleep as there are potentially chunks in
@@ -1427,6 +1444,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		if uploadHeapLen > 0 {
 			r.repairLog.Printf("Executing an upload and repair cycle, uploadHeap has %v chunks in it", uploadHeapLen)
 		}
+		println("running the repair loop")
 		err = r.managedRepairLoop(hosts)
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
