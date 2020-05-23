@@ -133,6 +133,7 @@ func (c *Contractor) CancelContract(id types.FileContractID) error {
 // allowance period. Only contracts formed with currently online hosts are
 // returned.
 func (c *Contractor) Contracts() []modules.RenterContract {
+	println("doing a view all")
 	return c.staticContracts.ViewAll()
 }
 

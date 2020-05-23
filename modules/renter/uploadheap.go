@@ -659,7 +659,9 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 	prevHeapLen := r.uploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
+	println("chunk adding loop")
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
+		println("chunk adding iter")
 		select {
 		case <-r.tg.StopChan():
 			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
@@ -667,6 +669,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		}
 
 		// Pop an explored directory off of the directory heap
+		println("exporing directory")
 		dir, err := r.managedNextExploredDirectory()
 		if err != nil {
 			r.repairLog.Println("WARN: error fetching directory for repair:", err)
@@ -682,6 +685,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		}
 
 		// If the directory that was just popped is healthy then return
+		println("grabbing dir health")
 		heapHealth, _ := dir.managedHeapHealth()
 		if heapHealth < RepairThreshold {
 			r.repairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
@@ -689,6 +693,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		}
 
 		// Add chunks from the directory to the uploadHeap.
+		println("buiding chunk heap")
 		r.managedBuildChunkHeap(dir.staticSiaPath, hosts, targetUnstuckChunks)
 
 		// Check to see if we are still adding chunks
@@ -702,6 +707,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		prevHeapLen = heapLen
 
 		// Since we added chunks from this directory, track the siaPath
+		println("adding some siapaths")
 		err = siaPaths.callAdd(dir.staticSiaPath)
 		if err != nil {
 			r.repairLog.Println("WARN: error adding siapath to tracked paths to bubble:", err)

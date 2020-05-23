@@ -160,6 +160,7 @@ func (cs *ContractSet) ViewAll() []modules.RenterContract {
 	defer cs.mu.Unlock()
 	contracts := make([]modules.RenterContract, 0, len(cs.contracts))
 	for _, safeContract := range cs.contracts {
+		println("pulling a safe contract")
 		contracts = append(contracts, safeContract.Metadata())
 	}
 	return contracts

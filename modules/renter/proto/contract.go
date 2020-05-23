@@ -178,6 +178,7 @@ func (c *SafeContract) LastRevision() types.FileContractRevision {
 
 // Metadata returns the metadata of a renter contract
 func (c *SafeContract) Metadata() modules.RenterContract {
+	println("grabbing metadata")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	h := c.header

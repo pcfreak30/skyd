@@ -441,6 +441,7 @@ func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
 // information. Information about which contracts are offline, goodForRenew are
 // available, as well as a full list of contracts keyed by their public key.
 func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
+	println("call to utility maps")
 	// Save host keys in map.
 	contracts = make(map[string]modules.RenterContract)
 	goodForRenew = make(map[string]bool)
@@ -448,7 +449,9 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 
 	// Get the list of public keys from the contractor and use it to fill out
 	// the contracts map.
+	println("getting list of contracts")
 	cs := r.hostContractor.Contracts()
+	println("got list of contracts")
 	for i := 0; i < len(cs); i++ {
 		contracts[cs[i].HostPublicKey.String()] = cs[i]
 	}
