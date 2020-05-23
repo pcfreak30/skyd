@@ -661,7 +661,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 	// heap is empty
 	println("chunk adding loop")
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
-		println("chunk adding iter")
+		println("chunk adding iter", r.uploadHeap.managedLen(), r.directoryHeap.managedLen())
 		select {
 		case <-r.tg.StopChan():
 			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
@@ -671,7 +671,9 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		// Pop an explored directory off of the directory heap
 		println("exporing directory")
 		dir, err := r.managedNextExploredDirectory()
+		println("got", dir.staticSiaPath.String())
 		if err != nil {
+			println("got an error... doing a reset", err.Error())
 			r.repairLog.Println("WARN: error fetching directory for repair:", err)
 			// Reset the directory heap to try and help address the error
 			r.directoryHeap.managedReset()
@@ -681,6 +683,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		// Sanity Check if directory was returned
 		if dir == nil {
 			r.repairLog.Debugln("no more chunks added to the upload heap because there are no more directories")
+			println("dir is nil, returning what we have")
 			return siaPaths, nil
 		}
 
@@ -689,6 +692,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		heapHealth, _ := dir.managedHeapHealth()
 		if heapHealth < RepairThreshold {
 			r.repairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
+			println("heap health is below repair threshold, returning")
 			return siaPaths, nil
 		}
 
@@ -701,13 +705,14 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		if heapLen == prevHeapLen {
 			// If no chunks were added from this directory then just continue as
 			// this could be due to a slight delay in the metadata being updated
+			println("continuing to the next part of the upload heap, because there was nothing interesting in this heap")
 			continue
 		}
 		chunksAdded := heapLen - prevHeapLen
 		prevHeapLen = heapLen
 
 		// Since we added chunks from this directory, track the siaPath
-		println("adding some siapaths")
+		println("adding some siapaths to the tracker")
 		err = siaPaths.callAdd(dir.staticSiaPath)
 		if err != nil {
 			r.repairLog.Println("WARN: error adding siapath to tracked paths to bubble:", err)

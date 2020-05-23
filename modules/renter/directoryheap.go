@@ -245,6 +245,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 
 		// Pop directory
 		d := r.directoryHeap.managedPop()
+		println("popped a d: ", d.staticSiaPath.String())
 
 		// Sanity check that we are still popping off directories
 		if d == nil {
@@ -255,20 +256,24 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 		d.mu.Lock()
 		explored := d.explored
 		if !explored {
+			println("dir was not explored, setting it to explored")
 			d.explored = true
 		}
 		d.mu.Unlock()
 		if explored {
+			println("dir was explored, returning early")
 			return d, nil
 		}
 
 		// Add Sub directories
+		println("dir was not explored, adding a bunch of subdirs")
 		err := r.managedPushSubDirectories(d)
 		if err != nil {
 			return nil, err
 		}
 
 		// Add popped directory back to heap with explored now set to true.
+		println("re-adding this dir, but now as explored")
 		r.directoryHeap.managedPush(d)
 	}
 }
@@ -281,6 +286,7 @@ func (r *Renter) managedPushSubDirectories(d *directory) error {
 		return err
 	}
 	for _, subDir := range subDirs {
+		println("pushing subdir as unexplored: ", subDir.String())
 		err = r.managedPushUnexploredDirectory(subDir)
 		if err != nil {
 			return err
