@@ -659,7 +659,10 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 	prevHeapLen := r.uploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
+<<<<<<< HEAD
 	println("chunk adding loop")
+=======
+>>>>>>> utility-maps
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
 		println("chunk adding iter", r.uploadHeap.managedLen(), r.directoryHeap.managedLen())
