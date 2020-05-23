@@ -27,7 +27,7 @@ import (
 
 const (
 	// minAsyncVersion defines the minimum version that is supported
-	minAsyncVersion = "1.4.9"
+	minAsyncVersion = "1.4.8"
 )
 
 type (
@@ -68,6 +68,7 @@ type (
 		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
 		staticJobHasSectorQueue      *jobHasSectorQueue
 		staticJobReadSectorQueue     *jobReadSectorQueue
+		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
 
 		// Upload variables.
 		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -184,10 +185,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}
+	w.initJobUploadSnapshotQueue()
 	w.newPriceTable()
 	w.newJobHasSectorQueue()
 	w.newJobReadSectorQueue()
-	// Get the worker cache set up before returning the worker. This prvents a
+	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	if !w.staticTryUpdateCache() {
 		return nil, errors.New("unable to build cache for worker")
