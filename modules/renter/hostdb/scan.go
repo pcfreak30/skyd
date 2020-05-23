@@ -218,7 +218,6 @@ func (hdb *HostDB) queueScan(entry modules.HostDBEntry) {
 func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	// If the scan failed because we don't have Internet access, toss out this update.
 	if netErr != nil && !hdb.gateway.Online() {
-		println("skipping update because gateway is not online")
 		return
 	}
 
@@ -270,8 +269,6 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 				hdb.staticLog.Printf("Host %v is being downgraded from an online host to an offline host: %v\n", newEntry.PublicKey.String(), netErr)
 			}
 			newEntry.ScanHistory = append(newEntry.ScanHistory, modules.HostDBScan{Timestamp: newTimestamp, Success: netErr == nil})
-		} else {
-			println("skipping this scan because it's too recent")
 		}
 	}
 
@@ -371,7 +368,6 @@ func (hdb *HostDB) staticLookupIPNets(address modules.NetAddress) (ipNets []stri
 // managedScanHost will connect to a host and grab the settings, verifying
 // uptime and updating to the host's preferences.
 func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
-	println("scanning host:", entry.PublicKey.String())
 	// Request settings from the queued host entry.
 	netAddr := entry.NetAddress
 	pubKey := entry.PublicKey
