@@ -51,7 +51,7 @@ type (
 // price table should be updated.
 func (w *worker) staticNeedsPriceTableUpdate() bool {
 	// Check the version.
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) != 0 {
 		return false
 	}
 	return time.Now().After(w.staticPriceTable().staticUpdateTime)
