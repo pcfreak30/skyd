@@ -83,9 +83,12 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 	var dirSiaPaths []modules.SiaPath
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	numStuckChunks, _ := r.uploadHeap.managedNumStuckChunks()
+	println("out of stuck chunk stuck stack loop")
 	for r.stuckStack.managedLen() > 0 && numStuckChunks < maxStuckChunksInHeap {
+		println("inside of stuck chunk stuck stack loop:", r.stuckStack.managedLen(), " ", numStuckChunks, " ", maxStuckChunksInHeap)
 		// Pop the first file SiaPath
 		siaPath := r.stuckStack.managedPop()
+		println("popped a dir: ", siaPath.String())
 
 		// Add stuck chunks to uploadHeap
 		err := r.managedAddStuckChunksToHeap(siaPath, hosts, offline, goodForRenew)
@@ -417,6 +420,7 @@ func (r *Renter) threadedStuckFileLoop() {
 
 	// Loop until the renter has shutdown or until there are no stuck chunks
 	for {
+		println("stuck file loop iter")
 		// Return if the renter has shut down.
 		select {
 		case <-r.tg.StopChan():
@@ -446,6 +450,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		// that it is more likely additional stuck chunks from these files will
 		// be successful compared to a random stuck chunk from the renter's
 		// directory.
+		println("stuck file loop is at the top")
 		stuckStackDirSiaPaths, err := r.managedAddStuckChunksFromStuckStack(hosts)
 		if err != nil {
 			r.repairLog.Println("WARN: error adding stuck chunks to repair heap from files with previously successful stuck repair jobs:", err)
