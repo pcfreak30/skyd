@@ -2,6 +2,7 @@ package renter
 
 import (
 	"sync"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -256,13 +257,14 @@ func (w *worker) managedRefillAccount() {
 		// need to be refilled until the worker has spent up the funds in the
 		// account.
 		w.staticAccount.managedCommitDeposit(amount, err == nil)
-		if err == nil {
+		if err == nil || strings.Contains(err.Error(), "balance exceeded") {
 			w.staticAccount.mu.Lock()
 			w.staticAccount.consecutiveFailures = 0
 			w.staticAccount.mu.Unlock()
 			return
 		}
 
+		println("error while refilling account: ", err.Error())
 		// If the error is not nil, increment the cooldown.
 		w.staticAccount.mu.Lock()
 		cd := cooldownUntil(w.staticAccount.consecutiveFailures)

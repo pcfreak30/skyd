@@ -260,11 +260,6 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		newTimestamp := time.Now()
 		prevTimestamp := newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Timestamp
 		if newTimestamp.After(prevTimestamp.Add(scanTimeElapsedRequirement)) {
-			if netErr != nil {
-				fmt.Printf("%v is adding a failed scan\n", entry.PublicKey.String())
-			} else {
-				fmt.Printf("%v is adding a successful scan\n", entry.PublicKey.String())
-			}
 			if newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Success && netErr != nil {
 				hdb.staticLog.Printf("Host %v is being downgraded from an online host to an offline host: %v\n", newEntry.PublicKey.String(), netErr)
 			}

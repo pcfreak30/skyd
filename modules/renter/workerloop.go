@@ -170,18 +170,21 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
 	cache := w.staticCache()
 	if build.VersionCmp(minAsyncVersion, cache.staticHostVersion) != 0 {
+		println("discarding all async jobs on worker because the version is bad")
 		w.managedDiscardAsyncJobs()
 		return false
 	}
 
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
+		println("discarding all async jobs because the price table is bad")
 		w.managedDiscardAsyncJobs()
 		return false
 	}
 
 	// If the account is on cooldown, drop all async jobs.
 	if w.staticAccount.managedOnCooldown() {
+		println("discarding all async jobs because the accounts are not ready")
 		w.managedDiscardAsyncJobs()
 		return false
 	}

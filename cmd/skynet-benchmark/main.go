@@ -145,7 +145,7 @@ func main() {
 	fmt.Printf("Beginning download testing. Each test is %v files\n\n", filesPerDir)
 
 	// Download all of the 64kb files.
-	threadss := []uint64{1, 4, 16, 64} // threadss is the plural of threads
+	threadss := []uint64{16, 64} // threadss is the plural of threads
 	downloadStart := time.Now()
 	for _, threads := range threadss {
 		err = downloadFileSet(dir64kbPath, exactSize64kb, threads)

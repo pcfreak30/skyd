@@ -170,6 +170,7 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 		// If the job fails, go on cooldown. Skip updating the performacne
 		// metrics.
 		if err != nil {
+			println("job failed, going on cooldown:", err.Error())
 			jq.mu.Lock()
 			jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 			jq.consecutiveFailures++
@@ -239,7 +240,7 @@ func (jq *jobHasSectorQueue) discardJobsHasSector() {
 		j := job
 		jq.staticWorker.renter.tg.Launch(func() {
 			response := &jobHasSectorResponse{
-				staticErr: errors.New("worker is dumping all has sector jobs"),
+				staticErr: errors.New("worker is discarding all has sector jobs"),
 			}
 			select {
 			case j.staticResponseChan <- response:

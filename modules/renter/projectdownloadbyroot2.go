@@ -170,7 +170,8 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	numAsyncWorkers := 0
 	for _, worker := range workers {
 		cache := worker.staticCache()
-		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
+		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) != 0 {
+			println("skipping b/c worker doesn't have good version")
 			continue
 		}
 		jhs := jobHasSector{
@@ -264,6 +265,12 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			// best worker that we have to attempt the download. No need to wait
 			// for a signal.
 			useBestWorker = true
+		}
+
+		// Logging
+		if resp != nil && resp.staticErr != nil {
+			println("resp err")
+			println(resp.staticErr.Error())
 		}
 
 		// If we received a response from a worker that is not useful for
@@ -361,6 +368,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		fmt.Printf("%v: Sector data received: %v\n", root, time.Since(start))
 		return readSectorResp.staticData, nil
 	}
+	println("out of loop:", responses, " ", len(workers), " ", len(usableWorkers))
 
 	// All workers have failed.
 	fmt.Println("Not found, all workers have failed.")
