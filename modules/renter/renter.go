@@ -932,7 +932,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Init the context and close it on stop.
 	// TODO: Alternatively we can change the ThreadGroup implementation to
-	// provide a context by default which it closes when `Stop` is called.
+	// provide a context by default which it closes when `Stop` is called. That
+	// way every modules gets a context by default. We have a few places where
+	// we call `context.Background()` right now where we probably want to use a
+	// module context instead. e.g. when we create the context for running the
+	// MDM.
 	ctx, cancel := context.WithCancel(context.Background())
 	err := r.tg.OnStop(func() error {
 		cancel()
