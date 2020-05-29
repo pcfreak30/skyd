@@ -198,23 +198,16 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	useBestWorker := false
 	for responses < len(workers) || len(usableWorkers) > 0 {
 		var resp *jobHasSectorResponse
-		if len(usableWorkers) > 0 && responses < numAsyncWorkers {
-			// There are usable workers, and there are also workers that have
-			// not reported back yet. Because we have usable workers, we want to
-			// listen on the useBestWorkerChan.
+		if responses < numAsyncWorkers {
+			// There are workers that have not reported back yet. Regardless of
+			// whether we have usable workers or not we want to listen on the
+			// useBestWorkerChan since it will get cancelled implicitly when the
+			// project times out.
 			select {
 			case <-useBestWorkerCtx.Done():
 				useBestWorker = true
 			case resp = <-staticResponseChan:
 				responses++
-			}
-		} else if len(usableWorkers) == 0 {
-			// There are no usable workers, which means there's no point
-			// listening on the useBestWorkerChan.
-			select {
-			case resp = <-staticResponseChan:
-				responses++
-			case <-projectCtx.Done():
 			}
 		} else {
 			// All workers have responded, which means we should now use the
