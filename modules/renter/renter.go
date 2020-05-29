@@ -24,6 +24,7 @@ package renter
 // set so that 'callUpdate()' can be used. Implementation in renter.SetSettings.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -210,6 +211,7 @@ type Renter struct {
 
 	// Utilities.
 	cs                    modules.ConsensusSet
+	ctx                   context.Context
 	deps                  modules.Dependencies
 	g                     modules.Gateway
 	w                     modules.Wallet
@@ -928,9 +930,21 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	close(r.uploadHeap.pauseChan)
 
+	// Init the context and close it on stop.
+	// TODO: Alternatively we can change the ThreadGroup implementation to
+	// provide a context by default which it closes when `Stop` is called.
+	ctx, cancel := context.WithCancel(context.Background())
+	err := r.tg.OnStop(func() error {
+		cancel()
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	r.ctx = ctx
+
 	// Initialize the loggers so that they are available for the components as
 	// the components start up.
-	var err error
 	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
 	if err != nil {
 		return nil, err

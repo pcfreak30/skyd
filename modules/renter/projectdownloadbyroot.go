@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -109,30 +110,15 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
 
-	// Create a channel to time out the project. Use a nil channel if the
-	// timeout is zero, so that the timeout never fires.
-	var timeoutChan <-chan time.Time
+	// Create a context to time out the project.
+	var projectCtx context.Context
+	var cancel context.CancelFunc
 	if timeout > 0 {
-		timer := time.NewTimer(timeout)
-		timeoutChan = timer.C
-
-		// Defer a function to clean up the timer so nothing else in the
-		// function needs to worry about it.
-		defer func() {
-			if !timer.Stop() {
-				<-timer.C
-			}
-		}()
+		projectCtx, cancel = context.WithTimeout(r.ctx, timeout)
+	} else {
+		projectCtx, cancel = context.WithCancel(r.ctx)
 	}
-
-	// Create a channel to signal to workers when the job has been completed.
-	// This will cause any workers who have not yet started the job to ignore it
-	// instead of doing duplicate work.
-	cancelChan := make(chan struct{})
-	defer func() {
-		// Automatically cancel the work when the function exits.
-		close(cancelChan)
-	}()
+	defer cancel()
 
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
@@ -157,7 +143,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			staticResponseChan: staticResponseChan,
 
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cancelChan,
+				staticCancelChan: projectCtx.Done(),
 
 				staticQueue: worker.staticJobHasSectorQueue,
 			},
@@ -176,7 +162,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
 	}
 
-	// Create a timer that is used to determine when the project should stop
+	// Create a context that is used to determine when the project should stop
 	// looking for a better worker, and instead go use the best worker it has
 	// found so far.
 	//
@@ -193,16 +179,8 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	// After we have spent half of the whole historic time waiting for better
 	// workers to appear, we give up and use the best worker that we have found
 	// so far.
-	useBestWorkerChan := make(chan struct{})
-	useBestWorkerTimer := time.AfterFunc(pm.managedAverageProjectTime(length)/2, func() {
-		close(useBestWorkerChan)
-	})
-	// Clean up the timer. AfterFunc doesn't require draining the timer, you
-	// just call Stop. The return value only exists to indicate whether or not
-	// the function ran, which we don't care about.
-	defer func() {
-		useBestWorkerTimer.Stop()
-	}()
+	useBestWorkerCtx, useBestWorkerCancel := context.WithTimeout(projectCtx, pm.managedAverageProjectTime(length)/2)
+	defer useBestWorkerCancel()
 
 	// Run a loop to receive responses from the workers as they figure out
 	// whether or not they have the sector we are looking for. The loop needs to
@@ -219,26 +197,16 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	usableWorkers := make(map[int]*worker)
 	useBestWorker := false
 	for responses < len(workers) || len(usableWorkers) > 0 {
-		// Check for the timeout. This is done separately to ensure the timeout
-		// has priority.
-		select {
-		case <-timeoutChan:
-			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
-		default:
-		}
-
 		var resp *jobHasSectorResponse
 		if len(usableWorkers) > 0 && responses < numAsyncWorkers {
 			// There are usable workers, and there are also workers that have
 			// not reported back yet. Because we have usable workers, we want to
 			// listen on the useBestWorkerChan.
 			select {
-			case <-useBestWorkerChan:
+			case <-useBestWorkerCtx.Done():
 				useBestWorker = true
 			case resp = <-staticResponseChan:
 				responses++
-			case <-timeoutChan:
-				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 			}
 		} else if len(usableWorkers) == 0 {
 			// There are no usable workers, which means there's no point
@@ -246,14 +214,20 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			select {
 			case resp = <-staticResponseChan:
 				responses++
-			case <-timeoutChan:
-				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+			case <-projectCtx.Done():
 			}
 		} else {
 			// All workers have responded, which means we should now use the
 			// best worker that we have to attempt the download. No need to wait
 			// for a signal.
 			useBestWorker = true
+		}
+
+		// Check if we got unblocked due to the project timing out.
+		select {
+		case <-projectCtx.Done():
+			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+		default:
 		}
 
 		// If we received a response from a worker that is not useful for
@@ -318,7 +292,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			staticSector: root,
 
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cancelChan,
+				staticCancelChan: projectCtx.Done(),
 
 				staticQueue: bestWorker.staticJobReadSectorQueue,
 			},
@@ -338,7 +312,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		var readSectorResp *jobReadSectorResponse
 		select {
 		case readSectorResp = <-readSectorRespChan:
-		case <-timeoutChan:
+		case <-projectCtx.Done():
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
 
