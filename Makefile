@@ -239,6 +239,8 @@ fullcover: clean
 whitepaper:
 	@pdflatex -output-directory=doc whitepaper.tex > /dev/null
 	pdflatex -output-directory=doc whitepaper.tex
+	@pdflatex -output-directory=doc skypaper.tex > /dev/null
+	pdflatex -output-directory=doc skypaper.tex
 
 .PHONY: all fmt install release clean test test-v test-long cover whitepaper
 
