@@ -2,6 +2,7 @@ package renter
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -343,4 +344,66 @@ func (w *worker) managedRefillAccount() {
 	// money in the account can be activated.
 	w.staticWake()
 	return
+}
+
+// managedCheckAccountBalance performs the AccountBalanceRPC on the host and
+// compares it with the current account balance. In case the returned balance
+// differs from our account balance we perform a series of checks in order to
+// determine whether or not the host should be penalized.
+func (w *worker) managedCheckAccountBalance() error {
+	// Sanity check - only one account balance check should be running at a
+	// time.
+	if !atomic.CompareAndSwapUint64(&w.atomicAccountBalanceCheckRunning, 0, 1) {
+		w.renter.log.Critical("account balance is being checked in two threads concurrently")
+	}
+	defer atomic.StoreUint64(&w.atomicAccountBalanceCheckRunning, 0)
+
+	// Get a stream.
+	stream, err := w.staticNewStream()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", streamCloseErr)
+		}
+	}()
+
+	// write the specifier
+	err = modules.RPCWrite(stream, modules.RPCAccountBalance)
+	if err != nil {
+		return err
+	}
+
+	// send price table uid
+	pt := w.staticPriceTable().staticPriceTable
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return err
+	}
+
+	// prepare the request.
+	abr := modules.AccountBalanceRequest{Account: w.staticAccount.staticID}
+
+	// provide payment
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
+	if err != nil {
+		return err
+	}
+
+	// read the response
+	var resp modules.AccountBalanceResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return err
+	}
+
+	// return early if the balance communicated by the host equals our own
+	if w.staticAccount.managedAvailableBalance().Equals(resp.Balance) {
+		return nil
+	}
+
+
+	actual := resp.Balance
+
 }

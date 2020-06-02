@@ -86,7 +86,7 @@ func (wpt *workerPriceTable) staticValid() bool {
 	return wpt.staticPriceTable.Expiry > time.Now().Unix()
 }
 
-// managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
+// staticUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) staticUpdatePriceTable() {
 	// Sanity check - This function runs on a fairly strict schedule, the
 	// control loop should not have called this function unless the price table
