@@ -365,7 +365,7 @@ func (w *worker) managedCheckAccountBalance() error {
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", streamCloseErr)
+			w.renter.log.Println("ERROR: failed to close stream", err)
 		}
 	}()
 
@@ -384,6 +384,10 @@ func (w *worker) managedCheckAccountBalance() error {
 
 	// prepare the request.
 	abr := modules.AccountBalanceRequest{Account: w.staticAccount.staticID}
+	err = modules.RPCWrite(stream, abr)
+	if err != nil {
+		return err
+	}
 
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
@@ -403,7 +407,6 @@ func (w *worker) managedCheckAccountBalance() error {
 		return nil
 	}
 
-
-	actual := resp.Balance
-
+	// TODO handle case where it's !=
+	return nil
 }
