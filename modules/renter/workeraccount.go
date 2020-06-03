@@ -200,8 +200,6 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 
 // updateLastUsed updates the `lastUsed` timestamp on the account
 func (a *account) updateLastUsed() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.lastUsed = time.Now().Unix()
 }
 
