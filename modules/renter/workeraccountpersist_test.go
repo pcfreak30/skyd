@@ -23,8 +23,8 @@ func newRandomAccountPersistence() accountPersistence {
 		AccountID: aid,
 		Balance:   types.NewCurrency64(fastrand.Uint64n(1e3)),
 		HostKey:   types.SiaPublicKey{},
-		LastUsed:  time.Now().Unix(),
 		SecretKey: sk,
+		LastUsed:  time.Now().Unix(),
 	}
 }
 
