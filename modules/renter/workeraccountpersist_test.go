@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -21,6 +23,7 @@ func newRandomAccountPersistence() accountPersistence {
 		AccountID: aid,
 		Balance:   types.NewCurrency64(fastrand.Uint64n(1e3)),
 		HostKey:   types.SiaPublicKey{},
+		LastUsed:  time.Now().Unix(),
 		SecretKey: sk,
 	}
 }
@@ -253,6 +256,9 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	if !ap.HostKey.Equals(uMar.HostKey) {
 		t.Fatal("Unexpected hostkey")
 	}
+	if ap.LastUsed != uMar.LastUsed {
+		t.Fatal("Unexpected last used")
+	}
 	if !bytes.Equal(ap.SecretKey[:], uMar.SecretKey[:]) {
 		t.Fatal("Unexpected secretkey")
 	}
@@ -271,5 +277,62 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	err = uMar.loadBytes(corruptedBytes2)
 	if err != errInvalidChecksum {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
+	}
+}
+
+// TestCompatV150AccountPersistenceFromBytes verifies that the account bytes of
+// an account persistence object before it had the `lastUsed` property can be
+// loaded into the current persistence object without corrupting it.
+func TestCompatV150AccountPersistenceFromBytes(t *testing.T) {
+	t.Parallel()
+
+	// make a persistence object without the `lastUsed` field
+	random := newRandomAccountPersistence()
+	oldPersistence := struct {
+		AccountID modules.AccountID
+		Balance   types.Currency
+		HostKey   types.SiaPublicKey
+		SecretKey crypto.SecretKey
+	}{
+		AccountID: random.AccountID,
+		Balance:   random.Balance,
+		HostKey:   random.HostKey,
+		SecretKey: random.SecretKey,
+	}
+
+	// pad it and create a checksum
+	accBytesMaxSize := accountSize - crypto.HashSize
+	accBytesPadded := make([]byte, accBytesMaxSize)
+	copy(accBytesPadded, encoding.Marshal(oldPersistence))
+	checksum := crypto.HashBytes(accBytesPadded)
+
+	// merge the data + checksum in a byte slice of appropriate size, this
+	// should give us the bytes as they were on disk before adding the
+	// `lastUsed` field
+	oldAccBytes := make([]byte, accountSize)
+	copy(oldAccBytes[:len(checksum)], checksum[:])
+	copy(oldAccBytes[len(checksum):], accBytesPadded)
+
+	// unmarhsal those into a new persistence object, verify all fields remain
+	// intact and `lastUsed` simply initializes to 0
+	var uMar accountPersistence
+	err := uMar.loadBytes(oldAccBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !oldPersistence.AccountID.SPK().Equals(uMar.AccountID.SPK()) {
+		t.Fatal("Unexpected AccountID")
+	}
+	if !oldPersistence.Balance.Equals(uMar.Balance) {
+		t.Fatal("Unexpected balance")
+	}
+	if !oldPersistence.HostKey.Equals(uMar.HostKey) {
+		t.Fatal("Unexpected hostkey")
+	}
+	if !bytes.Equal(oldPersistence.SecretKey[:], uMar.SecretKey[:]) {
+		t.Fatal("Unexpected secretkey")
+	}
+	if uMar.LastUsed != 0 {
+		t.Fatal("Unexpected last used")
 	}
 }
