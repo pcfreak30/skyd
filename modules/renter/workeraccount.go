@@ -37,6 +37,13 @@ type (
 		pendingWithdrawals types.Currency
 		pendingDeposits    types.Currency
 
+		// Keep track of when this account was last used. We need this piece of
+		// information to decide whether or not the host is cheating us after
+		// long periods of inactivity. Using this timestamp we can decide
+		// whether or not it's reasonable the host expired our account (and thus
+		// nullified our balance)
+		lastUsed int64
+
 		// Error handling and cooldown tracking.
 		consecutiveFailures uint64
 		cooldownUntil       time.Time
@@ -140,6 +147,7 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 			a.negativeBalance = types.ZeroCurrency
 			a.balance = a.balance.Add(amount)
 		}
+		a.updateLastUsed()
 	}
 }
 
@@ -163,6 +171,7 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 			a.balance = types.ZeroCurrency
 			a.negativeBalance = a.negativeBalance.Add(amount)
 		}
+		a.updateLastUsed()
 	}
 }
 
@@ -188,6 +197,11 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
+}
+
+// updateLastUsed updates the `lastUsed` timestamp on the account
+func (a *account) updateLastUsed() {
+	a.lastUsed = time.Now().Unix()
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and

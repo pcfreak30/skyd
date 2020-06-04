@@ -79,6 +79,7 @@ type (
 		Balance   types.Currency
 		HostKey   types.SiaPublicKey
 		SecretKey crypto.SecretKey
+		LastUsed  int64
 	}
 )
 
@@ -105,6 +106,7 @@ func (a *account) managedPersist() error {
 		Balance:   a.balance,
 		HostKey:   a.staticHostKey,
 		SecretKey: a.staticSecretKey,
+		LastUsed:  a.lastUsed,
 	}
 	a.mu.Unlock()
 	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
@@ -417,7 +419,8 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 		staticHostKey:   accountData.HostKey,
 		staticSecretKey: accountData.SecretKey,
 
-		balance: accountData.Balance,
+		balance:  accountData.Balance,
+		lastUsed: accountData.LastUsed,
 
 		staticReady:  make(chan struct{}),
 		externActive: true,
