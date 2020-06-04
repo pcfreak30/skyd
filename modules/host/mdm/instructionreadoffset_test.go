@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -17,6 +18,7 @@ func TestInstructionReadOffset(t *testing.T) {
 
 	// Prepare a priceTable.
 	pt := newTestPriceTable()
+	duration := types.BlockHeight(fastrand.Uint64n(5))
 	// Prepare storage obligation.
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(initialContractSectors)
@@ -27,14 +29,14 @@ func TestInstructionReadOffset(t *testing.T) {
 	}
 	// Use a builder to build the program.
 	readLen := modules.SectorSize
-	tb := newTestProgramBuilder(pt)
+	tb := newTestProgramBuilder(pt, duration)
 	tb.AddReadOffsetInstruction(readLen, 0, true)
 
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
 
 	// Execute it.
-	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, false)
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,13 +54,16 @@ func TestInstructionReadOffset(t *testing.T) {
 	if mod := length % crypto.SegmentSize; mod != 0 {    // must be multiple of segmentsize
 		length -= mod
 	}
+	if length == 0 {
+		length = crypto.SegmentSize
+	}
 
 	// Use a builder to build the program.
-	tb = newTestProgramBuilder(pt)
+	tb = newTestProgramBuilder(pt, duration)
 	tb.AddReadOffsetInstruction(length, offset, true)
 
 	// Execute it.
-	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, false)
+	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -278,7 +278,7 @@ func (w *worker) threadedWorkLoop() {
 		// to distinguish between the times that we know our balance and the
 		// times that we don't. Checking right at startup also allows us to give
 		// a quick honesty check on the host.
-		w.staticCheckAccountBalance()
+		w.managedCheckAccountBalance()
 
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
@@ -294,12 +294,7 @@ func (w *worker) threadedWorkLoop() {
 		if !w.managedBlockUntilReady() {
 			return
 		}
-
-		// Update the cache for the worker if needed.
-		if !w.staticTryUpdateCache() {
-			w.renter.log.Printf("worker %v is being killed because the cache could not be updated", w.staticHostPubKeyStr)
-			return
-		}
+		w.staticTryUpdateCache()
 
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up
