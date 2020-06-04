@@ -2,16 +2,17 @@ package renter
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -280,59 +281,57 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	}
 }
 
+// v1410AccountSize is the account size const at v1.4.10 - we need to keep track
+// of it in case we decide to alter the account size in later versions
+const v1410AccountSize = 1 << 8 // 256 bytes
+
 // TestCompatV150AccountPersistenceFromBytes verifies that the account bytes of
 // an account persistence object before it had the `lastUsed` property can be
 // loaded into the current persistence object without corrupting it.
 func TestCompatV150AccountPersistenceFromBytes(t *testing.T) {
 	t.Parallel()
-
-	// make a persistence object without the `lastUsed` field
-	random := newRandomAccountPersistence()
-	oldPersistence := struct {
-		AccountID modules.AccountID
-		Balance   types.Currency
-		HostKey   types.SiaPublicKey
-		SecretKey crypto.SecretKey
-	}{
-		AccountID: random.AccountID,
-		Balance:   random.Balance,
-		HostKey:   random.HostKey,
-		SecretKey: random.SecretKey,
+	if testing.Short() {
+		t.SkipNow()
 	}
 
-	// pad it and create a checksum
-	accBytesMaxSize := accountSize - crypto.HashSize
-	accBytesPadded := make([]byte, accBytesMaxSize)
-	copy(accBytesPadded, encoding.Marshal(oldPersistence))
-	checksum := crypto.HashBytes(accBytesPadded)
-
-	// merge the data + checksum in a byte slice of appropriate size, this
-	// should give us the bytes as they were on disk before adding the
-	// `lastUsed` field
-	oldAccBytes := make([]byte, accountSize)
-	copy(oldAccBytes[:len(checksum)], checksum[:])
-	copy(oldAccBytes[len(checksum):], accBytesPadded)
-
-	// unmarhsal those into a new persistence object, verify all fields remain
-	// intact and `lastUsed` simply initializes to 0
-	var uMar accountPersistence
-	err := uMar.loadBytes(oldAccBytes)
+	path := filepath.Join("..", "..", "compatibility", "accountsV150.dat")
+	compatFile, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !oldPersistence.AccountID.SPK().Equals(uMar.AccountID.SPK()) {
-		t.Fatal("Unexpected AccountID")
+
+	var count int
+	for offset := int64(v1410AccountSize); ; offset += v1410AccountSize {
+		// read account bytes
+		accountBytes := make([]byte, v1410AccountSize)
+		_, err := compatFile.ReadAt(accountBytes, offset)
+		if errors.Contains(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+
+		// load the account bytes onto the current persistence object
+		//
+		// Note: we do not have to verify the accountData itself because
+		// `loadBytes` would return an error if the checksum does not match
+		var accountData accountPersistence
+		err = accountData.loadBytes(accountBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// verify lastUsed is 0 for these compat accounts, which is ok
+		if accountData.LastUsed != 0 {
+			t.Fatal("Unexpected last used")
+		}
+
+		// keep track of the amount of accounts that properly got loaded from
+		// the compat accounts file
+		count++
 	}
-	if !oldPersistence.Balance.Equals(uMar.Balance) {
-		t.Fatal("Unexpected balance")
-	}
-	if !oldPersistence.HostKey.Equals(uMar.HostKey) {
-		t.Fatal("Unexpected hostkey")
-	}
-	if !bytes.Equal(oldPersistence.SecretKey[:], uMar.SecretKey[:]) {
-		t.Fatal("Unexpected secretkey")
-	}
-	if uMar.LastUsed != 0 {
-		t.Fatal("Unexpected last used")
+
+	if count != 163 {
+		t.Fatalf("Expected 163 accounts to be loaded, however only %v were found", count)
 	}
 }
