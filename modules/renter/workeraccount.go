@@ -175,12 +175,31 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 	}
 }
 
+// managedLastUsed returns the timestamp at which the account was last used
+func (a *account) managedLastUsed() int64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastUsed
+}
+
 // managedOnCooldown returns true if the account is on cooldown and therefore
 // unlikely to receive additional funding in the near future.
 func (a *account) managedOnCooldown() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.cooldownUntil.After(time.Now())
+}
+
+// managedResetBalance sets the given balance and resets the account's balance
+// delta state variables. This happens when we have performanced a balance
+// inquiry on the host and we decide to trust his version of the balance.
+func (a *account) managedResetBalance(balance types.Currency) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.balance = balance
+	a.pendingDeposits = types.ZeroCurrency
+	a.pendingWithdrawals = types.ZeroCurrency
+	a.negativeBalance = balance
 }
 
 // managedTrackDeposit keeps track of pending deposits by adding the given
@@ -363,11 +382,8 @@ func (w *worker) managedRefillAccount() {
 	return
 }
 
-// managedCheckAccountBalance performs the AccountBalanceRPC on the host and
-// compares it with the current account balance. In case the returned balance
-// differs from our account balance we perform a series of checks in order to
-// determine whether or not the host should be penalized.
-func (w *worker) managedCheckAccountBalance() error {
+// staticAccountBalance performs the AccountBalanceRPC on the host
+func (w *worker) staticAccountBalance() (types.Currency, error) {
 	// Sanity check - only one account balance check should be running at a
 	// time.
 	if !atomic.CompareAndSwapUint64(&w.atomicAccountBalanceCheckRunning, 0, 1) {
@@ -378,7 +394,7 @@ func (w *worker) managedCheckAccountBalance() error {
 	// Get a stream.
 	stream, err := w.staticNewStream()
 	if err != nil {
-		return err
+		return types.ZeroCurrency, err
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -389,41 +405,74 @@ func (w *worker) managedCheckAccountBalance() error {
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCAccountBalance)
 	if err != nil {
-		return err
+		return types.ZeroCurrency, err
 	}
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return err
+		return types.ZeroCurrency, err
 	}
 
 	// prepare the request.
 	abr := modules.AccountBalanceRequest{Account: w.staticAccount.staticID}
 	err = modules.RPCWrite(stream, abr)
 	if err != nil {
-		return err
+		return types.ZeroCurrency, err
 	}
 
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
-		return err
+		return types.ZeroCurrency, err
 	}
 
 	// read the response
 	var resp modules.AccountBalanceResponse
 	err = modules.RPCRead(stream, &resp)
 	if err != nil {
-		return err
+		return types.ZeroCurrency, err
+	}
+	return resp.Balance, nil
+}
+
+// mananagedCheckAccountBalanceDrift verifies whether the renter's account
+// balance has drifted from the host's version of the balance. This can happen
+// for various reasons, both a cheating host but also a myriad of cases where a
+// difference in the account balance is expected. In the bad case the host will
+// get penalized, in the good case the account balance will get reset.
+func (w *worker) mananagedCheckAccountBalanceDrift(hostBalance types.Currency) {
+	renterBalance := w.staticAccount.managedAvailableBalance()
+
+	// return early if the actual balance equals the expected balance
+	if hostBalance.Equals(renterBalance) {
+		return
 	}
 
-	// return early if the balance communicated by the host equals our own
-	if w.staticAccount.managedAvailableBalance().Equals(resp.Balance) {
-		return nil
+	// if the host balance is greater than the renter balance, we reset our
+	// version of the balance
+	if hostBalance.Cmp(renterBalance) > 0 {
+		w.staticAccount.managedResetBalance(hostBalance)
 	}
 
-	// TODO handle case where it's !=
-	return nil
+	// by now we know the host balance is lower than the renter balance, there
+	// are many valid reasons for this to happen, so we have to exclude those
+	// before we decide to penalize the host for cheating
+
+	// we will first handle the case where the host balance is zero, which might
+	// indicate the account expired, this is possible after a long period of
+	// inactivity from the renter
+	if hostBalance.IsZero() {
+		// calculate what would be a reasonable expiry time
+		lastUsed := w.staticAccount.managedLastUsed()
+		var defaultEAExpiry int64 = 604800 // 1 week (TODO get from host setting)
+		if time.Now().After(time.Unix(lastUsed+defaultEAExpiry, 0)) {
+			w.staticAccount.managedResetBalance(hostBalance)
+			return
+		}
+	}
+
+	// TODO penalize host
+	return
 }

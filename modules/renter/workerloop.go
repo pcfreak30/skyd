@@ -278,7 +278,12 @@ func (w *worker) threadedWorkLoop() {
 		// to distinguish between the times that we know our balance and the
 		// times that we don't. Checking right at startup also allows us to give
 		// a quick honesty check on the host.
-		w.managedCheckAccountBalance()
+		balance, err := w.staticAccountBalance()
+		if err == nil {
+			w.mananagedCheckAccountBalanceDrift(balance)
+		} else {
+			w.renter.log.Println("ERROR: could not perform balance check on the worker account", err)
+		}
 
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
