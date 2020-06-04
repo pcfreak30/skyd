@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -22,8 +23,42 @@ func newRandomHostKey() (types.SiaPublicKey, crypto.SecretKey) {
 	}, sk
 }
 
-// TestConstants makes sure that certain relationships between constants exist.
-func TestConstants(t *testing.T) {
+// TestAccount verifies the functionality of the account
+func TestAccount(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		closedRenter := rt.renter
+		if err := rt.Close(); err != nil {
+			t.Error(err)
+		}
+
+		// these test are ran on a renter after Close has been called
+		t.Run("Closed", func(t *testing.T) {
+			testAccountClosed(t, closedRenter)
+		})
+		t.Run("CriticalOnDoubleSave", func(t *testing.T) {
+			testAccountCriticalOnDoubleSave(t, closedRenter)
+		})
+	}()
+
+	t.Run("Constants", testAccountConstants)
+	t.Run("Creation", func(t *testing.T) { testAccountCreation(t, rt) })
+	t.Run("LastUsed", func(t *testing.T) { testAccountLastUsed(t, rt) })
+	t.Run("Tracking", func(t *testing.T) { testAccountTracking(t, rt) })
+}
+
+// testAccountConstants makes sure that certain relationships between constants
+// exist.
+func testAccountConstants(t *testing.T) {
 	// Sanity check that the metadata size is not larger than the account size.
 	if metadataSize > accountSize {
 		t.Fatal("metadata size is larger than account size")
@@ -36,24 +71,115 @@ func TestConstants(t *testing.T) {
 	}
 }
 
-// TestAccountTracking unit tests all of the methods on the account that track
-// deposits or withdrawals.
-func TestAccountTracking(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
+// testAccountCreation verifies newAccount returns a valid account object
+func testAccountCreation(t *testing.T, rt *renterTester) {
+	r := rt.renter
 
-	// create a renter
-	rt, err := newRenterTester(t.Name())
+	// create a random hostKey
+	_, pk := crypto.GenerateKeyPair()
+	hostKey := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// create an account with a different hostkey to ensure the account we are
+	// going to validate has an offset different from 0
+	tmpKey := hostKey
+	fastrand.Read(tmpKey.Key[:4])
+	r.staticAccountManager.managedOpenAccount(tmpKey)
+
+	// create a new account object
+	account, err := r.staticAccountManager.managedOpenAccount(hostKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := rt.Close(); err != nil {
-			t.Error(err)
-		}
-	}()
+
+	// validate the account object
+	if account.staticID.IsZeroAccount() {
+		t.Fatal("Invalid account ID")
+	}
+	if account.staticOffset == 0 {
+		t.Fatal("Invalid offset")
+	}
+	if !account.staticHostKey.Equals(hostKey) {
+		t.Fatal("Invalid host key")
+	}
+
+	// validate the account id is built using a valid SiaPublicKey and the
+	// account's secret key belongs to the public key used to construct the id
+	hash := crypto.HashBytes(fastrand.Bytes(10))
+	sig := crypto.SignHash(hash, account.staticSecretKey)
+	err = crypto.VerifyHash(hash, account.staticID.SPK().ToPublicKey(), sig)
+	if err != nil {
+		t.Fatal("Invalid secret key")
+	}
+}
+
+// testAccountLastUsed verifies the `lastUsed` property gets properly updated
+// when the commit functions are called.
+func testAccountLastUsed(t *testing.T, rt *renterTester) {
+	r := rt.renter
+
+	// create a random account
+	hostKey, _ := newRandomHostKey()
+	account, err := r.staticAccountManager.managedOpenAccount(hostKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// use zero currency to avoid negative balance errors
+	zc := types.ZeroCurrency
+
+	// verify lastUsed is not altered when tracking a deposit
+	before := account.lastUsed
+	account.managedTrackDeposit(zc)
+	if account.lastUsed != before {
+		t.Fatal("Unexpected update of `lastUsed` after tracking a deposit")
+	}
+
+	// verify lastUsed is not altered when committing an unsuccessful deposit
+	account.managedCommitDeposit(zc, false)
+	if account.lastUsed != before {
+		t.Fatal("Unexpected update of `lastUsed` after committing an unsuccessful deposit")
+	}
+
+	// verify lastUsed is updated when committing a successful deposit
+	account.managedCommitDeposit(zc, true)
+	if account.lastUsed == before {
+		t.Fatal("Expected update of `lastUsed` after committing a successful deposit")
+	}
+
+	// reset
+	account.lastUsed = 0
+	before = account.lastUsed
+
+	// verify lastUsed is not altered when tracking a withrdrawal
+	account.managedTrackWithdrawal(zc)
+	if account.lastUsed != before {
+		t.Fatal("Unexpected update of `lastUsed` after tracking a withrdrawal")
+	}
+
+	// verify lastUsed is not altered when committing an unsuccessful withdrawal
+	account.managedCommitWithdrawal(zc, false)
+	if account.lastUsed != before {
+		t.Fatal("Unexpected update of `lastUsed` after committing an unsuccessful withdrawal")
+	}
+
+	// verify lastUsed is updated when committing a successful withdrawal
+	account.managedCommitWithdrawal(zc, true)
+	if account.lastUsed == before {
+		t.Fatal("Expected update of `lastUsed` after committing a successful withdrawal")
+	}
+
+	// verify it's set to the current time, allow some leeway to avoid NDFs
+	if time.Since(time.Unix(account.lastUsed, 0)).Seconds() > 3 {
+		t.Fatal("Expected `lastUsed` to be updated to the current timestamp")
+	}
+}
+
+// testAccountTracking unit tests all of the methods on the account that track
+// deposits or withdrawals.
+func testAccountTracking(t *testing.T, rt *renterTester) {
 	r := rt.renter
 
 	// create a random account
@@ -117,62 +243,30 @@ func TestAccountTracking(t *testing.T) {
 	}
 }
 
-// TestNewAccount verifies newAccount returns a valid account object
-func TestNewAccount(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// create a renter
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
+// testAccountCriticalOnDoubleSave verifies the critical when
+// managedSaveAccounts is called twice.
+func testAccountCriticalOnDoubleSave(t *testing.T, closedRenter *Renter) {
 	defer func() {
-		if err := rt.Close(); err != nil {
-			t.Error(err)
+		if r := recover(); r != nil {
+			err := fmt.Sprint(r)
+			if !strings.Contains(err, "Trying to save accounts twice") {
+				t.Fatal("Expected error not returned")
+			}
 		}
 	}()
-	r := rt.renter
-
-	// create a random hostKey
-	_, pk := crypto.GenerateKeyPair()
-	hostKey := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
+	err := closedRenter.staticAccountManager.managedSaveAndClose()
+	if err == nil {
+		t.Fatal("Expected build.Critical on double save")
 	}
+}
 
-	// create an account with a different hostkey to ensure the account we are
-	// going to validate has an offset different from 0
-	tmpKey := hostKey
-	fastrand.Read(tmpKey.Key[:4])
-	r.staticAccountManager.managedOpenAccount(tmpKey)
-
-	// create a new account object
-	account, err := r.staticAccountManager.managedOpenAccount(hostKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// validate the account object
-	if account.staticID.IsZeroAccount() {
-		t.Fatal("Invalid account ID")
-	}
-	if account.staticOffset == 0 {
-		t.Fatal("Invalid offset")
-	}
-	if !account.staticHostKey.Equals(hostKey) {
-		t.Fatal("Invalid host key")
-	}
-
-	// validate the account id is built using a valid SiaPublicKey and the
-	// account's secret key belongs to the public key used to construct the id
-	hash := crypto.HashBytes(fastrand.Bytes(10))
-	sig := crypto.SignHash(hash, account.staticSecretKey)
-	err = crypto.VerifyHash(hash, account.staticID.SPK().ToPublicKey(), sig)
-	if err != nil {
-		t.Fatal("Invalid secret key")
+// testAccountClosed verifies accounts can not be opened after the 'closed' flag
+// has been set to true by the save.
+func testAccountClosed(t *testing.T, closedRenter *Renter) {
+	hk, _ := newRandomHostKey()
+	_, err := closedRenter.staticAccountManager.managedOpenAccount(hk)
+	if !strings.Contains(err.Error(), "file already closed") {
+		t.Fatal("Unexpected error when opening an account, err:", err)
 	}
 }
 
@@ -201,69 +295,6 @@ func TestNewWithdrawalMessage(t *testing.T) {
 	var nonce [modules.WithdrawalNonceSize]byte
 	if bytes.Equal(msg.Nonce[:], nonce[:]) {
 		t.Fatal("Uninitialized nonce")
-	}
-}
-
-// TestAccountCriticalOnDoubleSave verifies the critical when
-// managedSaveAccounts is called twice.
-func TestAccountCriticalOnDoubleSave(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// create a renter
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := rt.renter
-
-	// close it immediately
-	err = rt.Close()
-	if err != nil {
-		t.Log(err)
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			err := fmt.Sprint(r)
-			if !strings.Contains(err, "Trying to save accounts twice") {
-				t.Fatal("Expected error not returned")
-			}
-		}
-	}()
-	err = r.staticAccountManager.managedSaveAndClose()
-	if err == nil {
-		t.Fatal("Expected build.Critical on double save")
-	}
-}
-
-// TestAccountClosed verifies accounts can not be opened after the 'closed' flag
-// has been set to true by the save.
-func TestAccountClosed(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// create a renter
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := rt.renter
-
-	// close it immediately
-	err = rt.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	hk, _ := newRandomHostKey()
-	_, err = r.staticAccountManager.managedOpenAccount(hk)
-	if !strings.Contains(err.Error(), "file already closed") {
-		t.Fatal("Unexpected error when opening an account, err:", err)
 	}
 }
 
