@@ -85,7 +85,10 @@ func testAccountCreation(t *testing.T, rt *renterTester) {
 	// create an account with a different hostkey to ensure the account we are
 	// going to validate has an offset different from 0
 	tmpKey, _ := newRandomHostKey()
-	r.staticAccountManager.managedOpenAccount(tmpKey)
+	_, err := r.staticAccountManager.managedOpenAccount(tmpKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// create a new account object
 	account, err := r.staticAccountManager.managedOpenAccount(hostKey)
