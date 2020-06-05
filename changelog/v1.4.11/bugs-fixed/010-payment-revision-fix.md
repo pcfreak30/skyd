@@ -1,1 +1,1 @@
-- Fixed bug in the payment revision used by RHP-2, introduced in v1.4.10 
+- Fixed bug that prevented downloading from old hosts
