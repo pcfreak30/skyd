@@ -280,10 +280,10 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	}
 }
 
-// TestCompatV150AccountPersistenceFromBytes verifies that the account bytes of
-// an account persistence object before it had the `lastUsed` property can be
+// TestCompatV150AccountPersistence verifies that the account bytes of an
+// account persistence object before it had the `lastUsed` property can be
 // loaded into the current persistence object without corrupting it.
-func TestCompatV150AccountPersistenceFromBytes(t *testing.T) {
+func TestCompatV150AccountPersistence(t *testing.T) {
 	t.Parallel()
 	if testing.Short() {
 		t.SkipNow()
@@ -331,9 +331,16 @@ func TestCompatV150AccountPersistenceFromBytes(t *testing.T) {
 	}
 	rt.addRenter(r)
 
-	// verify it properly loaded the 163 compat accounts
+	// verify it can properly load all 163 compat accounts and their lastUsed
+	// prop is initialized to 0 - no need to perform any extra validation, the
+	// renter will have doen that during bootstrap using the checksum
 	am = rt.renter.staticAccountManager
 	am.mu.Lock()
+	for _, acc := range am.accounts {
+		if acc.lastUsed != 0 {
+			t.Error("expected `lastUsed` property of a compat account to be initialized to 0")
+		}
+	}
 	numAccounts = len(am.accounts)
 	am.mu.Unlock()
 	if numAccounts != 163 {
