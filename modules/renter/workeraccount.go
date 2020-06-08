@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -316,6 +317,11 @@ func (w *worker) managedRefillAccount() {
 
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, w.staticCache().staticBlockHeight)
+	// TODO: Replace this with proper handling, where the worker checks the
+	// balance at startup and also every so often.
+	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
+		err = nil
+	}
 	if err != nil {
 		err = errors.AddContext(err, "could not provide payment for the account")
 		return
