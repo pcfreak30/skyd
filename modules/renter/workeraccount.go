@@ -327,13 +327,15 @@ func (w *worker) managedRefillAccount() {
 		return
 	}
 
-	// receive FundAccountResponse. The response contains a receipt and a
-	// signature, which is useful for places where accountability is required,
-	// but no accountability is required in this case, so we ignore the
-	// response.
-	var resp modules.FundAccountResponse
-	err = modules.RPCRead(stream, &resp)
-	err = errors.AddContext(err, "could not read the account response")
+	/*
+		// receive FundAccountResponse. The response contains a receipt and a
+		// signature, which is useful for places where accountability is required,
+		// but no accountability is required in this case, so we ignore the
+		// response.
+		var resp modules.FundAccountResponse
+		err = modules.RPCRead(stream, &resp)
+		err = errors.AddContext(err, "could not read the account response")
+	*/
 
 	// TODO: We need to parse the response and check for an error, such as
 	// MaxBalanceExceeded. In the specific case of MaxBalanceExceeded, we need
