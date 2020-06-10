@@ -18,6 +18,7 @@ package renter
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,6 +35,9 @@ import (
 const (
 	// accountSize is the fixed account size in bytes
 	accountSize = 1 << 8 // 256 bytes
+
+	// compatV150AccountSize is the size of an account object at v1.5.0
+	compatV150AccountSize = 1 << 8
 )
 
 var (
@@ -41,8 +45,13 @@ var (
 	accountsFilename = "accounts.dat"
 
 	// Metadata
+	//
+	// Note that the accounts metadata version is set at v1.5.1, even though
+	// this was changed in v1.5.0. This is due to the fact the `lastUsed` field
+	// was added, and the metadata mistakenly had v1.5.0. A version bump was
+	// thus necessary to trigger the compat flow.
 	metadataHeader  = types.NewSpecifier("Accounts\n")
-	metadataVersion = types.NewSpecifier("v1.5.0\n")
+	metadataVersion = types.NewSpecifier("v1.5.1\n")
 	metadataSize    = 2*types.SpecifierLen + 1 // 1 byte for 'clean' flag
 
 	// Metadata validation errors
@@ -78,8 +87,17 @@ type (
 		AccountID modules.AccountID
 		Balance   types.Currency
 		HostKey   types.SiaPublicKey
-		SecretKey crypto.SecretKey
 		LastUsed  int64
+		SecretKey crypto.SecretKey
+	}
+
+	// compatV150AccountPersistence is a compat struct that contains the fields
+	// of the persistence object at v1.5.0
+	compatV150AccountPersistence struct {
+		AccountID modules.AccountID
+		Balance   types.Currency
+		HostKey   types.SiaPublicKey
+		SecretKey crypto.SecretKey
 	}
 )
 
@@ -105,8 +123,8 @@ func (a *account) managedPersist() error {
 		AccountID: a.staticID,
 		Balance:   a.balance,
 		HostKey:   a.staticHostKey,
-		SecretKey: a.staticSecretKey,
 		LastUsed:  a.lastUsed,
+		SecretKey: a.staticSecretKey,
 	}
 	a.mu.Unlock()
 	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
@@ -128,6 +146,7 @@ func (ap accountPersistence) bytes() []byte {
 	copy(accBytesPadded, accBytes)
 	checksum := crypto.HashBytes(accBytesPadded)
 
+	// fmt.Println(checksum)
 	// create final byte slice of account size
 	b := make([]byte, accountSize)
 	copy(b[:len(checksum)], checksum[:])
@@ -143,12 +162,43 @@ func (ap *accountPersistence) loadBytes(b []byte) error {
 	checksum := b[:crypto.HashSize]
 	accBytes := b[crypto.HashSize:]
 	accHash := crypto.HashBytes(accBytes)
+
+	// fmt.Println(accHash)
 	if !bytes.Equal(checksum, accHash[:]) {
 		return errInvalidChecksum
 	}
 
 	// unmarshal the account bytes onto the persistence object
 	return errors.AddContext(encoding.Unmarshal(accBytes, ap), "failed to unmarshal account bytes")
+}
+
+// loadBytesCompatV150 is a compat function that can load account bytes of a
+// v1.5.0 account on an account persistence object.
+func (ap *accountPersistence) loadBytesCompatV150(b []byte) error {
+	checksum := b[:crypto.HashSize]
+	accBytes := b[crypto.HashSize:]
+	accHash := crypto.HashBytes(accBytes)
+	if !bytes.Equal(checksum, accHash[:]) {
+		return errInvalidChecksum
+	}
+
+	var compat compatV150AccountPersistence
+	err := encoding.Unmarshal(accBytes, &compat)
+	if err != nil {
+		return errors.AddContext(err, "failed to unmarshal account bytes onto compat persistence object")
+	}
+
+	// copy over all account persistence fields
+	ap.AccountID = compat.AccountID
+	ap.Balance = compat.Balance
+	ap.HostKey = compat.HostKey
+	ap.SecretKey = compat.SecretKey
+
+	// initialize last used at 0, this ensures the renter does not mistakenly
+	// penalize the host for expiring his account
+	ap.LastUsed = 0
+
+	return nil
 }
 
 // managedOpenAccount returns an account for the given host. If it does not
@@ -371,6 +421,12 @@ func (am *accountManager) openFile() (bool, error) {
 		cleanClose = true
 	} else {
 		cleanClose, err = am.checkMetadata()
+		if errors.Contains(err, errWrongVersion) {
+			err = am.upgradeFromV150ToV151()
+			if err != nil {
+				return false, errors.AddContext(err, "failed to upgrade accounts file from v1.5.0 to v1.5.1")
+			}
+		}
 		if err != nil {
 			return false, errors.AddContext(err, "error reading account metadata")
 		}
@@ -395,6 +451,73 @@ func (am *accountManager) openFile() (bool, error) {
 		return false, errors.AddContext(err, "failed to sync accounts file")
 	}
 	return cleanClose, nil
+}
+
+// upgradeFromV150ToV151 attempts to upgrade the accounts file from v1.5.0 to
+// v1.5.1
+func (am *accountManager) upgradeFromV150ToV151() error {
+	// open a temporary accounts file
+	tmp := filepath.Join(am.staticRenter.persistDir, "tmp_"+accountsFilename)
+	tmpFile, err := am.staticRenter.deps.OpenFile(tmp, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "failed to open tmp file")
+	}
+
+	// defer a function that removes it
+	defer func() {
+		err := os.Remove(tmp)
+		if err != nil {
+			err = errors.AddContext(err, "failed to clean up temporary accounts file")
+		}
+	}()
+
+	// read the metadata of the accounts file
+	metadata, err := readMetadata(am.staticFile)
+	if err != nil {
+		return errors.AddContext(err, "failed to read metadata from accounts file")
+	}
+
+	// update only the version and write it to the temporary file
+	metadata.Version = metadataVersion
+	_, err = tmpFile.WriteAt(encoding.Marshal(metadata), 0)
+	if err != nil {
+		return errors.AddContext(err, "failed to write the metadata to the tmp accounts file")
+	}
+
+	// We loop over the accounts and load them into the persistence object using
+	// the compat function. At the same time we write the account bytes to the
+	// tmp file at the appropriate offset, this way we are essentially building
+	// up the updated accounts file in the tmp file. The only thing to keep in
+	// mind here is the account size, we want to read using compat offset and
+	// write using actual offset.
+	var dstOffset int64 = accountSize
+	for srcOffset := int64(compatV150AccountSize); ; srcOffset += compatV150AccountSize {
+		accountBytes := make([]byte, compatV150AccountSize)
+		_, err := am.staticFile.ReadAt(accountBytes, srcOffset)
+		if errors.Contains(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return errors.AddContext(err, "failed to read accounts data")
+		}
+
+		// load the account bytes onto the persistence object using the compat
+		// function
+		var accountData accountPersistence
+		err = accountData.loadBytesCompatV150(accountBytes)
+		if err != nil {
+			return errors.AddContext(err, "failed to load account bytes")
+		}
+
+		// write the account bytes to the tmp file at the correct offset
+		_, err = tmpFile.WriteAt(accountData.bytes(), dstOffset)
+		if err != nil {
+			return errors.AddContext(err, "failed to write account bytes")
+		}
+		dstOffset += accountSize
+	}
+
+	return errors.AddContext(overwriteFile(tmpFile, am.staticFile), "failed to overwrite the contents of the accounts file with the updated contents in the temporary file")
 }
 
 // readAccountAt tries to read an account object from the account persist file
@@ -436,4 +559,67 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 func (am *accountManager) updateMetadata(meta accountsMetadata) error {
 	_, err := am.staticFile.WriteAt(encoding.Marshal(meta), 0)
 	return err
+}
+
+// readMetadata is a helper function reads and decodes the accounts metadata
+// from the given file
+func readMetadata(file modules.File) (metadata accountsMetadata, err error) {
+	buffer := make([]byte, metadataSize)
+	_, err = io.ReadFull(file, buffer)
+	if err != nil {
+		err = errors.AddContext(err, "failed to read metadata from file")
+		return
+	}
+
+	err = encoding.Unmarshal(buffer, &metadata)
+	if err != nil {
+		err = errors.AddContext(err, "failed to decode metadata from file")
+		return
+	}
+	return metadata, nil
+}
+
+// overwriteFile is a helper function that overwrites the contents of the
+// destination file with the contents of the source file
+func overwriteFile(src, dst modules.File) error {
+	// sync the source file
+	err := src.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync file %v, err: %v", src.Name(), err)
+	}
+
+	// seek to the end of the src file to get its length
+	size, err := src.Seek(0, io.SeekEnd)
+	if err != nil {
+		return fmt.Errorf("failed to seek in file %v, err: %v", src.Name(), err)
+	}
+
+	// seek to the start of both files
+	_, err = src.Seek(0, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek in file %v, err: %v", src.Name(), err)
+	}
+	_, err = dst.Seek(0, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek in file %v, err: %v", dst.Name(), err)
+	}
+
+	// copy the contents
+	_, err = io.Copy(dst, src)
+	if err != nil {
+		return errors.AddContext(err, "failed to copy the file contents")
+	}
+
+	// truncate the dst file to the correct size
+	err = dst.Truncate(size)
+	if err != nil {
+		return fmt.Errorf("failed to truncate file %v, err: %v", dst.Name(), err)
+	}
+
+	// sync the dst file
+	err = dst.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync file %v, err: %v", dst.Name(), err)
+	}
+	return nil
 }

@@ -338,12 +338,19 @@ func TestCompatV150AccountPersistence(t *testing.T) {
 	am.mu.Lock()
 	for _, acc := range am.accounts {
 		if acc.lastUsed != 0 {
-			t.Error("expected `lastUsed` property of a compat account to be initialized to 0")
+			t.Error("expected `lastUsed` property of a compat account to be initialized to 0", acc.lastUsed)
 		}
 	}
 	numAccounts = len(am.accounts)
 	am.mu.Unlock()
 	if numAccounts != 163 {
 		t.Fatalf("Expected 163 accounts to be loaded, however %v were found", numAccounts)
+	}
+
+	// verify the tmp file got cleaned up
+	tmp := filepath.Join(rt.dir, modules.RenterDir, "tmp_"+accountsFilename)
+	_, err = os.Stat(tmp)
+	if !os.IsNotExist(err) {
+		t.Fatal("Expected 'NotExist' error, instead err was", err)
 	}
 }
