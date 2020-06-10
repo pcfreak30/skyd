@@ -146,7 +146,6 @@ func (ap accountPersistence) bytes() []byte {
 	copy(accBytesPadded, accBytes)
 	checksum := crypto.HashBytes(accBytesPadded)
 
-	// fmt.Println(checksum)
 	// create final byte slice of account size
 	b := make([]byte, accountSize)
 	copy(b[:len(checksum)], checksum[:])
@@ -163,7 +162,6 @@ func (ap *accountPersistence) loadBytes(b []byte) error {
 	accBytes := b[crypto.HashSize:]
 	accHash := crypto.HashBytes(accBytes)
 
-	// fmt.Println(accHash)
 	if !bytes.Equal(checksum, accHash[:]) {
 		return errInvalidChecksum
 	}
