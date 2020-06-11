@@ -261,8 +261,7 @@ func testAccountCompatV150(t *testing.T, rt *renterTester) {
 	}
 
 	// verify the tmp file got cleaned up
-	tmp := filepath.Join(rt.dir, modules.RenterDir, accountsFilename+".tmp")
-	_, err = os.Stat(tmp)
+	_, err = os.Stat(am.tmpAccountsFilePath())
 	if !os.IsNotExist(err) {
 		t.Fatal("Expected 'NotExist' error, instead err was", err)
 	}
@@ -317,21 +316,60 @@ func testAccountCompatV150(t *testing.T, rt *renterTester) {
 	}
 
 	// verify the tmp file is still there
-	tmp = filepath.Join(rt.dir, modules.RenterDir, accountsFilename+".tmp")
-	_, err = os.Stat(tmp)
+	_, err = os.Stat(am.tmpAccountsFilePath())
 	if err != nil {
 		t.Fatal("Expected tmp file to be found")
 	}
 
-	// write the old version so we trigger compat flow again
+	// verify the version is the correct one
 	accountsFile, err = os.OpenFile(dst, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		t.Fatal("Failed to open accounts file metadata")
 	}
-	metadata.Version = compatV150MetadataVersion
-	_, err = accountsFile.WriteAt(encoding.Marshal(metadata), 0)
+	metadata, err = readMetadata(accountsFile)
 	if err != nil {
-		t.Fatal("Failed to write metadata, err", err)
+		t.Fatal("Failed to read metadata")
+	}
+	if metadata.Version != metadataVersion {
+		t.Fatal("Unexpected version")
+	}
+
+	// check we still have the tmp file
+	_, err = os.Stat(am.tmpAccountsFilePath())
+	if err != nil {
+		t.Fatal("Expected tmp file to be found")
+	}
+
+	// truncate the accounts file (after the header) simulating a crash after
+	// the good version got written
+	err = accountsFile.Truncate(int64(accountSize + fastrand.Intn(accountSize)))
+	if err != nil {
+		t.Fatal("Failed to truncate accounts file")
+	}
+
+	// reopen the renter again with a dependency to leave the tmp file - the
+	// difference here is that the accounts file will have the correct version,
+	// but it will also have been truncated, and yet we expected all accounts to
+	// be there after reloading
+	r, err = newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir), &dependencies.DependencyDisableTmpFileCleanup{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt.addRenter(r)
+
+	// verify the accounts are there
+	am = rt.renter.staticAccountManager
+	am.mu.Lock()
+	numAccounts = len(am.accounts)
+	am.mu.Unlock()
+	if numAccounts != 163 {
+		t.Fatalf("Expected 163 accounts to be loaded, however %v were found", numAccounts)
+	}
+
+	// close the renter
+	err = r.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// reopen the renter with a dependency that signals we've gone through the

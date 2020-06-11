@@ -369,7 +369,7 @@ func (am *accountManager) load() error {
 	// Disrupt if the dependency is set to prevent cleaning up the tmp accounts
 	// file. This simulates a crash that leaves a tmp accounts file on disk.
 	if !am.staticRenter.deps.Disrupt("DisableTmpFileCleanup") {
-		if err := os.RemoveAll(filepath.Join(am.staticRenter.persistDir, accountsFilename+".tmp")); err != nil {
+		if err := os.RemoveAll(am.tmpAccountsFilePath()); err != nil {
 			am.staticRenter.log.Println("ERROR: failed to remove tmp accounts file, err:", err)
 		}
 	}
@@ -386,12 +386,12 @@ func (am *accountManager) load() error {
 // would be a call to the upgrade function.
 func (am *accountManager) checkMetadata() (bool, error) {
 	// Read and decode the metadata.
-	var metadata accountsMetadata
 	buffer := make([]byte, metadataSize)
-	_, err := io.ReadFull(am.staticFile, buffer)
+	_, err := am.staticFile.ReadAt(buffer, 0)
 	if err != nil {
 		return false, errors.AddContext(err, "failed to read metadata from accounts file")
 	}
+	var metadata accountsMetadata
 	err = encoding.Unmarshal(buffer, &metadata)
 	if err != nil {
 		return false, errors.AddContext(err, "failed to decode metadata from accounts file")
@@ -441,6 +441,22 @@ func (am *accountManager) openFile() (bool, error) {
 		// closed cleanly.
 		cleanClose = true
 	} else {
+		// It's possible the upgrade code has partially overwritten the accounts
+		// file (thus changing the version) and has then crashed. To handle this
+		// case we want to check if the tmp accounts file is on the system and
+		// whether it has a valid checksum, if that is the case we want to
+		// trigger the upgrade flow immediately (before the version compare).
+		if _, err := os.Stat(am.tmpAccountsFilePath()); !os.IsNotExist(err) {
+			validChecksum, err := verifyChecksum(am.tmpAccountsFilePath())
+			if err == nil && validChecksum {
+				err = am.upgradeFromV150ToV151()
+				if err != nil {
+					return false, errors.AddContext(err, "failed to upgrade accounts file from v1.5.0 to v1.5.1")
+				}
+				cleanClose, err = am.checkMetadata()
+			}
+		}
+
 		cleanClose, err = am.checkMetadata()
 		if errors.Contains(err, errWrongVersion) {
 			err = am.upgradeFromV150ToV151()
@@ -478,8 +494,7 @@ func (am *accountManager) openFile() (bool, error) {
 // v1.5.1
 func (am *accountManager) upgradeFromV150ToV151() error {
 	// open a temporary accounts file
-	tmp := filepath.Join(am.staticRenter.persistDir, accountsFilename+".tmp")
-	tmpFile, err := am.staticRenter.deps.OpenFile(tmp, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	tmpFile, err := am.staticRenter.deps.OpenFile(am.tmpAccountsFilePath(), os.O_RDWR|os.O_CREATE, defaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open tmp file")
 	}
@@ -487,7 +502,7 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 	// it might have already existed from an earlier try that ended in a crash
 	// in that case we want to verify the checksum and potentially immediately
 	// overwrite the accounts file
-	validChecksum, err := verifyChecksum(tmp)
+	validChecksum, err := verifyChecksum(am.tmpAccountsFilePath())
 	if err != nil {
 		return errors.AddContext(err, "failed to verify checksum in tmp file")
 	}
@@ -582,6 +597,12 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 		return errors.AddContext(err, "failed to sync accounts file after upgrading")
 	}
 
+	// sanity check the metadata after the upgrade
+	_, err = am.checkMetadata()
+	if err != nil {
+		build.Critical("The metadata is invalid after upgrading")
+	}
+
 	// disrupt if we are testing the tmp file recovery flow
 	if validChecksum && am.staticRenter.deps.Disrupt("RecoveredFromTmpFile") {
 		return errTestTmpFileRecovery
@@ -622,6 +643,12 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 	}
 	close(acc.staticReady)
 	return acc, nil
+}
+
+// tmpAccountsFilePath returns the path of the temporary accounts file used in
+// the compat code that updates from v150 to v151
+func (am *accountManager) tmpAccountsFilePath() string {
+	return filepath.Join(am.staticRenter.persistDir, accountsFilename+".tmp")
 }
 
 // updateMetadata writes the given metadata to the accounts file.
