@@ -51,9 +51,11 @@ var (
 	// this was changed in v1.5.0. This is due to the fact the `lastUsed` field
 	// was added, and the metadata mistakenly had v1.5.0. A version bump was
 	// thus necessary to trigger the compat flow.
-	metadataHeader            = types.NewSpecifier("Accounts\n")
-	metadataVersion           = types.NewSpecifier("v1.5.1\n")
-	metadataSize              = 2*types.SpecifierLen + 1 // 1 byte for 'clean' flag
+	metadataHeader  = types.NewSpecifier("Accounts\n")
+	metadataVersion = types.NewSpecifier("v1.5.1\n")
+	metadataSize    = 2*types.SpecifierLen + 1 // 1 byte for 'clean' flag
+
+	// compatV150MetadataVersion is the metadata version at v1.5.0
 	compatV150MetadataVersion = types.NewSpecifier("v1.5.0\n")
 
 	// Metadata validation errors
@@ -560,12 +562,12 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 		}
 	}
 
-	// seek to the start of the accounts file and right after the checksum in
-	// the tmp file
+	// seek to the start of the accounts file
 	_, err = am.staticFile.Seek(0, io.SeekStart)
 	if err != nil {
 		return errors.AddContext(err, "failed to seek in the accounts file")
 	}
+	// seek to right after the checksum in the tmp file
 	_, err = tmpFile.Seek(crypto.HashSize, io.SeekStart)
 	if err != nil {
 		return errors.AddContext(err, "failed to seek in the tmp file")
@@ -649,15 +651,15 @@ func readMetadata(file modules.File) (metadata accountsMetadata, err error) {
 	return metadata, nil
 }
 
-// verifyChecksum is a helper function that verifies if file for the given
-// filename contains a checksum and whether or not that checksum is valid
+// verifyChecksum is a helper function that verifies if the file contains a
+// checksum and whether or not that checksum is valid
 func verifyChecksum(filename string) (bool, error) {
 	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return false, errors.AddContext(err, "faild to read from file")
 	}
 
-	if len(buf) <= crypto.HashSize {
+	if len(buf) < crypto.HashSize {
 		return false, nil
 	}
 
