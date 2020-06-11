@@ -455,7 +455,7 @@ func (am *accountManager) openFile() (bool, error) {
 // v1.5.1
 func (am *accountManager) upgradeFromV150ToV151() error {
 	// open a temporary accounts file
-	tmp := filepath.Join(am.staticRenter.persistDir, "tmp_"+accountsFilename)
+	tmp := filepath.Join(am.staticRenter.persistDir, accountsFilename+".tmp")
 	tmpFile, err := am.staticRenter.deps.OpenFile(tmp, os.O_RDWR|os.O_CREATE, defaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open tmp file")
@@ -465,7 +465,7 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 	defer func() {
 		err := os.Remove(tmp)
 		if err != nil {
-			err = errors.AddContext(err, "failed to clean up temporary accounts file")
+			am.staticRenter.log.Println(fmt.Sprintf("failed to clean up temporary accounts file, err:%v", err))
 		}
 	}()
 
@@ -515,7 +515,19 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 		dstOffset += accountSize
 	}
 
-	return errors.AddContext(overwriteFile(tmpFile, am.staticFile), "failed to overwrite the contents of the accounts file with the updated contents in the temporary file")
+	// overwrite the accounts file with the contents of the tmp file
+	err = overwriteFile(am.staticFile, tmpFile)
+	if err != nil {
+		return errors.AddContext(err, "failed to overwrite the contents of the accounts file with the updated contents in the temporary file")
+	}
+
+	// sync the accounts file
+	err = am.staticFile.Sync()
+	if err != nil {
+		return errors.AddContext(err, "failed to sync accounts file after upgrading")
+	}
+
+	return nil
 }
 
 // readAccountAt tries to read an account object from the account persist file
@@ -579,17 +591,11 @@ func readMetadata(file modules.File) (metadata accountsMetadata, err error) {
 
 // overwriteFile is a helper function that overwrites the contents of the
 // destination file with the contents of the source file
-func overwriteFile(src, dst modules.File) error {
+func overwriteFile(dst, src modules.File) error {
 	// sync the source file
 	err := src.Sync()
 	if err != nil {
 		return fmt.Errorf("failed to sync file %v, err: %v", src.Name(), err)
-	}
-
-	// seek to the end of the src file to get its length
-	size, err := src.Seek(0, io.SeekEnd)
-	if err != nil {
-		return fmt.Errorf("failed to seek in file %v, err: %v", src.Name(), err)
 	}
 
 	// seek to the start of both files
@@ -603,7 +609,7 @@ func overwriteFile(src, dst modules.File) error {
 	}
 
 	// copy the contents
-	_, err = io.Copy(dst, src)
+	size, err := io.Copy(dst, src)
 	if err != nil {
 		return errors.AddContext(err, "failed to copy the file contents")
 	}
@@ -612,12 +618,6 @@ func overwriteFile(src, dst modules.File) error {
 	err = dst.Truncate(size)
 	if err != nil {
 		return fmt.Errorf("failed to truncate file %v, err: %v", dst.Name(), err)
-	}
-
-	// sync the dst file
-	err = dst.Sync()
-	if err != nil {
-		return fmt.Errorf("failed to sync file %v, err: %v", dst.Name(), err)
 	}
 	return nil
 }
