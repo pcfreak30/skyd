@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -50,9 +51,10 @@ var (
 	// this was changed in v1.5.0. This is due to the fact the `lastUsed` field
 	// was added, and the metadata mistakenly had v1.5.0. A version bump was
 	// thus necessary to trigger the compat flow.
-	metadataHeader  = types.NewSpecifier("Accounts\n")
-	metadataVersion = types.NewSpecifier("v1.5.1\n")
-	metadataSize    = 2*types.SpecifierLen + 1 // 1 byte for 'clean' flag
+	metadataHeader            = types.NewSpecifier("Accounts\n")
+	metadataVersion           = types.NewSpecifier("v1.5.1\n")
+	metadataSize              = 2*types.SpecifierLen + 1 // 1 byte for 'clean' flag
+	compatV150MetadataVersion = types.NewSpecifier("v1.5.0\n")
 
 	// Metadata validation errors
 	errWrongHeader  = errors.New("wrong header")
@@ -60,6 +62,10 @@ var (
 
 	// Persistence data validation errors
 	errInvalidChecksum = errors.New("invalid checksum")
+
+	// errTestTmpFileRecovery is an error returned when testing the accounts
+	// upgrade flow that recovers from an already existing tmp file
+	errTestTmpFileRecovery = errors.New("tmp file recovery")
 )
 
 type (
@@ -357,10 +363,15 @@ func (am *accountManager) load() error {
 	// upgrades from v150 to v151, if present remove it. We perform this check
 	// here to ensure we do not end up with a tmp file on disk should the renter
 	// crash after a successful upgrade but before the removal of the file.
-	tmp := filepath.Join(am.staticRenter.persistDir, accountsFilename+".tmp")
-	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
-		if err := os.Remove(tmp); err != nil {
-			am.staticRenter.log.Println("ERROR: failed to remove tmp accounts file, err:", err)
+	//
+	// Disrupt if the dependency is set to prevent cleaning up the tmp accounts
+	// file. This simulates a crash that leaves a tmp accounts file on disk.
+	if !am.staticRenter.deps.Disrupt("DisableTmpFileCleanup") {
+		tf := filepath.Join(am.staticRenter.persistDir, accountsFilename+".tmp")
+		if _, err := os.Stat(tf); !os.IsNotExist(err) {
+			if err := os.Remove(tf); err != nil {
+				am.staticRenter.log.Println("ERROR: failed to remove tmp accounts file, err:", err)
+			}
 		}
 	}
 
@@ -474,50 +485,90 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 		return errors.AddContext(err, "failed to open tmp file")
 	}
 
-	// read the metadata of the accounts file
-	metadata, err := readMetadata(am.staticFile)
+	// it might have already existed from an earlier try that ended in a crash
+	// in that case we want to verify the checksum and potentially immediately
+	// overwrite the accounts file
+	validChecksum, err := verifyChecksum(tmp)
 	if err != nil {
-		return errors.AddContext(err, "failed to read metadata from accounts file")
+		return errors.AddContext(err, "failed to verify checksum in tmp file")
 	}
 
-	// update only the version and write it to the temporary file
-	metadata.Version = metadataVersion
-	_, err = tmpFile.WriteAt(encoding.Marshal(metadata), 0)
-	if err != nil {
-		return errors.AddContext(err, "failed to write the metadata to the tmp accounts file")
+	// if the tmp file does not have a valid checksum
+	if !validChecksum {
+		// truncate the tmp file to ensure we have an empty file and seek to
+		// after the checksum
+		err = tmpFile.Truncate(0)
+		if err != nil {
+			return errors.AddContext(err, "failed to truncate tmp file")
+		}
+		_, err = tmpFile.Seek(crypto.HashSize, io.SeekStart)
+		if err != nil {
+			return errors.AddContext(err, "failed to seek in tmp file")
+		}
+
+		// make a writer that writes to the tmp file and at the same time builds
+		// a hash we'll use for the checksum
+		h := crypto.NewHash()
+		out := io.MultiWriter(tmpFile, h)
+
+		// read the metadata of the accounts file
+		metadata, err := readMetadata(am.staticFile)
+		if err != nil {
+			return errors.AddContext(err, "failed to read metadata from accounts file")
+		}
+
+		// update only the version and write the padded metadata
+		metadata.Version = metadataVersion
+		paddedMetadata := make([]byte, accountSize)
+		copy(paddedMetadata, encoding.Marshal(metadata))
+		_, err = out.Write(paddedMetadata)
+		if err != nil {
+			return errors.AddContext(err, "failed to write the metadata to the tmp accounts file")
+		}
+
+		// loop over the accounts file and load them into the persistence object
+		// using the compat function, it is important to loop over this file
+		// using the compat account size as offset
+		for srcOffset := int64(compatV150AccountSize); ; srcOffset += compatV150AccountSize {
+			accountBytes := make([]byte, compatV150AccountSize)
+			_, err := am.staticFile.ReadAt(accountBytes, srcOffset)
+			if errors.Contains(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				return errors.AddContext(err, "failed to read accounts data")
+			}
+
+			// load the account bytes onto the persistence object
+			var accountData accountPersistence
+			err = accountData.loadBytesCompatV150(accountBytes)
+			if err != nil {
+				return errors.AddContext(err, "failed to load account bytes")
+			}
+
+			// write the account bytes
+			_, err = out.Write(accountData.bytes())
+			if err != nil {
+				return errors.AddContext(err, "failed to write account bytes")
+			}
+		}
+
+		// write the checksum
+		_, err = tmpFile.WriteAt(h.Sum(nil), 0)
+		if err != nil {
+			return errors.AddContext(err, "failed to write the hash to the beginning of the tmp accounts file")
+		}
 	}
 
-	// We loop over the accounts and load them into the persistence object using
-	// the compat function. At the same time we write the account bytes to the
-	// tmp file at the appropriate offset, this way we are essentially building
-	// up the updated accounts file in the tmp file. The only thing to keep in
-	// mind here is the account size, we want to read using compat offset and
-	// write using actual offset.
-	var dstOffset int64 = accountSize
-	for srcOffset := int64(compatV150AccountSize); ; srcOffset += compatV150AccountSize {
-		accountBytes := make([]byte, compatV150AccountSize)
-		_, err := am.staticFile.ReadAt(accountBytes, srcOffset)
-		if errors.Contains(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return errors.AddContext(err, "failed to read accounts data")
-		}
-
-		// load the account bytes onto the persistence object using the compat
-		// function
-		var accountData accountPersistence
-		err = accountData.loadBytesCompatV150(accountBytes)
-		if err != nil {
-			return errors.AddContext(err, "failed to load account bytes")
-		}
-
-		// write the account bytes to the tmp file at the correct offset
-		_, err = tmpFile.WriteAt(accountData.bytes(), dstOffset)
-		if err != nil {
-			return errors.AddContext(err, "failed to write account bytes")
-		}
-		dstOffset += accountSize
+	// seek to the start of the accounts file and right after the checksum in
+	// the tmp file
+	_, err = am.staticFile.Seek(0, io.SeekStart)
+	if err != nil {
+		return errors.AddContext(err, "failed to seek in the accounts file")
+	}
+	_, err = tmpFile.Seek(crypto.HashSize, io.SeekStart)
+	if err != nil {
+		return errors.AddContext(err, "failed to seek in the tmp file")
 	}
 
 	// overwrite the accounts file with the contents of the tmp file
@@ -532,6 +583,10 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 		return errors.AddContext(err, "failed to sync accounts file after upgrading")
 	}
 
+	// disrupt if we are testing the tmp file recovery flow
+	if validChecksum && am.staticRenter.deps.Disrupt("RecoveredFromTmpFile") {
+		return errTestTmpFileRecovery
+	}
 	return nil
 }
 
@@ -594,6 +649,23 @@ func readMetadata(file modules.File) (metadata accountsMetadata, err error) {
 	return metadata, nil
 }
 
+// verifyChecksum is a helper function that verifies if file for the given
+// filename contains a checksum and whether or not that checksum is valid
+func verifyChecksum(filename string) (bool, error) {
+	buf, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return false, errors.AddContext(err, "faild to read from file")
+	}
+
+	if len(buf) <= crypto.HashSize {
+		return false, nil
+	}
+
+	checksum := buf[:crypto.HashSize]
+	hash := crypto.HashBytes(buf[crypto.HashSize:])
+	return bytes.Equal(checksum, hash[:]), nil
+}
+
 // overwriteFile is a helper function that overwrites the contents of the
 // destination file with the contents of the source file
 func overwriteFile(dst, src modules.File) error {
@@ -601,16 +673,6 @@ func overwriteFile(dst, src modules.File) error {
 	err := src.Sync()
 	if err != nil {
 		return fmt.Errorf("failed to sync file %v, err: %v", src.Name(), err)
-	}
-
-	// seek to the start of both files
-	_, err = src.Seek(0, io.SeekStart)
-	if err != nil {
-		return fmt.Errorf("failed to seek in file %v, err: %v", src.Name(), err)
-	}
-	_, err = dst.Seek(0, io.SeekStart)
-	if err != nil {
-		return fmt.Errorf("failed to seek in file %v, err: %v", dst.Name(), err)
 	}
 
 	// copy the contents

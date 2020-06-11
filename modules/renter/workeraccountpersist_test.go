@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -56,6 +57,7 @@ func TestAccountPersistence(t *testing.T) {
 
 	t.Run("Marshalling", testAccountMarshaling)
 	t.Run("OverwriteFile", testOverwriteFile)
+	t.Run("VerifyChecksum", testVerifyChecksum)
 
 	t.Run("Save", func(t *testing.T) { testAccountSave(t, rt) })
 	t.Run("Corrupted", func(t *testing.T) { testAccountCorrupted(t, rt) })
@@ -220,7 +222,6 @@ func testAccountCorrupted(t *testing.T, rt *renterTester) {
 // the current persistence object without corrupting it.
 func testAccountCompatV150(t *testing.T, rt *renterTester) {
 	r := rt.renter
-	am := r.staticAccountManager
 
 	// close the renter
 	err := r.Close()
@@ -246,7 +247,7 @@ func testAccountCompatV150(t *testing.T, rt *renterTester) {
 	// verify it can properly load all 163 compat accounts and their lastUsed
 	// prop is initialized to 0 - no need to perform any extra validation, the
 	// renter will have doen that during bootstrap using the checksum
-	am = rt.renter.staticAccountManager
+	am := rt.renter.staticAccountManager
 	am.mu.Lock()
 	for _, acc := range am.accounts {
 		if acc.lastUsed != 0 {
@@ -277,6 +278,67 @@ func testAccountCompatV150(t *testing.T, rt *renterTester) {
 	}
 	if metadata.Version != metadataVersion {
 		t.Fatal("Expected metadata version to be bumped after upgrade")
+	}
+
+	// manually clear all of the accounts
+	am.mu.Lock()
+	am.accounts = nil
+	am.mu.Unlock()
+
+	// close the renter
+	err = r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// write the old version so we trigger compat flow again
+	accountsFile, err = os.OpenFile(dst, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		t.Fatal("Failed to open accounts file metadata")
+	}
+	metadata.Version = compatV150MetadataVersion
+	_, err = accountsFile.WriteAt(encoding.Marshal(metadata), 0)
+	if err != nil {
+		t.Fatal("Failed to write metadata, err", err)
+	}
+
+	// reopen the renter with a dependency that prevents the tmp file from being
+	// cleaned up
+	r, err = newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir), &dependencies.DependencyDisableTmpFileCleanup{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt.addRenter(r)
+
+	// close the renter
+	err = r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the tmp file is still there
+	tmp = filepath.Join(rt.dir, modules.RenterDir, accountsFilename+".tmp")
+	_, err = os.Stat(tmp)
+	if err != nil {
+		t.Fatal("Expected tmp file to be found")
+	}
+
+	// write the old version so we trigger compat flow again
+	accountsFile, err = os.OpenFile(dst, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		t.Fatal("Failed to open accounts file metadata")
+	}
+	metadata.Version = compatV150MetadataVersion
+	_, err = accountsFile.WriteAt(encoding.Marshal(metadata), 0)
+	if err != nil {
+		t.Fatal("Failed to write metadata, err", err)
+	}
+
+	// reopen the renter with a dependency that signals we've gone through the
+	// tmp file recovery flow
+	_, err = newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir), &dependencies.DependencyRecoveredFromTmpFile{})
+	if !errors.Contains(err, errTestTmpFileRecovery) {
+		t.Fatal("Expected 'errTestTmpFileRecovery', instead err was", err)
 	}
 }
 
@@ -392,6 +454,55 @@ func testOverwriteFile(t *testing.T) {
 	}
 	if !bytes.Equal(srcDataOnDisk, srcData) {
 		t.Fatal("The source file did not contain the same source data, we expected this file to be untouched")
+	}
+}
+
+// testVerifyChecksum verifies the functionality of the verifyChecksum helper.
+func testVerifyChecksum(t *testing.T) {
+	t.Parallel()
+
+	// create some random data and its checksum
+	data := fastrand.Bytes(100)
+	checksum := crypto.HashBytes(data)
+
+	// copy them into a byte slice
+	bytes := make([]byte, 100+crypto.HashSize)
+	copy(bytes[:crypto.HashSize], checksum[:])
+	copy(bytes[crypto.HashSize:], data)
+
+	// write to disk
+	fp := filepath.Join(os.TempDir(), "tmp.dat")
+	f, err := os.OpenFile(fp, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Remove(fp); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	_, err = f.Write(bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify valid checksum
+	validChecksum, err := verifyChecksum(fp)
+	if !validChecksum || err != nil {
+		t.Fatal("unexpected output", validChecksum, err)
+	}
+
+	// corrupt the checksum
+	fastrand.Read(bytes[:5])
+	_, err = f.WriteAt(bytes, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify invalid checksum
+	validChecksum, err = verifyChecksum(fp)
+	if validChecksum || err != nil {
+		t.Fatal("unexpected output", validChecksum, err)
 	}
 }
 

@@ -65,6 +65,18 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencyDisableTmpFileCleanup prevents the tmp accounts file from being
+	// cleaned up after the accounts upgrade took place.
+	DependencyDisableTmpFileCleanup struct {
+		modules.ProductionDependencies
+	}
+
+	// DependencyRecoveredFromTmpFile triggers when the a tmp accounts file was
+	// already present on disk and we used that to recover from.
+	DependencyRecoveredFromTmpFile struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyInterruptOnceOnKeyword is a generic dependency that interrupts
 	// the flow of the program if the argument passed to Disrupt equals str and
 	// if f was set to true by calling Fail.
@@ -263,6 +275,16 @@ func (d *DependencyInterruptAccountSaveOnShutdown) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableRotateFingerprintBuckets) Disrupt(s string) bool {
 	return s == "DisableRotateFingerprintBuckets"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyDisableTmpFileCleanup) Disrupt(s string) bool {
+	return s == "DisableTmpFileCleanup"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyRecoveredFromTmpFile) Disrupt(s string) bool {
+	return s == "RecoveredFromTmpFile"
 }
 
 // Disrupt returns true if the correct string is provided and if the flag was
