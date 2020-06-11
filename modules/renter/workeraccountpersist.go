@@ -341,16 +341,29 @@ func (am *accountManager) load() error {
 		am.accounts[acc.staticHostKey.String()] = acc
 	}
 
-	// Ensure that when the renter is shut down, the save and close function
-	// runs.
-	if am.staticRenter.deps.Disrupt("InterruptAccountSaveOnShutdown") {
-		// Dependency injection to simulate an unclean shutdown.
-		return nil
-	}
-	err = am.staticRenter.tg.AfterStop(am.managedSaveAndClose)
+	// Ensure the accounts are saved upon shutdown
+	err = am.staticRenter.tg.AfterStop(func() error {
+		// Disrupt if the dependency is set to simulate an unclean shutdown.
+		if am.staticRenter.deps.Disrupt("InterruptAccountSaveOnShutdown") {
+			return nil
+		}
+		return am.managedSaveAndClose()
+	})
 	if err != nil {
 		return errors.AddContext(err, "unable to schedule a save and close with the thread group")
 	}
+
+	// Check for the tmp file possibly left behind by the compat code that
+	// upgrades from v150 to v151, if present remove it. We perform this check
+	// here to ensure we do not end up with a tmp file on disk should the renter
+	// crash after a successful upgrade but before the removal of the file.
+	tmp := filepath.Join(am.staticRenter.persistDir, accountsFilename+".tmp")
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		if err := os.Remove(tmp); err != nil {
+			am.staticRenter.log.Println("ERROR: failed to remove tmp accounts file, err:", err)
+		}
+	}
+
 	return nil
 }
 
@@ -460,14 +473,6 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 	if err != nil {
 		return errors.AddContext(err, "failed to open tmp file")
 	}
-
-	// defer a function that removes it
-	defer func() {
-		err := os.Remove(tmp)
-		if err != nil {
-			am.staticRenter.log.Println(fmt.Sprintf("failed to clean up temporary accounts file, err:%v", err))
-		}
-	}()
 
 	// read the metadata of the accounts file
 	metadata, err := readMetadata(am.staticFile)

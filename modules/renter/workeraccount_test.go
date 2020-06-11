@@ -299,22 +299,3 @@ func TestNewWithdrawalMessage(t *testing.T) {
 		t.Fatal("Uninitialized nonce")
 	}
 }
-
-// openRandomTestAccountsOnRenter is a helper function that creates a random
-// number of accounts by calling 'managedOpenAccount' on the given renter
-func openRandomTestAccountsOnRenter(r *Renter) []*account {
-	accounts := make([]*account, 0)
-	for i := 0; i < fastrand.Intn(10)+1; i++ {
-		hostKey := types.SiaPublicKey{
-			Algorithm: types.SignatureEd25519,
-			Key:       fastrand.Bytes(crypto.PublicKeySize),
-		}
-		account, err := r.staticAccountManager.managedOpenAccount(hostKey)
-		if err != nil {
-			// TODO: Have this function return an error.
-			panic(err)
-		}
-		accounts = append(accounts, account)
-	}
-	return accounts
-}

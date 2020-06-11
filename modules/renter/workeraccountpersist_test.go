@@ -30,15 +30,13 @@ func newRandomAccountPersistence() accountPersistence {
 	}
 }
 
-// TestAccountSave verifies accounts are properly saved and loaded onto the
-// renter when it goes through a graceful shutdown and reboot.
-func TestAccountSave(t *testing.T) {
+// TestAccountPersistence verifies the functionality of the account persistence
+func TestAccountPersistence(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// create a renter
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -49,89 +47,75 @@ func TestAccountSave(t *testing.T) {
 			t.Log(err)
 		}
 	}()
+
+	// create some random accounts
+	_, err = openRandomTestAccountsOnRenter(rt.renter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("Marshalling", testAccountMarshaling)
+	t.Run("OverwriteFile", testOverwriteFile)
+
+	t.Run("Save", func(t *testing.T) { testAccountSave(t, rt) })
+	t.Run("Corrupted", func(t *testing.T) { testAccountCorrupted(t, rt) })
+	t.Run("CompatV150", func(t *testing.T) { testAccountCompatV150(t, rt) })
+}
+
+// testAccountSave verifies accounts are properly saved and loaded onto the
+// renter when it goes through a graceful shutdown and reboot.
+func testAccountSave(t *testing.T, rt *renterTester) {
 	r := rt.renter
+	am := r.staticAccountManager
 
 	// verify accounts file was loaded and set
 	if r.staticAccountManager.staticFile == nil {
 		t.Fatal("Accounts persistence file not set on the Renter after startup")
 	}
 
-	// create a number of test accounts and reload the renter
-	accounts := openRandomTestAccountsOnRenter(r)
-	r, err = rt.reloadRenter(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// verify the accounts got reloaded properly
-	am := r.staticAccountManager
+	// grab some information about the accounts
+	hostKeyToAccountID := make(map[string]string)
 	am.mu.Lock()
-	accountsLen := len(am.accounts)
+	for _, a := range am.accounts {
+		hostKeyToAccountID[a.staticHostKey.String()] = a.staticID.SPK().String()
+	}
 	am.mu.Unlock()
-	if accountsLen != len(accounts) {
-		t.Errorf("Unexpected amount of accounts, %v != %v", len(am.accounts), len(accounts))
-	}
-	for _, account := range accounts {
-		reloaded, err := am.managedOpenAccount(account.staticHostKey)
-		if err != nil {
-			t.Error(err)
-		}
-		if !account.staticID.SPK().Equals(reloaded.staticID.SPK()) {
-			t.Error("Unexpected account ID")
-		}
-	}
-}
-
-// TestAccountUncleanShutdown verifies that accounts are dropped if the accounts
-// persist file was not marked as 'clean' on shutdown.
-func TestAccountUncleanShutdown(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// create a renter tester
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := rt.Close()
-		if err != nil {
-			t.Log(err)
-		}
-	}()
-	r := rt.renter
-
-	// create a number accounts
-	accounts := openRandomTestAccountsOnRenter(r)
-	for _, account := range accounts {
-		account.mu.Lock()
-		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
-		account.mu.Unlock()
-	}
 
 	// close the renter and reload it with a dependency that interrupts the
 	// accounts save on shutdown
 	deps := &dependencies.DependencyInterruptAccountSaveOnShutdown{}
-	r, err = rt.reloadRenterWithDependency(r, deps)
+	r, err := rt.reloadRenterWithDependency(r, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// verify the accounts were saved on disk
-	for _, account := range accounts {
-		reloaded, err := r.staticAccountManager.managedOpenAccount(account.staticHostKey)
+	// ensure this test leaves a clean renter
+	defer func() {
+		_, err = rt.reloadRenterClean(r)
 		if err != nil {
-			t.Fatal(err)
+			t.Error("Failed to reload the renter with clean deps", err)
 		}
-		if !reloaded.staticID.SPK().Equals(account.staticID.SPK()) {
-			t.Fatal("Unexpected reloaded account ID")
+	}()
+
+	// verify the accounts got reloaded properly
+	am.mu.Lock()
+	if len(am.accounts) != len(hostKeyToAccountID) {
+		t.Errorf("Unexpected amount of accounts, %v != %v", len(am.accounts), len(hostKeyToAccountID))
+	}
+	am.mu.Unlock()
+	for hostKeyStr, accountID := range hostKeyToAccountID {
+		var hostKey types.SiaPublicKey
+		err := hostKey.LoadString(hostKeyStr)
+		if err != nil {
+			t.Error(err)
 		}
-		if !reloaded.balance.Equals(account.balance) {
-			t.Log(reloaded.balance)
-			t.Log(account.balance)
-			t.Fatal("Unexpected account balance after reload")
+
+		reloaded, err := am.managedOpenAccount(hostKey)
+		if err != nil {
+			t.Error(err)
+		}
+		if accountID != reloaded.staticID.SPK().String() {
+			t.Error("Unexpected account ID")
 		}
 	}
 
@@ -143,52 +127,49 @@ func TestAccountUncleanShutdown(t *testing.T) {
 
 	// verify the accounts were reloaded but the balances were cleared due to
 	// the unclean shutdown
-	for _, account := range accounts {
-		reloaded, err := r.staticAccountManager.managedOpenAccount(account.staticHostKey)
+	am.mu.Lock()
+	if len(am.accounts) != len(hostKeyToAccountID) {
+		t.Errorf("Unexpected amount of accounts, %v != %v", len(am.accounts), len(hostKeyToAccountID))
+	}
+	am.mu.Unlock()
+	for hostKeyStr, accountID := range hostKeyToAccountID {
+		var hostKey types.SiaPublicKey
+		err := hostKey.LoadString(hostKeyStr)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
-		if !account.staticID.SPK().Equals(reloaded.staticID.SPK()) {
-			t.Fatal("Unexpected reloaded account ID")
+
+		reloaded, err := am.managedOpenAccount(hostKey)
+		if err != nil {
+			t.Error(err)
 		}
+		if accountID != reloaded.staticID.SPK().String() {
+			t.Error("Unexpected account ID")
+		}
+
 		if !reloaded.balance.IsZero() {
 			t.Fatal("Unexpected reloaded account balance")
 		}
 	}
 }
 
-// TestAccountCorrupted verifies accounts that are corrupted are not reloaded
-func TestAccountCorrupted(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// create a renter
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := rt.Close()
-		if err != nil {
-			t.Log(err)
-		}
-	}()
+// testAccountCorrupted verifies accounts that are corrupted are not reloaded
+func testAccountCorrupted(t *testing.T, rt *renterTester) {
 	r := rt.renter
-
-	// create a number accounts
-	accounts := openRandomTestAccountsOnRenter(r)
+	am := r.staticAccountManager
 
 	// select a random account of which we'll corrupt data on disk
 	var corrupted *account
-	for _, account := range accounts {
+	am.mu.Lock()
+	accountsLen := len(am.accounts)
+	for _, account := range am.accounts {
 		corrupted = account
 		break
 	}
+	am.mu.Unlock()
 
 	// manually close the renter and corrupt the data at that offset
-	err = r.Close()
+	err := r.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,12 +195,15 @@ func TestAccountCorrupted(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.addRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	am = r.staticAccountManager
 
 	// verify only the non corrupted accounts got reloaded properly
-	am := r.staticAccountManager
 	am.mu.Lock()
 	// verify the amount of accounts reloaded is one less
-	expected := len(accounts) - 1
+	expected := accountsLen - 1
 	if len(am.accounts) != expected {
 		t.Errorf("Unexpected amount of accounts, %v != %v", len(am.accounts), expected)
 	}
@@ -231,9 +215,74 @@ func TestAccountCorrupted(t *testing.T) {
 	am.mu.Unlock()
 }
 
-// TestAccountPersistenceToAndFromBytes verifies the functionality of the
-// `bytes` and `loadBytes` method on the accountPersistence object
-func TestAccountPersistenceToAndFromBytes(t *testing.T) {
+// testAccountCompatV150 verifies that the account bytes of an account
+// persistence object before it had the `lastUsed` property can be loaded into
+// the current persistence object without corrupting it.
+func testAccountCompatV150(t *testing.T, rt *renterTester) {
+	r := rt.renter
+	am := r.staticAccountManager
+
+	// close the renter
+	err := r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// copy the compat file to the location of the accounts file
+	src := filepath.Join("..", "..", "compatibility", "accountsV150.dat")
+	dst := filepath.Join(rt.dir, modules.RenterDir, accountsFilename)
+	err = build.CopyFile(src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// reopen the renter
+	r, err = newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir), &modules.ProductionDependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt.addRenter(r)
+
+	// verify it can properly load all 163 compat accounts and their lastUsed
+	// prop is initialized to 0 - no need to perform any extra validation, the
+	// renter will have doen that during bootstrap using the checksum
+	am = rt.renter.staticAccountManager
+	am.mu.Lock()
+	for _, acc := range am.accounts {
+		if acc.lastUsed != 0 {
+			t.Error("expected `lastUsed` property of a compat account to be initialized to 0", acc.lastUsed)
+		}
+	}
+	numAccounts := len(am.accounts)
+	am.mu.Unlock()
+	if numAccounts != 163 {
+		t.Fatalf("Expected 163 accounts to be loaded, however %v were found", numAccounts)
+	}
+
+	// verify the tmp file got cleaned up
+	tmp := filepath.Join(rt.dir, modules.RenterDir, accountsFilename+".tmp")
+	_, err = os.Stat(tmp)
+	if !os.IsNotExist(err) {
+		t.Fatal("Expected 'NotExist' error, instead err was", err)
+	}
+
+	// verify the version in the metadata got bumped to the correct version
+	accountsFile, err := os.Open(dst)
+	if err != nil {
+		t.Fatal("Failed to open accounts file after upgrade")
+	}
+	metadata, err := readMetadata(accountsFile)
+	if err != nil {
+		t.Fatal("Failed to read metadata after upgrade")
+	}
+	if metadata.Version != metadataVersion {
+		t.Fatal("Expected metadata version to be bumped after upgrade")
+	}
+}
+
+// testAccountMarshaling verifies the functionality of the `bytes` and
+// `loadBytes` method on the accountPersistence object
+func testAccountMarshaling(t *testing.T) {
 	t.Parallel()
 
 	// create a random persistence object and get its bytes
@@ -282,96 +331,8 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	}
 }
 
-// TestCompatV150AccountPersistence verifies that the account bytes of an
-// account persistence object before it had the `lastUsed` property can be
-// loaded into the current persistence object without corrupting it.
-func TestCompatV150AccountPersistence(t *testing.T) {
-	t.Parallel()
-	if testing.Short() {
-		t.SkipNow()
-	}
-
-	// create a renter tester
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := rt.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// verify it has 0 accounts
-	am := rt.renter.staticAccountManager
-	am.mu.Lock()
-	numAccounts := len(am.accounts)
-	am.mu.Unlock()
-	if numAccounts != 0 {
-		t.Fatalf("Expected 0 accounts to be loaded, however %v were found", numAccounts)
-	}
-
-	// close the renter
-	err = rt.renter.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// copy the compat file to the location of the accounts file
-	src := filepath.Join("..", "..", "compatibility", "accountsV150.dat")
-	dst := filepath.Join(rt.dir, modules.RenterDir, accountsFilename)
-	err = build.CopyFile(src, dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// reopen the renter
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir), &modules.ProductionDependencies{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rt.addRenter(r)
-
-	// verify it can properly load all 163 compat accounts and their lastUsed
-	// prop is initialized to 0 - no need to perform any extra validation, the
-	// renter will have doen that during bootstrap using the checksum
-	am = rt.renter.staticAccountManager
-	am.mu.Lock()
-	for _, acc := range am.accounts {
-		if acc.lastUsed != 0 {
-			t.Error("expected `lastUsed` property of a compat account to be initialized to 0", acc.lastUsed)
-		}
-	}
-	numAccounts = len(am.accounts)
-	am.mu.Unlock()
-	if numAccounts != 163 {
-		t.Fatalf("Expected 163 accounts to be loaded, however %v were found", numAccounts)
-	}
-
-	// verify the tmp file got cleaned up
-	tmp := filepath.Join(rt.dir, modules.RenterDir, accountsFilename+".tmp")
-	_, err = os.Stat(tmp)
-	if !os.IsNotExist(err) {
-		t.Fatal("Expected 'NotExist' error, instead err was", err)
-	}
-
-	// verify the version in the metadata got bumped to the correct version
-	accountsFile, err := os.Open(dst)
-	if err != nil {
-		t.Fatal("Failed to open accounts file after upgrade")
-	}
-	metadata, err := readMetadata(accountsFile)
-	if err != nil {
-		t.Fatal("Failed to read metadata after upgrade")
-	}
-	if metadata.Version != metadataVersion {
-		t.Fatal("Expected metadata version to be bumped after upgrade")
-	}
-}
-
-// TestOverwriteFile verifies the functionality of the overwriteFile helper.
-func TestOverwriteFile(t *testing.T) {
+// testOverwriteFile verifies the functionality of the overwriteFile helper.
+func testOverwriteFile(t *testing.T) {
 	t.Parallel()
 
 	src := filepath.Join(os.TempDir(), "src.dat")
@@ -432,4 +393,22 @@ func TestOverwriteFile(t *testing.T) {
 	if !bytes.Equal(srcDataOnDisk, srcData) {
 		t.Fatal("The source file did not contain the same source data, we expected this file to be untouched")
 	}
+}
+
+// openRandomTestAccountsOnRenter is a helper function that creates a random
+// number of accounts by calling 'managedOpenAccount' on the given renter
+func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
+	accounts := make([]*account, 0)
+	for i := 0; i < fastrand.Intn(10)+1; i++ {
+		hostKey := types.SiaPublicKey{
+			Algorithm: types.SignatureEd25519,
+			Key:       fastrand.Bytes(crypto.PublicKeySize),
+		}
+		account, err := r.staticAccountManager.managedOpenAccount(hostKey)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to create random accounts")
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, nil
 }

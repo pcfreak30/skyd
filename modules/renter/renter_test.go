@@ -149,6 +149,12 @@ func (rt *renterTester) reloadRenter(r *Renter) (*Renter, error) {
 	return rt.reloadRenterWithDependency(r, r.deps)
 }
 
+// reloadRenterClean closes the given renter and then re-adds it using
+// production dependencies, effectively clearing its dependencies.
+func (rt *renterTester) reloadRenterClean(r *Renter) (*Renter, error) {
+	return rt.reloadRenterWithDependency(r, &modules.ProductionDependencies{})
+}
+
 // reloadRenterWithDependency closes the given renter and recreates it using the
 // given dependency, it then re-adds the renter on the renter tester effectively
 // relodaing it.
