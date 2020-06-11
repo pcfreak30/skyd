@@ -369,11 +369,8 @@ func (am *accountManager) load() error {
 	// Disrupt if the dependency is set to prevent cleaning up the tmp accounts
 	// file. This simulates a crash that leaves a tmp accounts file on disk.
 	if !am.staticRenter.deps.Disrupt("DisableTmpFileCleanup") {
-		tf := filepath.Join(am.staticRenter.persistDir, accountsFilename+".tmp")
-		if _, err := os.Stat(tf); !os.IsNotExist(err) {
-			if err := os.Remove(tf); err != nil {
-				am.staticRenter.log.Println("ERROR: failed to remove tmp accounts file, err:", err)
-			}
+		if err := os.RemoveAll(filepath.Join(am.staticRenter.persistDir, accountsFilename+".tmp")); err != nil {
+			am.staticRenter.log.Println("ERROR: failed to remove tmp accounts file, err:", err)
 		}
 	}
 
