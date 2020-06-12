@@ -2,9 +2,10 @@ package renter
 
 import (
 	"bytes"
-	"io/ioutil"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,7 +57,7 @@ func TestAccountPersistence(t *testing.T) {
 	}
 
 	t.Run("Marshalling", testAccountMarshaling)
-	t.Run("OverwriteFile", testOverwriteFile)
+	t.Run("LoadBytesCompatV150", testLoadBytesCompatV150)
 	t.Run("VerifyChecksum", testVerifyChecksum)
 
 	t.Run("Save", func(t *testing.T) { testAccountSave(t, rt) })
@@ -431,68 +432,64 @@ func testAccountMarshaling(t *testing.T) {
 	}
 }
 
-// testOverwriteFile verifies the functionality of the overwriteFile helper.
-func testOverwriteFile(t *testing.T) {
+// testLoadBytesCompatV150 unit tests the functionality of the
+// loadBytesCompatV150 function
+func testLoadBytesCompatV150(t *testing.T) {
 	t.Parallel()
 
-	src := filepath.Join(os.TempDir(), "src.dat")
-	dst := filepath.Join(os.TempDir(), "dst.dat")
+	// create a v1.5.0 persistence object with random values
+	random := newRandomAccountPersistence()
+	ap := new(compatV150AccountPersistence)
+	ap.AccountID = random.AccountID
+	ap.Balance = random.Balance
+	ap.HostKey = random.HostKey
+	ap.SecretKey = random.SecretKey
+
+	// create a byte slice storing the checksum and account bytes
+	accBytesPadded := make([]byte, compatV150AccountSize-crypto.HashSize)
+	copy(accBytesPadded, encoding.Marshal(*ap))
+	checksum := crypto.HashBytes(accBytesPadded)
+
+	accBytes := make([]byte, compatV150AccountSize)
+	copy(accBytes[:crypto.HashSize], checksum[:])
+	copy(accBytes[crypto.HashSize:], accBytesPadded)
+
+	// load those bytes onto a compat persistence object just as we would during
+	// the update flow
+	compat := new(accountPersistence)
+	err := compat.loadBytesCompatV150(accBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// validate the fields
+	if !compat.AccountID.SPK().Equals(ap.AccountID.SPK()) {
+		t.Fatal("Unexpected AccountID")
+	}
+	if !compat.Balance.Equals(ap.Balance) {
+		t.Fatal("Unexpected balance")
+	}
+	if !compat.HostKey.Equals(ap.HostKey) {
+		t.Fatal("Unexpected hostkey")
+	}
+	if !bytes.Equal(compat.SecretKey[:], ap.SecretKey[:]) {
+		t.Fatal("Unexpected secretkey")
+	}
+	if compat.LastUsed != 0 {
+		t.Fatal("Unexpected last used")
+	}
+
+	// verify the compat function asserts the length of the given byte slice -
+	// this will build.Critical so we defer a recovery
+	accBytes = make([]byte, compatV150AccountSize+1)
 	defer func() {
-		if err := errors.Compose(
-			os.Remove(src),
-			os.Remove(dst),
-		); err != nil {
-			t.Fatal(err)
+		r := recover()
+		if r == nil || !strings.Contains(fmt.Sprintf("%v", r), "account bytes are not the expected length") {
+			t.Error("Expected build.Critical")
+			t.Log(r)
 		}
 	}()
-
-	// write some random data to both files
-	srcData := fastrand.Bytes(100)
-	err := ioutil.WriteFile(src, srcData, defaultFilePerm)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	dstData := fastrand.Bytes(200)
-	err = ioutil.WriteFile(dst, dstData, defaultFilePerm)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// open both files
-	srcFile, err := os.OpenFile(src, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dstFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// overwrite the contents of the destination file with the contents of the
-	// source file
-	err = overwriteFile(dstFile, srcFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// verify the dst file has the src data
-	newDstData, err := ioutil.ReadFile(dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(newDstData, srcData) {
-		t.Fatal("The destination file did not contain the expected source data")
-	}
-
-	// verify the src file was not altered
-	srcDataOnDisk, err := ioutil.ReadFile(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(srcDataOnDisk, srcData) {
-		t.Fatal("The source file did not contain the same source data, we expected this file to be untouched")
-	}
+	compat.loadBytesCompatV150(accBytes)
 }
 
 // testVerifyChecksum verifies the functionality of the verifyChecksum helper.

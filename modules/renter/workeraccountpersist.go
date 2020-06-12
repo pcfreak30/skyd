@@ -181,6 +181,11 @@ func (ap *accountPersistence) loadBytes(b []byte) error {
 // loadBytesCompatV150 is a compat function that can load account bytes of a
 // v1.5.0 account on an account persistence object.
 func (ap *accountPersistence) loadBytesCompatV150(b []byte) error {
+	// Sanity check the length of the byte slice
+	if len(b) != compatV150AccountSize {
+		build.Critical("Given account bytes are not the expected length")
+	}
+
 	checksum := b[:crypto.HashSize]
 	accBytes := b[crypto.HashSize:]
 	accHash := crypto.HashBytes(accBytes)
@@ -572,6 +577,12 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 		if err != nil {
 			return errors.AddContext(err, "failed to write the hash to the beginning of the tmp accounts file")
 		}
+
+		// sync the tmp file
+		err = tmpFile.Sync()
+		if err != nil {
+			return fmt.Errorf("failed to sync the tmp accounts file, err: %v", err)
+		}
 	}
 
 	// seek to the start of the accounts file
@@ -579,6 +590,7 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 	if err != nil {
 		return errors.AddContext(err, "failed to seek in the accounts file")
 	}
+
 	// seek to right after the checksum in the tmp file
 	_, err = tmpFile.Seek(crypto.HashSize, io.SeekStart)
 	if err != nil {
@@ -586,9 +598,13 @@ func (am *accountManager) upgradeFromV150ToV151() error {
 	}
 
 	// overwrite the accounts file with the contents of the tmp file
-	err = overwriteFile(am.staticFile, tmpFile)
+	size, err := io.Copy(am.staticFile, tmpFile)
 	if err != nil {
-		return errors.AddContext(err, "failed to overwrite the contents of the accounts file with the updated contents in the temporary file")
+		return errors.AddContext(err, "failed to copy the file contents")
+	}
+	err = am.staticFile.Truncate(size)
+	if err != nil {
+		return fmt.Errorf("failed to truncate the accounts file, err: %v", err)
 	}
 
 	// sync the accounts file
@@ -690,27 +706,4 @@ func verifyChecksum(filename string) (bool, error) {
 	checksum := buf[:crypto.HashSize]
 	hash := crypto.HashBytes(buf[crypto.HashSize:])
 	return bytes.Equal(checksum, hash[:]), nil
-}
-
-// overwriteFile is a helper function that overwrites the contents of the
-// destination file with the contents of the source file
-func overwriteFile(dst, src modules.File) error {
-	// sync the source file
-	err := src.Sync()
-	if err != nil {
-		return fmt.Errorf("failed to sync file %v, err: %v", src.Name(), err)
-	}
-
-	// copy the contents
-	size, err := io.Copy(dst, src)
-	if err != nil {
-		return errors.AddContext(err, "failed to copy the file contents")
-	}
-
-	// truncate the dst file to the correct size
-	err = dst.Truncate(size)
-	if err != nil {
-		return fmt.Errorf("failed to truncate file %v, err: %v", dst.Name(), err)
-	}
-	return nil
 }
