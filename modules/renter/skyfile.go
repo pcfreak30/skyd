@@ -520,6 +520,7 @@ func uploadSkyfileReadLeadingChunk(lup modules.SkyfileUploadParameters, headerSi
 // 'callUploadStreamFromReader'. The final skylink is created by calling
 // 'CreateSkylinkFromSiafile' on the resulting siafile.
 func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Skylink, error) {
+	start := time.Now()
 	// Create the erasure coder to use when uploading the file. When going
 	// through the 'managedUploadSkyfile' command, a 1-of-N scheme is always
 	// used, where the redundancy of the data as a whole matches the proposed
@@ -568,7 +569,9 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 		}
 	} else {
 		// Upload the file using a streamer.
+		fmt.Println("callUploadStreamFromReader", time.Since(start))
 		fileNode, err = r.callUploadStreamFromReader(fup, fileReader, false)
+		fmt.Println("callUploadStreamFromReader finished", time.Since(start))
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
 		}
@@ -713,6 +716,7 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
+	start := time.Now()
 	// Check if link is blacklisted
 	if r.staticSkynetBlacklist.IsBlacklisted(link) {
 		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlacklisted
@@ -725,6 +729,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	}
 
 	// Fetch the leading chunk.
+	fmt.Println("time to hit DBR:", time.Since(start))
 	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize, timeout)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
@@ -732,6 +737,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	if len(baseSector) < SkyfileLayoutSize {
 		return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
+	fmt.Println("time to complete DBR:", time.Since(start))
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
@@ -753,6 +759,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	// sector, return a streamer using the data from the base sector.
 	if layout.fanoutSize == 0 {
 		streamer := streamerFromSlice(baseSectorPayload)
+		fmt.Println("No fanout, returning streamer:", time.Since(start))
 		return metadata, streamer, nil
 	}
 

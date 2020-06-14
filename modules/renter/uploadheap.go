@@ -1116,6 +1116,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	if !r.memoryManager.Request(uuc.memoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memory")
 	}
+	fmt.Println("memory received", time.Since(uuc.chunkPoppedFromHeapTime))
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
 	go r.threadedFetchAndRepairChunk(uuc)
@@ -1193,6 +1194,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		// Check if there is work by trying to pop off the next chunk from the
 		// heap.
 		nextChunk := r.uploadHeap.managedPop()
+		fmt.Println("Got the next chunk off of the heap")
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
 			r.uploadHeap.managedReset()
@@ -1243,6 +1245,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		nextChunk.chunkPoppedFromHeapTime = time.Now()
 		nextChunk.mu.Unlock()
 		err := r.managedPrepareNextChunk(nextChunk, hosts)
+		fmt.Println("chunk sent through prepare")
 		if err != nil {
 			// An error was return which means the renter was unable to allocate
 			// memory for the repair. Since that is not an issue with the file

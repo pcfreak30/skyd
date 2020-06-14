@@ -226,6 +226,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
 		}
 	}()
+	defer func() {
+		fmt.Println("total time for download call:", time.Since(startTime))
+	}()
 
 	strLink := ps.ByName("skylink")
 	strLink = strings.TrimPrefix(strLink, "/")
@@ -292,6 +295,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
+	fmt.Println("Calling download", time.Since(startTime))
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
@@ -525,6 +529,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Start the timer for the performance measurement.
 	startTime := time.Now()
+	fmt.Println("Upload started")
 
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
@@ -714,11 +719,13 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 
+		fmt.Println("beginning upload:", time.Since(startTime))
 		skylink, err := api.renter.UploadSkyfile(lup)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
 			return
 		}
+		fmt.Println("upload complete:", time.Since(startTime))
 
 		// Determine whether the file is large or not, and update the
 		// appropriate bucket.
@@ -738,6 +745,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			MerkleRoot: skylink.MerkleRoot(),
 			Bitfield:   skylink.Bitfield(),
 		})
+		fmt.Println("skylink returned")
 		return
 	}
 

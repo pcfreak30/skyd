@@ -157,7 +157,7 @@ func startContinuousLog(dir string, sleepCap time.Duration, restart func()) {
 // logger. Select one (recommended) or more functionalities by passing the
 // corresponding flag(s)
 func StartContinuousProfile(profileDir string, profileCPU bool, profileMem bool, profileTrace bool) {
-	sleepCap := 0 * time.Second // Unlimited.
+	sleepCap := 5 * time.Minute // Unlimited.
 	if profileTrace && sleepCap == 0 {
 		sleepCap = 10 * time.Minute
 	}

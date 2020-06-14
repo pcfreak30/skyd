@@ -165,6 +165,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	if len(workers) == 0 {
 		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
 	}
+	println(",,,", len(workers))
 
 	// Create a timer that is used to determine when the project should stop
 	// looking for a better worker, and instead go use the best worker it has
@@ -205,6 +206,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		// has priority.
 		select {
 		case <-ctx.Done():
+			println("--- timeout waiting for responses")
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		default:
 		}
@@ -220,6 +222,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			case resp = <-staticResponseChan:
 				responses++
 			case <-ctx.Done():
+				println("--- timeout waiting for responses")
 				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 			}
 		} else if len(usableWorkers) == 0 {
@@ -229,6 +232,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			case resp = <-staticResponseChan:
 				responses++
 			case <-ctx.Done():
+				println("--- timeout waiting for a has sector response: ", responses, " ", len(usableWorkers))
 				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 			}
 		} else {
@@ -242,6 +246,12 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		// completing the project, go back to blocking. This check is ignored if
 		// we are supposed to use the best worker.
 		if (resp == nil || resp.staticErr != nil || !resp.staticAvailable) && !useBestWorker {
+			if resp != nil && resp.staticErr != nil {
+				println(",,, resp error:", resp.staticErr.Error())
+			}
+			if resp != nil && resp.staticErr == nil && !resp.staticAvailable {
+				println(",,, worker is saying they don't have the sector")
+			}
 			continue
 		}
 
@@ -321,6 +331,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		select {
 		case readSectorResp = <-readSectorRespChan:
 		case <-ctx.Done():
+			println("--- timeout waiting for a worker to come through")
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
 
@@ -337,6 +348,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	}
 
 	// All workers have failed.
+	println("--- ... all workers failed - workers don't seem to have the sector", len(workers), responses, len(usableWorkers))
 	return nil, ErrRootNotFound
 }
 
@@ -345,9 +357,11 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
+	start := time.Now()
 	if !r.memoryManager.Request(length, memoryPriorityHigh) {
 		return nil, errors.New("renter shut down before memory could be allocated for the project")
 	}
+	fmt.Println("DBR memory request time:", time.Since(start))
 	defer r.memoryManager.Return(length)
 
 	// Create a context. If the timeout is greater than zero, have the context
@@ -361,7 +375,11 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 	data, err := r.managedDownloadByRoot(ctx, root, offset, length)
 	if errors.Contains(err, ErrProjectTimedOut) {
+		println("--- project timed out in pdbr")
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	}
+	if err != nil {
+		println("--- error in pdbr:", err.Error())
 	}
 	return data, err
 }

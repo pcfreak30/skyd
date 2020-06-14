@@ -362,7 +362,9 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	defer r.managedCleanUpUploadChunk(chunk)
 
 	// Fetch the logical data for the chunk.
+	start := time.Now()
 	err = r.managedFetchLogicalChunkData(chunk)
+	fmt.Println("time to fetch logical chunk data:", time.Since(start))
 	if err != nil {
 		// Logical data is not available, cannot upload. Chunk will not be
 		// distributed to workers, therefore set workersRemaining equal to zero.
@@ -627,6 +629,14 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 				successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
 			}
 			r.repairLog.Debugf(`
+	Chunk Created: %v
+	Chunk Popped: %v
+	Chunk Distributed: %v
+	Chunk Available: %v
+	Chunk Complete: %v
+	Fail Times: %v
+	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
+			fmt.Printf(`
 	Chunk Created: %v
 	Chunk Popped: %v
 	Chunk Distributed: %v

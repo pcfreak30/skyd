@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -206,7 +207,9 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 // it is boosting redundancy.
 func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (fileNode *filesystem.FileNode, err error) {
 	// Check the upload params first.
+	start := time.Now()
 	fileNode, err = r.managedInitUploadStream(up, backup)
+	fmt.Println("init upload stream:", time.Since(start))
 	if err != nil {
 		return nil, err
 	}
@@ -229,6 +232,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 	// Get the most recent workers.
 	hosts := r.managedRefreshHostsAndWorkers()
+	fmt.Println("refresh complete:", time.Since(start))
 
 	// Check if we currently have enough workers for the specified redundancy.
 	minWorkers := fileNode.ErasureCode().MinPieces()
@@ -258,6 +262,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		if err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1); err != nil {
 			return nil, err
 		}
+		fmt.Println("grew the chunk count", time.Since(start))
 
 		// Start the chunk upload.
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
@@ -265,6 +270,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to fetch chunk for stream")
 		}
+		fmt.Println("built the unfinished chunks", time.Since(start))
 
 		// Create a new shard set it to be the source reader of the chunk.
 		ss := NewStreamShard(reader, peek)
@@ -274,6 +280,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		if uuc.piecesCompleted < uuc.piecesNeeded {
 			// Add the chunk to the upload heap.
 			if !r.uploadHeap.managedPush(uuc) {
+				fmt.Println("pushed chunk into heap", time.Since(start))
 				// The chunk can't be added to the heap. It's probably already being
 				// repaired. Flush the shard and move on to the next one.
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
@@ -302,6 +309,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		case <-r.tg.StopChan():
 			return nil, errors.New("interrupted by shutdown")
 		case <-ss.signalChan:
+			fmt.Println("upload heap has accepted the chunk", time.Since(start))
 		}
 
 		// If an io.EOF error occurred or less than chunkSize was read, we are
