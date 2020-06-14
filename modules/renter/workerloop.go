@@ -115,10 +115,6 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
-	if w.staticJobQueueDownloadByRoot.managedHasJob() {
-		w.externLaunchSerialJob(w.managedLaunchJobDownloadByRoot)
-		return
-	}
 	if w.managedHasDownloadJob() {
 		w.externLaunchSerialJob(w.managedPerformDownloadChunkJob)
 		return
@@ -258,8 +254,6 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
-	defer w.managedKillJobsDownloadByRoot()
-	defer w.managedKillJobsDownloadByRoot()
 	defer w.staticJobHasSectorQueue.callKill()
 	defer w.staticJobReadSectorQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()

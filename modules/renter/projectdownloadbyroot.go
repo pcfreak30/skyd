@@ -19,6 +19,15 @@ const (
 	projectDownloadByRootPerformanceDecay = 0.9
 )
 
+var (
+	// ErrRootNotFound is returned if all workers were unable to recover the
+	// root
+	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
+
+	// ErrProjectTimedOut is returned when the project timed out
+	ErrProjectTimedOut = errors.New("project timed out")
+)
+
 // projectDownloadByRootManager tracks metrics across multiple runs of
 // DownloadByRoot projects, and is used by the projects to set expectations for
 // performance.
