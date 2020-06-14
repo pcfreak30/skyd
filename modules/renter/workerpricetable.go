@@ -2,7 +2,6 @@ package renter
 
 import (
 	"encoding/json"
-	"fmt"
 	"sync/atomic"
 	"time"
 	"unsafe"
