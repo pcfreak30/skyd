@@ -80,7 +80,6 @@ type (
 
 		// Job queues for the worker.
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
-		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
 		staticJobHasSectorQueue      *jobHasSectorQueue
 		staticJobReadSectorQueue     *jobReadSectorQueue
 		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
@@ -181,8 +180,7 @@ func (w *worker) status() modules.WorkerStatus {
 		BalanceTarget:    w.staticBalanceTarget,
 
 		// Job Queues
-		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
-		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
+		BackupJobQueueSize: w.staticFetchBackupsJobQueue.managedLen(),
 	}
 }
 
