@@ -10,7 +10,7 @@ const (
 	// cooldownMaxConsecutiveFailures defines the maximum number of consecutive
 	// failures that will be considered when determining how long a worker
 	// should be on cooldown.
-	cooldownMaxConsecutiveFailures = 10
+	cooldownMaxConsecutiveFailures = 6
 
 	// cooldownBaseMaxMilliseconds defines the maximum number of milliseconds
 	// that a worker will go on cooldown for if they have 0 consecutive

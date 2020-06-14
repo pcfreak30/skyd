@@ -196,13 +196,17 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
 		wpt := w.staticPriceTable()
-		fmt.Println(time.Since(wpt.staticUpdateTime), time.Since(wpt.staticExpiryTime), wpt.staticConsecutiveFailures, wpt.staticRecentErr)
+		fmt.Println("price table has expired:", wpt.staticConsecutiveFailures, time.Since(wpt.staticUpdateTime), time.Until(wpt.staticExpiryTime), wpt.staticRecentErr)
 		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
 		return false
 	}
 
 	// If the account is on cooldown, drop all async jobs.
 	if w.staticAccount.managedOnCooldown() {
+		wsa := w.staticAccount
+		wsa.mu.Lock()
+		fmt.Println("worker account is on cooldown:", wsa.consecutiveFailures, time.Until(wsa.cooldownUntil), wsa.recentErr)
+		wsa.mu.Unlock()
 		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
 		return false
 	}

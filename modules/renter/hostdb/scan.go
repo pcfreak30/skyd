@@ -458,6 +458,15 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 				return err
 			}
 
+			// If the version is not v1.4.11 or higher, consider this host
+			// offline. Hosts before this version are unable to use the skynet
+			// protocol, and are therefore ignored.
+			if build.VersionCmp(settings.Version, "1.4.11") < 0 {
+				err = fmt.Errorf("%v considered offline for bad version: %v\n", entry.PublicKey, settings.Version)
+				fmt.Println(err)
+				return err
+			}
+
 			// Try opening a connection to the siamux.
 			//
 			// TODO: Should also check that the websocket port is open and
