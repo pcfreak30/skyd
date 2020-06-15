@@ -292,6 +292,10 @@ func (w *worker) managedAccountNeedsRefill() bool {
 	if !w.staticPriceTable().staticValid() {
 		return false
 	}
+	// Check if the account is synced.
+	if w.managedNeedToSyncAccountToHost() {
+		return false
+	}
 
 	// Check if there is a cooldown in place, and check if the balance is low
 	// enough to justify a refill.
@@ -303,7 +307,7 @@ func (w *worker) managedAccountNeedsRefill() bool {
 		return false
 	}
 	refillAt := w.staticBalanceTarget.Div64(2)
-	if balance.Cmp(refillAt) >= 0 {
+	if balance.Cmp(refillAt) < 0 {
 		return false
 	}
 
