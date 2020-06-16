@@ -27,9 +27,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -129,7 +129,7 @@ func (a *account) managedPersist() error {
 	a.mu.Lock()
 	accountData := accountPersistence{
 		AccountID: a.staticID,
-		Balance:   a.balance,
+		Balance:   a.minExpectedBalance(),
 		HostKey:   a.staticHostKey,
 		LastUsed:  a.lastUsed,
 		SecretKey: a.staticSecretKey,

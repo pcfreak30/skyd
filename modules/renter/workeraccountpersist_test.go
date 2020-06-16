@@ -117,8 +117,15 @@ func testAccountSave(t *testing.T, rt *renterTester) {
 		if err != nil {
 			t.Error(err)
 		}
+
 		if accountID != reloaded.staticID.SPK().String() {
 			t.Error("Unexpected account ID")
+		}
+
+		if !reloaded.balance.Equals(account.managedMinExpectedBalance()) {
+			t.Log(reloaded.balance)
+			t.Log(account.managedMinExpectedBalance())
+			t.Fatal("Unexpected account balance after reload")
 		}
 	}
 
@@ -539,22 +546,4 @@ func testVerifyChecksum(t *testing.T) {
 	if validChecksum || err != nil {
 		t.Fatal("unexpected output", validChecksum, err)
 	}
-}
-
-// openRandomTestAccountsOnRenter is a helper function that creates a random
-// number of accounts by calling 'managedOpenAccount' on the given renter
-func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
-	accounts := make([]*account, 0)
-	for i := 0; i < fastrand.Intn(10)+1; i++ {
-		hostKey := types.SiaPublicKey{
-			Algorithm: types.SignatureEd25519,
-			Key:       fastrand.Bytes(crypto.PublicKeySize),
-		}
-		account, err := r.staticAccountManager.managedOpenAccount(hostKey)
-		if err != nil {
-			return nil, errors.AddContext(err, "failed to create random accounts")
-		}
-		accounts = append(accounts, account)
-	}
-	return accounts, nil
 }
