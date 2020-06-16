@@ -53,6 +53,16 @@ var (
 		Standard: 60 * time.Minute, // 1 hour
 		Testing:  10 * time.Second, // needs to be long even in testing
 	}).(time.Duration)
+
+	// accountIdleMaxWait defines the max amount of time that the worker will
+	// wait to reach an idle state before firing a build.Critical and giving up
+	// on becoming idle. Generally this will indicate that somewhere in the
+	// worker code there is a job that is not timing out correctly.
+	accountIdleMaxWait = build.Select(build.Var{
+		Dev:      10 * time.Minute,
+		Standard: 40 * time.Minute,
+		Testing:  20 * time.Second, // needs to be long even in testing
+	}).(time.Duration)
 )
 
 type (
@@ -149,6 +159,20 @@ func (a *account) availableBalance() types.Currency {
 	return types.ZeroCurrency
 }
 
+// callNeedsToSync returns whether or not the account needs to sync to the host.
+func (a *account) callNeedsToSync() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.syncAt.Before(time.Now())
+}
+
+// callSetSyncAt will update the syncAt time for the account.
+func (a *account) callSetSyncAt(newSyncAt time.Time) {
+	a.mu.Lock()
+	a.syncAt = newSyncAt
+	a.mu.Unlock()
+}
+
 // managedAvailableBalance returns the amount of money that is available to
 // spend. It is calculated by taking into account pending spends and pending
 // funds.
@@ -169,7 +193,10 @@ func (a *account) managedMaxExpectedBalance() types.Currency {
 // maxExpectedBalance returns the max amount of money that this account is
 // expected to contain after the renter has shut down.
 func (a *account) maxExpectedBalance() types.Currency {
-	return a.balance.Add(a.pendingDeposits)
+	// NOTE: negativeBalance will never be larger than the sum of the pending
+	// deposits. If that does happen, this will build.Critical which indicates
+	// that something is incorrect within the worker's internal accounting.
+	return a.balance.Add(a.pendingDeposits).Sub(a.negativeBalance)
 }
 
 // managedMinExpectedBalance returns the min amount of money that this
@@ -417,6 +444,7 @@ func (w *worker) managedRefillAccount() {
 		// The host reporting that the balance has been exceeded suggests that
 		// the host believes that we have more money than we believe that we
 		// have.
+		w.renter.log.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?")
 		w.staticAccount.mu.Lock()
 		w.staticAccount.syncAt = time.Time{}
 		w.staticAccount.mu.Unlock()
@@ -468,7 +496,7 @@ func (w *worker) managedRefillAccount() {
 func (w *worker) managedSyncAccountBalanceToHost() {
 	// Spin/block until the worker has no jobs in motion. This should only be
 	// called from the primary loop of the worker, meaning that no new jobs will
-	// be created while we spin.
+	// be launched while we spin.
 	isIdle := func() bool {
 		sls := w.staticLoopState
 		a := atomic.LoadUint64(&sls.atomicSerialJobRunning) != 0
@@ -478,11 +506,20 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 	}
 	start := time.Now()
 	for !isIdle() {
-		if time.Since(start) > time.Minute*40 {
+		if time.Since(start) > accountIdleMaxWait {
 			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
 		}
 		w.renter.tg.Sleep(accountIdleCheckFrequency)
 	}
+	// Do a check to ensure that the worker is still idle after the function is
+	// complete. This should help to catch any situation where the worker is
+	// spinning up new jobs, even though it is not supposed to be spinning up
+	// newe jobs while it is performing the sync operation.
+	defer func() {
+		if !isIdle() {
+			w.renter.log.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")
+		}
+	}()
 
 	// Sanity check the account's deltas are zero, indicating there are no
 	// in-progress jobs
@@ -514,9 +551,7 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 	// freeze them frequently.
 	waitTime := time.Duration(fastrand.Intn(accountSyncRandWaitMilliseconds)) * time.Millisecond
 	waitTime += accountSyncMinWaitTime
-	w.staticAccount.mu.Lock()
-	w.staticAccount.syncAt = time.Now().Add(waitTime)
-	w.staticAccount.mu.Unlock()
+	w.staticAccount.callSetSyncAt(time.Now().Add(waitTime))
 
 	// TODO perform a thorough balance comparison to decide whether the drift in
 	// the account balance is warranted. If not the host needs to be penalized
@@ -531,10 +566,7 @@ func (w *worker) managedNeedsToSyncAccountToHost() bool {
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
-
-	w.staticAccount.mu.Lock()
-	defer w.staticAccount.mu.Unlock()
-	return w.staticAccount.syncAt.Before(time.Now())
+	return w.staticAccount.callNeedsToSync()
 }
 
 // staticHostAccountBalance performs the AccountBalanceRPC on the host
