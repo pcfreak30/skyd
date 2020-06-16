@@ -260,7 +260,7 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 				c.log.Printf("Unable to mark contract %v on host %v as bad: %v", contract.ID, host, err)
 			}
 		}
-		return err
+		return errors.AddContext(err, "unable to read the pay by contract response")
 	}
 
 	// TODO: Check for revision mismatch and recover by applying the contract
