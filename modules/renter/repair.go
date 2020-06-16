@@ -553,9 +553,11 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		// filesystem has been checked recently, and we can sleep until the
 		// least recent check is outside the check interval.
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
+		fmt.Println("aaa time since last health check:", lastHealthCheckTime)
 		if timeSinceLastCheck < healthCheckInterval {
 			// Sleep until the least recent check is outside the check interval.
 			sleepDuration := healthCheckInterval - timeSinceLastCheck
+			fmt.Println("aaa health loop sleeping for:", sleepDuration)
 			r.log.Debugln("Health loop sleeping for", sleepDuration)
 			wakeSignal := time.After(sleepDuration)
 			select {
@@ -563,8 +565,14 @@ func (r *Renter) threadedUpdateRenterHealth() {
 				return
 			case <-wakeSignal:
 			}
+			// Go grab another path in case the paths have changed while
+			// sleeping.
+			continue
 		}
+
+		// Update the health of the grabbed siapath.
 		r.log.Debug("Health Loop calling bubble on '", siaPath.String(), "'")
+		fmt.Println("aaa Updating health for:", siaPath)
 		err = r.managedBubbleMetadata(siaPath)
 		if err != nil {
 			r.log.Println("Error calling managedBubbleMetadata on `", siaPath.String(), "`:", err)
