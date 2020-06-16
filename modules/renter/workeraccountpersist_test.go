@@ -11,10 +11,10 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -121,19 +121,17 @@ func testAccountSave(t *testing.T, rt *renterTester) {
 		if accountID != reloaded.staticID.SPK().String() {
 			t.Error("Unexpected account ID")
 		}
-
-		if !reloaded.balance.Equals(account.managedMinExpectedBalance()) {
-			t.Log(reloaded.balance)
-			t.Log(account.managedMinExpectedBalance())
-			t.Fatal("Unexpected account balance after reload")
-		}
 	}
 
-	// reload it to trigger the unclean shutdown
-	r, err = rt.reloadRenter(r)
+	// reload it to trigger the unclean shutdown, we reload it with a dependency
+	// that prevents any workers from being added to the workerpool, ensuring
+	// the worker account can not be used
+	rdeps := &dependencies.DependencyInterruptAddWorker{}
+	r, err = rt.reloadRenterWithDependency(r, rdeps)
 	if err != nil {
 		t.Fatal(err)
 	}
+	am = r.staticAccountManager
 
 	// verify the accounts were reloaded but the balances were cleared due to
 	// the unclean shutdown

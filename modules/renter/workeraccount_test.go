@@ -490,7 +490,7 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 
 // openRandomTestAccountsOnRenter is a helper function that creates a random
 // number of accounts by calling 'managedOpenAccount' on the given renter
-func openRandomTestAccountsOnRenter(r *Renter) []*account {
+func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
 	accounts := make([]*account, 0)
 	for i := 0; i < fastrand.Intn(10)+1; i++ {
 		hostKey := types.SiaPublicKey{
@@ -499,8 +499,7 @@ func openRandomTestAccountsOnRenter(r *Renter) []*account {
 		}
 		account, err := r.staticAccountManager.managedOpenAccount(hostKey)
 		if err != nil {
-			// TODO: Have this function return an error.
-			panic(err)
+			return nil, err
 		}
 
 		// give it a random balance state
@@ -510,5 +509,5 @@ func openRandomTestAccountsOnRenter(r *Renter) []*account {
 		account.pendingWithdrawals = types.NewCurrency64(fastrand.Uint64n(1e2))
 		accounts = append(accounts, account)
 	}
-	return accounts
+	return accounts, nil
 }

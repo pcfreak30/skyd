@@ -115,6 +115,11 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencyInterruptAddWorker will interrupt the creation of a new worker.
+	DependencyInterruptAddWorker struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyBlockResumeJobDownloadUntilTimeout blocks in
 	// managedResumeJobDownloadByRoot until the timeout for the download project
 	// is reached.
@@ -267,9 +272,14 @@ func (d *DependencyRenewWithoutClear) Disrupt(s string) bool {
 	return s == "RenewWithoutClear"
 }
 
-// Disrupt causes contract renewal to not clear the contents of a contract.
+// Disrupt returns true if the correct string is provided.
 func (d *DependencyInterruptAccountSaveOnShutdown) Disrupt(s string) bool {
 	return s == "InterruptAccountSaveOnShutdown"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyInterruptAddWorker) Disrupt(s string) bool {
+	return s == "InterruptAddWorker"
 }
 
 // Disrupt returns true if the correct string is provided.
