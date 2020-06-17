@@ -463,7 +463,6 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			// protocol, and are therefore ignored.
 			if build.VersionCmp(settings.Version, "1.4.11") < 0 {
 				err = fmt.Errorf("%v considered offline for bad version: %v\n", entry.PublicKey, settings.Version)
-				fmt.Println(err)
 				return err
 			}
 
@@ -473,15 +472,12 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			// reachable.
 			stream, err := hdb.staticMux.NewStream(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), modules.SiaPKToMuxPK(entry.PublicKey))
 			if err != nil {
-				fmt.Printf("%v could not open stream: %v\n", entry.PublicKey, err)
 				return err
 			}
 			err = stream.Close()
 			if err != nil {
-				fmt.Printf("%v could not close stream: %v\n", entry.PublicKey, err)
 				return err
 			}
-			fmt.Printf("%v was successful in using stream: %v\n", entry.PublicKey, err)
 			return nil
 		}()
 		if tryNewProtoErr == nil {
@@ -558,15 +554,12 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		// reachable.
 		stream, err := hdb.staticMux.NewStream(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), modules.SiaPKToMuxPK(entry.PublicKey))
 		if err != nil {
-			fmt.Printf("%v could not open stream: %v\n", entry.PublicKey, err)
 			return err
 		}
 		err = stream.Close()
 		if err != nil {
-			fmt.Printf("%v could not close stream: %v\n", entry.PublicKey, err)
 			return err
 		}
-		fmt.Printf("%v was successful in using stream: %v\n", entry.PublicKey, err)
 
 		return nil
 	}()
