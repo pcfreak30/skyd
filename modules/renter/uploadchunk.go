@@ -636,7 +636,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	Chunk Complete: %v
 	Fail Times: %v
 	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
-			fmt.Printf(`
+			fmt.Printf(`ccc
 	Chunk Created: %v
 	Chunk Popped: %v
 	Chunk Distributed: %v

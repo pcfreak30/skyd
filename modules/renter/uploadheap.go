@@ -1116,7 +1116,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	if !r.memoryManager.Request(uuc.memoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memory")
 	}
-	fmt.Println("memory received", time.Since(uuc.chunkPoppedFromHeapTime))
+	fmt.Println("bbb memory received for uploading", time.Since(uuc.chunkPoppedFromHeapTime))
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
 	go r.threadedFetchAndRepairChunk(uuc)
