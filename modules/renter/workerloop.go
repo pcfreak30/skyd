@@ -266,6 +266,12 @@ func (w *worker) threadedWorkLoop() {
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
+		// Ensure the renter's revision number of the underlying file contract
+		// is in sync with the host's revision number. This check must happen at
+		// the top as consecutive checks make use of the file contract for
+		// payment.
+		w.managedTryFixRevisionNumberMismatch()
+
 		// The worker cannot execute any async tasks unless the price table of
 		// the host is known, the balance of the worker account is known, and
 		// the account has sufficient funds in it. This update is done as a
@@ -295,6 +301,13 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 		w.staticTryUpdateCache()
+
+		// Try and fix a revision number mismatch if the flag is set. This will
+		// be the case if other processes errored out with an error indicating a
+		// mismatch.
+		if w.staticSuspectRevisionNumberMismatch() {
+			w.managedTryFixRevisionNumberMismatch()
+		}
 
 		// If the worker needs to sync the account balance, perform a sync
 		// operation. This should be attempted before launching any jobs.
