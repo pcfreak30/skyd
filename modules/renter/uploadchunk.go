@@ -9,7 +9,6 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -619,32 +618,30 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		uc.chunkCompleteTime = time.Now()
 
 		// Create a log message with all of the timings of the chunk uploading.
-		if build.DEBUG {
-			failedTimes := make([]int, 0, len(uc.chunkFailedProcessTimes))
-			for _, ft := range uc.chunkFailedProcessTimes {
-				failedTimes = append(failedTimes, int(time.Since(ft)/time.Millisecond))
-			}
-			successTimes := make([]int, 0, len(uc.chunkSuccessProcessTimes))
-			for _, st := range uc.chunkSuccessProcessTimes {
-				successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
-			}
-			r.repairLog.Debugf(`
-	Chunk Created: %v
-	Chunk Popped: %v
-	Chunk Distributed: %v
-	Chunk Available: %v
-	Chunk Complete: %v
-	Fail Times: %v
-	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
-			fmt.Printf(`ccc
-	Chunk Created: %v
-	Chunk Popped: %v
-	Chunk Distributed: %v
-	Chunk Available: %v
-	Chunk Complete: %v
-	Fail Times: %v
-	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
+		failedTimes := make([]int, 0, len(uc.chunkFailedProcessTimes))
+		for _, ft := range uc.chunkFailedProcessTimes {
+			failedTimes = append(failedTimes, int(time.Since(ft)/time.Millisecond))
 		}
+		successTimes := make([]int, 0, len(uc.chunkSuccessProcessTimes))
+		for _, st := range uc.chunkSuccessProcessTimes {
+			successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
+		}
+		r.repairLog.Debugf(`
+	Chunk Created: %v
+	Chunk Popped: %v
+	Chunk Distributed: %v
+	Chunk Available: %v
+	Chunk Complete: %v
+	Fail Times: %v
+	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
+		fmt.Printf(`ccc
+	Chunk Created: %v
+	Chunk Popped: %v
+	Chunk Distributed: %v
+	Chunk Available: %v
+	Chunk Complete: %v
+	Fail Times: %v
+	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
