@@ -398,7 +398,8 @@ func (w *worker) managedRefillAccount() {
 		// If the error could be caused by a revision number mismatch,
 		// signal it by setting the flag.
 		if errCausedByRevisionMismatch(err) {
-			w.staticSetSuspectRevisionNumberMismatch()
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
 		}
 
 		// Have the threadgroup wake the worker when the account comes off of
@@ -618,7 +619,8 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 		// If the error could be caused by a revision number mismatch,
 		// signal it by setting the flag.
 		if errCausedByRevisionMismatch(err) {
-			w.staticSetSuspectRevisionNumberMismatch()
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
 		}
 		return types.ZeroCurrency, err
 	}

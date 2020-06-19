@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/log"
 	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -821,7 +821,7 @@ func (s *Session) Close() error {
 }
 
 // NewSession initiates the RPC loop with a host and returns a Session.
-func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, logger *persist.Logger, cancel <-chan struct{}) (_ *Session, err error) {
+func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, logger *log.Logger, cancel <-chan struct{}) (_ *Session, err error) {
 	sc, ok := cs.Acquire(id)
 	if !ok {
 		return nil, errors.New("could not locate contract to create session")
@@ -838,15 +838,15 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, errors.AddContext(err, "unable to get a session lock")
 	}
 
-	// Resynchronize if necessary
-	syncAttempted, err := sc.managedSyncRevision(rev, sigs)
-	if logger != nil && syncAttempted {
-		logger.Printf("%v revision resync attempted, success: %v, err: %v\n", host.PublicKey.String(), err == nil, err)
-	}
+	// Resynchronize
+	err = sc.managedSyncRevision(rev, sigs)
 	if err != nil {
-		s.Close()
+		logger.Printf("%v revision resync failed, err: %v\n", host.PublicKey.String(), err)
+		err = errors.Compose(err, s.Close())
 		return nil, errors.AddContext(err, "unable to sync revisions when creating session")
 	}
+	logger.Printf("%v revision resync attempted, succeeded: %v\n", host.PublicKey.String(), sc.LastRevision().NewRevisionNumber == rev.NewRevisionNumber)
+
 	return s, nil
 }
 

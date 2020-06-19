@@ -21,8 +21,9 @@ type (
 		// while we are waiting for all existing threads to finish.
 		//
 		// These values can be decremented in a goroutine.
-		atomicSerialJobRunning uint64
-		atomicAsyncJobsRunning uint64
+		atomicAsyncJobsRunning        uint64
+		atomicSerialJobRunning        uint64
+		atomicSuspectRevisionMismatch uint64 // used for fixing revision number mismatches
 
 		// Variables to track the total amount of async data outstanding. This
 		// indicates the total amount of data that we expect to use from async
@@ -281,7 +282,7 @@ func (w *worker) threadedWorkLoop() {
 		// is in sync with the host's revision number. This check must happen at
 		// the top as consecutive checks make use of the file contract for
 		// payment.
-		w.managedTryFixRevisionNumberMismatch()
+		w.externTryFixRevisionMismatch()
 
 		// The worker cannot execute any async tasks unless the price table of
 		// the host is known, the balance of the worker account is known, and
@@ -311,13 +312,17 @@ func (w *worker) threadedWorkLoop() {
 		if !w.managedBlockUntilReady() {
 			return
 		}
+
+		// Update the worker cache object, note that we do this after trying to
+		// sync the revision as that might influence the contract, which is used
+		// to build the cache object.
 		w.staticTryUpdateCache()
 
 		// Try and fix a revision number mismatch if the flag is set. This will
 		// be the case if other processes errored out with an error indicating a
 		// mismatch.
-		if w.staticSuspectRevisionNumberMismatch() {
-			w.managedTryFixRevisionNumberMismatch()
+		if w.staticSuspectRevisionMismatch() {
+			w.externTryFixRevisionMismatch()
 		}
 
 		// If the worker needs to sync the account balance, perform a sync
