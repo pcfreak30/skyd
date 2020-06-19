@@ -42,7 +42,7 @@ type (
 		// long periods of inactivity. Using this timestamp we can decide
 		// whether or not it's reasonable the host expired our account (and thus
 		// nullified our balance)
-		lastUsed int64
+		lastUsed time.Time
 
 		// Error handling and cooldown tracking.
 		consecutiveFailures uint64
@@ -239,7 +239,7 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 
 // updateLastUsed updates the `lastUsed` timestamp on the account
 func (a *account) updateLastUsed() {
-	a.lastUsed = time.Now().Unix()
+	a.lastUsed = time.Now()
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and

@@ -256,7 +256,7 @@ func testAccountCompatV150(t *testing.T, rt *renterTester) {
 	am := rt.renter.staticAccountManager
 	am.mu.Lock()
 	for _, acc := range am.accounts {
-		if acc.lastUsed != 0 {
+		if acc.lastUsed.Unix() != 0 {
 			t.Error("expected `lastUsed` property of a compat account to be initialized to 0", acc.lastUsed)
 		}
 	}

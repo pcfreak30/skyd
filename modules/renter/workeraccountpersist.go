@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -131,7 +132,7 @@ func (a *account) managedPersist() error {
 		AccountID: a.staticID,
 		Balance:   a.minExpectedBalance(),
 		HostKey:   a.staticHostKey,
-		LastUsed:  a.lastUsed,
+		LastUsed:  a.lastUsed.Unix(),
 		SecretKey: a.staticSecretKey,
 	}
 	a.mu.Unlock()
@@ -649,7 +650,7 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 		staticSecretKey: accountData.SecretKey,
 
 		balance:  accountData.Balance,
-		lastUsed: accountData.LastUsed,
+		lastUsed: time.Unix(accountData.LastUsed, 0),
 
 		staticReady:  make(chan struct{}),
 		externActive: true,

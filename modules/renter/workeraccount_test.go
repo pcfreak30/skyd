@@ -157,7 +157,7 @@ func testAccountLastUsed(t *testing.T, rt *renterTester) {
 	}
 
 	// reset
-	account.lastUsed = 0
+	account.lastUsed = time.Time{}
 	before = account.lastUsed
 
 	// verify lastUsed is not altered when tracking a withrdrawal
@@ -179,7 +179,7 @@ func testAccountLastUsed(t *testing.T, rt *renterTester) {
 	}
 
 	// verify it's set to the current time, allow some leeway to avoid NDFs
-	if time.Since(time.Unix(account.lastUsed, 0)).Seconds() > 3 {
+	if time.Since(account.lastUsed).Seconds() > 3 {
 		t.Fatal("Expected `lastUsed` to be updated to the current timestamp")
 	}
 }
