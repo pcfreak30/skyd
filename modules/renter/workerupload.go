@@ -179,7 +179,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	uc, pieceIndex := w.managedProcessUploadChunk(nextChunk)
 	if uc == nil {
 		nextChunk.mu.Lock()
-		nextChunk.chunkFailedProcessTimes = append(nextChunk.chunkFailedProcessTimes, time.Now())
+		// nextChunk.chunkFailedProcessTimes = append(nextChunk.chunkFailedProcessTimes, time.Now())
 		nextChunk.mu.Unlock()
 		return
 	}

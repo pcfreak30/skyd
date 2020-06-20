@@ -175,9 +175,11 @@ func (mm *memoryManager) Request(amount uint64, priority bool) bool {
 	// Try to request the memory.
 	shouldTry := len(mm.priorityFifo) == 0 && (priority || len(mm.fifo) == 0)
 	if shouldTry && mm.try(amount, priority) {
+		println("mmmm - memory request granted immediately - pipeline is not yet full")
 		mm.mu.Unlock()
 		return true
 	}
+	println("mmmm - memory request is put into the queue, pipeline IS full, workers are not releasing memory very quickly")
 	// There is not enough memory available for this request, join the fifo.
 	myRequest := &memoryRequest{
 		amount: amount,
