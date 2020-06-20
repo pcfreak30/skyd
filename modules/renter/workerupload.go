@@ -128,7 +128,8 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 	w.mu.Lock()
 	onCooldown, _ := w.onUploadCooldown()
 	uploadTerminated := w.uploadTerminated
-	if !goodForUpload || uploadTerminated || onCooldown || !candidateHost {
+	tooMany := len(w.unprocessedChunks) > 20
+	if !goodForUpload || uploadTerminated || onCooldown || !candidateHost || tooMany {
 		// The worker should not be uploading, remove the chunk.
 		w.mu.Unlock()
 		w.managedDropChunk(uc)

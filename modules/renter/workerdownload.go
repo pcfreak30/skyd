@@ -245,7 +245,8 @@ func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 	// status.
 	w.downloadMu.Lock()
 	terminated := w.downloadTerminated
-	if !terminated {
+	tooMany := len(w.downloadChunks) > 20
+	if !terminated && !tooMany {
 		// Accept the chunk and issue a notification to the master thread that
 		// there is a new download.
 		w.downloadChunks = append(w.downloadChunks, udc)
