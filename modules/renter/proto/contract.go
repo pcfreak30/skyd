@@ -230,8 +230,9 @@ func (c *SafeContract) clearUnappliedTxns() error {
 // LastRevision returns the most recent revision
 func (c *SafeContract) LastRevision() types.FileContractRevision {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.header.LastRevision()
+	h := c.header
+	c.mu.Unlock()
+	return h.LastRevision()
 }
 
 // Metadata returns the metadata of a renter contract
