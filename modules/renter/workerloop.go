@@ -17,7 +17,7 @@ type (
 		// variables can only be incremented in the primary work loop of the
 		// worker, because there are blocking conditions within the primary work
 		// loop that need to know only one thread is running at a time, and
-		// safety is derived from knowing that know new threads are launching
+		// safety is derived from knowing that no new threads are launching
 		// while we are waiting for all existing threads to finish.
 		//
 		// These values can be decremented in a goroutine.
@@ -229,7 +229,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		w.externLaunchAsyncJob(job)
 		return true
 	}
-	job = w.staticJobReadSectorQueue.callNext()
+	job = w.staticJobReadQueue.callNext()
 	if job != nil {
 		w.externLaunchAsyncJob(job)
 		return true
@@ -260,7 +260,7 @@ func (w *worker) managedBlockUntilReady() bool {
 // worker has not met sufficient conditions to retain async jobs.
 func (w *worker) managedDiscardAsyncJobs(err error) {
 	w.staticJobHasSectorQueue.callDiscardAll(err)
-	w.staticJobReadSectorQueue.callDiscardAll(err)
+	w.staticJobReadQueue.callDiscardAll(err)
 }
 
 // threadedWorkLoop is a perpetual loop run by the worker that accepts new jobs
@@ -274,7 +274,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
 	defer w.staticJobHasSectorQueue.callKill()
-	defer w.staticJobReadSectorQueue.callKill()
+	defer w.staticJobReadQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
