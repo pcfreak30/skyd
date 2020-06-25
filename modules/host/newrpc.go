@@ -934,6 +934,9 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 
 	// Verifiy the final revision of the old contract.
 	newRevenue := settings.BaseRPCPrice
+	if newRevenue.Cmp(currentRevision.ValidRenterPayout()) > 0 {
+		newRevenue = currentRevision.ValidRenterPayout()
+	}
 	newRoots := []crypto.Hash{}
 	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots // verifyRevision assumes new roots
 	err := verifyClearingRevision(s.so, newRevision, blockHeight, newRevenue, types.ZeroCurrency)
