@@ -52,13 +52,76 @@ func TestAccount(t *testing.T) {
 		})
 	}()
 
+	t.Run("CheckFundAccountGouging", testAccountCheckFundAccountGouging)
 	t.Run("Constants", testAccountConstants)
-	t.Run("MinExpectedBalance", testAccountMinExpectedBalance)
+	t.Run("MinMaxExpectedBalance", testAccountMinAndMaxExpectedBalance)
 	t.Run("ResetBalance", testAccountResetBalance)
 
 	t.Run("Creation", func(t *testing.T) { testAccountCreation(t, rt) })
 	t.Run("LastUsed", func(t *testing.T) { testAccountLastUsed(t, rt) })
 	t.Run("Tracking", func(t *testing.T) { testAccountTracking(t, rt) })
+}
+
+// TestWorkerAccount verifies the functionality of the account related
+// functionality of the worker.
+func TestWorkerAccount(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		err := wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	t.Run("HostAccountBalance", func(t *testing.T) {
+		testWorkerAccountHostAccountBalance(t, wt)
+	})
+
+	t.Run("SyncAccountBalanceToHostCritical", func(t *testing.T) {
+		testWorkerAccountSyncAccountBalanceToHostCritical(t, wt)
+	})
+}
+
+// testAccountCheckFundAccountGouging checks that `checkFundAccountGouging` is
+// correctly detecting price gouging from a host.
+func testAccountCheckFundAccountGouging(t *testing.T) {
+	t.Parallel()
+
+	// allowance contains only the fields necessary to test the price gouging
+	allowance := modules.Allowance{
+		Funds: types.SiacoinPrecision.Mul64(1e3),
+	}
+
+	// set the target balance to 1SC, this is necessary because this decides how
+	// frequently we refill the account, which is a required piece of knowledge
+	// in order to estimate the total cost of refilling
+	targetBalance := types.SiacoinPrecision
+
+	// verify happy case
+	pt := newDefaultPriceTable()
+	err := checkFundAccountGouging(pt, allowance, targetBalance)
+	if err != nil {
+		t.Fatal("unexpected price gouging failure")
+	}
+
+	// verify gouging case, in order to do so we have to set the fund account
+	// cost to an unreasonable amount, empirically we found 75mS to be such a
+	// value for the given parameters (1000SC funds and TB of 1SC)
+	pt = newDefaultPriceTable()
+	pt.FundAccountCost = types.SiacoinPrecision.MulFloat(0.075)
+	err = checkFundAccountGouging(pt, allowance, targetBalance)
+	if err == nil || !strings.Contains(err.Error(), "fund account cost") {
+		t.Fatalf("expected fund account cost gouging error, instead error was '%v'", err)
+	}
 }
 
 // testAccountConstants makes sure that certain relationships between constants
@@ -73,6 +136,86 @@ func testAccountConstants(t *testing.T) {
 	}
 	if 4096%accountSize != 0 {
 		t.Fatal("account size must be a factor of 4096")
+	}
+}
+
+// testAccountMinAndMaxExpectedBalance is a small unit test that verifies the
+// functionality of the min and max expected balance functions.
+func testAccountMinAndMaxExpectedBalance(t *testing.T) {
+	t.Parallel()
+
+	oneCurrency := types.NewCurrency64(1)
+
+	a := new(account)
+	a.balance = oneCurrency
+	a.negativeBalance = oneCurrency
+	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+	if !a.maxExpectedBalance().Equals(types.ZeroCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+
+	a = new(account)
+	a.balance = oneCurrency.Mul64(2)
+	a.negativeBalance = oneCurrency
+	a.pendingWithdrawals = oneCurrency
+	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+	if !a.maxExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+
+	a = new(account)
+	a.balance = oneCurrency.Mul64(3)
+	a.negativeBalance = oneCurrency
+	a.pendingWithdrawals = oneCurrency
+	if !a.minExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+	if !a.maxExpectedBalance().Equals(oneCurrency.Mul64(2)) {
+		t.Fatal("unexpected min expected balance")
+	}
+
+	a = new(account)
+	a.balance = oneCurrency.Mul64(3)
+	a.negativeBalance = oneCurrency
+	a.pendingWithdrawals = oneCurrency
+	a.pendingDeposits = oneCurrency
+	if !a.minExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+	if !a.maxExpectedBalance().Equals(oneCurrency.Mul64(3)) {
+		t.Fatal("unexpected min expected balance")
+	}
+}
+
+// TestAccountResetBalance is a small unit test that verifies the functionality
+// of the reset balance function.
+func testAccountResetBalance(t *testing.T) {
+	t.Parallel()
+
+	oneCurrency := types.NewCurrency64(1)
+
+	a := new(account)
+	a.balance = types.ZeroCurrency
+	a.negativeBalance = oneCurrency
+	a.pendingDeposits = oneCurrency
+	a.pendingWithdrawals = oneCurrency
+	a.managedResetBalance(oneCurrency)
+
+	if !a.balance.Equals(oneCurrency) {
+		t.Fatal("unexpected balance after reset", a.balance)
+	}
+	if !a.negativeBalance.IsZero() {
+		t.Fatal("unexpected negative balance after reset", a.negativeBalance)
+	}
+	if !a.pendingDeposits.IsZero() {
+		t.Fatal("unexpected pending deposits after reset", a.pendingDeposits)
+	}
+	if !a.pendingWithdrawals.IsZero() {
+		t.Fatal("unexpected pending withdrawals after reset", a.pendingWithdrawals)
 	}
 }
 
@@ -250,6 +393,16 @@ func testAccountTracking(t *testing.T, rt *renterTester) {
 	}
 }
 
+// testAccountClosed verifies accounts can not be opened after the 'closed' flag
+// has been set to true by the save.
+func testAccountClosed(t *testing.T, closedRenter *Renter) {
+	hk, _ := newRandomHostKey()
+	_, err := closedRenter.staticAccountManager.managedOpenAccount(hk)
+	if !strings.Contains(err.Error(), "file already closed") {
+		t.Fatal("Unexpected error when opening an account, err:", err)
+	}
+}
+
 // testAccountCriticalOnDoubleSave verifies the critical when
 // managedSaveAccounts is called twice.
 func testAccountCriticalOnDoubleSave(t *testing.T, closedRenter *Renter) {
@@ -267,19 +420,69 @@ func testAccountCriticalOnDoubleSave(t *testing.T, closedRenter *Renter) {
 	}
 }
 
-// testAccountClosed verifies accounts can not be opened after the 'closed' flag
-// has been set to true by the save.
-func testAccountClosed(t *testing.T, closedRenter *Renter) {
-	hk, _ := newRandomHostKey()
-	_, err := closedRenter.staticAccountManager.managedOpenAccount(hk)
-	if !strings.Contains(err.Error(), "file already closed") {
-		t.Fatal("Unexpected error when opening an account, err:", err)
+// testWorkerAccountHostAccountBalance verifies the functionality of
+// staticHostAccountBalance that performs the account balance RPC on the host
+func testWorkerAccountHostAccountBalance(t *testing.T, wt *workerTester) {
+	w := wt.worker
+
+	// check the balance in a retry to allow the worker to run through it's
+	// setup, e.g. updating PT, checking balance and refilling. Note we use min
+	// expected balance to ensure we're not counting pending deposits
+	if err := build.Retry(100, 100*time.Millisecond, func() error {
+		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
+			return errors.New("worker account not funded")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
+
+	// fetch the host account balance and assert it's correct
+	balance, err := w.staticHostAccountBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !balance.Equals(w.staticBalanceTarget) {
+		t.Fatal(err)
+	}
+}
+
+// testWorkerAccountSyncAccountBalanceToHostCritical is a small unit test that
+// verifies the sync can not be called when the account delta is not zero
+func testWorkerAccountSyncAccountBalanceToHostCritical(t *testing.T, wt *workerTester) {
+	w := wt.worker
+
+	// check the balance in a retry to allow the worker to run through it's
+	// setup, e.g. updating PT, checking balance and refilling. Note we use min
+	// expected balance to ensure we're not counting pending deposits
+	if err := build.Retry(100, 100*time.Millisecond, func() error {
+		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
+			return errors.New("worker account not funded")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// track a deposit to simulate an ongoing fund
+	w.staticAccount.managedTrackDeposit(w.staticBalanceTarget)
+
+	// trigger the account balance sync and expect it to panic
+	defer func() {
+		r := recover()
+		if r == nil || !strings.Contains(fmt.Sprintf("%v", r), "managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas") {
+			t.Error("Expected build.Critical")
+			t.Log(r)
+		}
+	}()
+
+	w.externSyncAccountBalanceToHost()
 }
 
 // TestNewWithdrawalMessage verifies the newWithdrawalMessage helper
 // properly instantiates all required fields on the WithdrawalMessage
 func TestNewWithdrawalMessage(t *testing.T) {
+	t.Parallel()
 	// create a withdrawal message using random parameters
 	aid, _ := modules.NewAccountID()
 	amount := types.NewCurrency64(fastrand.Uint64n(100))
@@ -303,189 +506,6 @@ func TestNewWithdrawalMessage(t *testing.T) {
 	if bytes.Equal(msg.Nonce[:], nonce[:]) {
 		t.Fatal("Uninitialized nonce")
 	}
-}
-
-// TestAccountCriticalOnDoubleSave verifies the critical when
-// managedSaveAccounts is called twice.
-func TestAccountCriticalOnDoubleSave(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// create a renter
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := rt.renter
-
-	// close it immediately
-	err = rt.Close()
-	if err != nil {
-		t.Log(err)
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			err := fmt.Sprint(r)
-			if !strings.Contains(err, "Trying to save accounts twice") {
-				t.Fatal("Expected error not returned")
-			}
-		}
-	}()
-	err = r.staticAccountManager.managedSaveAndClose()
-	if err == nil {
-		t.Fatal("Expected build.Critical on double save")
-	}
-}
-
-// testAccountResetBalance is a small unit test that verifies the functionality
-// of the reset balance function.
-func testAccountResetBalance(t *testing.T) {
-	t.Parallel()
-
-	oneCurrency := types.NewCurrency64(1)
-
-	a := new(account)
-	a.balance = types.ZeroCurrency
-	a.negativeBalance = oneCurrency
-	a.pendingDeposits = oneCurrency
-	a.pendingWithdrawals = oneCurrency
-	a.managedResetBalance(oneCurrency)
-
-	if !a.balance.Equals(oneCurrency) {
-		t.Fatal("unexpected balance after reset", a.balance)
-	}
-	if !a.negativeBalance.IsZero() {
-		t.Fatal("unexpected negative balance after reset", a.negativeBalance)
-	}
-	if !a.pendingDeposits.IsZero() {
-		t.Fatal("unexpected pending deposits after reset", a.pendingDeposits)
-	}
-	if !a.pendingWithdrawals.IsZero() {
-		t.Fatal("unexpected pending withdrawals after reset", a.pendingWithdrawals)
-	}
-}
-
-// testAccountMinExpectedBalance is a small unit test that verifies the
-// functionality of the min expected balance function.
-func testAccountMinExpectedBalance(t *testing.T) {
-	t.Parallel()
-
-	oneCurrency := types.NewCurrency64(1)
-
-	a := new(account)
-	a.balance = oneCurrency
-	a.negativeBalance = oneCurrency
-	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
-		t.Fatal("unexpected min expected balance")
-	}
-
-	a = new(account)
-	a.balance = oneCurrency.Mul64(2)
-	a.negativeBalance = oneCurrency
-	a.pendingWithdrawals = oneCurrency
-	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
-		t.Fatal("unexpected min expected balance")
-	}
-
-	a = new(account)
-	a.balance = oneCurrency.Mul64(3)
-	a.negativeBalance = oneCurrency
-	a.pendingWithdrawals = oneCurrency
-	if !a.minExpectedBalance().Equals(oneCurrency) {
-		t.Fatal("unexpected min expected balance")
-	}
-}
-
-// TestHostAccountBalance verifies the functionality of staticHostAccountBalance
-// that performs the account balance RPC on the host
-func TestHostAccountBalance(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	wt, err := newWorkerTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := wt.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-	w := wt.worker
-
-	// check the balance in a retry to allow the worker to run through it's
-	// setup, e.g. updating PT, checking balance and refilling. Note we use min
-	// expected balance to ensure we're not counting pending deposits
-	if err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
-			return errors.New("worker account not funded")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	// fetch the host account balance and assert it's correct
-	balance, err := w.staticHostAccountBalance()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !balance.Equals(w.staticBalanceTarget) {
-		t.Fatal(err)
-	}
-}
-
-// TestSyncAccountBalanceToHostCritical is a small unit test that verifies the
-// sync can not be called when the account delta is not zero
-func TestSyncAccountBalanceToHostCritical(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	wt, err := newWorkerTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := wt.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-	w := wt.worker
-
-	// check the balance in a retry to allow the worker to run through it's
-	// setup, e.g. updating PT, checking balance and refilling. Note we use min
-	// expected balance to ensure we're not counting pending deposits
-	if err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
-			return errors.New("worker account not funded")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	// track a deposit to simulate an ongoing fund
-	w.staticAccount.managedTrackDeposit(w.staticBalanceTarget)
-
-	// trigger the account balance sync and expect it to panic
-	defer func() {
-		r := recover()
-		if r == nil || !strings.Contains(fmt.Sprintf("%v", r), "managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas") {
-			t.Error("Expected build.Critical")
-			t.Log(r)
-		}
-	}()
-
-	w.managedSyncAccountBalanceToHost()
 }
 
 // openRandomTestAccountsOnRenter is a helper function that creates a random

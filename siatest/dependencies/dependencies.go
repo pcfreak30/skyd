@@ -59,12 +59,6 @@ type (
 		modules.ProductionDependencies
 	}
 
-	// DependencySkipDeleteContractAfterRenewal prevents the old contract from
-	// being deleted after a renewal.
-	DependencySkipDeleteContractAfterRenewal struct {
-		modules.ProductionDependencies
-	}
-
 	// DependencyDisableTmpFileCleanup prevents the tmp accounts file from being
 	// cleaned up after the accounts upgrade took place.
 	DependencyDisableTmpFileCleanup struct {
@@ -77,6 +71,22 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencySkipDeleteContractAfterRenewal prevents the old contract from
+	// being deleted after a renewal.
+	DependencySkipDeleteContractAfterRenewal struct {
+		modules.ProductionDependencies
+	}
+
+	// DependencyInterruptCountOccurrences is a generic dependency that
+	// interrupts the flow of the program if the argument passed to Disrupt
+	// equals str and it keeps track of how many times this happened.
+	DependencyInterruptCountOccurrences struct {
+		occurrences uint64 // indicates how many times this interrupt occurred
+		modules.ProductionDependencies
+		mu  sync.Mutex
+		str string
+	}
+
 	// DependencyInterruptOnceOnKeyword is a generic dependency that interrupts
 	// the flow of the program if the argument passed to Disrupt equals str and
 	// if f was set to true by calling Fail.
@@ -87,9 +97,10 @@ type (
 		str string
 	}
 
-	// DependencyInterruptAfterNCalls is a generic dependency that behaves the same
-	// way as DependencyInterruptOnceOnKeyword, expect that after calling "Fail",
-	// "Disrupt" needs to be called n times for the actual disrupt to happen.
+	// DependencyInterruptAfterNCalls is a generic dependency that behaves the
+	// same way as DependencyInterruptOnceOnKeyword, expect that after calling
+	// "Fail", "Disrupt" needs to be called n times for the actual disrupt to
+	// happen.
 	DependencyInterruptAfterNCalls struct {
 		DependencyInterruptOnceOnKeyword
 		n    int
@@ -166,6 +177,13 @@ func NewDependencyDisruptUploadStream(numChunks int) *DependencyInterruptAfterNC
 	return newDependencyInterruptAfterNCalls("DisruptUploadStream", numChunks)
 }
 
+// NewDependencyDisableCommitPaymentIntent creates a new dependency that
+// prevents the contractor for committing a payment intent, this essentially
+// ensures the renter's revision is not in sync with the host's revision.
+func NewDependencyDisableCommitPaymentIntent() *DependencyInterruptCountOccurrences {
+	return newDependencyInterruptCountOccurrences("DisableCommitPaymentIntent")
+}
+
 // NewDependencyInterruptContractSaveToDiskAfterDeletion creates a new
 // dependency that interrupts the contract being saved to disk after being
 // removed from static contracts
@@ -217,6 +235,14 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 			str: str,
 		},
 		n: n,
+	}
+}
+
+// newDependencyInterruptCountOccurrences creates a new
+// DependencyInterruptCountOccurrences from a given disrupt
+func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCountOccurrences {
+	return &DependencyInterruptCountOccurrences{
+		str: str,
 	}
 }
 
@@ -295,6 +321,26 @@ func (d *DependencyDisableTmpFileCleanup) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyRecoveredFromTmpFile) Disrupt(s string) bool {
 	return s == "RecoveredFromTmpFile"
+}
+
+// Disrupt returns true if the correct string is provided. It keeps track of how
+// many times this occurred.
+func (d *DependencyInterruptCountOccurrences) Disrupt(s string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if s == d.str {
+		d.occurrences++
+		return true
+	}
+	return false
+}
+
+// Occurrences returns the amount of time this dependency was successfully
+// disrupted.
+func (d *DependencyInterruptCountOccurrences) Occurrences() uint64 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.occurrences
 }
 
 // Disrupt returns true if the correct string is provided and if the flag was
