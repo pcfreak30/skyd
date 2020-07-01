@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -20,8 +19,9 @@ var (
 		Testing:  30 * time.Second,
 	}).(time.Duration)
 
-	// refundExpiry is the amount of time the hosts keeps track of the refund
-	// for a certain program token.
+	// refundExpiry is the amount of time the hosts keeps track of the amount of
+	// money that was refunded to the renter after the execution of an MDM
+	// program.
 	refundExpiry = build.Select(build.Var{
 		Standard: 10 * time.Minute,
 		Dev:      time.Minute,
@@ -31,7 +31,7 @@ var (
 
 type (
 	// refundsList keeps track of refunds, allowing renters to query what was
-	// refunded after using their MDMProgramToken.
+	// refunded to them after the execution of an MDM program.
 	refundsList struct {
 		refunds map[modules.MDMProgramToken]types.Currency
 		tokens  tokenHeap
@@ -41,8 +41,8 @@ type (
 	// tokenHeap is a min heap of tokens
 	tokenHeap []*tokenEntry
 
-	// tokenEntry is a helper struct that keeps track of when the token, and
-	// this record of the refund, can be removed from the heap
+	// tokenEntry is a helper struct that keeps track of when the token, and the
+	// refund that goes along with it, can be removed from the heap
 	tokenEntry struct {
 		token  modules.MDMProgramToken
 		expiry time.Time
@@ -58,9 +58,9 @@ func (rh *refundsList) managedRefund(t modules.MDMProgramToken) (types.Currency,
 	return refund, exists
 }
 
-// managedRegisterRefund registers the given refund for the program token. It
-// will also push the token alongside an expiry time on the heap so we are able
-// to prune the refunds list periodically.
+// managedRegisterRefund registers a refund for the program token. It will also
+// push the token, alongside an expiry time, on to the heap so we are able to
+// prune the refunds list periodically.
 func (rh *refundsList) managedRegisterRefund(t modules.MDMProgramToken, r types.Currency) {
 	rh.mu.Lock()
 	defer rh.mu.Unlock()
@@ -106,14 +106,6 @@ func (th *tokenHeap) Pop() interface{} {
 	pt := old[n-1]
 	*th = old[0 : n-1]
 	return pt
-}
-
-// staticNewMDMProgramToken is a helper function that returns a new random
-// program token
-func (h *Host) staticNewMDMProgramToken() modules.MDMProgramToken {
-	var token modules.MDMProgramToken
-	fastrand.Read(token[:])
-	return token
 }
 
 // threadedPruneRefundsList will prune the refunds the host keeps in memory.
