@@ -422,6 +422,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		},
 		staticRefundsList: &refundsList{
 			refunds: make(map[modules.MDMProgramToken]types.Currency),
+			tokens:  make(tokenHeap, 0),
 		},
 		persistDir: persistDir,
 	}
@@ -522,6 +523,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 
 	// Ensure the expired RPC tables get pruned as to not leak memory
 	go h.threadedPruneExpiredPriceTables()
+
+	// Ensure the refunds list is pruned periodically so we don't leak memory
+	go h.threadedPruneRefundsList()
 
 	return h, nil
 }

@@ -69,7 +69,7 @@ func (rh *refundsList) managedRegisterRefund(t modules.MDMProgramToken, r types.
 		build.Critical("Refund already registered for given token")
 	}
 	rh.refunds[t] = r
-	heap.Push(&rh.tokens, &tokenEntry{t, time.Now().Add(10 * time.Minute)})
+	heap.Push(&rh.tokens, &tokenEntry{t, time.Now().Add(refundExpiry)})
 }
 
 // managedPruneRefundsList prunes the refund list by removing all entries that
