@@ -41,6 +41,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Refund all the money we didn't use at the end of the RPC.
+	programToken := modules.NewMDMProgramToken()
 	refundAccount := pd.AccountID()
 	programRefund := pd.Amount()
 	err = h.tg.Add()
@@ -52,10 +53,15 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			defer h.tg.Done()
 			// The total refund is the remaining value of the budget + the
 			// potential program refund.
-			depositErr := h.staticAccountManager.callRefund(refundAccount, programRefund.Add(budget.Remaining()))
+			refund := programRefund.Add(budget.Remaining())
+			depositErr := h.staticAccountManager.callRefund(refundAccount, refund)
 			if depositErr != nil {
 				h.log.Print("ERROR: failed to refund renter", depositErr)
+				return
 			}
+			// Keep the refund in memory so the renter is able to query it if he
+			// so pleases.
+			h.staticRefundsList.managedRegisterRefund(programToken, refund)
 		}()
 	}()
 
@@ -115,9 +121,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
 
-	// Return 16 bytes of data as a placeholder for a future cancellation token.
-	var ct modules.MDMCancellationToken
-	err = modules.RPCWrite(stream, ct)
+	// Return the program token. The renter can use this to cancel the program.
+	err = modules.RPCWrite(stream, programToken)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write cancellation token")
 	}

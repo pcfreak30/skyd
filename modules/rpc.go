@@ -38,6 +38,10 @@ type RPCPriceTable struct {
 	// host.
 	FundAccountCost types.Currency `json:"fundaccountcost"`
 
+	// ProgramRefundCost refers to the cost of querying the refund given for a
+	// certain program.
+	ProgramRefundCost types.Currency `json:"programrefundcost"`
+
 	// MDM related costs
 	//
 	// InitBaseCost is the amount of cost that is incurred when an MDM program
@@ -91,6 +95,9 @@ var (
 
 	// RPCFundAccount specifier
 	RPCFundAccount = types.NewSpecifier("FundAccount")
+
+	// RPCProgramRefund specifier
+	RPCProgramRefund = types.NewSpecifier("ProgramRefund")
 )
 
 type (
@@ -117,6 +124,19 @@ type (
 		Balance   types.Currency
 		Receipt   Receipt
 		Signature crypto.Signature
+	}
+
+	// ProgramRefundRequest specifies the program token for which to query
+	// how much was refunded.
+	ProgramRefundRequest struct {
+		ProgramToken MDMProgramToken
+	}
+
+	// ProgramRefundResponse contains the refund that was given for the program
+	// with previously specified token.
+	ProgramRefundResponse struct {
+		Refund types.Currency
+		Found  bool
 	}
 
 	// RPCExecuteProgramRequest is the request sent by the renter to execute a

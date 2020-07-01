@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
@@ -26,15 +27,15 @@ type (
 	// ProgramData contains the raw byte data for the program.
 	ProgramData []byte
 
-	// MDMCancellationToken is a token that can be used to request cancellation
-	// of a program
-	MDMCancellationToken [MDMCancellationTokenLen]byte
+	// MDMProgramToken is a token that uniquely identifies the execution of an
+	// MDM program, it can be used to request cancellation of a program, or how
+	// much was refunded.
+	MDMProgramToken [MDMProgramTokenLen]byte
 )
 
 const (
-	// MDMCancellationTokenLen is the length of a program's cancellation token
-	// in bytes.
-	MDMCancellationTokenLen = 16
+	// MDMProgramTokenLen is the length of an MDM program's token in bytes.
+	MDMProgramTokenLen = 16
 )
 
 const (
@@ -407,4 +408,11 @@ func (bl *BudgetLimit) RecordUpload(bytes uint64) error {
 	}
 	atomic.AddUint64(&bl.atomicUploaded, bytes)
 	return nil
+}
+
+// NewMDMProgramToken returns a new program token.
+func NewMDMProgramToken() MDMProgramToken {
+	var token MDMProgramToken
+	fastrand.Read(token[:])
+	return token
 }

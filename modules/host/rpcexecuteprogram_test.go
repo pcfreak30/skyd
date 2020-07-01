@@ -80,7 +80,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// execute program.
 	budget := types.NewCurrency64(math.MaxUint64)
-	_, _, err = rhp.managedExecuteProgram(epr, data, budget, false, true)
+	_, _, _, err = rhp.managedExecuteProgram(epr, data, budget, false, true)
 	if !errors.Contains(err, io.ErrClosedPipe) {
 		t.Fatal("Expected managedExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
 	}
@@ -159,7 +159,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	resps, limit, token, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -205,6 +205,11 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 		t.Fatal("Unexpected data")
 	}
 
+	var emptytoken modules.MDMProgramToken
+	if bytes.Equal(token[:], emptytoken[:]) {
+		t.Fatal("Unexpected token")
+	}
+
 	// verify the cost
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
@@ -222,7 +227,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// cost, we expect this to return ErrInsufficientBandwidthBudget
 	program, data = pb.Program()
 	cost = cost.Sub64(1)
-	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
+	_, limit, _, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
 		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
@@ -324,7 +329,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, bandwidth, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	resps, bandwidth, _, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -447,7 +452,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Execute program.
 	cost := programCost.Add(bandwidthCost)
-	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	resps, limit, _, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +502,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// should fail.
 	program, data = pb.Program()
 	cost = programCost.Add(bandwidthCost.Sub64(1))
-	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
+	_, limit, _, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
 		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
@@ -870,7 +875,7 @@ func TestExecuteAppendProgram(t *testing.T) {
 	revNumBefore := revNum()
 
 	// execute program.
-	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	resps, limit, _, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -939,7 +944,7 @@ func TestExecuteAppendProgram(t *testing.T) {
 	bandwidthCost = downloadCost.Add(uploadCost)
 	cost = programCost.Add(bandwidthCost)
 
-	resps, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, false)
+	resps, limit, _, err = rhp.managedExecuteProgram(epr, data, cost, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

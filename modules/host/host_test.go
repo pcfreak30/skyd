@@ -390,7 +390,7 @@ type executeProgramResponse struct {
 // and returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable, finalize bool) ([]executeProgramResponse, mux.BandwidthLimit, error) {
+func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable, finalize bool) ([]executeProgramResponse, mux.BandwidthLimit, modules.MDMProgramToken, error) {
 	// Only allow a single write program or multiple read programs to run in
 	// parallel. A production worker will have better locking than this but
 	// since we just mock the renter this is used for unit testing the host.
@@ -407,7 +407,7 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 	if updatePriceTable {
 		pt, err = p.managedFetchPriceTable()
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, modules.MDMProgramToken{}, err
 		}
 	}
 
@@ -417,38 +417,38 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 	// Write the specifier.
 	err = modules.RPCWrite(buffer, modules.RPCExecuteProgram)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, modules.MDMProgramToken{}, err
 	}
 
 	// Write the pricetable uid.
 	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, modules.MDMProgramToken{}, err
 	}
 
 	// Send the payment request.
 	err = modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, modules.MDMProgramToken{}, err
 	}
 
 	// Send the payment details.
 	pbear := newPayByEphemeralAccountRequest(p.staticAccountID, p.staticHT.host.BlockHeight()+6, budget, p.staticAccountKey)
 	err = modules.RPCWrite(buffer, pbear)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, modules.MDMProgramToken{}, err
 	}
 
 	// Send the execute program request.
 	err = modules.RPCWrite(buffer, epr)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, modules.MDMProgramToken{}, err
 	}
 
 	// Send the programData.
 	_, err = buffer.Write(programData)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, modules.MDMProgramToken{}, err
 	}
 
 	// create stream
@@ -461,14 +461,14 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 	// write contents of the buffer to the stream
 	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
-		return nil, limit, err
+		return nil, limit, modules.MDMProgramToken{}, err
 	}
 
-	// Read the cancellation token.
-	var ct modules.MDMCancellationToken
-	err = modules.RPCRead(stream, &ct)
+	// Read the program token.
+	var token modules.MDMProgramToken
+	err = modules.RPCRead(stream, &token)
 	if err != nil {
-		return nil, limit, err
+		return nil, limit, modules.MDMProgramToken{}, err
 	}
 
 	// Read the responses.
@@ -477,7 +477,7 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		// Read the response.
 		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
-			return nil, limit, err
+			return nil, limit, token, err
 		}
 
 		// Read the output data.
@@ -485,12 +485,12 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		responses[i].Output = make([]byte, outputLen, outputLen)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
-			return nil, limit, err
+			return nil, limit, token, err
 		}
 
 		// If the response contains an error we are done.
 		if responses[i].Error != nil {
-			return responses, limit, nil
+			return responses, limit, token, nil
 		}
 	}
 
@@ -499,23 +499,23 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		lastOutput := responses[len(responses)-1]
 		err = p.managedFinalizeWriteProgram(stream, lastOutput, p.staticHT.host.BlockHeight())
 		if err != nil {
-			return nil, limit, err
+			return nil, limit, token, err
 		}
 	}
 
 	// when we purposefully don't finalize, we can't wait for the host to close
 	// the stream.
 	if !finalize {
-		return responses, limit, nil
+		return responses, limit, token, nil
 	}
 
 	// The next read should return io.EOF since the host closes the connection
 	// after the RPC is done.
 	err = modules.RPCRead(stream, struct{}{})
 	if !errors.Contains(err, io.ErrClosedPipe) {
-		return nil, limit, err
+		return nil, limit, token, err
 	}
-	return responses, limit, nil
+	return responses, limit, token, nil
 }
 
 // managedFetchPriceTable returns the latest price table, if that price table is
@@ -847,9 +847,73 @@ func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Curre
 	return abr.Balance, nil
 }
 
+// managedProgramRefund returns the refund for the program with specified
+// program amount of time, if it does not have it in memory it will communicate
+// it has token. Note that the host only keeps these refunds in memory for a
+// certain not found it.
+func (p *renterHostPair) managedProgramRefund(token modules.MDMProgramToken) (types.Currency, bool, error) {
+	stream := p.managedNewStream()
+	defer stream.Close()
+
+	// Fetch the price table.
+	pt, err := p.managedFetchPriceTable()
+	if err != nil {
+		return types.ZeroCurrency, false, err
+	}
+
+	// initiate the RPC
+	err = modules.RPCWrite(stream, modules.RPCProgramRefund)
+	if err != nil {
+		return types.ZeroCurrency, false, err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return types.ZeroCurrency, false, err
+	}
+
+	// provide payment
+	err = p.managedPayByContract(stream, pt.ProgramRefundCost, p.staticAccountID)
+	if err != nil {
+		return types.ZeroCurrency, false, err
+	}
+
+	// send the request.
+	err = modules.RPCWrite(stream, modules.ProgramRefundRequest{
+		ProgramToken: token,
+	})
+	if err != nil {
+		return types.ZeroCurrency, false, err
+	}
+
+	// read the response.
+	var prr modules.ProgramRefundResponse
+	err = modules.RPCRead(stream, &prr)
+	if err != nil {
+		return types.ZeroCurrency, false, err
+	}
+
+	// expect clean stream close
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return types.ZeroCurrency, false, err
+	}
+
+	return prr.Refund, prr.Found, nil
+}
+
 // AccountBalance returns the account balance of the renter's EA on the host.
 func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 	return p.managedAccountBalance(payByFC, p.pt.AccountBalanceCost, p.staticAccountID, p.staticAccountID)
+}
+
+// ProgramRefund returns the refund for the program with specified program
+// token. Note that the host only keeps these refunds in memory for a certain
+// amount of time, if it does not have it in memory it will communicate it has
+// not found it.
+func (p *renterHostPair) ProgramRefund(token modules.MDMProgramToken) (types.Currency, bool, error) {
+	return p.managedProgramRefund(token)
 }
 
 // UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
