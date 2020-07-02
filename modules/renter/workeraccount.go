@@ -20,11 +20,11 @@ import (
 )
 
 const (
-	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
-	// remains spendable after it has been created. Together with the current block
-	// height at time of creation, this period makes up the WithdrawalMessage's
-	// expiry height.
-	withdrawalValidityPeriod = 6
+	// minDownloadBeforeRefill is the minimum amount of data we expect to be
+	// able to download before we have to refill our ephemeral account. This can
+	// be come an issue when the host sets an unreasonably low max ephemeral
+	// account balance.
+	minDownloadBeforeRefill = 1 << 30 // 1GiB
 
 	// fundAccountGougingPercentageThreshold is the percentage threshold, in
 	// relation to the allowance, at which we consider the cost of funding an
@@ -32,6 +32,12 @@ const (
 	// times as necessary to spend the total allowance should never exceed 1% of
 	// the total allowance.
 	fundAccountGougingPercentageThreshold = .01
+
+	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal
+	// message remains spendable after it has been created. Together with the
+	// current block height at time of creation, this period makes up the
+	// WithdrawalMessage's expiry height.
+	withdrawalValidityPeriod = 6
 )
 
 var (
@@ -289,6 +295,19 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 	}
 }
 
+// managedIncrementCooldown increments the consecutive failures and registers
+// the given error as most recent error, putting the account on cooldown.
+func (a *account) managedIncrementCooldown(err error) time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	cd := cooldownUntil(a.consecutiveFailures)
+	a.cooldownUntil = cd
+	a.consecutiveFailures++
+	a.recentErr = err
+	a.recentErrTime = time.Now()
+	return cd
+}
+
 // managedOnCooldown returns true if the account is on cooldown and therefore
 // unlikely to receive additional funding in the near future.
 func (a *account) managedOnCooldown() bool {
@@ -374,11 +393,20 @@ func (w *worker) managedAccountNeedsRefill() bool {
 		return false
 	}
 	// Check if the price table is valid.
-	if !w.staticPriceTable().staticValid() {
+	pt := w.staticPriceTable()
+	if !pt.staticValid() {
 		return false
 	}
 	// Check if the account is synced.
 	if w.managedNeedsToSyncAccountToHost() {
+		return false
+	}
+
+	// Check the target balance is reasonable. If that is not the case we put
+	// the account on cooldown.
+	err := checkTargetBalance(pt.staticPriceTable, cache.staticBalanceTarget)
+	if err != nil {
+		w.staticAccount.managedIncrementCooldown(err)
 		return false
 	}
 
@@ -391,7 +419,7 @@ func (w *worker) managedAccountNeedsRefill() bool {
 	if time.Now().Before(cooldownUntil) {
 		return false
 	}
-	refillAt := w.staticBalanceTarget.Div64(2)
+	refillAt := cache.staticBalanceTarget.Div64(2)
 	if balance.Cmp(refillAt) >= 0 {
 		return false
 	}
@@ -405,11 +433,15 @@ func (w *worker) managedRefillAccount() {
 	if w.renter.deps.Disrupt("DisableFunding") {
 		return // don't refill account
 	}
+
+	// Grab the worker cache object
+	cache := w.staticCache()
+
 	// The account balance dropped to below half the balance target, refill. Use
 	// the max expected balance when refilling to avoid exceeding any host
 	// maximums.
 	balance := w.staticAccount.managedMaxExpectedBalance()
-	amount := w.staticBalanceTarget.Sub(balance)
+	amount := cache.staticBalanceTarget.Sub(balance)
 
 	// We track that there is a deposit in progress. Because filling an account
 	// is an interactive protocol with another machine, we are never sure of the
@@ -431,13 +463,7 @@ func (w *worker) managedRefillAccount() {
 		}
 
 		// If the error is not nil, increment the cooldown.
-		w.staticAccount.mu.Lock()
-		cd := cooldownUntil(w.staticAccount.consecutiveFailures)
-		w.staticAccount.cooldownUntil = cd
-		w.staticAccount.consecutiveFailures++
-		w.staticAccount.recentErr = err
-		w.staticAccount.recentErrTime = time.Now()
-		w.staticAccount.mu.Unlock()
+		cd := w.staticAccount.managedIncrementCooldown(err)
 
 		// If the error could be caused by a revision number mismatch,
 		// signal it by setting the flag.
@@ -454,7 +480,7 @@ func (w *worker) managedRefillAccount() {
 	}()
 
 	// check the current price table for gouging errors
-	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, w.staticCache().staticRenterAllowance, w.staticBalanceTarget)
+	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, cache.staticRenterAllowance, cache.staticBalanceTarget)
 	if err != nil {
 		return
 	}
@@ -737,5 +763,40 @@ func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowan
 		return fmt.Errorf("fund account cost %v is considered too high, the total cost of refilling the account to spend the total allowance exceeds %v%% of the allowance - price gouging protection enabled", pt.FundAccountCost, fundAccountGougingPercentageThreshold)
 	}
 
+	return nil
+}
+
+// checkTargetBalance checks whether the given target balance is sufficient to
+// fulfil a minimum amount MDM programs without having to refill too often. If
+// that is not the case, we deem it to be unreasonably low which puts the
+// account on cooldown.
+func checkTargetBalance(pt modules.RPCPriceTable, targetBalance types.Currency) error {
+	// Calculate the cost of a read sector job, we use StreamDownloadSize as an
+	// average download size here which is 64 KiB.
+	pb := modules.NewProgramBuilder(&pt, 0)
+	mr := crypto.Hash{}
+	pb.AddReadSectorInstruction(modules.StreamDownloadSize, 0, mr, true)
+	programCost, _, _ := pb.Cost(true)
+
+	// Calculate the expected bandwidth costs for the program, arriving at a
+	// cost per read job.
+	ulbw, dlbw := readSectorJobExpectedBandwidth(modules.StreamDownloadSize)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
+	costPerJob := programCost.Add(bandwidthCost)
+
+	// Calculate the number of jobs we can run before we have to refill our
+	// account.
+	numJobs, err := targetBalance.Div64(2).Div(costPerJob).Uint64()
+	if err != nil {
+		build.Critical("Unexpected overflow")
+		return errors.New("Target balance deemed unreasonable, unexpected overflow occurred when calculating the amount of downloads jobs we are able to run before having to refill the account")
+	}
+
+	// Verify this amount is larger than the minimum required amount of data we
+	// want to be able to download before having to refill the account.
+	amountOfData := numJobs * modules.StreamDownloadSize
+	if amountOfData < minDownloadBeforeRefill {
+		return fmt.Errorf("Target balance deemed unreasonable, the amount of data we can download before having to refill our ephemeral account is below the minimum expected amount, %v < %v", amountOfData, minDownloadBeforeRefill)
+	}
 	return nil
 }

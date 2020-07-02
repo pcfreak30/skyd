@@ -46,11 +46,14 @@ func TestWorkerAccountStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// grab the worker's cache object
+	cache := w.staticCache()
+
 	// fetch the worker's account status and verify its output
 	a := w.staticAccount
 	status := a.managedStatus()
 	if !(status.Funded == true &&
-		status.AvailableBalance.Equals(w.staticBalanceTarget) &&
+		status.AvailableBalance.Equals(cache.staticBalanceTarget) &&
 		status.OnCoolDown == false &&
 		status.OnCoolDownUntil == time.Time{} &&
 		status.ConsecutiveFailures == 0 &&

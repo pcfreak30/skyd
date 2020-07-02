@@ -28,6 +28,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -1097,6 +1098,104 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	}
 	if file.Available {
 		t.Fatal("file should not be available when its only source of repair data is corrupt")
+	}
+}
+
+// TestAccountCooldownLowMaxBalance verifies workers are being put on cooldown
+// if the host has an unreasonably low max epehemeral account balance.
+func TestAccountCooldownLowMaxBalance(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for the subtests
+	groupParams := siatest.GroupParams{
+		Miners: 1,
+	}
+	groupDir := renterTestDir(t.Name())
+
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// Add hosts that have their version set to v1412, this prevents the renters
+	// from defaulting MaxEphemeralAccountBalance to 1SC.
+	host1Params := node.Host(filepath.Join(groupDir, "host1"))
+	host1Params.HostDeps = &dependencies.HostV1412{}
+	host2Params := node.Host(filepath.Join(groupDir, "host2"))
+	host2Params.HostDeps = &dependencies.HostV1412{}
+	host3Params := node.Host(filepath.Join(groupDir, "host3"))
+	host3Params.HostDeps = &dependencies.HostV1412{}
+	_, err = tg.AddNodes(host1Params, host2Params, host3Params)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a renter
+	renterParams := node.Renter(filepath.Join(groupDir, "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyDisableCriticalOnMaxBalance{}
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the public key of the first host
+	h := tg.Hosts()[0]
+	hpk, err := h.HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the max EA balance unreasonably low
+	badMaxBalance := types.SiacoinPrecision.Div64(100)
+	err = h.HostModifySettingPost(client.HostParamMaxEphemeralAccountBalance, badMaxBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the modified settings have permeated to the worker settings
+	r := tg.Renters()[0]
+	err = build.Retry(100, 200*time.Millisecond, func() error {
+		// get the worker statuses
+		rwg, rwgErr := r.RenterWorkersGet()
+		if rwgErr != nil {
+			t.Fatal(rwgErr)
+		}
+
+		// get the status for the host we modified
+		var status *modules.WorkerStatus
+		for _, worker := range rwg.Workers {
+			if worker.HostPubKey.Equals(hpk) {
+				status = &worker
+				break
+			}
+		}
+		if status == nil {
+			return errors.New("worker for host not found")
+		}
+
+		// verify the account balance was adjusted to the host's max balance
+		if !status.AccountBalanceTarget.Equals(badMaxBalance) {
+			return errors.New("AccountBalanceTarget not adjusted")
+		}
+
+		// verify the account was put on cooldown
+		if !status.AccountStatus.OnCoolDown {
+			// if that is not the case, upload a new file to trigger the
+			// workerloop
+			dataPieces := uint64(1)
+			parityPieces := uint64(len(tg.Hosts()) - 1)
+			r.UploadNewFile(100, dataPieces, parityPieces, false)
+			return errors.New("worker account not on cooldown")
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

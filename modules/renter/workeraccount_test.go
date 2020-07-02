@@ -383,6 +383,44 @@ func TestAccountMinAndMaxExpectedBalance(t *testing.T) {
 	}
 }
 
+// TestAccountIncrementCooldown is a small unit test that verifies the
+// functionality of the `managedIncrementCooldown` method on the account.
+func TestAccountIncrementCooldown(t *testing.T) {
+	t.Parallel()
+
+	a := new(account)
+	if a.managedOnCooldown() {
+		t.Fatal("Expected account to not be on cooldown")
+	}
+	err := errors.New("error1")
+	a.managedIncrementCooldown(err)
+	if !a.managedOnCooldown() {
+		t.Fatal("Expected account to be on cooldown")
+	}
+
+	err = errors.New("error2")
+	cdu := a.managedIncrementCooldown(err)
+	if !a.managedOnCooldown() {
+		t.Fatal("Expected account to be on cooldown")
+	}
+	if (cdu == time.Time{}) {
+		t.Fatal("Cooldown until should have been set")
+	}
+
+	a.mu.Lock()
+	cf := a.consecutiveFailures
+	if cf != 2 {
+		t.Fatal("Expected consecutive failures to be 2")
+	}
+	if a.recentErr != err {
+		t.Fatalf("Expected recentErr to equal '%v', instead it was '%v;", err, a.recentErr)
+	}
+	if (a.recentErrTime == time.Time{}) {
+		t.Fatal("Expected recentErrTime to be set")
+	}
+	a.mu.Unlock()
+}
+
 // TestHostAccountBalance verifies the functionality of staticHostAccountBalance
 // that performs the account balance RPC on the host
 func TestHostAccountBalance(t *testing.T) {
@@ -407,7 +445,7 @@ func TestHostAccountBalance(t *testing.T) {
 	// setup, e.g. updating PT, checking balance and refilling. Note we use min
 	// expected balance to ensure we're not counting pending deposits
 	if err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
+		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticCache().staticBalanceTarget) {
 			return errors.New("worker account not funded")
 		}
 		return nil
@@ -420,7 +458,7 @@ func TestHostAccountBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !balance.Equals(w.staticBalanceTarget) {
+	if !balance.Equals(w.staticCache().staticBalanceTarget) {
 		t.Fatal(err)
 	}
 }
@@ -449,7 +487,7 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 	// setup, e.g. updating PT, checking balance and refilling. Note we use min
 	// expected balance to ensure we're not counting pending deposits
 	if err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
+		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticCache().staticBalanceTarget) {
 			return errors.New("worker account not funded")
 		}
 		return nil
@@ -458,7 +496,7 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 	}
 
 	// track a deposit to simulate an ongoing fund
-	w.staticAccount.managedTrackDeposit(w.staticBalanceTarget)
+	w.staticAccount.managedTrackDeposit(w.staticCache().staticBalanceTarget)
 
 	// trigger the account balance sync and expect it to panic
 	defer func() {

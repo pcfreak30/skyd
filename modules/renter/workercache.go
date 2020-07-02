@@ -25,6 +25,7 @@ type (
 	// must be static because this object is saved and loaded using
 	// atomic.Pointer.
 	workerCache struct {
+		staticBalanceTarget   types.Currency
 		staticBlockHeight     types.BlockHeight
 		staticContractID      types.FileContractID
 		staticContractUtility modules.ContractUtility
@@ -70,6 +71,7 @@ func (w *worker) managedUpdateCache() {
 
 	// Create the cache object.
 	newCache := &workerCache{
+		staticBalanceTarget:   host.MaxEphemeralAccountBalance,
 		staticBlockHeight:     w.renter.cs.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,

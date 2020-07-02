@@ -71,6 +71,11 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		build.Critical("Could not split the SiaMux address in a host and port")
 	}
 
+	version := build.Version
+	if h.dependencies.Disrupt("HostV1412") {
+		version = "1.4.12"
+	}
+
 	return modules.HostExternalSettings{
 		AcceptingContracts:   acceptingContracts,
 		MaxDownloadBatchSize: h.settings.MaxDownloadBatchSize,
@@ -97,7 +102,7 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		MaxEphemeralAccountBalance: h.settings.MaxEphemeralAccountBalance,
 
 		RevisionNumber: h.revisionNumber,
-		Version:        build.Version,
+		Version:        version,
 
 		SiaMuxPort: port,
 	}

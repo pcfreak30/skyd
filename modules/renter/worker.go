@@ -92,10 +92,8 @@ type (
 
 		// The staticAccount represent the renter's ephemeral account on the
 		// host. It keeps track of the available balance in the account, the
-		// worker has a refill mechanism that keeps the account balance filled
-		// up until the staticBalanceTarget.
-		staticAccount       *account
-		staticBalanceTarget types.Currency
+		// worker has a refill mechanism that keeps the account balance filled.
+		staticAccount *account
 
 		// The loop state contains information about the worker loop. It is
 		// mostly atomic variables that the worker uses to ratelimit the
@@ -159,22 +157,12 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		return nil, errors.AddContext(err, "could not open account")
 	}
 
-	// set the balance target to 1SC
-	//
-	// TODO: check that the balance target  makes sense in function of the
-	// amount of MDM programs it can run with that amount of money
-	balanceTarget := types.SiacoinPrecision
-	if r.deps.Disrupt("DisableFunding") {
-		balanceTarget = types.ZeroCurrency
-	}
-
 	w := &worker{
 		staticHostPubKey:     hostPubKey,
 		staticHostPubKeyStr:  hostPubKey.String(),
 		staticHostMuxAddress: host.HostExternalSettings.SiaMuxAddress(),
 
-		staticAccount:       account,
-		staticBalanceTarget: balanceTarget,
+		staticAccount: account,
 
 		// Initialize the read and write limits for the async worker tasks.
 		// These may be updated in real time as the worker collects metrics
