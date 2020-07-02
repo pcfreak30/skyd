@@ -377,7 +377,12 @@ func TestRenterPricesVolatility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		err = rt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add 4 host entries in the database with different public keys.
 	hosts := []modules.Host{}
@@ -389,6 +394,16 @@ func TestRenterPricesVolatility(t *testing.T) {
 		}
 		hosts = append(hosts, h)
 	}
+	defer func() {
+		var hostErrs error
+		for _, h := range hosts {
+			hostErrs = errors.Compose(hostErrs, h.Close())
+		}
+		if hostErrs != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	allowance := modules.Allowance{}
 	initial, _, err := rt.renter.PriceEstimation(allowance)
 	if err != nil {
