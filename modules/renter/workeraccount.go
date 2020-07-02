@@ -85,7 +85,7 @@ var (
 	// maxBalanceTarget is a sane maximum for the account balance target. The
 	// worker will take the mininmum of this value and the host's maximum
 	// ephemeral account balance.
-	maxBalangeTarget = types.SiacoinPrecision.Mul64(3)
+	maxBalanceTarget = types.SiacoinPrecision.Mul64(3)
 )
 
 type (
@@ -790,17 +790,13 @@ func checkTargetBalance(pt modules.RPCPriceTable, targetBalance types.Currency) 
 	costPerJob := programCost.Add(bandwidthCost)
 
 	// Calculate the number of jobs we can run before we have to refill our
-	// account.
-	numJobs, err := targetBalance.Div64(2).Div(costPerJob).Uint64()
-	if err != nil {
-		build.Critical("Unexpected overflow")
-		return errors.New("Target balance deemed unreasonable, unexpected overflow occurred when calculating the amount of downloads jobs we are able to run before having to refill the account")
-	}
+	// account, use this to calculate the amount of data we can download.
+	numJobs := targetBalance.Div64(2).Div(costPerJob)
+	amountOfData := numJobs.Mul64(modules.StreamDownloadSize)
 
 	// Verify this amount is larger than the minimum required amount of data we
 	// want to be able to download before having to refill the account.
-	amountOfData := numJobs * modules.StreamDownloadSize
-	if amountOfData < minDownloadBeforeRefill {
+	if amountOfData.Cmp(types.NewCurrency64(minDownloadBeforeRefill)) < 0 {
 		return fmt.Errorf("Target balance deemed unreasonable, the amount of data we can download before having to refill our ephemeral account is below the minimum expected amount, %v < %v", amountOfData, minDownloadBeforeRefill)
 	}
 	return nil

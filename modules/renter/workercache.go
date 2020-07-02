@@ -72,8 +72,8 @@ func (w *worker) managedUpdateCache() {
 	// Set the balance target, this is the minimum of the host's max ephemeral
 	// account balance and a sane max value.
 	balanceTarget := host.MaxEphemeralAccountBalance
-	if balanceTarget.Cmp(maxBalangeTarget) > 0 {
-		balanceTarget = maxBalangeTarget
+	if balanceTarget.Cmp(maxBalanceTarget) > 0 {
+		balanceTarget = maxBalanceTarget
 	}
 
 	// Create the cache object.
