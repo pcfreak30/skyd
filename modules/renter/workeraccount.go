@@ -20,18 +20,18 @@ import (
 )
 
 const (
-	// minDownloadBeforeRefill is the minimum amount of data we expect to be
-	// able to download before we have to refill our ephemeral account. This can
-	// be come an issue when the host sets an unreasonably low max ephemeral
-	// account balance.
-	minDownloadBeforeRefill = 1 << 30 // 1GiB
-
 	// fundAccountGougingPercentageThreshold is the percentage threshold, in
 	// relation to the allowance, at which we consider the cost of funding an
 	// account to be too expensive. E.g. the cost of funding the account as many
 	// times as necessary to spend the total allowance should never exceed 1% of
 	// the total allowance.
 	fundAccountGougingPercentageThreshold = .01
+
+	// minDownloadBeforeRefill is the minimum amount of data we expect to be
+	// able to download before we have to refill our ephemeral account. This can
+	// be come an issue when the host sets an unreasonably low max ephemeral
+	// account balance.
+	minDownloadBeforeRefill = 1 << 30 // 1GiB
 
 	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal
 	// message remains spendable after it has been created. Together with the
@@ -81,6 +81,11 @@ var (
 		Standard: 40 * time.Minute,
 		Testing:  20 * time.Second, // needs to be long even in testing
 	}).(time.Duration)
+
+	// maxBalanceTarget is a sane maximum for the account balance target. The
+	// worker will take the mininmum of this value and the host's maximum
+	// ephemeral account balance.
+	maxBalangeTarget = types.SiacoinPrecision.Mul64(3)
 )
 
 type (

@@ -1197,6 +1197,46 @@ func TestAccountCooldownLowMaxBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Set the max EA balance very high
+	highMaxBalance := types.SiacoinPrecision.Mul64(100)
+	err = h.HostModifySettingPost(client.HostParamMaxEphemeralAccountBalance, highMaxBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the account balance target was adjusted, however it was not set
+	// to the host's EA max balance because that is too high
+	err = build.Retry(100, 200*time.Millisecond, func() error {
+		// get the worker statuses
+		rwg, rwgErr := r.RenterWorkersGet()
+		if rwgErr != nil {
+			t.Fatal(rwgErr)
+		}
+
+		// get the status for the host we modified
+		var status *modules.WorkerStatus
+		for _, worker := range rwg.Workers {
+			if worker.HostPubKey.Equals(hpk) {
+				status = &worker
+				break
+			}
+		}
+		if status == nil {
+			return errors.New("worker for host not found")
+		}
+
+		// verify the account balance was adjusted to somewhere between the low
+		// and the high balance
+		if !(status.AccountBalanceTarget.Cmp(badMaxBalance) > 0 && status.AccountBalanceTarget.Cmp(highMaxBalance) < 0) {
+			return errors.New("Unexpected account balance target")
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // testPriceTablesUpdated verfies the workers' price tables are updated and stay
