@@ -71,13 +71,13 @@ func (w *worker) managedUpdateCache() {
 
 	// Create the cache object.
 	newCache := &workerCache{
-		staticBlockHeight:     w.renter.cs.Height(),
-		staticContractID:      renterContract.ID,
-		staticContractUtility: renterContract.Utility,
-		staticHostMaxEABalance:  host.MaxEphemeralAccountBalance,
-		staticHostVersion:     host.Version,
-		staticRenterAllowance: w.renter.hostContractor.Allowance(),
-		staticSynced:          w.renter.cs.Synced(),
+		staticBlockHeight:      w.renter.cs.Height(),
+		staticContractID:       renterContract.ID,
+		staticContractUtility:  renterContract.Utility,
+		staticHostMaxEABalance: host.MaxEphemeralAccountBalance,
+		staticHostVersion:      host.Version,
+		staticRenterAllowance:  w.renter.hostContractor.Allowance(),
+		staticSynced:           w.renter.cs.Synced(),
 
 		staticLastUpdate: time.Now(),
 	}
