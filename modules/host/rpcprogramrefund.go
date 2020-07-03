@@ -7,9 +7,9 @@ import (
 )
 
 // managedRPCProgramRefund handles the RPC which returns the refund (if any) for
-// a certain program token. The host keeps these refunds in memory for a certain
-// amount of time, allowing the renter to query these and verify its account
-// balance.
+// a certain program token. The host keeps these refunds in memory for
+// 'refundExpiry' time, allowing the renter to query these and verify its
+// account balance.
 func (h *Host) managedRPCProgramRefund(stream siamux.Stream) error {
 	// Read the price table
 	pt, err := h.staticReadPriceTableID(stream)

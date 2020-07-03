@@ -38,7 +38,7 @@ type (
 		mu      sync.Mutex
 	}
 
-	// tokenHeap is a min heap of tokens
+	// tokenHeap is a min heap of tokens with the first token to expire as root
 	tokenHeap []*tokenEntry
 
 	// tokenEntry is a helper struct that keeps track of when the token, and the
