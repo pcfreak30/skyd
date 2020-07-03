@@ -126,10 +126,8 @@ func (j *jobHasSector) managedHasSector() (bool, error) {
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
-	// take into account bandwidth costs
+	// Fetch the expected bandwidth consumption
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
-	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
 	//
@@ -137,7 +135,7 @@ func (j *jobHasSector) managedHasSector() (bool, error) {
 	// was only one response?
 	var hasSector bool
 	var responses []programResponse
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost, ulBandwidth, dlBandwidth)
 	if err != nil {
 		return false, errors.AddContext(err, "Unable to execute program")
 	}

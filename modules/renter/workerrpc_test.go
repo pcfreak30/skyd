@@ -64,11 +64,9 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
 	ulBandwidth, dlBandwidth := new(jobHasSector).callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
-	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, cost, ulBandwidth, dlBandwidth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,12 +104,10 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
-	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
-	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
+	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, cost, ulBandwidth, dlBandwidth)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,12 +21,20 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+//
+// Note that the bandwidth costs are added to the cost, so the given cost should
+// not already include any bandwidth cost.
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency, expectedUploadBandwidth, expectedDownloadBandwidth uint64) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// check host version
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
 		build.Critical("Executing new RHP RPC on host with version", cache.staticHostVersion)
 	}
+
+	// add the expected bandwidth cost
+	pt := w.staticPriceTable().staticPriceTable
+	bandwidthCost := modules.MDMBandwidthCost(pt, expectedUploadBandwidth, expectedDownloadBandwidth)
+	cost = cost.Add(bandwidthCost)
 
 	// track the withdrawal
 	// TODO: this is very naive and does not consider refunds at all
@@ -61,7 +69,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// send price table uid
-	pt := w.staticPriceTable().staticPriceTable
 	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		return
