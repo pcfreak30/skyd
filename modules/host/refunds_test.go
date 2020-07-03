@@ -1,6 +1,8 @@
 package host
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,4 +119,17 @@ func TestRefundsListRegister(t *testing.T) {
 	if tokLen != 1 || refLen != 1 {
 		t.Fatal("Token not listed in the token list")
 	}
+
+	// verify the build.Critical when we try and register a refund for the same
+	// token twice
+	defer func() {
+		if r := recover(); r != nil {
+			if !strings.Contains(fmt.Sprintf("%v", r), "Refund already registered for given token") {
+				t.Error("Expected build.Critical")
+				t.Log(r)
+			}
+		}
+	}()
+	rl.managedRegisterRefund(token, refund)
+
 }
