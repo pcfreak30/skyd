@@ -25,13 +25,13 @@ type (
 	// must be static because this object is saved and loaded using
 	// atomic.Pointer.
 	workerCache struct {
-		staticBlockHeight     types.BlockHeight
-		staticContractID      types.FileContractID
-		staticContractUtility modules.ContractUtility
-		staticHostVersion     string
-		staticHostMaxBalance  types.Currency
-		staticRenterAllowance modules.Allowance
-		staticSynced          bool
+		staticBlockHeight      types.BlockHeight
+		staticContractID       types.FileContractID
+		staticContractUtility  modules.ContractUtility
+		staticHostMaxEABalance types.Currency
+		staticHostVersion      string
+		staticRenterAllowance  modules.Allowance
+		staticSynced           bool
 
 		staticLastUpdate time.Time
 	}
@@ -74,8 +74,8 @@ func (w *worker) managedUpdateCache() {
 		staticBlockHeight:     w.renter.cs.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
+		staticHostMaxEABalance:  host.MaxEphemeralAccountBalance,
 		staticHostVersion:     host.Version,
-		staticHostMaxBalance:  host.MaxEphemeralAccountBalance,
 		staticRenterAllowance: w.renter.hostContractor.Allowance(),
 		staticSynced:          w.renter.cs.Synced(),
 

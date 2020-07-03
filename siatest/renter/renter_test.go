@@ -5043,12 +5043,3 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AccountStatus.AvailableBalance, renterBalance)
 	}
 }
-
-// toJSON is a helper function that wraps the jsonMarshalIndent function
-func toJSON(a interface{}) string {
-	json, err := json.MarshalIndent(a, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	return string(json)
-}

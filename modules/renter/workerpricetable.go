@@ -219,7 +219,7 @@ func (w *worker) staticUpdatePriceTable() {
 
 	// calculate a target balance for the worker's account
 	targetBalance := calculateTargetBalance(pt)
-	if targetBalance.Cmp(w.staticCache().staticHostMaxBalance) > 0 {
+	if targetBalance.Cmp(w.staticCache().staticHostMaxEABalance) > 0 {
 		err = fmt.Errorf("calculated account target balance exceeds the host's max ephemeral account balance, host %v", w.staticHostPubKeyStr)
 		w.renter.log.Println("ERROR: ", err)
 		return

@@ -472,8 +472,7 @@ func (w *worker) managedRefillAccount() {
 	}()
 
 	// check the current price table for gouging errors
-	cache := w.staticCache()
-	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, cache.staticRenterAllowance, pt.staticAccountTargetBalance)
+	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, w.staticCache().staticRenterAllowance, pt.staticAccountTargetBalance)
 	if err != nil {
 		return
 	}
