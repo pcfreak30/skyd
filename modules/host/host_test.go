@@ -847,10 +847,10 @@ func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Curre
 	return abr.Balance, nil
 }
 
-// managedProgramRefund returns the refund for the program with specified
-// program amount of time, if it does not have it in memory it will communicate
-// it has token. Note that the host only keeps these refunds in memory for a
-// certain not found it.
+// managedProgramRefund returns the refund for the program with the specified
+// program token. Note that the host only keeps these refunds in memory for a
+// certain amount of time, if it does not have it in memory it will communicate
+// it has not found it.
 func (p *renterHostPair) managedProgramRefund(token modules.MDMProgramToken) (types.Currency, bool, error) {
 	stream := p.managedNewStream()
 	defer stream.Close()
@@ -908,7 +908,7 @@ func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 	return p.managedAccountBalance(payByFC, p.pt.AccountBalanceCost, p.staticAccountID, p.staticAccountID)
 }
 
-// ProgramRefund returns the refund for the program with specified program
+// ProgramRefund returns the refund for the program with the specified program
 // token. Note that the host only keeps these refunds in memory for a certain
 // amount of time, if it does not have it in memory it will communicate it has
 // not found it.
