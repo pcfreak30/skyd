@@ -25,11 +25,11 @@ type (
 	// must be static because this object is saved and loaded using
 	// atomic.Pointer.
 	workerCache struct {
-		staticBalanceTarget   types.Currency
 		staticBlockHeight     types.BlockHeight
 		staticContractID      types.FileContractID
 		staticContractUtility modules.ContractUtility
 		staticHostVersion     string
+		staticHostMaxBalance  types.Currency
 		staticRenterAllowance modules.Allowance
 		staticSynced          bool
 
@@ -69,20 +69,13 @@ func (w *worker) managedUpdateCache() {
 		return
 	}
 
-	// Set the balance target, this is the minimum of the host's max ephemeral
-	// account balance and a sane max value.
-	balanceTarget := host.MaxEphemeralAccountBalance
-	if balanceTarget.Cmp(maxBalanceTarget) > 0 {
-		balanceTarget = maxBalanceTarget
-	}
-
 	// Create the cache object.
 	newCache := &workerCache{
-		staticBalanceTarget:   balanceTarget,
 		staticBlockHeight:     w.renter.cs.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
 		staticHostVersion:     host.Version,
+		staticHostMaxBalance:  host.MaxEphemeralAccountBalance,
 		staticRenterAllowance: w.renter.hostContractor.Allowance(),
 		staticSynced:          w.renter.cs.Synced(),
 

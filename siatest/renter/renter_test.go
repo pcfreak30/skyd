@@ -1101,9 +1101,9 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	}
 }
 
-// TestAccountCooldownLowMaxBalance verifies workers are being put on cooldown
+// TestWorkerCooldownLowMaxBalance verifies workers are being put on cooldown
 // if the host has an unreasonably low max epehemeral account balance.
-func TestAccountCooldownLowMaxBalance(t *testing.T) {
+func TestWorkerCooldownLowMaxBalance(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -1129,7 +1129,21 @@ func TestAccountCooldownLowMaxBalance(t *testing.T) {
 	host2Params.HostDeps = &dependencies.HostV1412{}
 	host3Params := node.Host(filepath.Join(groupDir, "host3"))
 	host3Params.HostDeps = &dependencies.HostV1412{}
-	_, err = tg.AddNodes(host1Params, host2Params, host3Params)
+	hosts, err := tg.AddNodes(host1Params, host2Params, host3Params)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oneSC := types.SiacoinPrecision
+	maxEA := client.HostParamMaxEphemeralAccountBalance
+
+	// Set the max EA balance unreasonably low for host 1, and to a reasonable
+	// value for the others
+	err = errors.Compose(
+		hosts[0].HostModifySettingPost(maxEA, oneSC.Div64(100)),
+		hosts[1].HostModifySettingPost(maxEA, oneSC.Div64(10)),
+		hosts[2].HostModifySettingPost(maxEA, oneSC.Mul64(2)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1142,94 +1156,38 @@ func TestAccountCooldownLowMaxBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get the public key of the first host
-	h := tg.Hosts()[0]
-	hpk, err := h.HostPublicKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Set the max EA balance unreasonably low
-	badMaxBalance := types.SiacoinPrecision.Div64(100)
-	err = h.HostModifySettingPost(client.HostParamMaxEphemeralAccountBalance, badMaxBalance)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify the modified settings have permeated to the worker settings
+	// Verify the worker is on cooldown
 	r := tg.Renters()[0]
-	err = build.Retry(100, 200*time.Millisecond, func() error {
-		// get the worker statuses
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// trigger the workerloop
+		dataPieces := uint64(1)
+		parityPieces := uint64(len(hosts) - 1)
+		r.UploadNewFile(100, dataPieces, parityPieces, false)
+
+		// get all workers on cooldown
 		rwg, rwgErr := r.RenterWorkersGet()
 		if rwgErr != nil {
 			t.Fatal(rwgErr)
 		}
-
-		// get the status for the host we modified
-		var status *modules.WorkerStatus
+		onCooldown := make([]types.SiaPublicKey, 0)
 		for _, worker := range rwg.Workers {
-			if worker.HostPubKey.Equals(hpk) {
-				status = &worker
-				break
+			if worker.PriceTableStatus.OnCoolDown {
+				onCooldown = append(onCooldown, worker.HostPubKey)
 			}
 		}
-		if status == nil {
-			return errors.New("worker for host not found")
+
+		// verify there is only one host on cooldown
+		if len(onCooldown) != 1 {
+			return fmt.Errorf("unexpected amount of workers on cooldown %v", len(onCooldown))
 		}
 
-		// verify the account balance was adjusted to the host's max balance
-		if !status.AccountBalanceTarget.Equals(badMaxBalance) {
-			return errors.New("AccountBalanceTarget not adjusted")
+		// verify it's the first host
+		hpk, err := hosts[0].HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
 		}
-
-		// verify the account was put on cooldown
-		if !status.AccountStatus.OnCoolDown {
-			// if that is not the case, upload a new file to trigger the
-			// workerloop
-			dataPieces := uint64(1)
-			parityPieces := uint64(len(tg.Hosts()) - 1)
-			r.UploadNewFile(100, dataPieces, parityPieces, false)
-			return errors.New("worker account not on cooldown")
-		}
-
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Set the max EA balance very high
-	highMaxBalance := types.SiacoinPrecision.Mul64(100)
-	err = h.HostModifySettingPost(client.HostParamMaxEphemeralAccountBalance, highMaxBalance)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify the account balance target was adjusted, however it was not set
-	// to the host's EA max balance because that is too high
-	err = build.Retry(100, 200*time.Millisecond, func() error {
-		// get the worker statuses
-		rwg, rwgErr := r.RenterWorkersGet()
-		if rwgErr != nil {
-			t.Fatal(rwgErr)
-		}
-
-		// get the status for the host we modified
-		var status *modules.WorkerStatus
-		for _, worker := range rwg.Workers {
-			if worker.HostPubKey.Equals(hpk) {
-				status = &worker
-				break
-			}
-		}
-		if status == nil {
-			return errors.New("worker for host not found")
-		}
-
-		// verify the account balance was adjusted to somewhere between the low
-		// and the high balance
-		if !(status.AccountBalanceTarget.Cmp(badMaxBalance) > 0 && status.AccountBalanceTarget.Cmp(highMaxBalance) < 0) {
-			return errors.New("Unexpected account balance target")
+		if !onCooldown[0].Equals(hpk) {
+			return errors.New("unexpected worker on cooldown")
 		}
 
 		return nil
@@ -4907,8 +4865,8 @@ func TestWorkerStatus(t *testing.T) {
 		}
 
 		// Account checks
-		if !worker.AccountBalanceTarget.Equals(types.SiacoinPrecision) {
-			t.Error("Expected balance target to be 1SC but was", worker.AccountBalanceTarget.HumanString())
+		if !worker.AccountTargetBalance.Equals(types.SiacoinPrecision) {
+			t.Error("Expected balance target to be 1SC but was", worker.AccountTargetBalance.HumanString())
 		}
 
 		// Job Queues
@@ -5084,4 +5042,13 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	if renterBalance.Sub(w.AccountStatus.AvailableBalance).Cmp(delta) < 0 {
 		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AccountStatus.AvailableBalance, renterBalance)
 	}
+}
+
+// toJSON is a helper function that wraps the jsonMarshalIndent function
+func toJSON(a interface{}) string {
+	json, err := json.MarshalIndent(a, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	return string(json)
 }

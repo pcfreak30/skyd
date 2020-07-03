@@ -445,7 +445,7 @@ func TestHostAccountBalance(t *testing.T) {
 	// setup, e.g. updating PT, checking balance and refilling. Note we use min
 	// expected balance to ensure we're not counting pending deposits
 	if err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticCache().staticBalanceTarget) {
+		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticPriceTable().staticAccountTargetBalance) {
 			return errors.New("worker account not funded")
 		}
 		return nil
@@ -458,7 +458,7 @@ func TestHostAccountBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !balance.Equals(w.staticCache().staticBalanceTarget) {
+	if !balance.Equals(w.staticPriceTable().staticAccountTargetBalance) {
 		t.Fatal(err)
 	}
 }
@@ -487,7 +487,7 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 	// setup, e.g. updating PT, checking balance and refilling. Note we use min
 	// expected balance to ensure we're not counting pending deposits
 	if err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticCache().staticBalanceTarget) {
+		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticPriceTable().staticAccountTargetBalance) {
 			return errors.New("worker account not funded")
 		}
 		return nil
@@ -496,7 +496,7 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 	}
 
 	// track a deposit to simulate an ongoing fund
-	w.staticAccount.managedTrackDeposit(w.staticCache().staticBalanceTarget)
+	w.staticAccount.managedTrackDeposit(w.staticPriceTable().staticAccountTargetBalance)
 
 	// trigger the account balance sync and expect it to panic
 	defer func() {

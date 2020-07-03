@@ -45,7 +45,7 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
 
 		// Account Information
-		AccountBalanceTarget: cache.staticBalanceTarget,
+		AccountTargetBalance: w.staticPriceTable().staticAccountTargetBalance,
 		AccountStatus:        w.staticAccount.managedStatus(),
 
 		// Price Table Information

@@ -4502,7 +4502,7 @@ returns the the status of all the workers in the renter's workerpool.
       "downloadrootjobqueuesize": 0,  // int
 
       "accountstatus": {
-        "availablebalance": "1000000000000000000000000", // hasting
+        "availablebalance": 1000000000000000000000000,   // hasting
         "negativebalance": "0",                          // hasting
         "funded": true,                                  // boolean
         "oncooldown": false,                             // boolean
@@ -4511,6 +4511,7 @@ returns the the status of all the workers in the renter's workerpool.
         "recenterr": "",                                 // string
         "recenterrtime": "0001-01-01T00:00:00Z"          // time
       },
+      "accounttargetbalance": 1000000000000000000000000, // hasting
 
       "pricetablestatus": {
         "expirytime": "2020-06-15T16:17:01.040481+02:00", // time

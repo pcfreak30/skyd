@@ -31,7 +31,7 @@ const (
 	// able to download before we have to refill our ephemeral account. This can
 	// be come an issue when the host sets an unreasonably low max ephemeral
 	// account balance.
-	minDownloadBeforeRefill = 1 << 30 // 1GiB
+	minDownloadBeforeRefill = 1 << 28 // 256MiB
 
 	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal
 	// message remains spendable after it has been created. Together with the
@@ -81,11 +81,6 @@ var (
 		Standard: 40 * time.Minute,
 		Testing:  20 * time.Second, // needs to be long even in testing
 	}).(time.Duration)
-
-	// maxBalanceTarget is a sane maximum for the account balance target. The
-	// worker will take the mininmum of this value and the host's maximum
-	// ephemeral account balance.
-	maxBalanceTarget = types.SiacoinPrecision.Mul64(3)
 )
 
 type (
@@ -407,14 +402,6 @@ func (w *worker) managedAccountNeedsRefill() bool {
 		return false
 	}
 
-	// Check the target balance is reasonable. If that is not the case we put
-	// the account on cooldown.
-	err := checkTargetBalance(pt.staticPriceTable, cache.staticBalanceTarget)
-	if err != nil {
-		w.staticAccount.managedIncrementCooldown(err)
-		return false
-	}
-
 	// Check if there is a cooldown in place, and check if the balance is low
 	// enough to justify a refill.
 	w.staticAccount.mu.Lock()
@@ -424,7 +411,7 @@ func (w *worker) managedAccountNeedsRefill() bool {
 	if time.Now().Before(cooldownUntil) {
 		return false
 	}
-	refillAt := cache.staticBalanceTarget.Div64(2)
+	refillAt := pt.staticAccountTargetBalance.Div64(2)
 	if balance.Cmp(refillAt) >= 0 {
 		return false
 	}
@@ -439,14 +426,14 @@ func (w *worker) managedRefillAccount() {
 		return // don't refill account
 	}
 
-	// Grab the worker cache object
-	cache := w.staticCache()
+	// Grab the worker'sprice table
+	pt := w.staticPriceTable()
 
 	// The account balance dropped to below half the balance target, refill. Use
 	// the max expected balance when refilling to avoid exceeding any host
 	// maximums.
 	balance := w.staticAccount.managedMaxExpectedBalance()
-	amount := cache.staticBalanceTarget.Sub(balance)
+	amount := pt.staticAccountTargetBalance.Sub(balance)
 
 	// We track that there is a deposit in progress. Because filling an account
 	// is an interactive protocol with another machine, we are never sure of the
@@ -485,7 +472,8 @@ func (w *worker) managedRefillAccount() {
 	}()
 
 	// check the current price table for gouging errors
-	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, cache.staticRenterAllowance, cache.staticBalanceTarget)
+	cache := w.staticCache()
+	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, cache.staticRenterAllowance, pt.staticAccountTargetBalance)
 	if err != nil {
 		return
 	}
@@ -515,8 +503,7 @@ func (w *worker) managedRefillAccount() {
 	}
 
 	// send price table uid
-	pt := w.staticPriceTable().staticPriceTable
-	err = modules.RPCWrite(buffer, pt.UID)
+	err = modules.RPCWrite(buffer, pt.staticPriceTable.UID)
 	if err != nil {
 		err = errors.AddContext(err, "could not write price table uid")
 		return
@@ -537,7 +524,7 @@ func (w *worker) managedRefillAccount() {
 	}
 
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, w.staticCache().staticBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.staticPriceTable.FundAccountCost), modules.ZeroAccountID, w.staticCache().staticBlockHeight)
 	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
 		// The host reporting that the balance has been exceeded suggests that
 		// the host believes that we have more money than we believe that we
@@ -768,36 +755,5 @@ func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowan
 		return fmt.Errorf("fund account cost %v is considered too high, the total cost of refilling the account to spend the total allowance exceeds %v%% of the allowance - price gouging protection enabled", pt.FundAccountCost, fundAccountGougingPercentageThreshold)
 	}
 
-	return nil
-}
-
-// checkTargetBalance checks whether the given target balance is sufficient to
-// fulfil a minimum amount MDM programs without having to refill too often. If
-// that is not the case, we deem it to be unreasonably low which puts the
-// account on cooldown.
-func checkTargetBalance(pt modules.RPCPriceTable, targetBalance types.Currency) error {
-	// Calculate the cost of a read sector job, we use StreamDownloadSize as an
-	// average download size here which is 64 KiB.
-	pb := modules.NewProgramBuilder(&pt, 0)
-	mr := crypto.Hash{}
-	pb.AddReadSectorInstruction(modules.StreamDownloadSize, 0, mr, true)
-	programCost, _, _ := pb.Cost(true)
-
-	// Calculate the expected bandwidth costs for the program, arriving at a
-	// cost per read job.
-	ulbw, dlbw := readSectorJobExpectedBandwidth(modules.StreamDownloadSize)
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
-	costPerJob := programCost.Add(bandwidthCost)
-
-	// Calculate the number of jobs we can run before we have to refill our
-	// account, use this to calculate the amount of data we can download.
-	numJobs := targetBalance.Div64(2).Div(costPerJob)
-	amountOfData := numJobs.Mul64(modules.StreamDownloadSize)
-
-	// Verify this amount is larger than the minimum required amount of data we
-	// want to be able to download before having to refill the account.
-	if amountOfData.Cmp(types.NewCurrency64(minDownloadBeforeRefill)) < 0 {
-		return fmt.Errorf("Target balance deemed unreasonable, the amount of data we can download before having to refill our ephemeral account is below the minimum expected amount, %v < %v", amountOfData, minDownloadBeforeRefill)
-	}
 	return nil
 }

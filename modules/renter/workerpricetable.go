@@ -8,7 +8,9 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -38,6 +40,11 @@ type (
 	// workerPriceTable contains a price table and some information related to
 	// retrieving the next update.
 	workerPriceTable struct {
+		// The account's target balance. This is defined on the price table as
+		// it is influenced by the host's pricing and thus depends on the price
+		// table to be able to calculate.
+		staticAccountTargetBalance types.Currency
+
 		// The actual price table.
 		staticPriceTable modules.RPCPriceTable
 
@@ -210,6 +217,14 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 
+	// calculate a target balance for the worker's account
+	targetBalance := calculateTargetBalance(pt)
+	if targetBalance.Cmp(w.staticCache().staticHostMaxBalance) > 0 {
+		err = fmt.Errorf("calculated account target balance exceeds the host's max ephemeral account balance, host %v", w.staticHostPubKeyStr)
+		w.renter.log.Println("ERROR: ", err)
+		return
+	}
+
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
@@ -239,12 +254,13 @@ func (w *worker) staticUpdatePriceTable() {
 	// has not been an error for debugging purposes, if there has been an error
 	// previously the devs like to be able to see what it was.
 	wpt := &workerPriceTable{
-		staticPriceTable:          pt,
-		staticExpiryTime:          expiryTime,
-		staticUpdateTime:          newUpdateTime,
-		staticConsecutiveFailures: 0,
-		staticRecentErr:           currentPT.staticRecentErr,
-		staticRecentErrTime:       currentPT.staticRecentErrTime,
+		staticAccountTargetBalance: targetBalance,
+		staticPriceTable:           pt,
+		staticExpiryTime:           expiryTime,
+		staticUpdateTime:           newUpdateTime,
+		staticConsecutiveFailures:  0,
+		staticRecentErr:            currentPT.staticRecentErr,
+		staticRecentErrTime:        currentPT.staticRecentErrTime,
 	}
 	w.staticSetPriceTable(wpt)
 }
@@ -280,4 +296,29 @@ func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Al
 	}
 
 	return nil
+}
+
+// calculateTargetBalance calculates a target balance for the worker account. We
+// want to set the balance to twice the amount of money required to download
+// 'minDownloadBeforeRefill' amount of data in 64 KiB download jobs. Twice
+// because we refill at 50% of the target balance.
+func calculateTargetBalance(pt modules.RPCPriceTable) types.Currency {
+	// Calculate the cost of a read sector job, we use StreamDownloadSize as an
+	// average download size here which is 64 KiB.
+	pb := modules.NewProgramBuilder(&pt, 0)
+	mr := crypto.Hash{}
+	pb.AddReadSectorInstruction(modules.StreamDownloadSize, 0, mr, true)
+	programCost, _, _ := pb.Cost(true)
+
+	// Calculate the expected bandwidth costs for the program, arriving at a
+	// cost per read job.
+	ulbw, dlbw := readSectorJobExpectedBandwidth(modules.StreamDownloadSize)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
+	costPerJob := programCost.Add(bandwidthCost)
+
+	// Calculate the balance target, which is twice the amount of money
+	// necessary to run enough jobs to download 'minDownloadBeforeRefill' worth
+	// of data.
+	numDownloadJobs := minDownloadBeforeRefill / modules.StreamDownloadSize
+	return costPerJob.Mul64(numDownloadJobs).Mul64(2)
 }

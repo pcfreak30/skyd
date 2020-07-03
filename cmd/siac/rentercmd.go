@@ -2678,7 +2678,7 @@ func renterworkerseacmd() {
 			as.Funded,
 			as.AvailableBalance.HumanString(),
 			as.NegativeBalance.HumanString(),
-			worker.AccountBalanceTarget.HumanString())
+			worker.AccountTargetBalance.HumanString())
 
 		// Queue Info
 		fmt.Fprintf(w, "\t%t\t%v\t%v\t%v\t%v\n",
@@ -2873,7 +2873,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 		// EA Info
 		fmt.Fprintf(w, "\t%v\t%v",
 			worker.AccountStatus.AvailableBalance,
-			worker.AccountBalanceTarget)
+			worker.AccountTargetBalance)
 
 		// Job Info
 		fmt.Fprintf(w, "\t%v\t%v\n",
