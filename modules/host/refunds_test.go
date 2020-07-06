@@ -131,5 +131,4 @@ func TestRefundsListRegister(t *testing.T) {
 		}
 	}()
 	rl.managedRegisterRefund(token, refund)
-
 }
