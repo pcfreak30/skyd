@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"io"
+	"math"
 	"net/url"
 
 	"github.com/aead/chacha20/chacha"
@@ -220,7 +221,11 @@ func (sk *Skykey) unmarshalDataOnly(r io.Reader) error {
 	case TypeInvalid:
 		return errCannotMarshalTypeInvalidSkykey
 	case typeDeletedSkykey:
-		entropyLen = int(d.NextUint64())
+		el := d.NextUint64()
+		if el > math.MaxInt32 {
+			return errors.New("entropyLen out-of-bounds")
+		}
+		entropyLen = int(el)
 	default:
 		return errUnsupportedSkykeyType
 	}
