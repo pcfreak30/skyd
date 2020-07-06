@@ -1813,7 +1813,7 @@ func testUploadInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependenci
 }
 
 // TestRenterAddNodes runs a subset of tests that require adding their own renter
-func TestRenterAddNodes(t *testing.T) {
+func TestRenterAddNodesX(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -1829,9 +1829,9 @@ func TestRenterAddNodes(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		{Name: "TestRedundancyReporting", Test: testRedundancyReporting}, // Put first because it pulls the original tg renter
-		{Name: "TestUploadReady", Test: testUploadReady},
-		{Name: "TestOverspendAllowance", Test: testOverspendAllowance},
+		//		{Name: "TestRedundancyReporting", Test: testRedundancyReporting}, // Put first because it pulls the original tg renter
+		//		{Name: "TestUploadReady", Test: testUploadReady},
+		//		{Name: "TestOverspendAllowance", Test: testOverspendAllowance},
 		{Name: "TestRenterAllowanceCancel", Test: testRenterAllowanceCancel},
 	}
 
