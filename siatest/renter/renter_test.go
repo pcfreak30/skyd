@@ -5038,7 +5038,7 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	if w.AccountStatus.AvailableBalance.Cmp(renterBalance) >= 0 {
 		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AccountStatus.AvailableBalance, renterBalance)
 	}
-	delta := types.SiacoinPrecision.Div64(10)
+	delta := w.AccountTargetBalance.Div64(10)
 	if renterBalance.Sub(w.AccountStatus.AvailableBalance).Cmp(delta) < 0 {
 		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AccountStatus.AvailableBalance, renterBalance)
 	}

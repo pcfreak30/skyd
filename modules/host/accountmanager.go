@@ -296,7 +296,7 @@ func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currenc
 	// alter the deposit amount without the renter being aware of it, used to
 	// test the balance sync after unclean shutdown
 	if am.h.dependencies.Disrupt("lowerDeposit") {
-		amount = amount.Sub(types.SiacoinPrecision.Div64(10))
+		amount = amount.Sub(amount.Div64(10))
 	}
 
 	return am.managedDeposit(id, amount, false, syncChan)
