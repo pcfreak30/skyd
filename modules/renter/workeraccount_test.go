@@ -445,7 +445,8 @@ func TestHostAccountBalance(t *testing.T) {
 	// setup, e.g. updating PT, checking balance and refilling. Note we use min
 	// expected balance to ensure we're not counting pending deposits
 	if err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticPriceTable().staticAccountTargetBalance) {
+		tb := w.staticPriceTable().staticAccountTargetBalance
+		if tb.IsZero() || !w.staticAccount.managedMinExpectedBalance().Equals(tb) {
 			return errors.New("worker account not funded")
 		}
 		return nil
@@ -487,7 +488,8 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 	// setup, e.g. updating PT, checking balance and refilling. Note we use min
 	// expected balance to ensure we're not counting pending deposits
 	if err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticPriceTable().staticAccountTargetBalance) {
+		tb := w.staticPriceTable().staticAccountTargetBalance
+		if tb.IsZero() || !w.staticAccount.managedMinExpectedBalance().Equals(tb) {
 			return errors.New("worker account not funded")
 		}
 		return nil
