@@ -389,6 +389,8 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		err = h.managedRPCUpdatePriceTable(stream)
 	case modules.RPCFundAccount:
 		err = h.managedRPCFundEphemeralAccount(stream)
+	case modules.RPCLatestRevision:
+		err = h.managedRPCLatestRevision(stream)
 	case modules.RPCProgramRefund:
 		err = h.managedRPCProgramRefund(stream)
 	default:

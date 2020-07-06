@@ -38,6 +38,11 @@ type RPCPriceTable struct {
 	// host.
 	FundAccountCost types.Currency `json:"fundaccountcost"`
 
+	// LatestRevisionCost refers to the cost of asking the host for the latest
+	// revision of a contract.
+	// TODO: should this be free?
+	LatestRevisionCost types.Currency `json:"latestrevisioncost"`
+
 	// ProgramRefundCost refers to the cost of querying the refund given for a
 	// certain program.
 	ProgramRefundCost types.Currency `json:"programrefundcost"`
@@ -98,6 +103,9 @@ var (
 
 	// RPCProgramRefund specifier
 	RPCProgramRefund = types.NewSpecifier("ProgramRefund")
+
+	// RPCLatestRevision specifier
+	RPCLatestRevision = types.NewSpecifier("LatestRevision")
 )
 
 type (
@@ -177,6 +185,18 @@ type (
 	// containing the host signature for the new revision.
 	RPCExecuteProgramRevisionSigningResponse struct {
 		Signature []byte
+	}
+
+	// RPCLatestRevisionRequest contains the id of the contract for which to
+	// retrieve the latest revision.
+	RPCLatestRevisionRequest struct {
+		FileContractID types.FileContractID
+	}
+
+	// RPCLatestRevisionResponse contains the latest file contract revision
+	// signed by both host and renter.
+	RPCLatestRevisionResponse struct {
+		Revision types.FileContractRevision
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
