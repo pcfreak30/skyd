@@ -138,7 +138,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}()
 
 	// Return the program token. The renter can use this to cancel the program.
-	err = modules.RPCWrite(stream, programToken)
+	err = modules.RPCWrite(buffer, programToken)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write program token")
 	}
