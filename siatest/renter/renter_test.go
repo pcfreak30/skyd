@@ -4864,11 +4864,6 @@ func TestWorkerStatus(t *testing.T) {
 			t.Error("Worker should not be marked as UploadTerminated")
 		}
 
-		// Account checks
-		if !worker.AccountTargetBalance.Equals(types.SiacoinPrecision) {
-			t.Error("Expected balance target to be 1SC but was", worker.AccountTargetBalance.HumanString())
-		}
-
 		// Job Queues
 		if worker.BackupJobQueueSize != 0 {
 			t.Error("Expected backup queue to be empty but was", worker.BackupJobQueueSize)
