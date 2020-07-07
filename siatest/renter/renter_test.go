@@ -2136,12 +2136,12 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	// goodForRenew again.
 	tries := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if tries%20 == 0 {
-			err := m.MineBlock()
-			if err != nil {
-				return err
-			}
-		}
+		//		if tries%20 == 0 {
+		//			err := m.MineBlock()
+		//			if err != nil {
+		//				return err
+		//			}
+		//		}
 		return siatest.CheckExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, 0, 0)
 	})
 	if err != nil {
