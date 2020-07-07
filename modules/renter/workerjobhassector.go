@@ -174,7 +174,7 @@ func (w *worker) initJobHasSectorQueue() {
 // bandwidth consumption of a has sector job. This helper function enables
 // getting at the expected bandwidth without having to instantiate a job.
 func hasSectorJobExpectedBandwidth() (ul, dl uint64) {
-	ul = 20e3
-	dl = 20e3
+	ul = 1460
+	dl = 2920
 	return
 }

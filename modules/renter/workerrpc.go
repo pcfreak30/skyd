@@ -59,6 +59,20 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// set the stream's limit
 	limit = stream.Limit()
 
+	// increase host interactions depending on whether the consumed bandwidth
+	// equals the expected amount of up-and download bandwidth.
+	defer func() {
+		go func() {
+			if limit.Downloaded() != expectedDownloadBandwidth ||
+				limit.Uploaded() != expectedUploadBandwidth ||
+				w.renter.deps.Disrupt("InterruptUpdateInteractions") {
+				w.renter.hostDB.IncrementFailedInteractions(w.staticHostPubKey)
+			} else {
+				w.renter.hostDB.IncrementSuccessfulInteractions(w.staticHostPubKey)
+			}
+		}()
+	}()
+
 	// prepare a buffer so we can optimize our writes
 	buffer := bytes.NewBuffer(nil)
 

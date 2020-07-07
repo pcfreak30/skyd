@@ -208,6 +208,13 @@ func NewDependencyInterruptUploadAfterSendingRevision() *DependencyInterruptOnce
 	return newDependencyInterruptOnceOnKeyword("InterruptUploadAfterSendingRevision")
 }
 
+// NewDependencyInterruptUpdateHostInteractionsAfterExecuteProgram creates a new
+// dependency that interrupts the update of the host interactions on the renter
+// side right after executing an MDM program.
+func NewDependencyInterruptUpdateHostInteractionsAfterExecuteProgram() *DependencyInterruptOnceOnKeyword {
+	return newDependencyInterruptOnceOnKeyword("InterruptUpdateInteractions")
+}
+
 // newDependencyInterruptOnceOnKeyword creates a new
 // DependencyInterruptOnceOnKeyword from a given disrupt key.
 func newDependencyInterruptOnceOnKeyword(str string) *DependencyInterruptOnceOnKeyword {
