@@ -29,7 +29,7 @@ const (
 
 	// minDownloadBeforeRefill is the minimum amount of data we expect to be
 	// able to download before we have to refill our ephemeral account. This can
-	// be come an issue when the host sets an unreasonably low max ephemeral
+	// become an issue when the host sets an unreasonably low max ephemeral
 	// account balance.
 	minDownloadBeforeRefill = 1 << 28 // 256MiB
 
@@ -426,7 +426,7 @@ func (w *worker) managedRefillAccount() {
 		return // don't refill account
 	}
 
-	// Grab the worker'sprice table
+	// Grab the worker's price table
 	pt := w.staticPriceTable()
 
 	// The account balance dropped to below half the balance target, refill. Use
