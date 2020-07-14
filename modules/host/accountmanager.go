@@ -840,7 +840,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.
 // current time. If it exceeds the EphemeralAccountExpiry, the account is
 // considered expired.
 //
-// Note: threadgroup counter must be inside for loop. If not, calling 'Flush'
+// NOTE: threadgroup counter must be inside for loop. If not, calling 'Flush'
 // on the threadgroup would deadlock.
 func (am *accountManager) threadedPruneExpiredAccounts() {
 	for {

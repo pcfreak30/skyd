@@ -480,7 +480,7 @@ func (ap *accountsPersister) loadFingerprints(path string, m map[crypto.Hash]str
 // the queue and will save them. The loop blocks until it receives a message on
 // the wakeChan, or until it receives a stop signal.
 //
-// Note: threadgroup counter must be inside for loop. If not, calling 'Flush'
+// NOTE: threadgroup counter must be inside for loop. If not, calling 'Flush'
 // on the threadgroup would deadlock.
 func (fm *fingerprintManager) threadedSaveFingerprintsLoop() {
 	for {

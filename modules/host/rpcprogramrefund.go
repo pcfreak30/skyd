@@ -42,17 +42,17 @@ func (h *Host) managedRPCProgramRefund(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to read ProgramRefundRequest")
 	}
 
-	// Get the refund amount and whether or not it was found, which indicates if
-	// the host still had the refund in memory.
-	refund, found := h.staticRefundsList.managedRefund(prr.ProgramToken)
+	// Get the program info and whether or not it was found, which indicates if
+	// the host still had the information in memory.
+	programInfo, found := h.staticPrograms.managedProgramInfo(prr.ProgramToken)
+	if found && programInfo.running() {
+		return errors.AddContext(err, "Failed to return the refund, the program is still running")
+	}
 
 	// Send response.
 	err = modules.RPCWrite(stream, modules.ProgramRefundResponse{
-		Refund: refund,
+		Refund: programInfo.refund,
 		Found:  found,
 	})
-	if err != nil {
-		return errors.AddContext(err, "Failed to send ProgramRefundResponse")
-	}
-	return nil
+	return errors.AddContext(err, "Failed to send ProgramRefundResponse")
 }

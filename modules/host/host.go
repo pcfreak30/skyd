@@ -189,11 +189,12 @@ type Host struct {
 	// of such conditions are congestion, load, liquidity, etc.
 	staticPriceTables *hostPrices
 
-	// The host keeps a list of recent refunds in memory. This list is indexed
-	// by the MDMProgramToken, and is queryable by the renter through an RPC
-	// call. Renters can use this as a means to check whether or not the host
-	// has refunded the excess payment for MDM programs.
-	staticRefundsList *refundsList
+	// The host keeps information of programs that are running, or have recently
+	// been executed,  in memory. This list is indexed by the MDMProgramToken,
+	// and is queryable by the renter through an RPC call. Renters can use this
+	// as a means to check whether or not the host has refunded the excess
+	// payment for MDM programs.
+	staticPrograms *programsList
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -368,7 +369,7 @@ func (h *Host) managedUpdatePriceTable() {
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry
 // in the past.
 //
-// Note: threadgroup counter must be inside for loop. If not, calling 'Flush'
+// NOTE: threadgroup counter must be inside for loop. If not, calling 'Flush'
 // on the threadgroup would deadlock.
 func (h *Host) threadedPruneExpiredPriceTables() {
 	for {
@@ -426,9 +427,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 				heap: make([]*hostRPCPriceTable, 0),
 			},
 		},
-		staticRefundsList: &refundsList{
-			refunds: make(map[modules.MDMProgramToken]types.Currency),
-			tokens:  make(tokenHeap, 0),
+		staticPrograms: &programsList{
+			programs: make(map[modules.MDMProgramToken]programInfo),
+			tokens:   make([]*tokenEntry, 0),
 		},
 		persistDir: persistDir,
 	}
@@ -530,8 +531,8 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	// Ensure the expired RPC tables get pruned as to not leak memory
 	go h.threadedPruneExpiredPriceTables()
 
-	// Ensure the refunds list is pruned periodically so we don't leak memory
-	go h.threadedPruneRefundsList()
+	// Ensure the programs list is pruned periodically so we don't leak memory
+	go h.threadedPruneProgramsList()
 
 	return h, nil
 }

@@ -28,7 +28,7 @@ type (
 	ProgramData []byte
 
 	// MDMProgramToken is a token that uniquely identifies the execution of an
-	// MDM program, it can be used to request cancellation of a program, or how
+	// MDM program. It can be used to request cancellation of a program, or how
 	// much was refunded.
 	MDMProgramToken [MDMProgramTokenLen]byte
 )
