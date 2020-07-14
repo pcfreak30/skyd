@@ -52,7 +52,7 @@ func testProgramRefundBasic(t *testing.T, rhp *renterHostPair) {
 	programCost, _, _ := pb.Cost(true)
 
 	// Calculate bandwidth cost
-	downloadCost := pt.DownloadBandwidthCost.Mul64(2920)
+	downloadCost := pt.DownloadBandwidthCost.Mul64(1460)
 	uploadCost := pt.UploadBandwidthCost.Mul64(1460)
 	bandwidthCost := downloadCost.Add(uploadCost)
 

@@ -2,7 +2,6 @@ package host
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +21,7 @@ func TestProgramsListPrune(t *testing.T) {
 	token3 := modules.NewMDMProgramToken()
 
 	pl := programsList{
-		programs: make(map[modules.MDMProgramToken]programInfo, 0),
+		programs: make(map[modules.MDMProgramToken]*programInfo, 0),
 		tokens:   make([]*tokenEntry, 0),
 	}
 
@@ -34,9 +33,9 @@ func TestProgramsListPrune(t *testing.T) {
 		&tokenEntry{token2, time.Now().Add(100 * time.Millisecond)},
 		&tokenEntry{token3, time.Now().Add(1000 * time.Millisecond)},
 	)
-	pl.programs[token1] = programInfo{}
-	pl.programs[token2] = programInfo{}
-	pl.programs[token3] = programInfo{}
+	pl.programs[token1] = &programInfo{}
+	pl.programs[token2] = &programInfo{}
+	pl.programs[token3] = &programInfo{}
 	pl.mu.Unlock()
 
 	// prune immediately - expect no changes
@@ -92,22 +91,19 @@ func TestProgramsListAddInfo(t *testing.T) {
 	t.Parallel()
 
 	pl := programsList{
-		programs: make(map[modules.MDMProgramToken]programInfo, 0),
+		programs: make(map[modules.MDMProgramToken]*programInfo, 0),
 		tokens:   make([]*tokenEntry, 0),
 	}
 
 	// register information on a program
 	token := modules.NewMDMProgramToken()
-	pInfo := programInfo{refund: types.NewCurrency64(fastrand.Uint64n(1000))}
+	pInfo := &programInfo{externRefund: types.NewCurrency64(fastrand.Uint64n(1000))}
 	pl.managedAddProgramInfo(token, pInfo)
 
 	// verify it's found
-	pInfoActual, found := pl.managedProgramInfo(token)
+	_, found := pl.managedProgramInfo(token)
 	if !found {
 		t.Fatal("Expected program info to be found")
-	}
-	if !reflect.DeepEqual(pInfoActual, pInfo) {
-		t.Fatal("Expected program info to match the added entry")
 	}
 
 	// verify it's both in the token heap as in the refunds list - assuring it's

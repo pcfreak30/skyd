@@ -428,7 +428,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 			},
 		},
 		staticPrograms: &programsList{
-			programs: make(map[modules.MDMProgramToken]programInfo),
+			programs: make(map[modules.MDMProgramToken]*programInfo),
 			tokens:   make([]*tokenEntry, 0),
 		},
 		persistDir: persistDir,

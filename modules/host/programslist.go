@@ -34,15 +34,16 @@ type (
 	// programs. It keeps track of the refund, allowing renters to query what
 	// was refunded to them after the execution of an MDM program.
 	programsList struct {
-		programs map[modules.MDMProgramToken]programInfo
+		programs map[modules.MDMProgramToken]*programInfo
 		tokens   []*tokenEntry
 		mu       sync.Mutex
 	}
 
 	// programInfo is a helper struct that contains information about a program
 	programInfo struct {
-		refund types.Currency
-		done   chan error
+		externRefund    types.Currency
+		externRefundErr error
+		refunded        chan struct{}
 	}
 
 	// tokenEntry is a helper struct that keeps track of when the token, and the
@@ -53,10 +54,10 @@ type (
 	}
 )
 
-// running returns whether the program is still running.
-func (pi programInfo) running() bool {
+// refundComplete returns whether the refund for the program was refunded.
+func (pi programInfo) refundComplete() bool {
 	select {
-	case <-pi.done:
+	case <-pi.refunded:
 		return false
 	default:
 		return true
@@ -68,7 +69,7 @@ func (pi programInfo) running() bool {
 // are running or that have ran in the recent history. The list is periodically
 // purged for programs with a token that have been in the list for longer than
 // the `refundExpiry` time.
-func (pl *programsList) managedAddProgramInfo(t modules.MDMProgramToken, pi programInfo) {
+func (pl *programsList) managedAddProgramInfo(t modules.MDMProgramToken, pi *programInfo) {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
@@ -85,13 +86,13 @@ func (pl *programsList) managedAddProgramInfo(t modules.MDMProgramToken, pi prog
 // managedProgramInfo returns the information for the program with given token.
 // It will also return a boolean indicating whether or not the information was
 // found.
-func (pl *programsList) managedProgramInfo(t modules.MDMProgramToken) (programInfo, bool) {
+func (pl *programsList) managedProgramInfo(t modules.MDMProgramToken) (*programInfo, bool) {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
 	pi, found := pl.programs[t]
 	if !found {
-		return programInfo{}, false
+		return nil, false
 	}
 	return pi, true
 }
