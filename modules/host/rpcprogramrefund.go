@@ -43,7 +43,7 @@ func (h *Host) managedRPCProgramRefund(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to read ProgramRefundRequest")
 	}
 
-	// Try to retrieve information about the program, if it is not found we
+	// Try to retrieve information about the program
 	programInfo, found := h.staticPrograms.managedProgramInfo(prr.ProgramToken)
 	if !found {
 		err = modules.RPCWrite(stream, modules.ProgramRefundResponse{Found: false})
