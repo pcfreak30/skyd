@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -246,7 +245,7 @@ func (tn *TestNode) KnowsHost(host *TestNode) error {
 		if err != nil {
 			return err
 		}
-		if reflect.DeepEqual(h.PublicKey, pk) {
+		if h.PublicKey.Equals(pk) {
 			return nil
 		}
 	}
