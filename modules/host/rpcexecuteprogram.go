@@ -49,7 +49,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return err
 	}
 
-	// Create a token that unqiuely identifies this program
+	// Create a token that uniquely identifies this program
 	programToken := modules.NewMDMProgramToken()
 
 	// Register information about this program so the renter can query it later
@@ -63,18 +63,17 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	defer func() {
 		go func() {
 			defer h.tg.Done()
+
+			defer close(refundDone)
 			// The total refund is the remaining value of the budget + the
 			// potential program refund.
 			refund := programRefund.Add(budget.Remaining())
-			depositErr := h.staticAccountManager.callRefund(refundAccount, refund)
-			if depositErr != nil {
-				h.log.Print("ERROR: failed to refund renter", depositErr)
-				refundDone <- depositErr
-				close(refundDone)
+			refundErr := h.staticAccountManager.callRefund(refundAccount, refund)
+			if refundErr != nil {
+				h.log.Print("ERROR: failed to refund renter", refundErr)
+				refundDone <- refundErr
 				return
 			}
-
-			close(refundDone)
 		}()
 	}()
 
