@@ -4800,18 +4800,12 @@ the file as though it is an attachment instead of rendering it.
 **format** | string  
 If 'format' is set, the skylink can point to a directory and it will return the
 data inside that directory. Format will decide the format in which it is
-returned. Currently, we support the following values: 'concat' will return the 
-concatenated data of all subfiles in that directory, 'tar' will return a tar 
-archive of all subfiles in that directory, and 'targz' will return gzipped tar 
-archive of all subfiles in that directory.
-
-**redirect** | bool
-If 'redirect' is omitted or set to true, the provided skylink points to a 
-directory, no format was specified, and no explicit path was provided (e.g. 
-`folder/file.txt` from the example above) then the user's browser will be 
-redirected to the default path associated with this skyfile, if one exists.  
-If 'redirect' is set to false and the same conditions apply, an error will be 
-returned because there is no default action for this case.
+returned. Currently, we support the following values: 'concat' will return the
+concatenated data of all subfiles in that directory, 'zip' will return a zip
+archive, 'tar' will return a tar archive of all subfiles in that directory, and
+'targz' will return a gzipped tar archive of all subfiles in that directory. If
+the format is not specified, and the skylink points at a directory, we default
+to the zip format and the contents will be downloaded as a zip archive.
 
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
@@ -4887,14 +4881,20 @@ active. This field is mutually exclusive with uploading streaming.
 
 **defaultpath** string  
 The path to the default file to be used to represent this skyfile in case it
-contains multiple files (e.g. skapps, photo collections, etc.). If provided, the
-path must exist. If not provided, it will default to `index.html` if a file with
-that name exists within the skyfile.
+contains multiple files (e.g. skapps, photo collections, etc.). This means that 
+when the skyfile is requested without a specific subfile specified, the content 
+of the subfile at the default path will be served. If provided, the path must 
+exist or be an empty string. The empty string value disables the functionality, 
+meaning that if a user requests the skyfile without specifying a concrete 
+subfile, no content will be automatically served but the skyfile will be 
+downloaded as a zip. If not provided, the default path will default to 
+`index.html` if a file with that name exists within the skyfile.
 
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
-well.
+well. The name must be non-empty, may not include any path traversal strings
+("./", "../"), and may not begin with a forward-slash character.
 
 **dryrun** | bool  
 If dryrun is set to true, the request will return the Skylink of the file
