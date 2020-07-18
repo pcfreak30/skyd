@@ -26,6 +26,27 @@ var (
 	sectorLookupToDownloadRatio = 16
 )
 
+// projectDownload coordinates a single download using the
+// projectDownloadWorkerSet. The projectDownload will do a single fetch of
+// contiguous data from a chunk. The pdWorkerSet can be reused across multiple
+// downloads over a long period of time.
+type projectDownload struct {
+	// The worker set tracks which workers are capable of participating in a
+	// download.
+	pdws *projectDownloadWorkerSet
+
+	// The actual chunks being fetched.
+
+	// The channel that is used to set the download result.
+	resultChan *projectDownloadResult
+}
+
+// projectDownloadResult contains the result of a download operation.
+type projectDownloadResult struct {
+	data []byte
+	err  error
+}
+
 // projectDownloadByRootManager tracks metrics across multiple runs of
 // DownloadByRoot projects, and is used by the projects to set expectations for
 // performance.
