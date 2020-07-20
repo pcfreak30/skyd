@@ -54,8 +54,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 	// Track information about the program
 	refundedChan := make(chan struct{})
-	programInfo := &programInfo{refunded: refundedChan}
-	h.staticPrograms.managedAddProgramInfo(programToken, programInfo)
+	pi := h.staticPrograms.managedNewProgramInfo(programToken, refundedChan)
 
 	// Defer a function handling the refund
 	defer func() {
@@ -64,12 +63,12 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 			// The total refund is the remaining value of the budget + the
 			// potential program refund.
-			programInfo.externRefund = programRefund.Add(budget.Remaining())
-			programInfo.externRefundErr = h.staticAccountManager.callRefund(refundAccount, programInfo.externRefund)
-			if programInfo.externRefundErr != nil {
-				h.log.Print("ERROR: failed to refund renter", programInfo.externRefundErr)
+			tr := programRefund.Add(budget.Remaining())
+			rErr := h.staticAccountManager.callRefund(refundAccount, tr)
+			if rErr != nil {
+				h.log.Print("ERROR: failed to refund renter", rErr)
 			}
-			close(programInfo.refunded)
+			pi.SetRefund(tr, rErr)
 		}()
 	}()
 

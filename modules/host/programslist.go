@@ -14,8 +14,8 @@ var (
 	// the information it keeps in memory about running, or recently executed,
 	// MDM programs
 	pruneProgramsListFrequency = build.Select(build.Var{
-		Standard: 15 * time.Minute,
-		Dev:      10 * time.Minute,
+		Standard: time.Minute,
+		Dev:      time.Minute,
 		Testing:  30 * time.Second,
 	}).(time.Duration)
 
@@ -24,8 +24,8 @@ var (
 	// host.
 	programInfoExpiry = build.Select(build.Var{
 		Standard: 10 * time.Minute,
-		Dev:      time.Minute,
-		Testing:  10 * time.Second,
+		Dev:      10 * time.Minute,
+		Testing:  time.Minute,
 	}).(time.Duration)
 )
 
@@ -41,46 +41,60 @@ type (
 
 	// programInfo is a helper struct that contains information about a program
 	programInfo struct {
-		externRefund    types.Currency
-		externRefundErr error
+		// The `externRefund` and `externRefundErr` fields are not allowed to be
+		// accessed by any external threads until the `refunded` channel has
+		// been closed. Once that is the case, both fields can be treated like
+		// statics.
+		externRefund    types.Currency // refund amount
+		externRefundErr error          // refund error
 		refunded        chan struct{}
 	}
 
-	// tokenEntry is a helper struct that keeps track of when the token, and the
-	// refund that goes along with it, can be removed from the heap
+	// tokenEntry is a helper struct that keeps track of an expiry time which
+	// indicates when the info for the program that corresponds with the token
+	// can be pruned.
 	tokenEntry struct {
 		token  modules.MDMProgramToken
 		expiry time.Time
 	}
 )
 
-// refundComplete returns whether the refund for the program was refunded.
-func (pi programInfo) refundComplete() bool {
-	select {
-	case <-pi.refunded:
-		return false
-	default:
-		return true
-	}
-}
-
-// managedAddProgramInfo adds information to the list of running programs for a
-// program with given token. This list contains information about programs that
+// managedNewProgramInfo creates a new program info object for a program with
+// the given token. It will add it to the list of program infos we track and
+// return a reference to it. This list contains information about programs that
 // are running or that have ran in the recent history. The list is periodically
 // purged for programs with a token that have been in the list for longer than
 // the `refundExpiry` time.
-func (pl *programsList) managedAddProgramInfo(t modules.MDMProgramToken, pi *programInfo) {
+func (pl *programsList) managedNewProgramInfo(t modules.MDMProgramToken, refundedChan chan struct{}) *programInfo {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
 	_, exists := pl.programs[t]
 	if exists {
 		build.Critical("ProgramList already contains an entry for given token")
-		return
+		return nil
 	}
 
+	pi := &programInfo{refunded: refundedChan}
 	pl.programs[t] = pi
 	pl.tokens = append(pl.tokens, &tokenEntry{t, time.Now().Add(programInfoExpiry)})
+	return pi
+}
+
+// SetRefund sets the refund and error on the programInfo and closes the
+// `refunded` channel. This signals that the `externRefund` and
+// `externRefundErr` fields are available and can be accessed freely.
+func (pi *programInfo) SetRefund(refund types.Currency, err error) {
+	select {
+	case <-pi.refunded:
+		build.Critical("SetRefund is being called twice")
+	default:
+		pi.externRefundErr = err
+		if err == nil {
+			pi.externRefund = refund
+		}
+		close(pi.refunded)
+	}
 }
 
 // managedProgramInfo returns the information for the program with given token.
@@ -91,10 +105,7 @@ func (pl *programsList) managedProgramInfo(t modules.MDMProgramToken) (*programI
 	defer pl.mu.Unlock()
 
 	pi, found := pl.programs[t]
-	if !found {
-		return nil, false
-	}
-	return pi, true
+	return pi, found
 }
 
 // managedPruneProgramsList prunes the extra information we keep on running or
@@ -124,13 +135,11 @@ func (pl *programsList) managedPruneProgramsList() {
 // the threadgroup would deadlock.
 func (h *Host) threadedPruneProgramsList() {
 	for {
-		func() {
-			if err := h.tg.Add(); err != nil {
-				return
-			}
-			defer h.tg.Done()
-			h.staticPrograms.managedPruneProgramsList()
-		}()
+		if err := h.tg.Add(); err != nil {
+			return
+		}
+		h.staticPrograms.managedPruneProgramsList()
+		h.tg.Done()
 
 		// Block until next cycle.
 		select {

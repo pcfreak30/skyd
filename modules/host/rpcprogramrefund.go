@@ -2,7 +2,6 @@ package host
 
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -46,21 +45,22 @@ func (h *Host) managedRPCProgramRefund(stream siamux.Stream) error {
 	// Try to retrieve information about the program
 	programInfo, found := h.staticPrograms.managedProgramInfo(prr.ProgramToken)
 	if !found {
-		err = modules.RPCWrite(stream, modules.ProgramRefundResponse{Found: false})
+		err = modules.RPCWrite(stream, modules.ProgramRefundResponse{
+			Found: false,
+		})
 		return errors.AddContext(err, "Failed to send ProgramRefundResponse")
 	}
 
 	// Wait until the refund took place
-	<-programInfo.refunded
-
-	// Send response.
-	refunded := programInfo.externRefund
-	if programInfo.externRefundErr != nil {
-		refunded = types.ZeroCurrency
+	select {
+	case <-h.tg.StopChan():
+		return errors.New("Failed to send ProgramRefundResponse")
+	case <-programInfo.refunded:
 	}
 
+	// Send response.
 	err = modules.RPCWrite(stream, modules.ProgramRefundResponse{
-		Refund: refunded,
+		Refund: programInfo.externRefund,
 		Found:  true,
 	})
 	return errors.AddContext(err, "Failed to send ProgramRefundResponse")

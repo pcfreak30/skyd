@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -85,9 +86,9 @@ func TestProgramsListPrune(t *testing.T) {
 	}
 }
 
-// TestProgramsListAddInfo is a unit test verifying the functionality of adding
-// information for a program to the programs list
-func TestProgramsListAddInfo(t *testing.T) {
+// TestProgramsListNewProgramInfo is a unit test verifying the functionality of
+// adding information for a program to the programs list
+func TestProgramsListNewProgramInfo(t *testing.T) {
 	t.Parallel()
 
 	pl := programsList{
@@ -97,8 +98,7 @@ func TestProgramsListAddInfo(t *testing.T) {
 
 	// register information on a program
 	token := modules.NewMDMProgramToken()
-	pInfo := &programInfo{externRefund: types.NewCurrency64(fastrand.Uint64n(1000))}
-	pl.managedAddProgramInfo(token, pInfo)
+	pl.managedNewProgramInfo(token, make(chan struct{}))
 
 	// verify it's found
 	_, found := pl.managedProgramInfo(token)
@@ -106,8 +106,8 @@ func TestProgramsListAddInfo(t *testing.T) {
 		t.Fatal("Expected program info to be found")
 	}
 
-	// verify it's both in the token heap as in the refunds list - assuring it's
-	// going to get pruned eventually
+	// verify the program token is part of the list of tokens, this assures the
+	// program info will get pruned eventually
 	pl.mu.Lock()
 	tokLen := len(pl.tokens)
 	progLen := len(pl.programs)
@@ -126,5 +126,40 @@ func TestProgramsListAddInfo(t *testing.T) {
 			}
 		}
 	}()
-	pl.managedAddProgramInfo(token, pInfo)
+	pl.managedNewProgramInfo(token, make(chan struct{}))
+}
+
+// TestProgramsListSetRefund unit tests the functionality of the SetRefund
+// function on the program info
+func TestProgramsListSetRefund(t *testing.T) {
+	t.Parallel()
+
+	pl := programsList{
+		programs: make(map[modules.MDMProgramToken]*programInfo, 0),
+		tokens:   make([]*tokenEntry, 0),
+	}
+
+	// case error nil
+	token := modules.NewMDMProgramToken()
+	pi := pl.managedNewProgramInfo(token, make(chan struct{}))
+	refund := types.NewCurrency64(fastrand.Uint64n(100))
+	pi.SetRefund(refund, nil)
+	if !pi.externRefund.Equals(refund) {
+		t.Fatal("Unexpected extern refund")
+	}
+	if pi.externRefundErr != nil {
+		t.Fatal("Unexpected extern err")
+	}
+
+	token = modules.NewMDMProgramToken()
+	pi = pl.managedNewProgramInfo(token, make(chan struct{}))
+	refund = types.NewCurrency64(fastrand.Uint64n(100))
+	refundErr := errors.New("some error")
+	pi.SetRefund(refund, refundErr)
+	if !pi.externRefund.IsZero() {
+		t.Fatal("Unexpected extern refund")
+	}
+	if pi.externRefundErr != refundErr {
+		t.Fatal("Unexpected extern err")
+	}
 }
