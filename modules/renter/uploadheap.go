@@ -1122,6 +1122,11 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
+	p := "low prio"
+	if uuc.staticPriority == memoryPriorityHigh {
+		p = "high prio"
+	}
+	r.repairLog.Println("Requesting memory for upload with priority: ", p)
 	if !r.memoryManager.Request(uuc.memoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memory")
 	}
