@@ -353,6 +353,17 @@ func (pdws *projectDownloadWorkerSet) download(offset, length uint64) (chan *dow
 	// that have returned.
 	dr := make(chan *downloadResponse)
 	go func() {
+		// Create a channel to track responses from the workers as they complete
+		// the downloads. When overdriving, we may need to launch multiple
+		// workers on the same piece, so just in case we buffer the channel to
+		// be larger than the total number of pieces. This ends up being more
+		// relevant for 1-of-N files than any other redundancy.
+		channelSize := (ec.NumPieces()*3) + 5 // TODO: Magic numbers here.
+		slotsRemaining := channelSize
+		downloadResponseChan := make(chan *jobReadResponse, channelSize)
+
+		// TODO: Overdrive logic, determine whether or not to immediately launch
+		// at least one overdrive piece.
 	}()
 	// TODO: Background thread should:
 	//
