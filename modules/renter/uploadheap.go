@@ -1126,7 +1126,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	if uuc.staticPriority == memoryPriorityHigh {
 		p = "high prio"
 	}
-	r.repairLog.Println("Requesting memory for upload with priority: ", p, " ", memoryNeeded)
+	r.repairLog.Println("Requesting memory for upload with priority: ", p, " ", uuc.memoryNeeded)
 	if !r.memoryManager.Request(uuc.memoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memory")
 	}
