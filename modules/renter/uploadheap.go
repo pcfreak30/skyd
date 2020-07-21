@@ -583,6 +583,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Create unfinishedUploadChunk
+		r.repairLog.Println("mbuc called on low priority memory", index)
 		chunk, err := r.managedBuildUnfinishedChunk(entry, uint64(index), hosts, pks, memoryPriorityLow, offline, goodForRenew)
 		if err != nil {
 			r.log.Debugln("Error when building an unfinished chunk:", err)
@@ -671,7 +672,6 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
-	consecutiveDirHeapFailures := 0
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
 		select {
 		case <-r.tg.StopChan():
@@ -683,15 +683,10 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		dir, err := r.managedNextExploredDirectory()
 		if err != nil {
 			r.repairLog.Println("WARN: error fetching directory for repair:", err)
-			// Log the error and then decide whether or not to continue of to return
-			consecutiveDirHeapFailures++
-			if consecutiveDirHeapFailures > 5 {
-				r.directoryHeap.managedReset()
-				return siaPaths, errors.AddContext(err, "too many consecutive dir heap failures")
-			}
-			continue
+			// Reset the directory heap to try and help address the error
+			r.directoryHeap.managedReset()
+			return siaPaths, err
 		}
-		consecutiveDirHeapFailures = 0
 
 		// Sanity Check if directory was returned
 		if dir == nil {
