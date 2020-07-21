@@ -515,6 +515,14 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 // finish would then close the Entry and consequentially impact the remaining
 // chunks.
 func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
+	// TODO / DEBUG: remove this
+	siaPath := r.staticFileSystem.FileSiaPath(entry)
+	if target == targetStuckChunks {
+		r.repairLog.Println("managedBuildUnfinishedChunks called with stuck target on:", siaPath)
+	} else {
+		r.repairLog.Println("managedBuildUnfinishedChunks called with non-stuck target on:", siaPath)
+	}
+
 	// If we don't have enough workers for the file, don't repair it right now.
 	minPieces := entry.ErasureCode().MinPieces()
 	r.staticWorkerPool.mu.RLock()
