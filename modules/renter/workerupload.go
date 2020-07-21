@@ -267,8 +267,9 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 	_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
 	chunkComplete := uc.piecesNeeded <= uc.piecesCompleted
 	needsHelp := uc.piecesNeeded > uc.piecesCompleted+uc.piecesRegistered
+	uploadOld := time.Now().After(uc.chunkPoppedFromHeapTime.Add(time.Minute * 10))
 	// If the chunk does not need help from this worker, release the chunk.
-	if chunkComplete || !candidateHost || !goodForUpload || onCooldown {
+	if chunkComplete || !candidateHost || !goodForUpload || onCooldown || uploadOld {
 		// This worker no longer needs to track this chunk.
 		uc.mu.Unlock()
 		w.managedDropChunk(uc)
@@ -279,6 +280,9 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 		// some other way to achieve this goal. Should this build.Critical?
 		if onCooldown || !goodForUpload {
 			w.managedDropUploadChunks()
+		}
+		if uploadOld {
+			w.renter.repairLog.Println("Tossing an upload chunk because it is OLD")
 		}
 		return nil, 0
 	}

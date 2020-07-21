@@ -326,7 +326,8 @@ func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfi
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
 	pieceData, workerHasPiece := udc.staticChunkMap[w.staticHostPubKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
-	if chunkComplete || chunkFailed || onCooldown || !workerHasPiece || pieceCompleted {
+	downloadOld := time.Now().After(udc.staticStartTime.Add(time.Minute * 10))
+	if chunkComplete || chunkFailed || onCooldown || !workerHasPiece || pieceCompleted || downloadOld {
 		udc.mu.Unlock()
 		udc.managedRemoveWorker()
 
@@ -336,6 +337,9 @@ func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfi
 		// solution. Should this build.Critical?
 		if onCooldown {
 			w.managedDropDownloadChunks()
+		}
+		if downloadOld {
+			w.renter.repairLog.Println("Tossing a download chunk because it is OLD")
 		}
 		return nil
 	}

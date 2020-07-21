@@ -9,7 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	// "gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -617,7 +617,8 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		uc.chunkCompleteTime = time.Now()
 
 		// Create a log message with all of the timings of the chunk uploading.
-		if build.DEBUG {
+		// if build.DEBUG {
+		if true {
 			failedTimes := make([]int, 0, len(uc.chunkFailedProcessTimes))
 			for _, ft := range uc.chunkFailedProcessTimes {
 				failedTimes = append(failedTimes, int(time.Since(ft)/time.Millisecond))
@@ -626,7 +627,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			for _, st := range uc.chunkSuccessProcessTimes {
 				successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
 			}
-			r.repairLog.Debugf(`
+			r.repairLog.Printf(`
 	Chunk Created: %v
 	Chunk Popped: %v
 	Chunk Distributed: %v

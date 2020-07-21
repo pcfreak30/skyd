@@ -49,6 +49,7 @@ type unfinishedDownloadChunk struct {
 	staticFetchOffset uint64 // Offset within the logical chunk that is being downloaded.
 	staticPieceSize   uint64
 	staticWriteOffset int64 // Offset within the writer to write the completed data.
+	staticStartTime   time.Time
 
 	// Fetch + Write instructions - read only or otherwise thread safe.
 	staticDisableDiskFetch bool

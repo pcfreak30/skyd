@@ -469,6 +469,7 @@ func (d *download) Start() error {
 			staticChunkMap:   chunkMaps[i-minChunk],
 			staticChunkSize:  params.file.ChunkSize(),
 			staticPieceSize:  params.file.PieceSize(),
+			staticStartTime:  time.Now(),
 
 			// TODO: 25ms is just a guess for a good default. Really, we want to
 			// set the latency target such that slower workers will pick up the
