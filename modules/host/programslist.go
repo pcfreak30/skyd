@@ -16,7 +16,7 @@ var (
 	pruneProgramsListFrequency = build.Select(build.Var{
 		Standard: time.Minute,
 		Dev:      time.Minute,
-		Testing:  30 * time.Second,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 
 	// programInfoExpiry is the amount of time the hosts keeps track of
@@ -25,7 +25,7 @@ var (
 	programInfoExpiry = build.Select(build.Var{
 		Standard: 10 * time.Minute,
 		Dev:      10 * time.Minute,
-		Testing:  time.Minute,
+		Testing:  10 * time.Second,
 	}).(time.Duration)
 )
 
