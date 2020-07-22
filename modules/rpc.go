@@ -78,6 +78,12 @@ type RPCPriceTable struct {
 	ReadBaseCost   types.Currency `json:"readbasecost"`
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
+	// Cost values specific to the Revision command.
+	RevisionBaseCost types.Currency `json:"revisionbasecost"`
+
+	// SwapSectorCost is the cost of swapping 2 full sectors by root.
+	SwapSectorCost types.Currency `json:"swapsectorcost"`
+
 	// Cost values specific to the Write instruction.
 	WriteBaseCost   types.Currency `json:"writebasecost"`   // per write
 	WriteLengthCost types.Currency `json:"writelengthcost"` // per byte written
@@ -195,6 +201,7 @@ type (
 
 	// RPCLatestRevisionResponse contains the latest file contract revision
 	// signed by both host and renter.
+	// TODO: might need to update this to match MDMInstructionRevisionResponse?
 	RPCLatestRevisionResponse struct {
 		Revision types.FileContractRevision
 	}

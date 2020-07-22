@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,7 +18,6 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 const (
@@ -73,7 +74,7 @@ var (
 	accountIdleMaxWait = build.Select(build.Var{
 		Dev:      10 * time.Minute,
 		Standard: 40 * time.Minute,
-		Testing:  20 * time.Second, // needs to be long even in testing
+		Testing:  time.Minute, // needs to be long even in testing
 	}).(time.Duration)
 )
 
@@ -294,7 +295,7 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 func (a *account) managedOnCooldown() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.cooldownUntil.After(time.Now())
+	return time.Now().Before(a.cooldownUntil)
 }
 
 // managedResetBalance sets the given balance and resets the account's balance
@@ -307,6 +308,15 @@ func (a *account) managedResetBalance(balance types.Currency) {
 	a.pendingDeposits = types.ZeroCurrency
 	a.pendingWithdrawals = types.ZeroCurrency
 	a.negativeBalance = types.ZeroCurrency
+}
+
+// managedResetCoolDown sets consecutive failures to 0 and clears the
+// cooldownUntil field on the account
+func (a *account) managedResetCoolDown() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.consecutiveFailures = 0
+	a.cooldownUntil = time.Time{}
 }
 
 // managedStatus returns the status of the account
@@ -427,6 +437,7 @@ func (w *worker) managedRefillAccount() {
 		// account.
 		w.staticAccount.managedCommitDeposit(amount, err == nil)
 		if err == nil {
+			w.staticAccount.managedResetCoolDown()
 			return
 		}
 
@@ -460,7 +471,7 @@ func (w *worker) managedRefillAccount() {
 	}
 
 	// create a new stream
-	var stream siamux.Stream
+	var stream net.Conn
 	stream, err = w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
@@ -536,19 +547,6 @@ func (w *worker) managedRefillAccount() {
 		err = errors.AddContext(err, "could not read the account response")
 	}
 
-	// TODO: We need to parse the response and check for an error, such as
-	// MaxBalanceExceeded. In the specific case of MaxBalanceExceeded, we need
-	// to do a balance inquiry and check that the balance is actually high
-	// enough.
-	//
-	// If we are stuck, and the host won't let us get to a good balance level,
-	// we need to go on cooldown, this worker is no good. That will happen as
-	// long as we return an error.
-	//
-	// If we are not stuck, and we have enough balance, we can set the error to
-	// nil (to prevent entering cooldown) even though it technically failed,
-	// because the failure does not indicate a problem.
-
 	// Wake the worker so that any jobs potentially blocking on getting more
 	// money in the account can be activated.
 	w.staticWake()
@@ -582,15 +580,25 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	start := time.Now()
 	for !isIdle() {
 		if time.Since(start) > accountIdleMaxWait {
-			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
+			// The worker failed to go idle for too long. Print the loop state,
+			// so we know what kind of task is keeping it busy.
+			w.renter.log.Printf("Worker static loop state: %+v\n\n", w.staticLoopState)
+			// Get the stack traces of all running goroutines.
+			buf := make([]byte, 64e6) // 64MB
+			n := runtime.Stack(buf, true)
+			w.renter.log.Println(string(buf[:n]))
+			w.renter.log.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
 			return
 		}
-		w.renter.tg.Sleep(accountIdleCheckFrequency)
+		awake := w.renter.tg.Sleep(accountIdleCheckFrequency)
+		if !awake {
+			return
+		}
 	}
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is
 	// spinning up new jobs, even though it is not supposed to be spinning up
-	// newe jobs while it is performing the sync operation.
+	// new jobs while it is performing the sync operation.
 	defer func() {
 		if !isIdle() {
 			w.renter.log.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")
@@ -600,9 +608,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// Sanity check the account's deltas are zero, indicating there are no
 	// in-progress jobs
 	w.staticAccount.mu.Lock()
-	deltasAreZero := w.staticAccount.negativeBalance.IsZero() &&
-		w.staticAccount.pendingDeposits.IsZero() &&
-		w.staticAccount.pendingWithdrawals.IsZero()
+	deltasAreZero := w.staticAccount.pendingDeposits.IsZero() && w.staticAccount.pendingWithdrawals.IsZero()
 	w.staticAccount.mu.Unlock()
 	if !deltasAreZero {
 		build.Critical("managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas, indicating in-progress jobs")
