@@ -95,6 +95,7 @@ lockcheckpkgs = \
 	./modules/host/mdm \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
+	./modules/renter/skynetblacklist \
 	./skykey \
 	./types \
 	./types/typesutil
