@@ -178,12 +178,17 @@ func (w *worker) managedPerformDownloadChunkJob() {
 
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
+	start := time.Now()
 	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
 	if err != nil {
-		w.renter.log.Debugln("worker failed to download sector:", err)
+		w.renter.log.Println("worker failed to download sector:", err, " - ", time.Since(start))
 		w.managedDownloadFailed(err)
 		udc.managedUnregisterWorker(w)
+
 		return
+	}
+	if time.Since(start) > time.Minute {
+		w.renter.repairLog.Println("Download took a long time:", time.Since(start))
 	}
 	// TODO: Instead of adding the whole sector after the download completes,
 	// have the 'd.Sector' call add to this value ongoing as the sector comes
