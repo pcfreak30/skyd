@@ -1118,7 +1118,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // available, fetching the logical data for the chunk (either from the disk or
 // from the network), erasure coding the logical data into the physical data,
 // and then finally passing the work onto the workers.
-func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[string]struct{}) error {
+func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
@@ -1130,6 +1130,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	if !r.memoryManager.Request(uuc.memoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memory")
 	}
+	r.repairLog.Println("Memory received!")
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
 	// does not need to bottleneck the repair loop.
 	go r.threadedFetchAndRepairChunk(uuc)
@@ -1256,7 +1257,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		nextChunk.mu.Lock()
 		nextChunk.chunkPoppedFromHeapTime = time.Now()
 		nextChunk.mu.Unlock()
-		err := r.managedPrepareNextChunk(nextChunk, hosts)
+		err := r.managedPrepareNextChunk(nextChunk)
 		if err != nil {
 			// An error was return which means the renter was unable to allocate
 			// memory for the repair. Since that is not an issue with the file
