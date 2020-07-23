@@ -2,6 +2,8 @@ package siadir
 
 import (
 	"os"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // DirReader is a helper type that allows reading a raw .siadir from disk while
@@ -33,7 +35,7 @@ func (sd *SiaDir) DirReader() (*DirReader, error) {
 	sd.mu.Lock()
 	if sd.deleted {
 		sd.mu.Unlock()
-		return nil, ErrDeleted
+		return nil, errors.New("can't copy deleted SiaDir")
 	}
 	// Open file.
 	f, err := os.Open(sd.mdPath())

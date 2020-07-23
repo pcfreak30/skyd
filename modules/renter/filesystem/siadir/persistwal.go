@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -68,12 +67,6 @@ func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.
 	}
 	// Decode update.
 	data, path, err := readMetadataUpdate(update)
-	if err != nil {
-		return err
-	}
-
-	// Create the folder if it doesn't exist yet.
-	err = os.MkdirAll(filepath.Dir(path), modules.DefaultDirPerm)
 	if err != nil {
 		return err
 	}

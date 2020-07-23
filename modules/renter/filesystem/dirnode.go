@@ -912,10 +912,7 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 		if *dir.lazySiaDir == nil {
 			continue // dir isn't loaded
 		}
-		err = (*dir.lazySiaDir).SetPath(*dir.path)
-		if err != nil {
-			return errors.AddContext(err, fmt.Sprintf("unable to set path for %v", *dir.path))
-		}
+		(*dir.lazySiaDir).SetPath(*dir.path)
 	}
 	return err
 }

@@ -125,7 +125,7 @@ func (r *Renter) managedInitPersist() error {
 	// because the wal needs the directory to be created and the staticDirSet
 	// needs the wal.
 	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
-	err := os.MkdirAll(fsRoot, modules.DefaultDirPerm)
+	err := os.MkdirAll(fsRoot, 0700)
 	if err != nil {
 		return err
 	}
