@@ -15,7 +15,6 @@ package renter
 // not run out, it maintains a balance target by refilling it when necessary.
 
 import (
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
