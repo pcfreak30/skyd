@@ -288,6 +288,10 @@ func (w *worker) managedDiscardAsyncJobs(err error) {
 // meaning that only one of these tasks can be performed at a time.  Async work
 // can be performed with high parallelism.
 func (w *worker) threadedWorkLoop() {
+	if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+		w.renter.repairLog.Println("Bad host work loop initiated")
+	}
+
 	// Upon shutdown, release all jobs.
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
@@ -303,6 +307,9 @@ func (w *worker) threadedWorkLoop() {
 		// is in sync with the host's revision number. This check must happen at
 		// the top as consecutive checks make use of the file contract for
 		// payment.
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host doing rev mismatch stuff")
+		}
 		w.externTryFixRevisionMismatch()
 
 		// The worker cannot execute any async tasks unless the price table of
@@ -310,18 +317,30 @@ func (w *worker) threadedWorkLoop() {
 		// the account has sufficient funds in it. This update is done as a
 		// blocking update to ensure nothing else runs until the price table is
 		// available.
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host doing price table stuff")
+		}
 		w.staticUpdatePriceTable()
 
 		// Perform a balance check on the host and sync it to his version if
 		// necessary. This avoids running into MaxBalanceExceeded errors upon
 		// refill after an unclean shutdown.
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host doing sync account stuff")
+		}
 		w.externSyncAccountBalanceToHost()
 
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
 		if w.managedAccountNeedsRefill() {
+			if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+				w.renter.repairLog.Println("Bad host doing refill account stuff")
+			}
 			w.managedRefillAccount()
 		}
+	}
+	if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+		w.renter.repairLog.Println("Bad host escaped the startup checks")
 	}
 
 	// The worker will continuously perform jobs in a loop.
@@ -332,6 +351,9 @@ func (w *worker) threadedWorkLoop() {
 		// worker should exit.
 		if !w.managedBlockUntilReady() {
 			return
+		}
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host has started a work iteration")
 		}
 
 		// Try and fix a revision number mismatch if the flag is set. This will
