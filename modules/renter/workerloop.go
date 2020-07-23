@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -107,31 +108,52 @@ func (w *worker) externTryLaunchSerialJob() {
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
 	if w.staticNeedsPriceTableUpdate() {
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is launching a price table update")
+		}
 		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
 	}
 	if w.managedAccountNeedsRefill() {
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is launching an account refill")
+		}
 		w.externLaunchSerialJob(w.managedRefillAccount)
 		return
 	}
 	if w.staticFetchBackupsJobQueue.managedHasJob() {
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is launching a fetch backup job")
+		}
 		w.externLaunchSerialJob(w.managedPerformFetchBackupsJob)
 		return
 	}
 	job := w.staticJobUploadSnapshotQueue.callNext()
 	if job != nil {
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is launching a snapshot upload job")
+		}
 		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
 	if w.staticJobQueueDownloadByRoot.managedHasJob() {
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is launching a download by root -- legacy???? --- ")
+		}
 		w.externLaunchSerialJob(w.managedLaunchJobDownloadByRoot)
 		return
 	}
 	if w.managedHasDownloadJob() {
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is launching a vanilla download job")
+		}
 		w.externLaunchSerialJob(w.managedPerformDownloadChunkJob)
 		return
 	}
 	if w.managedHasUploadJob() {
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is launching a vanilla upload job")
+		}
 		w.externLaunchSerialJob(w.managedPerformUploadChunkJob)
 		return
 	}
@@ -333,6 +355,9 @@ func (w *worker) threadedWorkLoop() {
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up
 		// to run a job, this call is non-blocking.
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is launching a serial job")
+		}
 		w.externTryLaunchSerialJob()
 
 		// Attempt to launch an async job. If the async job launches
