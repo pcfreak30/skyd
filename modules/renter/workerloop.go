@@ -371,6 +371,9 @@ func (w *worker) threadedWorkLoop() {
 		// jobs are tiny in terms of resource footprints, the worker will allow
 		// more of them to be running at once.
 		if w.externTryLaunchAsyncJob() {
+			if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+				w.renter.repairLog.Println("Bad host is launching an async job and iterating")
+			}
 			continue
 		}
 
@@ -378,8 +381,14 @@ func (w *worker) threadedWorkLoop() {
 		//    + New work has been submitted
 		//    + The worker is killed
 		//    + The renter is stopped
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is taking a sleep")
+		}
 		select {
 		case <-w.wakeChan:
+			if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+				w.renter.repairLog.Println("Bad host has woken up")
+			}
 			continue
 		case <-w.killChan:
 			return
