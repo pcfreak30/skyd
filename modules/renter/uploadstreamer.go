@@ -273,8 +273,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
 			// Add the chunk to the upload heap.
-			prepErr := r.managedPrepareNextChunk(uuc)
-			if prepErr != nil {
+			if !r.uploadHeap.managedPush(uuc) {
 				// The chunk can't be added to the heap. It's probably already being
 				// repaired. Flush the shard and move on to the next one.
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
