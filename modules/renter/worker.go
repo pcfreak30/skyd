@@ -15,6 +15,7 @@ package renter
 // not run out, it maintains a balance target by refilling it when necessary.
 
 import (
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -151,6 +152,10 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 	if !ok {
 		return nil, errors.New("host does not exist")
+	}
+	if strings.Contains(hostPubKey.String(), "01a493387") {
+		r.repairLog.Println("Banning a host for being slow at repairing")
+		return nil, errors.New("host is banned")
 	}
 
 	// open the account
