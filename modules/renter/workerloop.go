@@ -349,6 +349,9 @@ func (w *worker) threadedWorkLoop() {
 		// block or exit. This function will block until those conditions are
 		// met, returning 'true' when the worker can proceed and 'false' if the
 		// worker should exit.
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is blocking until ready")
+		}
 		if !w.managedBlockUntilReady() {
 			return
 		}
@@ -359,6 +362,9 @@ func (w *worker) threadedWorkLoop() {
 		// Try and fix a revision number mismatch if the flag is set. This will
 		// be the case if other processes errored out with an error indicating a
 		// mismatch.
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is working through revision mismatches")
+		}
 		if w.staticSuspectRevisionMismatch() {
 			w.externTryFixRevisionMismatch()
 		}
@@ -366,10 +372,16 @@ func (w *worker) threadedWorkLoop() {
 		// Update the worker cache object, note that we do this after trying to
 		// sync the revision as that might influence the contract, which is used
 		// to build the cache object.
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is updating the cache")
+		}
 		w.staticTryUpdateCache()
 
 		// If the worker needs to sync the account balance, perform a sync
 		// operation. This should be attempted before launching any jobs.
+		if strings.Contains(w.staticHostPubKeyStr, "01a493387") {
+			w.renter.repairLog.Println("Bad host is syncing account with the host")
+		}
 		if w.managedNeedsToSyncAccountToHost() {
 			w.externSyncAccountBalanceToHost()
 		}
