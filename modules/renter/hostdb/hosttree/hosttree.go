@@ -34,7 +34,7 @@ type (
 		root *node
 
 		// hosts is a map of public keys to nodes.
-		hosts map[string]*node
+		hosts map[types.SiaPublicKeyFingerprint]*node
 
 		// resolver is the Resolver that is used by the hosttree to resolve
 		// hostnames to IP addresses.
@@ -82,7 +82,7 @@ func createNode(parent *node, entry *hostEntry) *node {
 // for hostnames.
 func New(wf WeightFunc, resolver modules.Resolver) *HostTree {
 	return &HostTree{
-		hosts: make(map[string]*node),
+		hosts: make(map[types.SiaPublicKeyFingerprint]*node),
 		root: &node{
 			count: 1,
 		},
@@ -203,12 +203,12 @@ func (ht *HostTree) Remove(pk types.SiaPublicKey) error {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
-	node, exists := ht.hosts[pk.String()]
+	node, exists := ht.hosts[pk.Fingerprint()]
 	if !exists {
 		return ErrNoSuchHost
 	}
 	node.remove()
-	delete(ht.hosts, pk.String())
+	delete(ht.hosts, pk.Fingerprint())
 
 	return nil
 }
@@ -219,7 +219,7 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
-	node, exists := ht.hosts[hdbe.PublicKey.String()]
+	node, exists := ht.hosts[hdbe.PublicKey.Fingerprint()]
 	if !exists {
 		return ErrNoSuchHost
 	}
@@ -233,7 +233,7 @@ func (ht *HostTree) Modify(hdbe modules.HostDBEntry) error {
 
 	_, node = ht.root.recursiveInsert(entry)
 
-	ht.hosts[entry.PublicKey.String()] = node
+	ht.hosts[entry.PublicKey.Fingerprint()] = node
 	return nil
 }
 
@@ -257,7 +257,7 @@ func (ht *HostTree) SetWeightFunction(wf WeightFunc) error {
 	allHosts := ht.all()
 
 	// Reset the tree
-	ht.hosts = make(map[string]*node)
+	ht.hosts = make(map[types.SiaPublicKeyFingerprint]*node)
 	ht.root = &node{
 		count: 1,
 	}
@@ -279,10 +279,16 @@ func (ht *HostTree) SetWeightFunction(wf WeightFunc) error {
 
 // Select returns the host with the provided public key, should the host exist.
 func (ht *HostTree) Select(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
+	return ht.SelectFingerprint(spk.Fingerprint())
+}
+
+// SelectFingerprint returns the host with the provided public key fingerprint,
+// should the host exist.
+func (ht *HostTree) SelectFingerprint(spk types.SiaPublicKeyFingerprint) (modules.HostDBEntry, bool) {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
-	node, exists := ht.hosts[spk.String()]
+	node, exists := ht.hosts[spk]
 	if !exists {
 		return modules.HostDBEntry{}, false
 	}
@@ -316,7 +322,7 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 
 	// Add the hosts from the addressBlacklist to the filter.
 	for _, pubkey := range addressBlacklist {
-		node, exists := ht.hosts[pubkey.String()]
+		node, exists := ht.hosts[pubkey.Fingerprint()]
 		if !exists {
 			continue
 		}
@@ -326,13 +332,13 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 	// Remove hosts we want to blacklist from the tree but remember them to make
 	// sure we can insert them later.
 	for _, pubkey := range blacklist {
-		node, exists := ht.hosts[pubkey.String()]
+		node, exists := ht.hosts[pubkey.Fingerprint()]
 		if !exists {
 			continue
 		}
 		// Remove the host from the tree.
 		node.remove()
-		delete(ht.hosts, pubkey.String())
+		delete(ht.hosts, pubkey.Fingerprint())
 
 		// Remember the host to insert it again later.
 		removedEntries = append(removedEntries, node.entry)
@@ -361,12 +367,12 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 
 		removedEntries = append(removedEntries, node.entry)
 		node.remove()
-		delete(ht.hosts, node.entry.PublicKey.String())
+		delete(ht.hosts, node.entry.PublicKey.Fingerprint())
 	}
 
 	for _, entry := range removedEntries {
 		_, node := ht.root.recursiveInsert(entry)
-		ht.hosts[entry.PublicKey.String()] = node
+		ht.hosts[entry.PublicKey.Fingerprint()] = node
 	}
 
 	return hosts
@@ -395,12 +401,12 @@ func (ht *HostTree) insert(hdbe modules.HostDBEntry) error {
 		weight:      ht.weightFn(hdbe).Score(),
 	}
 
-	if _, exists := ht.hosts[entry.PublicKey.String()]; exists {
+	if _, exists := ht.hosts[entry.PublicKey.Fingerprint()]; exists {
 		return ErrHostExists
 	}
 
 	_, node := ht.root.recursiveInsert(entry)
 
-	ht.hosts[entry.PublicKey.String()] = node
+	ht.hosts[entry.PublicKey.Fingerprint()] = node
 	return nil
 }

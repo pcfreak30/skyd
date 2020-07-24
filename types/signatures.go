@@ -146,6 +146,10 @@ type (
 		usedKeys            map[uint64]struct{}
 		index               int
 	}
+
+	// SiaPublicKeyFingerprint is a helper type to add some type safety to
+	// SiaPublicKey fingerprints.
+	SiaPublicKeyFingerprint string
 )
 
 // Ed25519PublicKey returns pk as a SiaPublicKey, denoting its algorithm as
@@ -160,6 +164,12 @@ func Ed25519PublicKey(pk crypto.PublicKey) SiaPublicKey {
 // Equals compares two SiaPublicKey types for equality
 func (x SiaPublicKey) Equals(y SiaPublicKey) bool {
 	return x.Algorithm == y.Algorithm && bytes.Equal(x.Key, y.Key)
+}
+
+// Fingerprint returns a human readable, shortened representation of the key.
+func (x SiaPublicKey) Fingerprint() SiaPublicKeyFingerprint {
+	s := x.String()
+	return SiaPublicKeyFingerprint(s[8:16]) // 8 bytes of the key without specifier
 }
 
 // ToPublicKey converts the SiaPublicKey into a crypto.PublicKey

@@ -136,8 +136,11 @@ func (api *API) hostdbAllHandler(w http.ResponseWriter, req *http.Request, _ htt
 // returning detailed information about that host.
 func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var pk types.SiaPublicKey
-	pk.LoadString(ps.ByName("pubkey"))
-
+	err := pk.LoadString(ps.ByName("pubkey"))
+	if err != nil {
+		WriteError(w, Error{"unable to get unmarshal key: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	entry, exists, err := api.renter.Host(pk)
 	if err != nil {
 		WriteError(w, Error{"unable to get host: " + err.Error()}, http.StatusBadRequest)

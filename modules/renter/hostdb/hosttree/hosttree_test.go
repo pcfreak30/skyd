@@ -83,7 +83,7 @@ func verifyTree(tree *HostTree, nentries int) error {
 		randWeight := fastrand.BigIntn(tree.root.weight.Big())
 		node := tree.root.nodeAtWeight(types.NewCurrency(randWeight))
 		node.remove()
-		delete(tree.hosts, node.entry.PublicKey.String())
+		delete(tree.hosts, node.entry.PublicKey.Fingerprint())
 
 		// remove the entry from the hostdb so it won't be selected as a
 		// repeat
@@ -287,7 +287,7 @@ func TestHostTreeModify(t *testing.T) {
 
 	targetKey := keys[fastrand.Intn(treeSize)]
 
-	oldEntry := tree.hosts[targetKey.String()].entry
+	oldEntry := tree.hosts[targetKey.Fingerprint()].entry
 	newEntry := makeHostDBEntry()
 	newEntry.AcceptingContracts = false
 	newEntry.PublicKey = oldEntry.PublicKey
@@ -297,7 +297,7 @@ func TestHostTreeModify(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if tree.hosts[targetKey.String()].entry.AcceptingContracts {
+	if tree.hosts[targetKey.Fingerprint()].entry.AcceptingContracts {
 		t.Fatal("modify did not update host entry")
 	}
 }
@@ -335,7 +335,7 @@ func TestVariedWeights(t *testing.T) {
 		if len(randEntry) == 0 {
 			t.Fatal("no hosts!")
 		}
-		node, exists := tree.hosts[randEntry[0].PublicKey.String()]
+		node, exists := tree.hosts[randEntry[0].PublicKey.Fingerprint()]
 		if !exists {
 			t.Fatal("can't find randomly selected node in tree")
 		}
