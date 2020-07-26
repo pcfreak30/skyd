@@ -233,7 +233,7 @@ func (fs *fanoutStreamBufferDataSource) ReadAt(b []byte, offset int64) (int, err
 // RequestSize implements streamBufferDataSource and will return the size of a
 // logical data chunk.
 func (fs *fanoutStreamBufferDataSource) RequestSize() uint64 {
-	return fs.staticChunkSize
+	return fs.staticChunkSize/16
 }
 
 // SilentClose will clean up any resources that the fanoutStreamBufferDataSource
