@@ -4816,17 +4816,11 @@ func TestWorkerStatus(t *testing.T) {
 		if !worker.AccountStatus.NegativeBalance.IsZero() {
 			t.Error("Expected negative balance to be zero but was", worker.AccountStatus.NegativeBalance.HumanString())
 		}
-		if worker.AccountStatus.OnCoolDown {
-			t.Error("Worker account should not be on cool down")
-		}
 		if worker.AccountStatus.RecentErr != "" {
 			t.Error("Expected recent err to be nil but was", worker.AccountStatus.RecentErr)
 		}
 
 		// PriceTableStatus checks
-		if worker.PriceTableStatus.OnCoolDown {
-			t.Error("Worker price table should not be on cool down")
-		}
 		if worker.PriceTableStatus.RecentErr != "" {
 			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
 		}
