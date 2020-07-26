@@ -733,10 +733,20 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
+//
+// TODO: Check if we have the link in the streambuffer cache before going and
+// loading it.
 func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
 	// Check if link is blacklisted
 	if r.staticSkynetBlacklist.IsBlacklisted(link) {
 		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlacklisted
+	}
+
+	// Check if the link exists in the stream buffer already.
+	id := streamDataSourceID(crypto.HashObject(link.String()))
+	streamer, exists := r.staticStreamBufferSet.callNewStreamFromExisting(id, 0)
+	if exists {
+		return streamer.Metadata(), streamer, nil
 	}
 
 	// Pull the offset and fetchSize out of the skylink.
@@ -773,12 +783,15 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	// If there is no fanout, all of the data will be contained in the base
 	// sector, return a streamer using the data from the base sector.
 	if layout.fanoutSize == 0 {
+		// TODO: Return a streamBuffer instead of just a bytes.Reader, that way
+		// we can take advantage of all the cacheing that the stream buffer
+		// does.
 		streamer := streamerFromSlice(baseSectorPayload)
 		return metadata, streamer, nil
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, layout, fanoutBytes, timeout, fileSpecificSkykey)
+	fs, err := r.newFanoutStreamer(link, layout, metadata, fanoutBytes, timeout, fileSpecificSkykey)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
@@ -816,7 +829,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, _, _, err := parseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, _, err := parseSkyfileMetadata(baseSector)
 	if err != nil {
 		return errors.AddContext(err, "error parsing skyfile metadata")
 	}
@@ -876,7 +889,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Create the fanout streamer that will download the file.
-	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes, timeout, fileSpecificSkykey)
+	streamer, err := r.newFanoutStreamer(skylink, layout, metadata, fanoutBytes, timeout, fileSpecificSkykey)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}

@@ -14,9 +14,12 @@ package renter
 import (
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -56,6 +59,14 @@ var (
 // streamBufferDataSource is an interface that the stream buffer uses to fetch
 // data. This type is internal to the renter as there are plans to expand on the
 // type.
+//
+// TODO: Extend the data source to be able to return a json metadata struct.
+// Allow this to decode however, though initially we'll be decoding it into
+// skyfile metadata. This is generic, so we can decode it into standard Sia
+// download metadata too, whatever support we have for that.
+//
+// TODO: Don't drop a stream from the streamBuffer for an extra 30 seconds, this
+// will allow other streams to come in and use the same source.
 type streamBufferDataSource interface {
 	// DataSize should return the size of the data. When the streamBuffer is
 	// reading from the data source, it will ensure that none of the read calls
@@ -66,6 +77,10 @@ type streamBufferDataSource interface {
 	// source - that is, every data source that returns the same ID should have
 	// identical data and be fully interchangeable.
 	ID() streamDataSourceID
+
+	// Metadata returns a byte slice which represents the metadata associated
+	// with the object. Typically this will be a json-encoded struct.
+	Metadata() modules.SkyfileMetadata
 
 	// RequestSize should return the request size that the dataSource expects
 	// the streamBuffer to use. The streamBuffer will always make ReadAt calls
@@ -161,6 +176,45 @@ func newStreamBufferSet() *streamBufferSet {
 	}
 }
 
+// managedPrepareNewStream takes an existing stream buffer and creates a new
+// stream for that streambuffer.
+func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64) *stream {
+	// Determine how many data sections the stream should cache.
+	dataSectionsToCache := bytesBufferedPerStream / sb.staticDataSectionSize
+	if dataSectionsToCache < minimumDataSections {
+		dataSectionsToCache = minimumDataSections
+	}
+
+	// Create a stream that points to the stream buffer.
+	stream := &stream{
+		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, sb),
+		offset: initialOffset,
+
+		staticStreamBuffer: sb,
+	}
+	stream.prepareOffset()
+	return stream
+}
+
+// callNewStreamFromExisting will return a new stream created from an existing
+// data source. This function exists because for Skynet, creating a datasource
+// is an expensive operation that requires doing network calls, we want to be
+// able to check if a stream buffer already exists for our data source without
+// having to set up the data source ourselves.
+//
+// False will be returned if no data source yet exists for this id.
+func (sbs *streamBufferSet) callNewStreamFromExisting(id streamDataSourceID, initialOffset uint64) (*stream, bool) {
+	sbs.mu.Lock()
+	streamBuf, exists := sbs.streams[id]
+	if !exists {
+		sbs.mu.Unlock()
+		return nil, false
+	}
+	streamBuf.externRefCount++
+	sbs.mu.Unlock()
+	return streamBuf.managedPrepareNewStream(initialOffset), true
+}
+
 // callNewStream will create a stream that implements io.Close and
 // io.ReadSeeker. A dataSource must be provided for the stream so that the
 // stream can fetch data in advance of calls to 'Read' and attempt to provide a
@@ -199,22 +253,7 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-
-	// Determine how many data sections the stream should cache.
-	dataSectionsToCache := bytesBufferedPerStream / streamBuf.staticDataSectionSize
-	if dataSectionsToCache < minimumDataSections {
-		dataSectionsToCache = minimumDataSections
-	}
-
-	// Create a stream that points to the stream buffer.
-	stream := &stream{
-		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, streamBuf),
-		offset: initialOffset,
-
-		staticStreamBuffer: streamBuf,
-	}
-	stream.prepareOffset()
-	return stream
+	return streamBuf.managedPrepareNewStream(initialOffset)
 }
 
 // managedData will block until the data for a data section is available, and
@@ -232,7 +271,8 @@ func (s *stream) Close() error {
 	// Remove the stream from the streamBuffer.
 	streamBuf := s.staticStreamBuffer
 	streamBufSet := streamBuf.staticStreamBufferSet
-	streamBufSet.managedRemoveStream(streamBuf)
+	// TODO: launch in goroutine
+	go streamBufSet.threadedRemoveStream(streamBuf)
 	return nil
 }
 
@@ -296,6 +336,11 @@ func (s *stream) Read(b []byte) (int, error) {
 	// Send the call to prepare the next data section.
 	s.prepareOffset()
 	return n, nil
+}
+
+// Metadata returns the skyfile metadata of the stream.
+func (s *stream) Metadata() modules.SkyfileMetadata {
+	return s.staticStreamBuffer.staticDataSource.Metadata()
 }
 
 // Seek will move the read head of the stream to the provided offset.
@@ -431,14 +476,25 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	return ds
 }
 
-// managedRemoveStream will remove a stream from a stream buffer. If the total
+// threadedRemoveStream will remove a stream from a stream buffer. If the total
 // number of streams using that stream buffer reaches zero, the stream buffer
 // will be removed from the stream buffer set.
 //
 // The reference counter for a stream buffer needs to be in the domain of the
 // stream buffer set because the stream buffer needs to be deleted from the
 // stream buffer set simultaneously with the reference counter reaching zero.
-func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
+//
+// This function is threaded so that it can delay before removing a stream. This
+// allows other requests time to use the stream, ensuring that disjointed
+// consecutive connections to the same data can all access the same buffer. An
+// example use case for this is skylink apps such as the Uniswap frontend, which
+// tend to make a bunch of complete calls all in a row. Without the sleep, the
+// stream buffer gets destroyed each call, defeating the purpose of building a
+// cache.
+func (sbs *streamBufferSet) threadedRemoveStream(sb *streamBuffer) {
+	// TODO: This should probably be a soft sleep, but at the moment the stream
+	// buffer set doesn't have access to a threadgroup or the renter.
+	time.Sleep(time.Second * 10)
 	sbs.mu.Lock()
 	defer sbs.mu.Unlock()
 
