@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -755,11 +756,40 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse skylink")
 	}
 
-	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize, timeout)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
+	// Fetch the leading chunk. To speed things up, we split it into requests of
+	// 256k and make all of those requests in parallel.
+	//
+	// TODO: This will be easier / better once we have the chunkFetcher
+	// finished.
+	baseSector := make([]byte, fetchSize)
+	totalFetched := uint64(0)
+	var wg sync.WaitGroup
+	var errs error
+	var errsMu sync.Mutex
+	for totalFetched < fetchSize {
+		newOffset := offset+totalFetched
+		newLen := newOffset + 1 << 18
+		if newOffset + newLen > offset + fetchSize {
+			newLen = offset + fetchSize - newOffset
+		}
+		totalFetched += newLen
+		wg.Add(1)
+		go func(newOffset uint64, newLen uint64) {
+			defer wg.Done()
+			basePartial, err := r.DownloadByRoot(link.MerkleRoot(), newOffset, fetchSize, timeout)
+			if err != nil {
+				errsMu.Lock()
+				errs = errors.Compose(errs, err)
+				errsMu.Unlock()
+			}
+			copy(baseSector[newOffset-offset:], basePartial)
+		}(newOffset, newLen)
 	}
+	wg.Wait()
+	if errs != nil {
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(errs, "unable to fetch base sector of skylink")
+	}
+
 	if len(baseSector) < SkyfileLayoutSize {
 		return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}

@@ -413,7 +413,7 @@ func (s *stream) prepareOffset() {
 	// Keep adding more pieces to the buffer until we have buffered
 	// minimumLookahead or have reached the end of the stream.
 	nextIndex = index + 1
-	for i := dataSectionSize*2; i < minimumLookahead && nextIndex*dataSectionSize < dataSize; i += dataSectionSize {
+	for i := dataSectionSize * 2; i < minimumLookahead && nextIndex*dataSectionSize < dataSize; i += dataSectionSize {
 		s.lru.callUpdate(nextIndex)
 		nextIndex = index + 1
 	}
