@@ -813,10 +813,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	// If there is no fanout, all of the data will be contained in the base
 	// sector, return a streamer using the data from the base sector.
 	if layout.fanoutSize == 0 {
-		// TODO: Return a streamBuffer instead of just a bytes.Reader, that way
-		// we can take advantage of all the cacheing that the stream buffer
-		// does.
-		streamer := streamerFromSlice(baseSectorPayload)
+		streamer := r.staticStreamBufferSet.newStreamBufferDataSourceFromSlice(metadata, baseSectorPayload, id)
 		return metadata, streamer, nil
 	}
 

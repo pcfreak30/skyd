@@ -17,12 +17,14 @@ type sliceDataSource struct {
 
 // newStreamBufferDataSourceFromSlice returns a streamBufferDataSource based on
 // an input slice.
-func newStreamBufferDataSourceFromSlice(metadata modules.SkyfileMetadata, data []byte, id streamDataSourceID) streamBufferDataSource {
-	return &sliceDataSource{
+func (sbs *streamBufferSet) newStreamBufferDataSourceFromSlice(metadata modules.SkyfileMetadata, data []byte, id streamDataSourceID) modules.Streamer {
+	sds := &sliceDataSource{
 		staticData:     data,
 		staticMetadata: metadata,
 		staticID:       id,
 	}
+	stream := sbs.callNewStream(sds, 0)
+	return stream
 }
 
 // DataSize implements streamBufferDataSource
