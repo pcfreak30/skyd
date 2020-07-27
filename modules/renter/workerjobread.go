@@ -185,12 +185,17 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 func (jq *jobReadQueue) callAverageJobTime(length uint64) time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
+	// queueSizePenalty is a YOLO optimization whereby we assume that the worker
+	// is going to unperform its historic nubmers by 20 milliseconds per job in
+	// the queue. This is something we shouldn't keep long term (famous last
+	// words).
+	queueSizePenalty := time.Millisecond * 20 * time.Duration(len(jq.jobs))
 	if length <= 1<<16 {
-		return time.Duration(jq.weightedJobTime64k / jq.weightedJobsCompleted64k)
+		return time.Duration(jq.weightedJobTime64k / jq.weightedJobsCompleted64k) + queueSizePenalty
 	} else if length <= 1<<20 {
-		return time.Duration(jq.weightedJobTime1m / jq.weightedJobsCompleted1m)
+		return time.Duration(jq.weightedJobTime1m / jq.weightedJobsCompleted1m) + queueSizePenalty
 	} else {
-		return time.Duration(jq.weightedJobTime4m / jq.weightedJobsCompleted4m)
+		return time.Duration(jq.weightedJobTime4m / jq.weightedJobsCompleted4m) + queueSizePenalty
 	}
 }
 
