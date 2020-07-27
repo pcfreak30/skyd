@@ -768,7 +768,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	var errsMu sync.Mutex
 	for totalFetched < fetchSize {
 		newOffset := offset+totalFetched
-		newLen := newOffset + 1 << 18
+		newLen := 1 << 18
 		if newOffset + newLen > offset + fetchSize {
 			newLen = offset + fetchSize - newOffset
 		}
