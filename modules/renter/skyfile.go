@@ -766,6 +766,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	var wg sync.WaitGroup
 	var errs error
 	var errsMu sync.Mutex
+	start := time.Now()
 	for totalFetched < fetchSize {
 		newOffset := offset+totalFetched
 		newLen := uint64(1 << 18)
@@ -783,9 +784,11 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 				errsMu.Unlock()
 			}
 			copy(baseSector[newOffset-offset:], basePartial)
+			r.log.Println("got a base partial", newOffset, newLen, time.Since(start))
 		}(newOffset, newLen)
 	}
 	wg.Wait()
+	r.log.Println("got the full base", time.Since(start))
 	if errs != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(errs, "unable to fetch base sector of skylink")
 	}
