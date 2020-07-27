@@ -768,7 +768,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	var errsMu sync.Mutex
 	for totalFetched < fetchSize {
 		newOffset := offset+totalFetched
-		newLen := 1 << 18
+		newLen := uint64(1 << 18)
 		if newOffset + newLen > offset + fetchSize {
 			newLen = offset + fetchSize - newOffset
 		}
@@ -776,7 +776,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 		wg.Add(1)
 		go func(newOffset uint64, newLen uint64) {
 			defer wg.Done()
-			basePartial, err := r.DownloadByRoot(link.MerkleRoot(), newOffset, fetchSize, timeout)
+			basePartial, err := r.DownloadByRoot(link.MerkleRoot(), newOffset, newLen, timeout)
 			if err != nil {
 				errsMu.Lock()
 				errs = errors.Compose(errs, err)
