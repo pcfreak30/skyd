@@ -203,26 +203,43 @@ func (fs *fanoutStreamBufferDataSource) Metadata() modules.SkyfileMetadata {
 func (fs *fanoutStreamBufferDataSource) ReadAt(b []byte, offset int64) (int, error) {
 	// Input checking.
 	if offset < 0 {
+		fs.staticRenter.log.Critical("fanout streamer had a request at a negative offset")
 		return 0, errors.New("cannot read from a negative offset")
 	}
-	// Can only grab one chunk.
-	if uint64(len(b)) > fs.staticChunkSize {
+	// Can only grab data within one chunk.
+	offsetWithinChunk := uint64(offset) % fs.staticChunkSize
+	if uint64(len(b))+offsetWithinChunk > fs.staticChunkSize {
+		fs.staticRenter.log.Critical("fanout streamer had a request that straddled chunks")
 		return 0, errors.New("request needs to be no more than RequestSize()")
 	}
-	// Must start at the chunk boundary.
-	if uint64(offset)%fs.staticChunkSize != 0 {
+	// Must be aligned with an RSSubCode
+	chunkSegmentSize := crypto.SegmentSize * uint64(fs.staticLayout.fanoutDataPieces)
+	if uint64(offset)%chunkSegmentSize != 0 {
+		fs.staticRenter.log.Critical("fanout streamer had a request that was not chunk segment size aligned")
 		return 0, errors.New("request needs to be aligned to RequestSize()")
 	}
 	// Must not go beyond the end of the file.
 	if uint64(offset)+uint64(len(b)) > fs.staticLayout.filesize {
+		fs.staticRenter.log.Critical("fanout streamer had a request that went beyond the size of the file")
 		return 0, errors.New("making a read request that goes beyond the boundaries of the file")
 	}
 
 	// Determine which chunk contains the data.
 	chunkIndex := uint64(offset) / fs.staticChunkSize
 
+	// Determine how much data needs to be downloaded from the chunk to fill out
+	// the read request.
+	downloadLen := uint64(len(b))
+	if uint64(len(b))%chunkSegmentSize != 0 {
+		// Round up to the nearest chunk segment size. We do this by abusing
+		// integer division.
+		downloadLen += chunkSegmentSize
+		downloadLen /= chunkSegmentSize
+		downloadLen *= chunkSegmentSize
+	}
+
 	// Perform a download to fetch the chunk.
-	chunkData, err := fs.managedFetchChunk(chunkIndex)
+	chunkData, err := fs.managedFetchChunk(chunkIndex, offsetWithinChunk, downloadLen)
 	if err != nil {
 		return 0, errors.AddContext(err, "unable to fetch chunk in ReadAt call on fanout streamer")
 	}
@@ -233,7 +250,23 @@ func (fs *fanoutStreamBufferDataSource) ReadAt(b []byte, offset int64) (int, err
 // RequestSize implements streamBufferDataSource and will return the size of a
 // logical data chunk.
 func (fs *fanoutStreamBufferDataSource) RequestSize() uint64 {
-	return fs.staticChunkSize/16
+	// If the cipher type overhead is not 0, the chunk has some data at the
+	// front that needs to be skipped before doing erasure decoding, and support
+	// for that hasn't been implemented.
+	//
+	// The only files that are affected would be files that were uploaded to the
+	// Sia network many years ago, as all of the new encryption schemes have 0
+	// overhead.
+	if fs.staticLayout.cipherType.Overhead() != 0 {
+		return fs.staticChunkSize
+	}
+
+	// NOTE: Because of the way that sectors are segmented, the divsor here has
+	// to be a power of 2, and can be no larger than 2^16.
+	//
+	// TODO: 256 is probably a better divisor, this results in sector request
+	// sizes that are 64kb.
+	return fs.staticChunkSize / 4
 }
 
 // SilentClose will clean up any resources that the fanoutStreamBufferDataSource

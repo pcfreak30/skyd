@@ -52,7 +52,19 @@ func (fcs *fetchChunkState) managedFailPiece() {
 
 // threadedFetchPiece is intended to run as a separate thread which fetches a
 // particular piece of a chunk in the fanout.
-func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot crypto.Hash) {
+func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot crypto.Hash, offset uint64, length uint64) {
+	// Input checking.
+	if offset%crypto.SegmentSize != 0 {
+		fcs.managedFailPiece()
+		fcs.staticRenter.log.Critical("fanout piece download failed because offset is not segment aligned", offset)
+		return
+	}
+	if length%crypto.SegmentSize != 0 {
+		fcs.managedFailPiece()
+		fcs.staticRenter.log.Critical("fanout piece download failed because length is not segment aligned", length)
+		return
+	}
+
 	// Fetch the piece.
 	//
 	// TODO: This is fetching from 0 to modules.SectorSize, for the final chunk
@@ -61,7 +73,7 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 	//
 	// TODO: Ideally would be able to insert 'doneChan' as a cancelChan on the
 	// DownloadByRoot call.
-	pieceData, err := fcs.staticRenter.DownloadByRoot(pieceRoot, 0, modules.SectorSize, fcs.staticTimeout)
+	pieceData, err := fcs.staticRenter.DownloadByRoot(pieceRoot, offset, length, fcs.staticTimeout)
 	if err != nil {
 		fcs.managedFailPiece()
 		fcs.staticRenter.log.Debugf("fanout piece download failed for chunk %v, piece %v, root %v of a fanout download file: %v", fcs.staticChunkIndex, pieceIndex, pieceRoot, err)
@@ -70,7 +82,7 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 
 	// Decrypt the piece.
 	key := fcs.staticMasterKey.Derive(fcs.staticChunkIndex, pieceIndex)
-	_, err = key.DecryptBytesInPlace(pieceData, 0)
+	_, err = key.DecryptBytesInPlace(pieceData, offset/crypto.SegmentSize)
 	if err != nil {
 		fcs.managedFailPiece()
 		fcs.staticRenter.log.Printf("fanout piece decryption failed for chunk %v, piece %v, root %v of a fanout download file: %v", fcs.staticChunkIndex, pieceIndex, pieceRoot, err)
@@ -97,13 +109,24 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 
 // managedFetchChunk will grab the data of a specific chunk index from the Sia
 // network.
-func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]byte, error) {
+func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex, offset, length uint64) ([]byte, error) {
 	// Input verification.
+	dataPieces := uint64(fs.staticLayout.fanoutDataPieces)
+	chunkSize := (modules.SectorSize - fs.staticLayout.cipherType.Overhead()) * uint64(dataPieces)
 	if chunkIndex*fs.staticChunkSize >= fs.staticLayout.filesize {
 		return nil, errors.New("requesting a chunk index that does not exist within the file")
 	}
 	if int(fs.staticLayout.fanoutDataPieces) > len(fs.staticChunks[chunkIndex]) {
 		return nil, errors.New("not enough pieces in the chunk to recover the chunk")
+	}
+	if offset%(crypto.SegmentSize*dataPieces) != 0 {
+		return nil, errors.New("request offset is not segment aligned")
+	}
+	if length%(crypto.SegmentSize*dataPieces) != 0 {
+		return nil, errors.New("request length is not segment aligned")
+	}
+	if fs.staticLayout.cipherType.Overhead() != 0 && (offset != 0 || length != chunkSize) {
+		return nil, errors.New("partial chunks not supported for non-zero overhead encryption schemes")
 	}
 
 	// Build the state that is used to coordinate the goroutines fetching
@@ -111,7 +134,7 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 	fcs := fetchChunkState{
 		staticChunkIndex: chunkIndex,
 		staticChunkSize:  fs.staticChunkSize,
-		staticDataPieces: uint64(fs.staticLayout.fanoutDataPieces),
+		staticDataPieces: uint64(dataPieces),
 		staticMasterKey:  fs.staticMasterKey,
 
 		staticTimeout: fs.staticTimeout,
@@ -127,6 +150,9 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 	// TODO: Currently this means that if there are 30 pieces for a chunk, all
 	// 30 pieces will be requested. This is wasteful, much better would be to
 	// attempt to fetch some fraction with some amount of overdrive.
+	//
+	// TODO: Eventually this whole thing will be replaced by the new chunkSet
+	// code.
 	var blankHash crypto.Hash
 	for i := uint64(0); i < uint64(len(fcs.pieces)); i++ {
 		// Skip pieces where the Merkle root is not supplied.
@@ -137,7 +163,7 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 		}
 
 		// Spin up a thread to fetch this piece.
-		go fcs.threadedFetchPiece(i, fs.staticChunks[chunkIndex][i])
+		go fcs.threadedFetchPiece(i, fs.staticChunks[chunkIndex][i], offset/dataPieces, length/dataPieces)
 	}
 	<-fcs.doneChan
 
@@ -165,8 +191,7 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 
 	// Recover the data.
 	buf := bytes.NewBuffer(nil)
-	chunkSize := (modules.SectorSize - fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
-	err := fs.staticErasureCoder.Recover(pieces, chunkSize, buf)
+	err := fs.staticErasureCoder.Recover(pieces, offset+length, buf)
 	if err != nil {
 		return nil, errors.New("erasure decoding of chunk failed.")
 	}
