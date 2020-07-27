@@ -266,7 +266,7 @@ func (fs *fanoutStreamBufferDataSource) RequestSize() uint64 {
 	//
 	// TODO: 256 is probably a better divisor, this results in sector request
 	// sizes that are 64kb.
-	return fs.staticChunkSize / 4
+	return fs.staticChunkSize / 16
 }
 
 // SilentClose will clean up any resources that the fanoutStreamBufferDataSource

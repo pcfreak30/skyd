@@ -54,6 +54,15 @@ var (
 		Standard: uint64(1 << 25), // 32 MiB
 		Testing:  uint64(1 << 8),  // 256 bytes
 	}).(uint64)
+
+	// minimumLookahead is the minimum amount of data that a stream will prepare
+	// ahead of the current seek position. this must be smaller than the
+	// bytesBufferedPerStream.
+	minimumLookahead = build.Select(build.Var{
+		Dev:      uint64(1 << 22), // 4 MiB
+		Standard: uint64(1 << 22), // 4 MiB
+		Testing:  uint64(1 << 6),  // 64 bytes
+	}).(uint64)
 )
 
 // streamBufferDataSource is an interface that the stream buffer uses to fetch
@@ -378,7 +387,7 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 }
 
 // prepareOffset will ensure that the dataSection containing the offset is made
-// available in the LRU, and that the following dataSection is also available.
+// available in the LRU, and that the following dataSections are also available.
 func (s *stream) prepareOffset() {
 	// Convenience variables.
 	dataSize := s.staticStreamBuffer.staticDataSize
@@ -399,6 +408,14 @@ func (s *stream) prepareOffset() {
 	nextIndex := index + 1
 	if nextIndex*dataSectionSize < dataSize {
 		s.lru.callUpdate(nextIndex)
+	}
+
+	// Keep adding more pieces to the buffer until we have buffered
+	// minimumLookahead or have reached the end of the stream.
+	nextIndex = index + 1
+	for i := dataSectionSize*2; i < minimumLookahead && nextIndex*dataSectionSize < dataSize; i += dataSectionSize {
+		s.lru.callUpdate(nextIndex)
+		nextIndex = index + 1
 	}
 }
 
