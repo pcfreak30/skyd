@@ -769,7 +769,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	start := time.Now()
 	for totalFetched < fetchSize {
 		newOffset := offset+totalFetched
-		newLen := uint64(1 << 18)
+		newLen := uint64(1 << 16)
 		if newOffset + newLen > offset + fetchSize {
 			newLen = offset + fetchSize - newOffset
 		}
