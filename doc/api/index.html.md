@@ -103,7 +103,14 @@ The standard error response indicating the request failed for any reason, is a
 ### Module Not Loaded
 
 A module that is not reachable due to not being loaded by siad will return
-the custom status code `490 ModuleNotLoaded`.
+the custom status code `490 ModuleNotLoaded`. This is only returned during
+startup. Once the startup is complete and the module is still not available,
+ModuleDisabled will be returned.
+
+### Module Disabled
+
+A module that is not reachable due to being disabled, will return the custom
+status code `491 ModuleDisabled`.
 
 # Authentication
 > Example POST curl call with Authentication
@@ -4487,6 +4494,7 @@ returns the the status of all the workers in the renter's workerpool.
 {
   "numworkers":            2, // int
   "totaldownloadcooldown": 0, // int
+  "totalmaintenancecooldown": 0, // int
   "totaluploadcooldown":   0, // int
   
   "workers": [ // []WorkerStatus
@@ -4522,13 +4530,14 @@ returns the the status of all the workers in the renter's workerpool.
       "backupjobqueuesize": 0,        // int
       "downloadrootjobqueuesize": 0,  // int
 
+      "maintenanceoncooldown": false,                      // bool
+      "maintenancerecenterr": "",                          // string
+      "maintenancerecenterrtime": "0001-01-01T00:00:00Z",  // time
+
       "accountstatus": {
         "availablebalance": "1000000000000000000000000", // hasting
         "negativebalance": "0",                          // hasting
         "funded": true,                                  // boolean
-        "oncooldown": false,                             // boolean
-        "oncooldownuntil": "0001-01-01T00:00:00Z",       // time
-        "consecutivefailures": 0,                        // int
         "recenterr": "",                                 // string
         "recenterrtime": "0001-01-01T00:00:00Z"          // time
       },
@@ -4537,9 +4546,6 @@ returns the the status of all the workers in the renter's workerpool.
         "expirytime": "2020-06-15T16:17:01.040481+02:00", // time
         "updatetime": "2020-06-15T16:12:01.040481+02:00", // time
         "active": true,                                   // boolean
-        "oncooldown": false,                              // boolean
-        "oncooldownuntil": "0001-01-01T00:00:00Z",        // time
-        "consecutivefailures": 0,                         // int
         "recenterr": "",                                  // string
         "recenterrtime": "0001-01-01T00:00:00Z"           // time
       },
@@ -4566,11 +4572,15 @@ returns the the status of all the workers in the renter's workerpool.
 }
 ```
 
+
 **numworkers** | int  
 Number of workers in the workerpool
 
 **totaldownloadcooldown** | int  
 Number of workers on download cooldown
+
+**totalmaintenancecooldown** | int  
+Number of workers on maintenance cooldown
 
 **totaluploadcooldown** | int  
 Number of workers on upload cooldown
@@ -4636,6 +4646,15 @@ The size of the worker's backup job queue
 
 **downloadrootjobqueuesize** | int  
 The size of the worker's download by root job queue
+
+**maintenanceoncooldown** | boolean  
+Indicates if the worker is on maintenance cooldown
+
+**maintenancecooldownerror** | string  
+The error reason for the worker being on maintenance cooldown
+
+**maintenancecooldowntime** | time.Duration  
+How long the worker is on maintenance cooldown
 
 **accountstatus** | object
 Detailed information about the workers' ephemeral account status
