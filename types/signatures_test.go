@@ -426,3 +426,21 @@ func TestTransactionValidSignatures(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// TestSiaPublicKeyFingerprint tests the SiaPublicKey's Fingerprint method.
+func TestSiaPublicKeyFingerprint(t *testing.T) {
+	pk := "ed25519:4d2ed30f413cbde787e574ad55b4670d4971bf1261d9e9e923e4757643e72b6d"
+	fingerprint := "4d2ed30f"
+
+	// Load key.
+	var spk SiaPublicKey
+	err := spk.LoadString(pk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compare fingerprint
+	if string(spk.Fingerprint()) != fingerprint {
+		t.Fatalf("expected print to be %v but was %v", fingerprint, spk.Fingerprint())
+	}
+}
