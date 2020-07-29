@@ -169,6 +169,9 @@ func (x SiaPublicKey) Equals(y SiaPublicKey) bool {
 // Fingerprint returns a human readable, shortened representation of the key.
 func (x SiaPublicKey) Fingerprint() SiaPublicKeyFingerprint {
 	s := x.String()
+	if len(s) < 16 {
+		return ""
+	}
 	return SiaPublicKeyFingerprint(s[8:16]) // 8 bytes of the key without specifier
 }
 
