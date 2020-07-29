@@ -25,12 +25,14 @@ func TestUpdateEntry(t *testing.T) {
 	someErr := errors.New("testing err")
 	entry1 := modules.HostDBEntry{
 		PublicKey: types.SiaPublicKey{
-			Key: []byte{1},
+			Algorithm: types.SignatureEd25519,
+			Key:       []byte{1},
 		},
 	}
 	entry2 := modules.HostDBEntry{
 		PublicKey: types.SiaPublicKey{
-			Key: []byte{2},
+			Algorithm: types.SignatureEd25519,
+			Key:       []byte{2},
 		},
 	}
 
