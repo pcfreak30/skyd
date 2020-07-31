@@ -239,13 +239,54 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 }
 
 // Rename renames the SiaDir to targetPath.
-func (sd *SiaDir) rename(targetPath string) error {
-	// TODO: os.Rename is not ACID
-	err := os.Rename(sd.path, targetPath)
-	if err != nil {
+func (sd *SiaDir) rename(targetPath string) (err error) {
+	// Check if a file exists at the target path already
+	mdPath := filepath.Join(targetPath, modules.SiaDirExtension)
+	_, err = os.Stat(mdPath)
+	if err == nil {
+		return os.ErrExist
+	} else if !os.IsNotExist(err) {
 		return err
 	}
+
+	// Record the original path
+	originalPath := sd.path
+
+	// Create directory at new location
+	err = os.MkdirAll(targetPath, modules.DefaultDirPerm)
+	if err != nil {
+		return errors.AddContext(err, "unable to create directory at target path")
+	}
+	defer func() {
+		if err != nil {
+			// Make sure any file at the targetPath is removed and reset the path in
+			// memory
+			sd.path = originalPath
+			err = errors.Compose(err, os.RemoveAll(targetPath))
+		}
+	}()
+
+	// Create update for new location
+	createUpdate, err := createMetadataUpdate(mdPath, sd.metadata)
+	if err != nil {
+		return errors.AddContext(err, "unable to create metadata update for new path")
+	}
+
+	// Create delete update for file at current location
+	deleteUpdate := sd.createDeleteUpdate()
+
+	// Update the siaDir path in memory or else the create update will fail to be
+	// applied
 	sd.path = targetPath
+
+	// Apply the updates.
+	//
+	// NOTE: The delete update MUST be the first update, otherwise the applyUpdate
+	// logic will drop the create update.
+	err = sd.createAndApplyTransaction(deleteUpdate, createUpdate)
+	if err != nil {
+		return errors.AddContext(err, "unable to create and apply wal transaction")
+	}
 	return nil
 }
 

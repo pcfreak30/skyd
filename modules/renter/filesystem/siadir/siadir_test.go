@@ -315,4 +315,32 @@ func TestSiaDirDelete(t *testing.T) {
 		t.Error("updateMetadata should return with and error for SiaDir deleted")
 	}
 	siaDir.mu.Unlock()
+
+	// Last test is for the build critical in updateMetadata for the siadir not
+	// existing
+	//
+	// Create another siadir first
+	siaPath, err = modules.NewSiaPath("panicdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaDirSysPath = siaPath.SiaDirSysPath(rootDir)
+	siaDir2, err := New(siaDirSysPath, rootDir, modules.DefaultDirPerm, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remove it from disk manually
+	err = os.RemoveAll(siaDirSysPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call updateMetadata and recover from build Critical
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Expected a panic from updateMetadata")
+		}
+	}()
+	siaDir2.updateMetadata(Metadata{})
 }

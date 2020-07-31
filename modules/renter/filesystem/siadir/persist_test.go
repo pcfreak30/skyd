@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
 // equalMetadatas is a helper that compares two siaDirMetadatas. If using this
@@ -382,4 +383,49 @@ func TestCreateAndApplyTransactionPanic(t *testing.T) {
 		defer assertRecover()
 		_ = CreateAndApplyTransaction(siadir.wal, update)
 	}()
+}
+
+// TestSiaDirRename probes the Rename method of the siadir
+func TestSiaDirRename(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create siadir
+	siaDir, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalPath := siaDir.Path()
+
+	// Rename siadir
+	err = siaDir.Rename(filepath.Join(os.TempDir(), persist.RandomSuffix()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify it is no longer on disk at original location
+	_, err = os.Stat(filepath.Join(originalPath, modules.SiaDirExtension))
+	if !os.IsNotExist(err) {
+		t.Fatalf("Expected IsNotExist error but got %v", err)
+	}
+
+	// Verify it is on disk at the new location
+	_, err = os.Stat(filepath.Join(siaDir.Path(), modules.SiaDirExtension))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create second siadir
+	siaDir2, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// try and rename original siadir to second siadir location
+	err = siaDir.Rename(siaDir2.Path())
+	if err == nil {
+		t.Fatal("Renaming to a location with an existing siadir should have failed")
+	}
 }
