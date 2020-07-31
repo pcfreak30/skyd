@@ -63,6 +63,10 @@ type (
 
 	// SkynetBlacklistGET contains the information queried for the
 	// /skynet/blacklist GET endpoint
+	//
+	// NOTE: With v1.5.0 the return value for the Blacklist changed. Pre v1.5.0
+	// the []crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash
+	// is a slice of the Hashes of the MerkleRoots
 	SkynetBlacklistGET struct {
 		Blacklist []crypto.Hash `json:"blacklist"`
 	}
@@ -245,7 +249,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	path := "/" // default to root
 	splits := strings.SplitN(strLink, "?", 2)
 	splits = strings.SplitN(splits[0], "/", 2)
-	if len(splits) > 1 {
+	hasSubPath := len(splits) > 1
+	if hasSubPath {
 		path = fmt.Sprintf("/%s", splits[1])
 	}
 
@@ -319,11 +324,24 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	var isSubfile bool
 
-	// Handle the legacy case
-	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath && len(metadata.Subfiles) == 1 {
-		for filename := range metadata.Subfiles {
-			metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
-			break
+	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
+		if len(metadata.Subfiles) == 1 {
+			// Handle the legacy case in which the fields `defaultpath` and
+			// `disabledefaultpath` are not defined. If the skyfile has a single
+			// subfile we want to automatically default to it in order to retain
+			// the current behaviour.
+			for filename := range metadata.Subfiles {
+				metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
+				break
+			}
+		} else {
+			prefixedDefaultSkynetPath := modules.EnsurePrefix(DefaultSkynetDefaultPath, "/")
+			for filename := range metadata.Subfiles {
+				if modules.EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
+					metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
+					break
+				}
+			}
 		}
 	}
 
@@ -333,13 +351,19 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if path == "/" &&
 		metadata.DefaultPath != "" &&
 		format == modules.SkyfileFormatNotSpecified {
-		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
-		streamer, err = NewLimitStreamer(streamer, offset, size)
-		isSubfile = true
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
-			return
+		// Check if this matches a specific html file and redirect to it.
+		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
+			for _, f := range metadata.Subfiles {
+				if modules.EnsurePrefix(f.Filename, "/") == metadata.DefaultPath {
+					w.Header().Set("Location", skylink.String()+metadata.DefaultPath)
+					w.WriteHeader(http.StatusTemporaryRedirect)
+					return
+				}
+			}
 		}
+		// Otherwise fail with an error.
+		WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
+		return
 	}
 
 	// Serve the contents of the skyfile at path if one is set
@@ -369,38 +393,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	encMetadata, err := json.Marshal(metadata)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
-		return
-	}
-
-	// If requested, serve the content as a tar archive, compressed tar
-	// archive or zip archive.
-	if format == modules.SkyfileFormatTar {
-		w.Header().Set("Content-Type", "application/x-tar")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		err = serveTar(w, metadata, streamer)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
-		}
-		return
-	}
-	if format == modules.SkyfileFormatTarGz {
-		w.Header().Set("Content-Type", "application/x-gtar ")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		gzw := gzip.NewWriter(w)
-		err = serveTar(gzw, metadata, streamer)
-		err = errors.Compose(err, gzw.Close())
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
-		}
-		return
-	}
-	if format == modules.SkyfileFormatZip {
-		w.Header().Set("content-type", "application/zip")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		err = serveZip(w, metadata, streamer)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
-		}
 		return
 	}
 
@@ -435,22 +427,56 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
 	}()
 
+	// Set an appropriate Content-Disposition header
+	var cdh string
+	filename := filepath.Base(metadata.Filename)
+	if format.IsArchive() {
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename+format.Extension()))
+	} else if attachment {
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename))
+	} else {
+		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
+	}
+	w.Header().Set("Content-Disposition", cdh)
+
+	// If requested, serve the content as a tar archive, compressed tar
+	// archive or zip archive.
+	if format == modules.SkyfileFormatTar {
+		w.Header().Set("Content-Type", "application/x-tar")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		err = serveTar(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+	if format == modules.SkyfileFormatTarGz {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		gzw := gzip.NewWriter(w)
+		err = serveTar(gzw, metadata, streamer)
+		err = errors.Compose(err, gzw.Close())
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+	if format == modules.SkyfileFormatZip {
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		err = serveZip(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
 	// library from sniffing the file's content type.
 	if metadata.ContentType() != "" {
 		w.Header().Set("Content-Type", metadata.ContentType())
 	}
-
-	// Set Content-Disposition header, if 'attachment' is true, set the
-	// disposition-type to attachment, otherwise we inline it.
-	var cdh string
-	if attachment {
-		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
-	} else {
-		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
-	}
-	w.Header().Set("Content-Disposition", cdh)
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 

@@ -55,13 +55,14 @@ func (wls *workerLoopState) staticSerialJobRunning() bool {
 // 'threadedWorkLoop', and it is expected that only one instance of
 // 'threadedWorkLoop' is ever created per-worker.
 func (w *worker) externLaunchSerialJob(job func()) {
-	// Sanity check - no other job should be running at this point.
-	if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 0 {
+	// Mark that there is now a job running. Only one job may be running at a
+	// time.
+	ok := atomic.CompareAndSwapUint64(&w.staticLoopState.atomicSerialJobRunning, 0, 1)
+	if !ok {
+		// There already is a job running. This is not allowed.
 		w.renter.log.Critical("running a job when another job is already running")
 	}
 
-	// Mark that there is now a job running.
-	atomic.StoreUint64(&w.staticLoopState.atomicSerialJobRunning, 1)
 	fn := func() {
 		// Execute the job in a goroutine.
 		job()
@@ -105,11 +106,11 @@ func (w *worker) externTryLaunchSerialJob() {
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
-	if w.staticNeedsPriceTableUpdate() {
+	if w.managedNeedsToUpdatePriceTable() {
 		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
 	}
-	if w.managedAccountNeedsRefill() {
+	if w.managedNeedsToRefillAccount() {
 		w.externLaunchSerialJob(w.managedRefillAccount)
 		return
 	}
@@ -213,8 +214,8 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return false
 	}
 
-	// If the account is on cooldown, drop all async jobs.
-	if w.staticAccount.managedOnCooldown() {
+	// RHP3 must not be on cooldown to perform async tasks.
+	if w.managedOnMaintenanceCooldown() {
 		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
 		return false
 	}
@@ -265,6 +266,11 @@ func (w *worker) managedDiscardAsyncJobs(err error) {
 // meaning that only one of these tasks can be performed at a time.  Async work
 // can be performed with high parallelism.
 func (w *worker) threadedWorkLoop() {
+	// Perform a disrupt for testing.
+	if w.renter.deps.Disrupt("DisableWorkerLoop") {
+		return
+	}
+
 	// Upon shutdown, release all jobs.
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
@@ -292,11 +298,13 @@ func (w *worker) threadedWorkLoop() {
 		// Perform a balance check on the host and sync it to his version if
 		// necessary. This avoids running into MaxBalanceExceeded errors upon
 		// refill after an unclean shutdown.
-		w.externSyncAccountBalanceToHost()
+		if w.staticPriceTable().staticValid() {
+			w.externSyncAccountBalanceToHost()
+		}
 
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
-		if w.managedAccountNeedsRefill() {
+		if w.managedNeedsToRefillAccount() {
 			w.managedRefillAccount()
 		}
 	}
@@ -325,7 +333,7 @@ func (w *worker) threadedWorkLoop() {
 
 		// If the worker needs to sync the account balance, perform a sync
 		// operation. This should be attempted before launching any jobs.
-		if w.managedNeedsToSyncAccountToHost() {
+		if w.managedNeedsToSyncAccountBalanceToHost() {
 			w.externSyncAccountBalanceToHost()
 		}
 
