@@ -16,6 +16,13 @@ package renter
 // their HasSector tasks? It's possible that whatever the error was is a
 // temporary netowrk error.
 
+// TODO: I'm not sure throughout this function whether higher score is better or
+// higher score is worse, I think that I have been inconsistent.
+
+// TODO: The score function on the worker is going to need to take as an
+// argument a timestamp indicating how long we have been waiting for the worker
+// to return.
+
 // TODO: Uncertain: how do we prevent one worker from getting a huge backlog and
 // consuming a ton of memory? At some point do we just declare that the worker
 // is overwhlemed and unable to take on more work? Do we have requests block?
@@ -60,7 +67,7 @@ type projectDownloadChunk struct {
 	// The completed data gets sent down the response chan once the full
 	// download is done.
 	staticResponseChan chan []byte
-	staticWorkerSet *projectDownloadWorkerSet
+	staticWorkerSet    *projectDownloadWorkerSet
 
 	mu sync.Mutex
 }
@@ -92,75 +99,11 @@ type projectDownloadUnresolvedWorker struct {
 	slowestULSpeed uint64
 }
 
-// projectDownloadWorkerSet is an object that tracks workers that are
-// potentially able to fetch a piece for a single chunk. The chunkWorkerSet can
-// either be initialized with a set of MerkleRoots, where it is unknown which
-// hosts have the pieces, or the chunkWorkerSet can be initialized with a set of
-// known root-host pairs. In the former case, the chunkWorkerSet will issue a
-// set of HasSector calls to the network to figure out which workers can be used
-// to fetch pieces of the chunk.
-//
-// This structure is not intended to be long lived, perhaps a couple of hours at
-// most. The major limiting factor is that this structure will not update as
-// file repairs happen, meaning that it becomes increasingly stale over time.
-//
-// One of the major use cases for this data structure is streaming.
-type projectDownloadWorkerSet struct {
-	// This is a set of workers that may or may not be able to fetch the chunk.
-	// The workers in this set are actively running HasSector jobs to figure out
-	// whether they can participate in the downloading of the chunk.
-	//
-	// The set of unresolved workers is a map so that workers can easily be
-	// removed from the map when their HasSector job returns.
-	//
-	// When trying to execute a download, this map should be used to figure out
-	// whether or not the best potential worker has returned yet. This means
-	// that the downloading code needs to not only consider the workers in the
-	// unresolved map, but also all of the workers that have already returned.
-	// This consideration needs to include both the expected time remaining for
-	// the HasSector job to complete, and also the expected time for any
-	// download submission to the worker to complete.
-	unresolvedWorkers map[string]*projectDownloadUnresolvedWorker
-
-	// availablePieces contains the list of pieces for the chunk that this
-	// worker set is able to download. For each piece, an array of workers
-	// indicates who is able to fetch that piece.
-	availablePieces [][]*worker
-
-	// workerUpdateChans contains an array of channels for active downloads that
-	// are blocking until more workers have returned. When a new unresolved
-	// worker returns, the processing thread for the unresolved workers will go
-	// through and close all of the workerUpdateChans, notifying those download
-	// threads that new information is available.
-	//
-	// The workerUpdateChans will be closed even if the new information is that
-	// one of the unresovled workers has errored out or that one of the
-	// unresolved workers does not have a sector. This is necessary because
-	// downloads may be waiting for a faster worker. If that faster worker is
-	// having issues or otherwise doesn't have any pieces at all, the
-	// downloaders may prefer to use existing workers instead of continuing to
-	// wait for another piece to show up.
-	//
-	// NOTE: once 'unresolvedWorkers' has a length of zero, downloaders should
-	// stop waiting for updates and workerUpdateChans should be empty
-	// forevermore.
-	workerUpdateChans []chan struct{}
-
-	// Decoding and decryption information.
-	staticChunkIndex   uint64
-	staticErasureCoder modules.ErasureCoder
-	staticMasterKey    crypto.CipherKey
-
-	// Utilities
-	staticRenter *Renter
-	mu sync.Mutex
-}
-
 // downloadResponse is the reponse returned in the download channel returned by
 // the download() method.
 type downloadResponse struct {
 	data []byte
-	err error
+	err  error
 }
 
 // download will download a range from a chunk. This call is asynchronous. It
@@ -175,15 +118,15 @@ type downloadResponse struct {
 // if we learn that not enough workers have the desired sector to complete the
 // download.
 //
-// This can potentially create a one-time inefficiency where everything after
-// the first download is a little bit later than it would have been, depending
-// on how slow the final workers are for a chunk, but in practice I do not
-// believe it will be more than 50 or 100ms, it will only apply to the second
-// download, and it will only apply once.
-//
 // TODO: Add score hinting as one of the input parameters. Maybe for now it'll
-// just be a difference of priority vs. non-priority.
-func (pdws *projectDownloadWorkerSet) download(offset, length uint64) (chan *downloadResponse, error) {
+// just be a difference of priority vs. non-priority. Score hinting meaning
+// favor cheaper hosts or lower latency hosts, etc.
+//
+// TODO: Change this function so that a buffer can be passed in to receive the
+// download result.
+//
+// TODO: Need to pass in a context of some sort?
+func (pdws *projectDownloadWorkerSet) managedDownload(offset, length uint64) (chan *downloadResponse, error) {
 	// replaceWorstScore will do an in-place modification of the provided scores
 	// to replace the worst score with the new score. Lower is better, but zero
 	// is blank / worst.
@@ -191,7 +134,7 @@ func (pdws *projectDownloadWorkerSet) download(offset, length uint64) (chan *dow
 	// NOTE: This is an n^2 algorithm that could easily be a heap. Because n is
 	// typically small, we're just going to do things the easy way. If this code
 	// shows up as hot on a profile, it can be re-written as a heap.
-	replaceWorstScore(scores []uint64, newScore uint64) {
+	replaceWorstScore := func(scores []uint64, newScore uint64) {
 		// Handle the edge case of a low new score.
 		if newScore == 0 {
 			newScore = 1
@@ -271,15 +214,15 @@ func (pdws *projectDownloadWorkerSet) download(offset, length uint64) (chan *dow
 			// There are not enough workers to perform the download, get a
 			// channel and block for an update.
 			if score == 0 {
-				c := pdws.registerForWorkerUpdate() // TODO: Implement this.
+				c := pdws.registerForWorkerUpdate()
 				return c, nil, nil
 			}
 		}
 
 		// Find the worst score of the best scores that we have accumulated.
-		//
-		// TODO: Check for the edge case here where the length of best workers
-		// is zero.
+		if len(bestWorkers) == 0 {
+			pdws.staticRenter.log.Critical("download created with erasure code that has a min pieces value of 0")
+		}
 		worstScore := bestWorkers[0]
 		for _, score := range bestWorkers {
 			if score > worstScore {
@@ -291,6 +234,9 @@ func (pdws *projectDownloadWorkerSet) download(offset, length uint64) (chan *dow
 		// than the ones that have already returned. Track the longest amount of
 		// time that a better scoring worker needs to complete its HasSector
 		// job.
+		//
+		// Longest time is selected as opposed to shortest time beacuse we want
+		// a chance to see the result of all of the better workers.
 		numBetterWorkers := 0
 		waitTime := 0
 		for _, uw := range pdws.unresolvedWorkers {
@@ -313,9 +259,13 @@ func (pdws *projectDownloadWorkerSet) download(offset, length uint64) (chan *dow
 		}
 		// If the timeChan was not set by a previous call to waitForWorkers,
 		// create a time channel that will fire after waiting until the slowest
-		// of our potentially better workers is expected to return.
+		// of our potentially better workers is expected to return. The reason
+		// that we don't reset the timeChan is because time.After() is rather
+		// computationally expensive, especially in hot loops like this. If we
+		// had a better/cheaper way to get a wakeup channel, we could update the
+		// channel on every call.
 		if timeChan == nil {
-			timeChan = time.After(waitTime * 5 / 4)
+			timeChan = time.After(waitTime * 6 / 5)
 		}
 		c := pdws.registerForWorkerUpdate()
 		return c, timeChan, nil
@@ -324,27 +274,27 @@ func (pdws *projectDownloadWorkerSet) download(offset, length uint64) (chan *dow
 	// Loop until waitForWorkers determines that there are enough workers. An
 	// error may be returned, which indicates that the download should be
 	// aborted. If 'c' is nil, it means that there are enough workers.
-	for c, t, err := waitForWorkers();; {
+	for waitForWorkerUpdates, timeoutOnWorkerUpdates, err := waitForWorkers(); ; {
 		// There's an error, the download cannot complete.
 		if err != nil {
 			return nil, err
 		}
 
 		// The ideal set of workers has been found.
-		if c == nil {
+		if waitForWorkerUpdates == nil {
 			break
 		}
 
-		// Wait until either more workers are available, or until the timeout
-		// kicks us out of the loop. If 'c' closes, it means the status has
-		// changed and the waitForWorkers logic should be run again. If 't'
-		// closes, it means that whatever worker we were waiting for hasn't
-		// returned in time, and we should proceed with the downloading using
-		// the workers that we already have.
+		// Wait until either more information about the workers is available, or
+		// until the timeout kicks us out of the loop. If 'c' closes, it means
+		// the status has changed and the waitForWorkers logic should be run
+		// again. If 't' closes, it means that whatever worker we were waiting
+		// for hasn't returned in time, and we should proceed with the
+		// downloading using the workers that we already have.
 		select {
-		case <-c:
+		case <-waitForWorkerUpdates:
 			continue
-		case <-t:
+		case <-timeoutOnWorkerUpdates:
 			break
 		}
 	}
@@ -353,41 +303,318 @@ func (pdws *projectDownloadWorkerSet) download(offset, length uint64) (chan *dow
 	// that have returned.
 	dr := make(chan *downloadResponse)
 	go func() {
+		// Consistency check - the piece segment size must be a multiple of the
+		// Sia segment size.
+		if ec.PieceSegmentSize() == 0 || ec.PieceSegmentSize%crypto.SegmentSize != 0 {
+			pdws.staticRenter.log.Critical("bad piece segment size")
+		}
+		// Determine the download offset within a single piece. We get this by
+		// dividing the chunk offset by the number of pieces and then rounding
+		// down to the nearest segment size.
+		//
+		// This is mathematically equivalent to rounding down the chunk size to
+		// the nearest chunk segment size and then dividing by the number of
+		// pieces.
+		pieceDownloadOffset := offset / ec.MinPieces()
+		pieceDownloadOffset = pieceDownloadOffset / ec.PieceSegmentSize()
+		pieceDownloadOffset = pieceDownloadOffset * ec.PieceSegmentSize()
+		// Determine the length that needs to be downloaded. This happens by
+		// rounding the chunk up to the nearest chunk segment size and then
+		// dividing by the number of pieces.
+		pieceDownloadLength := length
+		chunkSegmentSize := ec.PieceSegmentSize() * ec.MinPieces()
+		overflow := (offset + length) % chunkSegmentSize
+		if overflow != 0 {
+			pieceDownloadLength += (chunkSegmentSize - overflow)
+		}
+		pieceDownloadLength /= ec.MinPieces()
+		// Determine the offset within the downloaded portion of the chunk that
+		// we use to return the actual data to the caller.
+		chunkDownloadOffset := pieceDownloadOffset * ec.MinPieces()
+		offsetWithinDownloadedChunk := chunkDownloadOffset - offset
+
 		// Create a channel to track responses from the workers as they complete
 		// the downloads. When overdriving, we may need to launch multiple
 		// workers on the same piece, so just in case we buffer the channel to
 		// be larger than the total number of pieces. This ends up being more
 		// relevant for 1-of-N files than any other redundancy.
-		channelSize := (ec.NumPieces()*3) + 5 // TODO: Magic numbers here.
+		channelSize := (ec.NumPieces() * 3) + 5 // TODO: Magic numbers here.
 		slotsRemaining := channelSize
 		downloadResponseChan := make(chan *jobReadResponse, channelSize)
 
-		// TODO: Overdrive logic, determine whether or not to immediately launch
-		// at least one overdrive piece.
-	}()
-	// TODO: Background thread should:
-	//
-	// 1. Have an understanding of whether overdrive is needed
-	//
-	// 2. Launch overdrive threads when workers are available and the existing
-	// workers are taking too long.
-	//
-	// 3. collect the pieces, decrypt the pieces, and decode the pieces,
-	// returning them.
-	return dr, errors.New("implementation not complete")
-}
+		// Create a map to track the set of workers that have been attempted,
+		// and create an array to track the set of pieces that have been
+		// completed.
+		//
+		// TODO: There is an inefficiency here because we may attempt multiple
+		// workers on the same piece if one of the workers is timing out,
+		// meaning if both of those workers complete but some other worker
+		// doesn't we still can't finish the download. Admittedly, this is a
+		// pretty niche edge case and maybe not worth worrying about until we
+		// see in the wild that it's slowing down a material number of
+		// downloads.
+		attemptedWorkers := make(map[string]struct{})
+		queuedPieces := make([]bool, ec.NumPieces())
 
-// closeUpdateChans will close all of the update chans and clear out the slice.
-func (pdws *projectDownloadWorkerSet) closeUpdateChans() {
-	for _, c := range pdws.workerUpdateChans {
-		close(c)
-	}
-	pdws.workerUpdateChans = nil
+		// Create a helper function to launch a worker. The first bool returned
+		// indicates whether a worker was successfully launched, and the second
+		// bool indicates whether there are no workers that were able to be
+		// selected. The second bool will only be false if the first bool is
+		// false.
+		launchWorker := func(attemptedWorkers map[string]struct{}, queuedPieces []bool) (time.Duration, bool, bool) {
+			// Pick the best worker.
+			pieceIndex := 0
+			var w *worker
+			wScore := 0
+			bestIndex := 0
+			for i, workers := range pdws.availablePieces {
+				// Skip this piece if we already queued a worker for this piece.
+				if queuedPiecs[i] {
+					continue
+				}
+
+				// Iterate over the workers and pick the best one.
+				for _, worker := range workers {
+					if w == nil {
+						w = worker
+						wScore = worker.Score()
+						bestIndex = i
+					}
+					if worker.Score() < wScore {
+						w = worker
+						wScore = worker.Score()
+						bestIndex = i
+					}
+				}
+			}
+			if w == nil {
+				return time.Duration{}, false, false
+			}
+
+			// Create the read job.
+			jrs := &jobReadSector{
+				jobRead: jobRead{
+					staticResponseChan: downloadResponseChan,
+					staticLength:       pieceDownloadLength,
+					jobGeneric:         newJobGeneric(bestWorker.staticJobReadQueue, ctx.Done()), // TODO: Need to fix this context
+				},
+				staticOffset: pieceDownloadOffset,
+			}
+			jrs.staticRoot = pdws.staticPieceRoots[bestIndex]
+			attemptedWorkers[w.staticHostPubKeyStr] = struct{}{}
+
+			// Submit the job to the worker's queue.
+			if !w.staticJobReadQueue.callAdd(jrs) {
+				return time.Duration{}, false, true
+			}
+			queuedPieces[bestIndex] = true
+
+			// TODO: Some overdrive trigger timing here. Basically, record the
+			// longest / highest amount of time that any job is expected to come
+			// back, and pass that on to the overdrive watcher.
+			if w.Latency(jrs) > slowestWorker {
+				slowestWorker = w.Latency(jrs)
+			}
+			return w.Latency(jrs), true, true
+		}
+
+		// waitForWorker will wait until there is another worker that a download
+		// can be attempted from. The function will return false if all workers
+		// that could potentially perform the download fail.
+		//
+		// TODO: This function isn't currently coded to wait for the best idle
+		// worker, it only waits for any idle worker.
+		//
+		// TODO: Technically should be able to hit an error condition earlier
+		// here, we aren't checking whether the number of workers remaining is
+		// fewer than the number of pieces we are missing.
+		waitForWorker := func(attemptedWorkers map[string]struct{}, queuedPieces []bool) error {
+			pdws.mu.Lock()
+			defer pdws.mu.Unlock()
+
+			// Loop through the available pieces to find the best worker that is
+			// not currently in use.
+			bestUnusedScore := 0
+			for i, workers := range pdws.availablePieces {
+				// Skip any pieces that have queued workers.
+				if queuedPieces[i] {
+					continue
+				}
+
+				// Find the best unused worker.
+				for _, worker := range workers {
+					_, exists := attemptedWorkers[worker.staticHostPubKeyStr]
+					if exists {
+						continue
+					}
+					score := worker.Score()
+					if score > bestUnusedScore {
+						bestUnusedScore = score
+					}
+				}
+			}
+
+			// Base case: if there are no unresolved workers, and no unused
+			// workers that are resovled, return an error.
+			if len(pdws.unresolvedWorkers) == 0 && bestUnusedScore == 0 {
+				return errors.New("no viable workers remain")
+			}
+
+			// Loop through the unresolved workers to determine whether there is
+			// an unresovled worker that is potentially better than the current
+			// best resolved worker.
+			var c chan struct{}
+			for _, uw := range pdws.unresolvedWorkers {
+				score, _ := uw.score()
+				if score > bestUnusedScore {
+					c = pdws.registerForWorkerUpdate()
+					break
+				}
+			}
+			// Check that there is a worker worth waiting for.
+			if c == nil && bestUnusedScore == 0 {
+				return errors.New("no good score viable workers remain")
+			}
+			// If 'c' is nil and also the best unused score is not zero, that
+			// means the best worker is an unused worker, therefore we have
+			// waiting for a worker sufficiently long.
+			if c == nil {
+				return nil
+			}
+
+			// TODO: Soft sleep this.
+			<-c
+			// TODO: Make this iterative, not recursive.
+			return waitForWorker(attemptedWorekrs, queuedPieces)
+		}
+
+		// Launch all of the download jobs.
+		var slowestWorker time.Duration
+		for x := 0; x < ec.MinPieces(); x++ {
+			latency, workerLaunched, noWorkersAvailable := launchWorker(attemptedWorkers, queuedPieces)
+			if noWorkersAvailable {
+				// TODO: Logic to handle the edge case where there are no more
+				// workers available.
+				//
+				// Likely that's going to mean checking the pdws for whether
+				// there are more workers that haven't returned if they have the
+				// sector or not. If there are, that's going to mean waiting
+				// until there is a wakeup call from the pdws.
+				err := waitForWorker(attemptedWorkers, queuedPieces)
+				if err != nil {
+					// TODO: May need to cancel some contexts here.
+					return nil, errors.AddContext(err, "no backup workers available")
+				}
+
+				// Decrement the loop so we keep trying new workers.
+				x--
+				continue
+			}
+			if !workerLaunched {
+				// Decrement the loop so we keep trying new workers.
+				//
+				// TODO: really the helper function should just automatically
+				// keep launching workers.
+				x--
+				continue
+			}
+
+			// Update the tracking of the slowest worker if necessary.
+			if latency > slowestWorker {
+				slowestWorker = latency
+			}
+		}
+
+		// TODO: Step 2: Set up the logic to determine whether overdrive is
+		// necessary. Provide a channel that times out when the overdrive logic
+		// should be run again. The overdrive logic will launch new download
+		// jobs if necessary to ensure that the download completes quickly.
+		//
+		// Overdrive logic will also need to consider whether any download has
+		// failed, a failed download immediately merits both launching another
+		// worker and also delaying the next overdrive piece to kick off.
+
+		// overdriveTimeout will return a channel that times out when the
+		// overdrive code believes that a new worker should be added to the
+		// download to ensure that everything completes in time.
+		//
+		// TODO: This leaks, we should probably switch to some schema that does
+		// not leak.
+		overdriveTimeout := func(latestLaunchLatency time.Duration, overdriveCalls uint64) chan<- time.Time {
+			// Wait a bit longer than the longest expected amount of time.
+			overdriveTime := latestLaunchLatency * 4 / 3
+			// Wait a bit longer if there have been a couple of calls to
+			// overdrive, this suggests things have been slowing down.
+			for overdriveCalls > 2 {
+				overdriveCalls--
+				overdriveTime *= 3
+				overdriveTime /= 2
+			}
+			return time.After(overdriveTime)
+		}
+
+		// integrateResponse takes a download response from a worker and
+		// integrates it into the project, launching a new worker if necessary.
+		// If an error is returned, it means the project has failed and the
+		// download will not be successful. If the bool returned is true, it
+		// means the project has succeeded.
+		integrateResponse := func(resp *jobReadResponse) (bool, error) {
+			// Check if the download failed.
+			if resp == nil || resp.staticErr != nil {
+				// TODO: Find the piece index of the root we attempted to
+				// download and then un-queue that piece.
+
+				// TODO: You really didn't finish this code block at all. But I
+				// think it is only two steps: 1. dequeue piece, 2. launch a new
+				// worker.
+
+				// TODO: Break this into separate logic - we need to do the same
+				// loop as is inside the launcher, execpt we are only throwing
+				// one out instead of ec.MinPieces(). That should DRY things up
+				// a bit as well.
+				latency, workerLaunched, noWorkersAvailable := launchWorker(attemptedWorkers, queuedPieces)
+				if noWorkersAvailable {
+					err := waitForWorker(attemptedWorkers, queuedPieces)
+					if err != nil {
+						return nil, errors.AddContext(err, "no overdrive backup workers available")
+					}
+				}
+				if !workerLaunched {
+					// TODO: Loop to keep launching... or really, the helper
+					// function should loop to keep launching.
+				}
+			}
+
+			// TODO: We have a piece. Do the EC, and then return success if the
+			// download is done.
+		}
+
+		overdriveCalls := 0
+		launchNewWorker := overdriveTimeout(slowsetWorker, 0)
+		select {
+		case <-launchNewWorker:
+			// TODO: Run the launch n workers function with n=1
+		case resp := <-downloadResponseChan:
+			terminated := integrateResponse(resp)
+			if terminated {
+				return
+			}
+		case <-ctx.Done():
+			sendDownloadFailed()
+			return
+		}
+
+	}()
+	return dr, nil
 }
 
 // managedResolveAllWorkers will delete any unresolved workers. Typically this
 // is called due to a timeout, and the assumption is that any unresolved workers
 // will continue to be unresolved.
+//
+// TODO: I'm not 100% sure at the moment what the idea was behind this
+// function... right now it's only used in places where it doesn't seem to
+// matter.
 func (pdws *projectDownloadWorkerSet) managedResolveAllWorkers() {
 	pdws.mu.Lock()
 	defer pdws.mu.Unlock()
@@ -402,7 +629,7 @@ func (pdws *projectDownloadWorkerSet) managedResolveAllWorkers() {
 // update the pdws as the responses come in.
 //
 // This thread should be the only one with access to the responseChan.
-func (pdws *projectDownloadWorkerSet) threadedProcessResponses(ctx context.Context, responseChan <-chan *jobHasSectorResponse) {
+func (pdws *projectDownloadWorkerSet) threadedProcessResponses(ctx context.Context, cancelCtx context.CancelFunc, responseChan <-chan *jobHasSectorResponse) {
 	// Upon exit, clean up the rest of the unresolved workers.
 	defer pdws.managedResolveAllWorkers()
 
@@ -413,6 +640,7 @@ func (pdws *projectDownloadWorkerSet) threadedProcessResponses(ctx context.Conte
 		pdws.mu.Unlock()
 		return rr
 	}
+	piecesFound := uint8(0)
 	for responsesRemaining() > 0 {
 		// Block until there is a worker response.
 		var resp *jobHasSectorResponse
@@ -432,19 +660,31 @@ func (pdws *projectDownloadWorkerSet) threadedProcessResponses(ctx context.Conte
 		// supports.
 		w := resp.staticWorker
 		pdws.mu.Lock()
-		delete(pdws.unresolvedWorkers,w.staticHostPubKeyStr)
+		delete(pdws.unresolvedWorkers, w.staticHostPubKeyStr)
 		if resp.staticErr == nil {
 			// Loop through the set of sectors that the worker is claiming, and add
 			// that worker to the piece list for any piece that the worker can
 			// contribute to.
 			for i, available := range resp.staticAvailables {
 				if available {
+					if len(pdws.availablePieces) == 0 {
+						piecesFound++
+					}
 					pdws.availablePieces[i] = append(pdws.availablePieces[i], w)
 				}
 			}
 		}
 		pdws.closeUpdateChans()
+		// Check whether this download has failed and can be aborted.
+		exit := false
+		if len(pdws.unresolvedWorkers)+piecesFound < pdws.staticErasureCoder.MinPieces() {
+			exit = true
+		}
 		pdws.mu.Unlock()
+		if exit {
+			cancelCtx()
+			return
+		}
 	}
 }
 
@@ -452,6 +692,18 @@ func (pdws *projectDownloadWorkerSet) threadedProcessResponses(ctx context.Conte
 // roots assocaited with a chunk. Some extra information about the chunk is
 // required, such as the erasure coding information and the decryption
 // information.
+//
+// This will cause a large number of 'hasSector' jobs to be initiated in the
+// background, detemrining which workers are able to serve a piece of the chunk
+// for this PDWS. The 'download' method can be used to download pieces of the
+// chunk, and will intelligently select the best workers for the job.
+//
+// 'download' can be called many times on the same PDWS, and each successful
+// call will be more efficient and faster because more will be known about which
+// workers should be used to fetch the data. A suggested optimization for larger
+// files is to immediately create a PDWS for all chunks when a stream is opened
+// on that file, because doing so is relatively cheap and also will
+// substantially reduce the seek time of that file.
 //
 // The pdws will stop checking for repsonses from the workers once the context
 // expires.
@@ -462,9 +714,14 @@ func (r *Renter) newPDWSByRoots(ctx context.Context, roots []crypto.Hash, ec mod
 		return nil, fmt.Errorf("%v roots provided, but erasure coder specifies %v pieces", len(roots), ec.NumPieces())
 	}
 
+	// Create a sub-context that we can cancel in the event that the job launch
+	// fails.
+	pdwsCtx, pdwsCancel := context.WithCancel(ctx)
+
 	// Create the worker set.
 	pdws := &projectDownloadWorkerSet{
 		availablePieces:   make([][]*worker, ec.NumPieces()),
+		pieceRoots:        roots,
 		unresolvedWorkers: make(map[string]*projectDownloadUnresolvedWorker),
 
 		staticChunkIndex:   chunkIndex,
@@ -482,6 +739,8 @@ func (r *Renter) newPDWSByRoots(ctx context.Context, roots []crypto.Hash, ec mod
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
 		// Check for gouging.
+		//
+		// TODO: May want to use a different gouging function.
 		cache := w.staticCache()
 		pt := w.staticPriceTable().staticPriceTable
 		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
@@ -494,7 +753,7 @@ func (r *Renter) newPDWSByRoots(ctx context.Context, roots []crypto.Hash, ec mod
 		jhs := &jobHasSector{
 			staticSectors:      roots,
 			staticResponseChan: responseChan,
-			jobGeneric:         newJobGeneric(w.staticJobHasSectorQueue, r.tg.StopCtx().Done()),
+			jobGeneric:         newJobGeneric(w.staticJobHasSectorQueue, pdwsCtx.Done()),
 		}
 		if !w.staticJobHasSectorQueue.callAdd(jhs) {
 			continue
@@ -506,8 +765,8 @@ func (r *Renter) newPDWSByRoots(ctx context.Context, roots []crypto.Hash, ec mod
 
 			staticStartTime: time.Now(),
 
-			// TODO: Fill out the other fields, not sure they are exposed at the
-			// moment.
+			// TODO: Fill out the other fields that will help us with
+			// performance data or whatever.
 		}
 		// Add the unresolved worker to the set of unresolved workers.
 		pdws.unresolvedWorkers[w.staticHostPubKeyStr] = pduw
@@ -515,11 +774,14 @@ func (r *Renter) newPDWSByRoots(ctx context.Context, roots []crypto.Hash, ec mod
 	// Processing check - make sure that there are enough workers to complete
 	// the job.
 	if len(pdws.unresolvedWorkers) < ec.MinPieces() {
+		// Cancel the context so that the workers stop trying to perform
+		// HasSector tasks.
+		pdwsCancel()
 		return nil, errors.New("not enough workers available to kick off a piece lookup")
 	}
 
 	// Launch the background thread to update the pdws as workers complete.
-	go pdws.threadedProcessResponses(ctx, responseChan)
+	go pdws.threadedProcessResponses(pdwsCtx, pdwsCancel, responseChan)
 
 	// Return the worker set.
 	return pdws, nil
