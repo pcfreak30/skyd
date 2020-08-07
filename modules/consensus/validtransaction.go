@@ -317,7 +317,7 @@ func validTransaction(tx *bolt.Tx, t types.Transaction) error {
 // set in the current consensus set. The size of the transactions and the set
 // is not checked. After the transactions have been validated, a consensus
 // change is returned detailing the diffs that the transactions set would have.
-func (cs *ConsensusSet) tryTransactionSet(txns []types.Transaction) (modules.ConsensusChange, error) {
+func (cs *ConsensusSet) managedTryTransactionSet(txns []types.Transaction) (modules.ConsensusChange, error) {
 	// applyTransaction will apply the diffs from a transaction and store them
 	// in a block node. diffHolder is the blockNode that tracks the temporary
 	// changes. At the end of the function, all changes that were made to the
@@ -330,7 +330,7 @@ func (cs *ConsensusSet) tryTransactionSet(txns []types.Transaction) (modules.Con
 	// manually manage the tx instead of using 'Update', but that has safety
 	// concerns and is more difficult to implement correctly.
 	errSuccess := errors.New("success")
-	err := cs.db.Update(func(tx *bolt.Tx) error {
+	err := cs.db.Batch(func(tx *bolt.Tx) error {
 		diffHolder.Height = blockHeight(tx)
 		for _, txn := range txns {
 			err := validTransaction(tx, txn)
@@ -365,9 +365,7 @@ func (cs *ConsensusSet) TryTransactionSet(txns []types.Transaction) (modules.Con
 		return modules.ConsensusChange{}, err
 	}
 	defer cs.tg.Done()
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-	return cs.tryTransactionSet(txns)
+	return cs.managedTryTransactionSet(txns)
 }
 
 // LockedTryTransactionSet calls fn while under read-lock, passing it a
@@ -379,7 +377,5 @@ func (cs *ConsensusSet) LockedTryTransactionSet(fn func(func(txns []types.Transa
 		return err
 	}
 	defer cs.tg.Done()
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-	return fn(cs.tryTransactionSet)
+	return fn(cs.managedTryTransactionSet)
 }
