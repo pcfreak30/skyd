@@ -26,21 +26,6 @@ var (
 	sectorLookupToDownloadRatio = 16
 )
 
-// projectDownload coordinates a single download using the
-// projectDownloadWorkerSet. The projectDownload will do a single fetch of
-// contiguous data from a chunk. The pdWorkerSet can be reused across multiple
-// downloads over a long period of time.
-type projectDownload struct {
-	// The worker set tracks which workers are capable of participating in a
-	// download.
-	pdws *projectDownloadWorkerSet
-
-	// The actual chunks being fetched.
-
-	// The channel that is used to set the download result.
-	resultChan *projectDownloadResult
-}
-
 // projectDownloadResult contains the result of a download operation.
 type projectDownloadResult struct {
 	data []byte
@@ -164,7 +149,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 
 		// check for price gouging
 		pt := worker.staticPriceTable().staticPriceTable
-		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
+		err := checkPDBRGouging(pt, cache.staticRenterAllowance, 1)
 		if err != nil {
 			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
@@ -394,7 +379,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 // checkPDBRGouging verifies the cost of executing the jobs performed by the
 // PDBR are reasonable in relation to the user's allowance and the amount of
 // data they intend to download
-func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
+func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance, numRoots int) error {
 	// Check whether the download bandwidth price is too high.
 	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
 		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
@@ -424,7 +409,7 @@ func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) err
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	programCost, _, _ := pb.Cost(true)
 
-	ulbw, dlbw := hasSectorJobExpectedBandwidth()
+	ulbw, dlbw := hasSectorJobExpectedBandwidth(1)
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
 	costHasSectorJob := programCost.Add(bandwidthCost)
 

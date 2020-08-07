@@ -1,27 +1,16 @@
 package renter
 
-// TODO: Make a pdws that can be initialized with siafile chunk data. Basically
-// the same thing, except instead of filling out the pieces using HasSector
-// calls, we get to fill out the pieces immediately using information we have in
-// advance.
-
-// TODO: The async stuff should be more aggressive about launching jobs, I think
-// concerns of overloading one host too heavily are overblown. Probably also
-// contributing to certain issues.
-
 // TODO: Need to write a test for grabbing a PDWS, and then checking that it
 // actually queries all of the workers correctly.
 
-// TODO: Should we set up some sort of retry mechanism for workers that fail
-// their HasSector tasks? It's possible that whatever the error was is a
-// temporary netowrk error.
-
 // TODO: I'm not sure throughout this function whether higher score is better or
 // higher score is worse, I think that I have been inconsistent.
+//
+// Switching to higher score being better.
 
 // TODO: The score function on the worker is going to need to take as an
 // argument a timestamp indicating how long we have been waiting for the worker
-// to return.
+// to return on the HasSector operation.
 
 // TODO: Uncertain: how do we prevent one worker from getting a huge backlog and
 // consuming a ton of memory? At some point do we just declare that the worker
@@ -42,19 +31,19 @@ package renter
 
 import (
 	"context"
-	"fmt"
+	// "fmt"
 	"sync"
-	"time"
+	// "time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	// "gitlab.com/NebulousLabs/Sia/crypto"
+	// "gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// projectDownloadChunk helps to coordinate downloading a portion of data within
-// a chunk. projectDownloadChunk needs to be connected to a
-// projectDownloadWorkerSet.
+// projectDownloadChunk connects to a projectChunkWorkerSet and downloads a
+// subset of the chunk from that pcws. A projectDownloadChunk can only be used
+// once.
 type projectDownloadChunk struct {
 	staticFetchOffset uint64
 	staticFetchLegnth uint64
@@ -66,37 +55,9 @@ type projectDownloadChunk struct {
 
 	// The completed data gets sent down the response chan once the full
 	// download is done.
+	mu                 sync.Mutex
 	staticResponseChan chan []byte
-	staticWorkerSet    *projectDownloadWorkerSet
-
-	mu sync.Mutex
-}
-
-// projectDownloadUnresolvedWorker pairs a worker with a timestamp to indicate
-// the moment that HasSector is expected to return. If that time is in the past,
-// the worker is overdue and should get a result any moment, but may also be in
-// an error state and therefore may not get a result for a while.
-type projectDownloadUnresolvedWorker struct {
-	// The worker that is performing the HasSector job.
-	staticWorker *worker
-
-	// The time that the HasSector job started.
-	staticStartTime time.Time
-
-	// The amount of bandwidth in the upload queue and download queue when the
-	// HasSector request was added to the queue.
-	staticStartDLQueue uint64
-	staticStartULQueue uint64
-
-	// The slowest measured upload and download speed of the worker throughout
-	// the lifetime of the HasSector request. This is updated to recalibrate
-	// expectations for how long the job is expected to take. These values are
-	// compared against the start time, the queue sizes, and the measured
-	// inherent latency of the worker to get an expected finish time, which can
-	// then be compared to the current time to understand when the worker should
-	// be returning.
-	slowestDLSpeed uint64
-	slowestULSpeed uint64
+	staticWorkerSet    *projectChunkWorkerSet
 }
 
 // downloadResponse is the reponse returned in the download channel returned by
@@ -106,69 +67,56 @@ type downloadResponse struct {
 	err  error
 }
 
-// download will download a range from a chunk. This call is asynchronous. It
-// will return as soon as the sector download requests have been sent to the
-// workers. This means that it will block until enough workers have reported
-// back with HasSector results.
+// reaplceWorseScore is function that takes an array of scores and a new score.
+// If the new score is higher than the lowest score in the array, the lowest
+// score will be replaced by the new score.
 //
-// The reason for doing this is to facilitate streaming. If multiple downloads
-// for a stream are being queued at once, we want to enforce that the ealier
-// parts of the stream are being downloaded faster than the later parts of the
-// stream. This also allows us to return an error without queing any downloads
-// if we learn that not enough workers have the desired sector to complete the
-// download.
-//
-// TODO: Add score hinting as one of the input parameters. Maybe for now it'll
-// just be a difference of priority vs. non-priority. Score hinting meaning
-// favor cheaper hosts or lower latency hosts, etc.
-//
-// TODO: Change this function so that a buffer can be passed in to receive the
-// download result.
-//
-// TODO: Need to pass in a context of some sort?
-func (pdws *projectDownloadWorkerSet) managedDownload(offset, length uint64) (chan *downloadResponse, error) {
-	// replaceWorstScore will do an in-place modification of the provided scores
-	// to replace the worst score with the new score. Lower is better, but zero
-	// is blank / worst.
-	//
-	// NOTE: This is an n^2 algorithm that could easily be a heap. Because n is
-	// typically small, we're just going to do things the easy way. If this code
-	// shows up as hot on a profile, it can be re-written as a heap.
-	replaceWorstScore := func(scores []uint64, newScore uint64) {
-		// Handle the edge case of a low new score.
-		if newScore == 0 {
-			newScore = 1
-		}
-		// Edge case: if there are no scores, nothing to replace.
-		if len(scores) == 0 {
+// NOTE: If we made 'scores' a heap, this operation would happen in log time
+// instead of linear time. May be worth investigating if this ends up taking a
+// significant amount of computational time in practice.
+func replaceWorseScore(scores []uint64, newScore uint64) {
+	// Handle the edge case of a low new score.
+	if newScore == 0 {
+		newScore = 1
+	}
+	// Edge case: if there are no scores, nothing to replace.
+	if len(scores) == 0 {
+		return
+	}
+
+	// Locate the worst score in the array.
+	worst := scores[0]
+	worsti := 0
+	for i, score := range scores {
+		// Exit early, this element hasn't been initialized.
+		if score == 0 {
+			scores[i] = newScore
 			return
 		}
 
-		// Locate the worst score in the array.
-		worst := scores[0]
-		worsti := 0
-		for i, score := range scores {
-			// Exit early, this element hasn't been initialized.
-			if score == 0 {
-				scores[i] = newScore
-				return
-			}
-
-			// If this is worse than the current worst, update the current
-			// worst.
-			if score > worst {
-				worst = score
-				worsti = i
-			}
-		}
-
-		// Replace the worst score with the new score, only if the new score is
-		// better.
-		if worst > newScore {
-			scores[worsti] = newScore
+		// If this is worse than the current worst, update the current worst.
+		if score > worst {
+			worst = score
+			worsti = i
 		}
 	}
 
+	// Replace the worst score with the new score if the new score is better.
+	if worst > newScore {
+		scores[worsti] = newScore
+	}
+}
+
+// download will download a range from a chunk. This call is asynchronous. It
+// will return as soon as the sector download requests have been sent to the
+// workers. This means that it will block until enough workers have reported
+// back with HasSector results that the optimal download request can be made.
+//
+// TODO: Add score hinting as one of the input parameters. Generally this will
+// be some tradeoff between latency and cost. I'm not sure if there is a third
+// dimension that matters actually.
+func (pdws *projectChunkWorkerSet) managedDownload(ctx context.Context, offset, length uint64) (chan *downloadResponse, error) {
+/*
 	// waitForWorkers will run a set of logic to see if the ideal set of workers
 	// has been found.
 	//
@@ -606,84 +554,6 @@ func (pdws *projectDownloadWorkerSet) managedDownload(offset, length uint64) (ch
 
 	}()
 	return dr, nil
-}
-
-// managedResolveAllWorkers will delete any unresolved workers. Typically this
-// is called due to a timeout, and the assumption is that any unresolved workers
-// will continue to be unresolved.
-//
-// TODO: I'm not 100% sure at the moment what the idea was behind this
-// function... right now it's only used in places where it doesn't seem to
-// matter.
-func (pdws *projectDownloadWorkerSet) managedResolveAllWorkers() {
-	pdws.mu.Lock()
-	defer pdws.mu.Unlock()
-
-	// Wipe out the set of unresolved workers, we are assuming at this point
-	// that they will not resolve.
-	pdws.unresolvedWorkers = make(map[string]*projectDownloadUnresolvedWorker)
-	pdws.closeUpdateChans()
-}
-
-// threadedProcessResponses will wait for worker responses to come back, and
-// update the pdws as the responses come in.
-//
-// This thread should be the only one with access to the responseChan.
-func (pdws *projectDownloadWorkerSet) threadedProcessResponses(ctx context.Context, cancelCtx context.CancelFunc, responseChan <-chan *jobHasSectorResponse) {
-	// Upon exit, clean up the rest of the unresolved workers.
-	defer pdws.managedResolveAllWorkers()
-
-	// Helper function to make the loop exit condition more clear.
-	responsesRemaining := func() int {
-		pdws.mu.Lock()
-		rr := len(pdws.unresolvedWorkers)
-		pdws.mu.Unlock()
-		return rr
-	}
-	piecesFound := uint8(0)
-	for responsesRemaining() > 0 {
-		// Block until there is a worker response.
-		var resp *jobHasSectorResponse
-		select {
-		case resp = <-responseChan:
-		case <-ctx.Done():
-			return
-		}
-		// Sanity check - should not be getting nil responses from the workers.
-		if resp == nil {
-			pdws.staticRenter.log.Critical("nil response received")
-			return
-		}
-
-		// Delete the worker from the set of unresolved workers. If the response
-		// is not an error response, add the worker to any pieces that it
-		// supports.
-		w := resp.staticWorker
-		pdws.mu.Lock()
-		delete(pdws.unresolvedWorkers, w.staticHostPubKeyStr)
-		if resp.staticErr == nil {
-			// Loop through the set of sectors that the worker is claiming, and add
-			// that worker to the piece list for any piece that the worker can
-			// contribute to.
-			for i, available := range resp.staticAvailables {
-				if available {
-					if len(pdws.availablePieces) == 0 {
-						piecesFound++
-					}
-					pdws.availablePieces[i] = append(pdws.availablePieces[i], w)
-				}
-			}
-		}
-		pdws.closeUpdateChans()
-		// Check whether this download has failed and can be aborted.
-		exit := false
-		if len(pdws.unresolvedWorkers)+piecesFound < pdws.staticErasureCoder.MinPieces() {
-			exit = true
-		}
-		pdws.mu.Unlock()
-		if exit {
-			cancelCtx()
-			return
-		}
-	}
+*/
+	return nil, errors.New("not implemented")
 }

@@ -23,7 +23,7 @@ func TestPDBRGouging(t *testing.T) {
 
 	// verify happy case
 	pt := newDefaultPriceTable()
-	err := checkPDBRGouging(pt, allowance)
+	err := checkPDBRGouging(pt, allowance, 1)
 	if err != nil {
 		t.Fatal("unexpected price gouging failure", err)
 	}
@@ -31,7 +31,7 @@ func TestPDBRGouging(t *testing.T) {
 	// verify max download bandwidth price gouging
 	pt = newDefaultPriceTable()
 	pt.DownloadBandwidthCost = allowance.MaxDownloadBandwidthPrice.Add64(1)
-	err = checkPDBRGouging(pt, allowance)
+	err = checkPDBRGouging(pt, allowance, 1)
 	if err == nil || !strings.Contains(err.Error(), "download bandwidth price") {
 		t.Fatalf("expected download bandwidth price gouging error, instead error was '%v'", err)
 	}
@@ -39,7 +39,7 @@ func TestPDBRGouging(t *testing.T) {
 	// verify max upload bandwidth price gouging
 	pt = newDefaultPriceTable()
 	pt.UploadBandwidthCost = allowance.MaxUploadBandwidthPrice.Add64(1)
-	err = checkPDBRGouging(pt, allowance)
+	err = checkPDBRGouging(pt, allowance, 1)
 	if err == nil || !strings.Contains(err.Error(), "upload bandwidth price") {
 		t.Fatalf("expected upload bandwidth price gouging error, instead error was '%v'", err)
 	}
@@ -47,7 +47,7 @@ func TestPDBRGouging(t *testing.T) {
 	// update the expected download to be non zero and verify the default prices
 	allowance.ExpectedDownload = 1 << 30 // 1GiB
 	pt = newDefaultPriceTable()
-	err = checkPDBRGouging(pt, allowance)
+	err = checkPDBRGouging(pt, allowance, 1)
 	if err != nil {
 		t.Fatal("unexpected price gouging failure", err)
 	}
@@ -72,14 +72,14 @@ func TestPDBRGouging(t *testing.T) {
 	pt.InitBaseCost = pt.InitBaseCost.Add(pS.Mul64(250))
 	pt.ReadBaseCost = pt.ReadBaseCost.Add(pS.Mul64(250))
 	pt.MemoryTimeCost = pt.MemoryTimeCost.Add(pS.Mul64(250))
-	err = checkPDBRGouging(pt, allowance)
+	err = checkPDBRGouging(pt, allowance, 1)
 	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
 		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
 	}
 
 	// verify these checks are ignored if the funds are 0
 	allowance.Funds = types.ZeroCurrency
-	err = checkPDBRGouging(pt, allowance)
+	err = checkPDBRGouging(pt, allowance, 1)
 	if err != nil {
 		t.Fatal("unexpected price gouging failure", err)
 	}
@@ -90,28 +90,28 @@ func TestPDBRGouging(t *testing.T) {
 	// in a price gouging error
 	pt = newDefaultPriceTable()
 	pt.InitBaseCost = types.SiacoinPrecision.Mul64(100)
-	err = checkPDBRGouging(pt, allowance)
+	err = checkPDBRGouging(pt, allowance, 1)
 	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
 		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
 	}
 
 	pt = newDefaultPriceTable()
 	pt.ReadBaseCost = types.SiacoinPrecision
-	err = checkPDBRGouging(pt, allowance)
+	err = checkPDBRGouging(pt, allowance, 1)
 	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
 		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
 	}
 
 	pt = newDefaultPriceTable()
 	pt.ReadLengthCost = types.SiacoinPrecision
-	err = checkPDBRGouging(pt, allowance)
+	err = checkPDBRGouging(pt, allowance, 1)
 	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
 		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
 	}
 
 	pt = newDefaultPriceTable()
 	pt.MemoryTimeCost = types.SiacoinPrecision
-	err = checkPDBRGouging(pt, allowance)
+	err = checkPDBRGouging(pt, allowance, 1)
 	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
 		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
 	}
