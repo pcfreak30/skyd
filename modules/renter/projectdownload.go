@@ -1,17 +1,5 @@
 package renter
 
-// TODO: Need to write a test for grabbing a PDWS, and then checking that it
-// actually queries all of the workers correctly.
-
-// TODO: I'm not sure throughout this function whether higher score is better or
-// higher score is worse, I think that I have been inconsistent.
-//
-// Switching to higher score being better.
-
-// TODO: The score function on the worker is going to need to take as an
-// argument a timestamp indicating how long we have been waiting for the worker
-// to return on the HasSector operation.
-
 // TODO: Uncertain: how do we prevent one worker from getting a huge backlog and
 // consuming a ton of memory? At some point do we just declare that the worker
 // is overwhlemed and unable to take on more work? Do we have requests block?
@@ -30,7 +18,7 @@ package renter
 // low queue. Then for high priority requests we just slam those right through.
 
 // TODO: Remember to establish the piece parameters / derived parameters when
-// building the download chunk.
+// building the download chunk. This includes init'ing fields like pricePerMS.
 
 import (
 	"context"
@@ -200,13 +188,12 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, chan<- time.Time, ch
 	bestUnresolvedDuration := nullDuration
 	for _, uw := range unresovledWorkers {
 		// Figure how much time is expected to remain until the worker is
-		// avaialble.
-		hsPricePenalty := time.Duration(uw.staticExpectedCompletionCost.Div(pdc.staticPricePerMSPerWorker).Uint64())
+		// avaialble. Note that no price penatly is attached to the HasSector
+		// call, because that call is being made regardless of the cost.
 		hasSectorTime := time.Until(uw.staticExpectedCompletionTime)
 		if hasSectorTime < 0 {
 			hasSectorTime = 0
 		}
-		hasSectorTime += hsPricePenalty
 
 		// Figure out how much time is expected until the worker completes the
 		// download job.
@@ -268,7 +255,6 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, chan<- time.Time, ch
 		for j, pieceDownload := range activePiece {
 			// Consistency check - failed and completed are mutally exclusive,
 			// and neither should be set unless launched is set.
-			if pieceDownload.failed && !pieceDownload.launched {
 			if (!pieceDownload.launched && (pieceDownload.completed || pieceDownload.failed)) || (pieceDownload.failed && pieceDownload.completed) {
 				build.Critical("rph3 download piece is incoherent")
 			}
@@ -436,6 +422,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, chan<- time.Time, ch
 			bestWorkerResolved = true
 		}
 	}
+
+	// TODO: Actually return something.
 }
 
 // waitForWorker will block until a strong worker is available to add to the
