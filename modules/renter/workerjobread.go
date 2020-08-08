@@ -174,7 +174,7 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 	return responses, nil
 }
 
-// callAverageJobTime will return the recent performance of the worker
+// callExpectedJobTime will return the recent performance of the worker
 // attempting to complete read jobs. The call distinguishes based on the
 // size of the job, breaking the jobs into 3 categories: less than 64kb, less
 // than 1mb, and up to a full sector in size.
@@ -182,7 +182,7 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 // The breakout is performed because low latency, low throughput workers are
 // common, and will have very different performance characteristics across the
 // three categories.
-func (jq *jobReadQueue) callAverageJobTime(length uint64) time.Duration {
+func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	if length <= 1<<16 {

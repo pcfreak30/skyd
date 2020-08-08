@@ -200,9 +200,9 @@ func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
 	//
 	// Roughly 150 responses can fit into a single frame. To be conservative, we
 	// use a value of 100.
-	uploadMult := numRoots/30
-	downloadMult := numRoots/150
-	ul = uint64(1500*(1+uploadMult))
-	dl = uint64(1500*(1+downloadMult))
+	uploadMult := numRoots / 30
+	downloadMult := numRoots / 150
+	ul = uint64(1500 * (1 + uploadMult))
+	dl = uint64(1500 * (1 + downloadMult))
 	return
 }
