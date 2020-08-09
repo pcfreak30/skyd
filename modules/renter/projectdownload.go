@@ -157,7 +157,7 @@ type downloadResponse struct {
 // this case, a worker may be returned that overlaps with another worker. From
 // an erasure coding perspective, this is inefficient, but can be useful if
 // there is an expectation that lots of existing workers will fail.
-func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<- struct{}, error) {
+func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, chan<- struct{}, error) {
 	// Helper variables.
 	//
 	// NOTE: pricePerMSPerWorker is actually going to be an over-estimate in
@@ -174,7 +174,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<
 	// from learning the best time. For thread safety, the update channel needs
 	// to be created at the moment that we observe the set of unresovled
 	// workers.
-	var unresolvedWorkers []pcwsUnresolvedWorker
+	var unresolvedWorkers []*pcwsUnresolvedWorker
 	var updateChan chan<- struct{}
 	ws.mu.Lock()
 	for _, uw := range ws.unresolvedWorkers {
@@ -197,7 +197,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<
 	bestUnresolvedDuration := nullDuration
 	bestWorkerLate := true
 	var bestUnresolvedWaitTime time.Duration
-	for _, uw := range unresovledWorkers {
+	for _, uw := range unresolvedWorkers {
 		// Figure how much time is expected to remain until the worker is
 		// avaialble. Note that no price penatly is attached to the HasSector
 		// call, because that call is being made regardless of the cost.
@@ -208,12 +208,12 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<
 
 		// Figure out how much time is expected until the worker completes the
 		// download job.
-		readTime := uw.staticJobReadQueue.callExpectedJobTime(pdc.staticPieceLength)
+		readTime := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.staticPieceLength)
 		if readTime < 0 {
 			readTime = 0
 		}
-		expectedRSCompletionCost := uw.staticJobReadQueue.callExpectedJobCost(pdc.staticPieceLength)
-		rsPricePenalty := time.Duration(expectedRSCompletionCost.Div(pdc.staticPricePerMSPerWorker).Uint64())
+		expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.staticPieceLength)
+		rsPricePenalty := time.Duration(expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64())
 		readTime += rsPricePenalty
 
 		// Compare the total time (including price preference) to the current
@@ -267,8 +267,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<
 	// Save a list of which workers are currently late.
 	lateWorkers := make(map[string]struct{})
 	ws.mu.Lock()
-	piecesCopy := make([][]pieceDownload, len(ws.activePieces))
-	for i, activePiece := range ws.activePieces {
+	piecesCopy := make([][]pieceDownload, len(pdc.activePieces))
+	for i, activePiece := range pdc.activePieces {
 		// Track whether there are new workers available for this piece.
 		unlaunchedWorkerAvailable := false
 		// Track whether any of the workers have launched a job and have not yet
@@ -285,7 +285,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<
 			// Consistency check - failed and completed are mutally exclusive,
 			// and neither should be set unless launched is set.
 			if (!pieceDownload.launched && (pieceDownload.completed || pieceDownload.failed)) || (pieceDownload.failed && pieceDownload.completed) {
-				build.Critical("rph3 download piece is incoherent")
+				ws.staticRenter.log.Critical("rph3 download piece is incoherent")
 			}
 			piecesCopy[i][j] = pieceDownload
 
@@ -337,14 +337,14 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<
 	// Check whether it is still possible for the download to complete.
 	potentialPieces := piecesAvailableToLaunch + len(unresolvedWorkers)
 	if potentialPieces < pdc.staticWorkerSet.staticErasureCoder.MinPieces() {
-		return nil, nil, nil, errors.New("rph3 chunk download has failed because there are not enough potential workers")
+		return nil, 0, 0, nil, errors.New("rph3 chunk download has failed because there are not enough potential workers")
 	}
 	// Check whether it is possible for new workers to be launched.
 	if !unlaunchedWorkersAvailable && len(unresolvedWorkers) == 0 {
 		// All 'nil' return values, meaning the download can succeed by waiting
 		// for already launched workers to return, but cannot succeed by
 		// launching new workers because no new workers are available.
-		return nil, nil, nil, nil
+		return nil, 0, 0, nil, nil
 	}
 
 	// We know from the previous check that at least one of the unresolved
@@ -418,8 +418,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<
 		for i, pieceDownload := range activePiece {
 			// Skip any workers that are late if the best known rank is not
 			// late.
-			_, exists := lateWorkers[pieceDownload.worker.staticHostPubKeyStr]
-			if bestKnownRank < workerRankLate && exists {
+			_, isLate := lateWorkers[pieceDownload.staticWorker.staticHostPubKeyStr]
+			if bestKnownRank < workerRankLate && isLate {
 				continue
 			}
 			// Skip this worker if it is not good enough.
@@ -429,24 +429,24 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<
 				readTime = 0
 			}
 			expectedRSCompletionCost := w.staticJobReadQueue.callExpectedJobCost(pdc.staticPieceLength)
-			rsPricePenalty := time.Duration(expectedRSCompletionCost.Div(pdc.staticPricePerMSPerWorker).Uint64())
+			rsPricePenalty := time.Duration(expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64())
 			readTime += rsPricePenalty
 			if bestKnownDuration < readTime {
 				continue
 			}
 
 			// This worker is good enough, determine the new rank.
-			if exists {
+			if isLate {
 				bestKnownRank = workerRankLate
-			} else if pieceDownload.active {
+			} else if pieceActive {
 				bestKnownRank = workerRankActivePiece
-			} else if pieceDownload.launched {
+			} else if pieceLaunched {
 				bestKnownRank = workerRankLaunchedPiece
 			} else {
 				bestKnownRank = workerRankUnlaunchedPiece
 			}
 			bestKnownDuration = readTime
-			bestResolvedWorker = pieceDownload.worker
+			bestResolvedWorker = pieceDownload.staticWorker
 			bestPieceIndex = i
 			bestWorkerResolved = true
 		}
@@ -456,12 +456,17 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<
 	// when we should give up waiting for the worker, as well as a channel that
 	// indicates when there are new workers that have returned.
 	if !bestWorkerResolved {
-		pcws.mu.Lock()
-		c := pcws.registerForWorkerUpdate()
-		pcws.mu.Unlock()
-		return nil, bestUnresolvedWaitTime, c, nil
+		ws.mu.Lock()
+		c := ws.registerForWorkerUpdate()
+		ws.mu.Unlock()
+		return nil, 0, bestUnresolvedWaitTime, c, nil
 	}
+
 	// Best worker is resolved.
+	if bestResolvedWorker == nil {
+		ws.staticRenter.log.Critical("there is no best resolved worker and also no best unresolved worker")
+	}
+	return bestResolvedWorker, bestPieceIndex, 0, nil, nil
 }
 
 // waitForWorker will block until a strong worker is available to add to the
