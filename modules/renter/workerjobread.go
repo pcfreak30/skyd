@@ -128,12 +128,9 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 
 // callExpectedBandwidth returns the bandwidth that gets consumed by a
 // Read program.
-//
-// TODO: These values are overly conservative, once we've got the protocol more
-// optimized we can bring these down.
 func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
-	ul = 1 << 15                                      // 32 KiB
-	dl = uint64(float64(j.staticLength)*1.01) + 1<<14 // (readSize * 1.01 + 16 KiB)
+	ul = 1 << 12                                      // 4 KiB
+	dl = uint64(float64(j.staticLength)*1.01) + 1<<12 // (readSize * 1.01 + 4 KiB)
 	return
 }
 
@@ -192,6 +189,14 @@ func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 	} else {
 		return time.Duration(jq.weightedJobTime4m / jq.weightedJobsCompleted4m)
 	}
+}
+
+// callExpectedJobCost returns an estimate for the price of performing a read
+// job with the given length.
+//
+// TODO: I am not sure the best way to estmiate a job cost.
+func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
+	return types.SiacoinPrecision
 }
 
 // initJobReadQueue will initialize a queue for downloading sectors by

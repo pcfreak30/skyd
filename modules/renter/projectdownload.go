@@ -26,6 +26,8 @@ package renter
 // for example a 30% reliable worker is just not waiting for at all. We can do
 // this after we ship the first draft of everything.
 
+// TODO: Need have price per ms per worker set somewhere by the user.
+
 import (
 	"context"
 	// "fmt"
@@ -175,15 +177,9 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 	// to be created at the moment that we observe the set of unresovled
 	// workers.
 	var unresolvedWorkers []*pcwsUnresolvedWorker
-	var updateChan chan<- struct{}
 	ws.mu.Lock()
 	for _, uw := range ws.unresolvedWorkers {
 		unresolvedWorkers = append(unresolvedWorkers, uw)
-	}
-	if len(ws.unresolvedWorkers) > 0 {
-		// Not allowed to grab the update chan if there are no unresolved
-		// workers.
-		updateChan = ws.registerForWorkerUpdate()
 	}
 	ws.mu.Unlock()
 
@@ -212,9 +208,17 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 		if readTime < 0 {
 			readTime = 0
 		}
+		// Add a penalty to performance based on the cost of the job. Need to be
+		// careful with the underflow cases.
 		expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.staticPieceLength)
-		rsPricePenalty := time.Duration(expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64())
-		readTime += rsPricePenalty
+		rsPricePenalty, err := expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64()
+		if err != nil || rsPricePenalty > math.MaxInt64 {
+			readTime = time.Duration(math.MaxInt64)
+		} else if reduced := math.MaxInt64-int64(rsPricePenalty); int64(readTime) > reduced {
+			readTime = time.Duration(math.MaxInt64)
+		} else {
+			readTime += time.Duration(rsPricePenalty)
+		}
 
 		// Compare the total time (including price preference) to the current
 		// best time. Workers that are not late get preference over workers that
@@ -429,8 +433,14 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 				readTime = 0
 			}
 			expectedRSCompletionCost := w.staticJobReadQueue.callExpectedJobCost(pdc.staticPieceLength)
-			rsPricePenalty := time.Duration(expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64())
-			readTime += rsPricePenalty
+			rsPricePenalty, err := expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64()
+			if err != nil || rsPricePenalty > math.MaxInt64 {
+				readTime = time.Duration(math.MaxInt64)
+			} else if reduced := math.MaxInt64-int64(rsPricePenalty); int64(readTime) > reduced {
+				readTime = time.Duration(math.MaxInt64)
+			} else {
+				readTime += time.Duration(rsPricePenalty)
+			}
 			if bestKnownDuration < readTime {
 				continue
 			}
@@ -459,7 +469,11 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 		ws.mu.Lock()
 		c := ws.registerForWorkerUpdate()
 		ws.mu.Unlock()
-		return nil, 0, bestUnresolvedWaitTime, c, nil
+		checkAgainTime := bestUnresolvedWaitTime
+		if bestWorkerLate {
+			checkAgainTime = 0
+		}
+		return nil, 0, checkAgainTime, c, nil
 	}
 
 	// Best worker is resolved.
