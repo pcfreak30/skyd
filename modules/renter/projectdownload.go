@@ -20,6 +20,12 @@ package renter
 // TODO: Remember to establish the piece parameters / derived parameters when
 // building the download chunk. This includes init'ing fields like pricePerMS.
 
+// TODO: We should probably bake in a reliability penalty. Workers that
+// sometimes fail should get some automatic milliseconds tagged to them because
+// they will sometimes cause downloads to be late. Perhaps a super-linear curve,
+// for example a 30% reliable worker is just not waiting for at all. We can do
+// this after we ship the first draft of everything.
+
 import (
 	"context"
 	// "fmt"
@@ -151,7 +157,7 @@ type downloadResponse struct {
 // this case, a worker may be returned that overlaps with another worker. From
 // an erasure coding perspective, this is inefficient, but can be useful if
 // there is an expectation that lots of existing workers will fail.
-func (pdc *projectDownloadChunk) findBestWorker() (*worker, chan<- time.Time, chan<- struct{}, error) {
+func (pdc *projectDownloadChunk) findBestWorker() (*worker, time.Duration, chan<- struct{}, error) {
 	// Helper variables.
 	//
 	// NOTE: pricePerMSPerWorker is actually going to be an over-estimate in
@@ -184,8 +190,13 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, chan<- time.Time, ch
 	// Find the best duration of any unresolved worker. This will be compared to
 	// the best duration of any resolved worker which could be put to work on a
 	// piece.
+	//
+	// bestUnresolvedWaitTime is the amount of time that the renter should wait
+	// to expect to hear back from the worker.
 	nullDuration := time.Duration(math.MaxInt64)
 	bestUnresolvedDuration := nullDuration
+	bestWorkerLate := true
+	var bestUnresolvedWaitTime time.Duration
 	for _, uw := range unresovledWorkers {
 		// Figure how much time is expected to remain until the worker is
 		// avaialble. Note that no price penatly is attached to the HasSector
@@ -206,12 +217,30 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, chan<- time.Time, ch
 		readTime += rsPricePenalty
 
 		// Compare the total time (including price preference) to the current
-		// best time.
+		// best time. Workers that are not late get preference over workers that
+		// are late.
 		adjustedTotalDuration := hasSectorTime + readTime
-		if adjustedTotalDuration < bestUnresolvedDuration {
+		betterLateStatus := bestWorkerLate && hasSectorTime > 0
+		betterDuration := adjustedTotalDuration < bestUnresolvedDuration
+		if betterLateStatus || betterDuration {
 			bestUnresolvedDuration = adjustedTotalDuration
 		}
+		if hasSectorTime > 0 && betterDuration {
+			// bestUnresolvedWaitTime should be set to 0 unless the best
+			// unresolved worker is not late.
+			bestUnresolvedWaitTime = hasSectorTime
+		}
+		// The first time we find a worker that is not late, the best worker is
+		// not late. Marking this several times is not an issue.
+		if hasSectorTime > 0 {
+			bestWorkerLate = false
+		}
 	}
+
+	// TODO: May want to adjust bestUnresolvedWaitTime to account for noise in
+	// the return time of the worker. This may require some additional machinery
+	// being put along site the wait estimate, or maybe just requires the wait
+	// estimate to be conservative.
 
 	// Copy the list of resolved workers.
 	now := time.Now() // So we aren't calling time.Now() a ton. It's a little expensive.
@@ -352,6 +381,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, chan<- time.Time, ch
 	}
 	// Iterate through the piecesCopy, finding the best unlaunched worker in the
 	// set. Only count workers that are better than the best unresolved worker.
+	var bestResolvedWorker *worker
+	var bestPieceIndex int
 	for _, activePiece := range piecesCopy {
 		pieceCompleted := false
 		pieceActive := false
@@ -414,17 +445,23 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, chan<- time.Time, ch
 			} else {
 				bestKnownRank = workerRankUnlaunchedPiece
 			}
-			// TODO: Not sure that these are set correctly.
 			bestKnownDuration = readTime
-			bestKnownWorker = pieceDownload.worker
-			bestKnownIndex = i
-			unlaunchedWorkerAvailable = true
+			bestResolvedWorker = pieceDownload.worker
+			bestPieceIndex = i
 			bestWorkerResolved = true
 		}
 	}
 
-	// TODO: Actually return something. Need to return the best worker if we
-	// found one, and a time+reset channel if we didn't.
+	// If the best worker is an unresolved worker, return a time that indicates
+	// when we should give up waiting for the worker, as well as a channel that
+	// indicates when there are new workers that have returned.
+	if !bestWorkerResolved {
+		pcws.mu.Lock()
+		c := pcws.registerForWorkerUpdate()
+		pcws.mu.Unlock()
+		return nil, bestUnresolvedWaitTime, c, nil
+	}
+	// Best worker is resolved.
 }
 
 // waitForWorker will block until a strong worker is available to add to the
