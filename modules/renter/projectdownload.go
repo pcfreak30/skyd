@@ -88,7 +88,7 @@ type pieceDownload struct {
 	// is late.
 	staticExpectedCompletionTime time.Time
 
-	staticWorker                 *worker
+	staticWorker *worker
 }
 
 // projectDownloadChunk connects to a projectChunkWorkerSet and downloads a
@@ -423,7 +423,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, chan<- time.Time, ch
 		}
 	}
 
-	// TODO: Actually return something.
+	// TODO: Actually return something. Need to return the best worker if we
+	// found one, and a time+reset channel if we didn't.
 }
 
 // waitForWorker will block until a strong worker is available to add to the
