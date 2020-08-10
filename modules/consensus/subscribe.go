@@ -94,7 +94,7 @@ func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (mod
 	}
 
 	// Add the unexported tryTransactionSet function.
-	cc.TryTransactionSet = cs.tryTransactionSet
+	cc.TryTransactionSet = cs.managedTryTransactionSet
 
 	return cc, nil
 }

@@ -249,6 +249,9 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	if len(ts) == 0 {
 		return nil, errEmptySet
 	}
+	start := time.Now()
+	tp.log.Printf(" . acceptTransactionSet start: %v", len(ts))
+	defer tp.log.Printf(" . acceptTransactionSet end (%v): %v", time.Since(start).Milliseconds(), (ts))
 
 	// Remove all transactions that have been confirmed in the transaction set.
 	oldTS := ts
@@ -258,6 +261,10 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 			ts = append(ts, txn)
 		}
 	}
+
+	sid := modules.TransactionSetID(crypto.HashObject(ts))
+	tp.log.Println(" . acceptTransactionSet: ts after confirmed", len(ts), sid)
+
 	// If no transactions remain, return a dublicate error.
 	if len(ts) == 0 {
 		return nil, modules.ErrDuplicateTransactionSet
@@ -333,9 +340,11 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	return ts, nil
 }
 
-// submitTransactionSet will submit a transaction set to the transaction pool
+// managedSubmitTransactionSet will submit a transaction set to the transaction pool
 // and return the minimum superset for that transaction set.
-func (tp *TransactionPool) submitTransactionSet(ts []types.Transaction) ([]types.Transaction, error) {
+func (tp *TransactionPool) managedSubmitTransactionSet(ts []types.Transaction) ([]types.Transaction, error) {
+	start := time.Now()
+	defer tp.log.Printf("managedSubmitTransactionSet (%v): %v", time.Since(start).Milliseconds(), (ts))
 	// assert on consensus set to get special method
 	cs, ok := tp.consensusSet.(interface {
 		LockedTryTransactionSet(fn func(func(txns []types.Transaction) (modules.ConsensusChange, error)) error) error
@@ -350,10 +359,14 @@ func (tp *TransactionPool) submitTransactionSet(ts []types.Transaction) ([]types
 		tp.mu.Lock()
 		defer tp.mu.Unlock()
 
+		start := time.Now()
+		tp.log.Printf("lockedTryTransactionSet start: %v", len(ts))
+		defer tp.log.Printf("lockedTryTransactionSet end (%v): %v", time.Since(start).Milliseconds(), (ts))
+
 		// Attempt to get the transaction set into the transaction pool.
 		superset, acceptErr = tp.acceptTransactionSet(ts, txnFn)
 		if acceptErr == modules.ErrDuplicateTransactionSet {
-			tp.log.Debugln("Transaction set is a duplicate:", acceptErr)
+			tp.log.Println("Transaction set is a duplicate:", acceptErr)
 			return acceptErr
 		}
 		if acceptErr != nil {
@@ -392,7 +405,7 @@ func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 	}
 
 	tp.log.Debugln("Received a transaction (internal or external), attempting to broadcast")
-	minSuperSet, err := tp.submitTransactionSet(ts)
+	minSuperSet, err := tp.managedSubmitTransactionSet(ts)
 	if err == modules.ErrDuplicateTransactionSet {
 		return err
 	}
