@@ -344,7 +344,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 // and return the minimum superset for that transaction set.
 func (tp *TransactionPool) managedSubmitTransactionSet(ts []types.Transaction) ([]types.Transaction, error) {
 	start := time.Now()
-	defer tp.log.Printf("managedSubmitTransactionSet (%v): %v", time.Since(start).Milliseconds(), (ts))
+	defer tp.log.Printf("managedSubmitTransactionSet (%v): %v", time.Since(start).Milliseconds(), len(ts))
 	// assert on consensus set to get special method
 	cs, ok := tp.consensusSet.(interface {
 		LockedTryTransactionSet(fn func(func(txns []types.Transaction) (modules.ConsensusChange, error)) error) error
