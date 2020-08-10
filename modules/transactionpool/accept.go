@@ -251,7 +251,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	}
 	start := time.Now()
 	tp.log.Printf(" . acceptTransactionSet start: %v", len(ts))
-	defer tp.log.Printf(" . acceptTransactionSet end (%v): %v", time.Since(start).Milliseconds(), (ts))
+	defer tp.log.Printf(" . acceptTransactionSet end (%v): %v", time.Since(start).Milliseconds(), len(ts))
 
 	// Remove all transactions that have been confirmed in the transaction set.
 	oldTS := ts
@@ -361,7 +361,7 @@ func (tp *TransactionPool) managedSubmitTransactionSet(ts []types.Transaction) (
 
 		start := time.Now()
 		tp.log.Printf("lockedTryTransactionSet start: %v", len(ts))
-		defer tp.log.Printf("lockedTryTransactionSet end (%v): %v", time.Since(start).Milliseconds(), (ts))
+		defer tp.log.Printf("lockedTryTransactionSet end (%v): %v", time.Since(start).Milliseconds(), len(ts))
 
 		// Attempt to get the transaction set into the transaction pool.
 		superset, acceptErr = tp.acceptTransactionSet(ts, txnFn)
