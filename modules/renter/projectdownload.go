@@ -1,5 +1,9 @@
 package renter
 
+// TODO: Need to pick up at the point where we launch the workers. We haven't
+// figured out how we are going to be listening for the responses from the
+// workers, but it's probably going to be code that overlaps the overdrive code.
+
 // TODO: Uncertain: how do we prevent one worker from getting a huge backlog and
 // consuming a ton of memory? At some point do we just declare that the worker
 // is overwhlemed and unable to take on more work? Do we have requests block?
@@ -27,6 +31,8 @@ package renter
 // this after we ship the first draft of everything.
 
 // TODO: Need have price per ms per worker set somewhere by the user.
+
+// TODO: Add a context to the pdc
 
 import (
 	"context"
@@ -129,6 +135,7 @@ type projectDownloadChunk struct {
 	// The completed data gets sent down the response chan once the full
 	// download is done.
 	mu                 sync.Mutex
+	staticCtx context.Context
 	staticResponseChan chan []byte
 	staticWorkerSet    *projectChunkWorkerSet
 }
@@ -483,24 +490,39 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 	return bestResolvedWorker, bestPieceIndex, 0, nil, nil
 }
 
-// waitForWorker will block until a strong worker is available to add to the
-// download. waitForWorker will ignore workers that can only fetch pieces which
-// are already being fetched.
+// waitForWorker will block until one of the best workers is available to be
+// used for download. waitForWorker will return an error if there are no new
+// workers available that can be launched.
 //
-// If possible, waitForWorker will also ignore workers that can only fetch
-// 'launcehdPiecs' as well. This is to avoid queuing multiple workers on the
-// same piece. A piece may appear in 'launchedPieces' but not 'activePieces' if
-// the piece is late while being fetched.
-func (pcws *projectChunkWorkerSet) waitForWorker(activePieces []bool, launchedPieces []bool) {
-	// 1. Determine the set of workers that are potentially useful for launch.
+// TODO: Do we need the piece index, or can we figure that out some other way
+// after the fact? We may not need it as a return value. Which means it can be
+// removed from the call signature all the way through.
+//
+// TODO: Need thorough testing to ensure that repeated calls to findBestWorker
+// eventually fail. I guess the context timeout actually handles most of this.
+func (pdc *projectDownloadChunk) waitForWorker(*worker, pieceIndex, error) {
+	for {
+		worker, pieceIndex, sleepTime, wakeChan, err := pdc.findBestWorker()
+		if err != nil {
+			return nil, 0, errors.AddContext(err, "no good worker could be found")
+		}
 
-	// 2. helper function to figure out whether or not the best unlaunched
-	// worker
+		// If there was a worker found, return that worker.
+		if worker != nil {
+			return worker, pieceIndex, nil
+		}
+
+		// If there was no worker found, sleep until we should call
+		// findBestWorker again.
+		maxSleep := time.After(sleepTime)
+		select{
+		case <-maxSleep:
+		case <-wakeChan:
+		case <-pdc.staticCtx.Done():
+			return nil, 0, errors.New("timed out waiting for a good worker")
+		}
+	}
 }
-
-// TODO: Suggestion: use activePieces []bool to track which pieces we believe
-// will come back on time, and delayedPiecs []bool to track which pieces have
-// workers out but
 
 // download will download a range from a chunk. This call is asynchronous. It
 // will return as soon as the sector download requests have been sent to the
@@ -513,6 +535,59 @@ func (pcws *projectChunkWorkerSet) waitForWorker(activePieces []bool, launchedPi
 // will be added to the return time of the host, meaning the host will be
 // selected as though it is slower.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+	// Create a project for the download request.
+	//
+	// TODO: These fields can probably be local to this function rather than
+	// being a part of the pdc.
+	//
+	// TODO: Need to decide how to handle the buffering, since there are some
+	// overheads and stuff. Siamux itself has overheads for the frames, not sure
+	// how to keep that to a minimum. Maybe have an object pool that we pull
+	// from to use frames.
+	pieceOffset :=
+	pieceLength :=
+	responseChan := make(chan *downloadResponse, 1)
+	pieces := make([][]byte, pcws.staticErasureCoder.NumPieces())
+	for i := range pieces {
+		pieces[i] = make([]byte, pieceLength)
+	}
+	pdc := &projectDownloadChunk{
+		staticFetchOffset: offset,
+		staticFetchLength: length,
+		staticPricePerMS: pricePerMS,
+
+		staticPieceOffset: pieceOffset,
+		staticPieceLength: pieceLength,
+
+		activePieces: make([][]pieceDownload, pcws.staticErasureCoder.NumPieces()),
+
+		pieces: pieces,
+
+		staticCtx: ctx,
+		staticResponseChan: responseChan,
+		staticWorkerSet: pcws,
+	}
+
+	// Launch enough workers to complete the download. The overdrive code will
+	// determine whether more pieces need to be launched.
+	for i := 0; i < pcws.staticErasureCoder.MinPieces(); i++ {
+		w, pieceIndex, err := pdc.waitForWorker()
+		if err != nil {
+			// Getting an error means there are no more workers available,
+			// meaning there is no chance to complete the download.
+			return nil, errors.AddContext(err, "could not launch enough workers to complete the download")
+		}
+
+		// Try launching a worker. If the launch fails, it means we need to
+		// launch another worker in its place. This is handled by decrementing
+		// the loop counter.
+		err := pdc.launchWorker(w, pieceIndex)
+		if err != nil {
+			// TODO: Log?
+			i--
+		}
+	}
+
 	/*
 		// waitForWorkers will run a set of logic to see if the ideal set of workers
 		// has been found.
