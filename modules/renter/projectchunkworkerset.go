@@ -1,12 +1,37 @@
 package renter
 
-// TODO: Should we set up some sort of retry mechanism for workers that fail
-// their HasSector tasks? It's possible that whatever the error was is a
-// temporary netowrk error. We might want to retry every once in a while as well
-// if the context is still open. just to stay current with all the workers that
-// have a chunk. Maybe once an hour or so? Note need to be careful with the
-// garbage collection here, ensuring that whoever opens the pcws closes it
-// properly via cancelling the context.
+// TODO: Since there are situations where a projectChunkWorkerSet can be around
+// for long periods of time - hours or more - there should be a re-scan
+// mechanism of some sort on this object, where after a few hours the object may
+// choose to re-do the HasSector scan of the network.
+//
+// When doing this, all that should have to happen is replacing the empty
+// unresolvedWorkers map with a new, fresh map, and then kicking off another
+// round of 'threadedProcessResponses'.
+//
+// The object should only hang around for hours if it is being used
+// continuously, meaning that these periodic rescans are not a waste of
+// resources.
+//
+// The frequency of refreshing the worker set should be longer by a significant
+// margin than the timeout of the HasSector worker job. There should be a test
+// written to ensure that. This is to ensure that multiple
+// 'threadedProcessResponses' calls are never running simultaneously. Can
+// probably also write a sanity check using a common variable to ensure this.
+
+// TODO: Add a method to initialize a projectChunkWorkerSet with a set of
+// merkleroot + host pairs, allowing the object to skip the initial HasSector
+// scan of the network. This allows the projectChunkWorkerSet to replace legacy
+// downloads.
+//
+// Replacing legacy downloads is desirable because the projectChunkWorkerSet has
+// intelligent host selection logic based on latency and pricing.
+
+// TODO: Need some way to prune workers from the set of available pieces, or at
+// least mark the workers as consistently unsucecssful for a given piece. And
+// then perhaps feed that back into the repair system so that it knows a host is
+// flaky on a particular piece, so maybe that piece can be repaired for the
+// host.
 
 import (
 	"context"
@@ -34,9 +59,7 @@ type pcwsUnresolvedWorker struct {
 }
 
 // projectChunkWorkerSet is an object that contains a set of workers that can be
-// used to download a single chunk. This object is a project because it can be
-// instantiated knowing only the Merkle roots of the pieces in the chunk, it
-// does not need to know in advance which workers have each chunk.
+// used to download a single chunk. The object can be initialized with ei
 //
 // If the pcws is initialized with only a set of roots, it will immediately spin
 // up a bunch of worker jobs to locate those roots on the network using
@@ -58,6 +81,10 @@ type projectChunkWorkerSet struct {
 	//
 	// The same worker may appear in the arrays for multiple pieces, if the
 	// worker is storing multiple pieces for one chunk.
+	//
+	// NOTE: Workers can be added or reomved from the set of available pieces
+	// arbitrarily, particularly when the worker set is refreshing itself in the
+	// background.
 	availablePieces [][]*worker
 
 	// workerUpdateChans is used by download objects to block until more
@@ -68,7 +95,10 @@ type projectChunkWorkerSet struct {
 	//
 	// NOTE: Once 'unresolvedWorkers' has a length of zero, any attempt to add a
 	// channel to the set of workerUpdateChans should fail, as there will be no
-	// more updates.
+	// more updates. NOTE: Once refreshes are happening, it will be possible for
+	// the unresolvedWorkers list to go from zero back to having elements again,
+	// but it still should be considered an error to register for an update once
+	// the length is zero because a long time can transpire.
 	workerUpdateChans []chan struct{}
 
 	// Decoding and decryption information.
@@ -99,34 +129,25 @@ func (pcws *projectChunkWorkerSet) closeUpdateChans() {
 // update chans in the pcws. When there is more information available about
 // which worker is the best worker to select, the channel will be closed.
 func (pcws *projectChunkWorkerSet) registerForWorkerUpdate() chan<- struct{} {
+	// Consistency check - this method is not supposed to be called unless there
+	// are unresolved workers that can return.
+	if len(pcws.unresolvedWorkers) == 0 {
+		pcws.staticRenter.log.Critical("call to 'registerForWorkerUpdate' when there are no unresolved workers")
+	}
+
 	c := make(chan struct{})
 	pcws.workerUpdateChans = append(pcws.workerUpdateChans, c)
 	return c
 }
 
-// managedResolveAllWorkers will delete any unresolved workers. Typically this
-// is called due to the context of a pcws being cancelled, and the assumption is
-// that any unresolved workers will continue to be unresolved.
-func (pcws *projectChunkWorkerSet) managedResolveAllWorkers() {
-	pcws.mu.Lock()
-	defer pcws.mu.Unlock()
-
-	// Wipe out the set of unresolved workers, we are assuming at this point
-	// that they will not resolve.
-	pcws.unresolvedWorkers = make(map[string]*pcwsUnresolvedWorker)
-	pcws.closeUpdateChans()
-}
-
 // threadedProcessResponses will wait for worker responses to come back, and
-// update the pcws as the responses come in.
+// update the pcws as the responses come in. Note that it will continue to wait
+// for responses until its context is canceled, even in situations where there
+// are not enough workers remaining for any downloads using the worker set to
+// succeed.
 //
 // This thread should be the only one with access to the responseChan.
 func (pcws *projectChunkWorkerSet) threadedProcessResponses(responseChan <-chan *jobHasSectorResponse) {
-	// Upon exit, clean up the rest of the unresolved workers. This is
-	// particularly helpful for situations where the context of the pcws is
-	// closed.
-	defer pcws.managedResolveAllWorkers()
-
 	// Helper function to make the loop exit condition more clear.
 	responsesRemaining := func() int {
 		pcws.mu.Lock()
@@ -135,7 +156,9 @@ func (pcws *projectChunkWorkerSet) threadedProcessResponses(responseChan <-chan 
 		return rr
 	}
 
-	piecesFound := 0
+	// Because there are timeouts on the HasSector programs, the longest that
+	// this loop should be active is a little bit longer than the full timeout
+	// for a single HasSector job.
 	for responsesRemaining() > 0 {
 		// Block until there is a worker response.
 		var resp *jobHasSectorResponse
@@ -156,25 +179,18 @@ func (pcws *projectChunkWorkerSet) threadedProcessResponses(responseChan <-chan 
 		w := resp.staticWorker
 		pcws.mu.Lock()
 		delete(pcws.unresolvedWorkers, w.staticHostPubKeyStr)
-		if resp.staticErr == nil {
-			// Loop through the set of sectors that the worker is claiming, and add
-			// that worker to the piece list for any piece that the worker can
-			// contribute to.
-			for i, available := range resp.staticAvailables {
-				if available {
-					if len(pcws.availablePieces[i]) == 0 {
-						piecesFound++
-					}
-					pcws.availablePieces[i] = append(pcws.availablePieces[i], w)
-				}
-			}
-		}
 		pcws.closeUpdateChans()
-		// Check whether this download has failed and can be aborted. This
-		// should cause all in-progress downloads to update and fail.
-		if len(pcws.unresolvedWorkers)+piecesFound < pcws.staticErasureCoder.MinPieces() {
+		if resp.staticErr != nil {
 			pcws.mu.Unlock()
-			return
+			continue
+		}
+		// Loop through the set of sectors that the worker is claiming, and add
+		// that worker to the piece list for any piece that the worker can
+		// contribute to.
+		for i, available := range resp.staticAvailables {
+			if available {
+				pcws.availablePieces[i] = append(pcws.availablePieces[i], w)
+			}
 		}
 		pcws.mu.Unlock()
 	}
@@ -232,7 +248,8 @@ func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec mod
 			jobGeneric:         newJobGeneric(w.staticJobHasSectorQueue, ctx.Done()),
 		}
 		// TODO: Make this a feature of generic jobs rather than having a custom
-		// implementation for just the has sector job.
+		// implementation for just the has sector job. Maybe rename to
+		// callAddWithTimeEstimate.
 		expectedCompletionTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
 		if err != nil {
 			r.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
