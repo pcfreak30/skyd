@@ -492,6 +492,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if responseContentType != "" {
 		w.Header().Set("Content-Type", responseContentType)
 	}
+	w.Header().Set("Skynet-File-Type", "[testing]")
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
