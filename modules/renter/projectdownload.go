@@ -151,9 +151,6 @@ type projectDownloadChunk struct {
 	workerSet            *projectChunkWorkerSet
 }
 
-// downloadResponse is the reponse returned in the download channel returned by
-// the download() method.
-
 // downloadResponse is sent via a channel to the caller of
 // 'projectChunkWorkerSet.managedDownload'.
 type downloadResponse struct {
@@ -519,7 +516,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 // available.
 //
 // TODO: Something about that time.After
-func (pdc *projectDownloadChunk) managedWaitForWorker() (*worker, pieceIndex, error) {
+func (pdc *projectDownloadChunk) waitForWorker() (*worker, pieceIndex, error) {
 	for {
 		worker, pieceIndex, sleepTime, wakeChan, err := pdc.findBestWorker()
 		if err != nil {
@@ -542,15 +539,15 @@ func (pdc *projectDownloadChunk) managedWaitForWorker() (*worker, pieceIndex, er
 	}
 }
 
-// managedLaunchWorker will launch a worker for the download project. An error
+// launchWorker will launch a worker for the download project. An error
 // will be returned if there is no worker to launch.
-func (pdc *projectDownloadChunk) managedLaunchWorker() (time.Time, error) {
+func (pdc *projectDownloadChunk) launchWorker() (time.Time, error) {
 	// Loop until either a worker succeeds in launching a job, or until there
 	// are no more workers to return.
 	var expectedCompletionTime time.Time
 	for {
 		// An error here means that no more workers are available at all.
-		w, pieceIndex, err := pdc.managedWaitForWorker()
+		w, pieceIndex, err := pdc.waitForWorker()
 		if err != nil {
 			return time.Time{}, errors.AddContext(err, "unable to launch a new worker")
 		}
@@ -589,15 +586,60 @@ func (pdc *projectDownloadChunk) managedLaunchWorker() (time.Time, error) {
 	}
 }
 
-// managedHandleJobReadResponse will take a jobReadResponse from a worker job
+// handleJobReadResponse will take a jobReadResponse from a worker job
 // and integrate it into the set of pieces.
-func (pdc *projectDownloadChunk) managedHandleJobReadResponse(jrr *jobReadResponse) (bool, error) {
+func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) (bool, error) {
 	// TODO: Need a helper function to determine whether the download is doomed
 	// to fail.
 	if readSectorResponse == nil || resdSectorResp.staticErr != nil {
 		// This download failed,
 	}
 
+}
+
+// fail will send an error down the download response channel.
+func (pdc *prjectDownloadChunk) fail(err error) {
+	dr := &downloadResponse{
+		data:  nil,
+		error: err,
+	}
+	pdc.downloadResponseChan <- dr
+}
+
+// finalize will take the completed pieces of the download, decode them,
+// and then send the result down the response channel. If there is an error
+// during decode, 'pdc.fail()' will be called.
+func (pdc *projectDownloadChunk) finalize() {
+	// Helper variable.
+	ec := pdc.workerSet.staticErasureCoder
+
+	// The chunk download offset and chunk download length are different from
+	// the requested offset and length because the chunk download offset and
+	// length are required to be
+	chunkDLOffset := pdc.pieceOffset * ec.MinPieces()
+	chunkDLLength := pdc.pieceOffset * ec.MinPieces()
+
+	buf := bytes.NewBuffer(nil)
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.pieces, chunkDLOffset+chunkDLLength, buf)
+	if err != nil {
+		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
+		return
+	}
+
+	// Data is all in, truncate the chunk accordingly.
+	//
+	// TODO: Unit test this.
+	data := buf.Bytes()
+	chunkStartWithinData := pdc.chunkOffset - chunkDLOffset
+	chunkEndWithinData := pdc.chunkLength + chunkStartWithinData
+	data = data[chunkStartWithinData:chunkEndWithinData]
+
+	// The data is all set.
+	dr := &downloadResponse{
+		data: data,
+		err:  nil,
+	}
+	pdc.downloadResponseChan <- dr
 }
 
 // threadedCollectAndOverdrivePieces is the maintenance function of the download
@@ -611,49 +653,47 @@ func (pdc *projectDownloadChunk) managedHandleJobReadResponse(jrr *jobReadRespon
 // often we should pre-emtively launch some overdrive pieces rather than wait
 // for the failures to happen. This many not be necessary at all if the failure
 // rates are low enough.
-//
-// TODO: Pick up here this thing is a mess.
 func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 	// Loop until the download has either failed or completed.
 	for {
 		// Check whether the download is comlete. An error means that the
 		// download has failed and can no longer make progress.
-		completed, err := pdc.managedFinished()
+		completed, err := pdc.finished()
 		if completed {
-			pdc.managedFinalize()
+			pdc.finalize()
 			return
 		}
 		if err != nil {
-			pdc.managedFail(err)
+			pdc.fail(err)
 			return
 		}
 
 		// Drain the response chan of any results that have been submitted.
 		select {
-		case <-jrr := <-pdc.workerResponseChan:
-			pdc.managedHandleJobReadResponse(jrr)
+		case jrr := <-pdc.workerResponseChan:
+			pdc.handleJobReadResponse(jrr)
 			continue
 		case <-pdc.ctx.Done():
-			pdc.managedFail(errors.New("download failed while waiting for responses"))
+			pdc.fail(errors.New("download failed while waiting for responses"))
 			return
 		}
 
 		// Run logic to determine whether or not we should kick off overdrive
 		// workers.
-		if pdc.managedNeedsOverdrive() {
-			_ = pdc.managedLaunchWorker() // Err is ignored, nothing to do.
+		if pdc.needsOverdrive() {
+			_ = pdc.launchWorker() // Err is ignored, nothing to do.
 		}
 
 		// Determine when the next overdrive check needs to run.
-		overdriveTimeout := pdc.managedOverdriveTimeout()
+		overdriveTimeout := pdc.overdriveTimeout()
 		select {
-		case <-jrr := pdc.workerResponseChan:
-			pdc.managedHandleJobReadResponse(jrr)
+		case jrr := pdc.workerResponseChan:
+			pdc.handleJobReadResponse(jrr)
 			continue
-		case <- pdc.ctx.Done():
-			pdc.managedFail(errors.New("download failed while waiting for responses"))
+		case <-pdc.ctx.Done():
+			pdc.fail(errors.New("download failed while waiting for responses"))
 			return
-		case <- overdriveTimeout:
+		case <-overdriveTimeout:
 			continue
 		}
 	}
@@ -685,6 +725,10 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	if ec.PieceSegmentSize() == 0 || ec.PieceSegmentSize%crypto.SegmentSize != 0 {
 		pdws.staticRenter.log.Critical("pcws has a bad erasure coder")
 	}
+
+	// TODO: Need to check the encryption type. This type of download cannot
+	// support twofish encryption at the moment because it cannot handle the
+	// decryption overhead.
 
 	// Determine the download offset within a single piece. We get this by
 	// dividing the chunk offset by the number of pieces and then rounding
@@ -747,7 +791,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	for i := 0; i < pcws.staticErasureCoder.MinPieces(); i++ {
 		// Try launching a worker. If the launch fails, it means that no workers
 		// can be launched, and therefore the download cannot complete.
-		err := pdc.managedLaunchWorker()
+		err := pdc.launchWorker()
 		if err != nil {
 			return nil, errors.AddContext(err, "not enough workers to kick off the download")
 		}
