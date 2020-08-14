@@ -642,6 +642,42 @@ func (pdc *projectDownloadChunk) finalize() {
 	pdc.downloadResponseChan <- dr
 }
 
+// finished returns true if the download is finished, and returns an error if
+// the download is unable to complete.
+func (pdc *projectDownloadChunk) finished() (bool, error) {
+	// Convenience variables.
+	ws := pdc.workerSet
+	ec := pdc.workerSet.staticErasureCoder
+
+	// Count the number of completed pieces and hopefuly pieces in our list of
+	// potential downloads.
+	completedPieces := 0
+	hopefulPieces := 0
+	for _, pieceDownload := range activePieces {
+		if pieceDownload.completed {
+			completedPieces++
+		}
+		if !pieceDownload.failed {
+			hopefulPieces++
+		}
+	}
+	if completedPiecs >= ec.MinPieces() {
+		return true, nil
+	}
+
+	// Count the number of workers that haven't completed their results yet.
+	ws.mu.Lock()
+	hopefulPieces += len(ws.unresolvedWorkers)
+	ws.mu.Unlock()
+
+	// Ensure that there are enough pieces that could potentially become
+	// completed to finish the download.
+	if hopefulPieces < ec.MinPieces() {
+		return false, errors.New("not enough pieces to complete download")
+	}
+	return false, nil
+}
+
 // threadedCollectAndOverdrivePieces is the maintenance function of the download
 // process.
 //
