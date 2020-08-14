@@ -135,7 +135,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		}
 
 		// verify the funding get added to the host's financial metrics
-		currPotAccFunding := ht.host.FinancialMetrics().PotentialAccountFunding
+		currPotAccFunding := ht.host.FinancialMetrics().AccountFunding
 		if !currPotAccFunding.Equals(prevPotAccFunding.Add(funding)) {
 			t.Fatalf("Unexpected account funding, expected %v but received %v", prevPotAccFunding.Add(funding).HumanString(), currPotAccFunding.HumanString())
 		}
@@ -144,7 +144,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 
 	// verify happy flow
 	funding := types.NewCurrency64(100)
-	fmPAF := ht.host.FinancialMetrics().PotentialAccountFunding
+	fmPAF := ht.host.FinancialMetrics().AccountFunding
 	rev, sig, err := pair.managedEAFundRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +276,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 
 	// verify happy flow again to make sure the error'ed out calls don't mess
 	// anything up
-	fmPAF = ht.host.FinancialMetrics().PotentialAccountFunding
+	fmPAF = ht.host.FinancialMetrics().AccountFunding
 	rev, sig, err = pair.managedEAFundRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)

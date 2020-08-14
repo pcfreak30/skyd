@@ -448,14 +448,14 @@ func hostcontractcmd() {
 	case "value":
 		fmt.Fprintf(w, "Obligation Id\tObligation Status\tContract Cost\tLocked Collateral\tRisked Collateral\tPotential Revenue\tExpiration Height\tTransaction Fees\n")
 		for _, so := range cg.Contracts {
-			potentialRevenue := so.PotentialDownloadRevenue.Add(so.PotentialUploadRevenue).Add(so.PotentialStorageRevenue).Add(so.PotentialAccountFunding)
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n", so.ObligationId, strings.TrimPrefix(so.ObligationStatus, "obligation"), currencyUnits(so.ContractCost), currencyUnits(so.LockedCollateral),
+			potentialRevenue := so.PotentialDownloadRevenue.Add(so.PotentialUploadRevenue).Add(so.PotentialStorageRevenue).Add(so.AccountFunding)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n", so.ObligationID, strings.TrimPrefix(so.ObligationStatus, "obligation"), currencyUnits(so.ContractCost), currencyUnits(so.LockedCollateral),
 				currencyUnits(so.RiskedCollateral), currencyUnits(potentialRevenue), so.ExpirationHeight, currencyUnits(so.TransactionFeesAdded))
 		}
 	case "status":
 		fmt.Fprintf(w, "Obligation ID\tObligation Status\tExpiration Height\tOrigin Confirmed\tRevision Constructed\tRevision Confirmed\tProof Constructed\tProof Confirmed\n")
 		for _, so := range cg.Contracts {
-			fmt.Fprintf(w, "%s\t%s\t%d\t%t\t%t\t%t\t%t\t%t\n", so.ObligationId, strings.TrimPrefix(so.ObligationStatus, "obligation"), so.ExpirationHeight, so.OriginConfirmed,
+			fmt.Fprintf(w, "%s\t%s\t%d\t%t\t%t\t%t\t%t\t%t\n", so.ObligationID, strings.TrimPrefix(so.ObligationStatus, "obligation"), so.ExpirationHeight, so.OriginConfirmed,
 				so.RevisionConstructed, so.RevisionConfirmed, so.ProofConstructed, so.ProofConfirmed)
 		}
 	default:
