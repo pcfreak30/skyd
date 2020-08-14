@@ -361,7 +361,7 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("contract should have received more revisions from the upload", hc.Contracts[0].RevisionNumber)
 	}
 
-	if hc.Contracts[0].PotentialAccountFunding.IsZero() {
+	if hc.Contracts[0].AccountFunding.IsZero() {
 		t.Fatal("contract should have account funding")
 	}
 

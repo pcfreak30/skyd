@@ -213,18 +213,18 @@ func TestAccountFundingTracking(t *testing.T) {
 
 		fm := ht.host.FinancialMetrics()
 		af := fm.AccountFunding
-		paf := fm.PotentialAccountFunding
+		paf := fm.AccountFunding
 
-		// verify potential account funding delta
+		// verify  account funding delta
 		if pafDelta >= 0 {
-			delta := paf.Sub(bkp.PotentialAccountFunding)
+			delta := paf.Sub(bkp.AccountFunding)
 			if !delta.Equals64(uint64(pafDelta)) {
-				return fmt.Errorf("Unexpected potential account funding delta after %s, expected '%vH' actual '%vH'", action, pafDelta, delta)
+				return fmt.Errorf("Unexpected account funding delta after %s, expected '%vH' actual '%vH'", action, pafDelta, delta)
 			}
 		} else {
-			delta := bkp.PotentialAccountFunding.Sub(paf)
+			delta := bkp.AccountFunding.Sub(paf)
 			if !delta.Equals64(uint64(pafDelta * -1)) {
-				return fmt.Errorf("Unexpected potential account funding delta after %s, expected '%vH' actual '-%vH'", action, pafDelta, delta)
+				return fmt.Errorf("Unexpected account funding delta after %s, expected '%vH' actual '-%vH'", action, pafDelta, delta)
 			}
 		}
 
@@ -260,7 +260,7 @@ func TestAccountFundingTracking(t *testing.T) {
 
 	// add the storage obligation (expect PAF to increase - AF remain same)
 	rd1 := fastrand.Intn(10) + 1
-	so.PotentialAccountFunding = so.PotentialAccountFunding.Add64(uint64(rd1))
+	so.AccountFunding = so.AccountFunding.Add64(uint64(rd1))
 	if err = expectDelta(rd1, 0, "add SO", func() error {
 		return ht.host.managedAddStorageObligation(so, false)
 	}); err != nil {
@@ -269,7 +269,7 @@ func TestAccountFundingTracking(t *testing.T) {
 
 	// modify the storage obligation (expect PAF to increase - AF remain same)
 	rd2 := fastrand.Intn(10) + 1
-	so.PotentialAccountFunding = so.PotentialAccountFunding.Add64(uint64(rd2))
+	so.AccountFunding = so.AccountFunding.Add64(uint64(rd2))
 	if err = expectDelta(rd2, 0, "modify SO", func() error {
 		return ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, make(map[crypto.Hash][]byte, 0))
 	}); err != nil {

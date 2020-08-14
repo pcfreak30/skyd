@@ -230,8 +230,7 @@ type (
 		// funds used to fund ephemeral acccounts with for storage obligations
 		// that were successful. Potential account funding represents the same
 		// but for storage obligations that have not been confirmed yet.
-		AccountFunding          types.Currency `json:"accountfunding"`
-		PotentialAccountFunding types.Currency `json:"potentialaccountfunding"`
+		AccountFunding types.Currency `json:"accountfunding"`
 
 		// Every time a renter forms a contract with a host, a contract fee is
 		// paid by the renter. These stats track the total contract fees.
@@ -300,8 +299,9 @@ type (
 		RevisionNumber           uint64               `json:"revisionnumber"`
 		DataSize                 uint64               `json:"datasize"`
 		LockedCollateral         types.Currency       `json:"lockedcollateral"`
-		ObligationId             types.FileContractID `json:"obligationid"`
-		PotentialAccountFunding  types.Currency       `json:"potentialaccountfunding"`
+		ObligationID             types.FileContractID `json:"obligationid"`
+		AccountFunding           types.Currency       `json:"accountfunding"`
+		PotentialAccountFunding  types.Currency       `json:"potentialaccountfunding"` // Backwards compatibility
 		PotentialDownloadRevenue types.Currency       `json:"potentialdownloadrevenue"`
 		PotentialStorageRevenue  types.Currency       `json:"potentialstoragerevenue"`
 		PotentialUploadRevenue   types.Currency       `json:"potentialuploadrevenue"`
