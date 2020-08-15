@@ -32,6 +32,7 @@ type (
 		// response so that upon getting the response the caller knows which job
 		// was completed.
 		staticSector crypto.Hash
+		staticWorker *worker
 
 		*jobGeneric
 	}
@@ -61,6 +62,7 @@ type (
 
 		// Metadata related to the job query.
 		staticSector crypto.Hash
+		staticWorker *worker
 	}
 )
 
@@ -72,6 +74,8 @@ func (j *jobRead) callDiscard(err error) {
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 
 			staticSector: j.staticSector,
+
+			staticWorker: w,
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -95,6 +99,8 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticErr:  readErr,
 
 		staticSector: j.staticSector,
+
+		staticWorker: w,
 	}
 	w.renter.tg.Launch(func() {
 		select {

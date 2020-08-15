@@ -598,13 +598,17 @@ func (pdc *projectDownloadChunk) launchWorker() (time.Time, error) {
 
 // handleJobReadResponse will take a jobReadResponse from a worker job
 // and integrate it into the set of pieces.
-//
-// TODO: Pick up here.
 func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
-	// TODO: Figure out which index this read corresponds to.
+	// Figure out which index this read corresponds to.
+	pieceIndex := 0
+	for i, root := range pdc.workerSet.staticPieceRoots {
+		if jrr.staticRoot == root {
+			pieceIndex = i
+			break
+		}
+	}
 
-	// TODO: Need a helper function to determine whether the download is doomed
-	// to fail.
+	// Check whether the job failed.
 	if readSectorResponse == nil || resdSectorResp.staticErr != nil {
 		// TODO: Log? - we should probably have toggle-able log levels for stuff
 		// like this. Maybe a worker.log which allows us to turn on logging just
@@ -612,11 +616,22 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 		//
 		// The download failed, update the pdc available pieces to reflect the
 		// failure.
+		for i := 0; i < len(pdc.availablePieces[pieceIndex]; i++ {
+			if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
+				pdc.availablePieces[pieceIndex][i].failed = true
+			}
+		}
 		return
 	}
 
 	// The download succeeded, add the piece to the appropriate index.
-
+	pdc.dataPieces[pieceIndex] = jrr.staticData
+	jrr.staticData = nil // Just in case there's a reference to the job reponse elsewhere.
+	for i := 0; i < len(pdc.availablePieces[pieceIndex]; i++ {
+		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
+			pdc.availablePieces[pieceIndex][i].completed = true
+		}
+	}
 }
 
 // fail will send an error down the download response channel.
@@ -786,7 +801,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 	// TODO: Need to check the encryption type. This type of download cannot
 	// support twofish encryption at the moment because it cannot handle the
-	// decryption overhead.
+	// decryption overhead. I'm not sure what code needs to be written to
+	// support twofish downloads here.
 
 	// Determine the download offset within a single piece. We get this by
 	// dividing the chunk offset by the number of pieces and then rounding
@@ -802,7 +818,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// Determine the length that needs to be downloaded. This is done by
 	// determining the offset that the download needs to reach, and then
 	// subtracting the pieceOffset from the termination offset.
-	chunkSegmentSize := ec.PieceSegmentSize() * ec.MinPieces() // TODO: Maybe make a function for this on the EC interface.
+	chunkSegmentSize := ec.PieceSegmentSize() * ec.MinPieces()
 	chunkTerminationOffset := offset + length
 	overflow := chunkTerminationOffset % chunkSegmentSize
 	if overflow != 0 {
