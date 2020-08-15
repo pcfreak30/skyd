@@ -556,9 +556,20 @@ func (pdc *projectDownloadChunk) launchWorker() (time.Time, error) {
 			jobRead: jobRead{
 				staticResponseChan: pdc.staticWorkerResponseChan,
 				staticLength:       pdc.staticPieceLength,
+
+				staticSector: j.staticSector,
+
 				jobGeneric:         newJobGeneric(w.staticJobReadQueue, pdc.staticCtx.Done()),
 			},
 			staticOffset: pdc.staticPieceOffset,
+
+			// TODO: Now that the staticSector has been moved into jobRead, it
+			// may not need to be in jobReadSector anymore. The reason that it
+			// had to be added to jobRead is because we collect al of the
+			// responses down the same channel, which prevents us from knowing
+			// which repsonses correspond to which sendoffs unless that
+			// information can be included in the readResponse, and the
+			// readResponse only has access to the jobRead.
 			staticSector: pdc.staticWorkerSet.staticPieceRoots[pieceIndex],
 		}
 
