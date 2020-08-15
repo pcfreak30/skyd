@@ -1,7 +1,6 @@
 package renter
 
-// TODO: Need to pick up in the worker launch function, we don't update the pdc
-// at the moment to reflect that a piece has been launched.
+// TODO: Pick up at handleJobReadResponse
 
 // TODO: We don't actually make use of the available pieces at all in the
 // projectChunkWorkerSet. So the updates don't ever actually propagate from the
@@ -118,30 +117,30 @@ type pieceDownload struct {
 // safe.
 type projectDownloadChunk struct {
 	// Parameters for downloading within the chunk.
-	chunkOffset uint64
 	chunkLegnth uint64
+	chunkOffset uint64
 	pricePerMS  types.Currency
 
 	// Values derived from the chunk download parameters. The offset and length
 	// specify the offset and length that will be sent to the host, which much
 	// be segment aligned.
-	pieceOffset uint64
 	pieceLength uint64
+	pieceOffset uint64
 
-	// activiePieces are pieces where there are one or more workers that have
+	// availablePieces are pieces where there are one or more workers that have
 	// been tasked with fetching the piece.
 	//
-	// TODO: Need to rename this, 'active' has a different/overloaded meaning
-	// now.
-	//
-	// TODO: Need to rethink a bit the relationship here between the
-	// activePieces (to be renamed) and the pcws.availablePieces.
-	activePieces [][]pieceDownload
+	// workersConsidered is a map of which workers have been moved from the
+	// worker set's list of available pieces to the download chunk's list of
+	// available pieces. This enables the worker selection code to realize which
+	// pieces in the worker set have been resolved since the last check.
+	availablePieces   [][]pieceDownload
+	workersConsidered map[string]struct{}
 
-	// pieces is the buffer that is used to place data as it comes back. There
-	// is one piece per chunk, and pieces can be nil. To know if the download is
-	// complete, the number of non-nil pieces will be counted.
-	pieces [][]byte
+	// dataPieces is the buffer that is used to place data as it comes back.
+	// There is one piece per chunk, and pieces can be nil. To know if the
+	// download is complete, the number of non-nil pieces will be counted.
+	dataPieces [][]byte
 
 	// The completed data gets sent down the response chan once the full
 	// download is done.
@@ -588,12 +587,24 @@ func (pdc *projectDownloadChunk) launchWorker() (time.Time, error) {
 
 // handleJobReadResponse will take a jobReadResponse from a worker job
 // and integrate it into the set of pieces.
-func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) (bool, error) {
+//
+// TODO: Pick up here.
+func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
+	// TODO: Figure out which index this read corresponds to.
+
 	// TODO: Need a helper function to determine whether the download is doomed
 	// to fail.
 	if readSectorResponse == nil || resdSectorResp.staticErr != nil {
-		// This download failed,
+		// TODO: Log? - we should probably have toggle-able log levels for stuff
+		// like this. Maybe a worker.log which allows us to turn on logging just
+		// for specific workers.
+		//
+		// The download failed, update the pdc available pieces to reflect the
+		// failure.
+		return
 	}
+
+	// The download succeeded, add the piece to the appropriate index.
 
 }
 
@@ -812,9 +823,10 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
-		activePieces: make([][]pieceDownload, ec.NumPieces()),
+		availablePieces:   make([][]pieceDownload, ec.NumPieces()),
+		workersConsidered: make(map[string]struct{}),
 
-		pieces: make([][]byte, ec.NumPieces()),
+		dataPieces: make([][]byte, ec.NumPieces()),
 
 		ctx:                  ctx,
 		workerResponseChan:   workerResponseChan,
