@@ -40,10 +40,9 @@ package renter
 // TODO: I was lazy and used time.After everywhere.
 
 import (
+	"bytes"
 	"context"
-	"fmt"
 	"math"
-	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -117,7 +116,7 @@ type pieceDownload struct {
 // safe.
 type projectDownloadChunk struct {
 	// Parameters for downloading within the chunk.
-	chunkLegnth uint64
+	chunkLength uint64
 	chunkOffset uint64
 	pricePerMS  types.Currency
 
@@ -176,7 +175,7 @@ type downloadResponse struct {
 // this case, a worker may be returned that overlaps with another worker. From
 // an erasure coding perspective, this is inefficient, but can be useful if
 // there is an expectation that lots of existing workers will fail.
-func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, chan<- struct{}, error) {
+func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duration, <-chan struct{}, error) {
 	// Helper variables.
 	//
 	// NOTE: pricePerMSPerWorker is actually going to be an over-estimate in
@@ -186,8 +185,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 	// choosing a different set of workers. The code to make this more accurate
 	// in the typical case is more complex than is worth implementing at this
 	// time.
-	ws := pdc.staticWorkerSet
-	pricePerMSPerWorker := pdc.staticPricePerMS.Mul64(uint64(ws.staticErasureCoder.MinPieces()))
+	ws := pdc.workerSet
+	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(ws.staticErasureCoder.MinPieces()))
 
 	// For lock safety, need to fetch the list of unresolved workers separately
 	// from learning the best time. For thread safety, the update channel needs
@@ -221,13 +220,13 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 
 		// Figure out how much time is expected until the worker completes the
 		// download job.
-		readTime := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.staticPieceLength)
+		readTime := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
 		if readTime < 0 {
 			readTime = 0
 		}
 		// Add a penalty to performance based on the cost of the job. Need to be
 		// careful with the underflow cases.
-		expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.staticPieceLength)
+		expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
 		rsPricePenalty, err := expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64()
 		if err != nil || rsPricePenalty > math.MaxInt64 {
 			readTime = time.Duration(math.MaxInt64)
@@ -288,8 +287,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 	// Save a list of which workers are currently late.
 	lateWorkers := make(map[string]struct{})
 	ws.mu.Lock()
-	piecesCopy := make([][]pieceDownload, len(pdc.activePieces))
-	for i, activePiece := range pdc.activePieces {
+	piecesCopy := make([][]pieceDownload, len(pdc.availablePieces))
+	for i, activePiece := range pdc.availablePieces {
 		// Track whether there are new workers available for this piece.
 		unlaunchedWorkerAvailable := false
 		// Track whether any of the workers have launched a job and have not yet
@@ -330,8 +329,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 			}
 			// Check if this piece is late or if the piece failed altogether, if
 			// so, mark the worker as a late worker.
-			if pieceDownload.launched && (pieceDownload.failed || pieceDownload.staticExpectedCompletionTime.Before(now)) {
-				lateWorkers[pieceDownload.staticWorker.staticHostPubKeyStr] = struct{}{}
+			if pieceDownload.launched && (pieceDownload.failed || pieceDownload.expectedCompletionTime.Before(now)) {
+				lateWorkers[pieceDownload.worker.staticHostPubKeyStr] = struct{}{}
 				pieceHasLateWorkers = true
 			} else if pieceDownload.launched {
 				pieceHasActiveWorkers = true
@@ -357,7 +356,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 
 	// Check whether it is still possible for the download to complete.
 	potentialPieces := piecesAvailableToLaunch + len(unresolvedWorkers)
-	if potentialPieces < pdc.staticWorkerSet.staticErasureCoder.MinPieces() {
+	if potentialPieces < ws.staticErasureCoder.MinPieces() {
 		return nil, 0, 0, nil, errors.New("rph3 chunk download has failed because there are not enough potential workers")
 	}
 	// Check whether it is possible for new workers to be launched.
@@ -403,7 +402,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 	// Iterate through the piecesCopy, finding the best unlaunched worker in the
 	// set. Only count workers that are better than the best unresolved worker.
 	var bestResolvedWorker *worker
-	var bestPieceIndex int
+	var bestPieceIndex uint64
 	for _, activePiece := range piecesCopy {
 		pieceCompleted := false
 		pieceActive := false
@@ -416,7 +415,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 			if pieceDownload.launched {
 				pieceLaunched = true
 			}
-			if pieceDownload.launched && now.Before(pieceDownload.staticExpectedCompletionTime) {
+			if pieceDownload.launched && now.Before(pieceDownload.expectedCompletionTime) {
 				pieceActive = true
 			}
 		}
@@ -439,17 +438,17 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 		for i, pieceDownload := range activePiece {
 			// Skip any workers that are late if the best known rank is not
 			// late.
-			_, isLate := lateWorkers[pieceDownload.staticWorker.staticHostPubKeyStr]
+			_, isLate := lateWorkers[pieceDownload.worker.staticHostPubKeyStr]
 			if bestKnownRank < workerRankLate && isLate {
 				continue
 			}
 			// Skip this worker if it is not good enough.
-			w := pieceDownload.staticWorker
-			readTime := w.staticJobReadQueue.callExpectedJobTime(pdc.staticPieceLength)
+			w := pieceDownload.worker
+			readTime := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
 			if readTime < 0 {
 				readTime = 0
 			}
-			expectedRSCompletionCost := w.staticJobReadQueue.callExpectedJobCost(pdc.staticPieceLength)
+			expectedRSCompletionCost := w.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
 			rsPricePenalty, err := expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64()
 			if err != nil || rsPricePenalty > math.MaxInt64 {
 				readTime = time.Duration(math.MaxInt64)
@@ -473,8 +472,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 				bestKnownRank = workerRankUnlaunchedPiece
 			}
 			bestKnownDuration = readTime
-			bestResolvedWorker = pieceDownload.staticWorker
-			bestPieceIndex = i
+			bestResolvedWorker = pieceDownload.worker
+			bestPieceIndex = uint64(i)
 			bestWorkerResolved = true
 		}
 	}
@@ -501,21 +500,15 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, int, time.Duration, 
 }
 
 // waitForWorker will block until one of the best workers is available to be
-// used for download. waitForWorker will return an error if there are no new
-// workers available that can be launched.
-//
-// TODO: Do we need the piece index, or can we figure that out some other way
-// after the fact? We may not need it as a return value. Which means it can be
-// removed from the call signature all the way through.
+// used for download, along with the index of the piece that should be
+// downloaded. An error will be returned if there are no new workers available
+// that can be launched.
 //
 // TODO: Need thorough testing to ensure that repeated calls to findBestWorker
 // eventually fail. I guess the context timeout actually handles most of this.
 //
-// TODO: We assume that this call will return an error if there are no workers
-// available.
-//
-// TODO: Something about that time.After
-func (pdc *projectDownloadChunk) waitForWorker() (*worker, pieceIndex, error) {
+// TODO: Do something about that time.After
+func (pdc *projectDownloadChunk) waitForWorker() (*worker, uint64, error) {
 	for {
 		worker, pieceIndex, sleepTime, wakeChan, err := pdc.findBestWorker()
 		if err != nil {
@@ -540,28 +533,27 @@ func (pdc *projectDownloadChunk) waitForWorker() (*worker, pieceIndex, error) {
 
 // launchWorker will launch a worker for the download project. An error
 // will be returned if there is no worker to launch.
-func (pdc *projectDownloadChunk) launchWorker() (time.Time, error) {
+func (pdc *projectDownloadChunk) launchWorker() error {
 	// Loop until either a worker succeeds in launching a job, or until there
 	// are no more workers to return.
-	var expectedCompletionTime time.Time
 	for {
 		// An error here means that no more workers are available at all.
 		w, pieceIndex, err := pdc.waitForWorker()
 		if err != nil {
-			return time.Time{}, errors.AddContext(err, "unable to launch a new worker")
+			return errors.AddContext(err, "unable to launch a new worker")
 		}
 
 		// Create the read sector job for the worker.
 		jrs := &jobReadSector{
 			jobRead: jobRead{
-				staticResponseChan: pdc.staticWorkerResponseChan,
-				staticLength:       pdc.staticPieceLength,
+				staticResponseChan: pdc.workerResponseChan,
+				staticLength:       pdc.pieceLength,
 
-				staticSector: j.staticSector,
+				staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
 
-				jobGeneric:         newJobGeneric(w.staticJobReadQueue, pdc.staticCtx.Done()),
+				jobGeneric: newJobGeneric(w.staticJobReadQueue, pdc.ctx.Done()),
 			},
-			staticOffset: pdc.staticPieceOffset,
+			staticOffset: pdc.pieceOffset,
 
 			// TODO: Now that the staticSector has been moved into jobRead, it
 			// may not need to be in jobReadSector anymore. The reason that it
@@ -570,28 +562,26 @@ func (pdc *projectDownloadChunk) launchWorker() (time.Time, error) {
 			// which repsonses correspond to which sendoffs unless that
 			// information can be included in the readResponse, and the
 			// readResponse only has access to the jobRead.
-			staticSector: pdc.staticWorkerSet.staticPieceRoots[pieceIndex],
+			staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
 		}
 
 		// Launch the job and then update the status of the worker. Either way,
 		// the worker should be marked as 'launched'. If the job is not
 		// successfully queued, the worker should be marked as 'failed' as well.
-		expectedCompletionTime, err = w.staticJobReadQueue.callAddWithEstimate(jrs)
-		pdc.mu.Lock()
-		for _, pieceDownload := range pdc.activePieces[pieceIndex] {
-			if w == pieceDownload.staticWorker {
+		added := w.staticJobReadQueue.callAdd(jrs)
+		for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
+			if w == pieceDownload.worker {
 				pieceDownload.launched = true
-				if err != nil {
+				if !added {
 					pieceDownload.failed = true
 				}
 			}
 		}
-		pdc.mu.Unlock()
 
 		// If there was no error, return the expected completion time.
 		// Otherwise, try grabbing a new worker.
-		if err == nil {
-			return expectedCompletionTime, nil
+		if added {
+			return nil
 		}
 	}
 }
@@ -599,24 +589,30 @@ func (pdc *projectDownloadChunk) launchWorker() (time.Time, error) {
 // handleJobReadResponse will take a jobReadResponse from a worker job
 // and integrate it into the set of pieces.
 func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
+	// Prevent a production panic.
+	if jrr == nil {
+		pdc.workerSet.staticRenter.log.Critical("received nil job read response in handleJobReadResponse")
+		return
+	}
+
 	// Figure out which index this read corresponds to.
 	pieceIndex := 0
 	for i, root := range pdc.workerSet.staticPieceRoots {
-		if jrr.staticRoot == root {
+		if jrr.staticSectorRoot == root {
 			pieceIndex = i
 			break
 		}
 	}
 
 	// Check whether the job failed.
-	if readSectorResponse == nil || resdSectorResp.staticErr != nil {
+	if jrr.staticErr != nil {
 		// TODO: Log? - we should probably have toggle-able log levels for stuff
 		// like this. Maybe a worker.log which allows us to turn on logging just
 		// for specific workers.
 		//
 		// The download failed, update the pdc available pieces to reflect the
 		// failure.
-		for i := 0; i < len(pdc.availablePieces[pieceIndex]; i++ {
+		for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
 			if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
 				pdc.availablePieces[pieceIndex][i].failed = true
 			}
@@ -627,7 +623,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	// The download succeeded, add the piece to the appropriate index.
 	pdc.dataPieces[pieceIndex] = jrr.staticData
 	jrr.staticData = nil // Just in case there's a reference to the job reponse elsewhere.
-	for i := 0; i < len(pdc.availablePieces[pieceIndex]; i++ {
+	for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
 		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
 			pdc.availablePieces[pieceIndex][i].completed = true
 		}
@@ -635,10 +631,10 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 }
 
 // fail will send an error down the download response channel.
-func (pdc *prjectDownloadChunk) fail(err error) {
+func (pdc *projectDownloadChunk) fail(err error) {
 	dr := &downloadResponse{
 		data:  nil,
-		error: err,
+		err: err,
 	}
 	pdc.downloadResponseChan <- dr
 }
@@ -653,11 +649,11 @@ func (pdc *projectDownloadChunk) finalize() {
 	// The chunk download offset and chunk download length are different from
 	// the requested offset and length because the chunk download offset and
 	// length are required to be
-	chunkDLOffset := pdc.pieceOffset * ec.MinPieces()
-	chunkDLLength := pdc.pieceOffset * ec.MinPieces()
+	chunkDLOffset := pdc.pieceOffset * uint64(ec.MinPieces())
+	chunkDLLength := pdc.pieceOffset * uint64(ec.MinPieces())
 
 	buf := bytes.NewBuffer(nil)
-	err := pdc.workerSet.staticErasureCoder.Recover(pdc.pieces, chunkDLOffset+chunkDLLength, buf)
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, chunkDLOffset+chunkDLLength, buf)
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
 		return
@@ -690,7 +686,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// potential downloads.
 	completedPieces := 0
 	hopefulPieces := 0
-	for _, pieceDownload := range activePieces {
+	for _, pieceDownload := range pdc.availablePieces {
 		if pieceDownload.completed {
 			completedPieces++
 		}
@@ -698,7 +694,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 			hopefulPieces++
 		}
 	}
-	if completedPiecs >= ec.MinPieces() {
+	if completedPieces >= ec.MinPieces() {
 		return true, nil
 	}
 
@@ -772,6 +768,35 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 	}
 }
 
+// getPieceOffsetAndLen is a helper function to compute the piece offset and
+// length of a chunk download, given the erasure coder for the chunk, the offset
+// within the chunk, and the length within the chunk.
+func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (pieceOffset, pieceLength uint64) {
+	// Determine the download offset within a single piece. We get this by
+	// dividing the chunk offset by the number of pieces and then rounding
+	// down to the nearest segment size.
+	//
+	// This is mathematically equivalent to rounding down the chunk size to
+	// the nearest chunk segment size and then dividing by the number of
+	// pieces.
+	pieceOffest = offset / ec.MinPieces()
+	pieceOffset = pieceOffset / ec.PieceSegmentSize()
+	pieceOffset = pieceOffset * ec.PieceSegmentSize()
+
+	// Determine the length that needs to be downloaded. This is done by
+	// determining the offset that the download needs to reach, and then
+	// subtracting the pieceOffset from the termination offset.
+	chunkSegmentSize := ec.PieceSegmentSize() * ec.MinPieces()
+	chunkTerminationOffset := offset + length
+	overflow := chunkTerminationOffset % chunkSegmentSize
+	if overflow != 0 {
+		chunkTerminationOffset += chunkSegmentSize - overflow
+	}
+	pieceTerminationOffset = chunkTerminationOffset / ec.PieceSegmentSize()
+	pieceLength = pieceTerminationOffset - pieceOffset
+	return pieceOffset, pieceLength
+}
+
 // 'managedDownload' will download a range from a chunk. This call is
 // asynchronous. It will return as soon as the sector download requests have
 // been sent to the workers. This means that it will block until enough workers
@@ -790,6 +815,12 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 // converted into a number of milliseconds based on the pricePerMS. This cost
 // will be added to the return time of the host, meaning the host will be
 // selected as though it is slower.
+//
+// NOTE: A lot of this code is not future proof against certain classes of
+// encryption algorithms and erasure coding algorithms, however I believe that
+// the properties we have in our current set (maximum distance separable erasure
+// codes, tweakable encryption algorithms) are not likely to change in the
+// future.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
@@ -797,35 +828,21 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// Consistency check some of the erasure coder values.
 	if ec.PieceSegmentSize() == 0 || ec.PieceSegmentSize%crypto.SegmentSize != 0 {
 		pdws.staticRenter.log.Critical("pcws has a bad erasure coder")
+		return nil, errors.New("pcws has a bad erasure coder")
 	}
 
-	// TODO: Need to check the encryption type. This type of download cannot
-	// support twofish encryption at the moment because it cannot handle the
-	// decryption overhead. I'm not sure what code needs to be written to
-	// support twofish downloads here.
-
-	// Determine the download offset within a single piece. We get this by
-	// dividing the chunk offset by the number of pieces and then rounding
-	// down to the nearest segment size.
-	//
-	// This is mathematically equivalent to rounding down the chunk size to
-	// the nearest chunk segment size and then dividing by the number of
-	// pieces.
-	pieceOffest := offset / ec.MinPieces()
-	pieceOffset = pieceOffset / ec.PieceSegmentSize()
-	pieceOffset = pieceOffset * ec.PieceSegmentSize()
-
-	// Determine the length that needs to be downloaded. This is done by
-	// determining the offset that the download needs to reach, and then
-	// subtracting the pieceOffset from the termination offset.
-	chunkSegmentSize := ec.PieceSegmentSize() * ec.MinPieces()
-	chunkTerminationOffset := offset + length
-	overflow := chunkTerminationOffset % chunkSegmentSize
-	if overflow != 0 {
-		chunkTerminationOffset += chunkSegmentSize - overflow
+	// Check encryption type. If the encryption overhead is not zero, the piece
+	// offset and length need to download the full chunk. This is due to the
+	// overhead being a checksum that has to be verified against the entire
+	// piece.
+	if pcws.staticMasterKey.Type().Overhead() != 0 && (offset != 0 || length != modules.SectorSize*ec.NumPieces()) {
+		return nil, errors.New("invalid request performed - this chunk has encryption overhead and therefore the full chunk must be downloaded")
 	}
-	pieceTerminationOffset = chunkTerminationOffset / ec.PieceSegmentSize()
-	pieceLength := pieceTerminationOffset - pieceOffset
+
+	// Determine the offset and length that needs to be downloaded from the
+	// pieces. This is non-trivial because both the network itself and also the
+	// erasure coder have required segment sizes.
+	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
 	// Create the workerResponseChan.
 	//
@@ -838,7 +855,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// actually have too much overhead. Instead of buffering for a full
 	// workers*pieces slots, we buffer for pieces*5 slots, under the assumption
 	// that the overdrive code is not going to be so aggressive that 5x or more
-	// redundancy will be at play.
+	// overhead on download will be needed.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
 	// Build the full pdc.

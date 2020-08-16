@@ -128,7 +128,7 @@ func (pcws *projectChunkWorkerSet) closeUpdateChans() {
 // registerForWorkerUpdate will create a channel and append it to the list of
 // update chans in the pcws. When there is more information available about
 // which worker is the best worker to select, the channel will be closed.
-func (pcws *projectChunkWorkerSet) registerForWorkerUpdate() chan<- struct{} {
+func (pcws *projectChunkWorkerSet) registerForWorkerUpdate() <-chan struct{} {
 	// Consistency check - this method is not supposed to be called unless there
 	// are unresolved workers that can return.
 	if len(pcws.unresolvedWorkers) == 0 {

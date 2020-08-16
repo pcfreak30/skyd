@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -61,7 +62,7 @@ type (
 		staticErr  error
 
 		// Metadata related to the job query.
-		staticSector crypto.Hash
+		staticSectorRoot crypto.Hash
 		staticWorker *worker
 	}
 )
