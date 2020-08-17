@@ -478,6 +478,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 	w.Header().Set("Skynet-Is-Skapp", fmt.Sprintf("%t", isSkapp(metadata)))
 	w.Header().Set("Skynet-Media-Type", parseMediaType(contentType, metadata.Filename, streamer))
+	w.Header().Set("Skynet-Skylink", skylink.String())
 
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.

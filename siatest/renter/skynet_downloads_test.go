@@ -43,6 +43,7 @@ func TestSkynetDownloads(t *testing.T) {
 		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
 		{Name: "Skynet-Is-Skapp", Test: testSkynetIsSkappHeader},
 		{Name: "Skynet-Media-Type", Test: testSkynetMediaTypeHeader},
+		{Name: "Skynet-Skylink", Test: testSkynetSkylinkHeader},
 	}
 
 	// Run tests
@@ -600,6 +601,28 @@ func testSkynetMediaTypeHeader(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if header.Get("Skynet-Media-Type") == "" {
 		t.Fatal("Response header not set")
+	}
+}
+
+// testSkynetSkylinkHeader tests that downloads have a custom 'Skynet-Skylink'
+// response header.
+func testSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// upload a single file
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("testSkynetSkylinkHeader", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify a HEAD call has the response header set (this verifies both the
+	// HEAD and GET endpoint)
+	_, header, err := r.SkynetSkylinkHead(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Get("Skynet-Skylink") != skylink {
+		t.Fatal("Unexpected value for `Skynet-Skylink`", header.Get("Skynet-Skylink"))
 	}
 }
 

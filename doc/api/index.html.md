@@ -4898,8 +4898,8 @@ a Skapp. We consider a Skyfile to be a Skapp if it contains at least one html
 file.
 
 **NOTE:** the definition of what constitutes a Skapp is subject to change and
-should not be relied upon as we will not maintain backwards compatibility for
-this field.
+should not be relied upon as we will **not maintain backwards compatibility**
+for this field.
 
 **Skynet-Media-Type** | string
 
@@ -4908,8 +4908,19 @@ content. We define media type is the top-level type, as is outlined in
 https://tools.ietf.org/html/rfc6838.
 
 **NOTE:** the value returned by this reponse header is subject to change and
-should not be relied upon as we will not maintain backwards compatibility for
-this field.
+should not be relied upon as we will **not maintain backwards compatibility**
+for this field.
+
+**Skynet-Skylink** | string
+
+The value of "Skynet-Skylink" will contain the Skylink of the file that was
+requested. This is useful as it can be logged to Nginx access logs and removes
+the need of squashing urls. It will also contain the Skylink if content was
+requested using the base32 version of the Skylink as subdomain.
+
+**NOTE:** the value returned by this reponse header is subject to change and
+might be removed in the future. Do not rely upon this field as we will **not
+maintain backwards compatibility** for it.
 
 > Skynet-File-Metadata Response Header Example 
 
