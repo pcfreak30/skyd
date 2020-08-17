@@ -725,6 +725,55 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	return false, nil
 }
 
+// needsOverdrive returns true if the function determines that another piece
+// should be launched to assist with the current download.
+func (pdc *projectDownloadChunk) needsOverdrive() (time.Duration, bool) {
+	// Go through the pieces, determining how many pieces are launched without
+	// fail, and what the longest return time is of all the workers that have
+	// already been launched.
+	numLWF := 0
+	var latestReturn time.Time
+	for _, piece := range pdc.availablePieces {
+		launchedWithoutFail := false
+		for _, pieceDownload := range piece {
+			if pieceDownload.launched && !pieceDownload.failed {
+				launchedWithoutFail = true
+				if !pieceDownload.completed && latestReturn.Before(pieceDownload.expectedCompletionTime) {
+					latestReturn = pieceDownload.expectedCompletionTime
+				}
+			}
+		}
+		if launchedWithoutFail {
+			numLWF++
+		}
+	}
+
+	// If the number of pieces that have launched without fail is less than the
+	// minimum number of pieces need to complete a download, overdrive is
+	// required.
+	if numLWF < pdc.workerSet.staticErasureCoder.MinPieces() {
+		// No need to return a time, need to launch a worker immediately.
+		return 0, true
+	}
+
+	// If the latest worker should have already returned, signal than an
+	// overdrive worker should be launched immediately.
+	untilLatest := time.Until(latestReturn)
+	if untilLatest <= 0 {
+		return 0, true
+	}
+
+	// There are enough workers out, and it is expected that not all of them
+	// have returned yet. Signal that we should check again 50 milliseconds
+	// after the latest worker has failed to return.
+	//
+	// Note that doing things this way means that launching new workers will
+	// cause the latest time returned to reflect their latest time - each time
+	// an overdrive worker is launched, we will wait the full return period
+	// before launching another one.
+	return (untilLatest + time.Millisecond * 50), false
+}
+
 // threadedCollectAndOverdrivePieces is the maintenance function of the download
 // process.
 //
@@ -761,16 +810,21 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 			return
 		}
 
-		// Run logic to determine whether or not we should kick off overdrive
-		// workers.
-		needsOverdrive, overdriveTimeout := pdc.needsOverdrive()
-		for needsOverdrive {
+		// Run logic to determine whether or not we should kick off an overdrive
+		// worker. We skip checking the error on the launch because
+		// 'pdc.finished()' will catch the error on the next iteration of the
+		// outer loop.
+		overdriveTimeout, needsOverdrive := pdc.needsOverdrive()
+		if needsOverdrive {
 			_ = pdc.launchWorker() // Err is ignored, nothing to do.
-			needsOverdrive, overdriveTimeout = pdc.needsOverdrive()
 			continue
 		}
 
 		// Determine when the next overdrive check needs to run.
+		//
+		// TODO: Should be able to create a cache for the timer in the pdc,
+		// which hopefully allows us to avoid the memory allocation cost
+		// associated with calling time.After() a bunch of times.
 		overdriveTimeoutChan := time.After(overdriveTimeout)
 		select {
 		case jrr := <-pdc.workerResponseChan:
