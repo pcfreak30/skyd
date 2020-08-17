@@ -164,14 +164,18 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 // TODO: This should be the format for 'callAdd' instead of a separate function,
 // out of scope at the moment to make all of those changes though.
 func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, error) {
+	estimate := jq.callExpectedJobTime()
 	if !jq.callAdd(j) {
 		return time.Time{}, errors.New("unable to add job to queue")
 	}
-	return time.Now().Add(jq.callExpectedJobTime()), nil
+	return time.Now().Add(estimate), nil
 }
 
 // callExpectedJobTime returns the expected amount of time that this job will
 // take to complete.
+//
+// TODO: Have it take a number of sectors as an input, as this impacts the size
+// of the request being made.
 func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()

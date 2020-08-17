@@ -217,15 +217,16 @@ func TestWorkerReadJobStatus(t *testing.T) {
 
 	jhs := &jobReadSector{
 		jobRead: jobRead{
-			staticResponseChan: rc,
 			staticLength:       modules.SectorSize,
+			staticResponseChan: rc,
+			staticSector: sectorRoot,
+
 			jobGeneric: &jobGeneric{
 				staticCancelChan: cc,
 				staticQueue:      w.staticJobReadQueue,
 			},
 		},
 		staticOffset: 0,
-		staticSector: sectorRoot,
 	}
 	if !w.staticJobReadQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
@@ -255,15 +256,16 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	// add another job to the worker
 	jhs = &jobReadSector{
 		jobRead: jobRead{
-			staticResponseChan: rc,
 			staticLength:       modules.SectorSize,
+			staticResponseChan: rc,
+			staticSector: crypto.Hash{},
+
 			jobGeneric: &jobGeneric{
 				staticCancelChan: cc,
 				staticQueue:      w.staticJobReadQueue,
 			},
 		},
 		staticOffset: 0,
-		staticSector: crypto.Hash{},
 	}
 	if !w.staticJobReadQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")

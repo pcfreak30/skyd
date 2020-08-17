@@ -1,43 +1,9 @@
 package renter
 
-// TODO: Pick up at handleJobReadResponse
+// TODO: Need have price per ms per worker set somewhere by the user, with some
+// sane default.
 
-// TODO: We don't actually make use of the available pieces at all in the
-// projectChunkWorkerSet. So the updates don't ever actually propagate from the
-// pcws, meaning that the project download literally cannot make progress.
-
-// TODO: Uncertain: how do we prevent one worker from getting a huge backlog and
-// consuming a ton of memory? At some point do we just declare that the worker
-// is overwhlemed and unable to take on more work? Do we have requests block?
-// How do we know when we should block vs. just ignore a worker? If there's just
-// one worker that is overwhelmed, we want to start ignoring that worker. If a
-// bunch of workers are overwhelmed though, we want to actually just back off
-// and block while they clear out. Or rather, we just care about keeping the
-// queues reasonably balanced. If a bunch of workers are full, just keep filling
-// them and let them do their thing. If a small number of workers is full, then
-// just have those workers start rejecting things from their queue.
-//
-// Similar vein here - we may want workers to be able to re-order their queues
-// to put high priority stuff through faster, not sure though. Well, basically
-// instead of having this memory roll-through like we do currently, what we
-// really want to do is just block until a sufficient number of workers have a
-// low queue. Then for high priority requests we just slam those right through.
-
-// TODO: Remember to establish the piece parameters / derived parameters when
-// building the download chunk. This includes init'ing fields like pricePerMS.
-
-// TODO: We should probably bake in a reliability penalty. Workers that
-// sometimes fail should get some automatic milliseconds tagged to them because
-// they will sometimes cause downloads to be late. Perhaps a super-linear curve,
-// for example a 30% reliable worker is just not waiting for at all. We can do
-// this after we ship the first draft of everything.
-
-// TODO: Need have price per ms per worker set somewhere by the user.
-
-// TODO: Do we need a mutex on the pdc at all? I think it is only accessed by
-// one thread ever.
-
-// TODO: I was lazy and used time.After everywhere.
+// TODO: Better handling of the time.After calls.
 
 import (
 	"bytes"
@@ -176,6 +142,8 @@ type downloadResponse struct {
 // this case, a worker may be returned that overlaps with another worker. From
 // an erasure coding perspective, this is inefficient, but can be useful if
 // there is an expectation that lots of existing workers will fail.
+//
+// TODO: Need to migrate over any unresolved workers.
 func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duration, <-chan struct{}, error) {
 	// Helper variables.
 	//
@@ -257,11 +225,6 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 			bestWorkerLate = false
 		}
 	}
-
-	// TODO: May want to adjust bestUnresolvedWaitTime to account for noise in
-	// the return time of the worker. This may require some additional machinery
-	// being put along site the wait estimate, or maybe just requires the wait
-	// estimate to be conservative.
 
 	// Copy the list of resolved workers.
 	now := time.Now() // So we aren't calling time.Now() a ton. It's a little expensive.
@@ -555,26 +518,19 @@ func (pdc *projectDownloadChunk) launchWorker() error {
 				jobGeneric: newJobGeneric(w.staticJobReadQueue, pdc.ctx.Done()),
 			},
 			staticOffset: pdc.pieceOffset,
-
-			// TODO: Now that the staticSector has been moved into jobRead, it
-			// may not need to be in jobReadSector anymore. The reason that it
-			// had to be added to jobRead is because we collect al of the
-			// responses down the same channel, which prevents us from knowing
-			// which repsonses correspond to which sendoffs unless that
-			// information can be included in the readResponse, and the
-			// readResponse only has access to the jobRead.
-			staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
 		}
 
 		// Launch the job and then update the status of the worker. Either way,
 		// the worker should be marked as 'launched'. If the job is not
 		// successfully queued, the worker should be marked as 'failed' as well.
-		added := w.staticJobReadQueue.callAdd(jrs)
+		expectedCompletionTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
 		for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
 			if w == pieceDownload.worker {
 				pieceDownload.launched = true
 				if !added {
 					pieceDownload.failed = true
+				} else {
+					pieceDownload.expectedCompletionTime = expectedCompletionTime
 				}
 			}
 		}

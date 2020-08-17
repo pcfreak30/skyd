@@ -191,6 +191,16 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 	return responses, nil
 }
 
+// callAddWithEstimate will add a job to the job read queue while providing an
+// estimate for when the job is expected to return.
+func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
+	estimate := jq.callExpectedJobTime(j.staticLength)
+	if !jq.callAdd(j) {
+		return time.Time{}, false
+	}
+	return time.Now().Add(estimate), true
+}
+
 // callExpectedJobTime will return the recent performance of the worker
 // attempting to complete read jobs. The call distinguishes based on the
 // size of the job, breaking the jobs into 3 categories: less than 64kb, less
@@ -199,6 +209,8 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 // The breakout is performed because low latency, low throughput workers are
 // common, and will have very different performance characteristics across the
 // three categories.
+//
+// TODO: Make this smarter.
 func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
