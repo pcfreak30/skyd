@@ -203,7 +203,7 @@ var (
 	SkyfileFormatZip = SkyfileFormat("zip")
 )
 
-// Content-Type returns the content type for the format
+// ContentType returns the content type for the format
 func (sf SkyfileFormat) ContentType() string {
 	switch sf {
 	case SkyfileFormatZip:
