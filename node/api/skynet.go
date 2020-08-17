@@ -408,9 +408,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		format = modules.SkyfileFormatZip
 	}
 
-	// If a format is specified and we do not have a Content-Type yet, set the
-	// requested format's content type.
-	if format != modules.SkyfileFormatNotSpecified && contentType == "" {
+	// If an archive format is specified, set the content type depending on that
+	// format.
+	if format.IsArchive() {
 		contentType = format.ContentType()
 	}
 

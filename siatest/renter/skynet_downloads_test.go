@@ -41,6 +41,8 @@ func TestSkynetDownloads(t *testing.T) {
 		{Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
 		{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
 		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
+		{Name: "Skynet-Is-Skapp", Test: testSkynetIsSkappHeader},
+		{Name: "Skynet-Media-Type", Test: testSkynetMediaTypeHeader},
 	}
 
 	// Run tests
@@ -526,6 +528,78 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	err = errors.Compose(err, verifyCDHeader(header, attachmentZip))
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkynetIsSkappHeader tests that downloads have a custom 'Skynet-Is-Skapp'
+// response header.
+//
+// Note that this function merely verifies the header is set on the response,
+// this is combined with a unit test that verifies the classification of a
+// Skyfile as Skapp.
+func testSkynetIsSkappHeader(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// upload a single file
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("testSkynetIsSkappHeader", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify a HEAD call has the response header set (this verifies both the
+	// HEAD and GET endpoint)
+	_, header, err := r.SkynetSkylinkHead(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Get("Skynet-Is-Skapp") == "" {
+		t.Fatal("Response header not set")
+	}
+
+	// verify it's set if we supply a format
+	format := modules.SkyfileFormatZip
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, format)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Get("Skynet-Is-Skapp") == "" {
+		t.Fatal("Response header not set")
+	}
+}
+
+// testSkynetMediaTypeHeader tests that downloads have a custom
+// 'Skynet-Media-Type' response header.
+//
+// Note that this function merely verifies the header is set on the response,
+// this is combined with a unit test that verifies the media type for various
+// inputs.
+func testSkynetMediaTypeHeader(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// upload a single file
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("testSkynetMediaTypeHeader", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify a HEAD call has the response header set (this verifies both the
+	// HEAD and GET endpoint)
+	_, header, err := r.SkynetSkylinkHead(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Get("Skynet-Media-Type") == "" {
+		t.Fatal("Response header not set")
+	}
+
+	// verify it's set if we supply a format
+	format := modules.SkyfileFormatZip
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, format)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Get("Skynet-Media-Type") == "" {
+		t.Fatal("Response header not set")
 	}
 }
 
