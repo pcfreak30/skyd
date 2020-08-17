@@ -1,0 +1,1 @@
+- Add `Skynet-Media-Type` and `Skynet-Is-Skapp` response headers.

@@ -4891,6 +4891,26 @@ The header field "Skynet-FileMetadata" will be set such that it has an encoded
 json object which matches the modules.SkyfileMetadata struct. If a path was
 supplied, this metadata will be relative to the given path.
 
+**Skynet-Is-Skapp** | boolean
+
+The value of "Skynet-Is-Skapp" will be set to true if the Skylink is considered
+a Skapp. We consider a Skyfile to be a Skapp if it contains at least one html
+file.
+
+**NOTE:** the definition of what constitutes a Skapp is subject to change and
+should not be relied upon as we will not maintain backwards compatibility for
+this field.
+
+**Skynet-Media-Type** | string
+
+The value of "Skynet-Media-Type" will contain the media type of the returned
+content. We define media type is the top-level type, as is outlined in
+https://tools.ietf.org/html/rfc6838.
+
+**NOTE:** the value returned by this reponse header is subject to change and
+should not be relied upon as we will not maintain backwards compatibility for
+this field.
+
 > Skynet-File-Metadata Response Header Example 
 
 ```go

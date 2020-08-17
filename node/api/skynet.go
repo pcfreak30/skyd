@@ -44,6 +44,10 @@ const (
 	// could cause a go-routine leak by creating a bunch of requests with very
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
+
+	// sniffLen is the amount of bytes we read from a streamer to try and sniff
+	// the content type from it.
+	sniffLen = 512
 )
 
 var (
@@ -343,7 +347,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	var isSubfile bool
-	responseContentType := metadata.ContentType()
+	contentType := metadata.ContentType()
 
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
@@ -378,7 +382,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		isSubfile = file
-		responseContentType = metaForPath.ContentType()
+		contentType = metaForPath.ContentType()
 	}
 
 	// Serve the contents of the skyfile at path if one is set
@@ -402,6 +406,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// specified, default to downloading it as a zip archive.
 	if !isSubfile && metadata.IsDirectory() && format == modules.SkyfileFormatNotSpecified {
 		format = modules.SkyfileFormatZip
+	}
+
+	// If a format is specified and we do not have a Content-Type yet, set the
+	// requested format's content type.
+	if format != modules.SkyfileFormatNotSpecified && contentType == "" {
+		contentType = format.ContentType()
 	}
 
 	// Encode the metadata
@@ -442,7 +452,14 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
 	}()
 
-	// Set an appropriate Content-Disposition header
+	// Set Content-Type header, we only set the Content-Type header if the
+	// content type is defined, if we were to set the header to an empty string,
+	// it would prevent the http library from sniffing the file's content type.
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+
+	// Set Content-Disposition header
 	var cdh string
 	filename := filepath.Base(metadata.Filename)
 	if format.IsArchive() {
@@ -454,11 +471,17 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	w.Header().Set("Content-Disposition", cdh)
 
+	// Set CORS header
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Decorate the response with some Skynet specific response header.
+	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+	w.Header().Set("Skynet-Is-Skapp", fmt.Sprintf("%t", isSkapp(metadata)))
+	w.Header().Set("Skynet-Media-Type", parseMediaType(contentType, metadata.Filename, streamer))
+
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.
 	if format == modules.SkyfileFormatTar {
-		w.Header().Set("Content-Type", "application/x-tar")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		err = serveArchive(w, streamer, metadata, serveTar)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
@@ -466,8 +489,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if format == modules.SkyfileFormatTarGz {
-		w.Header().Set("Content-Type", "application/gzip")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		gzw := gzip.NewWriter(w)
 		err = serveArchive(gzw, streamer, metadata, serveTar)
 		err = errors.Compose(err, gzw.Close())
@@ -477,24 +498,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if format == modules.SkyfileFormatZip {
-		w.Header().Set("Content-Type", "application/zip")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		err = serveArchive(w, streamer, metadata, serveZip)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
 	}
-
-	// Only set the Content-Type header when the metadata defines one, if we
-	// were to set the header to an empty string, it would prevent the http
-	// library from sniffing the file's content type.
-	if responseContentType != "" {
-		w.Header().Set("Content-Type", responseContentType)
-	}
-	w.Header().Set("Skynet-File-Type", "testing-response-headers")
-	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
@@ -1351,4 +1360,50 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 // matches that of a multipart form.
 func isMultipartRequest(mediaType string) bool {
 	return strings.HasPrefix(mediaType, "multipart/form-data")
+}
+
+// isSkapp is a helper method that returns true if the given metadata belongs to
+// a Skylink which is considered an application or 'Skapp'. The definition of
+// being classified as an application is whether or not it contains an html file
+// for the time being.
+func isSkapp(metadata modules.SkyfileMetadata) bool {
+	// single file skyfiles are considered skapps if it's an html file
+	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
+		return strings.HasSuffix(metadata.Filename, ".html") || strings.HasSuffix(metadata.Filename, ".htm")
+	}
+
+	// multifile skyfiles are considered a skapp if they contain at least one
+	// html file, note that we can rely on the content type here
+	for _, file := range metadata.Subfiles {
+		if strings.HasPrefix(file.ContentType, "text/html") {
+			return true
+		}
+	}
+	return false
+}
+
+// parseMediaType is a helper method that parses the media type from the given
+// input.
+func parseMediaType(contentType, filename string, s modules.Streamer) string {
+	// if the given content type is not defined, try to find it through either
+	// the extension or by sniffing the content itself
+	if contentType == "" {
+		contentType = mime.TypeByExtension(filepath.Ext(filename))
+		if contentType == "" {
+			var buf [sniffLen]byte
+			n, err := io.ReadFull(s, buf[:])
+			if err != io.EOF {
+				contentType = http.DetectContentType(buf[:n])
+			}
+			s.Seek(0, io.SeekStart)
+		}
+	}
+
+	// parse the media type
+	mt, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "unknown"
+	}
+
+	return strings.SplitN(mt, "/", 2)[0]
 }
