@@ -1,1 +1,1 @@
-- Add `Skynet-Media-Type` and `Skynet-Is-Skapp` response headers.
+- Add `Skynet-Media-Type`, `Skynet-Is-Skapp` and `Skynet-Skylink` response headers.
