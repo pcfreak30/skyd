@@ -45,6 +45,7 @@ import (
 	"math"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -686,11 +687,24 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// potential downloads.
 	completedPieces := 0
 	hopefulPieces := 0
-	for _, pieceDownload := range pdc.availablePieces {
-		if pieceDownload.completed {
-			completedPieces++
+	for _, piece := range pdc.availablePieces {
+		// Only count one piece as hopeful per set.
+		hopeful := false
+		for _, pieceDownload := range piece {
+			// If this piece is completed, count it both as hopeful and
+			// completed, no need to look at other pieces.
+			if pieceDownload.completed {
+				hopeful = true
+				completedPieces++
+				break
+			}
+			// If this piece has not yet failed, it is hopeful. Keep looking
+			// through the pieces in case there is a completed piece.
+			if !pieceDownload.failed {
+				hopeful = true
+			}
 		}
-		if !pieceDownload.failed {
+		if hopeful {
 			hopefulPieces++
 		}
 	}
@@ -749,20 +763,23 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 
 		// Run logic to determine whether or not we should kick off overdrive
 		// workers.
-		if pdc.needsOverdrive() {
+		needsOverdrive, overdriveTimeout := pdc.needsOverdrive()
+		for needsOverdrive {
 			_ = pdc.launchWorker() // Err is ignored, nothing to do.
+			needsOverdrive, overdriveTimeout = pdc.needsOverdrive()
+			continue
 		}
 
 		// Determine when the next overdrive check needs to run.
-		overdriveTimeout := pdc.overdriveTimeout()
+		overdriveTimeoutChan := time.After(overdriveTimeout)
 		select {
-		case jrr := pdc.workerResponseChan:
+		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
 			continue
 		case <-pdc.ctx.Done():
 			pdc.fail(errors.New("download failed while waiting for responses"))
 			return
-		case <-overdriveTimeout:
+		case <-overdriveTimeoutChan:
 			continue
 		}
 	}
@@ -772,6 +789,20 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 // length of a chunk download, given the erasure coder for the chunk, the offset
 // within the chunk, and the length within the chunk.
 func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (pieceOffset, pieceLength uint64) {
+	// Fetch the segment size of the ec.
+	pieceSegmentSize, partialsSupported := ec.SupportsPartialEncoding()
+	if !partialsSupported {
+		// If partials are not supported, the full piece needs to be downloaded.
+		pieceSegmentSize = modules.SectorSize
+	}
+
+	// Consistency check some of the erasure coder values. If the check fails,
+	// return that the whole piece must be downloaded.
+	if pieceSegmentSize == 0 || pieceSegmentSize%crypto.SegmentSize != 0 {
+		build.Critical("pcws has a bad erasure coder")
+		return 0, modules.SectorSize
+	}
+
 	// Determine the download offset within a single piece. We get this by
 	// dividing the chunk offset by the number of pieces and then rounding
 	// down to the nearest segment size.
@@ -779,20 +810,20 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 	// This is mathematically equivalent to rounding down the chunk size to
 	// the nearest chunk segment size and then dividing by the number of
 	// pieces.
-	pieceOffest = offset / ec.MinPieces()
-	pieceOffset = pieceOffset / ec.PieceSegmentSize()
-	pieceOffset = pieceOffset * ec.PieceSegmentSize()
+	pieceOffset = offset / uint64(ec.MinPieces())
+	pieceOffset = pieceOffset / pieceSegmentSize
+	pieceOffset = pieceOffset * pieceSegmentSize
 
 	// Determine the length that needs to be downloaded. This is done by
 	// determining the offset that the download needs to reach, and then
 	// subtracting the pieceOffset from the termination offset.
-	chunkSegmentSize := ec.PieceSegmentSize() * ec.MinPieces()
+	chunkSegmentSize := pieceSegmentSize * uint64(ec.MinPieces())
 	chunkTerminationOffset := offset + length
 	overflow := chunkTerminationOffset % chunkSegmentSize
 	if overflow != 0 {
 		chunkTerminationOffset += chunkSegmentSize - overflow
 	}
-	pieceTerminationOffset = chunkTerminationOffset / ec.PieceSegmentSize()
+	pieceTerminationOffset := chunkTerminationOffset / pieceSegmentSize
 	pieceLength = pieceTerminationOffset - pieceOffset
 	return pieceOffset, pieceLength
 }
@@ -825,17 +856,11 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
 
-	// Consistency check some of the erasure coder values.
-	if ec.PieceSegmentSize() == 0 || ec.PieceSegmentSize%crypto.SegmentSize != 0 {
-		pdws.staticRenter.log.Critical("pcws has a bad erasure coder")
-		return nil, errors.New("pcws has a bad erasure coder")
-	}
-
 	// Check encryption type. If the encryption overhead is not zero, the piece
 	// offset and length need to download the full chunk. This is due to the
 	// overhead being a checksum that has to be verified against the entire
 	// piece.
-	if pcws.staticMasterKey.Type().Overhead() != 0 && (offset != 0 || length != modules.SectorSize*ec.NumPieces()) {
+	if pcws.staticMasterKey.Type().Overhead() != 0 && (offset != 0 || length != modules.SectorSize*uint64(ec.NumPieces())) {
 		return nil, errors.New("invalid request performed - this chunk has encryption overhead and therefore the full chunk must be downloaded")
 	}
 

@@ -74,7 +74,7 @@ func (j *jobRead) callDiscard(err error) {
 		response := &jobReadResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 
-			staticSector: j.staticSector,
+			staticSectorRoot: j.staticSector,
 
 			staticWorker: w,
 		}
@@ -99,7 +99,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticData: readData,
 		staticErr:  readErr,
 
-		staticSector: j.staticSector,
+		staticSectorRoot: j.staticSector,
 
 		staticWorker: w,
 	}

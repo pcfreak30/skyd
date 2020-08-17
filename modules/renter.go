@@ -209,8 +209,10 @@ type (
 
 		// SupportsPartialEncoding returns true if the ErasureCoder can be used
 		// to encode/decode any crypto.SegmentSize bytes of an encoded piece or
-		// false otherwise.
-		SupportsPartialEncoding() bool
+		// false otherwise. If partial encoding is supported, the piece segment
+		// size will be returned. Otherwise the numerical return value is set to
+		// zero.
+		SupportsPartialEncoding() (uint64, bool)
 
 		// Type returns the type identifier of the ErasureCoder.
 		Type() ErasureCoderType

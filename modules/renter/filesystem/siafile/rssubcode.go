@@ -198,9 +198,10 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	return nil
 }
 
-// SupportsPartialEncoding returns true for the custom reed-solomon encoder.
-func (rs *RSSubCode) SupportsPartialEncoding() bool {
-	return true
+// SupportsPartialEncoding returns true for the custom reed-solomon encoder,
+// providing the segment size of the coder.
+func (rs *RSSubCode) SupportsPartialEncoding() (uint64, bool) {
+	return rs.staticSegmentSize, true
 }
 
 // Type returns the erasure coders type identifier.
