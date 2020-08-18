@@ -228,8 +228,7 @@ type (
 	HostFinancialMetrics struct {
 		// Metrics related to ephemeral accounts. Account funding represents all
 		// funds used to fund ephemeral acccounts with for storage obligations
-		// that were successful. Potential account funding represents the same
-		// but for storage obligations that have not been confirmed yet.
+		// that were successful.
 		AccountFunding types.Currency `json:"accountfunding"`
 
 		// Every time a renter forms a contract with a host, a contract fee is
