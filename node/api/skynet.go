@@ -471,9 +471,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	w.Header().Set("Content-Disposition", cdh)
 
-	// Set CORS header
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	// Decorate the response with some Skynet specific response header.
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 	w.Header().Set("Skynet-Is-Skapp", fmt.Sprintf("%t", isSkapp(metadata)))
@@ -823,9 +820,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 		lup.SkykeyID = ID
 	}
-
-	// Enable CORS
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Check for a convertpath input
 	convertPathStr := queryForm.Get("convertpath")
