@@ -553,8 +553,8 @@ func testSkynetIsSkappHeader(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Get("Skynet-Is-Skapp") == "" {
-		t.Fatal("Response header not set")
+	if header.Get("Skynet-Is-Skapp") != "false" {
+		t.Fatal("Unexpected value for 'Skynet-Is-Skapp'")
 	}
 
 	// verify it's set if we supply a format
@@ -563,8 +563,8 @@ func testSkynetIsSkappHeader(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Get("Skynet-Is-Skapp") == "" {
-		t.Fatal("Response header not set")
+	if header.Get("Skynet-Is-Skapp") != "false" {
+		t.Fatal("Unexpected value for 'Skynet-Is-Skapp'")
 	}
 }
 
@@ -578,7 +578,7 @@ func testSkynetMediaTypeHeader(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// upload a single file
-	skylink, _, _, err := r.UploadNewSkyfileBlocking("testSkynetMediaTypeHeader", 100, false)
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("testSkynetMediaTypeHeader.html", 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +589,7 @@ func testSkynetMediaTypeHeader(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Get("Skynet-Media-Type") == "" {
+	if header.Get("Skynet-Media-Type") != "text" {
 		t.Fatal("Response header not set")
 	}
 
@@ -599,8 +599,8 @@ func testSkynetMediaTypeHeader(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Get("Skynet-Media-Type") == "" {
-		t.Fatal("Response header not set")
+	if header.Get("Skynet-Media-Type") != "application" {
+		t.Fatal("Unexpected value for 'Skynet-Media-Type'")
 	}
 }
 

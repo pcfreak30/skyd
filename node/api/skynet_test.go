@@ -330,7 +330,7 @@ func TestSplitSkylinkString(t *testing.T) {
 }
 
 // TestIsSkapp is a small unit test that verifies the functionality of the
-// `isSkapp` helper method
+// `isSkapp` helper function.
 func TestIsSkapp(t *testing.T) {
 	t.Parallel()
 
@@ -394,7 +394,8 @@ func TestIsSkapp(t *testing.T) {
 	}
 }
 
-// TestParseMediaType
+// TestParseMediaType is a small unit test that verifies the functionality of
+// the `parseMediaType` helper function.
 func TestParseMediaType(t *testing.T) {
 	t.Parallel()
 
