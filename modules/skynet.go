@@ -203,6 +203,20 @@ var (
 	SkyfileFormatZip = SkyfileFormat("zip")
 )
 
+// ContentType returns the content type for the format
+func (sf SkyfileFormat) ContentType() string {
+	switch sf {
+	case SkyfileFormatZip:
+		return "application/zip"
+	case SkyfileFormatTar:
+		return "application/x-tar"
+	case SkyfileFormatTarGz:
+		return "application/gzip"
+	default:
+		return ""
+	}
+}
+
 // Extension returns the extension for the format
 func (sf SkyfileFormat) Extension() string {
 	switch sf {

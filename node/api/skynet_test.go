@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -325,5 +326,121 @@ func TestSplitSkylinkString(t *testing.T) {
 				t.Fatalf("Expected path '%v', got '%v'\n", tt.path, path)
 			}
 		})
+	}
+}
+
+// TestIsSkapp is a small unit test that verifies the functionality of the
+// `isSkapp` helper function.
+func TestIsSkapp(t *testing.T) {
+	t.Parallel()
+
+	if isSkapp(modules.SkyfileMetadata{
+		Filename: "file1.png",
+		Mode:     os.FileMode(0777),
+	}) {
+		t.Fatal("Unexpected outcome")
+	}
+
+	if !isSkapp(modules.SkyfileMetadata{
+		Filename: "index.html",
+		Mode:     os.FileMode(0777),
+	}) {
+		t.Fatal("Unexpected outcome")
+	}
+
+	if !isSkapp(modules.SkyfileMetadata{
+		Filename: "about.htm",
+		Mode:     os.FileMode(0777),
+	}) {
+		t.Fatal("Unexpected outcome")
+	}
+
+	if isSkapp(modules.SkyfileMetadata{
+		Filename: "multifile skyfile",
+		Mode:     os.FileMode(0777),
+		Subfiles: map[string]modules.SkyfileSubfileMetadata{
+			"file1.png": {
+				Filename:    "file1.png",
+				FileMode:    os.FileMode(0777),
+				ContentType: "image/png",
+			},
+			"file2.png": {
+				Filename:    "file2.png",
+				FileMode:    os.FileMode(0777),
+				ContentType: "image/png",
+			},
+		},
+	}) {
+		t.Fatal("Unexpected outcome")
+	}
+
+	if !isSkapp(modules.SkyfileMetadata{
+		Filename: "multifile skyfile",
+		Mode:     os.FileMode(0777),
+		Subfiles: map[string]modules.SkyfileSubfileMetadata{
+			"file1.png": {
+				Filename:    "file1.png",
+				FileMode:    os.FileMode(0777),
+				ContentType: "image/png",
+			},
+			"index.html": {
+				Filename:    "index.html",
+				FileMode:    os.FileMode(0777),
+				ContentType: "text/html",
+			},
+		},
+	}) {
+		t.Fatal("Unexpected outcome")
+	}
+}
+
+// TestParseMediaType is a small unit test that verifies the functionality of
+// the `parseMediaType` helper function.
+func TestParseMediaType(t *testing.T) {
+	t.Parallel()
+
+	empty := streamerFromSlice(nil)
+
+	// simple content type
+	mt := parseMediaType("application/pdf", "", empty)
+	if mt != "application" {
+		t.Fatal("Unexpected outcome", mt)
+	}
+
+	// custom content type
+	mt = parseMediaType("application/vnd+company.category+xml", "", empty)
+	if mt != "application" {
+		t.Fatal("Unexpected outcome", mt)
+	}
+
+	// simple content type
+	mt = parseMediaType("image/png", "", empty)
+	if mt != "image" {
+		t.Fatal("Unexpected outcome", mt)
+	}
+
+	// content type with params
+	mt = parseMediaType("text/html; charset=utf-8", "", empty)
+	if mt != "text" {
+		t.Fatal("Unexpected outcome", mt)
+	}
+
+	// no content type - html in streamer
+	minHTML := []byte("<!DOCTYPE html><html lang=\"en\"></html>")
+	mt = parseMediaType("", "about.html", streamerFromSlice(minHTML))
+	if mt != "text" {
+		t.Fatal("Unexpected outcome", mt)
+	}
+
+	// no content type - nil streamer - filename hints at zip
+	mt = parseMediaType("", "about.zip", empty)
+	if mt != "application" {
+		t.Fatal("Unexpected outcome", mt)
+	}
+
+	// no content type - nil streamer - filename w/o extension
+	mt = parseMediaType("", "noextension", empty)
+	if mt != "unknown" {
+		t.Fatal("Unexpected outcome", mt)
 	}
 }
