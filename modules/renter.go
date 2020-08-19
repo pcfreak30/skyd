@@ -521,6 +521,18 @@ type HostScoreBreakdown struct {
 	VersionAdjustment          float64 `json:"versionadjustment"`
 }
 
+// MemoryStatus contains information about the status of the memory manager
+type MemoryStatus struct {
+	Available uint64 `json:"available"`
+	Base      uint64 `json:"base"`
+	Requested uint64 `json:"requested"`
+
+	PriorityAvailable uint64 `json:"priorityavailable"`
+	PriorityBase      uint64 `json:"prioritybase"`
+	PriorityRequested uint64 `json:"priorityrequested"`
+	PriorityReserve   uint64 `json:"priorityreserve"`
+}
+
 // MountInfo contains information about a mounted FUSE filesystem.
 type MountInfo struct {
 	MountPoint string  `json:"mountpoint"`
@@ -747,9 +759,11 @@ type (
 		HostPubKey      types.SiaPublicKey   `json:"hostpubkey"`
 
 		// Download status information
-		DownloadOnCoolDown bool `json:"downloadoncooldown"`
-		DownloadQueueSize  int  `json:"downloadqueuesize"`
-		DownloadTerminated bool `json:"downloadterminated"`
+		DownloadCoolDownError string        `json:"downloadcooldownerror"`
+		DownloadCoolDownTime  time.Duration `json:"downloadcooldowntime"`
+		DownloadOnCoolDown    bool          `json:"downloadoncooldown"`
+		DownloadQueueSize     int           `json:"downloadqueuesize"`
+		DownloadTerminated    bool          `json:"downloadterminated"`
 
 		// Upload status information
 		UploadCoolDownError string        `json:"uploadcooldownerror"`
@@ -886,6 +900,9 @@ type Renter interface {
 	// CurrentPeriod returns the height at which the current allowance period
 	// began.
 	CurrentPeriod() types.BlockHeight
+
+	// MemoryStatus returns the current status of the memory manager
+	MemoryStatus() (MemoryStatus, error)
 
 	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
 	// available via the local filesystem.
