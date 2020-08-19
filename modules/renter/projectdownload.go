@@ -5,6 +5,13 @@ package renter
 
 // TODO: Better handling of the time.After calls.
 
+// TODO: Refine the pricePerMS mechanic so that it's considering the cost of a
+// whole. Right now it looks at each worker separately, which means that it may
+// pay money to bump up the speed of a worker to faster worker, where both
+// workers are already faster than the slowest worker available. Needs more
+// thought. In the meantime, we're probably spending more money than we need to
+// for speed.
+
 import (
 	"bytes"
 	"context"
@@ -499,7 +506,11 @@ func (pdc *projectDownloadChunk) waitForWorker() (*worker, uint64, error) {
 // will be returned if there is no worker to launch.
 func (pdc *projectDownloadChunk) launchWorker() error {
 	// Loop until either a worker succeeds in launching a job, or until there
-	// are no more workers to return.
+	// are no more workers to return. The exit condition for this loop depends
+	// on waitForWorker() being guaranteed to return an error if the workers
+	// keep failing. When a worker fails, we set 'pieceDownload.failed' to true,
+	// which causes waitForWorker to ignore that worker option in the future.
+	// There are a finite number of worker options total.
 	for {
 		// An error here means that no more workers are available at all.
 		w, pieceIndex, err := pdc.waitForWorker()
@@ -523,14 +534,19 @@ func (pdc *projectDownloadChunk) launchWorker() error {
 		// Launch the job and then update the status of the worker. Either way,
 		// the worker should be marked as 'launched'. If the job is not
 		// successfully queued, the worker should be marked as 'failed' as well.
+		//
+		// NOTE: We don't break out of the loop when we find a piece/worker
+		// match. If all is going well, each worker should appear at most once
+		// in this piece, but for the sake of defensive programming we check all
+		// elements anyway.
 		expectedCompletionTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
 		for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
-			if w == pieceDownload.worker {
+			if w.staticHostPubKeyStr == pieceDownload.worker.staticHostPubKeyStr {
 				pieceDownload.launched = true
-				if !added {
-					pieceDownload.failed = true
-				} else {
+				if added {
 					pieceDownload.expectedCompletionTime = expectedCompletionTime
+				} else {
+					pieceDownload.failed = true
 				}
 			}
 		}
@@ -842,20 +858,30 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 // asynchronous. It will return as soon as the sector download requests have
 // been sent to the workers. This means that it will block until enough workers
 // have reported back with HasSector results that the optimal download request
-// can be made.
+// can be made. Where possible, the projectChunkWorkerSet should be created in
+// advance of the download call, so that the HasSector calls have as long as
+// possible to complete, cutting significant latency off of the download.
 //
 // Blocking until all of the piece downloads have been put into job queues
 // ensures that the workers will account for the bandwidth overheads associated
 // with these jobs before new downloads are requested. Multiple calls to
 // 'managedDownload' from the same thread will generally follow the rule that
-// the first calls will return first, though no ordering can be guaranteed due
-// to the highly parallel and asynchronous nature of the download.
+// the first calls will return first. This rule cannot be enforced if the call
+// to managedDownload returns before the download jobs are queued into the
+// workers.
 //
 // pricePerMS is "price per millisecond". To add a price preference to picking
 // hosts to download from, the total cost of performing a download will be
 // converted into a number of milliseconds based on the pricePerMS. This cost
 // will be added to the return time of the host, meaning the host will be
 // selected as though it is slower.
+//
+// TODO: If an error is returned, the input contex should probably be closed. An
+// alternative context design here would be to create a child context, and then
+// close the child context if the launch is not successful, but then we would
+// not be closing the child context at all in the success case, which is
+// considered a context anti-pattern. I'm not sure if this design should be kept
+// or if something else is preferred.
 //
 // NOTE: A lot of this code is not future proof against certain classes of
 // encryption algorithms and erasure coding algorithms, however I believe that
@@ -870,7 +896,12 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// offset and length need to download the full chunk. This is due to the
 	// overhead being a checksum that has to be verified against the entire
 	// piece.
-	if pcws.staticMasterKey.Type().Overhead() != 0 && (offset != 0 || length != modules.SectorSize*uint64(ec.NumPieces())) {
+	//
+	// NOTE: These checks assume that any upload with encryption overhead needs
+	// to be downloaded as full sectors. This feels reasonable because smaller
+	// sectors were not supported when encryption schemes with overhead were
+	// being suggested.
+	if pcws.staticMasterKey.Type().Overhead() != 0 && (offset != 0 || length != modules.SectorSize*uint64(ec.MinPieces())) {
 		return nil, errors.New("invalid request performed - this chunk has encryption overhead and therefore the full chunk must be downloaded")
 	}
 
@@ -891,6 +922,13 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// workers*pieces slots, we buffer for pieces*5 slots, under the assumption
 	// that the overdrive code is not going to be so aggressive that 5x or more
 	// overhead on download will be needed.
+	//
+	// TODO: If this ends up being a problem, we could implement the jobs
+	// process to send the result down a channel in goroutine if the first
+	// attempt to send the job fails. Then we could probably get away with a
+	// smaller buffer, since exceeding the limit currently would cause a worker
+	// to stall, where as with the goroutine-on-block method, exceeding the
+	// limit merely causes extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
 	// Build the full pdc.
