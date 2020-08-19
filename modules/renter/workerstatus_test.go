@@ -3,7 +3,6 @@ package renter
 import (
 	"encoding/json"
 	"fmt"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -207,9 +206,8 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	}
 
 	// prevent the worker from doing any work by manipulating its read limit
-	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
+	//
+	// TODO: Need a new way of doing this.
 
 	// add the job to the worker
 	cc := make(chan struct{})
@@ -239,7 +237,8 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	}
 
 	// restore the read limit
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, current)
+	//
+	// TODO: Need a new way of doing this.
 
 	// verify the status in a build.Retry to allow the worker some time to
 	// process the job
@@ -333,9 +332,9 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	}
 
 	// prevent the worker from doing any work by manipulating its read limit
-	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
+	//
+	// TODO: We removed the limit so now we need a dependency injection or
+	// something.
 
 	// add the job to the worker
 	cc := make(chan struct{})
@@ -352,7 +351,9 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	}
 
 	// restore the read limit
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, current)
+	//
+	// TODO: We removed the limit so now we need a dependency injection or
+	// something.
 
 	// verify the status in a build.Retry to allow the worker some time to
 	// process the job

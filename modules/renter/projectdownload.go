@@ -550,9 +550,8 @@ func (pdc *projectDownloadChunk) launchWorker() error {
 				}
 			}
 		}
-
-		// If there was no error, return the expected completion time.
-		// Otherwise, try grabbing a new worker.
+		// If there was no error in adding the worker, a worker has successfully
+		// been launched. Otherwise, try to grab another worker.
 		if added {
 			return nil
 		}

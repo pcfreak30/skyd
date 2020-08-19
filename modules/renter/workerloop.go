@@ -33,12 +33,6 @@ type (
 		// jobs that we have submitted for the worker.
 		atomicReadDataOutstanding  uint64
 		atomicWriteDataOutstanding uint64
-
-		// The read data limit and the write data limit define how much work is
-		// allowed to be outstanding before new jobs will be blocked from being
-		// launched async.
-		atomicReadDataLimit  uint64
-		atomicWriteDataLimit uint64
 	}
 )
 
@@ -140,6 +134,13 @@ func (w *worker) externTryLaunchSerialJob() {
 // externLaunchAsyncJob accepts a function to retrieve a job and then uses that
 // to retrieve a job and launch it. The bandwidth consumption will be updated as
 // the job starts and finishes.
+//
+// TODO: Subtracting like this means that large amounts of data outstanding get
+// subtracted all at once, instead of progressively. Subtracting progressively
+// is a bit trickier though because the host may actually send more or less data
+// than expected (the amounts per job are estimates), and when everything is
+// done we would need to ensure that exactly the amount estimated was removed
+// from the counter.
 func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 	// Add the resource requirements to the worker loop state. Also add this
 	// thread to the number of jobs running.
@@ -181,18 +182,6 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 // queued at once to prevent jobs from being spread too thin and sharing too
 // much bandwidth.
 func (w *worker) externTryLaunchAsyncJob() bool {
-	// Verify that the worker has not reached its limits for doing multiple
-	// jobs at once.
-	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	writeLimit := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataLimit)
-	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
-	if readOutstanding > readLimit || writeOutstanding > writeLimit {
-		// Worker does not need to discard jobs, it is making progress, it's
-		// just not launching any new jobs until its current jobs finish up.
-		return false
-	}
-
 	// Perform a disrupt for testing. This is some code that ensures async job
 	// launches are controlled correctly. The disrupt operates on a mock worker,
 	// so it needs to happen after the ratelimit checks but before the cache,
