@@ -33,7 +33,7 @@ func (h *Host) staticVerifyAnnouncementAddress(addr modules.NetAddress) error {
 	}
 	// Make sure that the host resolves to 1 or 2 IPs and if it resolves to 2
 	// the type should be different.
-	ips, err := h.dependencies.LookupIP(addr.Host())
+	ips, err := h.dependencies.Resolver().LookupIP(addr.Host())
 	if err != nil {
 		return errors.AddContext(err, "failed to lookup hostname "+addr.Host())
 	}
