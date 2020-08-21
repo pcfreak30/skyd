@@ -194,6 +194,8 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 // callAddWithEstimate will add a job to the job read queue while providing an
 // estimate for when the job is expected to return.
 func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
+	// TODO: Do the add and the time estimation under the same lock, so that the
+	// estimate cannot be front-run by another job.
 	estimate := jq.callExpectedJobTime(j.staticLength)
 	if !jq.callAdd(j) {
 		return time.Time{}, false

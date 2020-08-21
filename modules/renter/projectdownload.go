@@ -11,6 +11,137 @@ package renter
 // workers are already faster than the slowest worker available. Needs more
 // thought. In the meantime, we're probably spending more money than we need to
 // for speed.
+//
+// The way we do it right now is upside down. What we want to do is look at the
+// speed and cost of performing a download using the cheapest possible hosts.
+// That gives us a baseline for both expense, and a strategy to iteratively
+// replace the slowest hosts with faster and more expensive hosts. You'd have to
+// remember when replacing hosts that there may not be a cost effective solution
+// to replace only the slowest host (because you don't gain that much from
+// replacing just one host), but there may be a cost effective solution to
+// replacing the slowest 2 (or N) hosts (because replacing N hosts may give a
+// much bigger gain per-host than just replacing 1).
+//
+// So basically you can make a matrix of sorts, where you write down how much
+// time you save by replacing N hosts, which gives you a budget to find N faster
+// hosts for each value of N, and it tells you which hosts qualify because you
+// know how fast they need to be. So you cross off any hosts that are too slow,
+// then you take the cheapest hosts that remain and see if you come in
+// under-budget.
+//
+// You have to keep repeating this process until it fails because no replacement
+// hosts that are sufficiently cheap are available.
+//
+// Okay... so how do we mesh that with the set of unresolved hosts... it is no
+// longer sufficient to just pull out a single host to know whether to wait,
+// because that host has to... no, wait maybe we can figure out if it is
+// sufficient to wait for a single host? If the superlative host selection would
+// include at least one host from the... okay so actually there's an edge case
+// where maybe it could potentially make sense, because we may need to know that
+// multiple faster hosts are available instead of just one. If we need 2 faster
+// hosts for the pricing math to work and we only have one faster host, then we
+// should go ahead with the download using the slower hosts.
+//
+// And then there's this final issue where we should launch workers as fast as
+// possible. HRM. And all of this gets encompassed in the worker selection code,
+// which I've decdided that I don't like and want to restructure. Pretty much
+// all of the rest of it I'm happy with.
+//
+// Okay, so we should find a way to select workers that gives price preference
+// in addition to time preference. The code we have now is just concerned about
+// time preference, and isn't super efficient. For price preference code, 
+//
+// Okay, so if we want to get super complicated, the price preference code also
+// has to take into account the chance that a worker fails a given download. And
+// actually I think that we should assume that either this is a pretty
+// negligable amount, or we will by cycling out that host? I think it's safe to
+// assume that failure probabilities are low enough that they shouldn't be in
+// the middle of the price code.
+//
+// Which means we really do just need to worry about the pricing choices, and
+// how that impacts our table.
+//
+// At any given point, we can determine the optimal set of workers for a given
+// price by keeping the workers sorted according to their expected return time,
+// and then going through and ignoring the ones that are too expensive to be
+// worthwhile. Of the ones that meet the time criteria, we select the cheapest.
+//
+// Okay, so we've got this sorted array of workers by the amount of time they
+// would take to return. Immediately, we can eliminate any workers that are
+// slower than the N cheapest workers as viable candidates for selection. Then
+// we grab the N cheapest workers and iteratively try to improve the set
+// according to our criteria. It should be the case that any set we choose which
+// improves over an existing set only narrows down our choices for how to get
+// even better. There's no need to explore all possible combinations to get to
+// the optimal solution.
+//
+// So we have a set of workers, the cheapest set. Then we go through and ignore
+// any workers that are more expensive then the cheapest set. Then for all N we
+// try to improve the set. We see how much time we shave by replacing a worker,
+// which tells us how much we can spend to repalce that worker. We then shift
+// thorugh and find the cheapest worker which is an improvement. We can ignore,
+// at least on this iteration, all of the workers that are too expensive to make
+// up the difference. We can't ignore them forever though, because on the next N
+// we might have way more than 2x the speedup.
+//
+// NOTE: So it does seem like going down one of the N paths instead of all of
+// them could actually get us to a suboptimal case? The idea being that we
+// replace one worker by spending a lot more than we need to, which means we
+// might start to DQ slower workers because they are no longer in the fastest
+// set? I don't know that this could happen... Plus it's too computationally
+// expensive anyway...... So the question is: is there a way to pass over a
+// superior solution given the pricePerMs if we pick up a faster worker.
+//
+// So at the very least, we should probably always pick the cheapest set of
+// workers that make an improvement. Progress is guaranteed because we are
+// always swapping out at least one worker that we will never come back to,
+// maybe more. And we know that if we are swapping a worker out, we are swapping
+// out the slowest workers, so there's no way we would ever swap them back in,
+// because doing so would increase our time, and would cost us at most less than
+// it cost to swap them out in the first place. So we just need to make sure
+// that each time we try to do a cut, we swap in the cheapest option. To the
+// extent that there's a more expensive option which still improves things... we
+// would need to compare direct to the time delta versus the worker we just
+// swapped, which is reasonable but complicates the code, and we get the same
+// thing just by iterating again.
+//
+// Sort workers in order of price. Start with the strictly cheapest workers.
+// Then, create a loop that trims 1 worker, 2, 3, etc. Skip any N where the
+// amount of time saved by adding a new N is less than the average amount of
+// time saved for the most effective N so far (because if that N didn't find a
+// solution, no solution can exist for an N that has a worse average time saved
+// per worker). Within the N, find the cheapest set of workers where they all
+// save time. This can again be done with n^2 algo, first find the cheapest
+// worker that saves time, then find N-1 more cheapest workers that save time.
+// If you find enough workers, swap them all in as the best workers. Track the
+// total cost as you add workers in.
+//
+// COMPLICATION: Some worker pairs are incompatible. Need to figure out when
+// returning workers which worker pairs are incompatible. And then you have to
+// disqualify a worker based on it being incompatible. You want to disqualify a
+// worker IF it is not the... - all you need to do is skip over the pieces that
+// aren't being replaced but already have good workers when assembling your
+// sorted list of potential workers.
+//
+// When we are actually assembling the list of workers that we can choose from,
+// we should ignore any pieces that have already launched without fail (though
+// count their cost), and we should include all unresolved workers as their own
+// thing.
+//
+// COMPLICATION: workers that are already late... maybe we should just log when
+// a worker ends up being late, and log by how much they end up being late. The
+// late stuff really complicates the code and hopefully we can get the estimator
+// to a place where late workers do not happen often at all.
+//
+// COMPLICATION: we will need to go back and look at pieces that are launched
+// without fail but not completed in the event that there are no opporunties to
+// launch a new piece that has not yet failed. Right now we do that using the
+// ranking system, but I think we can do that with just a check  that says 'welp
+// we've failed to find a good one', in which case we'll iterate over the
+// workers again, this time looking for a cheap/fast worker, including
+// considering pieces that have launched without success. At that point, a lot
+// of the heursitics have already failed, so we'll just be optimizing over a
+// single worker launch rather than optimizing over many workers launching.
 
 import (
 	"bytes"
@@ -130,6 +261,67 @@ type downloadResponse struct {
 	err  error
 }
 
+// bestUnresolvedWorker will scan through a proveded list of unresolved workers
+// and
+func (pdc *projectDownloadChunk) bestUnresolvedWorker(puws []*pcwsUnresolvedWorker) (bestWorkerLate bool, bestUnresolvedDuration, bestUnresolvedWaitDuration time.Duration) {
+	bestUnresolvedDuration := time.Duration(math.MaxInt64)
+	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(ws.staticErasureCoder.MinPieces()))
+	bestWorkerLate = true
+	for _, uw := range puws {
+		// Figure how much time is expected to remain until the worker is
+		// avaialble. Note that no price penatly is attached to the HasSector
+		// call, because that call is being made regardless of the cost.
+		hasSectorTime := time.Until(uw.staticExpectedCompletionTime)
+		if hasSectorTime < 0 {
+			hasSectorTime = 0
+		}
+
+		// Figure out how much time is expected until the worker completes the
+		// download job.
+		readTime := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
+		if readTime < 0 {
+			readTime = 0
+		}
+
+		// Add a penalty to performance based on the cost of the job. Need to be
+		// careful with the underflow cases.
+		//
+		// TODO: Break into helpfer function and unit test.
+		if pricePerMSPerWorker.IsZero() {
+			pricePerMSPerWorker = types.NewCurrency64(1)
+		}
+		expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
+		rsPricePenalty, err := expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64()
+		if err != nil || rsPricePenalty > math.MaxInt64 {
+			readTime = time.Duration(math.MaxInt64)
+		} else if reduced := math.MaxInt64 - int64(rsPricePenalty); int64(readTime) > reduced {
+			readTime = time.Duration(math.MaxInt64)
+		} else {
+			readTime += time.Duration(rsPricePenalty)
+		}
+
+		// Compare the total time (including price preference) to the current
+		// best time. Workers that are not late get preference over workers that
+		// are late.
+		adjustedTotalDuration := hasSectorTime + readTime
+		betterLateStatus := bestWorkerLate && hasSectorTime > 0
+		betterDuration := adjustedTotalDuration < bestUnresolvedDuration
+		if betterLateStatus || betterDuration {
+			bestUnresolvedDuration = adjustedTotalDuration
+		}
+		if hasSectorTime > 0 && betterDuration {
+			// bestUnresolvedWaitDuration should be set to 0 unless the best
+			// unresolved worker is not late.
+			bestUnresolvedWaitDuration = hasSectorTime
+		}
+		// The first time we find a worker that is not late, the best worker is
+		// not late. Marking this several times is not an issue.
+		if hasSectorTime > 0 {
+			bestWorkerLate = false
+		}
+	}
+}
+
 // findBestWorker will look at all of the workers that can help fetch a new
 // piece. If a good worker is found, that worker is returned along with the
 // index of the piece it should fetch. If no good worker is found but a good
@@ -151,6 +343,8 @@ type downloadResponse struct {
 // there is an expectation that lots of existing workers will fail.
 //
 // TODO: Need to migrate over any unresolved workers.
+//
+// TODO: Do we care about price per ms per worker on the resolved workers?
 func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duration, <-chan struct{}, error) {
 	// Helper variables.
 	//
@@ -162,7 +356,6 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	// in the typical case is more complex than is worth implementing at this
 	// time.
 	ws := pdc.workerSet
-	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(ws.staticErasureCoder.MinPieces()))
 
 	// For lock safety, need to fetch the list of unresolved workers separately
 	// from learning the best time. For thread safety, the update channel needs
@@ -175,63 +368,14 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	}
 	ws.mu.Unlock()
 
-	// Find the best duration of any unresolved worker. This will be compared to
-	// the best duration of any resolved worker which could be put to work on a
-	// piece.
+	// Find the best duration of any unresolved worker, which states the fastest
+	// that we could expect an unresolved worker to return a piece. This time
+	// takes into consideration the fact that the HasSector call is still in
+	// progress and will take time to return.
 	//
-	// bestUnresolvedWaitTime is the amount of time that the renter should wait
-	// to expect to hear back from the worker.
-	nullDuration := time.Duration(math.MaxInt64)
-	bestUnresolvedDuration := nullDuration
-	bestWorkerLate := true
-	var bestUnresolvedWaitTime time.Duration
-	for _, uw := range unresolvedWorkers {
-		// Figure how much time is expected to remain until the worker is
-		// avaialble. Note that no price penatly is attached to the HasSector
-		// call, because that call is being made regardless of the cost.
-		hasSectorTime := time.Until(uw.staticExpectedCompletionTime)
-		if hasSectorTime < 0 {
-			hasSectorTime = 0
-		}
-
-		// Figure out how much time is expected until the worker completes the
-		// download job.
-		readTime := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
-		if readTime < 0 {
-			readTime = 0
-		}
-		// Add a penalty to performance based on the cost of the job. Need to be
-		// careful with the underflow cases.
-		expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-		rsPricePenalty, err := expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64()
-		if err != nil || rsPricePenalty > math.MaxInt64 {
-			readTime = time.Duration(math.MaxInt64)
-		} else if reduced := math.MaxInt64 - int64(rsPricePenalty); int64(readTime) > reduced {
-			readTime = time.Duration(math.MaxInt64)
-		} else {
-			readTime += time.Duration(rsPricePenalty)
-		}
-
-		// Compare the total time (including price preference) to the current
-		// best time. Workers that are not late get preference over workers that
-		// are late.
-		adjustedTotalDuration := hasSectorTime + readTime
-		betterLateStatus := bestWorkerLate && hasSectorTime > 0
-		betterDuration := adjustedTotalDuration < bestUnresolvedDuration
-		if betterLateStatus || betterDuration {
-			bestUnresolvedDuration = adjustedTotalDuration
-		}
-		if hasSectorTime > 0 && betterDuration {
-			// bestUnresolvedWaitTime should be set to 0 unless the best
-			// unresolved worker is not late.
-			bestUnresolvedWaitTime = hasSectorTime
-		}
-		// The first time we find a worker that is not late, the best worker is
-		// not late. Marking this several times is not an issue.
-		if hasSectorTime > 0 {
-			bestWorkerLate = false
-		}
-	}
+	// bestUnresolvedWaitDuration is the amount of time that the renter should wait
+	// to expect to hear back from the worker with HasSector results.
+	bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration := pdc.bestUnresolvedWorkerWaitTime(unresolvedWorkers)
 
 	// Copy the list of resolved workers.
 	now := time.Now() // So we aren't calling time.Now() a ton. It's a little expensive.
@@ -456,7 +600,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 		ws.mu.Lock()
 		c := ws.registerForWorkerUpdate()
 		ws.mu.Unlock()
-		checkAgainTime := bestUnresolvedWaitTime
+		checkAgainTime := bestUnresolvedWaitDuration
 		if bestWorkerLate {
 			checkAgainTime = 0
 		}
@@ -519,6 +663,11 @@ func (pdc *projectDownloadChunk) launchWorker() error {
 		}
 
 		// Create the read sector job for the worker.
+		//
+		// TODO: The launch process should minimally have as input the ctx of
+		// the pdc, that way if the pdc closes we know to garbage collect the
+		// channel and not send down it. Ideally we can even cancel the job if
+		// it is in-flight.
 		jrs := &jobReadSector{
 			jobRead: jobRead{
 				staticResponseChan: pdc.workerResponseChan,
@@ -621,25 +770,30 @@ func (pdc *projectDownloadChunk) finalize() {
 	// The chunk download offset and chunk download length are different from
 	// the requested offset and length because the chunk download offset and
 	// length are required to be
+	//
+	// NOTE: This is one of the places where we assume we are using maximum
+	// distance separable erasure codes.
 	chunkDLOffset := pdc.pieceOffset * uint64(ec.MinPieces())
-	chunkDLLength := pdc.pieceOffset * uint64(ec.MinPieces())
+	chunkDLLength := pdc.pieceLength * uint64(ec.MinPieces())
 
+	// Recover the pieces in to a single byte slice.
 	buf := bytes.NewBuffer(nil)
 	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, chunkDLOffset+chunkDLLength, buf)
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
 		return
 	}
+	data := buf.Bytes()
 
-	// Data is all in, truncate the chunk accordingly.
+	// The full set of data is recovered, truncate it down to just the pieces of
+	// data requested by the user and return.
 	//
 	// TODO: Unit test this.
-	data := buf.Bytes()
 	chunkStartWithinData := pdc.chunkOffset - chunkDLOffset
 	chunkEndWithinData := pdc.chunkLength + chunkStartWithinData
 	data = data[chunkStartWithinData:chunkEndWithinData]
 
-	// The data is all set.
+	// Return the data to the caller.
 	dr := &downloadResponse{
 		data: data,
 		err:  nil,
@@ -649,6 +803,8 @@ func (pdc *projectDownloadChunk) finalize() {
 
 // finished returns true if the download is finished, and returns an error if
 // the download is unable to complete.
+//
+// TODO: Unit test this.
 func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// Convenience variables.
 	ws := pdc.workerSet
@@ -698,6 +854,8 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 
 // needsOverdrive returns true if the function determines that another piece
 // should be launched to assist with the current download.
+//
+// TODO: Unit test this.
 func (pdc *projectDownloadChunk) needsOverdrive() (time.Duration, bool) {
 	// Go through the pieces, determining how many pieces are launched without
 	// fail, and what the longest return time is of all the workers that have
