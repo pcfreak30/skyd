@@ -824,9 +824,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		lup.SkykeyID = ID
 	}
 
-	// Enable CORS
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	// Check for a convertpath input
 	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr != "" && lup.FileMetadata.Filename != "" {
