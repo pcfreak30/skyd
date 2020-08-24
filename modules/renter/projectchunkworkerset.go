@@ -188,6 +188,9 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
 	ws.closeUpdateChans()
 	if resp.staticErr != nil {
+		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
+			worker:       w,
+		})
 		return
 	}
 
@@ -199,12 +202,14 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 			indices = append(indices, uint64(i))
 		}
 	}
-	if len(indices) > 0 {
-		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
-			worker:       w,
-			pieceIndices: indices,
-		})
-	}
+	// Add this worker to the set of resolved workers. Add the worker even if
+	// there are no pieces stored with this worker, as the download projects
+	// using this worker state will want to know that the worker did have an
+	// outcome.
+	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
+		worker:       w,
+		pieceIndices: indices,
+	})
 }
 
 // managedLaunchWorker will launch a job to determine which sectors of a chunk

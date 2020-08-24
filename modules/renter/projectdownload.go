@@ -101,7 +101,7 @@ type projectDownloadChunk struct {
 	// available pieces. This enables the worker selection code to realize which
 	// pieces in the worker set have been resolved since the last check.
 	availablePieces   [][]pieceDownload
-	workersConsidered map[string]struct{}
+	workersConsideredIndex uint64
 
 	// dataPieces is the buffer that is used to place data as it comes back.
 	// There is one piece per chunk, and pieces can be nil. To know if the
@@ -933,6 +933,16 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// erasure coder have required segment sizes.
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
+	// Refresh the pcws. This will only cause a refresh if one is necessary.
+	err := pcws.managedTryUpdateWorkerState()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to initiate download")
+	}
+	// After refresh, grab the worker state.
+	pcws.mu.Lock()
+	ws := pcws.workerState
+	pcws.mu.Unlock()
+
 	// Create the workerResponseChan.
 	//
 	// The worker response chan is allocated to be quite large. This is because
@@ -972,6 +982,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		workerResponseChan:   workerResponseChan,
 		downloadResponseChan: make(chan *downloadResponse, 1),
 		workerSet:            pcws,
+		workerState:          ws.
 	}
 
 	// Launch enough workers to complete the download. The overdrive code will
