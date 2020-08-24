@@ -228,8 +228,7 @@ type (
 	HostFinancialMetrics struct {
 		// Metrics related to ephemeral accounts. Account funding represents all
 		// funds used to fund ephemeral acccounts with for storage obligations
-		// that were successful. Potential account funding represents the same
-		// but for storage obligations that have not been confirmed yet.
+		// that were successful.
 		AccountFunding          types.Currency `json:"accountfunding"`
 		PotentialAccountFunding types.Currency `json:"potentialaccountfunding"` // Backwards compatibility
 
@@ -296,12 +295,12 @@ type (
 	// StorageObligation contains information about a storage obligation that
 	// the host has accepted.
 	StorageObligation struct {
+		AccountFunding           types.Currency       `json:"accountfunding"`
 		ContractCost             types.Currency       `json:"contractcost"`
 		RevisionNumber           uint64               `json:"revisionnumber"`
 		DataSize                 uint64               `json:"datasize"`
 		LockedCollateral         types.Currency       `json:"lockedcollateral"`
 		ObligationID             types.FileContractID `json:"obligationid"`
-		AccountFunding           types.Currency       `json:"accountfunding"`
 		PotentialAccountFunding  types.Currency       `json:"potentialaccountfunding"` // Backwards compatibility
 		PotentialDownloadRevenue types.Currency       `json:"potentialdownloadrevenue"`
 		PotentialStorageRevenue  types.Currency       `json:"potentialstoragerevenue"`
