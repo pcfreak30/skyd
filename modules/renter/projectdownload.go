@@ -100,7 +100,7 @@ type projectDownloadChunk struct {
 	// worker set's list of available pieces to the download chunk's list of
 	// available pieces. This enables the worker selection code to realize which
 	// pieces in the worker set have been resolved since the last check.
-	availablePieces   [][]pieceDownload
+	availablePieces        [][]pieceDownload
 	workersConsideredIndex uint64
 
 	// dataPieces is the buffer that is used to place data as it comes back.
@@ -114,6 +114,7 @@ type projectDownloadChunk struct {
 	downloadResponseChan chan *downloadResponse
 	workerResponseChan   chan *jobReadResponse
 	workerSet            *projectChunkWorkerSet
+	workerState          *pcwsWorkerState
 }
 
 // downloadResponse is sent via a channel to the caller of
@@ -126,8 +127,8 @@ type downloadResponse struct {
 // bestUnresolvedWorker will scan through a proveded list of unresolved workers
 // and
 func (pdc *projectDownloadChunk) bestUnresolvedWorker(puws []*pcwsUnresolvedWorker) (bestWorkerLate bool, bestUnresolvedDuration, bestUnresolvedWaitDuration time.Duration) {
-	bestUnresolvedDuration := time.Duration(math.MaxInt64)
-	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(ws.staticErasureCoder.MinPieces()))
+	bestUnresolvedDuration = time.Duration(math.MaxInt64)
+	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
 	bestWorkerLate = true
 	for _, uw := range puws {
 		// Figure how much time is expected to remain until the worker is
@@ -182,6 +183,7 @@ func (pdc *projectDownloadChunk) bestUnresolvedWorker(puws []*pcwsUnresolvedWork
 			bestWorkerLate = false
 		}
 	}
+	return bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration
 }
 
 // findBestWorker will look at all of the workers that can help fetch a new
@@ -217,7 +219,8 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	// choosing a different set of workers. The code to make this more accurate
 	// in the typical case is more complex than is worth implementing at this
 	// time.
-	ws := pdc.workerSet
+	ws := pdc.workerState
+	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
 
 	// TODO: Step 1: Figure out which available workers need to be moved into
 	// the set of available pieces. This can be done at the same time as
@@ -241,7 +244,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	//
 	// bestUnresolvedWaitDuration is the amount of time that the renter should wait
 	// to expect to hear back from the worker with HasSector results.
-	bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration := pdc.bestUnresolvedWorkerWaitTime(unresolvedWorkers)
+	bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration := pdc.bestUnresolvedWorker(unresolvedWorkers)
 
 	// Copy the list of resolved workers.
 	now := time.Now() // So we aren't calling time.Now() a ton. It's a little expensive.
@@ -267,7 +270,6 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	inactivePieces := false
 	// Save a list of which workers are currently late.
 	lateWorkers := make(map[string]struct{})
-	ws.mu.Lock()
 	piecesCopy := make([][]pieceDownload, len(pdc.availablePieces))
 	for i, activePiece := range pdc.availablePieces {
 		// Track whether there are new workers available for this piece.
@@ -333,11 +335,10 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 			inactivePieces = true
 		}
 	}
-	ws.mu.Unlock()
 
 	// Check whether it is still possible for the download to complete.
 	potentialPieces := piecesAvailableToLaunch + len(unresolvedWorkers)
-	if potentialPieces < ws.staticErasureCoder.MinPieces() {
+	if potentialPieces < pdc.workerSet.staticErasureCoder.MinPieces() {
 		return nil, 0, 0, nil, errors.New("rph3 chunk download has failed because there are not enough potential workers")
 	}
 	// Check whether it is possible for new workers to be launched.
@@ -359,7 +360,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	// worker that gets returned is a blocking element.
 	bestWorkerResolved := true
 	bestKnownRank := workerRankLate
-	bestKnownDuration := nullDuration
+	bestKnownDuration := time.Duration(math.MaxInt64)
 	if len(unresolvedWorkers) > 0 {
 		// Determine the rank of the unresolved workers. We rank unresolved
 		// workers optimistically, meaning we assume that they will fill the
@@ -673,7 +674,7 @@ func (pdc *projectDownloadChunk) finalize() {
 // TODO: Unit test this.
 func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// Convenience variables.
-	ws := pdc.workerSet
+	ws := pdc.workerState
 	ec := pdc.workerSet.staticErasureCoder
 
 	// Count the number of completed pieces and hopefuly pieces in our list of
@@ -899,13 +900,6 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 // will be added to the return time of the host, meaning the host will be
 // selected as though it is slower.
 //
-// TODO: If an error is returned, the input contex should probably be closed. An
-// alternative context design here would be to create a child context, and then
-// close the child context if the launch is not successful, but then we would
-// not be closing the child context at all in the success case, which is
-// considered a context anti-pattern. I'm not sure if this design should be kept
-// or if something else is preferred.
-//
 // NOTE: A lot of this code is not future proof against certain classes of
 // encryption algorithms and erasure coding algorithms, however I believe that
 // the properties we have in our current set (maximum distance separable erasure
@@ -974,7 +968,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		pieceLength: pieceLength,
 
 		availablePieces:   make([][]pieceDownload, ec.NumPieces()),
-		workersConsidered: make(map[string]struct{}),
 
 		dataPieces: make([][]byte, ec.NumPieces()),
 
@@ -982,11 +975,13 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		workerResponseChan:   workerResponseChan,
 		downloadResponseChan: make(chan *downloadResponse, 1),
 		workerSet:            pcws,
-		workerState:          ws.
+		workerState:          ws,
 	}
 
 	// Launch enough workers to complete the download. The overdrive code will
 	// determine whether more pieces need to be launched.
+	//
+	// TODO: Probably change this to launch all of the workers at once.
 	for i := 0; i < pcws.staticErasureCoder.MinPieces(); i++ {
 		// Try launching a worker. If the launch fails, it means that no workers
 		// can be launched, and therefore the download cannot complete.

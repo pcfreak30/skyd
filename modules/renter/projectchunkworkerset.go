@@ -189,7 +189,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	ws.closeUpdateChans()
 	if resp.staticErr != nil {
 		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
-			worker:       w,
+			worker: w,
 		})
 		return
 	}
