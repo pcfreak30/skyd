@@ -49,7 +49,7 @@ package renter
 //
 // Okay, so we should find a way to select workers that gives price preference
 // in addition to time preference. The code we have now is just concerned about
-// time preference, and isn't super efficient. For price preference code, 
+// time preference, and isn't super efficient. For price preference code,
 //
 // Okay, so if we want to get super complicated, the price preference code also
 // has to take into account the chance that a worker fails a given download. And
@@ -356,6 +356,10 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	// in the typical case is more complex than is worth implementing at this
 	// time.
 	ws := pdc.workerSet
+
+	// TODO: Step 1: Figure out which available workers need to be moved into
+	// the set of available pieces. This can be done at the same time as
+	// grabbing the unresolved workers.
 
 	// For lock safety, need to fetch the list of unresolved workers separately
 	// from learning the best time. For thread safety, the update channel needs
@@ -754,8 +758,8 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 // fail will send an error down the download response channel.
 func (pdc *projectDownloadChunk) fail(err error) {
 	dr := &downloadResponse{
-		data:  nil,
-		err: err,
+		data: nil,
+		err:  err,
 	}
 	pdc.downloadResponseChan <- dr
 }
@@ -900,7 +904,7 @@ func (pdc *projectDownloadChunk) needsOverdrive() (time.Duration, bool) {
 	// cause the latest time returned to reflect their latest time - each time
 	// an overdrive worker is launched, we will wait the full return period
 	// before launching another one.
-	return (untilLatest + time.Millisecond * 50), false
+	return (untilLatest + time.Millisecond*50), false
 }
 
 // threadedCollectAndOverdrivePieces is the maintenance function of the download

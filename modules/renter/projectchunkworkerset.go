@@ -1,24 +1,5 @@
 package renter
 
-// TODO: Since there are situations where a projectChunkWorkerSet can be around
-// for long periods of time - hours or more - there should be a re-scan
-// mechanism of some sort on this object, where after a few hours the object may
-// choose to re-do the HasSector scan of the network.
-//
-// When doing this, all that should have to happen is replacing the empty
-// unresolvedWorkers map with a new, fresh map, and then kicking off another
-// round of 'threadedProcessResponses'.
-//
-// The object should only hang around for hours if it is being used
-// continuously, meaning that these periodic rescans are not a waste of
-// resources.
-//
-// The frequency of refreshing the worker set should be longer by a significant
-// margin than the timeout of the HasSector worker job. There should be a test
-// written to ensure that. This is to ensure that multiple
-// 'threadedProcessResponses' calls are never running simultaneously. Can
-// probably also write a sanity check using a common variable to ensure this.
-
 // TODO: Add a method to initialize a projectChunkWorkerSet with a set of
 // merkleroot + host pairs, allowing the object to skip the initial HasSector
 // scan of the network. This allows the projectChunkWorkerSet to replace legacy
@@ -26,6 +7,10 @@ package renter
 //
 // Replacing legacy downloads is desirable because the projectChunkWorkerSet has
 // intelligent host selection logic based on latency and pricing.
+//
+// Open question whether that route should be refreshed over time. Either we can
+// keep the corresponding siafile open and keep checking if there are updates,
+// or we can do the network based checking over time.
 
 // TODO: Need some way to prune workers from the set of available pieces, or at
 // least mark the workers as consistently unsucecssful for a given piece. And
@@ -39,10 +24,21 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
+)
+
+var (
+	// pcwsWorkerStateResetTime defines the amount of time that the pcws will
+	// wait before resetting / refreshing the worker state.
+	pcwsWorkerStateResetTime = build.Select(build.Var{
+		Dev:      time.Minute * 10,
+		Standard: time.Minute * 60 * 3,
+		Testing:  time.Second * 15,
+	}).(time.Duration)
 )
 
 // pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
@@ -58,16 +54,20 @@ type pcwsUnresolvedWorker struct {
 	staticExpectedCompletionTime time.Time
 }
 
-// projectChunkWorkerSet is an object that contains a set of workers that can be
-// used to download a single chunk. The object can be initialized with ei
+// pcwsWorkerResponse contains a worker's response to a HasSector query. There
+// is a list of piece indexes where the worker responded that they had the piece
+// at that index.
 //
-// If the pcws is initialized with only a set of roots, it will immediately spin
-// up a bunch of worker jobs to locate those roots on the network using
-// HasSector programs.
-//
-// Once the pwcs has been initialized, it can be used repeatedly to download
-// data from the chunk, and it will not need to repeat the network lookups.
-type projectChunkWorkerSet struct {
+// This structure is chosen so that chunk downloads can update in constant time
+// as new workers report back with HasSector results.
+type pcwsWorkerResponse struct {
+	worker       *worker
+	pieceIndices []uint64
+}
+
+// pcwsWorkerState contains the worker state for a single thread that is
+// resolving which workers
+type pcwsWorkerState struct {
 	// unresolvedWorkers is the set of workers that are currently running
 	// HasSector programs and have not yet finished.
 	//
@@ -75,17 +75,12 @@ type projectChunkWorkerSet struct {
 	// time as they complete their HasSector jobs.
 	unresolvedWorkers map[string]*pcwsUnresolvedWorker
 
-	// availablePieces is an array of pieces with an array of workers for each
-	// piece. If a worker is in the array for a piece, that worker is able to
-	// download the piece.
-	//
-	// The same worker may appear in the arrays for multiple pieces, if the
-	// worker is storing multiple pieces for one chunk.
-	//
-	// NOTE: Workers can be added or reomved from the set of available pieces
-	// arbitrarily, particularly when the worker set is refreshing itself in the
-	// background.
-	availablePieces [][]*worker
+	// ResolvedWorkers is an array that tracks which workers have responded to
+	// HasSector queries and which sectors are available. This array is only
+	// appended to as workers come back, meaning that chunk downloads can track
+	// internally which elements of the array they have already looked at,
+	// saving computational  time when updating.
+	resolvedWorkers []*pcwsWorkerResponse
 
 	// workerUpdateChans is used by download objects to block until more
 	// information about the unresolved workers is available. All of the worker
@@ -101,6 +96,32 @@ type projectChunkWorkerSet struct {
 	// the length is zero because a long time can transpire.
 	workerUpdateChans []chan struct{}
 
+	// Utilities.
+	staticRenter *Renter
+	mu           sync.Mutex
+}
+
+// projectChunkWorkerSet is an object that contains a set of workers that can be
+// used to download a single chunk. The object can be initialized with either a
+// set of roots (for Skynet downloads) or with a siafile where the host-root
+// pairs are already known.
+//
+// If the pcws is initialized with only a set of roots, it will immediately spin
+// up a bunch of worker jobs to locate those roots on the network using
+// HasSector programs.
+//
+// Once the pwcs has been initialized, it can be used repeatedly to download
+// data from the chunk, and it will not need to repeat the network lookups.
+type projectChunkWorkerSet struct {
+	// workerState is a pointer to a single pcwsWorkerState, specifically the
+	// most recent worker state that has launched.
+	//
+	// workerStateLaunch indicates when the workerState was launched, which is
+	// used to figure out when the next worker state should be launched.
+	updateInProgress      bool
+	workerState           *pcwsWorkerState
+	workerStateLaunchTime time.Time
+
 	// Decoding and decryption information.
 	staticChunkIndex   uint64
 	staticErasureCoder modules.ErasureCoder
@@ -108,9 +129,10 @@ type projectChunkWorkerSet struct {
 	staticPieceRoots   []crypto.Hash
 
 	// Utilities
-	staticCtx    context.Context
-	staticRenter *Renter
-	mu           sync.Mutex
+	staticCtx              context.Context
+	staticHasSectorTimeout time.Duration
+	staticRenter           *Renter
+	mu                     sync.Mutex
 }
 
 // closeUpdateChans will close all of the update chans and clear out the slice.
@@ -118,82 +140,221 @@ type projectChunkWorkerSet struct {
 // workers to unblock.
 //
 // Typically there will be a small number of channels, often 0 and often just 1.
-func (pcws *projectChunkWorkerSet) closeUpdateChans() {
-	for _, c := range pcws.workerUpdateChans {
+func (ws *pcwsWorkerState) closeUpdateChans() {
+	for _, c := range ws.workerUpdateChans {
 		close(c)
 	}
-	pcws.workerUpdateChans = nil
+	ws.workerUpdateChans = nil
 }
 
 // registerForWorkerUpdate will create a channel and append it to the list of
-// update chans in the pcws. When there is more information available about
-// which worker is the best worker to select, the channel will be closed.
-func (pcws *projectChunkWorkerSet) registerForWorkerUpdate() <-chan struct{} {
+// update chans in the worker state. When there is more information available
+// about which worker is the best worker to select, the channel will be closed.
+func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan struct{} {
+	// Create the channel that will be closed upon update.
+	c := make(chan struct{})
+
 	// Consistency check - this method is not supposed to be called unless there
 	// are unresolved workers that can return.
-	if len(pcws.unresolvedWorkers) == 0 {
-		pcws.staticRenter.log.Critical("call to 'registerForWorkerUpdate' when there are no unresolved workers")
+	if len(ws.unresolvedWorkers) == 0 {
+		ws.staticRenter.log.Critical("call to 'registerForWorkerUpdate' when there are no unresolved workers")
+		close(c) // Nothing else is going to close 'c', so we close it here.
+		return c
 	}
 
-	c := make(chan struct{})
-	pcws.workerUpdateChans = append(pcws.workerUpdateChans, c)
+	ws.workerUpdateChans = append(ws.workerUpdateChans, c)
 	return c
 }
 
-// threadedProcessResponses will wait for worker responses to come back, and
-// update the pcws as the responses come in. Note that it will continue to wait
-// for responses until its context is canceled, even in situations where there
-// are not enough workers remaining for any downloads using the worker set to
-// succeed.
-//
-// This thread should be the only one with access to the responseChan.
-func (pcws *projectChunkWorkerSet) threadedProcessResponses(responseChan <-chan *jobHasSectorResponse) {
-	// Helper function to make the loop exit condition more clear.
-	responsesRemaining := func() int {
-		pcws.mu.Lock()
-		rr := len(pcws.unresolvedWorkers)
-		pcws.mu.Unlock()
-		return rr
+// managedHandleResponse will handle a HasSector response from a worker,
+// updating the workerState accordingly.
+func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	// Delete the worker from the set of unresolved workers. If the response
+	// is not an error response, add the worker to any pieces that it
+	// supports.
+	w := resp.staticWorker
+	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
+	ws.closeUpdateChans()
+	if resp.staticErr != nil {
+		return
 	}
 
+	// Create the list of pieces that the worker supports and add it to the
+	// worker set.
+	var indices []uint64
+	for i, available := range resp.staticAvailables {
+		if available {
+			indices = append(indices, uint64(i))
+		}
+	}
+	if len(indices) > 0 {
+		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
+			worker:       w,
+			pieceIndices: indices,
+		})
+	}
+}
+
+// managedLaunchWorker will launch a job to determine which sectors of a chunk
+// are available through that worker. The resulting unresolved worker is
+// returned so it can be added to the pending worker state.
+func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *worker, responseChan chan *jobHasSectorResponse, ws *pcwsWorkerState) {
+	// Check for gouging.
+	//
+	// TODO: May want to use a different gouging function.
+	cache := w.staticCache()
+	pt := w.staticPriceTable().staticPriceTable
+	err := checkPDBRGouging(pt, cache.staticRenterAllowance, len(pcws.staticPieceRoots))
+	if err != nil {
+		pcws.staticRenter.log.Debugf("price gouging for chunk worker set detected in worker %v, err %v", w.staticHostPubKeyStr, err)
+		return
+	}
+
+	// Create and launch the job.
+	jhs := &jobHasSector{
+		staticSectors:      pcws.staticPieceRoots,
+		staticResponseChan: responseChan,
+		jobGeneric:         newJobGeneric(w.staticJobHasSectorQueue, ctx.Done()),
+	}
+	// TODO: Make this a feature of generic jobs rather than having a custom
+	// implementation for just the has sector job. Maybe rename to
+	// callAddWithTimeEstimate.
+	expectedCompletionTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
+	if err != nil {
+		pcws.staticRenter.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
+		return
+	}
+
+	// Create the unresolved worker for this job.
+	uw := &pcwsUnresolvedWorker{
+		staticWorker: w,
+
+		staticExpectedCompletionTime: expectedCompletionTime,
+	}
+	// Technically this doesn't need to be wrapped in a lock because the ws
+	// hasn't been released to any other threads yet, but we grab the lock any
+	// way because that's not obvious from the context of this function, and
+	// there's not really a clean way to make it obvious. It shouldn't have much
+	// performance overhead because the mutex will never have contention at this
+	// point.
+	ws.mu.Lock()
+	ws.unresolvedWorkers[w.staticHostPubKeyStr] = uw
+	ws.mu.Unlock()
+}
+
+// threadedFindWorkers will spin up a bunch of jobs to determine which workers
+// have what pieces for the pcws, and then update the input worker state with
+// the results.
+func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan chan<- struct{}, ws *pcwsWorkerState) {
+	// Create a context for finding jobs which has a timeout for waiting on
+	// HasSector requests to return.
+	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcws.staticHasSectorTimeout)
+	defer cancel()
+
+	// Launch all of the HasSector jobs for each worker. A channel is needed to
+	// receive the responses, and the channel needs to be buffered to be equal
+	// in size to the number of queries so that none of the workers sending
+	// reponses get blocked sending down the channel.
+	workers := ws.staticRenter.staticWorkerPool.callWorkers()
+	responseChan := make(chan *jobHasSectorResponse, len(workers))
+	for _, w := range workers {
+		pcws.managedLaunchWorker(ctx, w, responseChan, ws)
+	}
+	// Signal that all of the workers have launched.
+	close(allWorkersLaunchedChan)
+
+	// Helper function to get the number of responses remaining. This allows the
+	// for loop below to be a lot cleaner.
+	responsesRemaining := func() int {
+		ws.mu.Lock()
+		rr := len(ws.unresolvedWorkers)
+		ws.mu.Unlock()
+		return rr
+	}
 	// Because there are timeouts on the HasSector programs, the longest that
 	// this loop should be active is a little bit longer than the full timeout
 	// for a single HasSector job.
 	for responsesRemaining() > 0 {
-		// Block until there is a worker response.
+		// Block until there is a worker response. Give up if the context times
+		// out.
 		var resp *jobHasSectorResponse
 		select {
 		case resp = <-responseChan:
-		case <-pcws.staticCtx.Done():
+		case <-ctx.Done():
 			return
 		}
 		// Consistency check - should not be getting nil responses from the workers.
 		if resp == nil {
-			pcws.staticRenter.log.Critical("nil response received")
-			return
-		}
-
-		// Delete the worker from the set of unresolved workers. If the response
-		// is not an error response, add the worker to any pieces that it
-		// supports.
-		w := resp.staticWorker
-		pcws.mu.Lock()
-		delete(pcws.unresolvedWorkers, w.staticHostPubKeyStr)
-		pcws.closeUpdateChans()
-		if resp.staticErr != nil {
-			pcws.mu.Unlock()
+			ws.staticRenter.log.Critical("nil response received")
 			continue
 		}
-		// Loop through the set of sectors that the worker is claiming, and add
-		// that worker to the piece list for any piece that the worker can
-		// contribute to.
-		for i, available := range resp.staticAvailables {
-			if available {
-				pcws.availablePieces[i] = append(pcws.availablePieces[i], w)
-			}
-		}
-		pcws.mu.Unlock()
+
+		// Parse the response.
+		ws.managedHandleResponse(resp)
 	}
+}
+
+// managedTryUpdateWorkerState will check whether the worker state needs to be
+// refreshed. If so, it will refresh the worker state.
+func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
+	// The worker state does not need to be refreshed if it is recent or if
+	// there is another refresh currently in progress.
+	//
+	// If multiple threads call 'managedTryUpdateWorkerState' at the same time,
+	// the first will block while a new state is created, and the rest will not
+	// block, which likely ends in the caller using the old state. This is fine,
+	// because the state gets refreshed long before the refresh is actually
+	// necessary.
+	pcws.mu.Lock()
+	if pcws.updateInProgress || time.Since(pcws.workerStateLaunchTime) < pcwsWorkerStateResetTime {
+		pcws.mu.Unlock()
+		return nil
+	}
+	// An update is needed. Set the flag that an update is in progress.
+	pcws.updateInProgress = true
+	pcws.mu.Unlock()
+
+	// Create the new worker state and launch the thread that will create worker
+	// jobs and collect responses from the workers.
+	//
+	// The concurrency here is a bit awkward because jobs cannot be launched
+	// while the pcws lock is held, the workerState of the pcws cannot be set
+	// until all the jobs are launched, and the context for timing out the
+	// worker jobs needs to be created in the same thread that listens for the
+	// responses. Though there are a lot of concurrency patterns at play here,
+	// it was the cleanest thing I could come up with.
+	allWorkersLaunchedChan := make(chan struct{})
+	ws := &pcwsWorkerState{
+		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+
+		staticRenter: pcws.staticRenter,
+	}
+	// Create an anonymous function to launch the thread to find workers, since
+	// we need to provide input to the find workers function and tg.Launch does
+	// not support that.
+	findWorkers := func() {
+		pcws.threadedFindWorkers(allWorkersLaunchedChan, ws)
+	}
+	// Launch the thread to find the workers for this launch state.
+	err := pcws.staticRenter.tg.Launch(findWorkers)
+	if err != nil {
+		return errors.AddContext(err, "unable to launch worker set")
+	}
+
+	// Wait for the thread to indicate that all jobs are launched, the worker
+	// state is not ready for use until all jobs have been launched. After that,
+	// update the pcws so that the workerState in the pcws is the newest worker
+	// state.
+	<-allWorkersLaunchedChan
+	pcws.mu.Lock()
+	pcws.updateInProgress = false
+	pcws.workerState = ws
+	pcws.workerStateLaunchTime = time.Now()
+	pcws.mu.Unlock()
+	return nil
 }
 
 // newPCWSByRoots will create a worker set to download a chunk given just the
@@ -201,7 +362,7 @@ func (pcws *projectChunkWorkerSet) threadedProcessResponses(responseChan <-chan 
 // the roots will be determined by scanning the network with a large number of
 // HasSector queries. Once opened, the projectChunkWorkerSet can be used to
 // initiate many downloads.
-func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec modules.ErasureCoder, masterKey crypto.CipherKey, chunkIndex uint64) (*projectChunkWorkerSet, error) {
+func (r *Renter) newPCWSByRoots(ctx context.Context, hasSectorTimeout time.Duration, roots []crypto.Hash, ec modules.ErasureCoder, masterKey crypto.CipherKey, chunkIndex uint64) (*projectChunkWorkerSet, error) {
 	// Check that the number of roots provided is consistent with the erasure
 	// coder provided.
 	if len(roots) != ec.NumPieces() {
@@ -210,70 +371,21 @@ func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec mod
 
 	// Create the worker set.
 	pcws := &projectChunkWorkerSet{
-		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
-
-		availablePieces: make([][]*worker, ec.NumPieces()),
-
 		staticChunkIndex:   chunkIndex,
 		staticErasureCoder: ec,
 		staticMasterKey:    masterKey,
 		staticPieceRoots:   roots,
 
-		staticCtx:    ctx,
-		staticRenter: r,
+		staticCtx:              ctx,
+		staticHasSectorTimeout: hasSectorTimeout,
+		staticRenter:           r,
 	}
 
-	// Launch all of the HasSector jobs for each worker. A channel is needed to
-	// receive the responses, and the channel needs to be buffered to be equal
-	// in size to the number of queries so that none of the workers sending
-	// reponses get blocked sending down the channel.
-	workers := r.staticWorkerPool.callWorkers()
-	responseChan := make(chan *jobHasSectorResponse, len(workers))
-	for _, w := range workers {
-		// Check for gouging.
-		//
-		// TODO: May want to use a different gouging function.
-		cache := w.staticCache()
-		pt := w.staticPriceTable().staticPriceTable
-		err := checkPDBRGouging(pt, cache.staticRenterAllowance, len(roots))
-		if err != nil {
-			r.log.Debugf("price gouging for chunk worker set detected in worker %v, err %v", w.staticHostPubKeyStr, err)
-			continue
-		}
-
-		// Create and launch the job.
-		jhs := &jobHasSector{
-			staticSectors:      roots,
-			staticResponseChan: responseChan,
-			jobGeneric:         newJobGeneric(w.staticJobHasSectorQueue, ctx.Done()),
-		}
-		// TODO: Make this a feature of generic jobs rather than having a custom
-		// implementation for just the has sector job. Maybe rename to
-		// callAddWithTimeEstimate.
-		expectedCompletionTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
-		if err != nil {
-			r.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
-			continue
-		}
-
-		// Create the unresolved worker for this job.
-		uw := &pcwsUnresolvedWorker{
-			staticWorker: w,
-
-			staticExpectedCompletionTime: expectedCompletionTime,
-		}
-		// Add the unresolved worker to the set of unresolved workers.
-		pcws.unresolvedWorkers[w.staticHostPubKeyStr] = uw
+	// The worker state is blank, ensure that everything can get started.
+	err := pcws.managedTryUpdateWorkerState()
+	if err != nil {
+		return nil, errors.AddContext(err, "cannot create a new PCWS")
 	}
-
-	// Processing check - make sure that there are enough workers to complete
-	// the job.
-	if len(pcws.unresolvedWorkers) < ec.MinPieces() {
-		return nil, errors.New("not enough workers available to kick off a piece lookup")
-	}
-
-	// Launch the background thread to update the pcws as workers complete.
-	go pcws.threadedProcessResponses(responseChan)
 
 	// Return the worker set.
 	return pcws, nil

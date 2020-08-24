@@ -310,9 +310,9 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			jobRead: jobRead{
 				staticLength:       length,
 				staticResponseChan: readSectorRespChan,
-				staticSector: root,
+				staticSector:       root,
 
-				jobGeneric:         newJobGeneric(bestWorker.staticJobReadQueue, ctx.Done()),
+				jobGeneric: newJobGeneric(bestWorker.staticJobReadQueue, ctx.Done()),
 			},
 			staticOffset: offset,
 		}
