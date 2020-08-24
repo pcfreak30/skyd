@@ -116,9 +116,18 @@ type projectChunkWorkerSet struct {
 	// workerState is a pointer to a single pcwsWorkerState, specifically the
 	// most recent worker state that has launched.
 	//
-	// workerStateLaunch indicates when the workerState was launched, which is
-	// used to figure out when the next worker state should be launched.
+	// workerStateLaunchTime indicates when the workerState was launched, which
+	// is used to figure out when the worker state should be refreshed.
+	//
+	// The update in progress variable ensures that only one worker state is
+	// being refreshed at a time. The updateFinishedChan is created when the
+	// 'updateInProgress' variable is set to true, and is closed when it is
+	// reset to false. This is to help coordinate multiple threads that launch
+	// simultaneously when the worker state needs to be updated. If a pcws is
+	// idle for a long time (say 12 hours) and then suddenly multiple requests
+	// come in all at once, those threads need to coordinate around the refresh.
 	updateInProgress      bool
+	updateFinishedChan    chan struct{}
 	workerState           *pcwsWorkerState
 	workerStateLaunchTime time.Time
 
@@ -302,19 +311,16 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	// The worker state does not need to be refreshed if it is recent or if
 	// there is another refresh currently in progress.
-	//
-	// If multiple threads call 'managedTryUpdateWorkerState' at the same time,
-	// the first will block while a new state is created, and the rest will not
-	// block, which likely ends in the caller using the old state. This is fine,
-	// because the state gets refreshed long before the refresh is actually
-	// necessary.
 	pcws.mu.Lock()
 	if pcws.updateInProgress || time.Since(pcws.workerStateLaunchTime) < pcwsWorkerStateResetTime {
+		c := pcws.updateFinishedChan
 		pcws.mu.Unlock()
+		<-c
 		return nil
 	}
 	// An update is needed. Set the flag that an update is in progress.
 	pcws.updateInProgress = true
+	pcws.updateFinishedChan = make(chan struct{})
 	pcws.mu.Unlock()
 
 	// Create the new worker state and launch the thread that will create worker
@@ -354,6 +360,7 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	pcws.workerState = ws
 	pcws.workerStateLaunchTime = time.Now()
 	pcws.mu.Unlock()
+	close(pcws.updateFinishedChan)
 	return nil
 }
 
