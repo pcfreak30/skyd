@@ -5,6 +5,11 @@ package renter
 
 // TODO: Better handling of the time.After calls.
 
+// TODO: I think we will split the launching of overdrive workers and the first
+// round of workers, primarily because the algorithm is different. Overdrive
+// workers can be launched one at a time, but the first round of workers need to
+// be launched as a fleet.
+
 import (
 	"bytes"
 	"context"
