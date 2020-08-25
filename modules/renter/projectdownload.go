@@ -5,143 +5,10 @@ package renter
 
 // TODO: Better handling of the time.After calls.
 
-// TODO: Refine the pricePerMS mechanic so that it's considering the cost of a
-// whole. Right now it looks at each worker separately, which means that it may
-// pay money to bump up the speed of a worker to faster worker, where both
-// workers are already faster than the slowest worker available. Needs more
-// thought. In the meantime, we're probably spending more money than we need to
-// for speed.
-//
-// The way we do it right now is upside down. What we want to do is look at the
-// speed and cost of performing a download using the cheapest possible hosts.
-// That gives us a baseline for both expense, and a strategy to iteratively
-// replace the slowest hosts with faster and more expensive hosts. You'd have to
-// remember when replacing hosts that there may not be a cost effective solution
-// to replace only the slowest host (because you don't gain that much from
-// replacing just one host), but there may be a cost effective solution to
-// replacing the slowest 2 (or N) hosts (because replacing N hosts may give a
-// much bigger gain per-host than just replacing 1).
-//
-// So basically you can make a matrix of sorts, where you write down how much
-// time you save by replacing N hosts, which gives you a budget to find N faster
-// hosts for each value of N, and it tells you which hosts qualify because you
-// know how fast they need to be. So you cross off any hosts that are too slow,
-// then you take the cheapest hosts that remain and see if you come in
-// under-budget.
-//
-// You have to keep repeating this process until it fails because no replacement
-// hosts that are sufficiently cheap are available.
-//
-// Okay... so how do we mesh that with the set of unresolved hosts... it is no
-// longer sufficient to just pull out a single host to know whether to wait,
-// because that host has to... no, wait maybe we can figure out if it is
-// sufficient to wait for a single host? If the superlative host selection would
-// include at least one host from the... okay so actually there's an edge case
-// where maybe it could potentially make sense, because we may need to know that
-// multiple faster hosts are available instead of just one. If we need 2 faster
-// hosts for the pricing math to work and we only have one faster host, then we
-// should go ahead with the download using the slower hosts.
-//
-// And then there's this final issue where we should launch workers as fast as
-// possible. HRM. And all of this gets encompassed in the worker selection code,
-// which I've decdided that I don't like and want to restructure. Pretty much
-// all of the rest of it I'm happy with.
-//
-// Okay, so we should find a way to select workers that gives price preference
-// in addition to time preference. The code we have now is just concerned about
-// time preference, and isn't super efficient. For price preference code, 
-//
-// Okay, so if we want to get super complicated, the price preference code also
-// has to take into account the chance that a worker fails a given download. And
-// actually I think that we should assume that either this is a pretty
-// negligable amount, or we will by cycling out that host? I think it's safe to
-// assume that failure probabilities are low enough that they shouldn't be in
-// the middle of the price code.
-//
-// Which means we really do just need to worry about the pricing choices, and
-// how that impacts our table.
-//
-// At any given point, we can determine the optimal set of workers for a given
-// price by keeping the workers sorted according to their expected return time,
-// and then going through and ignoring the ones that are too expensive to be
-// worthwhile. Of the ones that meet the time criteria, we select the cheapest.
-//
-// Okay, so we've got this sorted array of workers by the amount of time they
-// would take to return. Immediately, we can eliminate any workers that are
-// slower than the N cheapest workers as viable candidates for selection. Then
-// we grab the N cheapest workers and iteratively try to improve the set
-// according to our criteria. It should be the case that any set we choose which
-// improves over an existing set only narrows down our choices for how to get
-// even better. There's no need to explore all possible combinations to get to
-// the optimal solution.
-//
-// So we have a set of workers, the cheapest set. Then we go through and ignore
-// any workers that are more expensive then the cheapest set. Then for all N we
-// try to improve the set. We see how much time we shave by replacing a worker,
-// which tells us how much we can spend to repalce that worker. We then shift
-// thorugh and find the cheapest worker which is an improvement. We can ignore,
-// at least on this iteration, all of the workers that are too expensive to make
-// up the difference. We can't ignore them forever though, because on the next N
-// we might have way more than 2x the speedup.
-//
-// NOTE: So it does seem like going down one of the N paths instead of all of
-// them could actually get us to a suboptimal case? The idea being that we
-// replace one worker by spending a lot more than we need to, which means we
-// might start to DQ slower workers because they are no longer in the fastest
-// set? I don't know that this could happen... Plus it's too computationally
-// expensive anyway...... So the question is: is there a way to pass over a
-// superior solution given the pricePerMs if we pick up a faster worker.
-//
-// So at the very least, we should probably always pick the cheapest set of
-// workers that make an improvement. Progress is guaranteed because we are
-// always swapping out at least one worker that we will never come back to,
-// maybe more. And we know that if we are swapping a worker out, we are swapping
-// out the slowest workers, so there's no way we would ever swap them back in,
-// because doing so would increase our time, and would cost us at most less than
-// it cost to swap them out in the first place. So we just need to make sure
-// that each time we try to do a cut, we swap in the cheapest option. To the
-// extent that there's a more expensive option which still improves things... we
-// would need to compare direct to the time delta versus the worker we just
-// swapped, which is reasonable but complicates the code, and we get the same
-// thing just by iterating again.
-//
-// Sort workers in order of price. Start with the strictly cheapest workers.
-// Then, create a loop that trims 1 worker, 2, 3, etc. Skip any N where the
-// amount of time saved by adding a new N is less than the average amount of
-// time saved for the most effective N so far (because if that N didn't find a
-// solution, no solution can exist for an N that has a worse average time saved
-// per worker). Within the N, find the cheapest set of workers where they all
-// save time. This can again be done with n^2 algo, first find the cheapest
-// worker that saves time, then find N-1 more cheapest workers that save time.
-// If you find enough workers, swap them all in as the best workers. Track the
-// total cost as you add workers in.
-//
-// COMPLICATION: Some worker pairs are incompatible. Need to figure out when
-// returning workers which worker pairs are incompatible. And then you have to
-// disqualify a worker based on it being incompatible. You want to disqualify a
-// worker IF it is not the... - all you need to do is skip over the pieces that
-// aren't being replaced but already have good workers when assembling your
-// sorted list of potential workers.
-//
-// When we are actually assembling the list of workers that we can choose from,
-// we should ignore any pieces that have already launched without fail (though
-// count their cost), and we should include all unresolved workers as their own
-// thing.
-//
-// COMPLICATION: workers that are already late... maybe we should just log when
-// a worker ends up being late, and log by how much they end up being late. The
-// late stuff really complicates the code and hopefully we can get the estimator
-// to a place where late workers do not happen often at all.
-//
-// COMPLICATION: we will need to go back and look at pieces that are launched
-// without fail but not completed in the event that there are no opporunties to
-// launch a new piece that has not yet failed. Right now we do that using the
-// ranking system, but I think we can do that with just a check  that says 'welp
-// we've failed to find a good one', in which case we'll iterate over the
-// workers again, this time looking for a cheap/fast worker, including
-// considering pieces that have launched without success. At that point, a lot
-// of the heursitics have already failed, so we'll just be optimizing over a
-// single worker launch rather than optimizing over many workers launching.
+// TODO: I think we will split the launching of overdrive workers and the first
+// round of workers, primarily because the algorithm is different. Overdrive
+// workers can be launched one at a time, but the first round of workers need to
+// be launched as a fleet.
 
 import (
 	"bytes"
@@ -238,8 +105,8 @@ type projectDownloadChunk struct {
 	// worker set's list of available pieces to the download chunk's list of
 	// available pieces. This enables the worker selection code to realize which
 	// pieces in the worker set have been resolved since the last check.
-	availablePieces   [][]pieceDownload
-	workersConsidered map[string]struct{}
+	availablePieces        [][]pieceDownload
+	workersConsideredIndex uint64
 
 	// dataPieces is the buffer that is used to place data as it comes back.
 	// There is one piece per chunk, and pieces can be nil. To know if the
@@ -252,6 +119,7 @@ type projectDownloadChunk struct {
 	downloadResponseChan chan *downloadResponse
 	workerResponseChan   chan *jobReadResponse
 	workerSet            *projectChunkWorkerSet
+	workerState          *pcwsWorkerState
 }
 
 // downloadResponse is sent via a channel to the caller of
@@ -264,8 +132,8 @@ type downloadResponse struct {
 // bestUnresolvedWorker will scan through a proveded list of unresolved workers
 // and
 func (pdc *projectDownloadChunk) bestUnresolvedWorker(puws []*pcwsUnresolvedWorker) (bestWorkerLate bool, bestUnresolvedDuration, bestUnresolvedWaitDuration time.Duration) {
-	bestUnresolvedDuration := time.Duration(math.MaxInt64)
-	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(ws.staticErasureCoder.MinPieces()))
+	bestUnresolvedDuration = time.Duration(math.MaxInt64)
+	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
 	bestWorkerLate = true
 	for _, uw := range puws {
 		// Figure how much time is expected to remain until the worker is
@@ -320,6 +188,7 @@ func (pdc *projectDownloadChunk) bestUnresolvedWorker(puws []*pcwsUnresolvedWork
 			bestWorkerLate = false
 		}
 	}
+	return bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration
 }
 
 // findBestWorker will look at all of the workers that can help fetch a new
@@ -355,7 +224,12 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	// choosing a different set of workers. The code to make this more accurate
 	// in the typical case is more complex than is worth implementing at this
 	// time.
-	ws := pdc.workerSet
+	ws := pdc.workerState
+	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
+
+	// TODO: Step 1: Figure out which available workers need to be moved into
+	// the set of available pieces. This can be done at the same time as
+	// grabbing the unresolved workers.
 
 	// For lock safety, need to fetch the list of unresolved workers separately
 	// from learning the best time. For thread safety, the update channel needs
@@ -375,7 +249,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	//
 	// bestUnresolvedWaitDuration is the amount of time that the renter should wait
 	// to expect to hear back from the worker with HasSector results.
-	bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration := pdc.bestUnresolvedWorkerWaitTime(unresolvedWorkers)
+	bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration := pdc.bestUnresolvedWorker(unresolvedWorkers)
 
 	// Copy the list of resolved workers.
 	now := time.Now() // So we aren't calling time.Now() a ton. It's a little expensive.
@@ -401,7 +275,6 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	inactivePieces := false
 	// Save a list of which workers are currently late.
 	lateWorkers := make(map[string]struct{})
-	ws.mu.Lock()
 	piecesCopy := make([][]pieceDownload, len(pdc.availablePieces))
 	for i, activePiece := range pdc.availablePieces {
 		// Track whether there are new workers available for this piece.
@@ -467,11 +340,10 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 			inactivePieces = true
 		}
 	}
-	ws.mu.Unlock()
 
 	// Check whether it is still possible for the download to complete.
 	potentialPieces := piecesAvailableToLaunch + len(unresolvedWorkers)
-	if potentialPieces < ws.staticErasureCoder.MinPieces() {
+	if potentialPieces < pdc.workerSet.staticErasureCoder.MinPieces() {
 		return nil, 0, 0, nil, errors.New("rph3 chunk download has failed because there are not enough potential workers")
 	}
 	// Check whether it is possible for new workers to be launched.
@@ -493,7 +365,7 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 	// worker that gets returned is a blocking element.
 	bestWorkerResolved := true
 	bestKnownRank := workerRankLate
-	bestKnownDuration := nullDuration
+	bestKnownDuration := time.Duration(math.MaxInt64)
 	if len(unresolvedWorkers) > 0 {
 		// Determine the rank of the unresolved workers. We rank unresolved
 		// workers optimistically, meaning we assume that they will fill the
@@ -754,8 +626,8 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 // fail will send an error down the download response channel.
 func (pdc *projectDownloadChunk) fail(err error) {
 	dr := &downloadResponse{
-		data:  nil,
-		err: err,
+		data: nil,
+		err:  err,
 	}
 	pdc.downloadResponseChan <- dr
 }
@@ -807,7 +679,7 @@ func (pdc *projectDownloadChunk) finalize() {
 // TODO: Unit test this.
 func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// Convenience variables.
-	ws := pdc.workerSet
+	ws := pdc.workerState
 	ec := pdc.workerSet.staticErasureCoder
 
 	// Count the number of completed pieces and hopefuly pieces in our list of
@@ -900,7 +772,7 @@ func (pdc *projectDownloadChunk) needsOverdrive() (time.Duration, bool) {
 	// cause the latest time returned to reflect their latest time - each time
 	// an overdrive worker is launched, we will wait the full return period
 	// before launching another one.
-	return (untilLatest + time.Millisecond * 50), false
+	return (untilLatest + time.Millisecond*50), false
 }
 
 // threadedCollectAndOverdrivePieces is the maintenance function of the download
@@ -1033,13 +905,6 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 // will be added to the return time of the host, meaning the host will be
 // selected as though it is slower.
 //
-// TODO: If an error is returned, the input contex should probably be closed. An
-// alternative context design here would be to create a child context, and then
-// close the child context if the launch is not successful, but then we would
-// not be closing the child context at all in the success case, which is
-// considered a context anti-pattern. I'm not sure if this design should be kept
-// or if something else is preferred.
-//
 // NOTE: A lot of this code is not future proof against certain classes of
 // encryption algorithms and erasure coding algorithms, however I believe that
 // the properties we have in our current set (maximum distance separable erasure
@@ -1066,6 +931,16 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// pieces. This is non-trivial because both the network itself and also the
 	// erasure coder have required segment sizes.
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
+
+	// Refresh the pcws. This will only cause a refresh if one is necessary.
+	err := pcws.managedTryUpdateWorkerState()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to initiate download")
+	}
+	// After refresh, grab the worker state.
+	pcws.mu.Lock()
+	ws := pcws.workerState
+	pcws.mu.Unlock()
 
 	// Create the workerResponseChan.
 	//
@@ -1098,7 +973,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		pieceLength: pieceLength,
 
 		availablePieces:   make([][]pieceDownload, ec.NumPieces()),
-		workersConsidered: make(map[string]struct{}),
 
 		dataPieces: make([][]byte, ec.NumPieces()),
 
@@ -1106,10 +980,13 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		workerResponseChan:   workerResponseChan,
 		downloadResponseChan: make(chan *downloadResponse, 1),
 		workerSet:            pcws,
+		workerState:          ws,
 	}
 
 	// Launch enough workers to complete the download. The overdrive code will
 	// determine whether more pieces need to be launched.
+	//
+	// TODO: Probably change this to launch all of the workers at once.
 	for i := 0; i < pcws.staticErasureCoder.MinPieces(); i++ {
 		// Try launching a worker. If the launch fails, it means that no workers
 		// can be launched, and therefore the download cannot complete.

@@ -63,7 +63,7 @@ type (
 
 		// Metadata related to the job query.
 		staticSectorRoot crypto.Hash
-		staticWorker *worker
+		staticWorker     *worker
 	}
 )
 

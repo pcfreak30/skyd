@@ -217,7 +217,7 @@ func TestWorkerReadJobStatus(t *testing.T) {
 		jobRead: jobRead{
 			staticLength:       modules.SectorSize,
 			staticResponseChan: rc,
-			staticSector: sectorRoot,
+			staticSector:       sectorRoot,
 
 			jobGeneric: &jobGeneric{
 				staticCancelChan: cc,
@@ -257,7 +257,7 @@ func TestWorkerReadJobStatus(t *testing.T) {
 		jobRead: jobRead{
 			staticLength:       modules.SectorSize,
 			staticResponseChan: rc,
-			staticSector: crypto.Hash{},
+			staticSector:       crypto.Hash{},
 
 			jobGeneric: &jobGeneric{
 				staticCancelChan: cc,
