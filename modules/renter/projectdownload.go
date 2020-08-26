@@ -5,11 +5,6 @@ package renter
 
 // TODO: Better handling of the time.After calls.
 
-// TODO: I think we will split the launching of overdrive workers and the first
-// round of workers, primarily because the algorithm is different. Overdrive
-// workers can be launched one at a time, but the first round of workers need to
-// be launched as a fleet.
-
 import (
 	"bytes"
 	"context"
@@ -22,35 +17,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
-)
-
-// workerRank is a system for ranking workers based on how well the owrker has
-// been performing and what pieces of a download a worker is capable of
-// fetching.
-type workerRank uint64
-
-var (
-	// workerRankErr implies that the workerRank value was initialized
-	// incorrectly.
-	workerRankErr = 0
-
-	// workerRankUnlaunchedPiece means that the worker is in good standing and
-	// can fetch a piece for which no other worker has launched.
-	workerRankUnlaunchedPiece = 1
-
-	// workerRankLaunchedPiece means that the worker is in good standing and can
-	// fetch a piece that another worker launched to fetch. That other worker
-	// however is not in good standing.
-	workerRankLaunchedPiece = 2
-
-	// workerRankActivePiece means that the worker is in good standing and can
-	// fetch a piece that another worker launched to fetch. That other worker is
-	// still in good standing.
-	workerRankActivePiece = 3
-
-	// workerRankLate means that the worker was launched to fetch another piece,
-	// and the worker is late in returning that piece.
-	workerRankLate = 4
 )
 
 // pieceDownload tracks a worker downloading a piece, whether that piece has
@@ -129,12 +95,63 @@ type downloadResponse struct {
 	err  error
 }
 
-// bestUnresolvedWorker will scan through a proveded list of unresolved workers
-// and
-func (pdc *projectDownloadChunk) bestUnresolvedWorker(puws []*pcwsUnresolvedWorker) (bestWorkerLate bool, bestUnresolvedDuration, bestUnresolvedWaitDuration time.Duration) {
-	bestUnresolvedDuration = time.Duration(math.MaxInt64)
-	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
-	bestWorkerLate = true
+// unresolvedWorkers will return the set of unresolved workers from the worker
+// state of the pdc. This operation will also update the set of available pieces
+// within the pdc to reflect any previously unresolved workers that are now
+// available workers.
+//
+// A channel will also be returned which will be closed when there are new
+// unresolved workers available.
+func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan struct{}) {
+	ws := pdc.workerState
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	var unresolvedWorkers []*pcwsUnresolvedWorker
+	for _, uw := range ws.unresolvedWorkers {
+		unresolvedWorkers = append(unresolvedWorkers, uw)
+	}
+	// Add any new resolved workers to the pdc's list of available pieces.
+	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
+		// Add the returned worker to available pieces for each piece that the
+		// resolved worker has.
+		resp := ws.resolveedWorkers[i]
+		for _, pieceIndex := range resp.pieceIndices {
+			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pieceDownload{
+				worker: resp.worker,
+			})
+		}
+	}
+	pdc.workersConsideredIndex = len(pdc.workerState.reseolvedWorkers)
+
+	// If there are more unresolved workers, fetch a channel that will be closed
+	// when more results from unresolved workers are available.
+	return unresolvedWorkers, ws.registerForWorkerUpdate()
+}
+
+// bestOverdriveUnresolvedWorker will scan through a proveded list of unresolved
+// workers and find the best one to use as an overdrive worker.
+//
+// Three values are returned. The first signifies whether the best worker is
+// late. If so, any worker that is resolved should be preferred over any worker
+// that is unresolved.
+//
+// The second return value is the unresolved duration. This is a modified
+// duration based on the combination of the amount of time until the worker has
+// completed its task plus the amount of time penalty the worker incurs for
+// being expensive.
+//
+// The final return value is a wait duration, which indicates how much time
+// needs to elapse before the best unresolved worker flips over into being a
+// late worker.
+func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnresolvedWorker) (exists, late bool, duration, waitDuration time.Duration) {
+	// Set the duration and late status to the most pessimistic value.
+	exists = false
+	late = true
+	duration = time.Duration(math.MaxInt64)
+	waitDuration = time.Duration(math.MaxInt64)
+
+	// Loop through the unresovled workers and find the best unresovled worker.
 	for _, uw := range puws {
 		// Figure how much time is expected to remain until the worker is
 		// avaialble. Note that no price penatly is attached to the HasSector
@@ -143,23 +160,29 @@ func (pdc *projectDownloadChunk) bestUnresolvedWorker(puws []*pcwsUnresolvedWork
 		if hasSectorTime < 0 {
 			hasSectorTime = 0
 		}
+		// Skip this worker if the best is not late but this worker is late.
+		late := hasSectorTime <= 0
+		if late && !bestWorkerLate {
+			continue
+		}
 
 		// Figure out how much time is expected until the worker completes the
 		// download job.
+		//
+		// TODO: Break into helper function and unit test.
 		readTime := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
 		if readTime < 0 {
 			readTime = 0
 		}
-
 		// Add a penalty to performance based on the cost of the job. Need to be
 		// careful with the underflow cases.
 		//
-		// TODO: Break into helpfer function and unit test.
-		if pricePerMSPerWorker.IsZero() {
-			pricePerMSPerWorker = types.NewCurrency64(1)
+		// TODO: Break into helper function and unit test.
+		if pdc.pricePerMS.IsZero() {
+			pdc.pricePerMS = types.NewCurrency64(1)
 		}
 		expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-		rsPricePenalty, err := expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64()
+		rsPricePenalty, err := expectedRSCompletionCost.Div(pdc.pricePerMS).Uint64()
 		if err != nil || rsPricePenalty > math.MaxInt64 {
 			readTime = time.Duration(math.MaxInt64)
 		} else if reduced := math.MaxInt64 - int64(rsPricePenalty); int64(readTime) > reduced {
@@ -167,25 +190,20 @@ func (pdc *projectDownloadChunk) bestUnresolvedWorker(puws []*pcwsUnresolvedWork
 		} else {
 			readTime += time.Duration(rsPricePenalty)
 		}
+		adjustedTotalDuration := hasSectorTime + readTime
 
 		// Compare the total time (including price preference) to the current
 		// best time. Workers that are not late get preference over workers that
 		// are late.
-		adjustedTotalDuration := hasSectorTime + readTime
-		betterLateStatus := bestWorkerLate && hasSectorTime > 0
+		betterLateStatus := bestWorkerLate && !late
 		betterDuration := adjustedTotalDuration < bestUnresolvedDuration
 		if betterLateStatus || betterDuration {
+			bestWorkerExists = true
 			bestUnresolvedDuration = adjustedTotalDuration
-		}
-		if hasSectorTime > 0 && betterDuration {
-			// bestUnresolvedWaitDuration should be set to 0 unless the best
-			// unresolved worker is not late.
-			bestUnresolvedWaitDuration = hasSectorTime
-		}
-		// The first time we find a worker that is not late, the best worker is
-		// not late. Marking this several times is not an issue.
-		if hasSectorTime > 0 {
-			bestWorkerLate = false
+			if !late {
+				bestUnresolvedWaitDuration = hasSectorTime
+				bestWorkerLate = false
+			}
 		}
 	}
 	return bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration
@@ -211,279 +229,83 @@ func (pdc *projectDownloadChunk) bestUnresolvedWorker(puws []*pcwsUnresolvedWork
 // an erasure coding perspective, this is inefficient, but can be useful if
 // there is an expectation that lots of existing workers will fail.
 //
-// TODO: Need to migrate over any unresolved workers.
-//
-// TODO: Do we care about price per ms per worker on the resolved workers?
-func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duration, <-chan struct{}, error) {
-	// Helper variables.
+// TODO: Need to migrate over any resolved workers. Currently we assume that has
+// already happened.
+func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, time.Duration, <-chan struct{}) {
+	// Find the best unresolved worker. The return values include an 'adjusted
+	// duration', which indicates how long the worker takes accounting for
+	// pricing, and the 'wait duration', which is the max amount of time that we
+	// should wait for this worker to return with a result from HasSector.
 	//
-	// NOTE: pricePerMSPerWorker is actually going to be an over-estimate in
-	// most cases. In the worst case, a renter is going to need to pay every
-	// worker to speed up, but in a typical case going X milliseconds faster
-	// only requires cycling out 1-2 slow workers rather than completely
-	// choosing a different set of workers. The code to make this more accurate
-	// in the typical case is more complex than is worth implementing at this
-	// time.
-	ws := pdc.workerState
-	pricePerMSPerWorker := pdc.pricePerMS.Mul64(uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
-
-	// TODO: Step 1: Figure out which available workers need to be moved into
-	// the set of available pieces. This can be done at the same time as
-	// grabbing the unresolved workers.
-
-	// For lock safety, need to fetch the list of unresolved workers separately
-	// from learning the best time. For thread safety, the update channel needs
-	// to be created at the moment that we observe the set of unresovled
-	// workers.
-	var unresolvedWorkers []*pcwsUnresolvedWorker
-	ws.mu.Lock()
-	for _, uw := range ws.unresolvedWorkers {
-		unresolvedWorkers = append(unresolvedWorkers, uw)
-	}
-	ws.mu.Unlock()
-
-	// Find the best duration of any unresolved worker, which states the fastest
-	// that we could expect an unresolved worker to return a piece. This time
-	// takes into consideration the fact that the HasSector call is still in
-	// progress and will take time to return.
+	// If the best unresolved worker is late, the wait duration will be zero.
+	// Technically these values are redundant but the code felt cleaner to
+	// return them explicitly.
 	//
-	// bestUnresolvedWaitDuration is the amount of time that the renter should wait
-	// to expect to hear back from the worker with HasSector results.
-	bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration := pdc.bestUnresolvedWorker(unresolvedWorkers)
+	// buw = bestUnresolvedWorker
+	unresolvedWorkers := pdc.unresolvedWorkers()
+	buwExists, buwLate, buwAdjustedDuration, buwWaitDuration := pdc.bestUnresolvedWorker(unresolvedWorkers)
 
-	// Copy the list of resolved workers.
-	now := time.Now() // So we aren't calling time.Now() a ton. It's a little expensive.
-	// Count how many pieces could be fetched where no unfailed workers have
-	// been launched for the piece yet.
-	piecesAvailableToLaunch := 0
-	// Track whether there are any unlaunched workers at all. If this is false
-	// and there are also no unresolved workers, then no additional workers can
-	// be launched at all, and the find workers function should terminate.
-	unlaunchedWorkersAvailable := false
-	// Track whether there are any pieces that don't have a worker launched
-	// which hasn't failed. This is to determine the rank of any unresolved
-	// workers. If there are unlaunched pieces, the rank of any unresolved
-	// workers is 'workerRankUnlaunchedPiece'.
-	unlaunchedPieces := false
-	// Track whether there are any pieces where there are workers that have
-	// launched and not failed, but all workers that have launched and not
-	// failed are late. This is to determine the rank of any unresovled workers.
-	// If there are inactive pieces and no unlaunched pieces, the rank of any
-	// unresolved workers is 'workerRankLaunchedPiece'. If there are no inactive
-	// pieces and also no unlaunched pieces, the rank of any unresolved workers
-	// is 'workerRankActivePiece'.
-	inactivePieces := false
-	// Save a list of which workers are currently late.
-	lateWorkers := make(map[string]struct{})
-	piecesCopy := make([][]pieceDownload, len(pdc.availablePieces))
+	// Loop through the set of pieces to find the fastest worker that can be
+	// launched. Because this function is only called for overdrive workers, we
+	// can assume that any launched piece is already late.
+	//
+	// baw = bestAvailableWorker
+	bawExists := false
+	bawAdjustedDuration := time.Duration(math.MaxInt64)
+	bawPieceIndex = 0
+	var baw *worker
 	for i, activePiece := range pdc.availablePieces {
-		// Track whether there are new workers available for this piece.
-		unlaunchedWorkerAvailable := false
-		// Track whether any of the workers have launched a job and have not yet
-		// failed.
-		launchedWithoutFail := false
-		// Track whether the piece has no launched workers at all.
-		unlaunchedPiece := true
-		// Track whether the piece has any late workers.
-		pieceHasLateWorkers := false
-		// Track whether the piece has any workers that are not yet late.
-		pieceHasActiveWorkers := false
-		piecesCopy[i] = make([]pieceDownload, len(activePiece))
-		for j, pieceDownload := range activePiece {
-			// Consistency check - failed and completed are mutally exclusive,
-			// and neither should be set unless launched is set.
-			if (!pieceDownload.launched && (pieceDownload.completed || pieceDownload.failed)) || (pieceDownload.failed && pieceDownload.completed) {
-				ws.staticRenter.log.Critical("rph3 download piece is incoherent")
+		// This piece should be skipped if it is completed.
+		complete := false
+		for _, pieceDownload := range activePiece {
+			// No need to check the rest of the pieces if this piece is
+			// complete.
+			if pieceDownload.completed {
+				complete = true
+				break
 			}
-			piecesCopy[i][j] = pieceDownload
 
-			// If this worker has not launched, there are workers that can fetch
-			// this piece. That also means there are more workers that can be
-			// launched if this download is struggling.
-			if !pieceDownload.launched {
-				unlaunchedWorkerAvailable = true
-				unlaunchedWorkersAvailable = true
-			}
-			// If this worker has launched and not yet failed, this piece is not
-			// an unlaunched piece.
-			if pieceDownload.launched && !pieceDownload.failed {
-				unlaunchedPiece = false
-			}
-			// If there is a worker that has launched and not yet failed, this
-			// piece can be counted as a piece which has launched without fail -
-			// it is a piece that may contribute to redundancy in the future.
-			if pieceDownload.launched && !pieceDownload.failed {
-				launchedWithoutFail = true
-			}
-			// Check if this piece is late or if the piece failed altogether, if
-			// so, mark the worker as a late worker.
-			if pieceDownload.launched && (pieceDownload.failed || pieceDownload.expectedCompletionTime.Before(now)) {
-				lateWorkers[pieceDownload.worker.staticHostPubKeyStr] = struct{}{}
-				pieceHasLateWorkers = true
-			} else if pieceDownload.launched {
-				pieceHasActiveWorkers = true
+			// Determine if this worker is better than any existing worker.
+			workerAdjustedDuration := pdc.getAdjustedDuration(pieceDownload.worker)
+			if workerAdjustedDuration < bawAdjustedDuration {
+				bawExists = true
+				bawAdjustedDuration = workerAdjustedDuration
+				bawPieceIndex = i
+				baw = pieceDownload.worker
 			}
 		}
-		// Count the piece as able to contribute to redundancy if there is a
-		// worker that has launched for the piece which has not failed.
-		if launchedWithoutFail || unlaunchedWorkerAvailable {
-			piecesAvailableToLaunch++
-		}
-		// If this piece does not have any workers that have launched without
-		// fail, this piece counts as an unlaunched piece.
-		if unlaunchedPiece {
-			unlaunchedPieces = true
-		}
-		// If this piece has late workers, and also has no workers that are
-		// launched and not yet late, then this piece counts as inactive.
-		if pieceHasLateWorkers && !pieceHasActiveWorkers {
-			inactivePieces = true
+		// Don't consider any workers from this piece if the piece is completed.
+		if complete {
+			continue
 		}
 	}
 
-	// Check whether it is still possible for the download to complete.
-	potentialPieces := piecesAvailableToLaunch + len(unresolvedWorkers)
-	if potentialPieces < pdc.workerSet.staticErasureCoder.MinPieces() {
-		return nil, 0, 0, nil, errors.New("rph3 chunk download has failed because there are not enough potential workers")
-	}
-	// Check whether it is possible for new workers to be launched.
-	if !unlaunchedWorkersAvailable && len(unresolvedWorkers) == 0 {
+	// Return nil if there are no workers that can be launched.
+	if !buwExists && !bawExists {
 		// All 'nil' return values, meaning the download can succeed by waiting
 		// for already launched workers to return, but cannot succeed by
 		// launching new workers because no new workers are available.
-		return nil, 0, 0, nil, nil
+		return nil, 0, 0, nil
 	}
 
-	// We know from the previous check that at least one of the unresolved
-	// workers or at least one of the resolved workers is available. Initialize
-	// the variables as though there are no unresolved workers, and then if
-	// there is an unresolved worker, set the rank and duration appropriately.
+	// Return the buw values unconditionally if there is no baw. Also return the
+	// buw if the buw is not late and has a better duration than the baw.
 	//
-	// TODO: We have the worker selection process complete, but we don't
-	// actually have the code to finish the return values. Also, we should
-	// probably return a time.Time instead of a time channel, because not every
-	// worker that gets returned is a blocking element.
-	bestWorkerResolved := true
-	bestKnownRank := workerRankLate
-	bestKnownDuration := time.Duration(math.MaxInt64)
-	if len(unresolvedWorkers) > 0 {
-		// Determine the rank of the unresolved workers. We rank unresolved
-		// workers optimistically, meaning we assume that they will fill the
-		// most convenient / important possible role.
-		if unlaunchedPieces {
-			// If there are any pieces that have not yet launched workers, then
-			// the rank of any unresolved workers is going to be 'unlaunched'.
-			bestKnownRank = workerRankUnlaunchedPiece
-		} else if inactivePieces {
-			// If there are no unlaunched pieces, but there are inactive pieces,
-			// the rank of any unresolved workers is going to be 'launched'.
-			bestKnownRank = workerRankLaunchedPiece
-		} else {
-			// If there are no unlaunched pieces and no inactive pieces, the
-			// rank of any unlaunched workers is going to be 'active'.
-			bestKnownRank = workerRankActivePiece
-		}
-		bestWorkerResolved = false
-		bestKnownDuration = bestUnresolvedDuration
-	}
-	// Iterate through the piecesCopy, finding the best unlaunched worker in the
-	// set. Only count workers that are better than the best unresolved worker.
-	var bestResolvedWorker *worker
-	var bestPieceIndex uint64
-	for _, activePiece := range piecesCopy {
-		pieceCompleted := false
-		pieceActive := false
-		pieceLaunched := false
-		for _, pieceDownload := range activePiece {
-			if pieceCompleted {
-				pieceCompleted = true
-				break
-			}
-			if pieceDownload.launched {
-				pieceLaunched = true
-			}
-			if pieceDownload.launched && now.Before(pieceDownload.expectedCompletionTime) {
-				pieceActive = true
-			}
-		}
-		// Skip this piece if the piece has already been completed.
-		if pieceCompleted {
-			continue
-		}
-		// Skip this piece if it the rank of the piece is worse than the best
-		// known rank.
-		if bestKnownRank < workerRankLaunchedPiece && pieceLaunched {
-			continue
-		}
-		// Skip this piece if it the rank of the piece is worse than the best
-		// known rank.
-		if bestKnownRank < workerRankActivePiece && pieceActive {
-			continue
-		}
-
-		// Look for any workers of good enough rank.
-		for i, pieceDownload := range activePiece {
-			// Skip any workers that are late if the best known rank is not
-			// late.
-			_, isLate := lateWorkers[pieceDownload.worker.staticHostPubKeyStr]
-			if bestKnownRank < workerRankLate && isLate {
-				continue
-			}
-			// Skip this worker if it is not good enough.
-			w := pieceDownload.worker
-			readTime := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
-			if readTime < 0 {
-				readTime = 0
-			}
-			expectedRSCompletionCost := w.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-			rsPricePenalty, err := expectedRSCompletionCost.Div(pricePerMSPerWorker).Uint64()
-			if err != nil || rsPricePenalty > math.MaxInt64 {
-				readTime = time.Duration(math.MaxInt64)
-			} else if reduced := math.MaxInt64 - int64(rsPricePenalty); int64(readTime) > reduced {
-				readTime = time.Duration(math.MaxInt64)
-			} else {
-				readTime += time.Duration(rsPricePenalty)
-			}
-			if bestKnownDuration < readTime {
-				continue
-			}
-
-			// This worker is good enough, determine the new rank.
-			if isLate {
-				bestKnownRank = workerRankLate
-			} else if pieceActive {
-				bestKnownRank = workerRankActivePiece
-			} else if pieceLaunched {
-				bestKnownRank = workerRankLaunchedPiece
-			} else {
-				bestKnownRank = workerRankUnlaunchedPiece
-			}
-			bestKnownDuration = readTime
-			bestResolvedWorker = pieceDownload.worker
-			bestPieceIndex = uint64(i)
-			bestWorkerResolved = true
-		}
-	}
-
-	// If the best worker is an unresolved worker, return a time that indicates
-	// when we should give up waiting for the worker, as well as a channel that
-	// indicates when there are new workers that have returned.
-	if !bestWorkerResolved {
+	// TODO: The registration here is a race condition because new workers may
+	// have come back since the list of unresolved workers was requested. Need
+	// to move this to inside of the lock where we grab the list of unresolved
+	// workers.
+	buwNoBaw = buwExists && !bawExists
+	buwBetter = !buwLate && buwAdjustedDuration < bawAdjustedDuration
+	if buwNoBaw || buwBetter {
 		ws.mu.Lock()
 		c := ws.registerForWorkerUpdate()
 		ws.mu.Unlock()
-		checkAgainTime := bestUnresolvedWaitDuration
-		if bestWorkerLate {
-			checkAgainTime = 0
-		}
-		return nil, 0, checkAgainTime, c, nil
+		return nil, 0, buwWaitDuration, c
 	}
 
-	// Best worker is resolved.
-	if bestResolvedWorker == nil {
-		ws.staticRenter.log.Critical("there is no best resolved worker and also no best unresolved worker")
-	}
-	return bestResolvedWorker, bestPieceIndex, 0, nil, nil
+	// Retrun the baw.
+	return baw, bawPieceIndex, 0, nil
 }
 
 // waitForWorker will block until one of the best workers is available to be
@@ -495,15 +317,15 @@ func (pdc *projectDownloadChunk) findBestWorker() (*worker, uint64, time.Duratio
 // eventually fail. I guess the context timeout actually handles most of this.
 //
 // TODO: Do something about that time.After
-func (pdc *projectDownloadChunk) waitForWorker() (*worker, uint64, error) {
+func (pdc *projectDownloadChunk) waitForWorker() (*worker, uint64, bool) {
 	for {
-		worker, pieceIndex, sleepTime, wakeChan, err := pdc.findBestWorker()
-		if err != nil {
-			return nil, 0, errors.AddContext(err, "no good worker could be found")
-		}
+		worker, pieceIndex, sleepTime, wakeChan := pdc.findBestWorker()
 		// If there was a worker found, return that worker.
 		if worker != nil {
-			return worker, pieceIndex, nil
+			return worker, pieceIndex, true
+		}
+		if wakeChan == nil {
+			return nil, 0, false
 		}
 
 		// If there was no worker found, sleep until we should call
@@ -513,14 +335,14 @@ func (pdc *projectDownloadChunk) waitForWorker() (*worker, uint64, error) {
 		case <-maxSleep:
 		case <-wakeChan:
 		case <-pdc.ctx.Done():
-			return nil, 0, errors.New("timed out waiting for a good worker")
+			return nil, 0, false
 		}
 	}
 }
 
 // launchWorker will launch a worker for the download project. An error
 // will be returned if there is no worker to launch.
-func (pdc *projectDownloadChunk) launchWorker() error {
+func (pdc *projectDownloadChunk) launchWorker() bool {
 	// Loop until either a worker succeeds in launching a job, or until there
 	// are no more workers to return. The exit condition for this loop depends
 	// on waitForWorker() being guaranteed to return an error if the workers
@@ -529,9 +351,9 @@ func (pdc *projectDownloadChunk) launchWorker() error {
 	// There are a finite number of worker options total.
 	for {
 		// An error here means that no more workers are available at all.
-		w, pieceIndex, err := pdc.waitForWorker()
-		if err != nil {
-			return errors.AddContext(err, "unable to launch a new worker")
+		w, pieceIndex, workerAvailable := pdc.waitForWorker()
+		if !workerAvailable {
+			return false
 		}
 
 		// Create the read sector job for the worker.
@@ -574,7 +396,7 @@ func (pdc *projectDownloadChunk) launchWorker() error {
 		// If there was no error in adding the worker, a worker has successfully
 		// been launched. Otherwise, try to grab another worker.
 		if added {
-			return nil
+			return true
 		}
 	}
 }
@@ -712,6 +534,8 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	}
 
 	// Count the number of workers that haven't completed their results yet.
+	//
+	// TODO: Is using this here a race condition?
 	ws.mu.Lock()
 	hopefulPieces += len(ws.unresolvedWorkers)
 	ws.mu.Unlock()
@@ -786,6 +610,10 @@ func (pdc *projectDownloadChunk) needsOverdrive() (time.Duration, bool) {
 // often we should pre-emtively launch some overdrive pieces rather than wait
 // for the failures to happen. This many not be necessary at all if the failure
 // rates are low enough.
+//
+// TODO: WaitForWorker currently blocks our ability to recieve new jobs that
+// come back while we are waiting for overdrive to complete... which means that
+// we actually need to launch the next worker in a background thread.
 func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 	// Loop until the download has either failed or completed.
 	for {
@@ -817,8 +645,9 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// outer loop.
 		overdriveTimeout, needsOverdrive := pdc.needsOverdrive()
 		if needsOverdrive {
-			_ = pdc.launchWorker() // Err is ignored, nothing to do.
-			continue
+			// If the launch is unsuccessful, it means that there are no more
+			// workers which can be launched.
+			pdc.launchWorker()
 		}
 
 		// Determine when the next overdrive check needs to run.

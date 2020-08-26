@@ -12,12 +12,6 @@ package renter
 // keep the corresponding siafile open and keep checking if there are updates,
 // or we can do the network based checking over time.
 
-// TODO: Need some way to prune workers from the set of available pieces, or at
-// least mark the workers as consistently unsucecssful for a given piece. And
-// then perhaps feed that back into the repair system so that it knows a host is
-// flaky on a particular piece, so maybe that piece can be repaired for the
-// host.
-
 import (
 	"context"
 	"fmt"
@@ -160,17 +154,14 @@ func (ws *pcwsWorkerState) closeUpdateChans() {
 // update chans in the worker state. When there is more information available
 // about which worker is the best worker to select, the channel will be closed.
 func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan struct{} {
-	// Create the channel that will be closed upon update.
-	c := make(chan struct{})
-
-	// Consistency check - this method is not supposed to be called unless there
-	// are unresolved workers that can return.
+	// Return a nil channel if there are no more unresolved workers.
 	if len(ws.unresolvedWorkers) == 0 {
-		ws.staticRenter.log.Critical("call to 'registerForWorkerUpdate' when there are no unresolved workers")
-		close(c) // Nothing else is going to close 'c', so we close it here.
-		return c
+		return nil
 	}
 
+	// Create the channel that will be closed when the set of unresolved workers
+	// has been updated.
+	c := make(chan struct{})
 	ws.workerUpdateChans = append(ws.workerUpdateChans, c)
 	return c
 }
