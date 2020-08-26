@@ -1,11 +1,39 @@
 package renter
 
+// TODO: Better handling of time.After
+
 // TODO: The pricing mechanism for these overdrive workers is not optimal
 // because the pricing mechnism right now assumes there is only one overdrive
 // worker and that the overdrive worker definitely is the slowest/latest worker
 // out of everyone that has already launched. For the most part, these
 // assumptions are going to be true in 99% of cases, so this doesn't need to be
 // addressed immediately.
+
+// adjustedWorkerDuration returns the amount of time that a worker is expected
+// to take to return, taking into account the penalties for the price of the
+// download.
+func (pdc *projectDownloadChunk) adjustedWorkerDuration(w *worker) time.Duration {
+	readTime := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
+	if readTime < 0 {
+		readTime = 0
+	}
+	// Add a penalty to performance based on the cost of the job. Need to be
+	// careful with the underflow cases.
+	//
+	// TODO: Break into helper function and unit test.
+	if pdc.pricePerMS.IsZero() {
+		pdc.pricePerMS = types.NewCurrency64(1)
+	}
+	expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
+	rsPricePenalty, err := expectedRSCompletionCost.Div(pdc.pricePerMS).Uint64()
+	if err != nil || rsPricePenalty > math.MaxInt64 {
+		readTime = time.Duration(math.MaxInt64)
+	} else if reduced := math.MaxInt64 - int64(rsPricePenalty); int64(readTime) > reduced {
+		readTime = time.Duration(math.MaxInt64)
+	} else {
+		readTime += time.Duration(rsPricePenalty)
+	}
+}
 
 // bestOverdriveUnresolvedWorker will scan through a proveded list of unresolved
 // workers and find the best one to use as an overdrive worker.
@@ -46,28 +74,7 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 
 		// Figure out how much time is expected until the worker completes the
 		// download job.
-		//
-		// TODO: Break into helper function and unit test.
-		readTime := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
-		if readTime < 0 {
-			readTime = 0
-		}
-		// Add a penalty to performance based on the cost of the job. Need to be
-		// careful with the underflow cases.
-		//
-		// TODO: Break into helper function and unit test.
-		if pdc.pricePerMS.IsZero() {
-			pdc.pricePerMS = types.NewCurrency64(1)
-		}
-		expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-		rsPricePenalty, err := expectedRSCompletionCost.Div(pdc.pricePerMS).Uint64()
-		if err != nil || rsPricePenalty > math.MaxInt64 {
-			readTime = time.Duration(math.MaxInt64)
-		} else if reduced := math.MaxInt64 - int64(rsPricePenalty); int64(readTime) > reduced {
-			readTime = time.Duration(math.MaxInt64)
-		} else {
-			readTime += time.Duration(rsPricePenalty)
-		}
+		readTime := pdc.adjustedReadDuration(uw.staticWorker)
 		adjustedTotalDuration := hasSectorTime + readTime
 
 		// Compare the total time (including price preference) to the current
@@ -87,25 +94,14 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 	return bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration
 }
 
-// findBestOverdriveWorker will look at all of the workers that can help fetch a
-// new piece. If a good worker is found, that worker is returned along with the
-// index of the piece it should fetch. If no good worker is found but a good
-// worker is in the queue, two channels will be returned, either of which can
-// signal that a new worker may be available.
+// findBestOverdriveWorker will search for the best worker to contribute to an
+// overdrive. The selection criteria is to select a worker that is expected to
+// be the fastest. If the fastest worker is an unresolved worker, the worker
+// return value will be 'nil' and instead two channels will be returned which
+// help to indicate when the unresolved worker is resolved.
 //
-// An error will only be returned if there are not enough workers to complete
-// the download. If there are enough workers to complete the download, but all
-// potential workers have already been launched, all of the return values will
-// be nil.
-//
-// If there are no workers at all that may be able to contribute, an error is
-// returned, which means the download must either proceed with its current set
-// of workers or must fail.
-//
-// NOTE: There is an edge case where all of the pieces are already active. In
-// this case, a worker may be returned that overlaps with another worker. From
-// an erasure coding perspective, this is inefficient, but can be useful if
-// there is an expectation that lots of existing workers will fail.
+// The time.Duration indicatees how long until the preferred worker would be
+// late, and the channel will be closed when new worker updates are available.
 //
 // TODO: Remember the edge case where all unresolved workers have not returned
 // yet and there are no other options. There is no timer in that case, only
@@ -143,7 +139,15 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, tim
 				complete = true
 				break
 			}
+		}
+		// Don't consider any workers from this piece if the piece is completed.
+		if complete {
+			continue
+		}
 
+		// Determine whether any worker for thie piece is better than the
+		// current baw.
+		for _, pieceDownload := range activePiece {
 			// Determine if this worker is better than any existing worker.
 			workerAdjustedDuration := pdc.getAdjustedDuration(pieceDownload.worker)
 			if workerAdjustedDuration < bawAdjustedDuration {
@@ -152,10 +156,6 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, tim
 				bawPieceIndex = i
 				baw = pieceDownload.worker
 			}
-		}
-		// Don't consider any workers from this piece if the piece is completed.
-		if complete {
-			continue
 		}
 	}
 
@@ -223,6 +223,18 @@ func (pdc *projectDownloadChunk) launchOverdriveWorker(w *worker, pieceIndex uin
 	}
 }
 
+// tryLaunchOverdriveWorker will attempt to launch an overdrive worker. A worker
+// may not be launched if the best worker is not yet available.
+func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (<-chan struct{}, <-chan time.Duration) {
+	worker, pieceIndex, sleepTime, wakeChan := pdc.findBestOverdriveWorker()
+	if worker == nil {
+		return wakeChan, time.After(sleepTime)
+	}
+
+	// If there was a worker found, launch the worker.
+	pdc.launchOverdriveWorker(worker, pieceIndex)
+}
+
 // overdriveStatus will return the number of overdrive workers that need to be
 // launched, and the expected return time of the slowest worker that has already
 // launched a download task.
@@ -263,18 +275,6 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 	// If the latest worker is expected to return at some point in the future,
 	// there is no immediate need to launch an overdrive worker.
 	return 0, latestReturn
-}
-
-// tryLaunchOverdriveWorker will attempt to launch an overdrive worker. A worker
-// may not be launched if the best worker is not yet available.
-func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (<-chan struct{}, <-chan time.Duration) {
-	worker, pieceIndex, sleepTime, wakeChan := pdc.findBestOverdriveWorker()
-	if worker == nil {
-		return wakeChan, time.After(sleepTime)
-	}
-
-	// If there was a worker found, launch the worker.
-	pdc.launchOverdriveWorker(worker, pieceIndex)
 }
 
 // tryOverdrive will determine whether an overdrive worker needs to be launched.

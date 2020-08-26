@@ -3,8 +3,6 @@ package renter
 // TODO: Need have price per ms per worker set somewhere by the user, with some
 // sane default.
 
-// TODO: Better handling of the time.After calls.
-
 import (
 	"bytes"
 	"context"
