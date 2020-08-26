@@ -129,278 +129,6 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 	return unresolvedWorkers, ws.registerForWorkerUpdate()
 }
 
-// bestOverdriveUnresolvedWorker will scan through a proveded list of unresolved
-// workers and find the best one to use as an overdrive worker.
-//
-// Three values are returned. The first signifies whether the best worker is
-// late. If so, any worker that is resolved should be preferred over any worker
-// that is unresolved.
-//
-// The second return value is the unresolved duration. This is a modified
-// duration based on the combination of the amount of time until the worker has
-// completed its task plus the amount of time penalty the worker incurs for
-// being expensive.
-//
-// The final return value is a wait duration, which indicates how much time
-// needs to elapse before the best unresolved worker flips over into being a
-// late worker.
-func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnresolvedWorker) (exists, late bool, duration, waitDuration time.Duration) {
-	// Set the duration and late status to the most pessimistic value.
-	exists = false
-	late = true
-	duration = time.Duration(math.MaxInt64)
-	waitDuration = time.Duration(math.MaxInt64)
-
-	// Loop through the unresovled workers and find the best unresovled worker.
-	for _, uw := range puws {
-		// Figure how much time is expected to remain until the worker is
-		// avaialble. Note that no price penatly is attached to the HasSector
-		// call, because that call is being made regardless of the cost.
-		hasSectorTime := time.Until(uw.staticExpectedCompletionTime)
-		if hasSectorTime < 0 {
-			hasSectorTime = 0
-		}
-		// Skip this worker if the best is not late but this worker is late.
-		late := hasSectorTime <= 0
-		if late && !bestWorkerLate {
-			continue
-		}
-
-		// Figure out how much time is expected until the worker completes the
-		// download job.
-		//
-		// TODO: Break into helper function and unit test.
-		readTime := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
-		if readTime < 0 {
-			readTime = 0
-		}
-		// Add a penalty to performance based on the cost of the job. Need to be
-		// careful with the underflow cases.
-		//
-		// TODO: Break into helper function and unit test.
-		if pdc.pricePerMS.IsZero() {
-			pdc.pricePerMS = types.NewCurrency64(1)
-		}
-		expectedRSCompletionCost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-		rsPricePenalty, err := expectedRSCompletionCost.Div(pdc.pricePerMS).Uint64()
-		if err != nil || rsPricePenalty > math.MaxInt64 {
-			readTime = time.Duration(math.MaxInt64)
-		} else if reduced := math.MaxInt64 - int64(rsPricePenalty); int64(readTime) > reduced {
-			readTime = time.Duration(math.MaxInt64)
-		} else {
-			readTime += time.Duration(rsPricePenalty)
-		}
-		adjustedTotalDuration := hasSectorTime + readTime
-
-		// Compare the total time (including price preference) to the current
-		// best time. Workers that are not late get preference over workers that
-		// are late.
-		betterLateStatus := bestWorkerLate && !late
-		betterDuration := adjustedTotalDuration < bestUnresolvedDuration
-		if betterLateStatus || betterDuration {
-			bestWorkerExists = true
-			bestUnresolvedDuration = adjustedTotalDuration
-			if !late {
-				bestUnresolvedWaitDuration = hasSectorTime
-				bestWorkerLate = false
-			}
-		}
-	}
-	return bestWorkerLate, bestUnresolvedDuration, bestUnresolvedWaitDuration
-}
-
-// findBestWorker will look at all of the workers that can help fetch a new
-// piece. If a good worker is found, that worker is returned along with the
-// index of the piece it should fetch. If no good worker is found but a good
-// worker is in the queue, two channels will be returned, either of which can
-// signal that a new worker may be available.
-//
-// An error will only be returned if there are not enough workers to complete
-// the download. If there are enough workers to complete the download, but all
-// potential workers have already been launched, all of the return values will
-// be nil.
-//
-// If there are no workers at all that may be able to contribute, an error is
-// returned, which means the download must either proceed with its current set
-// of workers or must fail.
-//
-// NOTE: There is an edge case where all of the pieces are already active. In
-// this case, a worker may be returned that overlaps with another worker. From
-// an erasure coding perspective, this is inefficient, but can be useful if
-// there is an expectation that lots of existing workers will fail.
-//
-// TODO: Need to migrate over any resolved workers. Currently we assume that has
-// already happened.
-func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, time.Duration, <-chan struct{}) {
-	// Find the best unresolved worker. The return values include an 'adjusted
-	// duration', which indicates how long the worker takes accounting for
-	// pricing, and the 'wait duration', which is the max amount of time that we
-	// should wait for this worker to return with a result from HasSector.
-	//
-	// If the best unresolved worker is late, the wait duration will be zero.
-	// Technically these values are redundant but the code felt cleaner to
-	// return them explicitly.
-	//
-	// buw = bestUnresolvedWorker
-	unresolvedWorkers := pdc.unresolvedWorkers()
-	buwExists, buwLate, buwAdjustedDuration, buwWaitDuration := pdc.bestUnresolvedWorker(unresolvedWorkers)
-
-	// Loop through the set of pieces to find the fastest worker that can be
-	// launched. Because this function is only called for overdrive workers, we
-	// can assume that any launched piece is already late.
-	//
-	// baw = bestAvailableWorker
-	bawExists := false
-	bawAdjustedDuration := time.Duration(math.MaxInt64)
-	bawPieceIndex = 0
-	var baw *worker
-	for i, activePiece := range pdc.availablePieces {
-		// This piece should be skipped if it is completed.
-		complete := false
-		for _, pieceDownload := range activePiece {
-			// No need to check the rest of the pieces if this piece is
-			// complete.
-			if pieceDownload.completed {
-				complete = true
-				break
-			}
-
-			// Determine if this worker is better than any existing worker.
-			workerAdjustedDuration := pdc.getAdjustedDuration(pieceDownload.worker)
-			if workerAdjustedDuration < bawAdjustedDuration {
-				bawExists = true
-				bawAdjustedDuration = workerAdjustedDuration
-				bawPieceIndex = i
-				baw = pieceDownload.worker
-			}
-		}
-		// Don't consider any workers from this piece if the piece is completed.
-		if complete {
-			continue
-		}
-	}
-
-	// Return nil if there are no workers that can be launched.
-	if !buwExists && !bawExists {
-		// All 'nil' return values, meaning the download can succeed by waiting
-		// for already launched workers to return, but cannot succeed by
-		// launching new workers because no new workers are available.
-		return nil, 0, 0, nil
-	}
-
-	// Return the buw values unconditionally if there is no baw. Also return the
-	// buw if the buw is not late and has a better duration than the baw.
-	//
-	// TODO: The registration here is a race condition because new workers may
-	// have come back since the list of unresolved workers was requested. Need
-	// to move this to inside of the lock where we grab the list of unresolved
-	// workers.
-	buwNoBaw = buwExists && !bawExists
-	buwBetter = !buwLate && buwAdjustedDuration < bawAdjustedDuration
-	if buwNoBaw || buwBetter {
-		ws.mu.Lock()
-		c := ws.registerForWorkerUpdate()
-		ws.mu.Unlock()
-		return nil, 0, buwWaitDuration, c
-	}
-
-	// Retrun the baw.
-	return baw, bawPieceIndex, 0, nil
-}
-
-// waitForWorker will block until one of the best workers is available to be
-// used for download, along with the index of the piece that should be
-// downloaded. An error will be returned if there are no new workers available
-// that can be launched.
-//
-// TODO: Need thorough testing to ensure that repeated calls to findBestWorker
-// eventually fail. I guess the context timeout actually handles most of this.
-//
-// TODO: Do something about that time.After
-func (pdc *projectDownloadChunk) waitForWorker() (*worker, uint64, bool) {
-	for {
-		worker, pieceIndex, sleepTime, wakeChan := pdc.findBestWorker()
-		// If there was a worker found, return that worker.
-		if worker != nil {
-			return worker, pieceIndex, true
-		}
-		if wakeChan == nil {
-			return nil, 0, false
-		}
-
-		// If there was no worker found, sleep until we should call
-		// findBestWorker again.
-		maxSleep := time.After(sleepTime)
-		select {
-		case <-maxSleep:
-		case <-wakeChan:
-		case <-pdc.ctx.Done():
-			return nil, 0, false
-		}
-	}
-}
-
-// launchWorker will launch a worker for the download project. An error
-// will be returned if there is no worker to launch.
-func (pdc *projectDownloadChunk) launchWorker() bool {
-	// Loop until either a worker succeeds in launching a job, or until there
-	// are no more workers to return. The exit condition for this loop depends
-	// on waitForWorker() being guaranteed to return an error if the workers
-	// keep failing. When a worker fails, we set 'pieceDownload.failed' to true,
-	// which causes waitForWorker to ignore that worker option in the future.
-	// There are a finite number of worker options total.
-	for {
-		// An error here means that no more workers are available at all.
-		w, pieceIndex, workerAvailable := pdc.waitForWorker()
-		if !workerAvailable {
-			return false
-		}
-
-		// Create the read sector job for the worker.
-		//
-		// TODO: The launch process should minimally have as input the ctx of
-		// the pdc, that way if the pdc closes we know to garbage collect the
-		// channel and not send down it. Ideally we can even cancel the job if
-		// it is in-flight.
-		jrs := &jobReadSector{
-			jobRead: jobRead{
-				staticResponseChan: pdc.workerResponseChan,
-				staticLength:       pdc.pieceLength,
-
-				staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
-
-				jobGeneric: newJobGeneric(w.staticJobReadQueue, pdc.ctx.Done()),
-			},
-			staticOffset: pdc.pieceOffset,
-		}
-
-		// Launch the job and then update the status of the worker. Either way,
-		// the worker should be marked as 'launched'. If the job is not
-		// successfully queued, the worker should be marked as 'failed' as well.
-		//
-		// NOTE: We don't break out of the loop when we find a piece/worker
-		// match. If all is going well, each worker should appear at most once
-		// in this piece, but for the sake of defensive programming we check all
-		// elements anyway.
-		expectedCompletionTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
-		for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
-			if w.staticHostPubKeyStr == pieceDownload.worker.staticHostPubKeyStr {
-				pieceDownload.launched = true
-				if added {
-					pieceDownload.expectedCompletionTime = expectedCompletionTime
-				} else {
-					pieceDownload.failed = true
-				}
-			}
-		}
-		// If there was no error in adding the worker, a worker has successfully
-		// been launched. Otherwise, try to grab another worker.
-		if added {
-			return true
-		}
-	}
-}
-
 // handleJobReadResponse will take a jobReadResponse from a worker job
 // and integrate it into the set of pieces.
 func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
@@ -548,72 +276,9 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	return false, nil
 }
 
-// needsOverdrive returns true if the function determines that another piece
-// should be launched to assist with the current download.
-//
-// TODO: Unit test this.
-func (pdc *projectDownloadChunk) needsOverdrive() (time.Duration, bool) {
-	// Go through the pieces, determining how many pieces are launched without
-	// fail, and what the longest return time is of all the workers that have
-	// already been launched.
-	numLWF := 0
-	var latestReturn time.Time
-	for _, piece := range pdc.availablePieces {
-		launchedWithoutFail := false
-		for _, pieceDownload := range piece {
-			if pieceDownload.launched && !pieceDownload.failed {
-				launchedWithoutFail = true
-				if !pieceDownload.completed && latestReturn.Before(pieceDownload.expectedCompletionTime) {
-					latestReturn = pieceDownload.expectedCompletionTime
-				}
-			}
-		}
-		if launchedWithoutFail {
-			numLWF++
-		}
-	}
-
-	// If the number of pieces that have launched without fail is less than the
-	// minimum number of pieces need to complete a download, overdrive is
-	// required.
-	if numLWF < pdc.workerSet.staticErasureCoder.MinPieces() {
-		// No need to return a time, need to launch a worker immediately.
-		return 0, true
-	}
-
-	// If the latest worker should have already returned, signal than an
-	// overdrive worker should be launched immediately.
-	untilLatest := time.Until(latestReturn)
-	if untilLatest <= 0 {
-		return 0, true
-	}
-
-	// There are enough workers out, and it is expected that not all of them
-	// have returned yet. Signal that we should check again 50 milliseconds
-	// after the latest worker has failed to return.
-	//
-	// Note that doing things this way means that launching new workers will
-	// cause the latest time returned to reflect their latest time - each time
-	// an overdrive worker is launched, we will wait the full return period
-	// before launching another one.
-	return (untilLatest + time.Millisecond*50), false
-}
-
-// threadedCollectAndOverdrivePieces is the maintenance function of the download
-// process.
-//
-// NOTE: One potential optimization here is to pre-emptively launch a few
-// overdrive pieces, in a similar fashion that the other code does. We can do it
-// more intelligently here though, tracking over time what percentage of
-// downloads comlete without failure, and what percentage of downloads end up
-// needing overdrive pieces. Then we can use that failure rate to determine how
-// often we should pre-emtively launch some overdrive pieces rather than wait
-// for the failures to happen. This many not be necessary at all if the failure
-// rates are low enough.
-//
-// TODO: WaitForWorker currently blocks our ability to recieve new jobs that
-// come back while we are waiting for overdrive to complete... which means that
-// we actually need to launch the next worker in a background thread.
+// threadedCollectAndOverdrivePieces will wait for responses from the workers.
+// If workers fail or are late, additional workers will be launched to ensure
+// that the download still completes.
 func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 	// Loop until the download has either failed or completed.
 	for {
@@ -629,41 +294,24 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 			return
 		}
 
-		// Drain the response chan of any results that have been submitted.
-		select {
-		case jrr := <-pdc.workerResponseChan:
-			pdc.handleJobReadResponse(jrr)
-			continue
-		case <-pdc.ctx.Done():
-			pdc.fail(errors.New("download failed while waiting for responses"))
-			return
-		}
-
-		// Run logic to determine whether or not we should kick off an overdrive
-		// worker. We skip checking the error on the launch because
-		// 'pdc.finished()' will catch the error on the next iteration of the
-		// outer loop.
-		overdriveTimeout, needsOverdrive := pdc.needsOverdrive()
-		if needsOverdrive {
-			// If the launch is unsuccessful, it means that there are no more
-			// workers which can be launched.
-			pdc.launchWorker()
-		}
+		// Run the overdrive code. This code needs to be asynchronous so that it
+		// does not block receiving on the workerResponseChan. The overdrive
+		// code will determine whether launching an overdrive worker is
+		// necessary, and will return a channel that will be closed when enough
+		// time has elapsed that another overdrive worker should be considered.
+		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
 
 		// Determine when the next overdrive check needs to run.
-		//
-		// TODO: Should be able to create a cache for the timer in the pdc,
-		// which hopefully allows us to avoid the memory allocation cost
-		// associated with calling time.After() a bunch of times.
-		overdriveTimeoutChan := time.After(overdriveTimeout)
 		select {
-		case jrr := <-pdc.workerResponseChan:
-			pdc.handleJobReadResponse(jrr)
-			continue
 		case <-pdc.ctx.Done():
 			pdc.fail(errors.New("download failed while waiting for responses"))
 			return
-		case <-overdriveTimeoutChan:
+		case jrr := <-pdc.workerResponseChan:
+			pdc.handleJobReadResponse(jrr)
+			continue
+		case <-workersLateChan:
+			continue
+		case <-workersUpdatedChan:
 			continue
 		}
 	}
@@ -713,12 +361,13 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 }
 
 // 'managedDownload' will download a range from a chunk. This call is
-// asynchronous. It will return as soon as the sector download requests have
-// been sent to the workers. This means that it will block until enough workers
-// have reported back with HasSector results that the optimal download request
-// can be made. Where possible, the projectChunkWorkerSet should be created in
-// advance of the download call, so that the HasSector calls have as long as
-// possible to complete, cutting significant latency off of the download.
+// asynchronous. It will return as soon as the initial sector download requests
+// have been sent to the workers. This means that it will block until enough
+// workers have reported back with HasSector results that the optimal download
+// request can be made. Where possible, the projectChunkWorkerSet should be
+// created in advance of the download call, so that the HasSector calls have as
+// long as possible to complete, reducing the latency of the actual download
+// call.
 //
 // Blocking until all of the piece downloads have been put into job queues
 // ensures that the workers will account for the bandwidth overheads associated
@@ -728,17 +377,11 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 // to managedDownload returns before the download jobs are queued into the
 // workers.
 //
-// pricePerMS is "price per millisecond". To add a price preference to picking
-// hosts to download from, the total cost of performing a download will be
-// converted into a number of milliseconds based on the pricePerMS. This cost
-// will be added to the return time of the host, meaning the host will be
-// selected as though it is slower.
-//
-// NOTE: A lot of this code is not future proof against certain classes of
-// encryption algorithms and erasure coding algorithms, however I believe that
-// the properties we have in our current set (maximum distance separable erasure
-// codes, tweakable encryption algorithms) are not likely to change in the
-// future.
+// pricePerMS is "price per millisecond". This gives the download code a budget
+// to spend on faster workers. For example, if a faster set of workers is
+// expected to trim 100 milliseconds off of the download time, the download code
+// will select those workers only if the additional expense of using those
+// workers is less than 100 * pricePerMS.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
@@ -812,22 +455,15 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		workerState:          ws,
 	}
 
-	// Launch enough workers to complete the download. The overdrive code will
-	// determine whether more pieces need to be launched.
-	//
-	// TODO: Probably change this to launch all of the workers at once.
-	for i := 0; i < pcws.staticErasureCoder.MinPieces(); i++ {
-		// Try launching a worker. If the launch fails, it means that no workers
-		// can be launched, and therefore the download cannot complete.
-		err := pdc.launchWorker()
-		if err != nil {
-			return nil, errors.AddContext(err, "not enough workers to kick off the download")
-		}
+	// Launch the initial set of workers for the pdc.
+	err := pdc.launchInitialWorkers()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to launch initial set of workers")
 	}
 
 	// All initial workers have been launched. The function can return now,
 	// unblocking the caller. A background thread will be launched to collect
-	// the reponses and launch overdrive workers when necessary.
+	// the responses and launch overdrive workers when necessary.
 	go pdc.threadedCollectAndOverdrivePieces()
 	return pdc.downloadResponseChan, nil
 }
