@@ -75,7 +75,7 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 		return storageObligation{}, err
 	}
 	// Add the file contract that consumes the funds.
-	_ = builder.AddFileContract(types.FileContract{
+	fc := types.FileContract{
 		// Because this file contract needs to be able to accept file contract
 		// revisions, the expiration is put more than
 		// 'revisionSubmissionBuffer' blocks into the future.
@@ -104,16 +104,36 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 		},
 		UnlockHash:     (types.UnlockConditions{}).UnlockHash(),
 		RevisionNumber: 0,
-	})
+	}
 	// Sign the transaction.
+	_ = builder.AddFileContract(fc)
 	tSet, err := builder.Sign(true)
 	if err != nil {
 		return storageObligation{}, err
 	}
 
+	revTSet := []types.Transaction{
+		{
+			FileContractRevisions: []types.FileContractRevision{
+				{
+					ParentID:              tSet[len(tSet)-1].FileContractID(0),
+					NewFileMerkleRoot:     fc.FileMerkleRoot,
+					NewFileSize:           fc.FileSize,
+					NewMissedProofOutputs: fc.MissedProofOutputs,
+					NewValidProofOutputs:  fc.ValidProofOutputs,
+					NewRevisionNumber:     fc.RevisionNumber,
+					NewUnlockHash:         fc.UnlockHash,
+					NewWindowStart:        fc.WindowStart,
+					NewWindowEnd:          fc.WindowEnd,
+				},
+			},
+		},
+	}
+
 	// Assemble and return the storage obligation.
 	so := storageObligation{
-		OriginTransactionSet: tSet,
+		OriginTransactionSet:   tSet,
+		RevisionTransactionSet: revTSet,
 
 		h: ht.host,
 	}
