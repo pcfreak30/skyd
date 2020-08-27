@@ -120,6 +120,7 @@ type projectChunkWorkerSet struct {
 	// simultaneously when the worker state needs to be updated. If a pcws is
 	// idle for a long time (say 12 hours) and then suddenly multiple requests
 	// come in all at once, those threads need to coordinate around the refresh.
+	staticHasSectorTimeout time.Duration
 	updateInProgress      bool
 	updateFinishedChan    chan struct{}
 	workerState           *pcwsWorkerState
@@ -133,7 +134,6 @@ type projectChunkWorkerSet struct {
 
 	// Utilities
 	staticCtx              context.Context
-	staticHasSectorTimeout time.Duration
 	staticRenter           *Renter
 	mu                     sync.Mutex
 }

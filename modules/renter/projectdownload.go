@@ -6,7 +6,6 @@ package renter
 import (
 	"bytes"
 	"context"
-	"math"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -70,7 +69,7 @@ type projectDownloadChunk struct {
 	// available pieces. This enables the worker selection code to realize which
 	// pieces in the worker set have been resolved since the last check.
 	availablePieces        [][]pieceDownload
-	workersConsideredIndex uint64
+	workersConsideredIndex int
 
 	// dataPieces is the buffer that is used to place data as it comes back.
 	// There is one piece per chunk, and pieces can be nil. To know if the
@@ -113,14 +112,14 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
 		// Add the returned worker to available pieces for each piece that the
 		// resolved worker has.
-		resp := ws.resolveedWorkers[i]
+		resp := ws.resolvedWorkers[i]
 		for _, pieceIndex := range resp.pieceIndices {
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pieceDownload{
 				worker: resp.worker,
 			})
 		}
 	}
-	pdc.workersConsideredIndex = len(pdc.workerState.reseolvedWorkers)
+	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
 
 	// If there are more unresolved workers, fetch a channel that will be closed
 	// when more results from unresolved workers are available.
@@ -454,7 +453,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	}
 
 	// Launch the initial set of workers for the pdc.
-	err := pdc.launchInitialWorkers()
+	err = pdc.launchInitialWorkers()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to launch initial set of workers")
 	}
