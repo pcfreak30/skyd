@@ -20,7 +20,8 @@ type fetchChunkState struct {
 	staticMasterKey  crypto.CipherKey
 
 	// staticTimeout defines a timeout that is applied to every chunk download
-	staticTimeout time.Duration
+	staticTimeout     time.Duration
+	staticRequestUUID interface{}
 
 	pieces          [][]byte
 	piecesCompleted uint64
@@ -65,6 +66,7 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 
 	ctx, cancel := context.WithTimeout(context.Background(), fcs.staticTimeout)
 	defer cancel()
+	ctx = context.WithValue(ctx, modules.REQUEST_UUID, fcs.staticRequestUUID)
 
 	pieceData, err := fcs.staticRenter.DownloadByRoot(ctx, pieceRoot, 0, modules.SectorSize)
 	if err != nil {
@@ -119,7 +121,8 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 		staticDataPieces: uint64(fs.staticLayout.fanoutDataPieces),
 		staticMasterKey:  fs.staticMasterKey,
 
-		staticTimeout: fs.staticTimeout,
+		staticTimeout:     fs.staticTimeout,
+		staticRequestUUID: fs.staticRequestUUID,
 
 		pieces: make([][]byte, len(fs.staticChunks[chunkIndex])),
 

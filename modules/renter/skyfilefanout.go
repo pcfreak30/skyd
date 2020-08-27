@@ -35,7 +35,8 @@ type fanoutStreamBufferDataSource struct {
 	staticStreamID     modules.DataSourceID
 
 	// staticTimeout defines a timeout that is applied to every chunk download
-	staticTimeout time.Duration
+	staticTimeout     time.Duration
+	staticRequestUUID interface{}
 
 	// Utils.
 	staticRenter *Renter
@@ -45,7 +46,7 @@ type fanoutStreamBufferDataSource struct {
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
 // skyfile. The streamer is created by implementing the streamBufferDataSource
 // interface on the skyfile, and then passing that to the stream buffer set.
-func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, metadata modules.SkyfileMetadata, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
+func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, metadata modules.SkyfileMetadata, fanoutBytes []byte, timeout time.Duration, requestUUID interface{}, sk skykey.Skykey) (modules.Streamer, error) {
 	masterKey, err := r.deriveFanoutKey(&ll, sk)
 	if err != nil {
 		return nil, errors.AddContext(err, "count not recover siafile fanout because cipher key was unavailable")
@@ -66,6 +67,7 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, metad
 		staticMetadata:     metadata,
 		staticStreamID:     link.DataSourceID(),
 		staticTimeout:      timeout,
+		staticRequestUUID:  requestUUID,
 		staticRenter:       r,
 	}
 	err = fs.decodeFanout(fanoutBytes)

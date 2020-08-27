@@ -809,7 +809,7 @@ func (r *Renter) DownloadSkylink(ctx context.Context, link modules.Skylink, time
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, layout, metadata, fanoutBytes, timeout, fileSpecificSkykey)
+	fs, err := r.newFanoutStreamer(link, layout, metadata, fanoutBytes, timeout, ctx.Value(modules.REQUEST_UUID), fileSpecificSkykey)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
@@ -914,7 +914,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Create the fanout streamer that will download the file.
-	streamer, err := r.newFanoutStreamer(skylink, layout, metadata, fanoutBytes, timeout, fileSpecificSkykey)
+	streamer, err := r.newFanoutStreamer(skylink, layout, metadata, fanoutBytes, timeout, nil, fileSpecificSkykey)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}
