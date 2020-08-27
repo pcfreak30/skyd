@@ -107,6 +107,16 @@ func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) 
 // Unlike the exported version of this function, this function does not request
 // memory from the memory manager.
 func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
+	// Create a trance function to trace the download
+	uuid := ctx.Value(modules.REQUEST_UUID)
+	trace := func(msg string) {
+		if uuid != nil {
+			r.log.Println(fmt.Sprintf("%s | %s | %s", uuid, time.Now().Format("15:04:05.000"), msg))
+		}
+	}
+
+	trace(fmt.Sprintf("managedDownloadByRoot | %v", root))
+
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -116,6 +126,8 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	pm := r.staticProjectDownloadByRootManager
 	// Track the total duration of the project.
 	start := time.Now()
+
+	defer trace(fmt.Sprintf("managedDownloadByRoot | %v | took %v", root, time.Since(start)))
 
 	// Potentially force a timeout via a disrupt for testing.
 	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
@@ -246,6 +258,10 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			available = successfulResponse && resp.staticAvailables[0]
 		}
 
+		if available {
+			trace(fmt.Sprintf("managedDownloadByRoot | %v | found sector at %v", root, resp.staticWorker.staticHostPubKeyStr))
+		}
+
 		// If we received a response from a worker that is not useful for
 		// completing the project, go back to blocking. This check is ignored if
 		// we are supposed to use the best worker.
@@ -298,6 +314,8 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		// download fails, the worker shouldn't be used again.
 		delete(usableWorkers, bestWorkerIndex)
 
+		trace(fmt.Sprintf("managedDownloadByRoot | %v | start download from %v", root, bestWorker.staticHostPubKeyStr))
+
 		// Queue the job to download the sector root.
 		readSectorRespChan := make(chan *jobReadResponse)
 		jrs := &jobReadSector{
@@ -325,8 +343,11 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		select {
 		case readSectorResp = <-readSectorRespChan:
 		case <-ctx.Done():
+			trace(fmt.Sprintf("managedDownloadByRoot | %v | timed out", root))
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
+
+		trace(fmt.Sprintf("managedDownloadByRoot | %v | finished download after %v", root, time.Since(start)))
 
 		// If the read sector job was not successful, move on to the next
 		// worker.
@@ -346,7 +367,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 
 // DownloadByRoot will fetch data using the merkle root of that data. This uses
 // all of the async worker primitives to improve speed and throughput.
-func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+func (r *Renter) DownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	if !r.memoryManager.Request(length, memoryPriorityHigh) {
@@ -354,18 +375,13 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	}
 	defer r.memoryManager.Return(length)
 
-	// Create a context. If the timeout is greater than zero, have the context
-	// expire when the timeout triggers.
-	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
+	// var cancel context.CancelFunc
+	// ctx, cancel = context.WithCancel(r.tg.StopCtx())
+	// defer cancel()
 
 	data, err := r.managedDownloadByRoot(ctx, root, offset, length)
 	if errors.Contains(err, ErrProjectTimedOut) {
-		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+		err = errors.AddContext(err, "timed out")
 	}
 	return data, err
 }

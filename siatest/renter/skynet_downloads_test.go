@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
@@ -34,13 +35,16 @@ func TestSkynetDownloads(t *testing.T) {
 	}
 	groupDir := renterTestDir(t.Name())
 
+	println(groupDir)
+	time.Sleep(5 * time.Second)
+
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "SingleFileRegular", Test: testDownloadSingleFileRegular},
-		{Name: "SingleFileMultiPart", Test: testDownloadSingleFileMultiPart},
-		{Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
-		{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
-		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
+		// {Name: "SingleFileMultiPart", Test: testDownloadSingleFileMultiPart},
+		// {Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
+		// {Name: "DirectoryNested", Test: testDownloadDirectoryNested},
+		// {Name: "ContentDisposition", Test: testDownloadContentDisposition},
 	}
 
 	// Run tests

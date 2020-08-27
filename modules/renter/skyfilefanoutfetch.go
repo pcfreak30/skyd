@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"golang.org/x/net/context"
 )
 
 // fetchChunkState is a helper struct for coordinating goroutines that are
@@ -61,7 +62,11 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 	//
 	// TODO: Ideally would be able to insert 'doneChan' as a cancelChan on the
 	// DownloadByRoot call.
-	pieceData, err := fcs.staticRenter.DownloadByRoot(pieceRoot, 0, modules.SectorSize, fcs.staticTimeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), fcs.staticTimeout)
+	defer cancel()
+
+	pieceData, err := fcs.staticRenter.DownloadByRoot(ctx, pieceRoot, 0, modules.SectorSize)
 	if err != nil {
 		fcs.managedFailPiece()
 		fcs.staticRenter.log.Debugf("fanout piece download failed for chunk %v, piece %v, root %v of a fanout download file: %v", fcs.staticChunkIndex, pieceIndex, pieceRoot, err)

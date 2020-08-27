@@ -41,6 +41,7 @@ func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byt
 	if timeout >= 0 {
 		params["timeout"] = fmt.Sprintf("%d", timeout)
 	}
+	params["trace"] = "1"
 	return c.skynetSkylinkGetWithParameters(skylink, params)
 }
 

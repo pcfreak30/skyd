@@ -19,6 +19,10 @@ var (
 	SafeMutexDelay time.Duration
 )
 
+// prevent collission
+type ContextKey string
+const REQUEST_UUID ContextKey = "uuid"
+
 func init() {
 	if build.Release == "dev" {
 		SafeMutexDelay = 60 * time.Second

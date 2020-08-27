@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"testing"
 	"time"
 
@@ -188,7 +189,7 @@ func TestRHP2DownloadOnMaintenanceCoolDown(t *testing.T) {
 
 	// download the data using the RHP3 download method
 	err = build.Retry(60, time.Second, func() error {
-		actual, err := wt.renter.DownloadByRoot(root, 0, modules.SectorSize, 0)
+		actual, err := wt.renter.DownloadByRoot(context.Background(), root, 0, modules.SectorSize)
 		if err != nil {
 			return err
 		}

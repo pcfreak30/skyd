@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,6 +27,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -270,6 +273,17 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// Parse optional trace.
+	trace := false
+	traceStr := queryForm.Get("trace")
+	if traceStr != "" {
+		trace, err = strconv.ParseBool(traceStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'trace' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Parse the format.
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
 	switch format {
@@ -300,8 +314,24 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
+	// Create a context that includes both timeout and request uuid
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	}
+	defer cancel()
+
+	// Wrap the context with value if the user requested a trace
+	var uuid string
+	if trace {
+		uuid = hex.EncodeToString(fastrand.Bytes(8))
+		println("trace", uuid)
+		ctx = context.WithValue(ctx, modules.REQUEST_UUID, uuid)
+	}
+
 	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
+	metadata, streamer, err := api.renter.DownloadSkylink(ctx, skylink, timeout)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
@@ -455,6 +485,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
 	}
 	w.Header().Set("Content-Disposition", cdh)
+
+	// Set trace header
+	if trace {
+		w.Header().Set("Skynet-Request-Id", uuid)
+	}
 
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.
