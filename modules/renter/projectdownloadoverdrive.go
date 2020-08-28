@@ -191,6 +191,8 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 // A time is returned which indicates the expected return time of the worker's
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
+//
+// TODO: Rename this function and move it back to projectdownload.go
 func (pdc *projectDownloadChunk) launchOverdriveWorker(w *worker, pieceIndex uint64) (time.Time, bool) {
 	// Create the read sector job for the worker.
 	//

@@ -305,11 +305,8 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 			return
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
-			continue
 		case <-workersLateChan:
-			continue
 		case <-workersUpdatedChan:
-			continue
 		}
 	}
 }
