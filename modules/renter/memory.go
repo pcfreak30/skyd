@@ -6,6 +6,7 @@ package renter
 // memory for the memory manager.
 
 import (
+	"fmt"
 	"runtime"
 	"runtime/debug"
 	"sync"
@@ -178,6 +179,7 @@ func (mm *memoryManager) Request(amount uint64, priority bool) bool {
 		mm.mu.Unlock()
 		return true
 	}
+	fmt.Printf("not enough memory to request amount %v %v \n", amount, priority)
 	// There is not enough memory available for this request, join the fifo.
 	myRequest := &memoryRequest{
 		amount: amount,

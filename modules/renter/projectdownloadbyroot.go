@@ -347,6 +347,12 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // DownloadByRoot will fetch data using the merkle root of that data. This uses
 // all of the async worker primitives to improve speed and throughput.
 func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	// Make sure we are at most downloading
+	if length > modules.SectorSize {
+		err := errors.New("DownloadByRoot: can't download more than a sector worth of data")
+		build.Critical(err)
+		return nil, err
+	}
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	if !r.memoryManager.Request(length, memoryPriorityHigh) {
