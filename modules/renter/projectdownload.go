@@ -1,8 +1,5 @@
 package renter
 
-// TODO: Need have price per ms per worker set somewhere by the user, with some
-// sane default.
-
 import (
 	"bytes"
 	"context"
@@ -114,6 +111,7 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
 		for _, pieceIndex := range resp.pieceIndices {
+			readDuration := resp.worker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pieceDownload{
 				worker: resp.worker,
 			})

@@ -120,7 +120,6 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 	return x
 }
 
-
 // initialWorkerHeap will create a heap with all of the potential workers for
 // this piece. It will include all of the unresolved workers, and it will
 // attempt to exclude any workers that are known to be non-viable - for example
@@ -134,7 +133,9 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// readDuration to the staticExpectedCompleteTime to get the full
 		// complete time for the download - staticExpectedCompleteTime in the uw
 		// refers to the expected complete time of the HasSector job.
-		// TODO:
+		cost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
+		readDuration := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
+		completeTime := uw.staticExpectedCompleteTime.Add(readDuration)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -147,21 +148,60 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 		// Push the element into the heap.
 		heap.Push(&wh, pdcInitialWorker{
-			completeTime: 
-			cost:
-			readDuration:
+			completeTime: completeTime,
+			cost:         cost,
+			readDuration: readDuration,
 
-			pieces: pieces,
+			pieces:     pieces,
 			unresolved: true,
-			worker: uw.staticWorker,
+			worker:     uw.staticWorker,
 		})
 	}
 
-	// TODO: When picking through the initial set of workers, we should try to
-	// account for things like cooldown, because once we've launched workers, we
-	// have no choice but to fail to overdrive if some of the launches fail.
-	// This is beacuse the other launches already happened, and therefore can no
-	// longer be replaced by the initial selection code.
+	// Add the resolved workers to the heap. In the worker state, the resolved
+	// workers are organized as a series of available pieces, because that is
+	// what made the overdrive code the easiest.
+	resolvedWorkersMap := make(map[string]*pdcInitialWorker)
+	for i, piece := range pdc.availablePieces {
+		for _, pieceDownload := range piece {
+			w := pieceDownload.worker
+
+			// Ignore this worker if the worker is not currently equipped to
+			// perform async work.
+			if !w.managedAsyncReady {
+				continue
+			}
+
+			// If the worker is already in the resolved workers map, add this
+			// piece to the set of pieces the worker can complete. Otherwise,
+			// create a new element for this worker.
+			elem, exists := resolvedWorkersMap[w.staticHostPubKeyStr]
+			if exists {
+				// Elem is a pointer, so the map does not need to be updated.
+				elem.pieces = append(pieces, i)
+			} else {
+				cost := w.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
+				readDuration := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
+				completeTime := uw.staticExpectedCompleteTime.Add(readDuration)
+				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
+					completeTime: completeTime,
+					cost:         cost,
+					readDuration: readDuration,
+
+					pieces:     []uint64{i},
+					unresolved: false,
+					worker:     w,
+				}
+			}
+		}
+	}
+
+	// Push a pdcInitialWorker into the heap for each worker in the resolved
+	// workers map.
+	for _, rw := range resolvedWorkersMap {
+		heap.Push(&wh, rw)
+	}
+	return wh
 }
 
 // createInitialWorkerSet will go through the current set of workers and
