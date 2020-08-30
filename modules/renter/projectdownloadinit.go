@@ -1,5 +1,78 @@
 package renter
 
+// projectdownloadinit.go implements an algorithm to select the best set of
+// initial workers for completing a download. This algorithm is balancing
+// between two different criteria. The first is the amount of time that the
+// download will take to complete - the algorithm tries to minimize this - and
+// the second is cost.
+//
+// The download is created with an input of 'pricePerMS', which means that the
+// download algorithm should pick a slower set of workers so long as the amount
+// of money saved is greater than the price per millisecond multiplied by the
+// number of milliseconds of slowdown that is incurred by switching to cheaper
+// workers.
+//
+// The algorithm used is fairly involved, but achieves an okay runtime. First,
+// the complete set of workers are placed into a heap sorted by their expected
+// return time. The fastest workers are sorted to be popped out of the heap
+// first.
+//
+// Because of parallelism, the expected return time of the project is equal to
+// the expected return time of the slowest worker. Because of the 'pricePerMS'
+// value, we can convert a duration into a price. The total adjusted cost of a
+// set of workers is therefore the monetary cost of each worker plus the
+// 'pricePerMS' multiplied by the duration until the slowest worker would
+// finish.
+//
+// To get a baseline, we pop of 'MinPieces' workers, tally up the financial
+// cost, and track the duration of the slowest worker. We then compute the total
+// adjusted cost of using the fastest possible set of workers. We save a copy of
+// this set as the 'bestSet', retaining the inital consturction as the
+// 'workingSet'.
+//
+// Then we iterate by popping a new worker off of the heap. Two things are at
+// play. The first is that this worker may be cheaper that one of our existing
+// workers. And the second is that this worker is slower (due to the time sorted
+// heap), so therefore may drive the total cost up despite being cheaper. We do
+// not know at this time if the optimal set includes an even slower worker. We
+// update the working set by replacing the most expensive worker with the new
+// worker, assuming that the new worker is cheaper. (if the new worker is not
+// cheaper, the new worker is ignored). After the update, we check whether the
+// working set's new cost is cheaper than the best set's cost. If so, we
+// overwrite the best set with the current working set. If not, we continue
+// popping off new workers in pursuit of a cheaper adjusted set of workers.
+//
+// We know that if the optimal set of workers contains a slower worker than the
+// current worker, and the current worker is cheaper than an existing worker,
+// then there is no time penalty to swapping out an existing worker for the
+// current cheaper worker. Keeping a best set and a working set allows us to
+// build towards the optimal set even if there are suboptimal increments along
+// the way.
+//
+// There are two complications. The first complication is that not every worker
+// can fetch every piece. The second complication is that some workers can fetch
+// multiple pieces.
+//
+// For workers that cannot fetch every piece, we will only consider the pieces
+// that they can fetch. If they can fetch a piece that has no worker in it, that
+// worker will be added to the workingSet and the most expensive worker will be
+// evicted. If a new worker only has pieces that overlap with workers already in
+// the workingSet, the new worker will evict the most expensive worker that it
+// is capable of replacing. If it cannot replace anyone because everyone it
+// could replace is already cheaper, the new worker will be ignored.
+//
+// When an existing worker is evicted, it will go back into the heap so that
+// there can be an attempt to add it back to the set. The worker that got
+// evicted may be able to replace some other worker in the working set.
+//
+// For workers that can fetch multiple pieces, the worker will be added back
+// into the heap after it is inserted into the working set. To account for the
+// extra load that is put onto the worker for having to fetch multiple pieces,
+// the 'readDuration' of the worker will be added to the 'competeTime' each
+// additional time that the worker is put back into the heap. This is overly
+// pessimistic, but guarantees that we do not overload a particular worker and
+// slow the entire download down.
+
 import (
 	"container/heap"
 
@@ -12,31 +85,29 @@ import (
 // beacuse the other launches already happened, and therefore can no longer be
 // replaced by the initial selection code.
 
-// TODO: Remember when adding a worker to the heap for the second time you have
-// to make a copy of the struct because just a copy of the pointer means the
-// duration will change for all of them.
-
 // pdcInitialWorker tracks information about a worker that is useful for
 // building the optimal set of launch workers.
 type pdcInitialWorker struct {
-	// The baseDuration tracks the amount of time the worker is expected to take
-	// to execute a job. It is separate from 'duration', because if a worker is
-	// used multiple times in the same worker set, the first time it is used
-	// it'll have 'baseDuration' as the duration, and the second time it'll have
-	// '2 * baseDuration' as the duration, etc (going up linearly).
+	// The readDuration tracks the amount of time the worker is expected to take
+	// to execute a read job. The readDuration gets added to the duration each
+	// time the worker is added back into the heap to potentially be used an
+	// additional time. Technically, the worker is able to fetch in parallel and
+	// so assuming an additional full 'readDuration' per read is overly
+	// pessimistic, at the same time we prefer to spread our downloads over
+	// multiple workers so the pessimism is not too bad.
 	//
 	// The cost is the amount of money will be spent on fetching a single piece
 	// for this pdc.
-	baseDuration time.Duration
-	cost types.Currency
-	duration time.Duration
+	completeTime time.Time
+	cost         types.Currency
+	readDuration time.Duration
 
 	// The list of pieces indicates which pieces the worker is capable of
 	// fetching. If 'unresolved' is set to true, the worker will be treated as
-	// though it can fetch all pieces.
-	pieces []uint64
+	// though it can fetch the first 'MinPieces' pieces.
+	pieces     []uint64
 	unresolved bool
-	worker *worker
+	worker     *worker
 }
 
 // TODO: Heap is sorted by time. Fastest is first, slowest is last. This is
@@ -241,11 +312,11 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*l
 		// Create a new entry for 'nextWorker' and push that entry back into the
 		// heap. This is in case 'nextWorker' is able to fetch multiple pieces.
 		// The duration of the next worker will be increased by the
-		// 'baseDuration' as a worst case estmiation of what the performance hit
+		// 'readDuration' as a worst case estmiation of what the performance hit
 		// will be for using the same worker multiple times.
 		if len(nextWorker.pieces) > 1 {
 			copyWorker := *nextWorker
-			copyWorker.duration = nextWorker.duration + nextWorker.baseDuration
+			copyWorker.duration = nextWorker.duration + nextWorker.readDuration
 			heap.Push(&workerHeap, &copyWorker)
 		}
 	}

@@ -121,10 +121,10 @@ type projectChunkWorkerSet struct {
 	// idle for a long time (say 12 hours) and then suddenly multiple requests
 	// come in all at once, those threads need to coordinate around the refresh.
 	staticHasSectorTimeout time.Duration
-	updateInProgress      bool
-	updateFinishedChan    chan struct{}
-	workerState           *pcwsWorkerState
-	workerStateLaunchTime time.Time
+	updateInProgress       bool
+	updateFinishedChan     chan struct{}
+	workerState            *pcwsWorkerState
+	workerStateLaunchTime  time.Time
 
 	// Decoding and decryption information.
 	staticChunkIndex   uint64
@@ -133,9 +133,9 @@ type projectChunkWorkerSet struct {
 	staticPieceRoots   []crypto.Hash
 
 	// Utilities
-	staticCtx              context.Context
-	staticRenter           *Renter
-	mu                     sync.Mutex
+	staticCtx    context.Context
+	staticRenter *Renter
+	mu           sync.Mutex
 }
 
 // closeUpdateChans will close all of the update chans and clear out the slice.
