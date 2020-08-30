@@ -79,12 +79,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// TODO: When picking through the initial set of workers, we should try to
-// account for things like cooldown, because once we've launched workers, we
-// have no choice but to fail to overdrive if some of the launches fail. This is
-// beacuse the other launches already happened, and therefore can no longer be
-// replaced by the initial selection code.
-
 // pdcInitialWorker tracks information about a worker that is useful for
 // building the optimal set of launch workers.
 type pdcInitialWorker struct {
@@ -110,37 +104,65 @@ type pdcInitialWorker struct {
 	worker     *worker
 }
 
-// TODO: Heap is sorted by time. Fastest is first, slowest is last. This is
-// important to the runtime efficiency of the algorithm.
-type pdcInitialWorkerHeap []*pdcInitialWorker
+// A heap of pdcInitialWorkers that is sorted by 'completeTime'. Workers that
+// have a sooner/earlier complete time will be popped off of the heap first.
+type pdcWorkerHeap []*pdcInitialWorker
 
-// TODO: Implement the heap.
-
-// TODO: Initial sorted workers, because sorting is annoying, should do the
-// worker-extension stuff (where you allow workers that can grab multiple pieces
-// to be inserted multipe times). There's a smart way to add them where you add
-// them at the end, and then once you reach them you know that you can quit once
-// you've added like 10 of them. We can do this by keeping a 2x list, and a 3x
-// list, etc. And then each time we add a new one to the list, we just check the
-// 2x list and 3x list,etc. I keep thinking it's good enough to stop at...
-//
-// Okay, so since we have to push things in real time, what we actually need is
-// a heap. fublewub
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) []*pdcInitialWorker {
-	// TODO: When pushing unresolved workers, need to make it so that 'pieces'
-	// is the first MinPieces pieces, so that they count properly for all of
-	// their options.
+func (wh pdcWorkerHeap) Len() int            { return len(wh) }
+func (wh pdcWorkerHeap) Less(i, j int) bool  { return wh[i].completeTime.Before(wh[j].completeTime) }
+func (wh pdcWorkerHeap) Swap(i, j int)       { wh[i], wh[j] = wh[j], wh[i] }
+func (wh *pdcWorkerHeap) Push(x interface{}) { *wh = append(*ws, x.(*pdcInitialWorker)) }
+func (wh *pdcWorkerHeap) Pop() interface{} {
+	old := *wh
+	n := len(old)
+	x := old[n-1]
+	*wh = old[:n-1]
+	return x
 }
 
-// TODO: The algorithm for replacing a worker that can potentially fill multiple
-// slots should be... when you are putting the worker in its first slot, you
-// slip the worker in and then add the worker back into the list of available
-// workers with a cost that is 2x the original. When you slip it in a second
-// time, add it back into the list with a cost that is 3x the original, etc.
-//
-// When replacing it, we will try to re-add it somewhere else using the same
-// timing that it is already using. This will give us an optimal fill-out
-// without computational expense.
+
+// initialWorkerHeap will create a heap with all of the potential workers for
+// this piece. It will include all of the unresolved workers, and it will
+// attempt to exclude any workers that are known to be non-viable - for example
+// workers with no pieces that can be resolved or workers that are currently on
+// cooldown for the read job.
+func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
+	// Add all of the unresovled workers to the heap.
+	var wh pdcWorkerHeap
+	for _, uw := range unresolvedWorkers {
+		// Determine the expected readDuration and cost for this worker. Add the
+		// readDuration to the staticExpectedCompleteTime to get the full
+		// complete time for the download - staticExpectedCompleteTime in the uw
+		// refers to the expected complete time of the HasSector job.
+		// TODO:
+
+		// Create the pieces for the unresolved worker. Because the unresolved
+		// worker could be potentially used to fetch any piece (we won't know
+		// until the resolution is complete), we add a set of pieces as though
+		// the worker could single-handedly complete all of the pieces.
+		pieces := make([]uint64, pdc.workerSet.staticErasureCoder.MinPieces())
+		for i := 0; i < len(pieces); i++ {
+			pieces[i] = i
+		}
+
+		// Push the element into the heap.
+		heap.Push(&wh, pdcInitialWorker{
+			completeTime: 
+			cost:
+			readDuration:
+
+			pieces: pieces,
+			unresolved: true,
+			worker: uw.staticWorker,
+		})
+	}
+
+	// TODO: When picking through the initial set of workers, we should try to
+	// account for things like cooldown, because once we've launched workers, we
+	// have no choice but to fail to overdrive if some of the launches fail.
+	// This is beacuse the other launches already happened, and therefore can no
+	// longer be replaced by the initial selection code.
+}
 
 // createInitialWorkerSet will go through the current set of workers and
 // determine the best set of workers to use when attempting to download a piece.
