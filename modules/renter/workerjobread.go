@@ -81,7 +81,7 @@ func (j *jobRead) callDiscard(err error) {
 		select {
 		case j.staticResponseChan <- response:
 		case <-w.renter.tg.StopChan():
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		}
 	})
 }
@@ -106,7 +106,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})

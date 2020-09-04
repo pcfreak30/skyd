@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -210,7 +211,7 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	// TODO: Need a new way of doing this.
 
 	// add the job to the worker
-	cc := make(chan struct{})
+	ctx := context.Background()
 	rc := make(chan *jobReadResponse)
 
 	jhs := &jobReadSector{
@@ -220,8 +221,8 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			staticSector:       sectorRoot,
 
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cc,
-				staticQueue:      w.staticJobReadQueue,
+				staticCtx:   ctx,
+				staticQueue: w.staticJobReadQueue,
 			},
 		},
 		staticOffset: 0,
@@ -260,8 +261,8 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			staticSector:       crypto.Hash{},
 
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cc,
-				staticQueue:      w.staticJobReadQueue,
+				staticCtx:   ctx,
+				staticQueue: w.staticJobReadQueue,
 			},
 		},
 		staticOffset: 0,
@@ -337,9 +338,9 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	// something.
 
 	// add the job to the worker
-	cc := make(chan struct{})
+	ctx := context.Background()
 	rc := make(chan *jobHasSectorResponse)
-	jhs := w.newJobHasSector(cc, rc, crypto.Hash{})
+	jhs := w.newJobHasSector(ctx, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
@@ -375,7 +376,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	hostClosed = true
 
 	// add another job to the worker
-	jhs = w.newJobHasSector(cc, rc, crypto.Hash{})
+	jhs = w.newJobHasSector(ctx, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
