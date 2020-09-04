@@ -70,7 +70,7 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 		// Figure how much time is expected to remain until the worker is
 		// avaialble. Note that no price penatly is attached to the HasSector
 		// call, because that call is being made regardless of the cost.
-		hasSectorTime := time.Until(uw.staticExpectedCompletionTime)
+		hasSectorTime := time.Until(uw.staticExpectedCompleteTime)
 		if hasSectorTime < 0 {
 			hasSectorTime = 0
 		}
@@ -207,12 +207,12 @@ func (pdc *projectDownloadChunk) launchOverdriveWorker(w *worker, pieceIndex uin
 
 			staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
 
-			jobGeneric: newJobGeneric(w.staticJobReadQueue, pdc.ctx.Done()),
+			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue),
 		},
 		staticOffset: pdc.pieceOffset,
 	}
 	// Submit the job.
-	expectedCompletionTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
+	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
 
 	// Update the status of the piece that was launched. 'launched' should be
 	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If
@@ -227,13 +227,13 @@ func (pdc *projectDownloadChunk) launchOverdriveWorker(w *worker, pieceIndex uin
 		if w.staticHostPubKeyStr == pieceDownload.worker.staticHostPubKeyStr {
 			pieceDownload.launched = true
 			if added {
-				pieceDownload.expectedCompletionTime = expectedCompletionTime
+				pieceDownload.expectedCompleteTime = expectedCompleteTime
 			} else {
 				pieceDownload.failed = true
 			}
 		}
 	}
-	return expectedCompletionTime, added
+	return expectedCompleteTime, added
 }
 
 // tryLaunchOverdriveWorker will attempt to launch an overdrive worker. A worker
@@ -276,8 +276,8 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 		for _, pieceDownload := range piece {
 			if pieceDownload.launched && !pieceDownload.failed {
 				launchedWithoutFail = true
-				if !pieceDownload.completed && latestReturn.Before(pieceDownload.expectedCompletionTime) {
-					latestReturn = pieceDownload.expectedCompletionTime
+				if !pieceDownload.completed && latestReturn.Before(pieceDownload.expectedCompleteTime) {
+					latestReturn = pieceDownload.expectedCompleteTime
 				}
 			}
 		}

@@ -45,7 +45,7 @@ type pcwsUnresolvedWorker struct {
 
 	// The expected time that the HasSector job will finish, and the worker will
 	// be able to resolve.
-	staticExpectedCompletionTime time.Time
+	staticExpectedCompleteTime time.Time
 }
 
 // pcwsWorkerResponse contains a worker's response to a HasSector query. There
@@ -222,12 +222,12 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	jhs := &jobHasSector{
 		staticSectors:      pcws.staticPieceRoots,
 		staticResponseChan: responseChan,
-		jobGeneric:         newJobGeneric(w.staticJobHasSectorQueue, ctx.Done()),
+		jobGeneric:         newJobGeneric(ctx, w.staticJobHasSectorQueue),
 	}
 	// TODO: Make this a feature of generic jobs rather than having a custom
 	// implementation for just the has sector job. Maybe rename to
 	// callAddWithTimeEstimate.
-	expectedCompletionTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
+	expectedCompleteTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
 	if err != nil {
 		pcws.staticRenter.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
 		return
@@ -237,7 +237,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	uw := &pcwsUnresolvedWorker{
 		staticWorker: w,
 
-		staticExpectedCompletionTime: expectedCompletionTime,
+		staticExpectedCompleteTime: expectedCompleteTime,
 	}
 	// Technically this doesn't need to be wrapped in a lock because the ws
 	// hasn't been released to any other threads yet, but we grab the lock any

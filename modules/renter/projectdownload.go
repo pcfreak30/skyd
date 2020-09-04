@@ -33,9 +33,9 @@ type pieceDownload struct {
 	failed    bool
 	launched  bool
 
-	// expectedCompletionTime indicates the time when the download is expected
+	// expectedCompleteTime indicates the time when the download is expected
 	// to complete. This is used to determine whether or not a download is late.
-	expectedCompletionTime time.Time
+	expectedCompleteTime time.Time
 
 	worker *worker
 }
@@ -111,7 +111,6 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
 		for _, pieceIndex := range resp.pieceIndices {
-			readDuration := resp.worker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pieceDownload{
 				worker: resp.worker,
 			})
