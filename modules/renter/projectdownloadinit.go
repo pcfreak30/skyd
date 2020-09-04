@@ -127,7 +127,7 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // cooldown for the read job.
 func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
 	// Add all of the unresovled workers to the heap.
-	var wh pdcWorkerHeap
+	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
 		// Determine the expected readDuration and cost for this worker. Add the
 		// readDuration to the staticExpectedCompleteTime to get the full
@@ -147,7 +147,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		}
 
 		// Push the element into the heap.
-		heap.Push(&wh, pdcInitialWorker{
+		heap.Push(&workerHeap, pdcInitialWorker{
 			completeTime: completeTime,
 			cost:         cost,
 			readDuration: readDuration,
@@ -199,9 +199,9 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 	// Push a pdcInitialWorker into the heap for each worker in the resolved
 	// workers map.
 	for _, rw := range resolvedWorkersMap {
-		heap.Push(&wh, rw)
+		heap.Push(&workerHeap, rw)
 	}
-	return wh
+	return workerHeap
 }
 
 // createInitialWorkerSet will go through the current set of workers and
@@ -245,8 +245,11 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*l
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
-	// Kick things off by forming the naive bestSet, which is looping over the
-	// sorted workers until MinPieces() workers have been added.
+	// Build the best set that we can. Each iteration will attempt to improve
+	// the working set by adding a new worker. This may or may not succeed,
+	// depedning on how cheap the worker is and how slow the worker is. Each
+	// time that the working set is better than the best set, overwrite the best
+	// set with the new working set.
 	for {
 		// Grab the next worker from the heap. If the heap is empty, we are
 		// done.
@@ -274,7 +277,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*l
 		// Consistency check: we should never have more than MinPieces workers
 		// assigned.
 		if totalWorkers > ec.MinPieces() {
-			// TODO: Critical
+			pdc.workerSet.staticWorker.staticRenter.log.Critical("total workers mistake in download code", totalWorkers, ec.MinPieces())
 		}
 
 		// If the time cost of this worker is strictly higher than the full cost
@@ -284,8 +287,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*l
 		if workerTimeCost.Cmp(bestSetCost) > 0 && totalWorkers == ec.MinPieces() {
 			break
 		}
-		// If there is not a more expensive worker in the working set, skip this
-		// iteration.
+		// If all workers in the working set are already cheaper than this
+		// worker, skip this worker.
 		if highestCost.Cmp(nextWorker) <= 0 && totalWorkers == ec.MinPieces() {
 			continue
 		}
@@ -331,13 +334,13 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*l
 		}
 
 		// Perform the actual replacement. Remember to update the total cost of
-		// the working set.
+		// the working set. In the event of an in-place eviction, the evicted
+		// worker is put back into the heap so that we can check whether there
+		// is another more suitable slot for the evicted worker.
 		//
 		// NOTE: we could dedup code between these branches, but I felt the code
 		// was cleaner this way.
-		//
-		// TODO: Explain why we push the evicted worker back into the heap: we
-		// do it because maybe there is another slot where they could be useful.
+		newWorker := false // helps determine whether the best set should be made.
 		if bestSpotEmpty {
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSet[bestSpotIndex] = nextWorker
@@ -346,6 +349,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*l
 				workingSetCost = workingSetCost.Sub(highestCost)
 				heap.Push(&workerHeap, workingSet[highestCostIndex])
 				workingSet[highestCostIndex] = nil
+			} else {
+				newWorker = true
 			}
 		} else {
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
@@ -354,15 +359,26 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*l
 			workingSet[bestSpotIndex] = nextWorker
 		}
 
+		// If the total number of workers computed in the working set prior to
+		// adding a new worker was one short, and a new worker was added without
+		// evicting an existing worker, then we have a best set for the first
+		// time. Copy the working set into the best set.
+		if totalWorkers == ec.MinPieces()-1 && newWorker {
+			// Do a copy operation. Can't set one equal to the other because
+			// then changes to the working set will update the best set.
+			copy(bestSet, workingSet)
+		}
+
+		// Quick edge case management.
+		if nextWorker.time < 0 {
+			nextWorker.time = 0
+			pdc.workerSet.staticWorker.staticRenter.log.Critical("total workers mistake in download code", totalWorkers, ec.MinPieces())
+		}
+
 		// Determine whether the working set is now cheaper than the best set.
 		// Adding in the new worker has made the working set cheaper in terms of
 		// raw cost, but the new worker is slower, so the time penalty has gone
 		// up.
-		if nextWorker.time < 0 {
-			// Quick edge case management.
-			nextWorker.time = 0
-			// TODO: Critical here
-		}
 		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration))
 		workingSetTotalCost := workingSetTimeCost.Add(workingSetCost)
 		if workingSetTotalCost.Cmp(bestSetCost) < 0 {
