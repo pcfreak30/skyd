@@ -123,7 +123,7 @@ func (j *jobHasSector) callExecute() {
 // TODO: These values are overly conservative, once we've got the protocol more
 // optimized we can bring these down.
 func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
-	return hasSectorJobExpectedBandwidth()
+	return modules.HasSectorJobExpectedBandwidth()
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
@@ -183,13 +183,4 @@ func (w *worker) initJobHasSectorQueue() {
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 	}
-}
-
-// hasSectorJobExpectedBandwidth is a helper function that returns the expected
-// bandwidth consumption of a has sector job. This helper function enables
-// getting at the expected bandwidth without having to instantiate a job.
-func hasSectorJobExpectedBandwidth() (ul, dl uint64) {
-	ul = 20e3
-	dl = 20e3
-	return
 }
