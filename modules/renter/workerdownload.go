@@ -5,7 +5,6 @@ package renter
 // coordinating resource management between the workers operating on a chunk.
 
 import (
-	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -50,57 +49,6 @@ func segmentsForRecovery(chunkFetchOffset, chunkFetchLength uint64, rs modules.E
 func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules.ErasureCoder) (uint64, uint64) {
 	segmentIndex, numSegments := segmentsForRecovery(chunkFetchOffset, chunkFetchLength, rs)
 	return uint64(segmentIndex * crypto.SegmentSize), uint64(numSegments * crypto.SegmentSize)
-}
-
-// checkDownloadGouging looks at the current renter allowance and the active
-// settings for a host and determines whether a backup fetch should be halted
-// due to price gouging.
-//
-// NOTE: Currently this function treats all downloads being the stream download
-// size and assumes that data is actually being appended to the host. As the
-// worker gains more modification actions on the host, this check can be split
-// into different checks that vary based on the operation being performed.
-func checkDownloadGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
-	// Check whether the base RPC price is too high.
-	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
-		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
-		return errors.New(errStr)
-	}
-	// Check whether the download bandwidth price is too high.
-	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) < 0 {
-		errStr := fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.DownloadBandwidthPrice, allowance.MaxDownloadBandwidthPrice)
-		return errors.New(errStr)
-	}
-	// Check whether the sector access price is too high.
-	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) < 0 {
-		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.SectorAccessPrice, allowance.MaxSectorAccessPrice)
-		return errors.New(errStr)
-	}
-
-	// If there is no allowance, general price gouging checks have to be
-	// disabled, because there is no baseline for understanding what might count
-	// as price gouging.
-	if allowance.Funds.IsZero() {
-		return nil
-	}
-
-	// Check that the combined prices make sense in the context of the overall
-	// allowance. The general idea is to compute the total cost of performing
-	// the same action repeatedly until a fraction of the desired total resource
-	// consumption established by the allowance has been reached. The fraction
-	// is determined on a case-by-case basis. If the host is too expensive to
-	// even satisfy a faction of the user's total desired resource consumption,
-	// the action will be blocked for price gouging.
-	singleDownloadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
-	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
-	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
-	reducedCost := allowanceDownloadCost.Div64(downloadGougingFractionDenom)
-	if reducedCost.Cmp(allowance.Funds) > 0 {
-		errStr := fmt.Sprintf("combined download pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
-		return errors.New(errStr)
-	}
-
-	return nil
 }
 
 // managedDownloadFailed records an error that caused a download to fail,
@@ -167,11 +115,10 @@ func (w *worker) managedPerformDownloadChunkJob() {
 
 	// Before performing the download, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()
-	hostSettings := d.HostSettings()
-	err = checkDownloadGouging(allowance, hostSettings)
-	if err != nil {
+	gc := modules.CheckHostSettingsGouging(allowance, d.HostSettings())
+	if gc.Download.IsGouging {
 		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
-		w.managedDownloadFailed(err)
+		w.managedDownloadFailed(errors.New(gc.Download.Reason))
 		udc.managedUnregisterWorker(w)
 		return
 	}

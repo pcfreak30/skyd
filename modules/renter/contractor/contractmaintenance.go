@@ -355,9 +355,9 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	}
 
 	// Check for price gouging.
-	err := checkFormContractGouging(allowance, hostSettings)
-	if err != nil {
-		return types.ZeroCurrency, modules.RenterContract{}, errors.AddContext(err, "unable to form a contract due to price gouging detection")
+	gc := modules.CheckHostSettingsGouging(allowance, hostSettings)
+	if gc.FormContract.IsGouging {
+		return types.ZeroCurrency, modules.RenterContract{}, fmt.Errorf("unable to form a contract due to price gouging detection, %s", gc.FormContract.Reason)
 	}
 
 	// get an address to use for negotiation
@@ -478,47 +478,6 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
-// staticCheckFormPaymentContractGouging will check whether the pricing from the
-// host for forming a payment contract is too high to justify forming a contract
-// with this host.
-func staticCheckFormPaymentContractGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
-	// Check whether the RPC base price is too high.
-	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
-		return errors.New("rpc base price of host is too high - extortion protection enabled")
-	}
-	// Check whether the form contract price is too high.
-	if !allowance.MaxContractPrice.IsZero() && allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) <= 0 {
-		return errors.New("contract price of host is too high - extortion protection enabled")
-	}
-	// Check whether the sector access price is too high.
-	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
-		return errors.New("sector access price of host is too high - extortion protection enabled")
-	}
-
-	// Check whether the form contract price does not leave enough room for
-	// uploads and downloads. At least half of the payment contract's funds need
-	// to remain for download bandwidth.
-	if allowance.PaymentContractInitialFunding.Div64(2).Cmp(hostSettings.ContractPrice) <= 0 {
-		return errors.New("contract price of host is too high - extortion protection enabled")
-	}
-	return nil
-}
-
-// checkFormContractGouging will check whether the pricing for forming
-// this contract triggers any price gouging warnings.
-func checkFormContractGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
-	// Check whether the RPC base price is too high.
-	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
-		return errors.New("rpc base price of host is too high - price gouging protection enabled")
-	}
-	// Check whether the form contract price is too high.
-	if !allowance.MaxContractPrice.IsZero() && allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) < 0 {
-		return errors.New("contract price of host is too high - price gouging protection enabled")
-	}
-
-	return nil
-}
-
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
@@ -542,7 +501,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 
 	if c.staticDeps.Disrupt("DefaultRenewSettings") {
 		c.log.Debugln("Using default host settings")
-		host.HostExternalSettings = modules.DefaultHostExternalSettings()
+		host.HostExternalSettings = modules.DefaultHostExternalSettings
 		// Reset some specific settings, not available through the default.
 		host.HostExternalSettings.NetAddress = hostSettings.NetAddress
 		host.HostExternalSettings.RemainingStorage = hostSettings.RemainingStorage
@@ -576,9 +535,10 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 
 	// Check for price gouging on the renewal.
-	err = checkFormContractGouging(c.allowance, host.HostExternalSettings)
-	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "unable to renew - price gouging protection enabled")
+	hes := host.HostExternalSettings
+	gc := modules.CheckHostSettingsGouging(c.allowance, hes)
+	if gc.FormContract.IsGouging {
+		return modules.RenterContract{}, fmt.Errorf("unable to renew - price gouging protection enabled, %s", gc.FormContract.Reason)
 	}
 
 	// get an address to use for negotiation
@@ -1438,10 +1398,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Check that the price settings of the host are acceptable.
-		hostSettings := host.HostExternalSettings
-		err := staticCheckFormPaymentContractGouging(allowance, hostSettings)
-		if err != nil {
-			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
+		hes := host.HostExternalSettings
+		gc := modules.CheckHostSettingsGouging(allowance, hes)
+		if gc.FormPaymentContract.IsGouging {
+			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hes, gc.FormPaymentContract.Reason)
 			continue
 		}
 

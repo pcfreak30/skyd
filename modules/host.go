@@ -495,30 +495,29 @@ func (his HostInternalSettings) MaxSectorAccessPrice() types.Currency {
 	return his.MinDownloadBandwidthPrice.Mul64(MaxSectorAccessPriceVsBandwidth)
 }
 
-// DefaultHostExternalSettings returns HostExternalSettings with certain default
-// fields set. NetAddress, RemainingStorage, TotalStorage, UnlockHash, RevisionNumber and SiaMuxPort are not set.
-func DefaultHostExternalSettings() HostExternalSettings {
-	return HostExternalSettings{
-		AcceptingContracts:   true,
-		MaxDownloadBatchSize: uint64(DefaultMaxDownloadBatchSize),
-		MaxDuration:          DefaultMaxDuration,
-		MaxReviseBatchSize:   uint64(DefaultMaxReviseBatchSize),
-		SectorSize:           SectorSize,
-		WindowSize:           DefaultWindowSize,
+// DefaultHostExternalSettings are HostExternalSettings with certain default
+// fields set. NetAddress, RemainingStorage, TotalStorage, UnlockHash,
+// RevisionNumber and SiaMuxPort are not set.
+var DefaultHostExternalSettings = HostExternalSettings{
+	AcceptingContracts:   true,
+	MaxDownloadBatchSize: uint64(DefaultMaxDownloadBatchSize),
+	MaxDuration:          DefaultMaxDuration,
+	MaxReviseBatchSize:   uint64(DefaultMaxReviseBatchSize),
+	SectorSize:           SectorSize,
+	WindowSize:           DefaultWindowSize,
 
-		Collateral:    DefaultCollateral,
-		MaxCollateral: DefaultMaxCollateral,
+	Collateral:    DefaultCollateral,
+	MaxCollateral: DefaultMaxCollateral,
 
-		BaseRPCPrice:           DefaultBaseRPCPrice,
-		ContractPrice:          DefaultContractPrice,
-		DownloadBandwidthPrice: DefaultDownloadBandwidthPrice,
-		SectorAccessPrice:      DefaultSectorAccessPrice,
-		StoragePrice:           DefaultStoragePrice,
-		UploadBandwidthPrice:   DefaultUploadBandwidthPrice,
+	BaseRPCPrice:           DefaultBaseRPCPrice,
+	ContractPrice:          DefaultContractPrice,
+	DownloadBandwidthPrice: DefaultDownloadBandwidthPrice,
+	SectorAccessPrice:      DefaultSectorAccessPrice,
+	StoragePrice:           DefaultStoragePrice,
+	UploadBandwidthPrice:   DefaultUploadBandwidthPrice,
 
-		EphemeralAccountExpiry:     DefaultEphemeralAccountExpiry,
-		MaxEphemeralAccountBalance: DefaultMaxEphemeralAccountBalance,
+	EphemeralAccountExpiry:     DefaultEphemeralAccountExpiry,
+	MaxEphemeralAccountBalance: DefaultMaxEphemeralAccountBalance,
 
-		Version: build.Version,
-	}
+	Version: build.Version,
 }

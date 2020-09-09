@@ -18,6 +18,11 @@ const (
 	// be assigned to storage, and this does not account for that.
 	downloadGougingFractionDenom = 4
 
+	// fetchBackupsGougingFractionDenom sets the fraction to 1/100 because
+	// fetching backups is important, so there is less sensitivity to gouging.
+	// Also, this is a rare operation.
+	fetchBackupsGougingFractionDenom = 100
+
 	// fundAccountGougingPercentageThreshold is the percentage threshold, in
 	// relation to the allowance, at which we consider the cost of funding an
 	// account to be too expensive. E.g. the cost of funding the account as many
@@ -35,6 +40,16 @@ const (
 	// table over the total allowance period should never exceed 1% of the total
 	// allowance.
 	updatePriceTableGougingPercentageThreshold = .01
+
+	// uploadGougingFractionDenom sets the gouging fraction to 1/4 based on the
+	// idea that the user should be able to hit at least some fraction of their
+	// desired upload volume using some fraction of hosts.
+	uploadGougingFractionDenom = 4
+
+	// uploadSnapshotGougingFractionDenom sets the fraction to 1/100 because
+	// uploading backups is important, so there is less sensitivity to gouging.
+	// Also, this is a rare operation.
+	uploadSnapshotGougingFractionDenom = 100
 )
 
 var (
@@ -48,12 +63,16 @@ var (
 )
 
 type (
+	// PriceTableGougingChecks contains a series of gouging checks that apply
+	// to the host's price table.
 	PriceTableGougingChecks struct {
 		FundAccount      *GougingCheck
 		PDBR             *GougingCheck
 		UpdatePriceTable *GougingCheck
 	}
 
+	// HostSettingsGougingChecks contains a series of gouging checks that apply
+	// to the host's external settings
 	HostSettingsGougingChecks struct {
 		Download            *GougingCheck
 		FetchBackups        *GougingCheck
@@ -63,32 +82,152 @@ type (
 		UploadSnapshot      *GougingCheck
 	}
 
+	// GougingCheck is a helper struct that indicates whether or not the host is
+	// gouging alongisde a reason why that is the case.
 	GougingCheck struct {
 		IsGouging bool
 		Reason    string
 	}
 )
 
+// CheckPriceTableGouging performs a series of checks that verify whether or not
+// the given price table indicates price gouging.
 func CheckPriceTableGouging(a Allowance, pt RPCPriceTable, tb types.Currency) PriceTableGougingChecks {
 	return PriceTableGougingChecks{
 		FundAccount:      newGougingCheck(checkFundAccountGouging(a, pt, tb)),
 		PDBR:             newGougingCheck(checkPDBRGouging(a, pt)),
 		UpdatePriceTable: newGougingCheck(checkUpdatePriceTableGouging(a, pt)),
-		// TODO (PJ) add checkBaseCostGouging
 	}
 }
 
+// CheckHostSettingsGouging performs a series of checks that verify whether or
+// not the given host settings indicates price gouging.
 func CheckHostSettingsGouging(a Allowance, hes HostExternalSettings) HostSettingsGougingChecks {
-	return HostSettingsGougingChecks{}
+	return HostSettingsGougingChecks{
+		Download:            newGougingCheck(checkDownloadGouging(a, hes)),
+		FetchBackups:        newGougingCheck(checkFetchBackupsGouging(a, hes)),
+		FormContract:        newGougingCheck(checkFormContractGouging(a, hes)),
+		FormPaymentContract: newGougingCheck(checkFormPaymentContractGouging(a, hes)),
+		Upload:              newGougingCheck(checkUploadGouging(a, hes)),
+		UploadSnapshot:      newGougingCheck(checkUploadSnapshotGouging(a, hes)),
+	}
+}
+
+// calculateDownloadCost is a helper function that returns the cost of
+// downloading the expected download amount as dictated by the allowance.
+//
+// NOTE: we treat all downloads being the stream download size
+func calculateDownloadCost(a Allowance, hes HostExternalSettings) types.Currency {
+	rpcCost := hes.BaseRPCPrice.Add(hes.SectorAccessPrice)
+	bandwidthCost := hes.DownloadBandwidthPrice.Mul64(StreamDownloadSize)
+	downloadCostPerByte := rpcCost.Add(bandwidthCost).Div64(StreamDownloadSize)
+	return downloadCostPerByte.Mul64(a.ExpectedDownload)
+}
+
+// calculateUploadCost is a helper function that returns the cost of
+// downloading the expected upload amount as dictated by the allowance.
+//
+// NOTE: we treat all uploads being the stream upload size
+func calculateUploadCost(a Allowance, hes HostExternalSettings) types.Currency {
+	rpcCost := hes.BaseRPCPrice.Add(hes.SectorAccessPrice)
+	bandwidthCost := hes.UploadBandwidthPrice.Mul64(StreamUploadSize).Add(hes.StoragePrice.Mul64(uint64(a.Period)).Mul64(StreamUploadSize))
+	uploadCostPerByte := rpcCost.Add(bandwidthCost).Div64(StreamUploadSize)
+	return uploadCostPerByte.Mul64(a.ExpectedStorage)
+}
+
+// checkDownloadGouging looks at the current renter allowance and the active
+// settings for a host and determines whether a backup fetch should be halted
+// due to price gouging.
+func checkDownloadGouging(a Allowance, hes HostExternalSettings) error {
+	// Check gouging for all related price components.
+	if err := errors.Compose(
+		checkBaseRPCGouging(a, hes),
+		checkDownloadBandwidthGouging(a, hes),
+		checkSectorAccessPriceGouging(a, hes),
+	); err != nil {
+		return err
+	}
+
+	// If there is no allowance we have no baseline for understanding what might
+	// count as price gouging.
+	if a.Funds.IsZero() {
+		return nil
+	}
+
+	// Check that the combined prices make sense in the context of the overall
+	// allowance. The general idea is to compute the total cost of performing
+	// the same action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached. The fraction
+	// is determined on a case-by-case basis. If the host is too expensive to
+	// even satisfy a faction of the user's total desired resource consumption,
+	// the action will be blocked for price gouging.
+	totalCost := calculateDownloadCost(a, hes)
+	downloadCost := totalCost.Div64(downloadGougingFractionDenom)
+	if downloadCost.Cmp(a.Funds) > 0 {
+		return fmt.Errorf("combined download pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", downloadCost, a.Funds)
+	}
+
+	return nil
+}
+
+// checkFetchBackupsGouging looks at the current renter allowance and the active
+// settings for a host and determines whether an backup fetch should be halted
+// due to price gouging.
+func checkFetchBackupsGouging(a Allowance, hes HostExternalSettings) error {
+	// Check gouging for all related price components.
+	if err := errors.Compose(
+		checkBaseRPCGouging(a, hes),
+		checkDownloadBandwidthGouging(a, hes),
+		checkSectorAccessPriceGouging(a, hes),
+	); err != nil {
+		return err
+	}
+
+	// If there is no allowance we have no baseline for understanding what might
+	// count as price gouging.
+	if a.Funds.IsZero() {
+		return nil
+	}
+
+	// Check that the cost makes sense in the context of the overall allowance.
+	// The general idea is to compute the total cost of performing the same
+	// action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached.
+	totalCost := calculateDownloadCost(a, hes)
+	backupCost := totalCost.Div64(fetchBackupsGougingFractionDenom)
+	if backupCost.Cmp(a.Funds) > 0 {
+		return fmt.Errorf("combined download pricing of host yields %v, which is more than the renter is willing to pay for backups: %v - price gouging protection enabled", backupCost, a.Funds)
+	}
+
+	return nil
+}
+
+// checkFormContractGouging will check whether the pricing for forming
+// this contract triggers any price gouging warnings.
+func checkFormContractGouging(a Allowance, hes HostExternalSettings) error {
+	return errors.Compose(
+		checkBaseRPCGouging(a, hes),
+		checkContractPriceGouging(a, hes),
+	)
+}
+
+// checkFormPaymentContractGouging will check whether the pricing from the host
+// for forming a payment contract is too high to justify forming a contract with
+// this host.
+func checkFormPaymentContractGouging(a Allowance, hes HostExternalSettings) error {
+	return errors.Compose(
+		checkBaseRPCGouging(a, hes),
+		checkContractPriceGouging(a, hes),
+		checkSectorAccessPriceGouging(a, hes),
+	)
 }
 
 // checkFundAccountGouging verifies the cost of funding an ephemeral account on
 // the host is reasonable, if deemed unreasonable we will block the refill and
 // the worker will eventually be put into cooldown.
 func checkFundAccountGouging(a Allowance, pt RPCPriceTable, targetBalance types.Currency) error {
-	// If there is no allowance, price gouging checks have to be disabled,
-	// because there is no baseline for understanding what might count as price
-	// gouging.
+	// If there is no allowance we have no baseline for understanding what might
+	// count as price gouging.
 	if a.Funds.IsZero() {
 		return nil
 	}
@@ -116,20 +255,17 @@ func checkFundAccountGouging(a Allowance, pt RPCPriceTable, targetBalance types.
 	return nil
 }
 
+// checkPDBRGouging verifies the cost of performing a PDBR on the host is
+// reasonable.
 func checkPDBRGouging(a Allowance, pt RPCPriceTable) error {
-	// Check whether the download bandwidth price is too high.
-	if !a.MaxDownloadBandwidthPrice.IsZero() && a.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
-		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, a.MaxDownloadBandwidthPrice)
+	// Check gouging for all related price components.
+	err := checkBandwidthGouging(a, pt)
+	if err != nil {
+		return err
 	}
 
-	// Check whether the upload bandwidth price is too high.
-	if !a.MaxUploadBandwidthPrice.IsZero() && a.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
-		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.UploadBandwidthCost, a.MaxUploadBandwidthPrice)
-	}
-
-	// If there is no allowance, price gouging checks have to be disabled,
-	// because there is no baseline for understanding what might count as price
-	// gouging.
+	// If there is no allowance we have no baseline for understanding what might
+	// count as price gouging.
 	if a.Funds.IsZero() {
 		return nil
 	}
@@ -184,6 +320,11 @@ func checkPDBRGouging(a Allowance, pt RPCPriceTable) error {
 // reasonable, if deemed unreasonable we will reject it and this worker will be
 // put into cooldown.
 func checkUpdatePriceTableGouging(a Allowance, pt RPCPriceTable) error {
+	// Check RPC cost
+	if !pt.UpdatePriceTableCost.Equals64(1) {
+		return fmt.Errorf("update price table cost is not equal to the hardcoded cost of 1H, instead it's %s", pt.UpdatePriceTableCost.HumanString())
+	}
+
 	// If there is no allowance, price gouging checks have to be disabled,
 	// because there is no baseline for understanding what might count as price
 	// gouging.
@@ -213,10 +354,160 @@ func checkUpdatePriceTableGouging(a Allowance, pt RPCPriceTable) error {
 	return nil
 }
 
+// checkUploadGouging looks at the current renter allowance and the active
+// settings for a host and determines whether an upload should be halted due to
+// price gouging.
+//
+// NOTE: Currently this function treats all uploads as being the stream upload
+// size and assumes that data is actually being appended to the host. As the
+// worker gains more modification actions on the host, this check can be split
+// into different checks that vary based on the operation being performed.
+func checkUploadGouging(a Allowance, hes HostExternalSettings) error {
+	// Upload checks
+	if err := errors.Compose(
+		checkBaseRPCGouging(a, hes),
+		checkUploadBandwidthGouging(a, hes),
+		checkSectorAccessPriceGouging(a, hes),
+		checkStoragePriceGouging(a, hes),
+	); err != nil {
+		return err
+	}
+
+	// If there is no allowance, general price gouging checks have to be
+	// disabled, because there is no baseline for understanding what might count
+	// as price gouging.
+	if a.Funds.IsZero() {
+		return nil
+	}
+
+	// Check that the cost makes sense in the context of the overall allowance.
+	// The general idea is to compute the total cost of performing the same
+	// action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached.
+	totalCost := calculateUploadCost(a, hes)
+	uploadCost := totalCost.Div64(uploadGougingFractionDenom)
+	if uploadCost.Cmp(a.Funds) > 0 {
+		return fmt.Errorf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for uploads: %v - price gouging protection enabled", uploadCost, a.Funds)
+	}
+
+	return nil
+}
+
+// checkUploadSnapshotGouging looks at the current renter allowance and the
+// active settings for a host and determines whether a snapshot upload should be
+// halted due to price gouging.
+func checkUploadSnapshotGouging(a Allowance, hes HostExternalSettings) error {
+	// Upload checks
+	// TODO: this does not very sector access, on purpose?
+	if err := errors.Compose(
+		checkBaseRPCGouging(a, hes),
+		checkUploadBandwidthGouging(a, hes),
+		checkStoragePriceGouging(a, hes),
+	); err != nil {
+		return err
+	}
+
+	// If there is no allowance, general price gouging checks have to be
+	// disabled, because there is no baseline for understanding what might count
+	// as price gouging.
+	if a.Funds.IsZero() {
+		return nil
+	}
+
+	// Check that the cost makes sense in the context of the overall allowance.
+	// The general idea is to compute the total cost of performing the same
+	// action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached.
+	//
+	// TODO: this used to use SectorSize opposed to StreamUploadSize, on
+	// purpose?
+	totalCost := calculateUploadCost(a, hes)
+	uploadCost := totalCost.Div64(uploadSnapshotGougingFractionDenom)
+	if uploadCost.Cmp(a.Funds) > 0 {
+		return fmt.Errorf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for uploading snapshots: %v - price gouging protection enabled", uploadCost, a.Funds)
+	}
+
+	return nil
+}
+
+// checkBaseRPCGouging checks for gouging in the host's base RPC pricing.
+func checkBaseRPCGouging(a Allowance, hes HostExternalSettings) error {
+	if !a.MaxRPCPrice.IsZero() && a.MaxRPCPrice.Cmp(hes.BaseRPCPrice) < 0 {
+		return fmt.Errorf("RPC price of host is %v, which is above the maximum allowed by the allowance: %v", hes.BaseRPCPrice, a.MaxRPCPrice)
+	}
+	return nil
+}
+
+// checkContractPriceGouging checks for gouging in the host's contract price
+// settings.
+func checkContractPriceGouging(a Allowance, hes HostExternalSettings) error {
+	if !a.MaxContractPrice.IsZero() && a.MaxContractPrice.Cmp(hes.ContractPrice) < 0 {
+		return errors.New("contract price of host is too high - price gouging protection enabled")
+	}
+
+	// Check whether the form contract price does not leave enough room for
+	// uploads and downloads. At least half of the payment contract's funds need
+	// to remain for download bandwidth.
+	if !a.PaymentContractInitialFunding.IsZero() && a.PaymentContractInitialFunding.Div64(2).Cmp(hes.ContractPrice) <= 0 {
+		return errors.New("contract price of host is too high - extortion protection enabled")
+	}
+
+	return nil
+}
+
+// checkDownloadBandwidthGouging checks for gouging in the host's download
+// pricing.
+func checkDownloadBandwidthGouging(a Allowance, hes HostExternalSettings) error {
+	if !a.MaxDownloadBandwidthPrice.IsZero() && a.MaxDownloadBandwidthPrice.Cmp(hes.DownloadBandwidthPrice) < 0 {
+		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hes.DownloadBandwidthPrice, a.MaxDownloadBandwidthPrice)
+	}
+	return nil
+}
+
+// checkBandwidthGouging checks for gouging in the host's bandwidth pricing.
+func checkBandwidthGouging(a Allowance, pt RPCPriceTable) error {
+	if !a.MaxDownloadBandwidthPrice.IsZero() && a.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
+		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, a.MaxDownloadBandwidthPrice)
+	}
+
+	if !a.MaxUploadBandwidthPrice.IsZero() && a.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
+		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.UploadBandwidthCost, a.MaxUploadBandwidthPrice)
+	}
+	return nil
+}
+
+// checkUploadBandwidthGouging checks for gouging in the host's upload pricing.
+func checkUploadBandwidthGouging(a Allowance, hes HostExternalSettings) error {
+	if !a.MaxUploadBandwidthPrice.IsZero() && a.MaxUploadBandwidthPrice.Cmp(hes.UploadBandwidthPrice) < 0 {
+		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hes.UploadBandwidthPrice, a.MaxUploadBandwidthPrice)
+	}
+	return nil
+}
+
+// checkSectorAccessPriceGouging checks sector access in the host's storage
+// pricing.
+func checkSectorAccessPriceGouging(a Allowance, hes HostExternalSettings) error {
+	if !a.MaxSectorAccessPrice.IsZero() && a.MaxSectorAccessPrice.Cmp(hes.SectorAccessPrice) < 0 {
+		return fmt.Errorf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", hes.SectorAccessPrice, a.MaxSectorAccessPrice)
+	}
+	return nil
+}
+
+// checkStoragePriceGouging checks gouging in the host's storage pricing.
+func checkStoragePriceGouging(a Allowance, hes HostExternalSettings) error {
+	if !a.MaxStoragePrice.IsZero() && a.MaxStoragePrice.Cmp(hes.StoragePrice) < 0 {
+		return fmt.Errorf("storage price of host is %v, which is above the maximum allowed by the allowance: %v", hes.StoragePrice, a.MaxStoragePrice)
+	}
+	return nil
+}
+
 // newGougingCheck turns the given error into a gouging check object
 func newGougingCheck(err error) *GougingCheck {
+	if err == nil {
+		return &GougingCheck{}
+	}
 	return &GougingCheck{
-		IsGouging: err != nil,
+		IsGouging: true,
 		Reason:    err.Error(),
 	}
 }
