@@ -1471,17 +1471,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Check that the price settings of the host are acceptable.
-<<<<<<< HEAD
 		hes := host.HostExternalSettings
 		gc := modules.CheckHostSettingsGouging(allowance, hes)
 		if gc.FormContract.IsGouging {
 			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hes, gc.FormContract.Reason)
-=======
-		hostSettings := host.HostExternalSettings
-		err = staticCheckFormPaymentContractGouging(allowance, hostSettings)
-		if err != nil {
-			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
->>>>>>> 619e4b4595d1eab7bb0de2b75abd5bb2b51db252
 			continue
 		}
 
