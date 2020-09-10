@@ -324,45 +324,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // managedUpdatePriceTable will recalculate the RPC costs and update the host's
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
-	// create a new RPC price table
-	hes := h.managedExternalSettings()
-	priceTable := modules.RPCPriceTable{
-		// TODO: hardcoded cost should be updated to use a better value.
-		AccountBalanceCost:   types.NewCurrency64(1),
-		FundAccountCost:      types.NewCurrency64(1),
-		UpdatePriceTableCost: types.NewCurrency64(1),
-
-		// TODO: hardcoded MDM costs should be updated to use better values.
-		HasSectorBaseCost:   types.NewCurrency64(1),
-		MemoryTimeCost:      types.NewCurrency64(1),
-		DropSectorsBaseCost: types.NewCurrency64(1),
-		DropSectorsUnitCost: types.NewCurrency64(1),
-		SwapSectorCost:      types.NewCurrency64(1),
-
-		// Read related costs.
-		ReadBaseCost:   hes.SectorAccessPrice,
-		ReadLengthCost: types.NewCurrency64(1),
-
-		// Write related costs.
-		WriteBaseCost:   types.NewCurrency64(1),
-		WriteLengthCost: types.NewCurrency64(1),
-		WriteStoreCost:  hes.StoragePrice,
-
-		// Init costs.
-		InitBaseCost: hes.BaseRPCPrice,
-
-		// LatestRevisionCost is set to a reasonable base + the estimated
-		// bandwidth cost of downloading a filecontract. This isn't perfect but
-		// at least scales a bit as the host updates their download bandwidth
-		// prices.
-		LatestRevisionCost: modules.DefaultBaseRPCPrice.Add(hes.DownloadBandwidthPrice.Mul64(modules.EstimatedFileContractTransactionSetSize)),
-
-		// Bandwidth related fields.
-		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
-		UploadBandwidthCost:   hes.UploadBandwidthPrice,
-	}
-	// update the pricetable
-	h.staticPriceTables.managedSetCurrent(priceTable)
+	h.staticPriceTables.managedSetCurrent(modules.DefaultPriceTable(h.managedExternalSettings()))
 }
 
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry

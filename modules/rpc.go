@@ -343,3 +343,43 @@ func (uid *UniqueID) UnmarshalJSON(b []byte) error {
 	// b[1 : len(b)-1] cuts off the leading and trailing `"` in the JSON string.
 	return uid.LoadString(string(b[1 : len(b)-1]))
 }
+
+// DefaultPriceTable takes the host's external settings and returns a price
+// table with certain fields set to their default values.
+func DefaultPriceTable(hes HostExternalSettings) RPCPriceTable {
+	return RPCPriceTable{
+		// TODO: hardcoded cost should be updated to use a better value.
+		AccountBalanceCost:   types.NewCurrency64(1),
+		FundAccountCost:      types.NewCurrency64(1),
+		UpdatePriceTableCost: types.NewCurrency64(1),
+
+		// TODO: hardcoded MDM costs should be updated to use better values.
+		HasSectorBaseCost:   types.NewCurrency64(1),
+		MemoryTimeCost:      types.NewCurrency64(1),
+		DropSectorsBaseCost: types.NewCurrency64(1),
+		DropSectorsUnitCost: types.NewCurrency64(1),
+		SwapSectorCost:      types.NewCurrency64(1),
+
+		// Read related costs.
+		ReadBaseCost:   hes.SectorAccessPrice,
+		ReadLengthCost: types.NewCurrency64(1),
+
+		// Write related costs.
+		WriteBaseCost:   types.NewCurrency64(1),
+		WriteLengthCost: types.NewCurrency64(1),
+		WriteStoreCost:  hes.StoragePrice,
+
+		// Init costs.
+		InitBaseCost: hes.BaseRPCPrice,
+
+		// LatestRevisionCost is set to a reasonable base + the estimated
+		// bandwidth cost of downloading a filecontract. This isn't perfect but
+		// at least scales a bit as the host updates their download bandwidth
+		// prices.
+		LatestRevisionCost: DefaultBaseRPCPrice.Add(hes.DownloadBandwidthPrice.Mul64(EstimatedFileContractTransactionSetSize)),
+
+		// Bandwidth related fields.
+		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
+		UploadBandwidthCost:   hes.UploadBandwidthPrice,
+	}
+}

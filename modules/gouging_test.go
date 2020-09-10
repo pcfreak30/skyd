@@ -1,31 +1,17 @@
 package modules
 
 import (
+	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
+	// DefaultTargetBalance is the target balance used in the workers
 	DefaultTargetBalance = types.SiacoinPrecision
-
-	DefaultPriceTable = RPCPriceTable{
-		Validity:             time.Minute,
-		FundAccountCost:      types.NewCurrency64(1),
-		UpdatePriceTableCost: types.NewCurrency64(1),
-
-		HasSectorBaseCost: types.NewCurrency64(1),
-		InitBaseCost:      types.NewCurrency64(1),
-		MemoryTimeCost:    types.NewCurrency64(1),
-		ReadBaseCost:      types.NewCurrency64(1),
-		ReadLengthCost:    types.NewCurrency64(1),
-		SwapSectorCost:    types.NewCurrency64(1),
-
-		DownloadBandwidthCost: DefaultHostExternalSettings.DownloadBandwidthPrice,
-		UploadBandwidthCost:   DefaultHostExternalSettings.UploadBandwidthPrice,
-	}
 )
 
 // TestGouging verifies the functionality of the gouging checks, performed both
@@ -41,10 +27,10 @@ func TestGouging(t *testing.T) {
 func testCheckPriceTableGouing(t *testing.T) {
 	t.Parallel()
 
-	// verify all gouging checks are present in the PriceTableGougingChecks
+	// verify PriceTableGougingChecks contains all gouging checks
 	gc := CheckPriceTableGouging(
 		DefaultAllowance,
-		DefaultPriceTable,
+		DefaultPriceTable(DefaultHostExternalSettings),
 		DefaultTargetBalance,
 	)
 	if gc.FundAccount == nil ||
@@ -53,8 +39,8 @@ func testCheckPriceTableGouing(t *testing.T) {
 		t.Fatal("PriceTableGougingChecks is missing a gouging check")
 	}
 
-	// verify all checks individually
-	t.Run("FundAccount", testFundAccountGouging)
+	// verify every gouging check function individually
+	t.Run("FundAccount", testCheckFundAccountGouging)
 	t.Run("HardcodedCosts", testHardcodedCostsGouging)
 	t.Run("PDBR", testPDBRGouging)
 	t.Run("UpdatePriceTable", testUpdatePriceTableGouging)
@@ -70,7 +56,6 @@ func testCheckHostSettingsGouging(t *testing.T) {
 	if gc.Download == nil ||
 		gc.FetchBackups == nil ||
 		gc.FormContract == nil ||
-		gc.FormPaymentContract == nil ||
 		gc.Upload == nil ||
 		gc.UploadSnapshot == nil {
 		t.Fatal("HostSettingsGougingChecks is missing a gouging check")
@@ -80,189 +65,169 @@ func testCheckHostSettingsGouging(t *testing.T) {
 	t.Run("Download", testDownloadGouging)
 	t.Run("FetchBackups", testFetchBackupsGouging)
 	t.Run("FormContract", testFormContractGouging)
-	t.Run("FormPaymentContract", testFormPaymentContractGouging)
-	t.Run("Upload", testUploadGouging)
-	t.Run("UploadSnapshot", testUploadSnapshotGouging)
+	t.Run("Upload", func(t *testing.T) { testUploadGouging(t, uploadGougingFractionDenom) })
+	t.Run("UploadSnapshot", func(t *testing.T) { testUploadGouging(t, uploadSnapshotGougingFractionDenom) })
 }
 
-// testFundAccountGouging checks that `checkFundAccountGouging` is
-// correctly detecting price gouging from a host.
-func testFundAccountGouging(t *testing.T) {
-	// verify happy case
-	err := checkFundAccountGouging(
-		DefaultAllowance,
-		DefaultPriceTable,
-		DefaultTargetBalance,
-	)
+// testCheckFundAccountGouging verifies the outcome of
+// `checkFundAccountGouging`.
+func testCheckFundAccountGouging(t *testing.T) {
+	// verify the basic case
+	err := checkFundAccountGouging(DefaultAllowance, DefaultPriceTable(DefaultHostExternalSettings), DefaultTargetBalance)
 	if err != nil {
-		t.Fatal("unexpected price gouging failure")
+		t.Fatal("unexpected outcome", err)
 	}
 
-	//
-	// verify gouging case, in order to do so we have to set the fund account
-	// cost to an unreasonable amount, empirically we found 75mS to be such a
-	// value for the given parameters (1000SC funds and TB of 1SC)
-	pt := DefaultPriceTable
-	pt.FundAccountCost = types.SiacoinPrecision.MulFloat(0.075)
+	// verify FundAccountCost not equal to hardcoded constant of 1H
+	pt := DefaultPriceTable(DefaultHostExternalSettings)
+	pt.FundAccountCost = types.NewCurrency64(2)
 	err = checkFundAccountGouging(DefaultAllowance, pt, DefaultTargetBalance)
-	if err == nil || !strings.Contains(err.Error(), "fund account cost") {
-		t.Fatalf("expected fund account cost gouging error, instead error was '%v'", err)
+	if !errors.Contains(err, ErrGougingDetected) {
+		t.Fatal("unexpected outcome", err)
+	}
+
+	// verify overflow
+	lowTB := types.NewCurrency64(2)
+	err = checkFundAccountGouging(DefaultAllowance, DefaultPriceTable(DefaultHostExternalSettings), lowTB)
+	if err == nil || !strings.Contains(err.Error(), "result is an overflow") {
+		t.Fatal("unexpected error", err)
+	}
+
+	// verify total cost of funding account exceeding the pct threshold
+	pt = DefaultPriceTable(DefaultHostExternalSettings)
+	pt.FundAccountCost = types.SiacoinPrecision
+	err = checkFundAccountGouging(DefaultAllowance, pt, DefaultTargetBalance)
+	if !errors.Contains(err, ErrGougingDetected) {
+		t.Fatal("unexpected outcome", err)
 	}
 }
 
+// testCheckFundAccountGouging verifies the outcome of
+// `checkHardcodedConstants`.
 func testHardcodedCostsGouging(t *testing.T) {
-	// TODO
+	// verify basic case
+	pt := DefaultPriceTable(DefaultHostExternalSettings)
+	err := checkHardcodedConstants(pt)
+	if err != nil {
+		t.Fatal("unexpected outcome", err)
+	}
+
+	// verify we detect a change for every hardcoded field
+	for _, field := range []string{
+		"AccountBalanceCost",
+		"FundAccountCost",
+		"UpdatePriceTableCost",
+		"HasSectorBaseCost",
+		"MemoryTimeCost",
+		"DropSectorsBaseCost",
+		"DropSectorsUnitCost",
+		"SwapSectorCost",
+		"ReadLengthCost",
+		"WriteBaseCost",
+		"WriteLengthCost",
+	} {
+		pt = DefaultPriceTable(DefaultHostExternalSettings)
+		reflect.ValueOf(&pt).Elem().FieldByName(field).Set(reflect.ValueOf(types.SiacoinPrecision))
+		err := checkHardcodedConstants(pt)
+		if err == nil {
+			t.Fatal("unexpected outcome", err)
+		}
+	}
 }
 
-// testPDBRGouging checks for gouging when performing a PDBR.
+// testCheckFundAccountGouging verifies the outcome of `checkPDBRGouging`.
 func testPDBRGouging(t *testing.T) {
-	// allowance contains only the fields necessary to test the price gouging
 	hes := DefaultHostExternalSettings
-	allowance := Allowance{
-		Funds:                     types.SiacoinPrecision.Mul64(1e3),
-		MaxDownloadBandwidthPrice: hes.DownloadBandwidthPrice.Mul64(10),
-		MaxUploadBandwidthPrice:   hes.UploadBandwidthPrice.Mul64(10),
-	}
 
-	// verify happy case
-	pt := DefaultPriceTable
-	err := checkPDBRGouging(allowance, pt)
-	if err != nil {
-		t.Fatal("unexpected price gouging failure", err)
-	}
-
-	// verify max download bandwidth price gouging
-	pt = DefaultPriceTable
-	pt.DownloadBandwidthCost = allowance.MaxDownloadBandwidthPrice.Add64(1)
-	err = checkPDBRGouging(allowance, pt)
-	if err == nil || !strings.Contains(err.Error(), "download bandwidth price") {
-		t.Fatalf("expected download bandwidth price gouging error, instead error was '%v'", err)
-	}
-
-	// verify max upload bandwidth price gouging
-	pt = DefaultPriceTable
-	pt.UploadBandwidthCost = allowance.MaxUploadBandwidthPrice.Add64(1)
-	err = checkPDBRGouging(allowance, pt)
-	if err == nil || !strings.Contains(err.Error(), "upload bandwidth price") {
-		t.Fatalf("expected upload bandwidth price gouging error, instead error was '%v'", err)
-	}
-
-	// update the expected download to be non zero and verify the default prices
+	allowance := DefaultAllowance
+	allowance.Funds = types.SiacoinPrecision.Mul64(1e3)
+	allowance.MaxDownloadBandwidthPrice = hes.DownloadBandwidthPrice.Mul64(2)
+	allowance.MaxUploadBandwidthPrice = hes.UploadBandwidthPrice.Mul64(2)
 	allowance.ExpectedDownload = 1 << 30 // 1GiB
-	pt = DefaultPriceTable
-	err = checkPDBRGouging(allowance, pt)
+
+	// verify basic case
+	err := checkPDBRGouging(DefaultAllowance, DefaultPriceTable(hes))
 	if err != nil {
-		t.Fatal("unexpected price gouging failure", err)
+		t.Fatal("unexpected outcome", err)
 	}
 
-	// verify gouging of MDM related costs, in order to verify if gouging
-	// detection kicks in we need to ensure the cost of executing enough PDBRs
-	// to fulfil the expected download exceeds the allowance
-
-	// we do this by maxing out the upload and bandwidth costs and setting all
-	// default cost components to 250 pS, note that this value is arbitrary,
-	// setting those costs at 250 pS simply proved to push the price per PDBR
-	// just over the allowed limit.
-	//
-	// Cost breakdown:
-	// - cost per PDBR 266.4 mS
-	// - total cost to fulfil expected download 4.365 KS
-	// - reduced cost after applying downloadGougingFractionDenom: 1.091 KS
-	// - exceeding the allowance of 1 KS, which is what we are after
-	pt.UploadBandwidthCost = allowance.MaxUploadBandwidthPrice
-	pt.DownloadBandwidthCost = allowance.MaxDownloadBandwidthPrice
-	pS := types.SiacoinPrecision.MulFloat(1e-12)
-	pt.InitBaseCost = pt.InitBaseCost.Add(pS.Mul64(250))
-	pt.ReadBaseCost = pt.ReadBaseCost.Add(pS.Mul64(250))
-	pt.MemoryTimeCost = pt.MemoryTimeCost.Add(pS.Mul64(250))
+	// verify bandwidth gouging - max download
+	pt := DefaultPriceTable(hes)
+	pt.DownloadBandwidthCost = allowance.MaxDownloadBandwidthPrice.Mul64(2)
 	err = checkPDBRGouging(allowance, pt)
-	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
-		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
+	if !errors.Contains(err, ErrGougingDetected) || !strings.Contains(err.Error(), "download bandwidth price") {
+		t.Fatal("unexpected outcome", err)
+	}
+
+	// verify bandwidth gouging - max upload
+	pt = DefaultPriceTable(hes)
+	pt.UploadBandwidthCost = allowance.MaxUploadBandwidthPrice.Mul64(2)
+	err = checkPDBRGouging(allowance, pt)
+	if !errors.Contains(err, ErrGougingDetected) || !strings.Contains(err.Error(), "upload bandwidth price") {
+		t.Fatal("unexpected outcome", err)
+	}
+
+	// verify insane values for individual cost components related to PDBR
+	for _, field := range []string{
+		"InitBaseCost",
+		"ReadLengthCost",
+		"MemoryTimeCost",
+		"HasSectorBaseCost",
+	} {
+		pt = DefaultPriceTable(DefaultHostExternalSettings)
+		reflect.ValueOf(&pt).Elem().FieldByName(field).Set(reflect.ValueOf(types.SiacoinPrecision))
+		err = checkPDBRGouging(allowance, pt)
+		if err == nil {
+			t.Fatalf("unexpected outcome for field %s, %v", field, err)
+		}
 	}
 
 	// verify these checks are ignored if the funds are 0
+	pt = DefaultPriceTable(DefaultHostExternalSettings)
+	pt.InitBaseCost = types.SiacoinPrecision
 	allowance.Funds = types.ZeroCurrency
 	err = checkPDBRGouging(allowance, pt)
 	if err != nil {
-		t.Fatal("unexpected price gouging failure", err)
-	}
-
-	allowance.Funds = types.SiacoinPrecision.Mul64(1e3) // reset
-
-	// verify bumping every individual cost component to an insane value results
-	// in a price gouging error
-	pt = DefaultPriceTable
-	pt.InitBaseCost = types.SiacoinPrecision.Mul64(100)
-	err = checkPDBRGouging(allowance, pt)
-	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
-		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
-	}
-
-	pt = DefaultPriceTable
-	pt.ReadBaseCost = types.SiacoinPrecision
-	err = checkPDBRGouging(allowance, pt)
-	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
-		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
-	}
-
-	pt = DefaultPriceTable
-	pt.ReadLengthCost = types.SiacoinPrecision
-	err = checkPDBRGouging(allowance, pt)
-	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
-		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
-	}
-
-	pt = DefaultPriceTable
-	pt.MemoryTimeCost = types.SiacoinPrecision
-	err = checkPDBRGouging(allowance, pt)
-	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
-		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
+		t.Fatal("unexpected outcome", err)
 	}
 }
 
 // testUpdatePriceTableGouging checks for gouging specific for the
 // UpdatePriceTable RPC call.
 func testUpdatePriceTableGouging(t *testing.T) {
-	// allowance contains only the fields necessary to test the price gouging
-	allowance := Allowance{
-		Funds:  types.SiacoinPrecision,
-		Period: types.BlockHeight(6),
-	}
+	hes := DefaultHostExternalSettings
 
-	// verify happy case
-	pt := DefaultPriceTable
+	allowance := DefaultAllowance
+	allowance.Funds = types.SiacoinPrecision.Mul64(1e3)
+	allowance.Period = types.BlockHeight(6)
+
+	pt := DefaultPriceTable(hes)
+	pt.Validity = minAcceptedPriceTableValidity
+
+	// verify basic case
 	err := checkUpdatePriceTableGouging(allowance, pt)
 	if err != nil {
-		t.Fatal("unexpected price gouging failure")
+		t.Fatal("unexpected outcome", err)
 	}
 
-	// verify gouging case, first calculate how many times we need to update the
-	// PT over the duration of the allowance period
-	pt = DefaultPriceTable
+	// verify low validity
+	pt.Validity = minAcceptedPriceTableValidity - 1
+	err = checkUpdatePriceTableGouging(allowance, pt)
+	if err == nil || !strings.Contains(err.Error(), "price table validity") {
+		t.Fatal("unexpected outcome", err)
+	}
+
+	// verify high UpdatePriceTableCost
+	pt = DefaultPriceTable(hes)
+	pt.Validity = minAcceptedPriceTableValidity
 	durationInS := int64(pt.Validity.Seconds())
 	periodInS := int64(allowance.Period) * 10 * 60 // period times 10m blocks
 	numUpdates := periodInS / durationInS
 
-	// increase the update price table cost so that the total cost of updating
-	// it for the entire allowance period exceeds the allowed percentage of the
-	// total allowance.
 	pt.UpdatePriceTableCost = allowance.Funds.MulFloat(updatePriceTableGougingPercentageThreshold * 2).Div64(uint64(numUpdates))
 	err = checkUpdatePriceTableGouging(allowance, pt)
-	if err == nil || !strings.Contains(err.Error(), "update price table cost") {
-		t.Fatalf("expected update price table cost gouging error, instead error was '%v'", err)
-	}
-
-	// verify unacceptable validity case
-	pt = DefaultPriceTable
-	pt.Validity = 0
-	err = checkUpdatePriceTableGouging(allowance, pt)
-	if err == nil || !strings.Contains(err.Error(), "update price table validity") {
-		t.Fatalf("expected update price table validity gouging error, instead error was '%v'", err)
-	}
-	pt.Validity = minAcceptedPriceTableValidity
-	err = checkUpdatePriceTableGouging(allowance, pt)
-	if err != nil {
-		t.Fatalf("unexpected update price table validity gouging error: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "UpdatePriceTableCost") {
+		t.Fatal("unexpected outcome", err)
 	}
 }
 
@@ -510,13 +475,9 @@ func testFormContractGouging(t *testing.T) {
 	}
 }
 
-func testFormPaymentContractGouging(t *testing.T) {
-	// TODO
-}
-
 // testUploadGouging checks that the upload price gouging checker is correctly
 // detecting price gouging from a host.
-func testUploadGouging(t *testing.T) {
+func testUploadGouging(t *testing.T, fractionDenom uint64) {
 	oneCurrency := types.NewCurrency64(1)
 
 	// minAllowance contains only the fields necessary to test the price gouging
@@ -526,7 +487,7 @@ func testUploadGouging(t *testing.T) {
 		// Funds is set such that the tests come out to an easy, round number.
 		// One siacoin is multiplied by the number of elements that are checked
 		// for gouging, and then divided by the gounging denominator.
-		Funds:  types.SiacoinPrecision.Mul64(4).Div64(uploadGougingFractionDenom).Sub(oneCurrency),
+		Funds:  types.SiacoinPrecision.Mul64(4).Div64(fractionDenom).Sub(oneCurrency),
 		Period: 1, // 1 block.
 
 		ExpectedStorage: StreamUploadSize, // 1 stream upload operation.
@@ -551,25 +512,25 @@ func testUploadGouging(t *testing.T) {
 	// Drop the host prices one field at a time.
 	newHostSettings := minHostSettings
 	newHostSettings.BaseRPCPrice = minHostSettings.BaseRPCPrice.Mul64(100).Div64(101)
-	err = checkUploadGouging(minAllowance, newHostSettings)
+	err = customCheckUploadGouging(minAllowance, newHostSettings, fractionDenom)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newHostSettings = minHostSettings
 	newHostSettings.SectorAccessPrice = minHostSettings.SectorAccessPrice.Mul64(100).Div64(101)
-	err = checkUploadGouging(minAllowance, newHostSettings)
+	err = customCheckUploadGouging(minAllowance, newHostSettings, fractionDenom)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newHostSettings = minHostSettings
 	newHostSettings.UploadBandwidthPrice = minHostSettings.UploadBandwidthPrice.Mul64(100).Div64(101)
-	err = checkUploadGouging(minAllowance, newHostSettings)
+	err = customCheckUploadGouging(minAllowance, newHostSettings, fractionDenom)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newHostSettings = minHostSettings
 	newHostSettings.StoragePrice = minHostSettings.StoragePrice.Mul64(100).Div64(101)
-	err = checkUploadGouging(minAllowance, newHostSettings)
+	err = customCheckUploadGouging(minAllowance, newHostSettings, fractionDenom)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +547,7 @@ func testUploadGouging(t *testing.T) {
 	maxAllowance.MaxUploadBandwidthPrice = types.SiacoinPrecision.Div64(StreamUploadSize).Add(oneCurrency)
 
 	// The max allowance should have no issues with price gouging.
-	err = checkUploadGouging(maxAllowance, minHostSettings)
+	err = customCheckUploadGouging(maxAllowance, minHostSettings, fractionDenom)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -594,7 +555,7 @@ func testUploadGouging(t *testing.T) {
 	// Should fail if the MaxRPCPrice is dropped.
 	failAllowance := maxAllowance
 	failAllowance.MaxRPCPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = checkUploadGouging(failAllowance, minHostSettings)
+	err = customCheckUploadGouging(failAllowance, minHostSettings, fractionDenom)
 	if err == nil {
 		t.Error("expecting price gouging check to fail")
 	}
@@ -602,7 +563,7 @@ func testUploadGouging(t *testing.T) {
 	// Should fail if the MaxSectorAccessPrice is dropped.
 	failAllowance = maxAllowance
 	failAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = checkUploadGouging(failAllowance, minHostSettings)
+	err = customCheckUploadGouging(failAllowance, minHostSettings, fractionDenom)
 	if err == nil {
 		t.Error("expecting price gouging check to fail")
 	}
@@ -610,7 +571,7 @@ func testUploadGouging(t *testing.T) {
 	// Should fail if the MaxStoragePrice is dropped.
 	failAllowance = maxAllowance
 	failAllowance.MaxStoragePrice = types.SiacoinPrecision.Div64(StreamUploadSize).Sub(oneCurrency)
-	err = checkUploadGouging(failAllowance, minHostSettings)
+	err = customCheckUploadGouging(failAllowance, minHostSettings, fractionDenom)
 	if err == nil {
 		t.Error("expecting price gouging check to fail")
 	}
@@ -618,12 +579,8 @@ func testUploadGouging(t *testing.T) {
 	// Should fail if the MaxUploadBandwidthPrice is dropped.
 	failAllowance = maxAllowance
 	failAllowance.MaxUploadBandwidthPrice = types.SiacoinPrecision.Div64(StreamUploadSize).Sub(oneCurrency)
-	err = checkUploadGouging(failAllowance, minHostSettings)
+	err = customCheckUploadGouging(failAllowance, minHostSettings, fractionDenom)
 	if err == nil {
 		t.Error("expecting price gouging check to fail")
 	}
-}
-
-func testUploadSnapshotGouging(t *testing.T) {
-	// TODO
 }

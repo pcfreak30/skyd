@@ -53,6 +53,10 @@ const (
 )
 
 var (
+	// ErrGougingDetected is returned when price gouging was detected in one of
+	// the fields of either the price table or the host's external settings.
+	ErrGougingDetected = errors.New("price gouging detected")
+
 	// minAcceptedPriceTableValidity is the minimum price table validity
 	// the renter will accept.
 	minAcceptedPriceTableValidity = build.Select(build.Var{
@@ -74,12 +78,11 @@ type (
 	// HostSettingsGougingChecks contains a series of gouging checks that apply
 	// to the host's external settings
 	HostSettingsGougingChecks struct {
-		Download            *GougingCheck
-		FetchBackups        *GougingCheck
-		FormContract        *GougingCheck
-		FormPaymentContract *GougingCheck
-		Upload              *GougingCheck
-		UploadSnapshot      *GougingCheck
+		Download       *GougingCheck
+		FetchBackups   *GougingCheck
+		FormContract   *GougingCheck
+		Upload         *GougingCheck
+		UploadSnapshot *GougingCheck
 	}
 
 	// GougingCheck is a helper struct that indicates whether or not the host is
@@ -104,12 +107,11 @@ func CheckPriceTableGouging(a Allowance, pt RPCPriceTable, tb types.Currency) Pr
 // not the given host settings indicates price gouging.
 func CheckHostSettingsGouging(a Allowance, hes HostExternalSettings) HostSettingsGougingChecks {
 	return HostSettingsGougingChecks{
-		Download:            newGougingCheck(checkDownloadGouging(a, hes)),
-		FetchBackups:        newGougingCheck(checkFetchBackupsGouging(a, hes)),
-		FormContract:        newGougingCheck(checkFormContractGouging(a, hes)),
-		FormPaymentContract: newGougingCheck(checkFormPaymentContractGouging(a, hes)),
-		Upload:              newGougingCheck(checkUploadGouging(a, hes)),
-		UploadSnapshot:      newGougingCheck(checkUploadSnapshotGouging(a, hes)),
+		Download:       newGougingCheck(checkDownloadGouging(a, hes)),
+		FetchBackups:   newGougingCheck(checkFetchBackupsGouging(a, hes)),
+		FormContract:   newGougingCheck(checkFormContractGouging(a, hes)),
+		Upload:         newGougingCheck(checkUploadGouging(a, hes)),
+		UploadSnapshot: newGougingCheck(checkUploadSnapshotGouging(a, hes)),
 	}
 }
 
@@ -154,17 +156,15 @@ func checkDownloadGouging(a Allowance, hes HostExternalSettings) error {
 		return nil
 	}
 
-	// Check that the combined prices make sense in the context of the overall
-	// allowance. The general idea is to compute the total cost of performing
-	// the same action repeatedly until a fraction of the desired total resource
-	// consumption established by the allowance has been reached. The fraction
-	// is determined on a case-by-case basis. If the host is too expensive to
-	// even satisfy a faction of the user's total desired resource consumption,
-	// the action will be blocked for price gouging.
+	// Check that the cost makes sense in the context of the overall allowance.
+	// The general idea is to compute the total cost of performing the same
+	// action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached.
 	totalCost := calculateDownloadCost(a, hes)
 	downloadCost := totalCost.Div64(downloadGougingFractionDenom)
 	if downloadCost.Cmp(a.Funds) > 0 {
-		return fmt.Errorf("combined download pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", downloadCost, a.Funds)
+		return errors.AddContext(ErrGougingDetected,
+			fmt.Sprintf("combined download pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v", downloadCost, a.Funds))
 	}
 
 	return nil
@@ -208,17 +208,8 @@ func checkFormContractGouging(a Allowance, hes HostExternalSettings) error {
 	return errors.Compose(
 		checkBaseRPCGouging(a, hes),
 		checkContractPriceGouging(a, hes),
-	)
-}
-
-// checkFormPaymentContractGouging will check whether the pricing from the host
-// for forming a payment contract is too high to justify forming a contract with
-// this host.
-func checkFormPaymentContractGouging(a Allowance, hes HostExternalSettings) error {
-	return errors.Compose(
-		checkBaseRPCGouging(a, hes),
-		checkContractPriceGouging(a, hes),
 		checkSectorAccessPriceGouging(a, hes),
+		checkStoragePriceGouging(a, hes),
 	)
 }
 
@@ -226,6 +217,12 @@ func checkFormPaymentContractGouging(a Allowance, hes HostExternalSettings) erro
 // the host is reasonable, if deemed unreasonable we will block the refill and
 // the worker will eventually be put into cooldown.
 func checkFundAccountGouging(a Allowance, pt RPCPriceTable, targetBalance types.Currency) error {
+	// Check gouging for all related price components.
+	err := checkHardcodedConstants(pt)
+	if err != nil {
+		return err
+	}
+
 	// If there is no allowance we have no baseline for understanding what might
 	// count as price gouging.
 	if a.Funds.IsZero() {
@@ -236,9 +233,8 @@ func checkFundAccountGouging(a Allowance, pt RPCPriceTable, targetBalance types.
 	// we first calculate how many times we can refill the account, taking into
 	// account the refill amount and the cost to effectively fund the account.
 	//
-	// Note: we divide the target balance by two because more often than not the
-	// refill happens the moment we drop below half of the target, this means
-	// that we actually refill half the target amount most of the time.
+	// Note: we divide the target balance by two because we refill when we drop
+	// below half of the target.
 	costOfRefill := targetBalance.Div64(2).Add(pt.FundAccountCost)
 	numRefills, err := a.Funds.Div(costOfRefill).Uint64()
 	if err != nil {
@@ -249,7 +245,8 @@ func checkFundAccountGouging(a Allowance, pt RPCPriceTable, targetBalance types.
 	// above a certain % of the allowance.
 	totalFundAccountCost := pt.FundAccountCost.Mul64(numRefills)
 	if totalFundAccountCost.Cmp(a.Funds.MulFloat(fundAccountGougingPercentageThreshold)) > 0 {
-		return fmt.Errorf("fund account cost %v is considered too high, the total cost of refilling the account to spend the total allowance exceeds %v%% of the allowance - price gouging protection enabled", pt.FundAccountCost, fundAccountGougingPercentageThreshold)
+		return errors.AddContext(ErrGougingDetected,
+			fmt.Sprintf("fund account cost of %s is considered too high, the total cost of refilling the account exceeds %v%% of the allowance", pt.FundAccountCost.HumanString(), fundAccountGougingPercentageThreshold))
 	}
 
 	return nil
@@ -259,7 +256,10 @@ func checkFundAccountGouging(a Allowance, pt RPCPriceTable, targetBalance types.
 // reasonable.
 func checkPDBRGouging(a Allowance, pt RPCPriceTable) error {
 	// Check gouging for all related price components.
-	err := checkBandwidthGouging(a, pt)
+	err := errors.Compose(
+		checkBandwidthGouging(a, pt),
+		checkHardcodedConstants(pt),
+	)
 	if err != nil {
 		return err
 	}
@@ -310,7 +310,7 @@ func checkPDBRGouging(a Allowance, pt RPCPriceTable) error {
 	totalCost := costProject.Mul64(numProjects)
 	reducedCost := totalCost.Div64(downloadGougingFractionDenom)
 	if reducedCost.Cmp(a.Funds) > 0 {
-		return fmt.Errorf("combined PDBR pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", reducedCost, a.Funds)
+		return errors.AddContext(ErrGougingDetected, fmt.Sprintf("combined PDBR pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v", reducedCost, a.Funds))
 	}
 
 	return nil
@@ -321,8 +321,14 @@ func checkPDBRGouging(a Allowance, pt RPCPriceTable) error {
 // put into cooldown.
 func checkUpdatePriceTableGouging(a Allowance, pt RPCPriceTable) error {
 	// Check RPC cost
-	if !pt.UpdatePriceTableCost.Equals64(1) {
-		return fmt.Errorf("update price table cost is not equal to the hardcoded cost of 1H, instead it's %s", pt.UpdatePriceTableCost.HumanString())
+	err := checkHardcodedConstants(pt)
+	if err != nil {
+		return err
+	}
+
+	// Verify the validity is reasonable
+	if pt.Validity < minAcceptedPriceTableValidity {
+		return fmt.Errorf("update price table validity %v is considered too low, the minimum accepted validity is %v", pt.Validity, minAcceptedPriceTableValidity)
 	}
 
 	// If there is no allowance, price gouging checks have to be disabled,
@@ -330,11 +336,6 @@ func checkUpdatePriceTableGouging(a Allowance, pt RPCPriceTable) error {
 	// gouging.
 	if a.Funds.IsZero() {
 		return nil
-	}
-
-	// Verify the validity is reasonable
-	if pt.Validity < minAcceptedPriceTableValidity {
-		return fmt.Errorf("update price table validity %v is considered too low, the minimum accepted validity is %v", pt.Validity, minAcceptedPriceTableValidity)
 	}
 
 	// In order to decide whether or not the update price table cost is too
@@ -357,13 +358,28 @@ func checkUpdatePriceTableGouging(a Allowance, pt RPCPriceTable) error {
 // checkUploadGouging looks at the current renter allowance and the active
 // settings for a host and determines whether an upload should be halted due to
 // price gouging.
+func checkUploadGouging(a Allowance, hes HostExternalSettings) error {
+	return customCheckUploadGouging(a, hes, uploadGougingFractionDenom)
+}
+
+// checkUploadSnapshotGouging looks at the current renter allowance and the
+// active settings for a host and determines whether a snapshot upload should be
+// halted due to price gouging.
+func checkUploadSnapshotGouging(a Allowance, hes HostExternalSettings) error {
+	return customCheckUploadGouging(a, hes, uploadSnapshotGougingFractionDenom)
+}
+
+// customCheckUploadGouging looks at the current renter allowance and the active
+// settings for a host and determines whether an upload should be halted due to
+// price gouging. It is custom because it takes an upload cost fraction
+// denominator.
 //
 // NOTE: Currently this function treats all uploads as being the stream upload
 // size and assumes that data is actually being appended to the host. As the
 // worker gains more modification actions on the host, this check can be split
 // into different checks that vary based on the operation being performed.
-func checkUploadGouging(a Allowance, hes HostExternalSettings) error {
-	// Upload checks
+func customCheckUploadGouging(a Allowance, hes HostExternalSettings, fractionDenom uint64) error {
+	// Check gouging for all related price components.
 	if err := errors.Compose(
 		checkBaseRPCGouging(a, hes),
 		checkUploadBandwidthGouging(a, hes),
@@ -385,46 +401,9 @@ func checkUploadGouging(a Allowance, hes HostExternalSettings) error {
 	// action repeatedly until a fraction of the desired total resource
 	// consumption established by the allowance has been reached.
 	totalCost := calculateUploadCost(a, hes)
-	uploadCost := totalCost.Div64(uploadGougingFractionDenom)
+	uploadCost := totalCost.Div64(fractionDenom)
 	if uploadCost.Cmp(a.Funds) > 0 {
 		return fmt.Errorf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for uploads: %v - price gouging protection enabled", uploadCost, a.Funds)
-	}
-
-	return nil
-}
-
-// checkUploadSnapshotGouging looks at the current renter allowance and the
-// active settings for a host and determines whether a snapshot upload should be
-// halted due to price gouging.
-func checkUploadSnapshotGouging(a Allowance, hes HostExternalSettings) error {
-	// Upload checks
-	// TODO: this does not very sector access, on purpose?
-	if err := errors.Compose(
-		checkBaseRPCGouging(a, hes),
-		checkUploadBandwidthGouging(a, hes),
-		checkStoragePriceGouging(a, hes),
-	); err != nil {
-		return err
-	}
-
-	// If there is no allowance, general price gouging checks have to be
-	// disabled, because there is no baseline for understanding what might count
-	// as price gouging.
-	if a.Funds.IsZero() {
-		return nil
-	}
-
-	// Check that the cost makes sense in the context of the overall allowance.
-	// The general idea is to compute the total cost of performing the same
-	// action repeatedly until a fraction of the desired total resource
-	// consumption established by the allowance has been reached.
-	//
-	// TODO: this used to use SectorSize opposed to StreamUploadSize, on
-	// purpose?
-	totalCost := calculateUploadCost(a, hes)
-	uploadCost := totalCost.Div64(uploadSnapshotGougingFractionDenom)
-	if uploadCost.Cmp(a.Funds) > 0 {
-		return fmt.Errorf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for uploading snapshots: %v - price gouging protection enabled", uploadCost, a.Funds)
 	}
 
 	return nil
@@ -459,7 +438,7 @@ func checkContractPriceGouging(a Allowance, hes HostExternalSettings) error {
 // pricing.
 func checkDownloadBandwidthGouging(a Allowance, hes HostExternalSettings) error {
 	if !a.MaxDownloadBandwidthPrice.IsZero() && a.MaxDownloadBandwidthPrice.Cmp(hes.DownloadBandwidthPrice) < 0 {
-		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hes.DownloadBandwidthPrice, a.MaxDownloadBandwidthPrice)
+		return errors.AddContext(ErrGougingDetected, fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hes.DownloadBandwidthPrice, a.MaxDownloadBandwidthPrice))
 	}
 	return nil
 }
@@ -467,12 +446,56 @@ func checkDownloadBandwidthGouging(a Allowance, hes HostExternalSettings) error 
 // checkBandwidthGouging checks for gouging in the host's bandwidth pricing.
 func checkBandwidthGouging(a Allowance, pt RPCPriceTable) error {
 	if !a.MaxDownloadBandwidthPrice.IsZero() && a.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
-		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, a.MaxDownloadBandwidthPrice)
+		return errors.AddContext(ErrGougingDetected, fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, a.MaxDownloadBandwidthPrice))
 	}
 
 	if !a.MaxUploadBandwidthPrice.IsZero() && a.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
-		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.UploadBandwidthCost, a.MaxUploadBandwidthPrice)
+		return errors.AddContext(ErrGougingDetected, fmt.Sprintf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.UploadBandwidthCost, a.MaxUploadBandwidthPrice))
 	}
+	return nil
+}
+
+// checkHardcodedConstants checks for gouging in the fields from the host's
+// price table that should be equal to the hardcoded constant of 1H.
+func checkHardcodedConstants(pt RPCPriceTable) error {
+	buildErr := func(field string, value types.Currency) error {
+		return errors.AddContext(ErrGougingDetected, fmt.Sprintf("'%v' of %v is not equal to expected hardcoded constant", field, value.HumanString()))
+	}
+
+	if !pt.AccountBalanceCost.Equals64(1) {
+		return buildErr("AccountBalanceCost", pt.AccountBalanceCost)
+	}
+	if !pt.FundAccountCost.Equals64(1) {
+		return buildErr("FundAccountCost", pt.FundAccountCost)
+	}
+	if !pt.UpdatePriceTableCost.Equals64(1) {
+		return buildErr("UpdatePriceTableCost", pt.UpdatePriceTableCost)
+	}
+	if !pt.HasSectorBaseCost.Equals64(1) {
+		return buildErr("HasSectorBaseCost", pt.HasSectorBaseCost)
+	}
+	if !pt.MemoryTimeCost.Equals64(1) {
+		return buildErr("MemoryTimeCost", pt.MemoryTimeCost)
+	}
+	if !pt.DropSectorsBaseCost.Equals64(1) {
+		return buildErr("DropSectorsBaseCost", pt.DropSectorsBaseCost)
+	}
+	if !pt.DropSectorsUnitCost.Equals64(1) {
+		return buildErr("DropSectorsUnitCost", pt.DropSectorsUnitCost)
+	}
+	if !pt.SwapSectorCost.Equals64(1) {
+		return buildErr("SwapSectorCost", pt.SwapSectorCost)
+	}
+	if !pt.ReadLengthCost.Equals64(1) {
+		return buildErr("ReadLengthCost", pt.ReadLengthCost)
+	}
+	if !pt.WriteBaseCost.Equals64(1) {
+		return buildErr("WriteBaseCost", pt.WriteBaseCost)
+	}
+	if !pt.WriteLengthCost.Equals64(1) {
+		return buildErr("WriteLengthCost", pt.WriteLengthCost)
+	}
+
 	return nil
 }
 
