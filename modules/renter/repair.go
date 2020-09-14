@@ -502,10 +502,10 @@ func (r *Renter) threadedStuckFileLoop() {
 		// we clean up the upload chunk after a successful repair.
 		bubblePaths := r.newUniqueRefreshPaths()
 		for _, dirSiaPath := range dirSiaPaths {
-			err = bubblePaths.callAdd(dirSiaPath)
-			if err != nil {
-				r.repairLog.Printf("Error adding refresh path of %s: %v", dirSiaPath.String(), err)
-			}
+			err = errors.Compose(err, bubblePaths.callAdd(dirSiaPath))
+		}
+		if err != nil {
+			r.repairLog.Printf("Error adding at least one path to the refresh paths: %v", err)
 		}
 		err = bubblePaths.callRefreshAllBlocking()
 		if err != nil {

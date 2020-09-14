@@ -1,6 +1,8 @@
 package renter
 
 import (
+	"fmt"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -97,22 +99,26 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 
-	// Call callThreadedBubbleMetadata on the old and new directories to make
-	// sure the system metadata is updated to reflect the move.
+	// Bubble the old and new directories to make sure the system metadata is
+	// updated to reflect the move.
+	bubblePaths := r.newUniqueRefreshPaths()
+	defer bubblePaths.callRefreshAll()
+
 	oldDirSiaPath, err := currentName.Dir()
 	if err != nil {
 		return err
+	}
+	err = bubblePaths.callAdd(oldDirSiaPath)
+	if err != nil {
+		return errors.AddContext(err, fmt.Sprintf("failed to add oldDirSiaPath to refreshpaths: %v", oldDirSiaPath))
 	}
 	newDirSiaPath, err := newName.Dir()
 	if err != nil {
 		return err
 	}
-	bubblePaths := r.newUniqueRefreshPaths()
-	err1 := bubblePaths.callAdd(oldDirSiaPath)
-	err2 := bubblePaths.callAdd(newDirSiaPath)
-	bubblePaths.callRefreshAll()
-	if err := errors.Compose(err1, err2); err != nil {
-		r.log.Printf("failed to bubble paths after RenameFile %v %v: %v", oldDirSiaPath, newDirSiaPath, err)
+	err = bubblePaths.callAdd(newDirSiaPath)
+	if err != nil {
+		return errors.AddContext(err, fmt.Sprintf("failed to add newDirSiaPath to refreshpaths: %v", newDirSiaPath))
 	}
 	return nil
 }
