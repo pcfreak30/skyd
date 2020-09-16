@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -195,12 +196,13 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			}
 		}
 		if shouldLog {
-			r.log.Debugf("managedDownloadByRoot failed for root '%v'\n", root)
+			msgParts := []string{fmt.Sprintf("PDBR failed for root '%v'", root)}
 			for _, hs := range staticResponses {
 				if hs != nil {
-					r.log.Debugln(hs)
+					msgParts = append(msgParts, fmt.Sprint(hs))
 				}
 			}
+			r.log.Debugln(strings.Join(msgParts, ";;"))
 		}
 	}()
 
