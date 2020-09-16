@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/siamux/mux"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -21,6 +22,16 @@ const (
 )
 
 var (
+	// ErrNoWorkers is returned if there are no workers in the worker pool
+	ErrNoWorkers = errors.New("workers were unable to recover the data by sector root - no workers in worker pool")
+
+	// ErrProjectTimedOut is returned when the project timed out
+	ErrProjectTimedOut = errors.New("project timed out")
+
+	// ErrRootNotFound is returned if all workers were unable to recover the
+	// root
+	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
+
 	// sectorLookupToDownloadRatio is an arbitrary ratio that resembles the
 	// amount of lookups vs downloads. It is used in price gouging checks.
 	sectorLookupToDownloadRatio = 16
@@ -106,7 +117,7 @@ func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
 // Unlike the exported version of this function, this function does not request
 // memory from the memory manager.
-func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
+func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64) (data []byte, err error) {
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -119,7 +130,8 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 
 	// Potentially force a timeout via a disrupt for testing.
 	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
-		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+		err = errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+		return
 	}
 
 	// Get the full list of workers and create a channel to receive all of the
@@ -161,8 +173,36 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	workers = workers[:numAsyncWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
-		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
+		err = ErrNoWorkers
+		return
 	}
+
+	// If one of the workers came back with an error, that was not a timeout,
+	// log the response per host for debugging purposes.
+	staticResponses := make([]*jobHasSectorResponse, len(workers))
+	defer func() {
+		// don't log if the project timed out
+		if errors.Contains(err, ErrProjectTimedOut) {
+			return
+		}
+		// only log if one of the responses returned with an error that was not
+		// a timeout
+		var shouldLog bool
+		for _, hs := range staticResponses {
+			if hs != nil && hs.staticErr != nil && !errors.Contains(hs.staticErr, mux.ErrStreamTimedOut) {
+				shouldLog = true
+				break
+			}
+		}
+		if shouldLog {
+			r.log.Debugf("managedDownloadByRoot failed for root '%v'\n", root)
+			for _, hs := range staticResponses {
+				if hs != nil {
+					r.log.Debugln(hs)
+				}
+			}
+		}
+	}()
 
 	// Create a timer that is used to determine when the project should stop
 	// looking for a better worker, and instead go use the best worker it has
@@ -203,7 +243,8 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		// has priority.
 		select {
 		case <-ctx.Done():
-			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+			err = errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+			return
 		default:
 		}
 
@@ -216,18 +257,22 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			case <-useBestWorkerCtx.Done():
 				useBestWorker = true
 			case resp = <-staticResponseChan:
+				staticResponses[responses] = resp
 				responses++
 			case <-ctx.Done():
-				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+				err = errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+				return
 			}
 		} else if len(usableWorkers) == 0 {
 			// There are no usable workers, which means there's no point
 			// listening on the useBestWorkerChan.
 			select {
 			case resp = <-staticResponseChan:
+				staticResponses[responses] = resp
 				responses++
 			case <-ctx.Done():
-				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+				err = errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+				return
 			}
 		} else {
 			// All workers have responded, which means we should now use the
@@ -325,7 +370,8 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		select {
 		case readSectorResp = <-readSectorRespChan:
 		case <-ctx.Done():
-			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+			err = errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+			return
 		}
 
 		// If the read sector job was not successful, move on to the next
@@ -337,11 +383,13 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		// We got a good response! Record the total project time and return the
 		// data.
 		pm.managedRecordProjectTime(length, time.Since(start))
-		return readSectorResp.staticData, nil
+		data = readSectorResp.staticData
+		return
 	}
 
 	// All workers have failed.
-	return nil, ErrRootNotFound
+	err = ErrRootNotFound
+	return
 }
 
 // DownloadByRoot will fetch data using the merkle root of that data. This uses

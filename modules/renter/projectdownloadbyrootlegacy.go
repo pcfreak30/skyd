@@ -14,15 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
-var (
-	// ErrRootNotFound is returned if all workers were unable to recover the
-	// root
-	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
-
-	// ErrProjectTimedOut is returned when the project timed out
-	ErrProjectTimedOut = errors.New("project timed out")
-)
-
 // jobDownloadByRoot contains all of the information necessary to execute a
 // perform download job.
 type jobDownloadByRoot struct {

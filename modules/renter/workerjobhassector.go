@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -53,6 +54,27 @@ type (
 
 // TODO: Gouging
 
+// String returns the string representation of a jobHasSectorResponse
+func (hsr *jobHasSectorResponse) String() string {
+	var availables string
+	if hsr.staticAvailables != nil {
+		for _, avail := range hsr.staticAvailables {
+			if avail {
+				availables += "1"
+				continue
+			}
+			availables += "0"
+		}
+	}
+
+	var hostKey string
+	if hsr.staticWorker != nil {
+		hostKey = hsr.staticWorker.staticHostPubKeyStr
+	}
+
+	return fmt.Sprintf("host: [%s] availables: [%s] err: '%v'", hostKey, availables, hsr.staticErr)
+}
+
 // newJobHasSector is a helper method to create a new HasSector job.
 func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasSectorResponse, roots ...crypto.Hash) *jobHasSector {
 	return &jobHasSector{
@@ -68,6 +90,8 @@ func (j *jobHasSector) callDiscard(err error) {
 	w.renter.tg.Launch(func() {
 		response := &jobHasSectorResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
+
+			staticWorker: w,
 		}
 		select {
 		case j.staticResponseChan <- response:
