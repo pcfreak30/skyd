@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -54,6 +55,16 @@ type (
 		staticErr  error
 	}
 )
+
+// String returns the string representation of a jobHasSectorResponse
+func (jrr *jobReadResponse) String() string {
+	var dataLen int
+	if jrr.staticData != nil {
+		dataLen = len(jrr.staticData)
+	}
+
+	return fmt.Sprintf("read: [%d] err: '%v'", dataLen, jrr.staticErr)
+}
 
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {

@@ -133,13 +133,19 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
 
+	// Debug info is a helper struct in which we collect information about the
+	// PDBR job results for every worker. The key is the host's pubkey string.
+	debugInfo := make(map[string]struct {
+		hs *jobHasSectorResponse
+		jr *jobReadResponse
+	})
+
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
 	// worker, so that the workers do not have to block when returning the
 	// result of the job, even if this thread is not listening.
 	workers := r.staticWorkerPool.callWorkers()
 	staticResponseChan := make(chan *jobHasSectorResponse, len(workers))
-	staticResponses := make([]*jobHasSectorResponse, len(workers))
 
 	// Filter out all workers that do not support the new protocol. It has been
 	// determined that hosts who do not support the async protocol are not worth
@@ -228,7 +234,10 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			case <-useBestWorkerCtx.Done():
 				useBestWorker = true
 			case resp = <-staticResponseChan:
-				staticResponses[responses] = resp
+				debugInfo[resp.staticWorker.staticHostPubKeyStr] = struct {
+					hs *jobHasSectorResponse
+					jr *jobReadResponse
+				}{resp, nil}
 				responses++
 			case <-ctx.Done():
 				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
@@ -238,7 +247,10 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			// listening on the useBestWorkerChan.
 			select {
 			case resp = <-staticResponseChan:
-				staticResponses[responses] = resp
+				debugInfo[resp.staticWorker.staticHostPubKeyStr] = struct {
+					hs *jobHasSectorResponse
+					jr *jobReadResponse
+				}{resp, nil}
 				responses++
 			case <-ctx.Done():
 				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
@@ -338,6 +350,11 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		var readSectorResp *jobReadResponse
 		select {
 		case readSectorResp = <-readSectorRespChan:
+			info, exists := debugInfo[bestWorker.staticHostPubKeyStr]
+			if !exists {
+				build.Critical("Debug info object should have been created")
+			}
+			info.jr = readSectorResp
 		case <-ctx.Done():
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
@@ -357,17 +374,17 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	// Add debug logging in case the download failed but some hosts returned a
 	// positive has sector response.
 	var shouldLog bool
-	for _, hs := range staticResponses {
-		if hs != nil && hs.staticAvailables != nil && len(hs.staticAvailables) > 0 && hs.staticAvailables[0] == true {
+	for _, info := range debugInfo {
+		if info.hs != nil && info.hs.staticAvailables != nil && len(info.hs.staticAvailables) > 0 && info.hs.staticAvailables[0] == true {
 			shouldLog = true
 			break
 		}
 	}
 	if shouldLog {
 		msgParts := []string{fmt.Sprintf("PDBR failed for root '%v'", root)}
-		for _, hs := range staticResponses {
-			if hs != nil {
-				msgParts = append(msgParts, fmt.Sprint(hs))
+		for _, info := range debugInfo {
+			if info.hs != nil {
+				msgParts = append(msgParts, fmt.Sprintf("HasSector: %s JobRead: %s", info.hs, info.jr))
 			}
 		}
 		r.log.Debugln(strings.Join(msgParts, ";;"))
