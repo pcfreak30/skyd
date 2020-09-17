@@ -1,7 +1,7 @@
 package modules
 
 // HasSectorJobExpectedBandwidth returns the expected bandwidth consumption of a
-// has sector job. This helper function enables getting at the expected
+// has sector job. This helper function enables getting the expected
 // bandwidth without having to instantiate a job.
 func HasSectorJobExpectedBandwidth() (ul, dl uint64) {
 	ul = 20e3

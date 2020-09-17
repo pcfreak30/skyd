@@ -13,7 +13,7 @@ import (
 const (
 	// downloadGougingFractionDenom sets the fraction to 1/4 because the renter
 	// should have enough money to download at least a fraction of the amount of
-	// data they intend to download. In practice, this ends up being a farily
+	// data they intend to download. In practice, this ends up being a fairly
 	// weak gouging filter because a massive portion of the allowance tends to
 	// be assigned to storage, and this does not account for that.
 	downloadGougingFractionDenom = 4
@@ -118,7 +118,7 @@ func CheckHostSettingsGouging(a Allowance, hes HostExternalSettings) HostSetting
 // calculateDownloadCost is a helper function that returns the cost of
 // downloading the expected download amount as dictated by the allowance.
 //
-// NOTE: we treat all downloads being the stream download size
+// NOTE: we treat all downloads being the StreamDownloadSize
 func calculateDownloadCost(a Allowance, hes HostExternalSettings) types.Currency {
 	rpcCost := hes.BaseRPCPrice.Add(hes.SectorAccessPrice)
 	bandwidthCost := hes.DownloadBandwidthPrice.Mul64(StreamDownloadSize)
