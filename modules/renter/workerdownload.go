@@ -102,36 +102,27 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	// whether successful or failed, the worker needs to be removed.
 	defer udc.managedRemoveWorker()
 
+	// Before performing the download, check for price gouging.
+	checks := modules.CheckPriceTableGouging(w.staticCache().staticRenterAllowance, w.staticPriceTable().staticPriceTable, w.staticBalanceTarget)
+	if checks.Download.IsGouging {
+		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", checks.Download.Reason)
+		w.managedDownloadFailed(errors.New(checks.Download.Reason))
+		udc.managedUnregisterWorker(w)
+		return
+	}
+
 	// Fetch the sector. If fetching the sector fails, the worker needs to be
 	// unregistered with the chunk.
-	d, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
-	if err != nil {
-		w.renter.log.Debugln("worker failed to create downloader:", err)
-		w.managedDownloadFailed(err)
-		udc.managedUnregisterWorker(w)
-		return
-	}
-	defer d.Close()
-
-	// Before performing the download, check for price gouging.
-	allowance := w.renter.hostContractor.Allowance()
-	gc := modules.CheckHostSettingsGouging(allowance, d.HostSettings())
-	if gc.Download.IsGouging {
-		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
-		w.managedDownloadFailed(errors.New(gc.Download.Reason))
-		udc.managedUnregisterWorker(w)
-		return
-	}
-
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
+	pieceData, err := w.ReadSector(w.renter.tg.StopCtx(), root, fetchOffset, fetchLength)
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		w.managedDownloadFailed(err)
 		udc.managedUnregisterWorker(w)
 		return
 	}
+
 	// Reset the consecutive failures for the download cooldown.
 	w.downloadMu.Lock()
 	w.downloadConsecutiveFailures = 0

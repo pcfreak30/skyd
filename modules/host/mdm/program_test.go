@@ -60,6 +60,7 @@ func TestNewProgramLowBudget(t *testing.T) {
 	values := pb.Cost()
 	_, _, collateral := values.Cost()
 	dataLen := uint64(len(data))
+	t.Log(dataLen)
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
 	cost := modules.MDMInitCost(pt, dataLen, 1)

@@ -18,7 +18,11 @@ func testProcessUploadChunkBasic(t *testing.T, chunk func(wt *workerTester) *unf
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.Close()
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	uuc := chunk(wt)
 	wt.mu.Lock()
@@ -69,7 +73,11 @@ func testProcessUploadChunkNoHelpNeeded(t *testing.T, chunk func(wt *workerTeste
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.Close()
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	uuc := chunk(wt)
 	pieces := uuc.piecesNeeded
@@ -126,7 +134,11 @@ func testProcessUploadChunkNotACandidate(t *testing.T, chunk func(wt *workerTest
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.Close()
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	uuc := chunk(wt)
 	pieces := uuc.piecesNeeded
@@ -182,7 +194,11 @@ func testProcessUploadChunkCompleted(t *testing.T, chunk func(wt *workerTester) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.Close()
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	uuc := chunk(wt)
 	pieces := uuc.piecesNeeded
@@ -239,7 +255,11 @@ func testProcessUploadChunk_NotACandidateCooldown(t *testing.T, chunk func(wt *w
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.Close()
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	uuc := chunk(wt)
 	pieces := uuc.piecesNeeded
@@ -297,7 +317,11 @@ func testProcessUploadChunkCompletedCooldown(t *testing.T, chunk func(wt *worker
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.Close()
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	uuc := chunk(wt)
 	pieces := uuc.piecesNeeded
@@ -358,7 +382,11 @@ func testProcessUploadChunkNotGoodForUpload(t *testing.T, chunk func(wt *workerT
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.Close()
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	uuc := chunk(wt)
 	pieces := uuc.piecesNeeded

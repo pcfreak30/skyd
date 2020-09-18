@@ -70,6 +70,7 @@ type (
 	// PriceTableGougingChecks contains a series of gouging checks that apply
 	// to the host's price table.
 	PriceTableGougingChecks struct {
+		Download         *GougingCheck
 		FundAccount      *GougingCheck
 		PDBR             *GougingCheck
 		UpdatePriceTable *GougingCheck
@@ -78,7 +79,6 @@ type (
 	// HostSettingsGougingChecks contains a series of gouging checks that apply
 	// to the host's external settings
 	HostSettingsGougingChecks struct {
-		Download       *GougingCheck
 		FetchBackups   *GougingCheck
 		FormContract   *GougingCheck
 		Upload         *GougingCheck
@@ -97,6 +97,7 @@ type (
 // the given price table indicates price gouging.
 func CheckPriceTableGouging(a Allowance, pt RPCPriceTable, tb types.Currency) PriceTableGougingChecks {
 	return PriceTableGougingChecks{
+		Download:         newGougingCheck(checkDownloadGouging(a, pt)),
 		FundAccount:      newGougingCheck(checkFundAccountGouging(a, pt, tb)),
 		PDBR:             newGougingCheck(checkPDBRGouging(a, pt)),
 		UpdatePriceTable: newGougingCheck(checkUpdatePriceTableGouging(a, pt)),
@@ -107,7 +108,6 @@ func CheckPriceTableGouging(a Allowance, pt RPCPriceTable, tb types.Currency) Pr
 // not the given host settings indicates price gouging.
 func CheckHostSettingsGouging(a Allowance, hes HostExternalSettings) HostSettingsGougingChecks {
 	return HostSettingsGougingChecks{
-		Download:       newGougingCheck(checkDownloadGouging(a, hes)),
 		FetchBackups:   newGougingCheck(checkFetchBackupsGouging(a, hes)),
 		FormContract:   newGougingCheck(checkFormContractGouging(a, hes)),
 		Upload:         newGougingCheck(checkUploadGouging(a, hes)),
@@ -119,7 +119,19 @@ func CheckHostSettingsGouging(a Allowance, hes HostExternalSettings) HostSetting
 // downloading the expected download amount as dictated by the allowance.
 //
 // NOTE: we treat all downloads being the StreamDownloadSize
-func calculateExpectedDownloadCost(a Allowance, hes HostExternalSettings) types.Currency {
+func calculateExpectedDownloadCost(a Allowance, pt RPCPriceTable) types.Currency {
+	rpcCost := MDMInitCost(&pt, 48, 1).Add(MDMReadCost(&pt, StreamDownloadSize))
+	bandwidthCost := pt.DownloadBandwidthCost.Mul64(StreamDownloadSize) // 48 bytes is the length of a single instruction read program
+	downloadCostPerByte := rpcCost.Add(bandwidthCost).Div64(StreamDownloadSize)
+	return downloadCostPerByte.Mul64(a.ExpectedDownload)
+}
+
+// calculateExpectedDownloadCostWithHES is a helper function that returns the
+// cost of downloading the expected download amount as dictated by the
+// allowance.
+//
+// NOTE: we treat all downloads being the StreamDownloadSize
+func calculateExpectedDownloadCostWithHES(a Allowance, hes HostExternalSettings) types.Currency {
 	rpcCost := hes.BaseRPCPrice.Add(hes.SectorAccessPrice)
 	bandwidthCost := hes.DownloadBandwidthPrice.Mul64(StreamDownloadSize)
 	downloadCostPerByte := rpcCost.Add(bandwidthCost).Div64(StreamDownloadSize)
@@ -137,15 +149,14 @@ func calculateExpectedUploadCost(a Allowance, hes HostExternalSettings) types.Cu
 	return uploadCostPerByte.Mul64(a.ExpectedStorage)
 }
 
-// checkDownloadGouging looks at the current renter allowance and the active
-// settings for a host and determines whether a download should be halted due to
-// price gouging.
-func checkDownloadGouging(a Allowance, hes HostExternalSettings) error {
+// checkDownloadGouging looks at the current renter allowance and the host's
+// price table and determines whether a download should be halted due to price
+// gouging.
+func checkDownloadGouging(a Allowance, pt RPCPriceTable) error {
 	// Check gouging for all related price components.
 	if err := errors.Compose(
-		checkBaseRPCGouging(a, hes),
-		checkDownloadBandwidthGouging(a, hes),
-		checkSectorAccessPriceGouging(a, hes),
+		checkHardcodedConstants(pt),
+		checkDLBandwidthGouging(a, pt),
 	); err != nil {
 		return err
 	}
@@ -160,7 +171,7 @@ func checkDownloadGouging(a Allowance, hes HostExternalSettings) error {
 	// The general idea is to compute the total cost of performing the same
 	// action repeatedly until a fraction of the desired total resource
 	// consumption established by the allowance has been reached.
-	totalCost := calculateExpectedDownloadCost(a, hes)
+	totalCost := calculateExpectedDownloadCost(a, pt)
 	downloadCost := totalCost.Div64(downloadGougingFractionDenom)
 	if downloadCost.Cmp(a.Funds) > 0 {
 		return errors.AddContext(ErrGougingDetected,
@@ -193,7 +204,7 @@ func checkFetchBackupsGouging(a Allowance, hes HostExternalSettings) error {
 	// The general idea is to compute the total cost of performing the same
 	// action repeatedly until a fraction of the desired total resource
 	// consumption established by the allowance has been reached.
-	totalCost := calculateExpectedDownloadCost(a, hes)
+	totalCost := calculateExpectedDownloadCostWithHES(a, hes)
 	backupCost := totalCost.Div64(fetchBackupsGougingFractionDenom)
 	if backupCost.Cmp(a.Funds) > 0 {
 		return fmt.Errorf("combined download pricing of host yields %v, which is more than the renter is willing to pay for backups: %v - price gouging protection enabled", backupCost, a.Funds)
@@ -443,6 +454,15 @@ func checkDownloadBandwidthGouging(a Allowance, hes HostExternalSettings) error 
 	return nil
 }
 
+// checkDLBandwidthGouging checks for gouging in the host's DL bandwidth
+// pricing.
+func checkDLBandwidthGouging(a Allowance, pt RPCPriceTable) error {
+	if !a.MaxDownloadBandwidthPrice.IsZero() && a.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
+		return errors.AddContext(ErrGougingDetected, fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, a.MaxDownloadBandwidthPrice))
+	}
+	return nil
+}
+
 // checkBandwidthGouging checks for gouging in the host's bandwidth pricing.
 func checkBandwidthGouging(a Allowance, pt RPCPriceTable) error {
 	if !a.MaxDownloadBandwidthPrice.IsZero() && a.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
@@ -470,11 +490,14 @@ func checkHardcodedConstants(pt RPCPriceTable) error {
 	if !pt.AccountBalanceCost.Equals64(1) {
 		return buildErr("AccountBalanceCost", pt.AccountBalanceCost)
 	}
+	if !pt.DropSectorsBaseCost.Equals64(1) {
+		return buildErr("DropSectorsBaseCost", pt.DropSectorsBaseCost)
+	}
+	if !pt.DropSectorsUnitCost.Equals64(1) {
+		return buildErr("DropSectorsUnitCost", pt.DropSectorsUnitCost)
+	}
 	if !pt.FundAccountCost.Equals64(1) {
 		return buildErr("FundAccountCost", pt.FundAccountCost)
-	}
-	if !pt.UpdatePriceTableCost.Equals64(1) {
-		return buildErr("UpdatePriceTableCost", pt.UpdatePriceTableCost)
 	}
 	if !pt.HasSectorBaseCost.Equals64(1) {
 		return buildErr("HasSectorBaseCost", pt.HasSectorBaseCost)
@@ -482,17 +505,14 @@ func checkHardcodedConstants(pt RPCPriceTable) error {
 	if !pt.MemoryTimeCost.Equals64(1) {
 		return buildErr("MemoryTimeCost", pt.MemoryTimeCost)
 	}
-	if !pt.DropSectorsBaseCost.Equals64(1) {
-		return buildErr("DropSectorsBaseCost", pt.DropSectorsBaseCost)
-	}
-	if !pt.DropSectorsUnitCost.Equals64(1) {
-		return buildErr("DropSectorsUnitCost", pt.DropSectorsUnitCost)
+	if !pt.ReadLengthCost.Equals64(1) {
+		return buildErr("ReadLengthCost", pt.ReadLengthCost)
 	}
 	if !pt.SwapSectorCost.Equals64(1) {
 		return buildErr("SwapSectorCost", pt.SwapSectorCost)
 	}
-	if !pt.ReadLengthCost.Equals64(1) {
-		return buildErr("ReadLengthCost", pt.ReadLengthCost)
+	if !pt.UpdatePriceTableCost.Equals64(1) {
+		return buildErr("UpdatePriceTableCost", pt.UpdatePriceTableCost)
 	}
 	if !pt.WriteBaseCost.Equals64(1) {
 		return buildErr("WriteBaseCost", pt.WriteBaseCost)

@@ -33,13 +33,15 @@ func testCheckPriceTableGouing(t *testing.T) {
 		DefaultPriceTable(DefaultHostExternalSettings),
 		DefaultTargetBalance,
 	)
-	if gc.FundAccount == nil ||
+	if gc.Download == nil ||
+		gc.FundAccount == nil ||
 		gc.PDBR == nil ||
 		gc.UpdatePriceTable == nil {
 		t.Fatal("PriceTableGougingChecks is missing a gouging check")
 	}
 
 	// verify every gouging check function individually
+	t.Run("Download", testDownloadGouging)
 	t.Run("FundAccount", testCheckFundAccountGouging)
 	t.Run("HardcodedCosts", testHardcodedCostsGouging)
 	t.Run("PDBR", testPDBRGouging)
@@ -53,8 +55,7 @@ func testCheckHostSettingsGouging(t *testing.T) {
 
 	// verify all gouging checks are present in the PriceTableGougingChecks
 	gc := CheckHostSettingsGouging(DefaultAllowance, HostExternalSettings{})
-	if gc.Download == nil ||
-		gc.FetchBackups == nil ||
+	if gc.FetchBackups == nil ||
 		gc.FormContract == nil ||
 		gc.Upload == nil ||
 		gc.UploadSnapshot == nil {
@@ -62,7 +63,6 @@ func testCheckHostSettingsGouging(t *testing.T) {
 	}
 
 	// verify all checks individually
-	t.Run("Download", testDownloadGouging)
 	t.Run("FetchBackups", testFetchBackupsGouging)
 	t.Run("FormContract", testFormContractGouging)
 	t.Run("Upload", func(t *testing.T) { testUploadGouging(t, uploadGougingFractionDenom) })
@@ -234,94 +234,36 @@ func testUpdatePriceTableGouging(t *testing.T) {
 // testDownloadGouging checks that the fetch backups price gouging
 // checker is correctly detecting price gouging from a host.
 func testDownloadGouging(t *testing.T) {
-	oneCurrency := types.NewCurrency64(1)
+	hes := DefaultHostExternalSettings
 
-	// minAllowance contains only the fields necessary to test the price gouging
-	// function. The min allowance doesn't include any of the max prices,
-	// because the function will ignore them if they are not set.
-	minAllowance := Allowance{
-		// Funds is set such that the tests come out to an easy, round number.
-		// One siacoin is multiplied by the number of elements that are checked
-		// for gouging, and then divided by the gounging denominator.
-		Funds: types.SiacoinPrecision.Mul64(3).Div64(downloadGougingFractionDenom).Sub(oneCurrency),
+	allowance := DefaultAllowance
+	allowance.Funds = types.SiacoinPrecision.Mul64(1e3)
+	allowance.MaxDownloadBandwidthPrice = hes.DownloadBandwidthPrice.Mul64(2)
+	allowance.MaxUploadBandwidthPrice = hes.UploadBandwidthPrice.Mul64(2)
+	allowance.ExpectedDownload = 1 << 30 // 1GiB
 
-		ExpectedDownload: StreamDownloadSize, // 1 stream download operation.
-	}
-	// minHostSettings contains only the fields necessary to test the price
-	// gouging function.
-	//
-	// The cost is set to be exactly equal to the price gouging limit, such that
-	// slightly decreasing any of the values evades the price gouging detector.
-	minHostSettings := HostExternalSettings{
-		BaseRPCPrice:           types.SiacoinPrecision,
-		DownloadBandwidthPrice: types.SiacoinPrecision.Div64(StreamDownloadSize),
-		SectorAccessPrice:      types.SiacoinPrecision,
-	}
-
-	err := checkDownloadGouging(minAllowance, minHostSettings)
-	if err == nil {
-		t.Fatal("expecting price gouging check to fail:", err)
-	}
-
-	// Drop the host prices one field at a time.
-	newHostSettings := minHostSettings
-	newHostSettings.BaseRPCPrice = minHostSettings.BaseRPCPrice.Mul64(100).Div64(101)
-	err = checkDownloadGouging(minAllowance, newHostSettings)
+	// verify basic case
+	pt := DefaultPriceTable(hes)
+	err := checkDownloadGouging(allowance, pt)
 	if err != nil {
-		t.Fatal(err)
-	}
-	newHostSettings = minHostSettings
-	newHostSettings.DownloadBandwidthPrice = minHostSettings.DownloadBandwidthPrice.Mul64(100).Div64(101)
-	err = checkDownloadGouging(minAllowance, newHostSettings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	newHostSettings = minHostSettings
-	newHostSettings.SectorAccessPrice = minHostSettings.SectorAccessPrice.Mul64(100).Div64(101)
-	err = checkDownloadGouging(minAllowance, newHostSettings)
-	if err != nil {
-		t.Fatal(err)
+		t.Fatal("unexpected outcome", err)
 	}
 
-	// Set min settings on the allowance that are just below what should be
-	// acceptable.
-	maxAllowance := minAllowance
-	maxAllowance.Funds = maxAllowance.Funds.Add(oneCurrency)
-	maxAllowance.MaxRPCPrice = types.SiacoinPrecision.Add(oneCurrency)
-	maxAllowance.MaxContractPrice = oneCurrency
-	maxAllowance.MaxDownloadBandwidthPrice = types.SiacoinPrecision.Div64(StreamDownloadSize).Add(oneCurrency)
-	maxAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Add(oneCurrency)
-	maxAllowance.MaxStoragePrice = oneCurrency
-	maxAllowance.MaxUploadBandwidthPrice = oneCurrency
-
-	// The max allowance should have no issues with price gouging.
-	err = checkDownloadGouging(maxAllowance, minHostSettings)
-	if err != nil {
-		t.Fatal(err)
+	// verify high init costs
+	pt = DefaultPriceTable(hes)
+	pt.InitBaseCost = types.SiacoinPrecision
+	pt.ReadBaseCost = types.SiacoinPrecision
+	err = checkDownloadGouging(allowance, pt)
+	if !errors.Contains(err, ErrGougingDetected) {
+		t.Fatal("unexpected outcome", err)
 	}
 
-	// Should fail if the MaxRPCPrice is dropped.
-	failAllowance := maxAllowance
-	failAllowance.MaxRPCPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = checkDownloadGouging(failAllowance, minHostSettings)
-	if err == nil {
-		t.Fatal("expecting price gouging check to fail")
-	}
-
-	// Should fail if the MaxDownloadBandwidthPrice is dropped.
-	failAllowance = maxAllowance
-	failAllowance.MaxDownloadBandwidthPrice = types.SiacoinPrecision.Div64(StreamDownloadSize).Sub(oneCurrency)
-	err = checkDownloadGouging(failAllowance, minHostSettings)
-	if err == nil {
-		t.Fatal("expecting price gouging check to fail")
-	}
-
-	// Should fail if the MaxSectorAccessPrice is dropped.
-	failAllowance = maxAllowance
-	failAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = checkDownloadGouging(failAllowance, minHostSettings)
-	if err == nil {
-		t.Fatal("expecting price gouging check to fail")
+	// verify DL bandwidth gouging
+	pt = DefaultPriceTable(hes)
+	pt.DownloadBandwidthCost = allowance.MaxDownloadBandwidthPrice.Mul64(2)
+	err = checkDownloadGouging(allowance, pt)
+	if !errors.Contains(err, ErrGougingDetected) || !strings.Contains(err.Error(), "download bandwidth price") {
+		t.Fatal("unexpected outcome", err)
 	}
 }
 
