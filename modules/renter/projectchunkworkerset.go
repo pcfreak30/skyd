@@ -27,11 +27,22 @@ import (
 
 var (
 	// pcwsWorkerStateResetTime defines the amount of time that the pcws will
-	// wait before resetting / refreshing the worker state.
+	// wait before resetting / refreshing the worker state, meaning that all of
+	// the workers will do another round of HasSector queries on the network.
 	pcwsWorkerStateResetTime = build.Select(build.Var{
 		Dev:      time.Minute * 10,
 		Standard: time.Minute * 60 * 3,
 		Testing:  time.Second * 15,
+	}).(time.Duration)
+
+	// pcwsHasSectorTimeout defines the amount of time that the pcws will wait
+	// before giving up on receiving a HasSector response from a single worker.
+	// This value is set as a global timeout because different download queries
+	// that have different timeouts will use the same projectChunkWorkerSet.
+	pcwsHasSectorTimeout = build.Select(build.Var{
+		Dev:      time.Minute * 1,
+		Standard: time.Minute * 3,
+		Testing:  time.Second * 10,
 	}).(time.Duration)
 )
 
@@ -40,27 +51,27 @@ var (
 // worker is expected to have a resolution, and is an estimate based on historic
 // performance from the worker.
 type pcwsUnresolvedWorker struct {
-	// The worker that is performing the HasSector job.
-	staticWorker *worker
-
 	// The expected time that the HasSector job will finish, and the worker will
 	// be able to resolve.
 	staticExpectedCompleteTime time.Time
+
+	// The worker that is performing the HasSector job.
+	staticWorker *worker
 }
 
 // pcwsWorkerResponse contains a worker's response to a HasSector query. There
-// is a list of piece indexes where the worker responded that they had the piece
+// is a list of piece indices where the worker responded that they had the piece
 // at that index.
-//
-// This structure is chosen so that chunk downloads can update in constant time
-// as new workers report back with HasSector results.
 type pcwsWorkerResponse struct {
 	worker       *worker
 	pieceIndices []uint64
 }
 
 // pcwsWorkerState contains the worker state for a single thread that is
-// resolving which workers
+// resolving which workers have which pieces. When the projectChunkWorkerSet
+// resets, it does so by spinning up a new pcwsWorkerState and then replacing
+// the old worker state with the new worker state. The new worker state will
+// send out a new round of HasSector queries to the network.
 type pcwsWorkerState struct {
 	// unresolvedWorkers is the set of workers that are currently running
 	// HasSector programs and have not yet finished.
@@ -73,7 +84,7 @@ type pcwsWorkerState struct {
 	// HasSector queries and which sectors are available. This array is only
 	// appended to as workers come back, meaning that chunk downloads can track
 	// internally which elements of the array they have already looked at,
-	// saving computational  time when updating.
+	// saving computational time when updating.
 	resolvedWorkers []*pcwsWorkerResponse
 
 	// workerUpdateChans is used by download objects to block until more
@@ -84,10 +95,8 @@ type pcwsWorkerState struct {
 	//
 	// NOTE: Once 'unresolvedWorkers' has a length of zero, any attempt to add a
 	// channel to the set of workerUpdateChans should fail, as there will be no
-	// more updates. NOTE: Once refreshes are happening, it will be possible for
-	// the unresolvedWorkers list to go from zero back to having elements again,
-	// but it still should be considered an error to register for an update once
-	// the length is zero because a long time can transpire.
+	// more updates. This is specific to this particular worker state, the
+	// pcwsWorkerSet as a whole can reset by replacing the worker state.
 	workerUpdateChans []chan struct{}
 
 	// Utilities.
@@ -98,7 +107,7 @@ type pcwsWorkerState struct {
 // projectChunkWorkerSet is an object that contains a set of workers that can be
 // used to download a single chunk. The object can be initialized with either a
 // set of roots (for Skynet downloads) or with a siafile where the host-root
-// pairs are already known.
+// pairs are already known (for traditional renter downloads).
 //
 // If the pcws is initialized with only a set of roots, it will immediately spin
 // up a bunch of worker jobs to locate those roots on the network using
@@ -106,6 +115,8 @@ type pcwsWorkerState struct {
 //
 // Once the pwcs has been initialized, it can be used repeatedly to download
 // data from the chunk, and it will not need to repeat the network lookups.
+// Every few hours (pcwsWorkerStateResetTime), it will re-do the lookups to
+// ensure that it is up-to-date on the best way to download the file.
 type projectChunkWorkerSet struct {
 	// workerState is a pointer to a single pcwsWorkerState, specifically the
 	// most recent worker state that has launched.
@@ -120,7 +131,6 @@ type projectChunkWorkerSet struct {
 	// simultaneously when the worker state needs to be updated. If a pcws is
 	// idle for a long time (say 12 hours) and then suddenly multiple requests
 	// come in all at once, those threads need to coordinate around the refresh.
-	staticHasSectorTimeout time.Duration
 	updateInProgress       bool
 	updateFinishedChan     chan struct{}
 	workerState            *pcwsWorkerState
@@ -256,7 +266,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan chan<- struct{}, ws *pcwsWorkerState) {
 	// Create a context for finding jobs which has a timeout for waiting on
 	// HasSector requests to return.
-	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcws.staticHasSectorTimeout)
+	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
 	defer cancel()
 
 	// Launch all of the HasSector jobs for each worker. A channel is needed to
@@ -365,7 +375,7 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // the roots will be determined by scanning the network with a large number of
 // HasSector queries. Once opened, the projectChunkWorkerSet can be used to
 // initiate many downloads.
-func (r *Renter) newPCWSByRoots(ctx context.Context, hasSectorTimeout time.Duration, roots []crypto.Hash, ec modules.ErasureCoder, masterKey crypto.CipherKey, chunkIndex uint64) (*projectChunkWorkerSet, error) {
+func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec modules.ErasureCoder, masterKey crypto.CipherKey, chunkIndex uint64) (*projectChunkWorkerSet, error) {
 	// Check that the number of roots provided is consistent with the erasure
 	// coder provided.
 	if len(roots) != ec.NumPieces() {
@@ -380,7 +390,6 @@ func (r *Renter) newPCWSByRoots(ctx context.Context, hasSectorTimeout time.Durat
 		staticPieceRoots:   roots,
 
 		staticCtx:              ctx,
-		staticHasSectorTimeout: hasSectorTimeout,
 		staticRenter:           r,
 	}
 
