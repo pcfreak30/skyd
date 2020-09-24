@@ -4562,6 +4562,7 @@ returns the the status of all the workers in the renter's workerpool.
       "maintenancerecenterr": "",                          // string
       "maintenancerecenterrtime": "0001-01-01T00:00:00Z",  // time
 
+      "accountbalancetarget": "1000000000000000000000000", // hasting
       "accountstatus": {
         "availablebalance": "1000000000000000000000000", // hasting
         "negativebalance": "0",                          // hasting

@@ -21,18 +21,28 @@ import (
 )
 
 const (
-	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal
-	// message remains spendable after it has been created. Together with the
-	// current block height at time of creation, this period makes up the
-	// WithdrawalMessage's expiry height.
-	withdrawalValidityPeriod = 6
-
 	// fundAccountGougingPercentageThreshold is the percentage threshold, in
 	// relation to the allowance, at which we consider the cost of funding an
 	// account to be too expensive. E.g. the cost of funding the account as many
 	// times as necessary to spend the total allowance should never exceed 1% of
 	// the total allowance.
 	fundAccountGougingPercentageThreshold = .01
+
+	// minDownloadBeforeRefill is the minimum amount of data we expect to be
+	// able to download before we have to refill our ephemeral account. This can
+	// become an issue when the host sets an unreasonably low max ephemeral
+	// account balance.
+	minDownloadBeforeRefill = 1 << 28 // 256MiB
+
+	// refillFractionDenom decides at what fraction of the balance target we
+	// refill the account.
+	refillFractionDenom = 2
+
+	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal
+	// message remains spendable after it has been created. Together with the
+	// current block height at time of creation, this period makes up the
+	// WithdrawalMessage's expiry height.
+	withdrawalValidityPeriod = 6
 )
 
 var (
@@ -466,7 +476,7 @@ func (w *worker) managedNeedsToRefillAccount() bool {
 		return false
 	}
 
-	return w.staticAccount.managedNeedsToRefill(w.staticBalanceTarget.Div64(2))
+	return w.staticAccount.managedNeedsToRefill(w.staticCache().staticBalanceTarget.Div64(refillFractionDenom))
 }
 
 // managedNeedsToSyncAccountBalanceToHost returns true if the renter needs to
@@ -498,7 +508,7 @@ func (w *worker) managedRefillAccount() {
 	// the max expected balance when refilling to avoid exceeding any host
 	// maximums.
 	balance := w.staticAccount.managedMaxExpectedBalance()
-	amount := w.staticBalanceTarget.Sub(balance)
+	amount := w.staticCache().staticBalanceTarget.Sub(balance)
 
 	// We track that there is a deposit in progress. Because filling an account
 	// is an interactive protocol with another machine, we are never sure of the
@@ -549,7 +559,7 @@ func (w *worker) managedRefillAccount() {
 	}()
 
 	// check the current price table for gouging errors
-	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, w.staticCache().staticRenterAllowance, w.staticBalanceTarget)
+	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, w.staticCache().staticRenterAllowance, w.staticCache().staticBalanceTarget)
 	if err != nil {
 		return
 	}
@@ -719,7 +729,7 @@ func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowan
 	// Note: we divide the target balance by two because more often than not the
 	// refill happens the moment we drop below half of the target, this means
 	// that we actually refill half the target amount most of the time.
-	costOfRefill := targetBalance.Div64(2).Add(pt.FundAccountCost)
+	costOfRefill := targetBalance.Div64(refillFractionDenom).Add(pt.FundAccountCost)
 	numRefills, err := allowance.Funds.Div(costOfRefill).Uint64()
 	if err != nil {
 		return errors.AddContext(err, "unable to check fund account gouging, could not calculate the amount of refills")
@@ -733,4 +743,26 @@ func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowan
 	}
 
 	return nil
+}
+
+// calculateBalanceTarget calculates a target balance for the worker's account.
+func calculateBalanceTarget(pt modules.RPCPriceTable) types.Currency {
+	// Calculate the cost of a read sector job, we use StreamDownloadSize as an
+	// average download size here which is 64 KiB.
+	pb := modules.NewProgramBuilder(&pt, 0)
+	mr := crypto.Hash{}
+	pb.AddReadSectorInstruction(modules.StreamDownloadSize, 0, mr, true)
+	programCost, _, _ := pb.Cost(true)
+
+	// Calculate the expected bandwidth costs for the program, arriving at a
+	// cost per read job.
+	ulbw, dlbw := readSectorJobExpectedBandwidth(modules.StreamDownloadSize)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
+	costPerJob := programCost.Add(bandwidthCost)
+
+	// Calculate the balance target, which is twice the amount of money
+	// necessary to run enough jobs to download 'minDownloadBeforeRefill' worth
+	// of data.
+	numDownloadJobs := minDownloadBeforeRefill / modules.StreamDownloadSize
+	return costPerJob.Mul64(numDownloadJobs).Mul64(refillFractionDenom)
 }

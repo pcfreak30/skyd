@@ -66,7 +66,7 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		MaintenanceCoolDownTime:  maintenanceCoolDownTime,
 
 		// Account Information
-		AccountBalanceTarget: w.staticBalanceTarget,
+		AccountBalanceTarget: cache.staticBalanceTarget,
 		AccountStatus:        w.staticAccount.managedStatus(),
 
 		// Price Table Information

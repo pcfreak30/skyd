@@ -4883,11 +4883,6 @@ func TestWorkerStatus(t *testing.T) {
 				return errors.New("Worker should not be marked as UploadTerminated")
 			}
 
-			// Account checks
-			if !worker.AccountBalanceTarget.Equals(types.SiacoinPrecision) {
-				return fmt.Errorf("Expected balance target to be 1SC but was %v", worker.AccountBalanceTarget.HumanString())
-			}
-
 			// Job Queues
 			if worker.BackupJobQueueSize != 0 {
 				return fmt.Errorf("Expected backup queue to be empty but was %v", worker.BackupJobQueueSize)
@@ -5059,7 +5054,7 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	if w.AccountStatus.AvailableBalance.Cmp(renterBalance) >= 0 {
 		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AccountStatus.AvailableBalance, renterBalance)
 	}
-	delta := types.SiacoinPrecision.Div64(10)
+	delta := w.AccountBalanceTarget.Div64(10)
 	if renterBalance.Sub(w.AccountStatus.AvailableBalance).Cmp(delta) < 0 {
 		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AccountStatus.AvailableBalance, renterBalance)
 	}
@@ -5281,6 +5276,102 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 
 	// Run for portal.
 	if err := test(1, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestWorkerCooldownLowMaxBalance verifies workers are being put on cooldown
+// if the host has an unreasonably low max epehemeral account balance.
+func TestWorkerCooldownLowMaxBalance(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for the subtests
+	groupParams := siatest.GroupParams{
+		Miners: 1,
+	}
+	groupDir := renterTestDir(t.Name())
+
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tg.Close()
+
+	// Add hosts that have their version set to v1412, this prevents the renters
+	// from defaulting MaxEphemeralAccountBalance to 1SC.
+	host1Params := node.Host(filepath.Join(groupDir, "host1"))
+	host1Params.HostDeps = &dependencies.HostV1412{}
+	host2Params := node.Host(filepath.Join(groupDir, "host2"))
+	host2Params.HostDeps = &dependencies.HostV1412{}
+	host3Params := node.Host(filepath.Join(groupDir, "host3"))
+	host3Params.HostDeps = &dependencies.HostV1412{}
+	hosts, err := tg.AddNodes(host1Params, host2Params, host3Params)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oneSC := types.SiacoinPrecision
+	maxEA := client.HostParamMaxEphemeralAccountBalance
+
+	// Set the max EA balance unreasonably low for host 1, and to a reasonable
+	// value for the others
+	err = errors.Compose(
+		hosts[0].HostModifySettingPost(maxEA, oneSC.Div64(100)),
+		hosts[1].HostModifySettingPost(maxEA, oneSC.Div64(10)),
+		hosts[2].HostModifySettingPost(maxEA, oneSC.Mul64(2)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a renter
+	renterParams := node.Renter(filepath.Join(groupDir, "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyDisableCriticalOnMaxBalance{}
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the worker is on cooldown
+	r := tg.Renters()[0]
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// trigger the workerloop
+		dataPieces := uint64(1)
+		parityPieces := uint64(len(hosts) - 1)
+		r.UploadNewFile(100, dataPieces, parityPieces, false)
+
+		// get all workers on cooldown
+		rwg, rwgErr := r.RenterWorkersGet()
+		if rwgErr != nil {
+			t.Fatal(rwgErr)
+		}
+		onCooldown := make([]types.SiaPublicKey, 0)
+		for _, worker := range rwg.Workers {
+			if worker.MaintenanceOnCooldown {
+				onCooldown = append(onCooldown, worker.HostPubKey)
+			}
+		}
+
+		// verify there is only one host on cooldown
+		if len(onCooldown) != 1 {
+			return fmt.Errorf("unexpected amount of workers on cooldown %v", len(onCooldown))
+		}
+
+		// verify it's the first host
+		hpk, err := hosts[0].HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !onCooldown[0].Equals(hpk) {
+			return errors.New("unexpected worker on cooldown")
+		}
+
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 }

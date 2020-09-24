@@ -100,10 +100,9 @@ func testAccountCheckFundAccountGouging(t *testing.T) {
 		Funds: types.SiacoinPrecision.Mul64(1e3),
 	}
 
-	// set the target balance to 1SC, this is necessary because this decides how
-	// frequently we refill the account, which is a required piece of knowledge
-	// in order to estimate the total cost of refilling
-	targetBalance := types.SiacoinPrecision
+	// set the target balance, we set it to 35mS as this is the target balance
+	// for the host's default price settings
+	targetBalance := types.SiacoinPrecision.MulFloat(0.035)
 
 	// verify happy case
 	pt := newDefaultPriceTable()
@@ -378,7 +377,7 @@ func testWorkerAccountHostAccountBalance(t *testing.T, wt *workerTester) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !balance.Equals(w.staticBalanceTarget) {
+	if !balance.Equals(w.staticCache().staticBalanceTarget) {
 		t.Fatal(err)
 	}
 }
@@ -400,7 +399,7 @@ func testWorkerAccountSyncAccountBalanceToHostCritical(t *testing.T, wt *workerT
 	}
 
 	// track a deposit to simulate an ongoing fund
-	w.staticAccount.managedTrackDeposit(w.staticBalanceTarget)
+	w.staticAccount.managedTrackDeposit(w.staticCache().staticBalanceTarget)
 
 	// trigger the account balance sync and expect it to panic
 	defer func() {

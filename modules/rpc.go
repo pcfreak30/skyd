@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -306,6 +307,11 @@ func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
 
 // UniqueID is a unique identifier
 type UniqueID types.Specifier
+
+// Equals returns whether the given unique ID is equal to uid.
+func (uid UniqueID) Equals(other UniqueID) bool {
+	return bytes.Equal(uid[:], other[:])
+}
 
 // MarshalJSON marshals an id as a hex string.
 func (uid UniqueID) MarshalJSON() ([]byte, error) {

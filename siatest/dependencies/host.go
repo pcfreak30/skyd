@@ -65,6 +65,18 @@ func (d *HostLowerDeposit) Disrupt(s string) bool {
 	return s == "lowerDeposit"
 }
 
+// HostV1412 is a dependency injection for the host that will alter the host's
+// version to v1.4.12. This allows us to verify behaviour where the host version
+// is compared against v1.4.12.
+type HostV1412 struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *HostV1412) Disrupt(s string) bool {
+	return s == "HostV1412"
+}
+
 // NewDependencyHostDiskTrouble creates a new dependency that disrupts storage
 // folder operations due to disk trouble
 func NewDependencyHostDiskTrouble() *DependencyInterruptOnceOnKeyword {

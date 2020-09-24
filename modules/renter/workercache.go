@@ -25,13 +25,16 @@ type (
 	// must be static because this object is saved and loaded using
 	// atomic.Pointer.
 	workerCache struct {
-		staticBlockHeight     types.BlockHeight
-		staticContractID      types.FileContractID
-		staticContractUtility modules.ContractUtility
-		staticHostVersion     string
-		staticRenterAllowance modules.Allowance
-		staticHostMuxAddress  string
-		staticSynced          bool
+		staticBalanceTarget    types.Currency
+		staticBlockHeight      types.BlockHeight
+		staticContractID       types.FileContractID
+		staticContractUtility  modules.ContractUtility
+		staticHostVersion      string
+		staticHostMaxEABalance types.Currency
+		staticHostMuxAddress   string
+		staticPriceTableUID    modules.UniqueID
+		staticRenterAllowance  modules.Allowance
+		staticSynced           bool
 
 		staticLastUpdate time.Time
 	}
@@ -69,15 +72,21 @@ func (w *worker) managedUpdateCache() {
 		return
 	}
 
+	// Grab the pricetable
+	pt := w.staticPriceTable().staticPriceTable
+
 	// Create the cache object.
 	newCache := &workerCache{
-		staticBlockHeight:     w.renter.cs.Height(),
-		staticContractID:      renterContract.ID,
-		staticContractUtility: renterContract.Utility,
-		staticHostMuxAddress:  host.SiaMuxAddress(),
-		staticHostVersion:     host.Version,
-		staticRenterAllowance: w.renter.hostContractor.Allowance(),
-		staticSynced:          w.renter.cs.Synced(),
+		staticBalanceTarget:    calculateBalanceTarget(pt),
+		staticBlockHeight:      w.renter.cs.Height(),
+		staticContractID:       renterContract.ID,
+		staticContractUtility:  renterContract.Utility,
+		staticHostMaxEABalance: host.MaxEphemeralAccountBalance,
+		staticHostMuxAddress:   host.SiaMuxAddress(),
+		staticHostVersion:      host.Version,
+		staticPriceTableUID:    pt.UID,
+		staticRenterAllowance:  w.renter.hostContractor.Allowance(),
+		staticSynced:           w.renter.cs.Synced(),
 
 		staticLastUpdate: time.Now(),
 	}
@@ -104,7 +113,7 @@ func (w *worker) managedUpdateCache() {
 func (w *worker) staticTryUpdateCache() {
 	// Check if an update is necessary.
 	cache := w.staticCache()
-	if cache != nil && time.Since(cache.staticLastUpdate) < workerCacheUpdateFrequency {
+	if cache != nil && time.Since(cache.staticLastUpdate) < workerCacheUpdateFrequency && w.staticPriceTable().staticPriceTable.UID.Equals(cache.staticPriceTableUID) {
 		return
 	}
 

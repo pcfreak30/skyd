@@ -12,7 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -29,10 +28,15 @@ func TestWorkerAccountStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	var hostClosed bool
 	defer func() {
-		err := wt.Close()
-		if err != nil {
-			t.Fatal(err)
+		if hostClosed {
+			err := wt.rt.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return
 		}
 	}()
 	w := wt.worker
@@ -51,7 +55,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 	a := w.staticAccount
 	status := a.managedStatus()
 	if !(!status.AvailableBalance.IsZero() &&
-		status.AvailableBalance.Equals(w.staticBalanceTarget) &&
+		status.AvailableBalance.Equals(w.staticCache().staticBalanceTarget) &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected account status", ToJSON(status))
@@ -62,11 +66,14 @@ func TestWorkerAccountStatus(t *testing.T) {
 		t.Fatal("Unexpected maintenance cooldown")
 	}
 
-	// nullify the account balance to ensure refilling triggers a max balance
-	// exceeded on the host causing the worker's account to cool down
-	a.mu.Lock()
-	a.balance = types.ZeroCurrency
-	a.mu.Unlock()
+	// close the host - this will ensure the account goes on cooldown if we try
+	// to refill it
+	err = wt.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostClosed = true
+
 	w.managedRefillAccount()
 
 	// fetch the worker's account status and verify the error is being set
