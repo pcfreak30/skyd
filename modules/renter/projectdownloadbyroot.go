@@ -133,12 +133,13 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
 
-	// Debug info is a helper struct in which we collect information about the
-	// PDBR job results for every worker. The key is the host's pubkey string.
-	debugInfo := make(map[string]struct {
+	// Debug info is a helper struct in which we collect the individual job
+	// responses per PDBR for every worker. The key is the host's pubkey string.
+	type debugEntry struct {
 		hs *jobHasSectorResponse
 		jr *jobReadResponse
-	})
+	}
+	debugInfo := make(map[string]debugEntry)
 
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
@@ -234,10 +235,8 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			case <-useBestWorkerCtx.Done():
 				useBestWorker = true
 			case resp = <-staticResponseChan:
-				debugInfo[resp.staticWorker.staticHostPubKeyStr] = struct {
-					hs *jobHasSectorResponse
-					jr *jobReadResponse
-				}{resp, nil}
+				hostKey := resp.staticWorker.staticHostPubKeyStr
+				debugInfo[hostKey] = debugEntry{resp, nil}
 				responses++
 			case <-ctx.Done():
 				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
@@ -247,10 +246,8 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			// listening on the useBestWorkerChan.
 			select {
 			case resp = <-staticResponseChan:
-				debugInfo[resp.staticWorker.staticHostPubKeyStr] = struct {
-					hs *jobHasSectorResponse
-					jr *jobReadResponse
-				}{resp, nil}
+				hostKey := resp.staticWorker.staticHostPubKeyStr
+				debugInfo[hostKey] = debugEntry{resp, nil}
 				responses++
 			case <-ctx.Done():
 				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
