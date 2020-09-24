@@ -276,7 +276,6 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillJobsDownloadByRoot()
-	defer w.managedKillJobsDownloadByRoot()
 	defer w.staticJobHasSectorQueue.callKill()
 	defer w.staticJobReadQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
@@ -330,6 +329,17 @@ func (w *worker) threadedWorkLoop() {
 		// sync the revision as that might influence the contract, which is used
 		// to build the cache object.
 		w.staticTryUpdateCache()
+
+		// If the renter's allowance is not set, because the renter cancelled it
+		// for example, we do not want to launch any more jobs.
+		if w.staticCache().staticAllowance.Unset() {
+			err := errors.New("allowance unset")
+			w.staticJobUploadSnapshotQueue.discardAll(err)
+			w.staticJobHasSectorQueue.discardAll(err)
+			w.staticJobReadQueue.discardAll(err)
+			// TODO extend with other queues
+			continue
+		}
 
 		// If the worker needs to sync the account balance, perform a sync
 		// operation. This should be attempted before launching any jobs.

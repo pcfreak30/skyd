@@ -10,7 +10,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -103,10 +102,10 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	defer udc.managedRemoveWorker()
 
 	// Before performing the download, check for price gouging.
-	checks := modules.CheckPriceTableGouging(w.staticCache().staticRenterAllowance, w.staticPriceTable().staticPriceTable, w.staticBalanceTarget)
-	if checks.Download.IsGouging {
-		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", checks.Download.Reason)
-		w.managedDownloadFailed(errors.New(checks.Download.Reason))
+	gougingChecks := w.staticCache().staticGougingChecks
+	if gougingChecks.Download.IsGouging() {
+		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", gougingChecks.Download)
+		w.managedDownloadFailed(gougingChecks.Download)
 		udc.managedUnregisterWorker(w)
 		return
 	}

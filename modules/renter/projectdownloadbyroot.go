@@ -8,7 +8,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -136,9 +135,9 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		}
 
 		// check for price gouging
-		checks := modules.CheckPriceTableGouging(cache.staticRenterAllowance, worker.staticPriceTable().staticPriceTable, worker.staticBalanceTarget)
-		if checks.PDBR.IsGouging {
-			r.log.Debugf("price gouging detected in worker %v, %v\n", worker.staticHostPubKeyStr, checks.PDBR.Reason)
+		gougingChecks := worker.staticCache().staticGougingChecks
+		if gougingChecks.PDBR.IsGouging() {
+			r.log.Debugf("price gouging detected in worker %v, %v\n", worker.staticHostPubKeyStr, gougingChecks.PDBR)
 			continue
 		}
 

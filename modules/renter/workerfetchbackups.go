@@ -12,7 +12,6 @@ package renter
 // least use a helper method from the snapshot subsystem.
 
 import (
-	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -111,9 +110,9 @@ func (w *worker) managedPerformFetchBackupsJob() {
 	// Check for price gouging before completing the job.
 	allowance := w.renter.hostContractor.Allowance()
 	gc := modules.CheckHostSettingsGouging(allowance, session.HostSettings())
-	if gc.FetchBackups.IsGouging {
+	if gc.FetchBackups.IsGouging() {
 		result := fetchBackupsJobResult{
-			err: fmt.Errorf("price gouging check failed for fetch backups job, %s", gc.FetchBackups.Reason),
+			err: errors.AddContext(gc.FetchBackups, "fetch backups job cancelled"),
 		}
 		resultChan <- result
 		return

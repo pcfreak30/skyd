@@ -1,3 +1,4 @@
+
 package renter
 
 import (
@@ -61,12 +62,66 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestDirectories", Test: testDirectories},
 		{Name: "TestAlertsSorted", Test: testAlertsSorted},
 		{Name: "TestPriceTablesUpdated", Test: testPriceTablesUpdated},
+
+		// TODO: move
+		{Name: "TestGougingCritical", Test: testGougingCritical},
 	}
 
 	// Run tests
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// testPriceTablesUpdated verfies the workers' price tables are updated and stay
+// recent with the host
+func testGougingCritical(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// confirm we have contracts
+	err := build.Retry(100, 100*time.Millisecond, func() error {
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return errors.New("not enough contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm the renter is ready for upload
+	rur, err := r.RenterUploadReadyDefaultGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rur.Ready {
+		t.Fatal("Renter is not ready for upload", rur)
+	}
+
+	// Upload a file
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// cancel the allowance
+	err = r.RenterAllowanceCancelPost()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, _, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 100 {
+		t.Fatal("Unexpected data len", len(data))
+	}
+
 }
 
 // TestRenterTwo executes a number of subtests using the same TestGroup to

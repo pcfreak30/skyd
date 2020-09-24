@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -307,6 +308,11 @@ func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
 // UniqueID is a unique identifier
 type UniqueID types.Specifier
 
+// Equals returns true if the given uid is identical to uid.
+func (uid UniqueID) Equals(other UniqueID) bool {
+	return bytes.Equal(uid[:], other[:])
+}
+
 // MarshalJSON marshals an id as a hex string.
 func (uid UniqueID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(uid.String())
@@ -316,6 +322,7 @@ func (uid UniqueID) MarshalJSON() ([]byte, error) {
 func (uid UniqueID) String() string {
 	return hex.EncodeToString(uid[:])
 }
+
 
 // LoadString loads the unique id from the given string. It is the inverse of
 // the `String` method.
@@ -344,9 +351,9 @@ func (uid *UniqueID) UnmarshalJSON(b []byte) error {
 	return uid.LoadString(string(b[1 : len(b)-1]))
 }
 
-// DefaultPriceTable takes the host's external settings and returns a price
-// table with certain fields set to their default values.
-func DefaultPriceTable(hes HostExternalSettings) RPCPriceTable {
+// NewPriceTable takes the host's external settings and returns a price table
+// with certain fields set to their default values.
+func NewPriceTable(hes HostExternalSettings) RPCPriceTable {
 	return RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
 		AccountBalanceCost:   types.NewCurrency64(1),

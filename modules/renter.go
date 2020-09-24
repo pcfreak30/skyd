@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -294,6 +295,12 @@ func (a Allowance) Active() bool {
 // PortalMode returns true if the renter is supposed to act as a portal.
 func (a Allowance) PortalMode() bool {
 	return !a.PaymentContractInitialFunding.IsZero()
+}
+
+// Unset returns true if the allowance has not been set yet, or it has been
+// cleared.
+func (a Allowance) Unset() bool {
+	return reflect.DeepEqual(a, Allowance{})
 }
 
 // ContractUtility contains metrics internal to the contractor that reflect the

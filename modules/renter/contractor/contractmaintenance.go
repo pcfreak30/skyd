@@ -357,8 +357,8 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 
 	// Check for price gouging.
 	gc := modules.CheckHostSettingsGouging(allowance, hostSettings)
-	if gc.FormContract.IsGouging {
-		return types.ZeroCurrency, modules.RenterContract{}, fmt.Errorf("unable to form a contract due to price gouging detection, %s", gc.FormContract.Reason)
+	if gc.FormContract.IsGouging() {
+		return types.ZeroCurrency, modules.RenterContract{}, errors.AddContext(gc.FormContract, "unable to form a contract")
 	}
 
 	// get an address to use for negotiation
@@ -599,8 +599,8 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// Check for price gouging on the renewal.
 	hes := host.HostExternalSettings
 	gc := modules.CheckHostSettingsGouging(c.allowance, hes)
-	if gc.FormContract.IsGouging {
-		return modules.RenterContract{}, fmt.Errorf("unable to renew - price gouging protection enabled, %s", gc.FormContract.Reason)
+	if gc.FormContract.IsGouging() {
+		return modules.RenterContract{}, errors.AddContext(gc.FormContract, "unable to renew")
 	}
 
 	// get an address to use for negotiation
@@ -1473,8 +1473,8 @@ func (c *Contractor) threadedContractMaintenance() {
 		// Check that the price settings of the host are acceptable.
 		hes := host.HostExternalSettings
 		gc := modules.CheckHostSettingsGouging(allowance, hes)
-		if gc.FormContract.IsGouging {
-			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hes, gc.FormContract.Reason)
+		if gc.FormContract.IsGouging() {
+			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hes, gc.FormContract)
 			continue
 		}
 

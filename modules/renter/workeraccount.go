@@ -542,7 +542,7 @@ func (w *worker) managedRefillAccount() {
 	}()
 
 	// check the current price table for gouging errors
-	if w.staticPriceTable().staticGougingChecks.FundAccount.IsGouging {
+	if w.staticCache().staticGougingChecks.FundAccount.IsGouging() {
 		return
 	}
 

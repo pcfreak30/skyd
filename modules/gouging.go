@@ -70,65 +70,92 @@ type (
 	// PriceTableGougingChecks contains a series of gouging checks that apply
 	// to the host's price table.
 	PriceTableGougingChecks struct {
-		Download         *GougingCheck
-		FundAccount      *GougingCheck
-		PDBR             *GougingCheck
-		UpdatePriceTable *GougingCheck
+		Download         GougingCheck
+		FundAccount      GougingCheck
+		PDBR             GougingCheck
+		UpdatePriceTable GougingCheck
 	}
 
 	// HostSettingsGougingChecks contains a series of gouging checks that apply
 	// to the host's external settings
 	HostSettingsGougingChecks struct {
-		FetchBackups   *GougingCheck
-		FormContract   *GougingCheck
-		Upload         *GougingCheck
-		UploadSnapshot *GougingCheck
+		FetchBackups   GougingCheck
+		FormContract   GougingCheck
+		Upload         GougingCheck
+		UploadSnapshot GougingCheck
 	}
 
-	// GougingCheck is a helper struct that indicates whether or not the host is
-	// gouging alongisde a reason why that is the case.
-	GougingCheck struct {
-		IsGouging bool
-		Reason    string
+	// GougingCheck is an interface that returns for every type of check whether
+	// or not the host is gouging and why it is considered gouging.
+	GougingCheck interface {
+		IsGouging() bool
+		error
+	}
+
+	// check is a small helper struct that implements the GougingCheck interface
+	// by wrapping the error object returned by the gouging check.
+	check struct {
+		err error
 	}
 )
+
+// IsGouging returns true if and only if the gouging check returned an error.
+func (c *check) IsGouging() bool {
+	return c.err != nil
+}
+
+// Error returns why the host was considered to be gouging in case it was
+// gouging and an empty string if not.
+func (c *check) Error() string {
+	if c.err != nil {
+		return c.err.Error()
+	}
+	return ""
+}
 
 // CheckPriceTableGouging performs a series of checks that verify whether or not
 // the given price table indicates price gouging.
 func CheckPriceTableGouging(a Allowance, pt RPCPriceTable, tb types.Currency) PriceTableGougingChecks {
+	if a.Unset() {
+		build.Critical("CheckPriceTableGouging should not be executed when the allowance has not been set yet.")
+	}
 	return PriceTableGougingChecks{
-		Download:         newGougingCheck(checkDownloadGouging(a, pt)),
-		FundAccount:      newGougingCheck(checkFundAccountGouging(a, pt, tb)),
-		PDBR:             newGougingCheck(checkPDBRGouging(a, pt)),
-		UpdatePriceTable: newGougingCheck(checkUpdatePriceTableGouging(a, pt)),
+		Download:         &check{err: checkDownloadGouging(a, pt)},
+		FundAccount:      &check{err: checkFundAccountGouging(a, pt, tb)},
+		PDBR:             &check{err: checkPDBRGouging(a, pt)},
+		UpdatePriceTable: &check{err: checkUpdatePriceTableGouging(a, pt)},
 	}
 }
 
 // CheckHostSettingsGouging performs a series of checks that verify whether or
 // not the given host settings indicates price gouging.
 func CheckHostSettingsGouging(a Allowance, hes HostExternalSettings) HostSettingsGougingChecks {
+	if a.Unset() {
+		build.Critical("CheckHostSettingsGouging should not be executed when the allowance has not been set yet.")
+	}
 	return HostSettingsGougingChecks{
-		FetchBackups:   newGougingCheck(checkFetchBackupsGouging(a, hes)),
-		FormContract:   newGougingCheck(checkFormContractGouging(a, hes)),
-		Upload:         newGougingCheck(checkUploadGouging(a, hes)),
-		UploadSnapshot: newGougingCheck(checkUploadSnapshotGouging(a, hes)),
+		FetchBackups:   &check{err: checkFetchBackupsGouging(a, hes)},
+		FormContract:   &check{err: checkFormContractGouging(a, hes)},
+		Upload:         &check{err: checkUploadGouging(a, hes)},
+		UploadSnapshot: &check{err: checkUploadSnapshotGouging(a, hes)},
 	}
 }
 
 // calculateExpectedDownloadCost is a helper function that returns the cost of
-// downloading the expected download amount as dictated by the allowance.
+// downloading the expected download amount as dictated by the allowance and the
+// host's price table.
 //
 // NOTE: we treat all downloads being the StreamDownloadSize
 func calculateExpectedDownloadCost(a Allowance, pt RPCPriceTable) types.Currency {
-	rpcCost := MDMInitCost(&pt, 48, 1).Add(MDMReadCost(&pt, StreamDownloadSize))
-	bandwidthCost := pt.DownloadBandwidthCost.Mul64(StreamDownloadSize) // 48 bytes is the length of a single instruction read program
+	rpcCost := MDMInitCost(&pt, 48, 1).Add(MDMReadCost(&pt, StreamDownloadSize)) // 48 bytes is the length of a read program with 1 instruction
+	bandwidthCost := pt.DownloadBandwidthCost.Mul64(StreamDownloadSize)
 	downloadCostPerByte := rpcCost.Add(bandwidthCost).Div64(StreamDownloadSize)
 	return downloadCostPerByte.Mul64(a.ExpectedDownload)
 }
 
 // calculateExpectedDownloadCostWithHES is a helper function that returns the
 // cost of downloading the expected download amount as dictated by the
-// allowance.
+// allowance and the host's external settings.
 //
 // NOTE: we treat all downloads being the StreamDownloadSize
 func calculateExpectedDownloadCostWithHES(a Allowance, hes HostExternalSettings) types.Currency {
@@ -139,7 +166,7 @@ func calculateExpectedDownloadCostWithHES(a Allowance, hes HostExternalSettings)
 }
 
 // calculateExpectedUploadCost is a helper function that returns the cost of
-// downloading the expected upload amount as dictated by the allowance.
+// uploading the expected upload amount as dictated by the allowance.
 //
 // NOTE: we treat all uploads being the StreamUploadSize
 func calculateExpectedUploadCost(a Allowance, hes HostExternalSettings) types.Currency {
@@ -547,15 +574,4 @@ func checkStoragePriceGouging(a Allowance, hes HostExternalSettings) error {
 		return fmt.Errorf("storage price of host is %v, which is above the maximum allowed by the allowance: %v", hes.StoragePrice, a.MaxStoragePrice)
 	}
 	return nil
-}
-
-// newGougingCheck turns the given error into a gouging check object
-func newGougingCheck(err error) *GougingCheck {
-	if err == nil {
-		return &GougingCheck{}
-	}
-	return &GougingCheck{
-		IsGouging: true,
-		Reason:    err.Error(),
-	}
 }

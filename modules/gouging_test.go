@@ -30,7 +30,7 @@ func testCheckPriceTableGouing(t *testing.T) {
 	// verify PriceTableGougingChecks contains all gouging checks
 	gc := CheckPriceTableGouging(
 		DefaultAllowance,
-		DefaultPriceTable(DefaultHostExternalSettings),
+		NewPriceTable(DefaultHostExternalSettings),
 		DefaultTargetBalance,
 	)
 	if gc.Download == nil ||
@@ -73,13 +73,13 @@ func testCheckHostSettingsGouging(t *testing.T) {
 // `checkFundAccountGouging`.
 func testCheckFundAccountGouging(t *testing.T) {
 	// verify the basic case
-	err := checkFundAccountGouging(DefaultAllowance, DefaultPriceTable(DefaultHostExternalSettings), DefaultTargetBalance)
+	err := checkFundAccountGouging(DefaultAllowance, NewPriceTable(DefaultHostExternalSettings), DefaultTargetBalance)
 	if err != nil {
 		t.Fatal("unexpected outcome", err)
 	}
 
 	// verify FundAccountCost not equal to hardcoded constant of 1H
-	pt := DefaultPriceTable(DefaultHostExternalSettings)
+	pt := NewPriceTable(DefaultHostExternalSettings)
 	pt.FundAccountCost = types.NewCurrency64(2)
 	err = checkFundAccountGouging(DefaultAllowance, pt, DefaultTargetBalance)
 	if !errors.Contains(err, ErrGougingDetected) {
@@ -88,13 +88,13 @@ func testCheckFundAccountGouging(t *testing.T) {
 
 	// verify overflow
 	lowTB := types.NewCurrency64(2)
-	err = checkFundAccountGouging(DefaultAllowance, DefaultPriceTable(DefaultHostExternalSettings), lowTB)
+	err = checkFundAccountGouging(DefaultAllowance, NewPriceTable(DefaultHostExternalSettings), lowTB)
 	if err == nil || !strings.Contains(err.Error(), "result is an overflow") {
 		t.Fatal("unexpected error", err)
 	}
 
 	// verify total cost of funding account exceeding the pct threshold
-	pt = DefaultPriceTable(DefaultHostExternalSettings)
+	pt = NewPriceTable(DefaultHostExternalSettings)
 	pt.FundAccountCost = types.SiacoinPrecision
 	err = checkFundAccountGouging(DefaultAllowance, pt, DefaultTargetBalance)
 	if !errors.Contains(err, ErrGougingDetected) {
@@ -106,7 +106,7 @@ func testCheckFundAccountGouging(t *testing.T) {
 // `checkHardcodedConstants`.
 func testHardcodedCostsGouging(t *testing.T) {
 	// verify basic case
-	pt := DefaultPriceTable(DefaultHostExternalSettings)
+	pt := NewPriceTable(DefaultHostExternalSettings)
 	err := checkHardcodedConstants(pt)
 	if err != nil {
 		t.Fatal("unexpected outcome", err)
@@ -126,7 +126,7 @@ func testHardcodedCostsGouging(t *testing.T) {
 		"WriteBaseCost",
 		"WriteLengthCost",
 	} {
-		pt = DefaultPriceTable(DefaultHostExternalSettings)
+		pt = NewPriceTable(DefaultHostExternalSettings)
 		reflect.ValueOf(&pt).Elem().FieldByName(field).Set(reflect.ValueOf(types.SiacoinPrecision))
 		err := checkHardcodedConstants(pt)
 		if err == nil {
@@ -146,13 +146,13 @@ func testPDBRGouging(t *testing.T) {
 	allowance.ExpectedDownload = 1 << 30 // 1GiB
 
 	// verify basic case
-	err := checkPDBRGouging(DefaultAllowance, DefaultPriceTable(hes))
+	err := checkPDBRGouging(DefaultAllowance, NewPriceTable(hes))
 	if err != nil {
 		t.Fatal("unexpected outcome", err)
 	}
 
 	// verify bandwidth gouging - max download
-	pt := DefaultPriceTable(hes)
+	pt := NewPriceTable(hes)
 	pt.DownloadBandwidthCost = allowance.MaxDownloadBandwidthPrice.Mul64(2)
 	err = checkPDBRGouging(allowance, pt)
 	if !errors.Contains(err, ErrGougingDetected) || !strings.Contains(err.Error(), "download bandwidth price") {
@@ -160,7 +160,7 @@ func testPDBRGouging(t *testing.T) {
 	}
 
 	// verify bandwidth gouging - max upload
-	pt = DefaultPriceTable(hes)
+	pt = NewPriceTable(hes)
 	pt.UploadBandwidthCost = allowance.MaxUploadBandwidthPrice.Mul64(2)
 	err = checkPDBRGouging(allowance, pt)
 	if !errors.Contains(err, ErrGougingDetected) || !strings.Contains(err.Error(), "upload bandwidth price") {
@@ -174,7 +174,7 @@ func testPDBRGouging(t *testing.T) {
 		"MemoryTimeCost",
 		"HasSectorBaseCost",
 	} {
-		pt = DefaultPriceTable(DefaultHostExternalSettings)
+		pt = NewPriceTable(DefaultHostExternalSettings)
 		reflect.ValueOf(&pt).Elem().FieldByName(field).Set(reflect.ValueOf(types.SiacoinPrecision))
 		err = checkPDBRGouging(allowance, pt)
 		if err == nil {
@@ -183,7 +183,7 @@ func testPDBRGouging(t *testing.T) {
 	}
 
 	// verify these checks are ignored if the funds are 0
-	pt = DefaultPriceTable(DefaultHostExternalSettings)
+	pt = NewPriceTable(DefaultHostExternalSettings)
 	pt.InitBaseCost = types.SiacoinPrecision
 	allowance.Funds = types.ZeroCurrency
 	err = checkPDBRGouging(allowance, pt)
@@ -201,7 +201,7 @@ func testUpdatePriceTableGouging(t *testing.T) {
 	allowance.Funds = types.SiacoinPrecision.Mul64(1e3)
 	allowance.Period = types.BlockHeight(6)
 
-	pt := DefaultPriceTable(hes)
+	pt := NewPriceTable(hes)
 	pt.Validity = minAcceptedPriceTableValidity
 
 	// verify basic case
@@ -218,7 +218,7 @@ func testUpdatePriceTableGouging(t *testing.T) {
 	}
 
 	// verify high UpdatePriceTableCost
-	pt = DefaultPriceTable(hes)
+	pt = NewPriceTable(hes)
 	pt.Validity = minAcceptedPriceTableValidity
 	durationInS := int64(pt.Validity.Seconds())
 	periodInS := int64(allowance.Period) * 10 * 60 // period times 10m blocks
@@ -243,14 +243,14 @@ func testDownloadGouging(t *testing.T) {
 	allowance.ExpectedDownload = 1 << 30 // 1GiB
 
 	// verify basic case
-	pt := DefaultPriceTable(hes)
+	pt := NewPriceTable(hes)
 	err := checkDownloadGouging(allowance, pt)
 	if err != nil {
 		t.Fatal("unexpected outcome", err)
 	}
 
 	// verify high init costs
-	pt = DefaultPriceTable(hes)
+	pt = NewPriceTable(hes)
 	pt.InitBaseCost = types.SiacoinPrecision
 	pt.ReadBaseCost = types.SiacoinPrecision
 	err = checkDownloadGouging(allowance, pt)
@@ -259,7 +259,7 @@ func testDownloadGouging(t *testing.T) {
 	}
 
 	// verify DL bandwidth gouging
-	pt = DefaultPriceTable(hes)
+	pt = NewPriceTable(hes)
 	pt.DownloadBandwidthCost = allowance.MaxDownloadBandwidthPrice.Mul64(2)
 	err = checkDownloadGouging(allowance, pt)
 	if !errors.Contains(err, ErrGougingDetected) || !strings.Contains(err.Error(), "download bandwidth price") {

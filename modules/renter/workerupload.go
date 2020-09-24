@@ -131,13 +131,14 @@ func (w *worker) managedPerformUploadChunkJob() {
 	defer e.Close()
 
 	// Before performing the upload, check for price gouging.
-	allowance := w.renter.hostContractor.Allowance()
-	gc := modules.CheckHostSettingsGouging(allowance, e.HostSettings())
-	if gc.Upload.IsGouging && !w.renter.deps.Disrupt("DisableUploadGouging") {
-		failureErr := fmt.Errorf("worker uploader is not being used because price gouging was detected, %s", gc.Upload.Reason)
-		w.renter.log.Debugln(failureErr)
-		w.managedUploadFailed(uc, pieceIndex, failureErr)
-		return
+	if !w.renter.deps.Disrupt("DisableUploadGouging") {
+		allowance := w.renter.hostContractor.Allowance()
+		gc := modules.CheckHostSettingsGouging(allowance, e.HostSettings())
+		if gc.Upload.IsGouging() {
+			w.renter.log.Debugln(fmt.Sprintf("worker not used for host %v, gouging detected: %v", w.staticHostPubKeyStr, gc.Upload))
+			w.managedUploadFailed(uc, pieceIndex, gc.Upload)
+			return
+		}
 	}
 
 	// Perform the upload, and update the failure stats based on the success of

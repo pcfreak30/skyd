@@ -324,7 +324,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // managedUpdatePriceTable will recalculate the RPC costs and update the host's
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
-	h.staticPriceTables.managedSetCurrent(modules.DefaultPriceTable(h.managedExternalSettings()))
+	h.staticPriceTables.managedSetCurrent(modules.NewPriceTable(h.managedExternalSettings()))
 }
 
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry

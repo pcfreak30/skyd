@@ -25,12 +25,14 @@ type (
 	// must be static because this object is saved and loaded using
 	// atomic.Pointer.
 	workerCache struct {
+		staticAllowance       modules.Allowance
 		staticBlockHeight     types.BlockHeight
 		staticContractID      types.FileContractID
 		staticContractUtility modules.ContractUtility
-		staticHostVersion     string
-		staticRenterAllowance modules.Allowance
+		staticGougingChecks   modules.PriceTableGougingChecks
 		staticHostMuxAddress  string
+		staticHostVersion     string
+		staticPriceTableUID   modules.UniqueID
 		staticSynced          bool
 
 		staticLastUpdate time.Time
@@ -69,14 +71,20 @@ func (w *worker) managedUpdateCache() {
 		return
 	}
 
+	// Grab the renter's allowance and check for gouging
+	allowance := w.renter.hostContractor.Allowance()
+	pt := w.staticPriceTable().staticPriceTable
+	gc := modules.CheckPriceTableGouging(allowance, pt, w.staticBalanceTarget)
+
 	// Create the cache object.
 	newCache := &workerCache{
+		staticAllowance:       allowance,
 		staticBlockHeight:     w.renter.cs.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
+		staticGougingChecks:   gc,
 		staticHostMuxAddress:  host.SiaMuxAddress(),
 		staticHostVersion:     host.Version,
-		staticRenterAllowance: w.renter.hostContractor.Allowance(),
 		staticSynced:          w.renter.cs.Synced(),
 
 		staticLastUpdate: time.Now(),
@@ -102,9 +110,10 @@ func (w *worker) managedUpdateCache() {
 // 'false' will be returned if the cache cannot be updated, signaling that the
 // worker should exit.
 func (w *worker) staticTryUpdateCache() {
-	// Check if an update is necessary.
 	cache := w.staticCache()
-	if cache != nil && time.Since(cache.staticLastUpdate) < workerCacheUpdateFrequency {
+
+	// Check if an update is necessary.
+	if cache != nil && time.Since(cache.staticLastUpdate) < workerCacheUpdateFrequency && cache.staticPriceTableUID.Equals(w.staticPriceTable().staticPriceTable.UID) {
 		return
 	}
 

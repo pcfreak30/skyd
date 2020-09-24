@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"sort"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -108,8 +107,8 @@ func (j *jobUploadSnapshot) callExecute() {
 
 	allowance := w.renter.hostContractor.Allowance()
 	gc := modules.CheckHostSettingsGouging(allowance, sess.HostSettings())
-	if gc.UploadSnapshot.IsGouging {
-		err = fmt.Errorf("snapshot upload blocked because potential price gouging was detected, %s", gc.UploadSnapshot.Reason)
+	if gc.UploadSnapshot.IsGouging() {
+		err = errors.AddContext(gc.UploadSnapshot, "snapshot upload blocked")
 		return
 	}
 

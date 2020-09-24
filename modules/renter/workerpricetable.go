@@ -12,20 +12,12 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-var (
-	// errPriceTableGouging is returned when price gouging is detected
-	errPriceTableGouging = errors.New("price table rejected due to price gouging")
-)
-
 type (
 	// workerPriceTable contains a price table and some information related to
 	// retrieving the next update.
 	workerPriceTable struct {
 		// The actual price table.
 		staticPriceTable modules.RPCPriceTable
-
-		// The gouging checks performed on the price table.
-		staticGougingChecks modules.PriceTableGougingChecks
 
 		// The time at which the price table expires.
 		staticExpiryTime time.Time
@@ -147,7 +139,6 @@ func (w *worker) staticUpdatePriceTable() {
 		// table, need to make a new one.
 		pt := &workerPriceTable{
 			staticPriceTable:    currentPT.staticPriceTable,
-			staticGougingChecks: currentPT.staticGougingChecks,
 			staticExpiryTime:    currentPT.staticExpiryTime,
 			staticUpdateTime:    cd,
 			staticRecentErr:     err,
@@ -203,10 +194,10 @@ func (w *worker) staticUpdatePriceTable() {
 	}
 
 	// check for gouging before paying
-	a := w.staticCache().staticRenterAllowance
+	a := w.staticCache().staticAllowance
 	gc := modules.CheckPriceTableGouging(a, pt, w.staticBalanceTarget)
-	if gc.UpdatePriceTable.IsGouging {
-		err = errors.Compose(err, errors.AddContext(errPriceTableGouging, fmt.Sprintf("host %v", w.staticHostPubKeyStr)))
+	if gc.UpdatePriceTable.IsGouging() {
+		err = errors.AddContext(gc.UpdatePriceTable, fmt.Sprintf("host %v", w.staticHostPubKeyStr))
 		w.renter.log.Println("ERROR: ", err)
 		return
 	}
@@ -241,7 +232,6 @@ func (w *worker) staticUpdatePriceTable() {
 	// previously the devs like to be able to see what it was.
 	wpt := &workerPriceTable{
 		staticPriceTable:    pt,
-		staticGougingChecks: gc,
 		staticExpiryTime:    expiryTime,
 		staticUpdateTime:    newUpdateTime,
 		staticRecentErr:     currentPT.staticRecentErr,
