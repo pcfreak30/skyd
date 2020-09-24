@@ -12,6 +12,21 @@ package renter
 // keep the corresponding siafile open and keep checking if there are updates,
 // or we can do the network based checking over time.
 
+// TODO: What do we do about the edge case where a chunk is created, is still
+// uploading, and then someone creates a worker set before the upload is
+// finished? The worker set may be made immediately out of date by the new
+// uploads. This is probably best handled by not returning an upload as complete
+// nor returning the accompanying skylink until after it has hit full
+// redundancy.
+//
+// The fear is that because the workerState does not refresh very often, if we
+// request a pcws of a chunk that we have not finished uploading yet, that pcws
+// will continue to be in a degraded state for quite some time. This fear really
+// only applies to brand new uploads, and if we block until an upload is
+// complete, there should only be issues if somehow the uploader knows the
+// Merkle roots before the uploads are complete and attempts to shortcut the
+// process of downloading them.
+
 import (
 	"context"
 	"fmt"
@@ -113,30 +128,36 @@ type pcwsWorkerState struct {
 // up a bunch of worker jobs to locate those roots on the network using
 // HasSector programs.
 //
-// Once the pwcs has been initialized, it can be used repeatedly to download
+// Once the pcws has been initialized, it can be used repeatedly to download
 // data from the chunk, and it will not need to repeat the network lookups.
 // Every few hours (pcwsWorkerStateResetTime), it will re-do the lookups to
 // ensure that it is up-to-date on the best way to download the file.
 type projectChunkWorkerSet struct {
 	// workerState is a pointer to a single pcwsWorkerState, specifically the
-	// most recent worker state that has launched.
+	// most recent worker state that has launched. The workerState is
+	// responsible for querying the network with HasSector requests and
+	// determining which workers are able to download which pieces of the chunk.
 	//
 	// workerStateLaunchTime indicates when the workerState was launched, which
 	// is used to figure out when the worker state should be refreshed.
 	//
-	// The update in progress variable ensures that only one worker state is
-	// being refreshed at a time. The updateFinishedChan is created when the
-	// 'updateInProgress' variable is set to true, and is closed when it is
-	// reset to false. This is to help coordinate multiple threads that launch
-	// simultaneously when the worker state needs to be updated. If a pcws is
-	// idle for a long time (say 12 hours) and then suddenly multiple requests
-	// come in all at once, those threads need to coordinate around the refresh.
+	// updateInProgress and updateFinishedChan are used to ensure that only one
+	// worker state is being refreshed at a time. Before a workerState refresh
+	// begins, the projectChunkWorkerSet is locked and the updateInProgress
+	// value is set to 'true'. At the same time, a new 'updateFinishedChan' is
+	// created. Then the projectChunkWorkerSet is unlocked. New threads that try
+	// to launch downloads will see that there is an update in progress and will
+	// wait on the 'updateFinishedChan' to close before grabbing the new
+	// workerState. When the new workerState is done being initialized, the
+	// projectChunkWorkerSet is locked and the updateInProgress field is set to
+	// false, the workerState is updated to the new state, and the
+	// updateFinishedChan is closed.
 	updateInProgress       bool
 	updateFinishedChan     chan struct{}
 	workerState            *pcwsWorkerState
 	workerStateLaunchTime  time.Time
 
-	// Decoding and decryption information.
+	// Decoding and decryption information for the chunk.
 	staticChunkIndex   uint64
 	staticErasureCoder modules.ErasureCoder
 	staticMasterKey    crypto.CipherKey
@@ -149,7 +170,7 @@ type projectChunkWorkerSet struct {
 }
 
 // closeUpdateChans will close all of the update chans and clear out the slice.
-// This will cause any threads waiting for more results from the unresovled
+// This will cause any threads waiting for more results from the unresolved
 // workers to unblock.
 //
 // Typically there will be a small number of channels, often 0 and often just 1.
@@ -178,16 +199,22 @@ func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan struct{} {
 
 // managedHandleResponse will handle a HasSector response from a worker,
 // updating the workerState accordingly.
+//
+// The worker's response will be included into the resolvedWorkers even if it is
+// emptied or errored because the worker selection algorithms in the downloads
+// may wish to be able to view which workers have failed. This is currently
+// unused, but certain computational optimizations in the future depend on it.
 func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
-	// Delete the worker from the set of unresolved workers. If the response
-	// is not an error response, add the worker to any pieces that it
-	// supports.
+	// Delete the worker from the set of unresolved workers.
 	w := resp.staticWorker
 	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
 	ws.closeUpdateChans()
+
+	// If the response contained an error, add this worker to the set of
+	// resolved workers as supporting no indices.
 	if resp.staticErr != nil {
 		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
 			worker: w,
@@ -203,10 +230,8 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 			indices = append(indices, uint64(i))
 		}
 	}
-	// Add this worker to the set of resolved workers. Add the worker even if
-	// there are no pieces stored with this worker, as the download projects
-	// using this worker state will want to know that the worker did have an
-	// outcome.
+	// Add this worker to the set of resolved workers (even if there are no
+	// indices that the worker can fetch).
 	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
 		worker:       w,
 		pieceIndices: indices,
@@ -219,7 +244,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *worker, responseChan chan *jobHasSectorResponse, ws *pcwsWorkerState) {
 	// Check for gouging.
 	//
-	// TODO: May want to use a different gouging function.
+	// TODO (before merge): use a different gouging function.
 	cache := w.staticCache()
 	pt := w.staticPriceTable().staticPriceTable
 	err := checkPDBRGouging(pt, cache.staticRenterAllowance, len(pcws.staticPieceRoots))
@@ -234,9 +259,6 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 		staticResponseChan: responseChan,
 		jobGeneric:         newJobGeneric(ctx, w.staticJobHasSectorQueue),
 	}
-	// TODO: Make this a feature of generic jobs rather than having a custom
-	// implementation for just the has sector job. Maybe rename to
-	// callAddWithTimeEstimate.
 	expectedCompleteTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
 	if err != nil {
 		pcws.staticRenter.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
@@ -249,12 +271,11 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 
 		staticExpectedCompleteTime: expectedCompleteTime,
 	}
-	// Technically this doesn't need to be wrapped in a lock because the ws
-	// hasn't been released to any other threads yet, but we grab the lock any
-	// way because that's not obvious from the context of this function, and
-	// there's not really a clean way to make it obvious. It shouldn't have much
-	// performance overhead because the mutex will never have contention at this
-	// point.
+
+	// Add the unresolved worker to the worker state. Technically this doesn't
+	// need to be wrapped in a lock, but that's not obvious from the function
+	// context so we wrap it in a lock anyway. There will be no contention, so
+	// there should be minimal performance overhead.
 	ws.mu.Lock()
 	ws.unresolvedWorkers[w.staticHostPubKeyStr] = uw
 	ws.mu.Unlock()
@@ -282,7 +303,7 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 	close(allWorkersLaunchedChan)
 
 	// Helper function to get the number of responses remaining. This allows the
-	// for loop below to be a lot cleaner.
+	// loop below to be a lot cleaner.
 	responsesRemaining := func() int {
 		ws.mu.Lock()
 		rr := len(ws.unresolvedWorkers)
@@ -321,6 +342,9 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	if pcws.updateInProgress || time.Since(pcws.workerStateLaunchTime) < pcwsWorkerStateResetTime {
 		c := pcws.updateFinishedChan
 		pcws.mu.Unlock()
+		// If there is no update in progress, the channel will already be
+		// closed, and therefore listening on the channel will return
+		// immediately.
 		<-c
 		return nil
 	}
@@ -353,6 +377,11 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	// Launch the thread to find the workers for this launch state.
 	err := pcws.staticRenter.tg.Launch(findWorkers)
 	if err != nil {
+		// If there is an error, need to reset the in-progress fields.
+		pcws.mu.Lock()
+		pcws.updateInProgress = false
+		pcws.mu.Unlock()
+		close(pcws.updateFinishedChan)
 		return errors.AddContext(err, "unable to launch worker set")
 	}
 
