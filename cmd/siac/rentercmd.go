@@ -31,6 +31,9 @@ import (
 const (
 	fileSizeUnits = "B, KB, MB, GB, TB, PB, EB, ZB, YB"
 
+	// truncateErrLength is the length at which an error string gets truncated
+	truncateErrLength = 24
+
 	// colourful strings for the console UI
 	pBarJobProcess = "\x1b[34;1mpinning   \x1b[0m" // blue
 	pBarJobUpload  = "\x1b[33;1muploading \x1b[0m" // yellow
@@ -357,7 +360,7 @@ func rentercmd() {
 	}
 
 	// detailed allowance spending for current period
-	if renterVerbose {
+	if verbose {
 		renterallowancespending(rg)
 	}
 
@@ -369,7 +372,7 @@ func rentercmd() {
 		die(err)
 	}
 
-	if !renterVerbose {
+	if !verbose {
 		return
 	}
 
@@ -1688,7 +1691,7 @@ Contract %v
 // into a single error.
 func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
-	rd, err := httpClient.RenterDirGet(siaPath)
+	rd, err := httpClient.RenterDirRootGet(siaPath)
 	if err != nil {
 		err = errors.AddContext(err, "failed to get dir info")
 		return
@@ -1711,7 +1714,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		}
 		// Download file.
 		totalSize += file.Filesize
-		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
 			return
@@ -1745,7 +1748,14 @@ func renterdirdownload(path, destination string) {
 	// Parse SiaPath.
 	siaPath, err := modules.NewSiaPath(path)
 	if err != nil {
-		die("Failed to parse SiaPath:", err)
+		die("Couldn't parse SiaPath:", err)
+	}
+	// If root is not set we need to rebase.
+	if !renterDownloadRoot {
+		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		if err != nil {
+			die("Couldn't rebase SiaPath:", err)
+		}
 	}
 	// Download dir.
 	start := time.Now()
@@ -1845,14 +1855,21 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
-	_, err = httpClient.RenterFileGet(siaPath)
+	// If root is not set we need to rebase.
+	if !renterDownloadRoot {
+		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		if err != nil {
+			die("Couldn't rebase SiaPath:", err)
+		}
+	}
+	_, err = httpClient.RenterFileRootGet(siaPath)
 	if err == nil {
 		renterfilesdownload(path, destination)
 		return
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
-	_, err = httpClient.RenterDirGet(siaPath)
+	_, err = httpClient.RenterDirRootGet(siaPath)
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
@@ -1871,6 +1888,13 @@ func renterfilesdownload(path, destination string) {
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
+	// If root is not set we need to rebase.
+	if !renterDownloadRoot {
+		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		if err != nil {
+			die("Couldn't rebase SiaPath:", err)
+		}
+	}
 	// If the destination is a folder, download the file to that folder.
 	fi, err := os.Stat(destination)
 	if err == nil && fi.IsDir() {
@@ -1881,7 +1905,7 @@ func renterfilesdownload(path, destination string) {
 	// the call will return before the download has completed. The call is made
 	// as an async call.
 	start := time.Now()
-	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
+	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
@@ -1894,7 +1918,8 @@ func renterfilesdownload(path, destination string) {
 	}
 
 	// If the download is blocking, display progress as the file downloads.
-	file, err := httpClient.RenterFileGet(siaPath)
+	var file api.RenterFile
+	file, err = httpClient.RenterFileRootGet(siaPath)
 	if err != nil {
 		die("Error getting file after download has started:", err)
 	}
@@ -1999,7 +2024,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	}
 	for range time.Tick(OutputRefreshRate) {
 		// Get the list of downloads.
-		rdg, err := httpClient.RenterDownloadsGet()
+		rdg, err := httpClient.RenterDownloadsRootGet()
 		if err != nil {
 			continue // benign
 		}
@@ -2159,7 +2184,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	case 1:
 		path = args[0]
 	default:
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	// Parse the input siapath.
@@ -2217,7 +2242,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Handle the non verbose output.
-	if !renterListVerbose {
+	if !verbose {
 		for _, dir := range dirs {
 			fmt.Printf("%v/\n", dir.dir.SiaPath)
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -2531,7 +2556,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	allowance := modules.Allowance{}
 
 	if len(args) != 0 && len(args) != 4 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	if len(args) > 0 {
@@ -2669,10 +2694,15 @@ func renterworkerseacmd() {
 		die("Could not get worker statuses:", err)
 	}
 
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
 	// collect some overal account stats
 	var nfw uint64
 	for _, worker := range rw.Workers {
-		if !worker.AccountStatus.Funded {
+		if worker.AccountStatus.AvailableBalance.IsZero() {
 			nfw++
 		}
 	}
@@ -2692,8 +2722,8 @@ func renterworkerseacmd() {
 
 	// print header
 	hostInfo := "Host PubKey"
-	accountInfo := "\tFunded\tAvailBal\tNegBal\tBalTarget"
-	errorInfo := "\tErrorAt\tError"
+	accountInfo := "\tAvailBal\tNegBal\tTargetBal"
+	errorInfo := "\tSucceededAt\tErrorAt\tError"
 	header := hostInfo + accountInfo + errorInfo
 	fmt.Fprintln(w, "\nWorker Accounts Detail  \n\n"+header)
 
@@ -2705,14 +2735,14 @@ func renterworkerseacmd() {
 		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
 
 		// Account Info
-		fmt.Fprintf(w, "\t%t\t%s\t%s\t%s",
-			as.Funded,
+		fmt.Fprintf(w, "\t%s\t%s\t%s",
 			as.AvailableBalance.HumanString(),
 			as.NegativeBalance.HumanString(),
 			worker.AccountBalanceTarget.HumanString())
 
 		// Error Info
-		fmt.Fprintf(w, "\t%v\t%v\n",
+		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
+			sanitizeTime(as.RecentSuccessTime, as.RecentSuccessTime != time.Time{}),
 			sanitizeTime(as.RecentErrTime, as.RecentErr != ""),
 			sanitizeErr(as.RecentErr))
 	}
@@ -2775,7 +2805,7 @@ func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw module
 			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
 				worker.DownloadOnCoolDown,
 				absDuration(worker.DownloadCoolDownTime),
-				worker.DownloadCoolDownError,
+				sanitizeErr(worker.DownloadCoolDownError),
 				worker.DownloadQueueSize,
 				worker.DownloadTerminated)
 			continue
@@ -2784,7 +2814,7 @@ func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw module
 		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
 			worker.UploadOnCoolDown,
 			absDuration(worker.UploadCoolDownTime),
-			worker.UploadCoolDownError,
+			sanitizeErr(worker.UploadCoolDownError),
 			worker.UploadQueueSize,
 			worker.UploadTerminated)
 	}
@@ -2797,6 +2827,11 @@ func renterworkersptcmd() {
 	if err != nil {
 		die("Could not get worker statuses:", err)
 	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
 
 	// collect some overal account stats
 	var workersWithoutPTs uint64
@@ -2822,7 +2857,7 @@ func renterworkersptcmd() {
 	// print header
 	hostInfo := "Host PubKey"
 	priceTableInfo := "\tActive\tExpiry\tUpdate"
-	queueInfo := "\tOnCoolDown\tCoolDownUntil\tConsecFail\tErrorAt\tError"
+	queueInfo := "\tErrorAt\tError"
 	header := hostInfo + priceTableInfo + queueInfo
 	fmt.Fprintln(w, "\nWorker Price Tables Detail  \n\n"+header)
 
@@ -2853,6 +2888,11 @@ func renterworkersrjcmd() {
 	if err != nil {
 		die("Could not get worker statuses:", err)
 	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	defer func() {
@@ -2894,6 +2934,11 @@ func renterworkershsjcmd() {
 	if err != nil {
 		die("Could not get worker statuses:", err)
 	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	defer func() {
@@ -2956,7 +3001,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	fmt.Println("  Number of Workers:", len(workers))
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	contractHeader := "Worker Contract\t \t \t "
-	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
+	contractInfo := "Host PubKey\tContract ID\tGood For Renew\tGood For Upload"
 	downloadHeader := "\tWorker Downloads\t "
 	downloadInfo := "\tOn Cooldown\tQueue"
 	uploadHeader := "\tWorker Uploads\t "
@@ -2964,16 +3009,16 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	maintenanceHeader := "\tWorker Maintenance\t \t "
 	maintenanceInfo := "\tOn Cooldown\tCooldown Time\tLast Error"
 	eaHeader := "\tWorker Account"
-	eaInfo := "\tAvailable Balance"
 	jobHeader := "\tWorker Jobs\t \t "
 	jobInfo := "\tBackups\tDownload By Root\tHas Sector"
 	fmt.Fprintln(w, "\n  "+contractHeader+downloadHeader+uploadHeader+maintenanceHeader+eaHeader+jobHeader)
-	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+eaInfo+jobInfo)
+	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+jobInfo)
+
 	for _, worker := range workers {
 		// Contract Info
 		fmt.Fprintf(w, "  %v\t%v\t%v\t%v",
-			worker.ContractID,
 			worker.HostPubKey.String(),
+			worker.ContractID,
 			worker.ContractUtility.GoodForRenew,
 			worker.ContractUtility.GoodForUpload)
 
@@ -2991,11 +3036,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 		fmt.Fprintf(w, "\t%t\t%v\t%v",
 			worker.MaintenanceOnCooldown,
 			worker.MaintenanceCoolDownTime,
-			worker.MaintenanceCoolDownError)
-
-		// EA Info
-		fmt.Fprintf(w, "\t%v",
-			worker.AccountStatus.AvailableBalance)
+			sanitizeErr(worker.MaintenanceCoolDownError))
 
 		// Job Info
 		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
@@ -3032,6 +3073,9 @@ func sanitizeTime(t time.Time, cond bool) string {
 func sanitizeErr(errStr string) string {
 	if errStr == "" {
 		return "-"
+	}
+	if !verbose && len(errStr) > truncateErrLength {
+		errStr = errStr[:truncateErrLength] + "..."
 	}
 	return errStr
 }

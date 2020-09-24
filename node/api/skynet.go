@@ -76,6 +76,10 @@ type (
 	SkynetBlacklistPOST struct {
 		Add    []string `json:"add"`
 		Remove []string `json:"remove"`
+
+		// IsHash indicates if the supplied Add and Remove strings are already
+		// hashes of Skylinks
+		IsHash bool `json:"ishash"`
 	}
 
 	// SkynetPortalsGET contains the information queried for the /skynet/portals
@@ -161,30 +165,54 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	// Convert to Skylinks
-	addSkylinks := make([]modules.Skylink, len(params.Add))
+	// Convert to Skylinks or Hash
+	addHashes := make([]crypto.Hash, len(params.Add))
 	for i, addStr := range params.Add {
-		var skylink modules.Skylink
-		err := skylink.LoadString(addStr)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-			return
+		var hash crypto.Hash
+		// Convert Hash
+		if params.IsHash {
+			err := hash.LoadString(addStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
+				return
+			}
+		} else {
+			// Convert Skylink
+			var skylink modules.Skylink
+			err := skylink.LoadString(addStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+				return
+			}
+			hash = crypto.HashObject(skylink.MerkleRoot())
 		}
-		addSkylinks[i] = skylink
+		addHashes[i] = hash
 	}
-	removeSkylinks := make([]modules.Skylink, len(params.Remove))
+	removeHashes := make([]crypto.Hash, len(params.Remove))
 	for i, removeStr := range params.Remove {
-		var skylink modules.Skylink
-		err := skylink.LoadString(removeStr)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-			return
+		var hash crypto.Hash
+		// Convert Hash
+		if params.IsHash {
+			err := hash.LoadString(removeStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
+				return
+			}
+		} else {
+			// Convert Skylink
+			var skylink modules.Skylink
+			err := skylink.LoadString(removeStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+				return
+			}
+			hash = crypto.HashObject(skylink.MerkleRoot())
 		}
-		removeSkylinks[i] = skylink
+		removeHashes[i] = hash
 	}
 
 	// Update the Skynet Blacklist
-	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
+	err = api.renter.UpdateSkynetBlacklist(addHashes, removeHashes)
 	if err != nil {
 		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -246,7 +274,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}()
 
-	skylink, skylinkStringNoQuery, path, err := splitSkylinkString(ps.ByName("skylink"))
+	// Parse the skylink from the raw URL of the request. Any special characters
+	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
+	// that begins query parameters from the encoded version '%3F'.
+	skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(req.URL.String())
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
@@ -362,7 +393,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// We also don't need to redirect if this is a HEAD request or if it's a
 		// download as attachment.
 		if isSkapp && !attachment && req.Method == http.MethodGet && !strings.HasSuffix(skylinkStringNoQuery, "/") {
-			w.Header().Set("Location", skylinkStringNoQuery+"/?"+req.URL.RawQuery)
+			location := skylinkStringNoQuery + "/"
+			if req.URL.RawQuery != "" {
+				location += "?" + req.URL.RawQuery
+			}
+			w.Header().Set("Location", location)
 			w.WriteHeader(http.StatusTemporaryRedirect)
 			return
 		}
@@ -506,10 +541,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
-// splitSkylinkString splits a skylink string into its component - a skylink,
-// a string representation of the skylink with the query parameters stripped,
-// and a path.
-func splitSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+// parseSkylinkURL splits a raw skylink URL into its components - a skylink, a
+// string representation of the skylink with the query parameters stripped, and
+// a path. The skylink URL should not have been URL-decoded. The path is
+// URL-decoded before returning as it is for us to parse and use, while the
+// other components remain encoded for the skapp.
+func parseSkylinkURL(skylinkURL string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+	s := strings.TrimPrefix(skylinkURL, "/skynet/skylink/")
 	s = strings.TrimPrefix(s, "/")
 	// Parse out optional path to a subfile
 	path = "/" // default to root
@@ -519,6 +557,11 @@ func splitSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery
 	// Check if a path is passed.
 	if len(splits) > 1 && len(splits[1]) > 0 {
 		path = modules.EnsurePrefix(splits[1], "/")
+	}
+	// Decode the path as it may contain URL-encoded characters.
+	path, err = url.QueryUnescape(path)
+	if err != nil {
+		return
 	}
 	// Parse skylink
 	err = skylink.LoadString(s)
@@ -800,7 +843,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Grab the skykey specified.
+	// Grab the skykey specified by name or ID.
 	skykeyName := queryForm.Get("skykeyname")
 	skykeyID := queryForm.Get("skykeyid")
 	if skykeyName != "" && skykeyID != "" {
