@@ -746,6 +746,8 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
+//
+// TODO: Should be passing in a context here.
 func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
@@ -769,50 +771,13 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 		return streamer.Metadata(), streamer, nil
 	}
 
-	// Pull the offset and fetchSize out of the skylink.
-	offset, fetchSize, err := link.OffsetAndFetchSize()
+	// Create the data source and add it to the stream buffer set.
+	ctx := r.tg.StopCtx() // TODO: Use the input ctx
+	dataSource, err := r.skylinkDataSource(ctx, link)
 	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse skylink")
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-
-	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize, timeout)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
-	}
-	if len(baseSector) < SkyfileLayoutSize {
-		return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
-	}
-
-	// Check if the base sector is encrypted, and attempt to decrypt it.
-	// This will fail if we don't have the decryption key.
-	var fileSpecificSkykey skykey.Skykey
-	if isEncryptedBaseSector(baseSector) {
-		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
-		if err != nil {
-			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "Unable to decrypt skyfile base sector")
-		}
-	}
-
-	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, baseSectorPayload, err := parseSkyfileMetadata(baseSector)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "error parsing skyfile metadata")
-	}
-
-	// If there is no fanout, all of the data will be contained in the base
-	// sector, return a streamer using the data from the base sector.
-	if layout.fanoutSize == 0 {
-		streamer := streamerFromSlice(baseSectorPayload)
-		return metadata, streamer, nil
-	}
-
-	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, layout, metadata, fanoutBytes, timeout, fileSpecificSkykey)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
-	}
-	return metadata, fs, nil
+	return dataSource.Metadata(), dataSource, nil
 }
 
 // PinSkylink wil fetch the file associated with the Skylink, and then pin all

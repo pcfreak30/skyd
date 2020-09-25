@@ -152,10 +152,10 @@ type projectChunkWorkerSet struct {
 	// projectChunkWorkerSet is locked and the updateInProgress field is set to
 	// false, the workerState is updated to the new state, and the
 	// updateFinishedChan is closed.
-	updateInProgress       bool
-	updateFinishedChan     chan struct{}
-	workerState            *pcwsWorkerState
-	workerStateLaunchTime  time.Time
+	updateInProgress      bool
+	updateFinishedChan    chan struct{}
+	workerState           *pcwsWorkerState
+	workerStateLaunchTime time.Time
 
 	// Decoding and decryption information for the chunk.
 	staticChunkIndex   uint64
@@ -418,8 +418,8 @@ func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec mod
 		staticMasterKey:    masterKey,
 		staticPieceRoots:   roots,
 
-		staticCtx:              ctx,
-		staticRenter:           r,
+		staticCtx:    ctx,
+		staticRenter: r,
 	}
 
 	// The worker state is blank, ensure that everything can get started.
