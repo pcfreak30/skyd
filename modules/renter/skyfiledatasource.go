@@ -77,7 +77,10 @@ func (sds *skylinkDataSource) SilentClose() {
 // ReadAt implements streamBufferDataSource
 //
 // TODO: Adjust the interface so that ReadAt returns a channel instead of the
-// full data, and so that it takes a pricePerMs as input.
+// full data, and so that it takes a pricePerMs as input. The channel allows the
+// stream buffer to queue data more intelligently - the channel doesn't return
+// until the downloads have been queued, giving the stream buffer control over
+// what approximate order the data is returned.
 func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
 	// TODO: Get this as input.
 	pricePerMs := types.SiacoinPrecision
