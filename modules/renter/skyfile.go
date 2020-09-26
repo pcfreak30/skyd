@@ -748,7 +748,12 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 // download.
 //
 // TODO: Should be passing in a context here.
+//
+// TODO: Should be passing in a pricePerMs here.
 func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
+	// TODO: Replace with input params.
+	pricePerMs := types.SiacoinPrecision
+
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
@@ -772,12 +777,12 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	ctx := r.tg.StopCtx() // TODO: Use the input ctx
-	dataSource, err := r.skylinkDataSource(ctx, link)
+	dataSource, err := r.skylinkDataSource(link, pricePerMs)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-	return dataSource.Metadata(), dataSource, nil
+	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0)
+	return dataSource.Metadata(), stream, nil
 }
 
 // PinSkylink wil fetch the file associated with the Skylink, and then pin all

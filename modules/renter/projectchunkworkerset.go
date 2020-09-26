@@ -377,7 +377,8 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	// Launch the thread to find the workers for this launch state.
 	err := pcws.staticRenter.tg.Launch(findWorkers)
 	if err != nil {
-		// If there is an error, need to reset the in-progress fields.
+		// If there is an error, need to reset the in-progress fields. This will
+		// result in the worker set continuing to use the previous worker state.
 		pcws.mu.Lock()
 		pcws.updateInProgress = false
 		pcws.mu.Unlock()
