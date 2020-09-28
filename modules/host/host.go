@@ -64,11 +64,11 @@ package host
 // TODO: update_test.go has commented out tests.
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -79,7 +79,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/errors"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -189,6 +189,10 @@ type Host struct {
 	// subject to various conditions specific to the RPC in question. Examples
 	// of such conditions are congestion, load, liquidity, etc.
 	staticPriceTables *hostPrices
+
+	// Fields related to RHP3 bandwidhth.
+	atomicStreamUpload   uint64
+	atomicStreamDownload uint64
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -321,7 +325,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table
-	es := h.managedExternalSettings()
+	hes := h.managedExternalSettings()
 	priceTable := modules.RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
 		AccountBalanceCost:   types.NewCurrency64(1),
@@ -329,19 +333,34 @@ func (h *Host) managedUpdatePriceTable() {
 		UpdatePriceTableCost: types.NewCurrency64(1),
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
-		HasSectorBaseCost: types.NewCurrency64(1),
-		InitBaseCost:      types.NewCurrency64(1),
-		MemoryTimeCost:    types.NewCurrency64(1),
-		ReadBaseCost:      types.NewCurrency64(1),
-		ReadLengthCost:    types.NewCurrency64(1),
-		StoreLengthCost:   types.NewCurrency64(1),
+		HasSectorBaseCost:   types.NewCurrency64(1),
+		MemoryTimeCost:      types.NewCurrency64(1),
+		DropSectorsBaseCost: types.NewCurrency64(1),
+		DropSectorsUnitCost: types.NewCurrency64(1),
+		SwapSectorCost:      types.NewCurrency64(1),
+
+		// Read related costs.
+		ReadBaseCost:   hes.SectorAccessPrice,
+		ReadLengthCost: types.NewCurrency64(1),
+
+		// Write related costs.
+		WriteBaseCost:   types.NewCurrency64(1),
+		WriteLengthCost: types.NewCurrency64(1),
+		WriteStoreCost:  hes.StoragePrice,
+
+		// Init costs.
+		InitBaseCost: hes.BaseRPCPrice,
+
+		// LatestRevisionCost is set to a reasonable base + the estimated
+		// bandwidth cost of downloading a filecontract. This isn't perfect but
+		// at least scales a bit as the host updates their download bandwidth
+		// prices.
+		LatestRevisionCost: modules.DefaultBaseRPCPrice.Add(hes.DownloadBandwidthPrice.Mul64(modules.EstimatedFileContractTransactionSetSize)),
 
 		// Bandwidth related fields.
-		DownloadBandwidthCost: es.DownloadBandwidthPrice,
-		UploadBandwidthCost:   es.UploadBandwidthPrice,
+		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
+		UploadBandwidthCost:   hes.UploadBandwidthPrice,
 	}
-	fastrand.Read(priceTable.UID[:])
-
 	// update the pricetable
 	h.staticPriceTables.managedSetCurrent(priceTable)
 }
@@ -376,7 +395,7 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 // mocked such that the dependencies can return unexpected errors or unique
 // behaviors during testing, enabling easier testing of the failure modes of
 // the Host.
-func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (*Host, error) {
+func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (_ *Host, err error) {
 	// Check that all the dependencies were provided.
 	if cs == nil {
 		return nil, errNilCS
@@ -414,10 +433,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	h.staticMDM = mdm.New(h)
 
 	// Call stop in the event of a partial startup.
-	var err error
 	defer func() {
 		if err != nil {
-			err = composeErrors(h.tg.Stop(), err)
+			err = errors.Compose(h.tg.Stop(), err)
 		}
 	}()
 
@@ -435,7 +453,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	}
 
 	h.tg.AfterStop(func() {
-		err = h.log.Close()
+		err := h.log.Close()
 		if err != nil {
 			// State of the logger is uncertain, a Println will have to
 			// suffice.
@@ -451,7 +469,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 	h.tg.AfterStop(func() {
-		err = h.StorageManager.Close()
+		err := h.StorageManager.Close()
 		if err != nil {
 			h.log.Println("Could not close storage manager:", err)
 		}
@@ -464,7 +482,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 	h.tg.AfterStop(func() {
-		err = h.saveSync()
+		err := h.saveSync()
 		if err != nil {
 			h.log.Println("Could not save host upon shutdown:", err)
 		}
@@ -550,7 +568,19 @@ func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
 		return 0, 0, time.Time{}, err
 	}
 	defer h.tg.Done()
+
+	// Get the bandwidth usage for RHP1 & RHP2 connections.
 	readBytes, writeBytes := h.staticMonitor.Counts()
+
+	// Get the bandwidth usage for RHP3 connections. Unfortunately we can't just
+	// wrap the siamux streams since that wouldn't give us the raw data sent over
+	// the TCP connection. Since we want this to be as accurate as possible, we
+	// use the `Limit` method on the streams before closing them to get the
+	// accurate amount of data sent and received. This includes overhead such as
+	// frame headers and encryption.
+	readBytes += atomic.LoadUint64(&h.atomicStreamDownload)
+	writeBytes += atomic.LoadUint64(&h.atomicStreamUpload)
+
 	startTime := h.staticMonitor.StartTime()
 	return writeBytes, readBytes, startTime, nil
 }
@@ -600,7 +630,12 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 		return err
 	}
 	defer h.tg.Done()
+
 	h.mu.Lock()
+	// By updating the internal settings the user might influence the host's
+	// price table, we defer a call to update the price table to ensure it
+	// reflects the updated settings.
+	defer h.managedUpdatePriceTable()
 	defer h.mu.Unlock()
 
 	// The host should not be accepting file contracts if it does not have an
@@ -661,7 +696,8 @@ func (h *Host) BlockHeight() types.BlockHeight {
 // cannot be set by the user (host is configured through InternalSettings), and
 // are the values that get displayed to other hosts on the network.
 func (h *Host) managedExternalSettings() modules.HostExternalSettings {
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.externalSettings()
+	return h.externalSettings(maxFee)
 }

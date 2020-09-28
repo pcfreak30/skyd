@@ -167,6 +167,9 @@ func (w *worker) managedPerformUploadChunkJob() {
 	nextChunk.cancelMU.Lock()
 	if nextChunk.canceled {
 		nextChunk.cancelMU.Unlock()
+		// If the chunk was canceled then we drop the chunk. This will decrement the
+		// chunk's remainingWorkers and perform any clean up work necessary
+		w.managedDropChunk(nextChunk)
 		return
 	}
 	// Add this worker to the chunk's cancelWG for the duration of this method.
@@ -266,17 +269,22 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 	uc.mu.Lock()
 	_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
 	chunkComplete := uc.piecesNeeded <= uc.piecesCompleted
-	needsHelp := uc.piecesNeeded > uc.piecesCompleted+uc.piecesRegistered
 	// If the chunk does not need help from this worker, release the chunk.
 	if chunkComplete || !candidateHost || !goodForUpload || onCooldown {
 		// This worker no longer needs to track this chunk.
 		uc.mu.Unlock()
 		w.managedDropChunk(uc)
+
+		// Extra check - if a worker is unusable, drop all the queued chunks.
+		if onCooldown || !goodForUpload {
+			w.managedDropUploadChunks()
+		}
 		return nil, 0
 	}
 
 	// If the worker does not need help, add the worker to the sent of standby
 	// chunks.
+	needsHelp := uc.piecesNeeded > uc.piecesCompleted+uc.piecesRegistered
 	if !needsHelp {
 		uc.workersStandby = append(uc.workersStandby, w)
 		uc.mu.Unlock()

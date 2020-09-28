@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -355,6 +357,11 @@ func TestRemoteBackup(t *testing.T) {
 	if err := createSnapshot("foo"); err != nil {
 		t.Fatal(err)
 	}
+	// Create a snapshot with the same name again. This should fail.
+	err = createSnapshot("foo")
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
+		t.Fatal("creating a snapshot with the same name should fail", err)
+	}
 	// Delete the file locally.
 	if err := lf.Delete(); err != nil {
 		t.Fatal(err)
@@ -574,7 +581,10 @@ func TestRemoteBackup(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(backups.Backups) != 2 {
-			t.Error("Wrong number of backups detected", len(backups.Backups))
+			for i, backup := range backups.Backups {
+				t.Logf("%v: %v", i, backup.Name)
+			}
+			t.Error("Wrong number of backups detected", len(backups.Backups), 2)
 		}
 	}
 

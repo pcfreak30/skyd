@@ -28,6 +28,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -59,6 +60,7 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestDownloadAfterLegacyRenewAndClear", Test: testDownloadAfterLegacyRenewAndClear},
 		{Name: "TestDirectories", Test: testDirectories},
 		{Name: "TestAlertsSorted", Test: testAlertsSorted},
+		{Name: "TestPriceTablesUpdated", Test: testPriceTablesUpdated},
 	}
 
 	// Run tests
@@ -369,6 +371,21 @@ func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
 	if d.Received != fetchLen {
 		t.Errorf("Received was %v but should be %v", d.Received, fetchLen)
 	}
+	// Compare siapaths.
+	rdgr, err := r.RenterDownloadsRootGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.SiaPath.Equals(rf.SiaPath()) {
+		t.Fatal(d.SiaPath.String(), rf.SiaPath().String())
+	}
+	sp, err := rf.SiaPath().Rebase(modules.RootSiaPath(), modules.UserFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rdgr.Downloads[0].SiaPath.Equals(sp) {
+		t.Fatal(d.SiaPath.String(), rf.SiaPath().String())
+	}
 }
 
 // testClearDownloadHistory makes sure that the download history is
@@ -406,7 +423,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 		// Download files to build download history
 		dest := filepath.Join(siatest.SiaTestingDir, strconv.Itoa(fastrand.Intn(math.MaxInt32)))
 		for i := 0; i < remainingDownloads; i++ {
-			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false, false)
+			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false, false, false)
 			if err != nil {
 				t.Fatal("Could not Download file:", err)
 			}
@@ -651,7 +668,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// Try downloading the renamed file.
-	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size), true); err != nil {
+	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size), true, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -787,7 +804,11 @@ func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 	// Add the node and remove it at the end of the test.
 	nodes, err := tg.AddNodes(params)
 	renter := nodes[0]
-	defer tg.RemoveNode(renter)
+	defer func() {
+		if err := tg.RemoveNode(renter); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
@@ -838,7 +859,11 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
-	defer tg.RemoveNode(renter)
+	defer func() {
+		if err := tg.RemoveNode(renter); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Upload files
 	dataPieces := uint64(len(tg.Hosts())) - 1
@@ -933,7 +958,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		}
 		var found bool
 		for _, alert := range dag.Alerts {
-			expectedCause := fmt.Sprintf("Siafile '%v' has a health of %v", remoteFile.SiaPath().String(), f.MaxHealth)
+			expectedCause := fmt.Sprintf("Siafile 'home/user/%v' has a health of %v", remoteFile.SiaPath().String(), f.MaxHealth)
 			if alert.Msg == renter.AlertMSGSiafileLowRedundancy &&
 				alert.Cause == expectedCause {
 				found = true
@@ -979,6 +1004,8 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Create a group for the subtests
 	gp := siatest.GroupParams{
 		Hosts:   3,
@@ -1099,8 +1126,98 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	}
 }
 
+// testPriceTablesUpdated verfies the workers' price tables are updated and stay
+// recent with the host
+func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Get the worker status
+	rwg, err := r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get a random worker
+	var host types.SiaPublicKey
+	for _, worker := range rwg.Workers {
+		host = worker.HostPubKey
+		break
+	}
+
+	// Wait until that worker has been able to update its price table, when that
+	// is the case we save its current update and expiry time.
+	var ut, et time.Time
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			return err
+		}
+
+		var ws *modules.WorkerStatus
+		for i := range rwg.Workers {
+			worker := rwg.Workers[i]
+			if worker.HostPubKey.Equals(host) {
+				ws = &worker
+				break
+			}
+		}
+		if ws == nil {
+			return errors.New("worker not found")
+		}
+
+		if !ws.PriceTableStatus.Active {
+			return errors.New("worker has no valid price table")
+		}
+
+		ut = ws.PriceTableStatus.UpdateTime
+		et = ws.PriceTableStatus.ExpiryTime
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait until after the price table is set to update, note we don't gain
+	// anything by waiting for this inside the build.Retry as we know when it
+	// won't trigger before the update time.
+	time.Sleep(time.Until(ut))
+
+	// Verify in a retry that the price table's updateTime and expiryTime have
+	// been set to new dates in the future, indicating a successful price table
+	// update.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			return err
+		}
+
+		var ws *modules.WorkerStatus
+		for i := range rwg.Workers {
+			worker := rwg.Workers[i]
+			if worker.HostPubKey.Equals(host) {
+				ws = &worker
+				break
+			}
+		}
+		if ws == nil {
+			return errors.New("worker not found")
+		}
+
+		if !(ws.PriceTableStatus.UpdateTime.After(ut) && ws.PriceTableStatus.ExpiryTime.After(et)) {
+			return errors.New("updatedTime and expiryTime have not been updated yet, indicating the price table has not been renewed")
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // testRemoteRepair tests if a renter correctly repairs a file by
 // downloading it after a host goes offline.
+//
+// This test was extended to also support testing the download cooldowns.
 func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
 	r := tg.Renters()[0]
@@ -1174,9 +1291,52 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// We should be able to download
+	start := time.Now()
 	_, _, err = r.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Error("Failed to download file", err)
+	}
+
+	// Check that the worker is not on cooldown.
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rwg.TotalDownloadCoolDown == 0 {
+			// Do the download again to reset any cooldowns. Especially on CI,
+			// the amount of time between DownloadByStream and RenterWorkersGet
+			// can be longer than the base cooldown, but the cooldown eventually
+			// reaches 24 seconds, which should be enough time.
+			t.Log("Performing another download, because no workers are on cooldown:", time.Since(start))
+			_, _, err = r.DownloadByStream(remoteFile)
+			if err != nil {
+				t.Fatal("Failed to download file", err)
+			}
+			t.Log(rwg.NumWorkers, time.Since(start))
+			return errors.New("there should be workers on download cooldown because we took their hosts offline")
+		}
+		if rwg.NumWorkers-rwg.TotalDownloadCoolDown == 0 {
+			return errors.New("there should be hosts that are not on cooldown")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+	// The workers should eventually come off of cooldown.
+	err = build.Retry(500, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rwg.TotalDownloadCoolDown != 0 {
+			return errors.New("worker still on cooldown")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
 	}
 }
 
@@ -1275,7 +1435,7 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	}()
 	// Download the file asynchronously.
 	dst := filepath.Join(renter.FilesDir().Path(), "canceled_download.dat")
-	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, true)
+	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1292,7 +1452,8 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	var di *api.DownloadInfo
-	for _, d := range rdg.Downloads {
+	for i := range rdg.Downloads {
+		d := rdg.Downloads[i]
 		if remoteFile.SiaPath() == d.SiaPath && dst == d.Destination {
 			di = &d
 			break
@@ -1357,6 +1518,33 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Download the file again with root set.
+	rootPath, err := remoteFile.SiaPath().Rebase(modules.RootSiaPath(), modules.UserFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(renter.FilesDir().Path(), "root.dat")
+	_, err = renter.RenterDownloadGet(rootPath, dst, 0, uint64(fileSize), false, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst = filepath.Join(renter.FilesDir().Path(), "root2.dat")
+	_, err = renter.RenterDownloadFullGet(rootPath, dst, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = renter.RenterDownloadHTTPResponseGet(rootPath, 0, uint64(fileSize), true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.RenterStreamGet(rootPath, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.RenterStreamPartialGet(rootPath, 0, uint64(fileSize), false, true)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1875,9 +2063,8 @@ func TestRenewFailing(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
-		Renters: 1,
-		Miners:  1,
+		Hosts:  4,
+		Miners: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -1889,7 +2076,26 @@ func TestRenewFailing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	renter := tg.Renters()[0]
+
+	// Add a host that can't renew.
+	hostParams := node.HostTemplate
+	hostParams.HostDeps = &dependencies.DependencyRenewFail{}
+	nodes, err := tg.AddNodes(hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failHost := nodes[0]
+	lockedHostPK, err := failHost.HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a regular renter.
+	nodes, err = tg.AddNodes(node.RenterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
 
 	// All the contracts of the renter should be goodForRenew. So there should
 	// be no inactive contracts, only active contracts
@@ -1907,22 +2113,13 @@ func TestRenewFailing(t *testing.T) {
 		}
 		hostMap[pk.String()] = host
 	}
-	// Lock the wallet of one of the used hosts to make the renew fail.
+
+	// Get the contracts
 	rcg, err := renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var lockedHostPK types.SiaPublicKey
-	for _, c := range rcg.ActiveContracts {
-		if host, used := hostMap[c.HostPublicKey.String()]; used {
-			lockedHostPK = c.HostPublicKey
-			if err := host.WalletLockPost(); err != nil {
-				t.Fatal(err)
-			}
-			break
-		}
-	}
 	// Wait until the contract is supposed to be renewed.
 	cg, err := renter.ConsensusGet()
 	if err != nil {
@@ -1943,20 +2140,9 @@ func TestRenewFailing(t *testing.T) {
 	}
 
 	// There should be no inactive contracts, only active contracts since we are
-	// 1 block before the renewWindow. Do this in a retry to give the contractor
-	// some time to catch up.
+	// 1 block before the renewWindow/s second half. Do this in a retry to give
+	// the contractor some time to catch up.
 	err = build.Retry(int(renewWindow/2), time.Second, func() error {
-		rcg, err = renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rcg.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("renter had %v contracts but should have %v",
-				len(rcg.ActiveContracts), len(tg.Hosts()))
-		}
-		if len(rcg.InactiveContracts) != 0 {
-			return fmt.Errorf("Renter should have 0 inactive contracts but has %v", len(rcg.InactiveContracts))
-		}
 		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
@@ -1968,6 +2154,7 @@ func TestRenewFailing(t *testing.T) {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
+		blockHeight++
 	}
 
 	// We should be within the second half of the renew window now. We keep
@@ -2353,12 +2540,16 @@ func TestRenterLosingHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add renter to the group
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
-	renterParams.Allowance.Hosts = 3
+	renterParams.Allowance.Hosts = 3 // hosts-1
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal("Failed to add renter:", err)
@@ -2372,9 +2563,6 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 	contractHosts := make(map[string]struct{})
 	for _, c := range rc.ActiveContracts {
-		if _, ok := contractHosts[c.HostPublicKey.String()]; ok {
-			continue
-		}
 		contractHosts[c.HostPublicKey.String()] = struct{}{}
 	}
 
@@ -2449,7 +2637,7 @@ func TestRenterLosingHosts(t *testing.T) {
 
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 200*time.Millisecond, func() error {
 		file, err := r.RenterFileGet(rf.SiaPath())
 		if err != nil {
 			return err
@@ -2572,7 +2760,11 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add renter to the group
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
@@ -3049,6 +3241,7 @@ func TestSetFileTrackingPath(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Create a testgroup.
 	gp := siatest.GroupParams{
@@ -3563,11 +3756,15 @@ func TestSiafileCompatCodeV140(t *testing.T) {
 	if f, err = os.Create(filepath.Join(siafilesDir, dummySiafile)); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if f, err = os.Create(filepath.Join(snapshotsDir, dummySnapshot)); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	// Create new node with legacy sia file.
 	r, err := siatest.NewNode(node.AllModules(testDir))
 	if err != nil {
@@ -4606,97 +4803,135 @@ func TestWorkerStatus(t *testing.T) {
 		pks[c.HostPublicKey.String()] = struct{}{}
 	}
 
-	// Get the worker status
-	rwg, err := r.RenterWorkersGet()
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get the worker status
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// There should be the same number of workers as Hosts
+		if rwg.NumWorkers != numHosts {
+			t.Fatalf("Expected NumWorkers to be %v but got %v", numHosts, rwg.NumWorkers)
+		}
+		if len(rwg.Workers) != numHosts {
+			t.Fatalf("Expected %v Workers but got %v", numHosts, len(rwg.Workers))
+		}
+
+		// No workers should be on cooldown
+		if rwg.TotalDownloadCoolDown != 0 {
+			t.Fatal("Didn't expect any workers on download cool down but found", rwg.TotalDownloadCoolDown)
+		}
+		if rwg.TotalUploadCoolDown != 0 {
+			t.Fatal("Didn't expect any workers on upload cool down but found", rwg.TotalUploadCoolDown)
+		}
+
+		// Check Worker information
+		for _, worker := range rwg.Workers {
+			// Contract Field checks
+			if _, ok := contracts[worker.ContractID]; !ok {
+				return fmt.Errorf("Worker Contract ID not found in Contract map %v", worker.ContractID)
+			}
+			cu := worker.ContractUtility
+			if !cu.GoodForUpload {
+				return errors.New("Worker contract should be GFR")
+			}
+			if !cu.GoodForRenew {
+				return errors.New("Worker contract should be GFR")
+			}
+			if cu.BadContract {
+				return errors.New("Worker contract should not be marked as Bad")
+			}
+			if cu.LastOOSErr != 0 {
+				return errors.New("Worker contract LastOOSErr should be 0")
+			}
+			if cu.Locked {
+				return errors.New("Worker contract should not be locked")
+			}
+			if _, ok := pks[worker.HostPubKey.String()]; !ok {
+				return fmt.Errorf("Worker PubKey not found in PubKey map %v", worker.HostPubKey)
+			}
+
+			// Download Field checks
+			if worker.DownloadOnCoolDown {
+				return errors.New("Worker should not be on cool down")
+			}
+			if worker.DownloadQueueSize != 0 {
+				return fmt.Errorf("Expected download queue to be empty but was %v", worker.DownloadQueueSize)
+			}
+			if worker.DownloadTerminated {
+				return errors.New("Worker should not be marked as DownloadTerminated")
+			}
+
+			// Upload Field checks
+			if worker.UploadCoolDownError != "" {
+				return fmt.Errorf("Cool down error should be nil but was %v", worker.UploadCoolDownError)
+			}
+			if worker.UploadCoolDownTime.Nanoseconds() >= 0 {
+				return fmt.Errorf("Cool down time should be negative but was %v", worker.UploadCoolDownTime)
+			}
+			if worker.UploadOnCoolDown {
+				return errors.New("Worker should not be on cool down")
+			}
+			if worker.UploadQueueSize != 0 {
+				return fmt.Errorf("Expected upload queue to be empty but was %v", worker.UploadQueueSize)
+			}
+			if worker.UploadTerminated {
+				return errors.New("Worker should not be marked as UploadTerminated")
+			}
+
+			// Account checks
+			if !worker.AccountBalanceTarget.Equals(types.SiacoinPrecision) {
+				return fmt.Errorf("Expected balance target to be 1SC but was %v", worker.AccountBalanceTarget.HumanString())
+			}
+
+			// Job Queues
+			if worker.BackupJobQueueSize != 0 {
+				return fmt.Errorf("Expected backup queue to be empty but was %v", worker.BackupJobQueueSize)
+			}
+
+			// AccountStatus checks
+			if worker.AccountStatus.AvailableBalance.IsZero() {
+				return fmt.Errorf("Expected available balance to be greater zero but was %v", worker.AccountStatus.AvailableBalance.HumanString())
+			}
+			if !worker.AccountStatus.NegativeBalance.IsZero() {
+				return fmt.Errorf("Expected negative balance to be zero but was %v", worker.AccountStatus.NegativeBalance.HumanString())
+			}
+			if worker.AccountStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.AccountStatus.RecentErr)
+			}
+
+			// PriceTableStatus checks
+			if worker.PriceTableStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.PriceTableStatus.RecentErr)
+			}
+
+			// ReadJobsStatus checks
+			if worker.ReadJobsStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.ReadJobsStatus.RecentErr)
+			}
+			if worker.ReadJobsStatus.JobQueueSize != 0 {
+				return fmt.Errorf("Expected job queue size to be 0 but was %v", worker.ReadJobsStatus.JobQueueSize)
+			}
+			if worker.ReadJobsStatus.ConsecutiveFailures != 0 {
+				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.ReadJobsStatus.ConsecutiveFailures)
+			}
+
+			// HasSectorJobStatus checks
+			if worker.HasSectorJobsStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.HasSectorJobsStatus.RecentErr)
+			}
+			if worker.HasSectorJobsStatus.JobQueueSize != 0 {
+				return fmt.Errorf("Expected job queue size to be 0 but was %v", worker.HasSectorJobsStatus.JobQueueSize)
+			}
+			if worker.HasSectorJobsStatus.ConsecutiveFailures != 0 {
+				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.HasSectorJobsStatus.ConsecutiveFailures)
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// There should be the same number of workers as Hosts
-	if rwg.NumWorkers != numHosts {
-		t.Errorf("Expected NumWorkers to be %v but got %v", numHosts, rwg.NumWorkers)
-	}
-	if len(rwg.Workers) != numHosts {
-		t.Errorf("Expected %v Workers but got %v", numHosts, len(rwg.Workers))
-	}
-
-	// No workers should be on cooldown
-	if rwg.TotalDownloadCoolDown != 0 {
-		t.Error("Didn't expect any workers on download cool down but found", rwg.TotalDownloadCoolDown)
-	}
-	if rwg.TotalUploadCoolDown != 0 {
-		t.Error("Didn't expect any workers on upload cool down but found", rwg.TotalUploadCoolDown)
-	}
-
-	// Check Worker information
-	for _, worker := range rwg.Workers {
-		// Contract Field checks
-		if _, ok := contracts[worker.ContractID]; !ok {
-			t.Error("Worker Contract ID not found in Contract map", worker.ContractID)
-		}
-		cu := worker.ContractUtility
-		if !cu.GoodForUpload {
-			t.Error("Worker contract should be GFR")
-		}
-		if !cu.GoodForRenew {
-			t.Error("Worker contract should be GFR")
-		}
-		if cu.BadContract {
-			t.Error("Worker contract should not be marked as Bad")
-		}
-		if cu.LastOOSErr != 0 {
-			t.Error("Worker contract LastOOSErr should be 0")
-		}
-		if cu.Locked {
-			t.Error("Worker contract should not be locked")
-		}
-		if _, ok := pks[worker.HostPubKey.String()]; !ok {
-			t.Error("Worker PubKey not found in PubKey map", worker.HostPubKey)
-		}
-
-		// Download Field checks
-		if worker.DownloadOnCoolDown {
-			t.Error("Worker should not be on cool down")
-		}
-		if worker.DownloadQueueSize != 0 {
-			t.Error("Expected download queue to be empty but was", worker.DownloadQueueSize)
-		}
-		if worker.DownloadTerminated {
-			t.Error("Worker should not be marked as DownloadTerminated")
-		}
-
-		// Upload Field checks
-		if worker.UploadCoolDownError != "" {
-			t.Error("Cool down error should be nil but was", worker.UploadCoolDownError)
-		}
-		if worker.UploadCoolDownTime.Nanoseconds() >= 0 {
-			t.Error("Cool down time should be negative but was", worker.UploadCoolDownTime)
-		}
-		if worker.UploadOnCoolDown {
-			t.Error("Worker should not be on cool down")
-		}
-		if worker.UploadQueueSize != 0 {
-			t.Error("Expected upload queue to be empty but was", worker.UploadQueueSize)
-		}
-		if worker.UploadTerminated {
-			t.Error("Worker should not be marked as UploadTerminated")
-		}
-
-		// Ephemeral Account cheks
-		if !worker.AvailableBalance.IsZero() {
-			t.Error("Expected available balance to be zero but was", worker.AvailableBalance.HumanString())
-		}
-		if !worker.BalanceTarget.Equals(types.SiacoinPrecision) {
-			t.Error("Expected balance target to be 1SC but was", worker.BalanceTarget.HumanString())
-		}
-
-		// Job Queues
-		if worker.BackupJobQueueSize != 0 {
-			t.Error("Expected backup queue to be empty but was", worker.BackupJobQueueSize)
-		}
-		if worker.DownloadRootJobQueueSize != 0 {
-			t.Error("Expected download by root queue to be empty but was", worker.DownloadRootJobQueueSize)
-		}
 	}
 }
 
@@ -4721,12 +4956,18 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a renter with a dependency that simulates an unclean shutdown by
-	// preventing accounts to be saved
+	// preventing accounts to be saved and also prevents the snapshot syncing
+	// thread from running. That way we won't experience unexpected withdrawals
+	// or refunds.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.RenterDeps = &dependencies.DependencyInterruptAccountSaveOnShutdown{}
+	renterParams.RenterDeps = &dependencies.DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown{}
 
 	// add a host with a dependency that alters the deposit amount, in a way not
 	// noticeable to the renter until he asks for his balance, this is necessary
@@ -4770,7 +5011,7 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	// ephemeral account, remember this balance value as the renter's version of
 	// the balance
 	var renterBalance types.Currency
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(300, 100*time.Millisecond, func() error {
 		rwg, err := r.RenterWorkersGet()
 		if err != nil {
 			return err
@@ -4779,10 +5020,10 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 		if !found {
 			return errors.New("worker not in worker pool yet")
 		}
-		if w.AvailableBalance.IsZero() {
+		if w.AccountStatus.AvailableBalance.IsZero() {
 			return errors.New("expected worker to have a funded account, instead its balance is still 0")
 		}
-		renterBalance = w.AvailableBalance
+		renterBalance = w.AccountStatus.AvailableBalance
 		return nil
 	})
 	if err != nil {
@@ -4807,16 +5048,236 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	if !found {
 		t.Fatal("Expected worker to be found")
 	}
-	if w.AvailableBalance.IsZero() {
+	if w.AccountStatus.AvailableBalance.IsZero() {
 		t.Fatal("Expected the renter to have synced its balance to the host's version of the balance")
 	}
 
 	// safety check to avoid panic on sub later
-	if w.AvailableBalance.Cmp(renterBalance) >= 0 {
-		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AvailableBalance, renterBalance)
+	if w.AccountStatus.AvailableBalance.Cmp(renterBalance) >= 0 {
+		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AccountStatus.AvailableBalance, renterBalance)
 	}
 	delta := types.SiacoinPrecision.Div64(10)
-	if renterBalance.Sub(w.AvailableBalance).Cmp(delta) < 0 {
-		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AvailableBalance, renterBalance)
+	if renterBalance.Sub(w.AccountStatus.AvailableBalance).Cmp(delta) < 0 {
+		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AccountStatus.AvailableBalance, renterBalance)
+	}
+}
+
+// TestReadSectorOutputCorrupted verifies that the merkle proof check on the
+// ReadSector MDM instruction works as expected.
+func TestReadSectorOutputCorrupted(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup with a renter and miner.
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Renters: 1,
+	}
+
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// add a host that corrupts downloads.
+	deps1 := dependencies.NewDependencyCorruptMDMOutput()
+	deps2 := dependencies.NewDependencyCorruptMDMOutput()
+	hostParams1 := node.Host(filepath.Join(testDir, "host1"))
+	hostParams2 := node.Host(filepath.Join(testDir, "host2"))
+	hostParams1.HostDeps = deps1
+	hostParams2.HostDeps = deps2
+	_, err = tg.AddNodes(hostParams1, hostParams2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a file.
+	renter := tg.Renters()[0]
+	skylink, _, _, err := renter.UploadNewSkyfileBlocking("test", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the file.
+	_, _, err = renter.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable the dependencies and download again.
+	deps1.Fail()
+	deps2.Fail()
+	_, _, err = renter.SkynetSkylinkGet(skylink)
+	if err == nil || !strings.Contains(err.Error(), "all workers failed") {
+		t.Fatal(err)
+	}
+
+	// Download one more time. It should work again. Do it in a loop since the
+	// workers might be on a cooldown.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, _, err = renter.SkynetSkylinkGet(skylink)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenterPricesVolatility verifies that the renter caches its price
+// estimation, and subsequent calls result in non-volatile results.
+func TestRenterPricesVolatility(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup with PriceEstimationScope hosts.
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Hosts:   modules.PriceEstimationScope,
+		Renters: 1,
+	}
+
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	renter := tg.Renters()[0]
+	host := tg.Hosts()[0]
+
+	// Get initial estimate.
+	allowance := modules.Allowance{}
+	rpg, err := renter.RenterPricesGet(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := rpg.RenterPriceEstimation
+
+	// Changing the contract price should be enough to trigger a change
+	// if the hosts are not cached.
+	hg, err := host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcp := hg.InternalSettings.MinContractPrice
+	err = host.HostModifySettingPost(client.HostParamMinContractPrice, mcp.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the estimate again.
+	rpg, err = renter.RenterPricesGet(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := rpg.RenterPriceEstimation
+
+	// Initial and After should be the same.
+	if !reflect.DeepEqual(initial, after) {
+		initialJSON, _ := json.MarshalIndent(initial, "", "\t")
+		afterJSON, _ := json.MarshalIndent(after, "", "\t")
+		t.Log("Initial:", string(initialJSON))
+		t.Log("After:", string(afterJSON))
+		t.Fatal("expected renter price estimation to be constant")
+	}
+}
+
+// TestRenterPricesVolatility verifies that the renter caches its price
+// estimation, and subsequent calls result in non-volatile results.
+func TestRenterLimitGFUContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup with PriceEstimationScope hosts.
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Hosts:   int(siatest.DefaultAllowance.Hosts),
+		Renters: 1,
+	}
+
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	renter := tg.Renters()[0]
+
+	// Helper to check the number of GFU contracts.
+	test := func(hosts uint64, portalMode bool) error {
+		// Update the allowance.
+		allowance := siatest.DefaultAllowance
+		allowance.Hosts = hosts
+		if portalMode {
+			allowance.PaymentContractInitialFunding = types.SiacoinPrecision
+		}
+		err := renter.RenterPostAllowance(allowance)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Wait for the number of hosts to match allowance.
+		retries := 0
+		return build.Retry(100, 100*time.Millisecond, func() error {
+			if retries%10 == 0 {
+				err := tg.Miners()[0].MineBlock()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			retries++
+
+			rcg, err := renter.RenterAllContractsGet()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			gfuContracts := uint64(0)
+			for _, contract := range rcg.ActiveContracts {
+				if contract.GoodForUpload {
+					gfuContracts++
+				}
+			}
+			if gfuContracts != hosts && !portalMode {
+				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
+			} else if gfuContracts != uint64(len(tg.Hosts())) && portalMode {
+				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
+			}
+			return nil
+		})
+	}
+
+	// Run for default allowance and then one less every time until we reach 0
+	// hosts.
+	for hosts := siatest.DefaultAllowance.Hosts; hosts > 0; hosts-- {
+		if err := test(hosts, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Run for portal.
+	if err := test(1, true); err != nil {
+		t.Fatal(err)
 	}
 }

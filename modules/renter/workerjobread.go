@@ -3,6 +3,7 @@ package renter
 import (
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -64,7 +65,7 @@ func (j *jobRead) callDiscard(err error) {
 		select {
 		case j.staticResponseChan <- response:
 		case <-w.renter.tg.StopChan():
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		}
 	})
 }
@@ -85,7 +86,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
@@ -136,32 +137,45 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 	return
 }
 
-// managedRead returns the sector data for the given read program.
-func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]byte, error) {
+// managedRead returns the sector data for the given read program and the merkle
+// proof.
+func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
 	// execute it
-	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	if err != nil {
-		return nil, err
+		return []programResponse{}, err
 	}
 
-	// Pull the sector data from the response.
-	var sectorData []byte
-	for _, resp := range responses {
-		if resp.Error != nil {
-			return nil, resp.Error
-		}
-		sectorData = resp.Output
-		break
+	// Sanity check number of responses.
+	if len(responses) > len(program) {
+		build.Critical("managedExecuteProgram should return at most len(program) instructions")
 	}
+	if len(responses) == 0 {
+		build.Critical("managedExecuteProgram should at least return one instruction when err == nil")
+	}
+	// If the number of responses doesn't match, the last response should
+	// contain an error message.
+	if len(responses) != len(program) {
+		err := responses[len(responses)-1].Error
+		return []programResponse{}, errors.AddContext(err, "managedRead: program execution was interrupted")
+	}
+
+	// The last instruction is the actual download.
+	response := responses[len(responses)-1]
+	if response.Error != nil {
+		return []programResponse{}, response.Error
+	}
+	sectorData := response.Output
+
 	// Check that we received the amount of data that we were expecting.
 	if uint64(len(sectorData)) != j.staticLength {
-		return nil, errors.New("worker returned the wrong amount of data")
+		return []programResponse{}, errors.New("worker returned the wrong amount of data")
 	}
-	return sectorData, nil
+	return responses, nil
 }
 
 // callAverageJobTime will return the recent performance of the worker
-// attempting to complete read sector jobs. The call distinguishes based on the
+// attempting to complete read jobs. The call distinguishes based on the
 // size of the job, breaking the jobs into 3 categories: less than 64kb, less
 // than 1mb, and up to a full sector in size.
 //

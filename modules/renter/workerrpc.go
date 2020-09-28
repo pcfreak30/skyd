@@ -1,15 +1,33 @@
 package renter
 
 import (
+	"bytes"
 	"io"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/ratelimit"
+	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
 )
+
+// defaultNewStreamTimeout is a default timeout for creating a new stream.
+var defaultNewStreamTimeout = build.Select(build.Var{
+	Standard: 5 * time.Minute,
+	Testing:  10 * time.Second,
+	Dev:      time.Minute,
+}).(time.Duration)
+
+// defaultRPCDeadline is a default timeout for executing an RPC.
+var defaultRPCDeadline = build.Select(build.Var{
+	Standard: 5 * time.Minute,
+	Testing:  10 * time.Second,
+	Dev:      time.Minute,
+}).(time.Duration)
 
 // programResponse is a helper struct that wraps the RPCExecuteProgramResponse
 // alongside the data output
@@ -19,7 +37,7 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// check host version
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
@@ -34,8 +52,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// create a new stream
-	var stream siamux.Stream
-	stream, err = w.staticNewStream()
+	stream, err := w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
 		return
@@ -46,15 +63,27 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		}
 	}()
 
+	// set the limit return var.
+	limit = stream.Limit()
+
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// write the specifier
-	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	err = modules.RPCWrite(buffer, modules.RPCExecuteProgram)
 	if err != nil {
 		return
 	}
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
-	err = modules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
+	if err != nil {
+		return
+	}
+
+	// provide payment
+	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
 	if err != nil {
 		return
 	}
@@ -66,20 +95,20 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		ProgramDataLength: uint64(len(data)),
 	}
 
-	// provide payment
-	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
-	if err != nil {
-		return
-	}
-
 	// send the execute program request.
-	err = modules.RPCWrite(stream, epr)
+	err = modules.RPCWrite(buffer, epr)
 	if err != nil {
 		return
 	}
 
 	// send the programData.
-	_, err = stream.Write(data)
+	_, err = buffer.Write(data)
+	if err != nil {
+		return
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		return
 	}
@@ -92,23 +121,27 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// read the responses.
-	responses = make([]programResponse, len(epr.Program))
-	for i := range responses {
-		err = modules.RPCRead(stream, &responses[i])
+	responses = make([]programResponse, 0, len(epr.Program))
+	for i := 0; i < len(epr.Program); i++ {
+		var response programResponse
+		err = modules.RPCRead(stream, &response)
 		if err != nil {
 			return
 		}
 
 		// Read the output data.
-		outputLen := responses[i].OutputLength
-		responses[i].Output = make([]byte, outputLen)
-		_, err = io.ReadFull(stream, responses[i].Output)
+		outputLen := response.OutputLength
+		response.Output = make([]byte, outputLen)
+		_, err = io.ReadFull(stream, response.Output)
 		if err != nil {
 			return
 		}
 
+		// We received a valid response. Append it.
+		responses = append(responses, response)
+
 		// If the response contains an error we are done.
-		if responses[i].Error != nil {
+		if response.Error != nil {
 			break
 		}
 	}
@@ -121,9 +154,25 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 		w.renter.log.Critical("calling staticNewStream on a host that doesn't support the new protocol")
 		return nil, errors.New("host doesn't support this")
 	}
-	stream, err := w.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, w.staticHostMuxAddress, modules.SiaPKToMuxPK(w.staticHostPubKey))
+
+	// If disrupt is called we sleep for the specified 'defaultNewStreamTimeout'
+	// simulating how an unreachable host would behave in production.
+	timeout := defaultNewStreamTimeout
+	if w.renter.deps.Disrupt("InterruptNewStreamTimeout") {
+		time.Sleep(timeout)
+		return nil, errors.New("InterruptNewStreamTimeout")
+	}
+
+	// Create a stream with a reasonable dial up timeout.
+	stream, err := w.renter.staticMux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, w.staticCache().staticHostMuxAddress, timeout, modules.SiaPKToMuxPK(w.staticHostPubKey))
 	if err != nil {
 		return nil, err
 	}
-	return stream, nil
+	// Set deadline on the stream.
+	err = stream.SetDeadline(time.Now().Add(defaultRPCDeadline))
+	if err != nil {
+		return nil, err
+	}
+	// Wrap the stream in a ratelimit.
+	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
 }

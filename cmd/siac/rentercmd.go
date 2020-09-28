@@ -31,6 +31,9 @@ import (
 const (
 	fileSizeUnits = "B, KB, MB, GB, TB, PB, EB, ZB, YB"
 
+	// truncateErrLength is the length at which an error string gets truncated
+	truncateErrLength = 24
+
 	// colourful strings for the console UI
 	pBarJobProcess = "\x1b[34;1mpinning   \x1b[0m" // blue
 	pBarJobUpload  = "\x1b[33;1muploading \x1b[0m" // yellow
@@ -271,6 +274,48 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Long:  "View the status of the Renter's workers",
 		Run:   wrap(renterworkerscmd),
 	}
+
+	renterWorkersAccountsCmd = &cobra.Command{
+		Use:   "ea",
+		Short: "View the workers' ephemeral account",
+		Long:  "View detailed information of the workers' ephemeral account",
+		Run:   wrap(renterworkerseacmd),
+	}
+
+	renterWorkersDownloadsCmd = &cobra.Command{
+		Use:   "dj",
+		Short: "View the workers' download jobs",
+		Long:  "View detailed information of the workers' download jobs",
+		Run:   wrap(renterworkersdownloadscmd),
+	}
+
+	renterWorkersHasSectorJobSCmd = &cobra.Command{
+		Use:   "hsj",
+		Short: "View the workers' has sector jobs",
+		Long:  "View detailed information of the workers' has sector jobs",
+		Run:   wrap(renterworkershsjcmd),
+	}
+
+	renterWorkersPriceTableCmd = &cobra.Command{
+		Use:   "pt",
+		Short: "View the workers's price table",
+		Long:  "View detailed information of the workers' price table",
+		Run:   wrap(renterworkersptcmd),
+	}
+
+	renterWorkersReadJobsCmd = &cobra.Command{
+		Use:   "rj",
+		Short: "View the workers' read jobs",
+		Long:  "View detailed information of the workers' read jobs",
+		Run:   wrap(renterworkersrjcmd),
+	}
+
+	renterWorkersUploadsCmd = &cobra.Command{
+		Use:   "uj",
+		Short: "View the workers' upload jobs",
+		Long:  "View detailed information of the workers' upload jobs",
+		Run:   wrap(renterworkersuploadscmd),
+	}
 )
 
 // abs returns the absolute representation of a path.
@@ -315,7 +360,7 @@ func rentercmd() {
 	}
 
 	// detailed allowance spending for current period
-	if renterVerbose {
+	if verbose {
 		renterallowancespending(rg)
 	}
 
@@ -327,8 +372,23 @@ func rentercmd() {
 		die(err)
 	}
 
-	if !renterVerbose {
+	if !verbose {
 		return
+	}
+
+	// Print out the memory information for the renter
+	ms := rg.MemoryStatus
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "\nMemory Status\n")
+	fmt.Fprintf(w, "  Available Memory\t%v\n", sizeString(ms.Available))
+	fmt.Fprintf(w, "  Starting Memory\t%v\n", sizeString(ms.Base))
+	fmt.Fprintf(w, "  Requested Memory\t%v\n", sizeString(ms.Requested))
+	fmt.Fprintf(w, "\n  Available Priority Memory\t%v\n", sizeString(ms.PriorityAvailable))
+	fmt.Fprintf(w, "  Starting Priority Memory\t%v\n", sizeString(ms.PriorityBase))
+	fmt.Fprintf(w, "  Requested Priority Memory\t%v\n", sizeString(ms.PriorityRequested))
+	err = w.Flush()
+	if err != nil {
+		die(err)
 	}
 
 	// Print out ratelimit info about the renter
@@ -1453,7 +1513,7 @@ func writeContracts(contracts []api.RenterContract) {
 	w.Flush()
 }
 
-// rentercontractscmd is the handler for the comand `siac renter contracts`.
+// rentercontractscmd is the handler for the command `siac renter contracts`.
 // It lists the Renter's contracts.
 func rentercontractscmd() {
 	rc, err := httpClient.RenterDisabledContractsGet()
@@ -1631,7 +1691,7 @@ Contract %v
 // into a single error.
 func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
-	rd, err := httpClient.RenterDirGet(siaPath)
+	rd, err := httpClient.RenterDirRootGet(siaPath)
 	if err != nil {
 		err = errors.AddContext(err, "failed to get dir info")
 		return
@@ -1654,7 +1714,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		}
 		// Download file.
 		totalSize += file.Filesize
-		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
 			return
@@ -1688,7 +1748,14 @@ func renterdirdownload(path, destination string) {
 	// Parse SiaPath.
 	siaPath, err := modules.NewSiaPath(path)
 	if err != nil {
-		die("Failed to parse SiaPath:", err)
+		die("Couldn't parse SiaPath:", err)
+	}
+	// If root is not set we need to rebase.
+	if !renterDownloadRoot {
+		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		if err != nil {
+			die("Couldn't rebase SiaPath:", err)
+		}
 	}
 	// Download dir.
 	start := time.Now()
@@ -1779,22 +1846,30 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 	return
 }
 
-// renterfilesdownload is the handler for the comand `siac renter download [path] [destination]`.
-// It determines whether a file or a folder is downloaded and calls the corresponding sub-handler.
+// renterfilesdownload is the handler for the command `siac renter download
+// [path] [destination]`. It determines whether a file or a folder is downloaded
+// and calls the corresponding sub-handler.
 func renterfilesdownloadcmd(path, destination string) {
 	// Parse SiaPath.
 	siaPath, err := modules.NewSiaPath(path)
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
-	_, err = httpClient.RenterFileGet(siaPath)
+	// If root is not set we need to rebase.
+	if !renterDownloadRoot {
+		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		if err != nil {
+			die("Couldn't rebase SiaPath:", err)
+		}
+	}
+	_, err = httpClient.RenterFileRootGet(siaPath)
 	if err == nil {
 		renterfilesdownload(path, destination)
 		return
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
-	_, err = httpClient.RenterDirGet(siaPath)
+	_, err = httpClient.RenterDirRootGet(siaPath)
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
@@ -1813,6 +1888,13 @@ func renterfilesdownload(path, destination string) {
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
+	// If root is not set we need to rebase.
+	if !renterDownloadRoot {
+		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		if err != nil {
+			die("Couldn't rebase SiaPath:", err)
+		}
+	}
 	// If the destination is a folder, download the file to that folder.
 	fi, err := os.Stat(destination)
 	if err == nil && fi.IsDir() {
@@ -1823,7 +1905,7 @@ func renterfilesdownload(path, destination string) {
 	// the call will return before the download has completed. The call is made
 	// as an async call.
 	start := time.Now()
-	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
+	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
@@ -1836,7 +1918,8 @@ func renterfilesdownload(path, destination string) {
 	}
 
 	// If the download is blocking, display progress as the file downloads.
-	file, err := httpClient.RenterFileGet(siaPath)
+	var file api.RenterFile
+	file, err = httpClient.RenterFileRootGet(siaPath)
 	if err != nil {
 		die("Error getting file after download has started:", err)
 	}
@@ -1941,7 +2024,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	}
 	for range time.Tick(OutputRefreshRate) {
 		// Get the list of downloads.
-		rdg, err := httpClient.RenterDownloadsGet()
+		rdg, err := httpClient.RenterDownloadsRootGet()
 		if err != nil {
 			continue // benign
 		}
@@ -2017,7 +2100,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 				progressStr += fmt.Sprint(progressLine)
 			}
 		}
-		print(progressStr)
+		fmt.Print(progressStr)
 		progressStr = clearStr
 	}
 	// This code is unreachable, but the compiler requires this to be here.
@@ -2101,7 +2184,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	case 1:
 		path = args[0]
 	default:
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	// Parse the input siapath.
@@ -2159,7 +2242,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Handle the non verbose output.
-	if !renterListVerbose {
+	if !verbose {
 		for _, dir := range dirs {
 			fmt.Printf("%v/\n", dir.dir.SiaPath)
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -2473,7 +2556,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	allowance := modules.Allowance{}
 
 	if len(args) != 0 && len(args) != 4 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	if len(args) > 0 {
@@ -2554,7 +2637,7 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }
 
-// renterworkerscmd is the handler for the comand `siac renter workers`.
+// renterworkerscmd is the handler for the command `siac renter workers`.
 // It lists the Renter's workers.
 func renterworkerscmd() {
 	rw, err := httpClient.RenterWorkersGet()
@@ -2562,13 +2645,19 @@ func renterworkerscmd() {
 		die("Could not get contracts:", err)
 	}
 
-	// Print Worker Pool Summary
-	fmt.Printf(`Worker Pool Summary
-  Total Workers:                %v
-  Workers On Download Cooldown: %v
-  Workers On Upload Cooldown:   %v
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
 
-`, rw.NumWorkers, rw.TotalDownloadCoolDown, rw.TotalUploadCoolDown)
+	// Print Worker Pool Summary
+	fmt.Println("Worker Pool Summary")
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "  Total Workers:\t%v\n", rw.NumWorkers)
+	fmt.Fprintf(w, "  Workers On Download Cooldown:\t%v\n", rw.TotalDownloadCoolDown)
+	fmt.Fprintf(w, "  Workers On Upload Cooldown:\t%v\n", rw.TotalUploadCoolDown)
+	fmt.Fprintf(w, "  Workers On Maintenance Cooldown:\t%v\n", rw.TotalMaintenanceCoolDown)
+	w.Flush()
 
 	// Split Workers into GoodForUpload and !GoodForUpload
 	var goodForUpload, notGoodForUpload []modules.WorkerStatus
@@ -2597,52 +2686,395 @@ func renterworkerscmd() {
 	}
 }
 
+// renterworkerseacmd is the handler for the command `siac renter workers ea`.
+// It lists the status of the account of every worker.
+func renterworkerseacmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// collect some overal account stats
+	var nfw uint64
+	for _, worker := range rw.Workers {
+		if worker.AccountStatus.AvailableBalance.IsZero() {
+			nfw++
+		}
+	}
+	fmt.Println("Worker Accounts Summary")
+
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+
+	// print summary
+	fmt.Fprintf(w, "Total Workers: \t%v\n", rw.NumWorkers)
+	fmt.Fprintf(w, "Non Funded Workers: \t%v\n", nfw)
+
+	// print header
+	hostInfo := "Host PubKey"
+	accountInfo := "\tAvailBal\tNegBal\tTargetBal"
+	errorInfo := "\tSucceededAt\tErrorAt\tError"
+	header := hostInfo + accountInfo + errorInfo
+	fmt.Fprintln(w, "\nWorker Accounts Detail  \n\n"+header)
+
+	// print rows
+	for _, worker := range rw.Workers {
+		as := worker.AccountStatus
+
+		// Host Info
+		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+		// Account Info
+		fmt.Fprintf(w, "\t%s\t%s\t%s",
+			as.AvailableBalance.HumanString(),
+			as.NegativeBalance.HumanString(),
+			worker.AccountBalanceTarget.HumanString())
+
+		// Error Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
+			sanitizeTime(as.RecentSuccessTime, as.RecentSuccessTime != time.Time{}),
+			sanitizeTime(as.RecentErrTime, as.RecentErr != ""),
+			sanitizeErr(as.RecentErr))
+	}
+}
+
+// renterworkersdownloadscmd is the handler for the command `siac renter workers
+// dj`.  It lists the status of the download jobs of every worker.
+func renterworkersdownloadscmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// Create tab writer
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+	// Write Download Info
+	writeWorkerDownloadUploadInfo(true, w, rw)
+}
+
+// writeWorkerDownloadUploadInfo is a helper function for writing the download
+// or upload information to the tabwriter.
+func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw modules.WorkerPoolStatus) {
+	// print summary
+	fmt.Fprintf(w, "Worker Pool Summary \n")
+	fmt.Fprintf(w, "  Total Workers: \t%v\n", rw.NumWorkers)
+	if download {
+		fmt.Fprintf(w, "  Workers On Download Cooldown:\t%v\n", rw.TotalDownloadCoolDown)
+	} else {
+		fmt.Fprintf(w, "  Workers On Upload Cooldown:\t%v\n", rw.TotalUploadCoolDown)
+	}
+
+	// print header
+	hostInfo := "Host PubKey"
+	info := "\tOn Cooldown\tCooldown Time\tLast Error\tQueue\tTerminated"
+	header := hostInfo + info
+	if download {
+		fmt.Fprintln(w, "\nWorker Downloads Detail  \n\n"+header)
+	} else {
+		fmt.Fprintln(w, "\nWorker Uploads Detail  \n\n"+header)
+	}
+
+	// print rows
+	for _, worker := range rw.Workers {
+		// Host Info
+		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+		// Download Info
+		if download {
+			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+				worker.DownloadOnCoolDown,
+				absDuration(worker.DownloadCoolDownTime),
+				sanitizeErr(worker.DownloadCoolDownError),
+				worker.DownloadQueueSize,
+				worker.DownloadTerminated)
+			continue
+		}
+		// Upload Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+			worker.UploadOnCoolDown,
+			absDuration(worker.UploadCoolDownTime),
+			sanitizeErr(worker.UploadCoolDownError),
+			worker.UploadQueueSize,
+			worker.UploadTerminated)
+	}
+}
+
+// renterworkersptcmd is the handler for the command `siac renter workers pt`.
+// It lists the status of the price table of every worker.
+func renterworkersptcmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// collect some overal account stats
+	var workersWithoutPTs uint64
+	for _, worker := range rw.Workers {
+		if !worker.PriceTableStatus.Active {
+			workersWithoutPTs++
+		}
+	}
+	fmt.Println("Worker Price Tables Summary")
+
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+
+	// print summary
+	fmt.Fprintf(w, "Total Workers: \t%v\n", rw.NumWorkers)
+	fmt.Fprintf(w, "Workers Without Price Table: \t%v\n", workersWithoutPTs)
+
+	// print header
+	hostInfo := "Host PubKey"
+	priceTableInfo := "\tActive\tExpiry\tUpdate"
+	queueInfo := "\tErrorAt\tError"
+	header := hostInfo + priceTableInfo + queueInfo
+	fmt.Fprintln(w, "\nWorker Price Tables Detail  \n\n"+header)
+
+	// print rows
+	for _, worker := range rw.Workers {
+		pts := worker.PriceTableStatus
+
+		// Host Info
+		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+		// Price Table Info
+		fmt.Fprintf(w, "\t%t\t%s\t%s",
+			pts.Active,
+			sanitizeTime(pts.ExpiryTime, pts.Active),
+			sanitizeTime(pts.UpdateTime, pts.Active))
+
+		// Error Info
+		fmt.Fprintf(w, "\t%v\t%v\n",
+			sanitizeTime(pts.RecentErrTime, pts.RecentErr != ""),
+			sanitizeErr(pts.RecentErr))
+	}
+}
+
+// renterworkersrjcmd is the handler for the command `siac renter workers rj`.
+// It lists the status of the read job queue for every worker.
+func renterworkersrjcmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+
+	// print header
+	hostInfo := "Host PubKey"
+	queueInfo := "\tJobs\tAvgJobTime64k (ms)\tAvgJobTime1m (ms)\tAvgJobTime4m (ms)\tConsecFail\tErrorAt\tError"
+	header := hostInfo + queueInfo
+	fmt.Fprintln(w, "\nWorker Read Jobs  \n\n"+header)
+
+	// print rows
+	for _, worker := range rw.Workers {
+		rjs := worker.ReadJobsStatus
+
+		// Host Info
+		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+		// ReadJobs Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
+			rjs.JobQueueSize,
+			rjs.AvgJobTime64k,
+			rjs.AvgJobTime1m,
+			rjs.AvgJobTime4m,
+			rjs.ConsecutiveFailures,
+			sanitizeTime(rjs.RecentErrTime, rjs.RecentErr != ""),
+			sanitizeErr(rjs.RecentErr))
+	}
+}
+
+// renterworkershsjcmd is the handler for the command `siac renter workers hs`.
+// It lists the status of the has sector job queue for every worker.
+func renterworkershsjcmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+
+	// print header
+	hostInfo := "Host PubKey"
+	queueInfo := "\tJobs\tAvgJobTime (ms)\tConsecFail\tErrorAt\tError"
+	header := hostInfo + queueInfo
+	fmt.Fprintln(w, "\nWorker Has Sector Jobs  \n\n"+header)
+
+	// print rows
+	for _, worker := range rw.Workers {
+		hsjs := worker.HasSectorJobsStatus
+
+		// Host Info
+		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+		// HasSector Jobs Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+			hsjs.JobQueueSize,
+			hsjs.AvgJobTime,
+			hsjs.ConsecutiveFailures,
+			sanitizeTime(hsjs.RecentErrTime, hsjs.RecentErr != ""),
+			sanitizeErr(hsjs.RecentErr))
+	}
+}
+
+// renterworkersuploadscmd is the handler for the command `siac renter workers
+// uj`.  It lists the status of the upload jobs of every worker.
+func renterworkersuploadscmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// Create tab writer
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+	// Write Upload Info
+	writeWorkerDownloadUploadInfo(false, w, rw)
+}
+
 // writeWorkers is a helper function to display workers
 func writeWorkers(workers []modules.WorkerStatus) {
 	fmt.Println("  Number of Workers:", len(workers))
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
-	downloadInfo := "\tDownload On Cooldown\tDownload Queue\tDownload Terminated"
-	uploadInfo := "\tLast Upload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
-	eaInfo := "\tAvailable Balance\tBalance Targe\tFund Account Queue"
-	jobInfo := "\tBackup Queue\tDownload By Root Queue"
-	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+eaInfo+jobInfo)
+	contractHeader := "Worker Contract\t \t \t "
+	contractInfo := "Host PubKey\tContract ID\tGood For Renew\tGood For Upload"
+	downloadHeader := "\tWorker Downloads\t "
+	downloadInfo := "\tOn Cooldown\tQueue"
+	uploadHeader := "\tWorker Uploads\t "
+	uploadInfo := "\tOn Cooldown\tQueue"
+	maintenanceHeader := "\tWorker Maintenance\t \t "
+	maintenanceInfo := "\tOn Cooldown\tCooldown Time\tLast Error"
+	eaHeader := "\tWorker Account"
+	jobHeader := "\tWorker Jobs\t \t "
+	jobInfo := "\tBackups\tHas Sector"
+	fmt.Fprintln(w, "\n  "+contractHeader+downloadHeader+uploadHeader+maintenanceHeader+eaHeader+jobHeader)
+	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+jobInfo)
+
 	for _, worker := range workers {
-		// Sanitize output
-		var uploadCoolDownTime time.Duration
-		if worker.UploadCoolDownTime > 0 {
-			uploadCoolDownTime = worker.UploadCoolDownTime
-		}
 		// Contract Info
 		fmt.Fprintf(w, "  %v\t%v\t%v\t%v",
-			worker.ContractID,
 			worker.HostPubKey.String(),
+			worker.ContractID,
 			worker.ContractUtility.GoodForRenew,
 			worker.ContractUtility.GoodForUpload)
 
 		// Download Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v",
+		fmt.Fprintf(w, "\t%v\t%v",
 			worker.DownloadOnCoolDown,
-			worker.DownloadQueueSize,
-			worker.DownloadTerminated)
+			worker.DownloadQueueSize)
 
 		// Upload Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v",
-			worker.UploadCoolDownError,
-			uploadCoolDownTime,
-			worker.UploadOnCoolDown,
-			worker.UploadQueueSize,
-			worker.UploadTerminated)
-
-		// EA Info
 		fmt.Fprintf(w, "\t%v\t%v",
-			worker.AvailableBalance,
-			worker.BalanceTarget)
+			worker.UploadOnCoolDown,
+			worker.UploadQueueSize)
+
+		// Maintenance Info
+		fmt.Fprintf(w, "\t%t\t%v\t%v",
+			worker.MaintenanceOnCooldown,
+			worker.MaintenanceCoolDownTime,
+			sanitizeErr(worker.MaintenanceCoolDownError))
 
 		// Job Info
 		fmt.Fprintf(w, "\t%v\t%v\n",
 			worker.BackupJobQueueSize,
-			worker.DownloadRootJobQueueSize)
+			worker.HasSectorJobsStatus.JobQueueSize)
 	}
 	w.Flush()
+}
+
+// absDuration is a small helper function that sanitizes the output for the
+// given time duration. If the duration is less than 0 it will return 0,
+// otherwise it will return the duration rounded to the nearest second.
+func absDuration(t time.Duration) time.Duration {
+	if t <= 0 {
+		return 0
+	}
+	return t.Round(time.Second)
+}
+
+// sanitizeTime is a small helper function that sanitizes the output for the
+// given time. If the given 'cond' value is false, it will print "-", if it is
+// true it will print the time in a predefined format.
+func sanitizeTime(t time.Time, cond bool) string {
+	if !cond {
+		return "-"
+	}
+	return fmt.Sprintf("%v", t.Format(time.RFC3339))
+}
+
+// sanitizeErr is a small helper function that sanitizes the output for the
+// given error string. It will print "-", if the error string is the equivalent
+// of a nil error.
+func sanitizeErr(errStr string) string {
+	if errStr == "" {
+		return "-"
+	}
+	if !verbose && len(errStr) > truncateErrLength {
+		errStr = errStr[:truncateErrLength] + "..."
+	}
+	return errStr
 }

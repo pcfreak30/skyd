@@ -69,6 +69,12 @@ const (
 	// MDMTimeReadSector is the time for executing a 'ReadSector' instruction.
 	MDMTimeReadSector = 1000
 
+	// MDMTimeRevision is the time for executing a 'Revision' instruction.
+	MDMTimeRevision = 1
+
+	// MDMTimeSwapSector is the time for executing an 'SwapSector' instruction.
+	MDMTimeSwapSector = 1
+
 	// MDMTimeWriteSector is the time for executing a 'WriteSector' instruction.
 	MDMTimeWriteSector = 10000
 
@@ -91,6 +97,14 @@ const (
 	// RPCIReadOffsetLen is the expected length of the 'Args' of a ReadOffset
 	// instruction.
 	RPCIReadOffsetLen = 17
+
+	// RPCIRevisionLen is the expected length of the 'Args' of a Revision
+	// instruction.
+	RPCIRevisionLen = 0
+
+	// RPCISwapSectorLen is the expected length of the 'Args' of an SwapSector
+	// instructon.
+	RPCISwapSectorLen = 17 // 2 uint64 offsets + merkle proof flag
 )
 
 var (
@@ -119,6 +133,12 @@ var (
 	// SpecifierReadSector is the specifier for the ReadSector instruction.
 	SpecifierReadSector = InstructionSpecifier{'R', 'e', 'a', 'd', 'S', 'e', 'c', 't', 'o', 'r'}
 
+	// SpecifierRevision is the specifier for the Revision instruction.
+	SpecifierRevision = InstructionSpecifier{'R', 'e', 'v', 'i', 's', 'i', 'o', 'n'}
+
+	// SpecifierSwapSector is the specifier for the SwapSector instruction.
+	SpecifierSwapSector = InstructionSpecifier{'S', 'w', 'a', 'p', 'S', 'e', 'c', 't', 'o', 'r'}
+
 	// ErrInsufficientBandwidthBudget is returned when bandwidth can no longer
 	// be paid for with the provided budget.
 	ErrInsufficientBandwidthBudget = errors.New("insufficient budget for bandwidth")
@@ -131,6 +151,14 @@ var (
 	// collateral budget of an MDM program is not sufficient to execute the next
 	// instruction.
 	ErrMDMInsufficientCollateralBudget = errors.New("remaining collateral budget is insufficient")
+)
+
+type (
+	// MDMInstructionRevisionResponse is the format of the MDM's revision
+	// instruction's output.
+	MDMInstructionRevisionResponse struct {
+		RevisionTxn types.Transaction
+	}
 )
 
 // RPCHasSectorInstruction creates an Instruction from arguments.
@@ -160,11 +188,10 @@ func RPCIReadSector(rootOff, offsetOff, lengthOff uint64, merkleProof bool) Inst
 
 // MDMAppendCost is the cost of executing an 'Append' instruction.
 func MDMAppendCost(pt *RPCPriceTable, duration types.BlockHeight) (types.Currency, types.Currency) {
+	// Cost for writing the Data.
+	writeCost := MDMWriteCost(pt, SectorSize)
 	// Cost of storing for the duration.
-	storeLengthCost := pt.StoreLengthCost.Mul64(SectorSize).Mul64(uint64(duration))
-	writeCost := pt.WriteLengthCost.Mul64(SectorSize).Add(pt.WriteBaseCost)
-	// Potential refund.
-	storeCost := pt.WriteStoreCost.Mul64(SectorSize).Add(storeLengthCost)
+	storeCost := pt.WriteStoreCost.Mul64(SectorSize).Mul64(uint64(duration))
 	return writeCost.Add(storeCost), storeCost
 }
 
@@ -175,10 +202,9 @@ func MDMCopyCost(pt RPCPriceTable, contractSize uint64) types.Currency {
 
 // MDMDropSectorsCost is the cost of executing a 'DropSectors' instruction for a
 // certain number of dropped sectors.
-func MDMDropSectorsCost(pt *RPCPriceTable, numSectorsDropped uint64) (types.Currency, types.Currency) {
+func MDMDropSectorsCost(pt *RPCPriceTable, numSectorsDropped uint64) types.Currency {
 	cost := pt.DropSectorsUnitCost.Mul64(numSectorsDropped).Add(pt.DropSectorsBaseCost)
-	refund := types.ZeroCurrency
-	return cost, refund
+	return cost
 }
 
 // MDMInitCost is the cost of instantiating the MDM.
@@ -188,25 +214,33 @@ func MDMInitCost(pt *RPCPriceTable, programLen, numInstructions uint64) types.Cu
 }
 
 // MDMHasSectorCost is the cost of executing a 'HasSector' instruction.
-func MDMHasSectorCost(pt *RPCPriceTable) (types.Currency, types.Currency) {
+func MDMHasSectorCost(pt *RPCPriceTable) types.Currency {
 	cost := pt.HasSectorBaseCost
-	refund := types.ZeroCurrency // no refund
-	return cost, refund
+	return cost
 }
 
 // MDMReadCost is the cost of executing a 'Read' instruction. It is defined as:
 // 'readBaseCost' + 'readLengthCost' * `readLength`
-func MDMReadCost(pt *RPCPriceTable, readLength uint64) (types.Currency, types.Currency) {
+func MDMReadCost(pt *RPCPriceTable, readLength uint64) types.Currency {
 	cost := pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
-	refund := types.ZeroCurrency // no refund
-	return cost, refund
+	return cost
+}
+
+// MDMRevisionCost is the cost of executing a 'Revision' instruction.
+func MDMRevisionCost(pt *RPCPriceTable) types.Currency {
+	cost := pt.RevisionBaseCost
+	return cost
+}
+
+// MDMSwapSectorCost is the cost of executing a 'SwapSector' instruction.
+func MDMSwapSectorCost(pt *RPCPriceTable) types.Currency {
+	return pt.SwapSectorCost
 }
 
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
-func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) (types.Currency, types.Currency) {
+func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) types.Currency {
 	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
-	storeCost := types.ZeroCurrency // no refund since we overwrite existing storage
-	return writeCost, storeCost
+	return writeCost
 }
 
 // MDMSwapCost is the cost of executing a 'Swap' instruction.
@@ -246,6 +280,18 @@ func MDMHasSectorMemory() uint64 {
 // MDMReadMemory returns the additional memory consumption of a 'Read' instruction.
 func MDMReadMemory() uint64 {
 	return 0 // 'Read' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMRevisionMemory returns the additional memory consumption of a 'Revision'
+// instruction.
+func MDMRevisionMemory() uint64 {
+	return 0 // 'Revision' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMSwapSectorMemory returns the additional memory consumption of a
+// 'SwapSector' instruction.
+func MDMSwapSectorMemory() uint64 {
+	return 0 // 'SwapSector' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
 // MDMBandwidthCost computes the total bandwidth cost given a price table and
@@ -291,6 +337,18 @@ func MDMReadCollateral() types.Currency {
 	return types.ZeroCurrency
 }
 
+// MDMRevisionCollateral returns the additional collateral a 'Revision'
+// instruction requires the host to put up.
+func MDMRevisionCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMSwapSectorCollateral returns the additional collateral a 'SwapSector'
+// instruction requires the host to put up.
+func MDMSwapSectorCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
 // ReadOnly returns true if the program consists of no write instructions.
 func (p Program) ReadOnly() bool {
 	for _, instruction := range p {
@@ -300,8 +358,11 @@ func (p Program) ReadOnly() bool {
 		case SpecifierDropSectors:
 			return false
 		case SpecifierHasSector:
-		case SpecifierReadSector:
 		case SpecifierReadOffset:
+		case SpecifierReadSector:
+		case SpecifierRevision:
+		case SpecifierSwapSector:
+			return false
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -321,8 +382,12 @@ func (p Program) RequiresSnapshot() bool {
 		case SpecifierDropSectors:
 			return true
 		case SpecifierHasSector:
-		case SpecifierReadSector:
 		case SpecifierReadOffset:
+			return true
+		case SpecifierReadSector:
+		case SpecifierRevision:
+			return true
+		case SpecifierSwapSector:
 			return true
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")

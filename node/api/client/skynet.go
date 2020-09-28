@@ -15,6 +15,13 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
+// skylink file setting the given ETag as value in the If-None-Match request
+// header.
+func (uc *UnsafeClient) SkynetSkylinkGetWithETag(skylink string, eTag string) (*http.Response, error) {
+	return uc.GetWithHeaders(skylinkQueryWithValues(skylink, url.Values{}), http.Header{"If-None-Match": []string{eTag}})
+}
+
 // RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
 func (c *Client) RenterSkyfileGet(siaPath modules.SiaPath, root bool) (rf api.RenterFile, err error) {
 	if !root {
@@ -44,14 +51,6 @@ func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byt
 	return c.skynetSkylinkGetWithParameters(skylink, params)
 }
 
-// SkynetSkylinkGetWithRedirect uses the /skynet/skylink endpoint to download a
-// skylink file, specifying whether redirecting is allowed or not.
-func (c *Client) SkynetSkylinkGetWithRedirect(skylink string, allowRedirect bool) ([]byte, modules.SkyfileMetadata, error) {
-	params := make(map[string]string)
-	params["redirect"] = fmt.Sprintf("%t", allowRedirect)
-	return c.skynetSkylinkGetWithParameters(skylink, params)
-}
-
 // skynetSkylinkGetWithParameters uses the /skynet/skylink endpoint to download
 // a skylink file, specifying the given parameters.
 // The caller of this function is responsible for validating the parameters!
@@ -61,10 +60,10 @@ func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[strin
 		values.Set(k, v)
 	}
 
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	header, fileData, err := c.getRawResponse(getQuery)
 	if err != nil {
-		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response")
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response for GET with parameters")
 	}
 
 	var sm modules.SkyfileMetadata
@@ -81,8 +80,43 @@ func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[strin
 // SkynetSkylinkHead uses the /skynet/skylink endpoint to get the headers that
 // are returned if the skyfile were to be requested using the SkynetSkylinkGet
 // method.
-func (c *Client) SkynetSkylinkHead(skylink string, timeout int) (int, http.Header, error) {
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?timeout=%d", skylink, timeout)
+func (c *Client) SkynetSkylinkHead(skylink string) (int, http.Header, error) {
+	return c.SkynetSkylinkHeadWithParameters(skylink, url.Values{})
+}
+
+// SkynetSkylinkHeadWithTimeout uses the /skynet/skylink endpoint to get the
+// headers that are returned if the skyfile were to be requested using the
+// SkynetSkylinkGet method. It allows to pass a timeout parameter for the
+// request.
+func (c *Client) SkynetSkylinkHeadWithTimeout(skylink string, timeout int) (int, http.Header, error) {
+	values := url.Values{}
+	values.Set("timeout", fmt.Sprintf("%d", timeout))
+	return c.SkynetSkylinkHeadWithParameters(skylink, values)
+}
+
+// SkynetSkylinkHeadWithAttachment uses the /skynet/skylink endpoint to get the
+// headers that are returned if the skyfile were to be requested using the
+// SkynetSkylinkGet method. It allows to pass the 'attachment' parameter.
+func (c *Client) SkynetSkylinkHeadWithAttachment(skylink string, attachment bool) (int, http.Header, error) {
+	values := url.Values{}
+	values.Set("attachment", fmt.Sprintf("%t", attachment))
+	return c.SkynetSkylinkHeadWithParameters(skylink, values)
+}
+
+// SkynetSkylinkHeadWithFormat uses the /skynet/skylink endpoint to get the
+// headers that are returned if the skyfile were to be requested using the
+// SkynetSkylinkGet method. It allows to pass the 'format' parameter.
+func (c *Client) SkynetSkylinkHeadWithFormat(skylink string, format modules.SkyfileFormat) (int, http.Header, error) {
+	values := url.Values{}
+	values.Set("format", string(format))
+	return c.SkynetSkylinkHeadWithParameters(skylink, values)
+}
+
+// SkynetSkylinkHeadWithParameters uses the /skynet/skylink endpoint to get the
+// headers that are returned if the skyfile were to be requested using the
+// SkynetSkylinkGet method. The values are encoded in the querystring.
+func (c *Client) SkynetSkylinkHeadWithParameters(skylink string, values url.Values) (int, http.Header, error) {
+	getQuery := skylinkQueryWithValues(skylink, values)
 	return c.head(getQuery)
 }
 
@@ -91,11 +125,11 @@ func (c *Client) SkynetSkylinkHead(skylink string, timeout int) (int, http.Heade
 func (c *Client) SkynetSkylinkConcatGet(skylink string) ([]byte, modules.SkyfileMetadata, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatConcat))
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	var reader io.Reader
 	header, body, err := c.getReaderResponse(getQuery)
 	if err != nil {
-		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response")
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response for GET with format=concat")
 	}
 	defer body.Close()
 	reader = body
@@ -130,29 +164,39 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 func (c *Client) SkynetSkylinkConcatReaderGet(skylink string) (io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatConcat))
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	_, reader, err := c.getReaderResponse(getQuery)
 	return reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
 // SkynetSkylinkTarReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'tar' format specified.
-func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (io.ReadCloser, error) {
+func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatTar))
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
-	_, reader, err := c.getReaderResponse(getQuery)
-	return reader, errors.AddContext(err, "unable to fetch skylink data")
+	getQuery := skylinkQueryWithValues(skylink, values)
+	header, reader, err := c.getReaderResponse(getQuery)
+	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
 // SkynetSkylinkTarGzReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'targz' format specified.
-func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (io.ReadCloser, error) {
+func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatTarGz))
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
-	_, reader, err := c.getReaderResponse(getQuery)
-	return reader, errors.AddContext(err, "unable to fetch skylink data")
+	getQuery := skylinkQueryWithValues(skylink, values)
+	header, reader, err := c.getReaderResponse(getQuery)
+	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkylinkZipReaderGet uses the /skynet/skylink endpoint to fetch a
+// reader of the file data with the 'zip' format specified.
+func (c *Client) SkynetSkylinkZipReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
+	values := url.Values{}
+	values.Set("format", string(modules.SkyfileFormatZip))
+	getQuery := skylinkQueryWithValues(skylink, values)
+	header, reader, err := c.getReaderResponse(getQuery)
+	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
@@ -242,9 +286,9 @@ func (c *Client) SkynetSkyfilePostDisableForce(params modules.SkyfileUploadParam
 	values.Set("root", rootStr)
 
 	// Set the headers
-	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	headers := http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}
 	if disableForce {
-		headers["Skynet-Disable-Force"] = strconv.FormatBool(disableForce)
+		headers.Add("Skynet-Disable-Force", strconv.FormatBool(disableForce))
 	}
 
 	// Make the call to upload the file.
@@ -270,9 +314,8 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", params.Filename)
-	if params.DefaultPath != nil {
-		values.Set(modules.SkyfileDefaultPathParamName, *params.DefaultPath)
-	}
+	values.Set("disabledefaultpath", strconv.FormatBool(params.DisableDefaultPath))
+	values.Set("defaultpath", params.DefaultPath)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
@@ -283,7 +326,7 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
 
-	headers := map[string]string{"Content-Type": params.ContentType}
+	headers := http.Header{"Content-Type": []string{params.ContentType}}
 	_, resp, err := c.postRawResponseWithHeaders(query, params.Reader, headers)
 	if err != nil {
 		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
@@ -303,7 +346,7 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 // siapath of the siafile that should be converted. The siapath provided inside
 // of the upload params is the name that will be used for the base sector of the
 // skyfile.
-func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (string, error) {
+func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.FileMetadata.Filename)
@@ -319,16 +362,16 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	_, resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
-		return "", errors.AddContext(err, "post call to "+query+" failed")
+		return api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
 	}
 
 	// Parse the response to get the skylink.
 	var rshp api.SkynetSkyfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to parse the skylink upload response")
+		return api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to parse the skylink upload response")
 	}
-	return rshp.Skylink, err
+	return rshp, err
 }
 
 // SkynetBlacklistGet requests the /skynet/blacklist Get endpoint
@@ -337,17 +380,24 @@ func (c *Client) SkynetBlacklistGet() (blacklist api.SkynetBlacklistGET, err err
 	return
 }
 
-// SkynetBlacklistPost requests the /skynet/blacklist Post endpoint
-func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
+// SkynetBlacklistHashPost requests the /skynet/blacklist Post endpoint
+func (c *Client) SkynetBlacklistHashPost(additions, removals []string, isHash bool) (err error) {
 	sbp := api.SkynetBlacklistPOST{
 		Add:    additions,
 		Remove: removals,
+		IsHash: isHash,
 	}
 	data, err := json.Marshal(sbp)
 	if err != nil {
 		return err
 	}
 	err = c.post("/skynet/blacklist", string(data), nil)
+	return
+}
+
+// SkynetBlacklistPost requests the /skynet/blacklist Post endpoint
+func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
+	err = c.SkynetBlacklistHashPost(additions, removals, false)
 	return
 }
 
@@ -419,6 +469,21 @@ func (c *Client) SkykeyGetByID(id skykey.SkykeyID) (skykey.Skykey, error) {
 	return sk, nil
 }
 
+// SkykeyDeleteByIDPost requests the /skynet/deleteskykey POST endpoint using the key ID.
+func (c *Client) SkykeyDeleteByIDPost(id skykey.SkykeyID) error {
+	values := url.Values{}
+	values.Set("id", id.ToString())
+	return c.post("/skynet/deleteskykey", values.Encode(), nil)
+}
+
+// SkykeyDeleteByNamePost requests the /skynet/deleteskykey POST endpoint using
+// the key name.
+func (c *Client) SkykeyDeleteByNamePost(name string) error {
+	values := url.Values{}
+	values.Set("name", name)
+	return c.post("/skynet/deleteskykey", values.Encode(), nil)
+}
+
 // SkykeyCreateKeyPost requests the /skynet/createskykey POST endpoint.
 func (c *Client) SkykeyCreateKeyPost(name string, skType skykey.SkykeyType) (skykey.Skykey, error) {
 	// Set the url values.
@@ -473,4 +538,14 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 		}
 	}
 	return res, nil
+}
+
+// skylinkQueryWithValues returns a skylink query based on the given skylink and
+// values. If the values are empty it will not append a `?` to the query.
+func skylinkQueryWithValues(skylink string, values url.Values) string {
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
+	if len(values) > 0 {
+		getQuery = fmt.Sprintf("%s?%s", getQuery, values.Encode())
+	}
+	return getQuery
 }

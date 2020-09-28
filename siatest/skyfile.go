@@ -15,6 +15,13 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TestFile is a small helper struct that identifies a file to be uploaded. The
+// upload helpers take a slice of these files to ensure order is maintained.
+type TestFile struct {
+	Name string
+	Data []byte
+}
+
 // AddMultipartFile is a helper function to add a file to the multipart form-
 // data. Note that the given data will be treated as binary data, and the multi
 // part's ContentType header will be set accordingly.
@@ -46,11 +53,11 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	return metadata
 }
 
-// UploadNewSkyfileBlocking attempts to upload a skyfile of given size. After it
-// has successfully performed the upload, it will verify the file can be
-// downloaded using its Skylink. Returns the skylink, the parameters used for
-// the upload and potentially an error.
-func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+// UploadNewSkyfileWithDataBlocking attempts to upload a skyfile with given
+// data. After it has successfully performed the upload, it will verify the file
+// can be downloaded using its Skylink. Returns the skylink, the parameters used
+// for the upload and potentially an error.
+func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata []byte, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -58,14 +65,14 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 		return
 	}
 
-	// create random data and wrap it in a reader
-	data := fastrand.Bytes(int(filesize))
-	reader := bytes.NewReader(data)
+	// wrap the data in a reader
+	reader := bytes.NewReader(filedata)
 	sup = modules.SkyfileUploadParameters{
 		SiaPath:             skyfilePath,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: filename,
+			Length:   uint64(len(filedata)),
 			Mode:     modules.DefaultFilePerm,
 		},
 		Reader: reader,
@@ -88,7 +95,7 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 		}
 	}
 	rf := &RemoteFile{
-		checksum: crypto.HashBytes(data),
+		checksum: crypto.HashBytes(filedata),
 		siaPath:  skyfilePath,
 		root:     true,
 	}
@@ -108,14 +115,21 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 	return
 }
 
+// UploadNewSkyfileBlocking attempts to upload a skyfile of given size. After it
+// has successfully performed the upload, it will verify the file can be
+// downloaded using its Skylink. Returns the skylink, the parameters used for
+// the upload and potentially an error.
+func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	data := fastrand.Bytes(int(filesize))
+	return tn.UploadNewSkyfileWithDataBlocking(filename, data, force)
+}
+
 // UploadNewMultipartSkyfileBlocking uploads a multipart skyfile that
 // contains several files. After it has successfully performed the upload, it
 // will verify the file can be downloaded using its Skylink. Returns the
 // skylink, the parameters used for the upload and potentially an error.
 // The `files` argument is a map of filepath->fileContent.
-// `defaultPath` is a pointer in order to represent the case in which the user
-// didn't specify it.
-func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files map[string][]byte, defaultPath *string, force bool) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -126,12 +140,14 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files map
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	subfiles := make(modules.SkyfileSubfiles)
+
 	// add the files
 	var offset uint64
-	for fname, fcontent := range files {
-		subfile := AddMultipartFile(writer, fcontent, "files[]", fname, modules.DefaultFilePerm, &offset)
+	for _, tf := range files {
+		subfile := AddMultipartFile(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset)
 		subfiles[subfile.Filename] = subfile
 	}
+
 	if err = writer.Close(); err != nil {
 		return
 	}
@@ -146,6 +162,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files map
 		ContentType:         writer.FormDataContentType(),
 		Filename:            filename,
 		DefaultPath:         defaultPath,
+		DisableDefaultPath:  disableDefaultPath,
 	}
 
 	// upload a skyfile

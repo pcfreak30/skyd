@@ -7,6 +7,7 @@ package types
 
 import (
 	"errors"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
@@ -143,6 +144,13 @@ func (t Transaction) ID() TransactionID {
 	return txid
 }
 
+// RuneToString converts a rune type to a string.
+func RuneToString(r rune) string {
+	var sb strings.Builder
+	sb.WriteRune(r)
+	return sb.String()
+}
+
 // SiacoinOutputID returns the ID of a siacoin output at the given index,
 // which is calculated by hashing the concatenation of the SiacoinOutput
 // Specifier, all of the fields in the transaction (except the signatures),
@@ -213,6 +221,11 @@ func (t Transaction) SiacoinOutputSum() (sum Currency) {
 // HostSignature returns the host's transaction signature
 func (t Transaction) HostSignature() TransactionSignature {
 	return t.TransactionSignatures[1]
+}
+
+// RenterSignature returns the host's transaction signature
+func (t Transaction) RenterSignature() TransactionSignature {
+	return t.TransactionSignatures[0]
 }
 
 // SiaClaimOutputID returns the ID of the SiacoinOutput that is created when

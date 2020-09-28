@@ -89,6 +89,10 @@ var (
 	// length.
 	ErrIllegalOffsetAndLength = ErrorCommunication("renter is trying to do a modify with an illegal offset and length")
 
+	// ErrInvalidPayoutSums is returned if a revision doesn't sum up to the same
+	// total payout as the previous revision or contract.
+	ErrInvalidPayoutSums = ErrorCommunication("renter provided a revision with an invalid total payout")
+
 	// ErrLargeSector is returned if the renter sends a RevisionAction that has
 	// data which creates a sector that is larger than what the host uses.
 	ErrLargeSector = ErrorCommunication("renter has sent a sector that exceeds the host's sector size")
@@ -133,6 +137,29 @@ var (
 	// action from the renter that it does not understand.
 	ErrUnknownModification = ErrorCommunication("renter is attempting an action that the host does not understand")
 
+	// ErrValidHostOutputAddressChanged is returned when the host's valid output
+	// address changed even though it shouldn't.
+	ErrValidHostOutputAddressChanged = ErrorCommunication("valid host output address changed")
+
+	// ErrMissedHostOutputAddressChanged is returned when the host's missed
+	// payout address changed even though it shouldn't.
+	ErrMissedHostOutputAddressChanged = ErrorCommunication("missed host output address changed")
+
+	// ErrVoidAddressChanged is returned if the void output address changed.
+	ErrVoidAddressChanged = ErrorCommunication("lost collateral address was changed")
+
+	// ErrValidRenterPayoutChanged is returned if the renter's valid payout
+	// changed even though it shouldn't.
+	ErrValidRenterPayoutChanged = ErrorCommunication("valid renter payout changed")
+
+	// ErrMissedRenterPayoutChanged is returned if the renter's missed payout
+	// changed even though it shouldn't.
+	ErrMissedRenterPayoutChanged = ErrorCommunication("missed renter payout changed")
+
+	// ErrValidHostPayoutChanged is returned if the host's valid payout changed
+	// even though it shouldn't.
+	ErrValidHostPayoutChanged = ErrorCommunication("valid host payout changed")
+
 	// ErrVoidPayoutChanged is returned if the void payout changed even though
 	// it wasn't expected to.
 	ErrVoidPayoutChanged = ErrorCommunication("void payout shouldn't change")
@@ -141,7 +168,7 @@ var (
 // finalizeContractArgs are the arguments passed into managedFinalizeContract.
 type finalizeContractArgs struct {
 	builder                 modules.TransactionBuilder
-	renewal                 bool
+	renewedSO               *storageObligation
 	renterPK                crypto.PublicKey
 	renterSignatures        []types.TransactionSignature
 	renterRevisionSignature types.TransactionSignature
@@ -184,7 +211,7 @@ func createRevisionSignature(fcr types.FileContractRevision, renterSig types.Tra
 // to the caller.
 func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.TransactionSignature, types.TransactionSignature, types.FileContractID, error) {
 	// Extract args
-	builder, renewal, renterPK, renterSignatures := args.builder, args.renewal, args.renterPK, args.renterSignatures
+	builder, renterPK, renterSignatures := args.builder, args.renterPK, args.renterSignatures
 	renterRevisionSignature, initialSectorRoots, hostCollateral := args.renterRevisionSignature, args.initialSectorRoots, args.hostCollateral
 	hostInitialRevenue, hostInitialRisk, settings := args.hostInitialRevenue, args.hostInitialRisk, args.settings
 
@@ -276,7 +303,11 @@ func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.Trans
 		// just when the actual modification is happening.
 		i := 0
 		for {
-			err = h.managedAddStorageObligation(so, renewal)
+			if args.renewedSO == nil {
+				err = h.managedAddStorageObligation(so)
+			} else {
+				err = h.managedAddRenewedStorageObligation(*args.renewedSO, so)
+			}
 			if err == nil {
 				return nil
 			}

@@ -75,8 +75,8 @@ func (n *DirNode) Delete() error {
 // Deleted is a wrapper for SiaDir.Deleted.
 func (n *DirNode) Deleted() (bool, error) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	sd, err := n.siaDir()
+	n.mu.Unlock()
 	if err != nil {
 		return false, err
 	}
@@ -723,7 +723,7 @@ func (n *DirNode) readonlyOpenFile(fileName string) (*FileNode, error) {
 		return nil, ErrNotExist
 	}
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to load SiaFile from disk")
+		return nil, errors.AddContext(err, fmt.Sprintf("failed to load SiaFile '%v' from disk", filePath))
 	}
 	fn = &FileNode{
 		node:    newNode(n, filePath, fileName, 0, n.staticWal, n.staticLog),
@@ -749,6 +749,16 @@ func (n *DirNode) openDir(dirName string) (*DirNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Make sure the metadata exists too.
+	dirMDPath := filepath.Join(dirPath, modules.SiaDirExtension)
+	_, err = os.Stat(dirMDPath)
+	if os.IsNotExist(err) {
+		return nil, ErrNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Add the dir to the opened dirs.
 	dir = &DirNode{
 		node:        newNode(n, dirPath, dirName, 0, n.staticWal, n.staticLog),
 		directories: make(map[string]*DirNode),
@@ -912,7 +922,10 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 		if *dir.lazySiaDir == nil {
 			continue // dir isn't loaded
 		}
-		(*dir.lazySiaDir).SetPath(*dir.path)
+		err = (*dir.lazySiaDir).SetPath(*dir.path)
+		if err != nil {
+			return errors.AddContext(err, fmt.Sprintf("unable to set path for %v", *dir.path))
+		}
 	}
 	return err
 }

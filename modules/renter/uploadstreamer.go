@@ -108,7 +108,7 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 		}
 		b[0] = ss.peek[0]
 		b = b[1:]
-		ss.n += 1
+		ss.n++
 		ss.peek = ss.peek[:0]
 		peekBytes++
 	}
@@ -127,7 +127,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	defer r.tg.Done()
 
 	// Perform the upload, close the filenode, and return.
-	fileNode, err := r.callUploadStreamFromReader(up, reader, false)
+	fileNode, err := r.callUploadStreamFromReader(up, reader)
 	if err != nil {
 		return errors.AddContext(err, "unable to stream an upload from a reader")
 	}
@@ -136,7 +136,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 
 // managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
-func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FileNode, error) {
+func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*filesystem.FileNode, error) {
 	siaPath, ec, force, repair, cipherType := up.SiaPath, up.ErasureCode, up.Force, up.Repair, up.CipherType
 	// Check if ec was set. If not use defaults.
 	var err error
@@ -204,9 +204,9 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (fileNode *filesystem.FileNode, err error) {
+func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader) (fileNode *filesystem.FileNode, err error) {
 	// Check the upload params first.
-	fileNode, err = r.managedInitUploadStream(up, backup)
+	fileNode, err = r.managedInitUploadStream(up)
 	if err != nil {
 		return nil, err
 	}
@@ -272,21 +272,20 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
-			// Add the chunk to the upload heap.
-			if !r.uploadHeap.managedPush(uuc) {
-				// The chunk can't be added to the heap. It's probably already being
-				// repaired. Flush the shard and move on to the next one.
+			// Add the chunk to the upload heap's repair map.
+			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
+			if err != nil {
+				return nil, errors.AddContext(err, "unable to push chunk")
+			}
+			if !pushed {
+				// The chunk wasn't added to the repair map meaning it must have already
+				// been in the repair map
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				if err := ss.Close(); err != nil {
 					return nil, err
 				}
 			}
-			// Notify the upload loop.
 			chunks = append(chunks, uuc)
-			select {
-			case r.uploadHeap.newUploads <- struct{}{}:
-			default:
-			}
 		} else {
 			// The chunk doesn't need any work. We still need to read a chunk
 			// from the shard though. Otherwise we will upload the wrong chunk

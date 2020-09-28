@@ -104,7 +104,7 @@ func (j *jobUploadSnapshot) callDiscard(err error) {
 	w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
@@ -124,7 +124,7 @@ func (j *jobUploadSnapshot) callExecute() {
 		w.renter.tg.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
-			case <-j.staticCancelChan:
+			case <-j.staticCtx.Done():
 			case <-w.renter.tg.StopChan():
 			}
 		})
@@ -240,11 +240,22 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 		entry.DataSectors[j] = root
 	}
 
+	// TODO: this should happen before uploading the pieces. Unfortunately RHP2
+	// won't let us easily do that because host.Upload is going to fail if
+	// called after managedDownloadSnapshotTableRHP2.
 	// download the current entry table
 	entryTable, err := r.managedDownloadSnapshotTableRHP2(host)
 	if err != nil {
 		return errors.AddContext(err, "could not download the snapshot table")
 	}
+
+	// check if the table already contains the entry.
+	for _, existingEntry := range entryTable {
+		if existingEntry.UID == meta.UID {
+			return nil // host already contains entry
+		}
+	}
+
 	shouldOverwrite := len(entryTable) != 0 // only overwrite if the sector already contained an entryTable
 	entryTable = append(entryTable, entry)
 
@@ -282,8 +293,11 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 func (w *worker) UploadSnapshot(ctx context.Context, meta modules.UploadedBackup, dotSia []byte) error {
 	uploadSnapshotRespChan := make(chan *jobUploadSnapshotResponse)
 	jus := &jobUploadSnapshot{
-		staticMetadata:    meta,
-		staticSiaFileData: dotSia,
+		staticMetadata:     meta,
+		staticSiaFileData:  dotSia,
+		staticResponseChan: uploadSnapshotRespChan,
+
+		jobGeneric: newJobGeneric(ctx, w.staticJobUploadSnapshotQueue),
 	}
 
 	// Add the job to the queue.

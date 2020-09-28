@@ -116,13 +116,15 @@ type (
 )
 
 // loadRefCounter loads a refcounter from disk
-func loadRefCounter(path string, wal *writeaheadlog.WAL) (*refCounter, error) {
+func loadRefCounter(path string, wal *writeaheadlog.WAL) (_ *refCounter, err error) {
 	// Open the file and start loading the data.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, ErrRefCounterNotExist
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 
 	var header refCounterHeader
 	headerBytes := make([]byte, refCounterHeaderSize)

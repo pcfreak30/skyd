@@ -230,8 +230,8 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	return loadSiaFileFromReader(f, path, wal, deps)
+	sf, err := loadSiaFileFromReader(f, path, wal, deps)
+	return sf, errors.Compose(err, f.Close())
 }
 
 // loadSiaFileFromReader allows loading a SiaFile from a different location that
@@ -319,7 +319,9 @@ func loadSiaFileMetadata(path string, deps modules.Dependencies) (md Metadata, e
 	if err != nil {
 		return Metadata{}, err
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	// Load the metadata.
 	decoder := json.NewDecoder(f)
 	if err = decoder.Decode(&md); err != nil {
@@ -346,7 +348,7 @@ func readAndApplyDeleteUpdate(deps modules.Dependencies, update writeaheadlog.Up
 // readAndApplyInsertUpdate reads the insert update and applies it. This helper
 // assumes that the file is not open and so should only be called on start up
 // before any siafiles are loaded from disk
-func readAndApplyInsertUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
+func readAndApplyInsertUpdate(deps modules.Dependencies, update writeaheadlog.Update) (err error) {
 	// Decode update.
 	path, index, data, err := readInsertUpdate(update)
 	if err != nil {
@@ -358,7 +360,9 @@ func readAndApplyInsertUpdate(deps modules.Dependencies, update writeaheadlog.Up
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 
 	// Write data.
 	if n, err := f.WriteAt(data, index); err != nil {
@@ -391,7 +395,7 @@ func readInsertUpdate(update writeaheadlog.Update) (path string, index int64, da
 // allocateHeaderPage allocates a new page for the metadata and publicKeyTable.
 // It returns an update that moves the chunkData back by one pageSize if
 // applied and also updates the ChunkOffset of the metadata.
-func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
+func (sf *SiaFile) allocateHeaderPage() (_ writeaheadlog.Update, err error) {
 	// Sanity check the chunk offset.
 	if sf.staticMetadata.ChunkOffset%pageSize != 0 {
 		build.Critical("the chunk offset is not page aligned")
@@ -401,7 +405,9 @@ func (sf *SiaFile) allocateHeaderPage() (writeaheadlog.Update, error) {
 	if err != nil {
 		return writeaheadlog.Update{}, errors.AddContext(err, "failed to open siafile")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	// Seek the chunk offset.
 	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
 	if err != nil {
@@ -436,16 +442,16 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// the file while holding a open file handle.
 	for i := len(updates) - 1; i >= 0; i-- {
 		u := updates[i]
-		switch u.Name {
-		case updateDeleteName:
-			if err := readAndApplyDeleteUpdate(sf.deps, u); err != nil {
-				return err
-			}
-			updates = updates[i+1:]
-			break
-		default:
+		if u.Name != updateDeleteName {
 			continue
 		}
+		// Read and apply the delete update.
+		if err := readAndApplyDeleteUpdate(sf.deps, u); err != nil {
+			return err
+		}
+		// Truncate the updates and break out of the for loop.
+		updates = updates[i+1:]
+		break
 	}
 	if len(updates) == 0 {
 		return nil
@@ -496,7 +502,7 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 }
 
 // chunk reads the chunk with index chunkIndex from disk.
-func (sf *SiaFile) chunk(chunkIndex int) (chunk, error) {
+func (sf *SiaFile) chunk(chunkIndex int) (_ chunk, err error) {
 	// Handle partial chunk.
 	if cci, ok := sf.isIncludedPartialChunk(uint64(chunkIndex)); ok {
 		c, err := sf.partialsSiaFile.Chunk(cci.Index)
@@ -512,7 +518,9 @@ func (sf *SiaFile) chunk(chunkIndex int) (chunk, error) {
 	if err != nil {
 		return chunk{}, errors.AddContext(err, "failed to open file to read chunk")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	if _, err := f.ReadAt(chunkBytes, chunkOffset); err != nil && err != io.EOF {
 		return chunk{}, errors.AddContext(err, "failed to read chunk from disk")
 	}
@@ -551,13 +559,16 @@ func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]w
 
 // iterateChunksReadonly iterates over all the chunks on disk and calls iterFunc
 // on each one without modifying them.
-func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error {
+func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) (err error) {
 	// Open the file.
 	f, err := os.Open(sf.siaFilePath)
 	if err != nil {
 		return errors.AddContext(err, "failed to open file")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
+
 	// Seek to the first chunk.
 	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
 	if err != nil {
@@ -637,7 +648,7 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) (e
 // createAndApplyTransaction is a generic version of the
 // createAndApplyTransaction method of the SiaFile. This will result in 2 fsyncs
 // independent of the number of updates.
-func createAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) error {
+func createAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) (err error) {
 	if len(updates) == 0 {
 		return nil
 	}
@@ -650,6 +661,13 @@ func createAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point the changes to be made are written to the WAL.
+	// This means we need to panic in case applying the updates fails.
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Apply the updates.
 	if err := ApplyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")

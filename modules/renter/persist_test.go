@@ -10,7 +10,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // testingFileParams generates the ErasureCoder and a random name for a testing
@@ -53,7 +55,11 @@ func TestRenterSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check that the default values got set correctly.
 	settings, err := rt.renter.Settings()
@@ -101,7 +107,8 @@ func TestRenterSaveLoad(t *testing.T) {
 
 	// load should now load the files into memory.
 	var errChan <-chan error
-	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(rt.dir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
@@ -130,11 +137,18 @@ func TestRenterPaths(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	rt, err := newRenterTester(t.Name())
+
+	// Start renter with background loops disabled to avoid NDFs related to this
+	// test creating siafiles directly vs through the staticFileSystem.
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create and save some files.
 	// The result of saving these files should be a directory containing:
@@ -151,6 +165,17 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaPath3, err := modules.NewSiaPath("foo/bar/baz")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the parent dirs manually since we are going to use siafile.New
+	// instead of filesystem.NewSiaFile.
+	sp3Parent, err := siaPath3.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.staticFileSystem.NewSiaDir(sp3Parent, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +207,8 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	var errChan <-chan error
-	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(rt.dir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +266,11 @@ func TestSiafileCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Load the compatibility file into the renter.
 	path := filepath.Join("..", "..", "compatibility", "siafile_v0.4.8.sia")

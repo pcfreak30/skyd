@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -19,7 +20,7 @@ var (
 type (
 	// jobGeneric implements the basic functionality for a job.
 	jobGeneric struct {
-		staticCancelChan <-chan struct{}
+		staticCtx context.Context
 
 		staticQueue workerJobQueue
 	}
@@ -36,6 +37,7 @@ type (
 		cooldownUntil       time.Time
 		consecutiveFailures uint64
 		recentErr           error
+		recentErrTime       time.Time
 
 		staticWorkerObj *worker // name conflict with staticWorker method
 		mu              sync.Mutex
@@ -67,24 +69,36 @@ type (
 		callDiscardAll(error)
 
 		// callReportFailure should be called on the queue every time that a job
-		// failes, and include the error associated with the failure.
+		// fails, and include the error associated with the failure.
 		callReportFailure(error)
 
 		// callReportSuccess should be called on the queue every time that a job
 		// succeeds.
 		callReportSuccess()
 
+		// callStatus returns the status of the queue
+		callStatus() workerJobQueueStatus
+
 		// staticWorker will return the worker of the job queue.
 		staticWorker() *worker
+	}
+
+	// workerJobQueueStatus is a struct that reflects the status of the queue
+	workerJobQueueStatus struct {
+		size                uint64
+		cooldownUntil       time.Time
+		consecutiveFailures uint64
+		recentErr           error
+		recentErrTime       time.Time
 	}
 )
 
 // newJobGeneric returns an initialized jobGeneric. The queue that is associated
 // with the job should be used as the input to this function. The job will
 // cancel itself if the cancelChan is closed.
-func newJobGeneric(queue workerJobQueue, cancelChan <-chan struct{}) *jobGeneric {
+func newJobGeneric(ctx context.Context, queue workerJobQueue) *jobGeneric {
 	return &jobGeneric{
-		staticCancelChan: cancelChan,
+		staticCtx: ctx,
 
 		staticQueue: queue,
 	}
@@ -100,7 +114,7 @@ func newJobGenericQueue(w *worker) *jobGenericQueue {
 // staticCanceled returns whether or not the job has been canceled.
 func (j *jobGeneric) staticCanceled() bool {
 	select {
-	case <-j.staticCancelChan:
+	case <-j.staticCtx.Done():
 		return true
 	default:
 		return false
@@ -150,6 +164,7 @@ func (jq *jobGenericQueue) callNext() workerJob {
 		job := jq.jobs[0]
 		jq.jobs = jq.jobs[1:]
 		if job.staticCanceled() {
+			job.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
 			continue
 		}
 		return job
@@ -171,6 +186,7 @@ func (jq *jobGenericQueue) callReportFailure(err error) {
 	jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 	jq.consecutiveFailures++
 	jq.recentErr = err
+	jq.recentErrTime = time.Now()
 }
 
 // callReportSuccess lets the job queue know that there was a successsful job.
@@ -182,6 +198,19 @@ func (jq *jobGenericQueue) callReportSuccess() {
 	jq.mu.Lock()
 	jq.consecutiveFailures = 0
 	jq.mu.Unlock()
+}
+
+// callStatus returns the queue status
+func (jq *jobGenericQueue) callStatus() workerJobQueueStatus {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return workerJobQueueStatus{
+		size:                uint64(len(jq.jobs)),
+		cooldownUntil:       jq.cooldownUntil,
+		consecutiveFailures: jq.consecutiveFailures,
+		recentErr:           jq.recentErr,
+		recentErrTime:       jq.recentErrTime,
+	}
 }
 
 // discardAll will drop all jobs from the queue.

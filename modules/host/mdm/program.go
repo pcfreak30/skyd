@@ -32,6 +32,7 @@ type FnFinalize func(StorageObligation) error
 type programState struct {
 	// host related fields
 	host                    Host
+	staticRevisionTxn       types.Transaction
 	staticRemainingDuration types.BlockHeight
 
 	// program cache
@@ -59,10 +60,9 @@ type program struct {
 	staticCollateralBudget types.Currency
 	executionCost          types.Currency
 	additionalCollateral   types.Currency // collateral the host is required to add
-	potentialRefund        types.Currency // refund if the program isn't committed
+	additionalStorageCost  types.Currency // cost of additional storage. This is refunded if the program doesn't commit.
 	usedMemory             uint64
 
-	renterSig  types.TransactionSignature
 	outputChan chan Output
 	outputErr  error // contains the error of the first instruction of the program that failed
 
@@ -76,9 +76,9 @@ func outputFromError(err error, collateral, cost, refund types.Currency) Output 
 			Error: err,
 		},
 
-		ExecutionCost:        cost,
-		AdditionalCollateral: collateral,
-		PotentialRefund:      refund,
+		ExecutionCost:         cost,
+		AdditionalCollateral:  collateral,
+		AdditionalStorageCost: refund,
 	}
 }
 
@@ -96,6 +96,10 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 		return p.staticDecodeReadSectorInstruction(i)
 	case modules.SpecifierReadOffset:
 		return p.staticDecodeReadOffsetInstruction(i)
+	case modules.SpecifierRevision:
+		return p.staticDecodeRevisionInstruction(i)
+	case modules.SpecifierSwapSector:
+		return p.staticDecodeSwapSectorInstruction(i)
 	default:
 		return nil, fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
 	}
@@ -123,6 +127,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 			host:                    mdm.host,
 			priceTable:              pt,
 			sectors:                 newSectors(sos.SectorRoots()),
+			staticRevisionTxn:       sos.RevisionTxn(),
 		},
 		staticBudget:           budget,
 		usedMemory:             modules.MDMInitMemory(),
@@ -194,7 +199,7 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 	for _, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
-			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
 			return ErrInterrupted
 		default:
 		}
@@ -202,7 +207,7 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		collateral := i.Collateral()
 		err := p.addCollateral(collateral)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
 			return err
 		}
 		// Add the memory the next instruction is going to allocate to the
@@ -210,31 +215,31 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		p.usedMemory += i.Memory()
 		time, err := i.Time()
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
 		}
 		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, time)
-		// Get the instruction cost and refund.
-		instructionCost, refund, err := i.Cost()
+		// Get the instruction cost and storageCost.
+		instructionCost, storageCost, err := i.Cost()
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
 			return err
 		}
 		cost := memoryCost.Add(instructionCost)
 		// Increment the cost.
 		err = p.addCost(cost)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
 			return err
 		}
 		// Add the instruction's potential refund to the total.
-		p.potentialRefund = p.potentialRefund.Add(refund)
+		p.additionalStorageCost = p.additionalStorageCost.Add(storageCost)
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{
-			output:               output,
-			ExecutionCost:        p.executionCost,
-			AdditionalCollateral: p.additionalCollateral,
-			PotentialRefund:      p.potentialRefund,
+			output:                output,
+			ExecutionCost:         p.executionCost,
+			AdditionalCollateral:  p.additionalCollateral,
+			AdditionalStorageCost: p.additionalStorageCost,
 		}
 		// Abort if the last output contained an error.
 		if output.Error != nil {

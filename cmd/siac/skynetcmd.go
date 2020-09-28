@@ -13,13 +13,15 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5"
+
+	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5/decor"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -32,11 +34,24 @@ on top of Sia.`,
 	}
 
 	skynetBlacklistCmd = &cobra.Command{
-		Use:   "blacklist [skylink]",
-		Short: "Blacklist a skylink from skynet.",
-		Long: `Blacklist a skylink from skynet. Use the --remove flag to
-remove a skylink from the blacklist.`,
-		Run: skynetblacklistcmd,
+		Use:   "blacklist",
+		Short: "Add, remove, or list blacklisted skylinks.",
+		Long:  "Add, remove, or list blacklisted skylinks.",
+		Run:   skynetblacklistgetcmd,
+	}
+
+	skynetBlacklistAddCmd = &cobra.Command{
+		Use:   "add [skylink] ...",
+		Short: "Add skylinks to the blacklist",
+		Long:  "Add space separated skylinks to the blacklist.",
+		Run:   skynetblacklistaddcmd,
+	}
+
+	skynetBlacklistRemoveCmd = &cobra.Command{
+		Use:   "remove [skylink] ...",
+		Short: "Remove skylinks from the blacklist",
+		Long:  "Remove space separated skylinks from the blacklist.",
+		Run:   skynetblacklistremovecmd,
 	}
 
 	skynetConvertCmd = &cobra.Command{
@@ -76,6 +91,28 @@ maintaining the file in your renter.`,
 		Run: wrap(skynetpincmd),
 	}
 
+	skynetPortalsCmd = &cobra.Command{
+		Use:   "portals",
+		Short: "Add, remove, or list registered Skynet portals.",
+		Long:  "Add, remove, or list registered Skynet portals.",
+		Run:   wrap(skynetportalsgetcmd),
+	}
+
+	skynetPortalsAddCmd = &cobra.Command{
+		Use:   "add [url]",
+		Short: "Add a Skynet portal as public or private to the persisted portals list.",
+		Long: `Add a Skynet portal as public or private. Specify the url of the Skynet portal followed
+by --public if you want it to be publicly available.`,
+		Run: wrap(skynetportalsaddcmd),
+	}
+
+	skynetPortalsRemoveCmd = &cobra.Command{
+		Use:   "remove [url]",
+		Short: "Remove a Skynet portal from the persisted portals list.",
+		Long:  "Remove a Skynet portal from the persisted portals list.",
+		Run:   wrap(skynetportalsremovecmd),
+	}
+
 	skynetUnpinCmd = &cobra.Command{
 		Use:   "unpin [siapath]",
 		Short: "Unpin pinned skyfiles or directories.",
@@ -90,9 +127,9 @@ files and directories will continue to be available on Skynet if other nodes hav
 		Long: `Upload a file or a directory to Skynet. A skylink will be produced which can be
 shared and used to retrieve the file. If the given path is a directory all files under that directory will
 be uploaded individually and an individual skylink will be produced for each. All files that get uploaded
-will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files 
+will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files
 are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file.`,
-		Run: wrap(skynetuploadcmd),
+		Run: skynetuploadcmd,
 	}
 )
 
@@ -100,36 +137,57 @@ are manually deleted. Use the --dry-run flag to fetch the skylink without actual
 //
 // TODO: Could put some stats or summaries or something here.
 func skynetcmd(cmd *cobra.Command, args []string) {
-	cmd.UsageFunc()(cmd)
+	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
 
-// skynetblacklistcmd handles adding and removing a skylink from the Skynet
-// Blacklist
-func skynetblacklistcmd(cmd *cobra.Command, args []string) {
-	if len(args) != 1 {
-		cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
+// skynetblacklistaddcmd adds skylinks to the blacklist
+func skynetblacklistaddcmd(cmd *cobra.Command, args []string) {
+	skynetblacklistUpdate(args, nil)
+}
 
-	// Get the skylink
-	skylink := args[0]
-	skylink = strings.TrimPrefix(skylink, "sia://")
+// skynetblacklistremovecmd removes skylinks from the blacklist
+func skynetblacklistremovecmd(cmd *cobra.Command, args []string) {
+	skynetblacklistUpdate(nil, args)
+}
 
-	// Check if this is an addition or removal
-	var add, remove []string
-	if skynetBlacklistRemove {
-		remove = append(remove, skylink)
-	} else {
-		add = append(add, skylink)
-	}
+// skynetblacklistUpdate adds/removes trimmed skylinks to the blacklist
+func skynetblacklistUpdate(additions, removals []string) {
+	additions = skynetblacklistTrimLinks(additions)
+	removals = skynetblacklistTrimLinks(removals)
 
-	// Try to update the Skynet Blacklist.
-	err := httpClient.SkynetBlacklistPost(add, remove)
+	err := httpClient.SkynetBlacklistHashPost(additions, removals, skynetBlacklistHash)
 	if err != nil {
 		die("Unable to update skynet blacklist:", err)
 	}
+
 	fmt.Println("Skynet Blacklist updated")
+}
+
+// skynetblacklistTrimLinks will trim away `sia://` from skylinks
+func skynetblacklistTrimLinks(links []string) []string {
+	var result []string
+
+	for _, link := range links {
+		trimmed := strings.TrimPrefix(link, "sia://")
+		result = append(result, trimmed)
+	}
+
+	return result
+}
+
+// skynetblacklistgetcmd will return the list of hashed merkleroots that are blocked
+// from Skynet.
+func skynetblacklistgetcmd(cmd *cobra.Command, args []string) {
+	response, err := httpClient.SkynetBlacklistGet()
+	if err != nil {
+		die("Unable to get skynet blacklist:", err)
+	}
+
+	fmt.Printf("Listing %d blacklisted skylink(s) merkleroots:\n", len(response.Blacklist))
+	for _, hash := range response.Blacklist {
+		fmt.Printf("\t%s\n", hash)
+	}
 }
 
 // skynetconvertcmd will convert an existing siafile to a skyfile and skylink on
@@ -149,7 +207,9 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: destSiaPath,
 	}
-	skylink, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
+	sup = parseAndAddSkykey(sup)
+	sshp, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
+	skylink := sshp.Skylink
 	if err != nil {
 		die("could not convert siafile to skyfile:", err)
 	}
@@ -170,7 +230,7 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 // skynetdownloadcmd will perform the download of a skylink.
 func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	if len(args) != 2 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 
@@ -182,7 +242,11 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	if err != nil {
 		die("Unable to create destination file:", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			die(err)
+		}
+	}()
 
 	// Check whether the portal flag is set, if so use the portal download
 	// method.
@@ -221,7 +285,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	case 1:
 		path = args[0]
 	default:
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	// Parse the input siapath.
@@ -272,9 +336,10 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 	// Get the full set of files and directories.
 	//
-	// NOTE: Always query recursively so that we can filter out non-tracked
-	// files and get accurate, consistent sizes for dirs. If the --recursive
-	// flag was not passed, we limit the directory output later.
+	// NOTE: Always query recursively so that we can filter out files that are
+	// not tracked by Skynet and get accurate, consistent sizes for dirs when
+	// displaying. If the --recursive flag was not passed, we limit the
+	// directory output later.
 	dirs := getDir(sp, true, true)
 
 	// Sort the directories and the files.
@@ -319,7 +384,8 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 				}
 			}
 			// Remove the file.
-			dirs[j].files = append(dirs[j].files[:i], dirs[j].files[i+1:]...)
+			copy(dirs[j].files[i:], dirs[j].files[i+1:])
+			dirs[j].files = dirs[j].files[len(dirs[j].files)-1:]
 			i--
 		}
 	}
@@ -365,7 +431,9 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(w, "\t%v\t\n", skylink)
 			}
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			die("failed to flush writer")
+		}
 		fmt.Println()
 
 		if !skynetLsRecursive {
@@ -373,6 +441,56 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 			break
 		}
 	}
+}
+
+// skynetPin will pin the Skyfile associated with the provided Skylink at the
+// provided SiaPath
+func skynetPin(skylink string, siaPath modules.SiaPath) (string, error) {
+	// Check if --portal was set
+	if skynetPinPortal == "" {
+		spp := modules.SkyfilePinParameters{
+			SiaPath: siaPath,
+			Root:    skynetUploadRoot,
+		}
+		fmt.Println("Pinning Skyfile ...")
+		return skylink, httpClient.SkynetSkylinkPinPost(skylink, spp)
+	}
+
+	// Download skyfile from the Portal
+	fmt.Printf("Downloading Skyfile from %v ...", skynetPinPortal)
+	url := skynetPinPortal + "/" + skylink
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to download from portal")
+	}
+	reader := resp.Body
+	defer reader.Close()
+
+	// Get the SkyfileMetadata from the Header
+	var sm modules.SkyfileMetadata
+	strMetadata := resp.Header.Get("Skynet-File-Metadata")
+	if strMetadata != "" {
+		err = json.Unmarshal([]byte(strMetadata), &sm)
+		if err != nil {
+			return "", errors.AddContext(err, "unable to unmarshal skyfile metadata")
+		}
+	}
+
+	// Upload the skyfile to pin it to the renter node
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:      siaPath,
+		Reader:       reader,
+		FileMetadata: sm,
+	}
+	// NOTE: Since the user can define a new siapath for the Skyfile the skylink
+	// returned from the upload may be different than the original skylink which
+	// is why we are overwriting the skylink here.
+	fmt.Println("Pinning Skyfile ...")
+	skylink, _, err = httpClient.SkynetSkyfilePost(sup)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to upload skyfile")
+	}
+	return skylink, nil
 }
 
 // skynetpincmd will pin the file from this skylink.
@@ -384,24 +502,19 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 		die("Could not parse destination siapath:", err)
 	}
 
-	spp := modules.SkyfilePinParameters{
-		SiaPath: siaPath,
-		Root:    skynetUploadRoot,
-	}
-
-	err = httpClient.SkynetSkylinkPinPost(skylink, spp)
+	// Pin the Skyfile
+	skylink, err = skynetPin(skylink, siaPath)
 	if err != nil {
-		die("could not pin file to Skynet:", err)
+		die("Unable to Pin Skyfile:", err)
 	}
-
-	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
+	fmt.Printf("Skyfile pinned successfully\nSkylink: sia://%v\n", skylink)
 }
 
 // skynetunpincmd will unpin and delete either a single or multiple files or
 // directories from the Renter.
 func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 	if len(skyPathStrs) == 0 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 
@@ -449,14 +562,16 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 
 // skynetuploadcmd will upload a file or directory to Skynet. If --dry-run is
 // passed, it will fetch the skylinks without uploading.
-func skynetuploadcmd(sourcePath, destSiaPath string) {
-	// Open the source file.
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		die("Unable to open source path:", err)
+func skynetuploadcmd(_ *cobra.Command, args []string) {
+	if len(args) == 1 {
+		skynetuploadpipecmd(args[0])
+		return
 	}
-	defer file.Close()
-	fi, err := file.Stat()
+	if len(args) != 2 {
+		die("wrong number of arguments")
+	}
+	sourcePath, destSiaPath := args[0], args[1]
+	fi, err := os.Stat(sourcePath)
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
@@ -528,6 +643,91 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
 }
 
+// skynetuploadpipecmd will upload a file or directory to Skynet. If --dry-run is
+// passed, it will fetch the skylinks without uploading.
+func skynetuploadpipecmd(destSiaPath string) {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		die(err)
+	}
+	if fi.Mode()&os.ModeNamedPipe == 0 {
+		die("Command is meant to be used with either a pipe or src file")
+	}
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+	filename := siaPath.Name()
+
+	// create a new progress bar set:
+	pbs := mpb.New(mpb.WithWidth(40))
+	// Create the single bar.
+	bar := pbs.AddSpinner(
+		-1, // size is unknown
+		mpb.SpinnerOnLeft,
+		mpb.SpinnerStyle([]string{"∙∙∙", "●∙∙", "∙●∙", "∙∙●", "∙∙∙"}),
+		mpb.BarFillerClearOnComplete(),
+		mpb.PrependDecorators(
+			decor.AverageSpeed(decor.UnitKiB, "% .1f", decor.WC{W: 4}),
+			decor.Counters(decor.UnitKiB, " - %.1f / %.1f", decor.WC{W: 4}),
+		),
+	)
+	// Create the proxy reader from stdin.
+	r := bar.ProxyReader(os.Stdin)
+	// Set a spinner to start after the upload is finished
+	pSpinner := newProgressSpinner(pbs, bar, filename)
+	// Perform the upload
+	skylink := skynetUploadFileFromReader(r, filename, siaPath, modules.DefaultFilePerm)
+	// Replace the spinner with the skylink and stop it
+	newProgressSkylink(pbs, pSpinner, filename, skylink)
+	return
+}
+
+// skynetportalsgetcmd displays the list of persisted Skynet portals
+func skynetportalsgetcmd() {
+	portals, err := httpClient.SkynetPortalsGet()
+	if err != nil {
+		die("Could not get portal list:", err)
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+	fmt.Fprintf(w, "Address\tPublic\n")
+	fmt.Fprintf(w, "-------\t------\n")
+
+	for _, portal := range portals.Portals {
+		fmt.Fprintf(w, "%s\t%t\n", portal.Address, portal.Public)
+	}
+
+	if err = w.Flush(); err != nil {
+		die(err)
+	}
+}
+
+// skynetportalsaddcmd adds a Skynet portal as either public or private
+func skynetportalsaddcmd(portalURL string) {
+	addition := modules.SkynetPortal{
+		Address: modules.NetAddress(portalURL),
+		Public:  skynetPortalPublic,
+	}
+
+	err := httpClient.SkynetPortalsPost([]modules.SkynetPortal{addition}, nil)
+	if err != nil {
+		die("Could not add portal:", err)
+	}
+}
+
+// skynetportalsremovecmd removes a Skynet portal
+func skynetportalsremovecmd(portalUrl string) {
+	removal := modules.NetAddress(portalUrl)
+
+	err := httpClient.SkynetPortalsPost(nil, []modules.NetAddress{removal})
+	if err != nil {
+		die("Could not remove portal:", err)
+	}
+}
+
 // skynetUploadFile uploads a file to Skynet
 func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.Progress) (skylink string) {
 	// Create the siapath.
@@ -537,12 +737,12 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	}
 	filename := filepath.Base(sourcePath)
 
-	// Open the source file.
+	// Open the source.
 	file, err := os.Open(sourcePath)
 	if err != nil {
 		die("Unable to open source path:", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
@@ -568,9 +768,8 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 			die("Could not get relative path:", err)
 		}
 	}
-	rc := io.ReadCloser(file)
 	// Wrap the file reader in a progress bar reader
-	pUpload, rc := newProgressReader(pbs, fi.Size(), relPath, rc)
+	pUpload, rc := newProgressReader(pbs, fi.Size(), relPath, file)
 	// Set a spinner to start after the upload is finished
 	pSpinner := newProgressSpinner(pbs, pUpload, relPath)
 	// Perform the upload
@@ -578,6 +777,26 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	// Replace the spinner with the skylink and stop it
 	newProgressSkylink(pbs, pSpinner, relPath, skylink)
 	return
+}
+
+// parseAndAddSkykey is a helper that parses any supplied skykey and adds it to
+// the SkyfileUploadParameters
+func parseAndAddSkykey(sup modules.SkyfileUploadParameters) modules.SkyfileUploadParameters {
+	if skykeyName != "" && skykeyID != "" {
+		die("Can only use either skykeyname or skykeyid flag, not both.")
+	}
+	// Set Encrypt param to true if a skykey ID or name is set.
+	if skykeyName != "" {
+		sup.SkykeyName = skykeyName
+	} else if skykeyID != "" {
+		var ID skykey.SkykeyID
+		err := ID.FromString(skykeyID)
+		if err != nil {
+			die("Unable to parse skykey ID")
+		}
+		sup.SkykeyID = ID
+	}
+	return sup
 }
 
 // skynetUploadFileFromReader is a helper method that uploads a file to Skynet
@@ -596,22 +815,7 @@ func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modul
 
 		Reader: source,
 	}
-
-	if skykeyName != "" && skykeyID != "" {
-		die("Can only use either skykeyname or skykeyid flag, not both.")
-	}
-	// Set Encrypt param to true if a skykey ID or name is set.
-	if skykeyName != "" {
-		sup.SkykeyName = skykeyName
-	} else if skykeyID != "" {
-		var ID skykey.SkykeyID
-		err := ID.FromString(skykeyID)
-		if err != nil {
-			die("Unable to parse skykey ID")
-		}
-		sup.SkykeyID = ID
-	}
-
+	sup = parseAndAddSkykey(sup)
 	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
 	if err != nil {
 		die("could not upload file to Skynet:", err)
@@ -660,7 +864,6 @@ func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink 
 	bar := pbs.AddBar(
 		1, // we'll increment it once to stop it
 		mpb.BarQueueAfter(afterBar),
-		mpb.BarFillerClearOnComplete(),
 		mpb.PrependDecorators(
 			decor.Name(pBarJobDone, decor.WC{W: 10}),
 			decor.Name(skylink),
@@ -671,5 +874,7 @@ func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink 
 	)
 	afterBar.Increment()
 	bar.Increment()
+	// Wait for finished bars to be rendered.
+	pbs.Wait()
 	return bar
 }

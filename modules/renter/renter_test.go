@@ -4,11 +4,11 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -20,6 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -52,10 +53,8 @@ func (rt *renterTester) Close() error {
 	return nil
 }
 
-// addHost adds a host to the test group so that it appears in the host db
-func (rt *renterTester) addHost(name string) (modules.Host, error) {
-	testdir := build.TempDir("renter", name)
-
+// addCustomHost adds a host to the test group so that it appears in the host db
+func (rt *renterTester) addCustomHost(testdir string, deps modules.Dependencies) (modules.Host, error) {
 	// create a siamux for this particular host
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
 	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
@@ -63,7 +62,7 @@ func (rt *renterTester) addHost(name string) (modules.Host, error) {
 		return nil, err
 	}
 
-	h, err := host.New(rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(deps, rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +117,11 @@ func (rt *renterTester) addHost(name string) (modules.Host, error) {
 	return h, nil
 }
 
+// addHost adds a host to the test group so that it appears in the host db
+func (rt *renterTester) addHost(name string) (modules.Host, error) {
+	return rt.addCustomHost(filepath.Join(rt.dir, name), modules.ProdDependencies)
+}
+
 // addRenter adds a renter to the renter tester and then make sure there is
 // money in the wallet
 func (rt *renterTester) addRenter(r *Renter) error {
@@ -151,7 +155,7 @@ func (rt *renterTester) reloadRenter(r *Renter) (*Renter, error) {
 
 // reloadRenterWithDependency closes the given renter and recreates it using the
 // given dependency, it then re-adds the renter on the renter tester effectively
-// relodaing it.
+// reloading it.
 func (rt *renterTester) reloadRenterWithDependency(r *Renter, deps modules.Dependencies) (*Renter, error) {
 	err := r.Close()
 	if err != nil {
@@ -179,7 +183,8 @@ func newRenterTester(name string) (*renterTester, error) {
 		return nil, err
 	}
 
-	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -275,15 +280,26 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 
 // newRenterWithDependency creates a Renter with custom dependency
 func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
-	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tpool, persistDir, deps)
+	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tpool, mux, persistDir, deps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	hc, errChan := contractor.New(cs, wallet, tpool, hdb, persistDir)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), rl, modules.ProdDependencies)
+	if err != nil {
+		return nil, err
+	}
+
+	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "contractor.log"))
+	if err != nil {
+		return nil, err
+	}
+
+	hc, errChan := contractor.NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, deps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, deps)
+	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, deps)
 	return renter, <-errChan
 }
 
@@ -298,7 +314,11 @@ func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add a host to the test group
 	h, err := rt.addHost(t.Name())
@@ -333,7 +353,11 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Confirm price estimation returns error if there are no hosts available
 	_, _, err = rt.renter.PriceEstimation(modules.Allowance{})
@@ -352,53 +376,5 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	_, _, err = rt.renter.PriceEstimation(modules.Allowance{})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-// TestRenterPricesVolatility verifies that the renter caches its price
-// estimation, and subsequent calls result in non-volatile results.
-func TestRenterPricesVolatility(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Close()
-
-	// Add 4 host entries in the database with different public keys.
-	hosts := []modules.Host{}
-	for len(hosts) < modules.PriceEstimationScope {
-		// Add a host to the test group
-		h, err := rt.addHost(t.Name())
-		if err != nil {
-			t.Fatal(err)
-		}
-		hosts = append(hosts, h)
-	}
-	allowance := modules.Allowance{}
-	initial, _, err := rt.renter.PriceEstimation(allowance)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Changing the contract price should be enough to trigger a change
-	// if the hosts are not cached.
-	h := hosts[0]
-	settings := h.InternalSettings()
-	settings.MinContractPrice = settings.MinContractPrice.Mul64(2)
-	err = h.SetInternalSettings(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	after, _, err := rt.renter.PriceEstimation(allowance)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(initial, after) {
-		t.Log(initial)
-		t.Log(after)
-		t.Fatal("expected renter price estimation to be constant")
 	}
 }

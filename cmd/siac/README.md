@@ -18,6 +18,10 @@ launched on the local machine with `siad -a :9000`.
 Common tasks
 ------------
 * `siac consensus` view block height
+* `siac stop` sends the stop signal to siad to safely terminate. This has the
+  same effect as C^c on the terminal.
+* `siac update` checks the server for updates.
+* `siac version` displays the version string of siac.
 
 Wallet:
 * `siac wallet init [-p]` initialize a wallet
@@ -30,7 +34,13 @@ Renter:
 * `siac renter ls` list all renter files and subdirectories
 * `siac renter upload [filepath] [nickname]` upload a file
 * `siac renter download [nickname] [filepath]` download a file
-
+* `siac renter workers` show worker status
+* `siac renter workers dj` show worker download info
+* `siac renter workers ea` show worker account status
+* `siac renter workers hsj` show worker has sector jobs status
+* `siac renter workers pt` show worker price table status
+* `siac renter workers rj` show worker read jobs status
+* `siac renter workers uj` show worker upload info
 
 Full Descriptions
 -----------------
@@ -42,8 +52,16 @@ Full Descriptions
 
 ### Daemon tasks
 
+* `siac profile` performs actions related to the profiles for the daemon.
+
+* `siac profile start` starts a profile for the daemon.
+
+* `siac profile stop` stops a profile for the daemon.
+
+* `siac stack` writes the current stack trace to an output file.
+
 * `siac stop` sends the stop signal to siad to safely terminate. This has the
-  same affect as C^c on the terminal.
+  same effect as C^c on the terminal.
 
 * `siac update` checks the server for updates.
 
@@ -116,7 +134,7 @@ Alternatively, you can manually adjust these parameters inside the
 
 ### HostDB tasks
 
-* `siac hostdb -v` prints a list of all the know active hosts on the network.
+* `siac hostdb -v` prints a list of all the known active hosts on the network.
 
 ### Miner tasks
 
@@ -159,13 +177,61 @@ corresponding field flag, for example '--amount 500SC'.
 you will use to refer to that file in the network. For example, it is common to
 have the nickname be the same as the filename.
 
+* `siac renter workers` shows a detailed overview of all workers. It shows
+  information about their accounts, contract and download and upload status.
+
+* `siac renter workers dj` shows a detailed overview of the workers' download
+  statuses, such as whether its on cooldown or not and potentially the most
+  recent error.
+
+* `siac renter workers ea` shows a detailed overview of the workers' ephemeral
+  account statuses, such as balance information, whether its on cooldown or not
+  and potentially the most recent error.
+
+* `siac renter workers hsj` shows information about the has sector jobs queue.
+  How many jobs are in the queue and their average completion time. In case
+  there was an error it will also display the most recent error and when it
+  occurred.
+
+* `siac renter workers pt` shows a detailed overview of the workers's price table
+  statuses, such as when it was updated, when it expires, whether its on cooldown
+  or not and potentially the most recent error.
+
+* `siac renter workers rj` shows information about the read jobs queue. How many
+  jobs are in the queue and their average completion time. In case there was an
+  error it will also display the most recent error and when it occurred.
+
+* `siac renter workers uj` shows a detailed overview of the workers' upload
+  statuses, such as whether its on cooldown or not and potentially the most
+  recent error.
+
 ### Skykey tasks
-TODO - Fill in
+* `siac skykey add [skykey base64-encoded skykey]` will add a base64-encoded
+  skykey to the key manager.
+
+* `siac skykey create [name]` will create a skykey  with the given name. The
+  --type flag can be used to specify the skykey type. Its default is private-id.
+
+* `siac skykey delete` will delete the base64-encoded skykey using either its
+  name with --name or id with --id
+
+* `siac skykey get` will get the base64-encoded skykey using either its name
+  with --name or id with --id
+
+* `siac skykey get-id [name]` will get the base64-encoded skykey id by its name
+
+* `siac skykey ls` will list all skykeys. Use with --show-priv-keys to show full
+  encoding with private key also.
 
 ### Skynet tasks
 
-* `siac skynet blacklist [skylink]` will add or remove a skylink from the
-  Renter's Skynet Blacklist
+* `siac skynet blacklist` lists the merkleroots of all blacklisted skylinks.
+
+* `siac skynet blacklist add [skylink]` will add any skylinks separated by
+  spaces to the blacklist.
+
+* `siac skynet blacklist remove [skylinks]` will remove any skylinks
+  separated by spaces from the blacklist.
 
 * `siac skynet convert [source siaPath] [destination siaPath]` converts
   a siafile to a skyfile and then generates its skylink. A new skylink will be
@@ -185,6 +251,16 @@ counted.
   with this skylink by re-uploading an exact copy. This ensures that the file
 will still be available on skynet as long as you continue maintaining the file
 in your renter.
+
+* `siac skynet portals` list the persisted Skynet portals.
+
+* `siac skynet portals add [url]` adds a Skynet portals which is either
+public or private to the list of persisted Skynet portals. The Skynet portal
+URL is of the form `url:port`. Add the `--public` if you want it to be public.
+It defaults to private.
+
+* `siac skynet portals remove [url]` removes the Skynet portal from the
+persisted list. The Skynet portal URL is of the form `url:port`.
 
 * `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
   deleting them from your list of stored files or directories.
@@ -258,3 +334,197 @@ siacoin address.
   wallet, supplied by the `init` command. The wallet must be initialized and
 unlocked before any actions can take place.
 
+Siac Command Output Testing
+===========================
+
+New type of testing siac command line commands is now available from go tests.
+
+Siac is using [Cobra](https://github.com/spf13/cobra) golang library to
+generate command line commands (and subcommands) interface. In
+`cmd/siac/main.go` file root siac Cobra command with all subcommands is created
+using `initCmds()`, siac/siad node instance specific flags of siac commands are
+initialized using `initClient(...)`.
+
+## Test Group Structure
+
+Pseudo code example of a test group:
+
+```
+func TestGroup() {
+    // Create test inputs
+    create test node
+    init Cobra command with subcommands and flags
+    create regex pattern constants
+
+    // Create subtests
+    define subtests
+
+    // Execute subtests
+    run subtests
+}
+```
+
+## Test Inputs
+
+The most of the siac tests require running instance of `siad` to execute the
+tests against. A new instance of `siad` can be created using `newTestNode`.
+Note that some of the `siac` tests don't require running an instance of `siad`.
+This is the case when we're testing unknown `siac` subcommand or an unknown
+command/subcommand flag for example, because these error cases are handled by
+Cobra library itself.
+
+Before testing siac Cobra command(s), siac Cobra command with its subcommands
+and flags must be built and initialized. This is done by
+`getRootCmdForSiacCmdsTests()` helper function.
+
+## Subtests
+
+Subtests are defined using `siacCmdSubTest` struct:
+
+```
+type siacCmdSubTest struct {
+	name               string
+	test               siacCmdTestFn
+	cmd                *cobra.Command
+	cmdStrs            []string
+	expectedOutPattern string
+}
+```
+
+### name
+
+`name` is the name of a subtest to appear in report.
+
+### test
+
+`test` is a subtest helper function that executes subtest.
+
+### cmd
+
+`cmd` is an initialized root Cobra command with all subcommands and flags.
+
+### cmdStrs
+
+`cmdStrs` is a list of string values you would normally enter to the command
+line, but without leading `siac` and each space between command, subcommand(s),
+flag(s) or parameter(s) starting a new string in a list.
+
+Examples:
+
+|CLI command|cmdStrs|
+|---|---|
+|./siac|cmdStrs: []string{},|
+|./siac -h|cmdStrs: []string{"-h"},|
+|./siac --address localhost:5555|cmdStrs: []string{"--address", "localhost:5555"},|
+|./siac renter --address localhost:5555|cmdStrs: []string{"renter", "--address", "localhost:5555"},|
+
+### expectedOutPattern
+
+`expectedOutPattern` is expected regex pattern string to test actual output
+against. It can be a multiline string to test complete output from beginning
+(starting with `^`) till end (ending with `$`) or just a smaller pattern
+testing multiple lines, a single line or just a part of a line in the complete
+output.
+
+Note that each siac command handler has to be prepared for these tests, for
+more information see [below](#preparation-of-command-handler-for-cobra-Output-tests).
+
+## Errors
+
+In case of failure in the executed subtest, error log output from
+`testGenericSiacCmd()` in `cmd/siac/helpers_test.go` will include the following 5 items:
+
+* Regex pattern didn't match between row x, and row y
+* Regex pattern part that didn't match
+* ----- Expected output pattern: -----
+* ----- Actual Cobra output: -----
+* ----- Actual Sia output: -----
+
+Error log example with 5 above items (part `...` of the message is cut):
+
+```
+=== RUN   TestRootSiacCmd
+=== RUN   TestRootSiacCmd/TestRootCmdWithShortAddressFlagIPv6
+--- FAIL: TestRootSiacCmd (2.18s)
+    maincmd_test.go:28: siad API address: [::]:35103
+    --- FAIL: TestRootSiacCmd/TestRootCmdWithShortAddressFlagIPv6 (0.02s)
+        helpers_test.go:141: Regex pattern didn't match between row 5, and row 5
+        helpers_test.go:142: Regex pattern part that didn't match:
+            Wallet XXX:
+        helpers_test.go:150: ----- Expected output pattern: -----
+        helpers_test.go:151: ^Consensus:
+              Synced: (No|Yes)
+              Height: [\d]+
+            
+            Wallet XXX:
+            (  Status: Locked|  Status:          unlocked
+              Siacoin Balance: [\d]+(\.[\d]*|) (SC|KS|MS))
+            ...
+            $
+        helpers_test.go:153: ----- Actual Cobra output: -----
+        helpers_test.go:154: 
+        helpers_test.go:156: ----- Actual Sia output: -----
+        helpers_test.go:157: Consensus:
+              Synced: Yes
+              Height: 14
+            
+            Wallet:
+              Status:          unlocked
+              Siacoin Balance: 3.3 MS
+            ...
+        helpers_test.go:159: 
+FAIL
+coverage: 5.3% of statements
+FAIL	gitlab.com/NebulousLabs/Sia/cmd/siac	2.242s
+FAIL
+```
+
+Expected output regex pattern can have multiple lines and because spotting
+errors in complex regex pattern matching can be difficult `testGenericSiacCmd`
+tests in a for loop at first only the first line of the regex pattern, then
+first 2 lines of the regex pattern, adding one more line each iteration. If
+there is a regex pattern match error, it prints the line number of the regex
+that didn't match. E.g. there is a 20 line of expected regex pattern, it passed
+to test first 11 lines of regex but fails to match when first 12 lines are
+matched against, it prints that it failed to match line 12 of regex pattern and
+prints the content of 12th line.
+
+Then it prints the complete expected regex pattern and actual Cobra output and
+actual siac output. There are two actual outputs, because unknown subcommands,
+unknown flags and command/subcommand help requests are handled by Cobra
+library, while the rest is the output written to stdout by siac command
+handlers.
+
+## Examples
+
+First examples of siac Cobra command tests are tests located in
+`cmd/siac/maincmd_test.go` file in `TestRootSiacCmd` test group, helpers for
+these tests are located in `cmd/siac/helpers_test.go` file.
+
+Simplified example code:
+
+```
+func TestRootSiacCmd(t *testing.T) {
+    ...
+    n, err := newTestNode(groupDir)
+    ...
+
+    root := getRootCmdForSiacCmdsTests(t, groupDir)
+    ...
+    regexPatternConstantX := "..."
+    ...
+    subTests := []siacCmdSubTest{
+        {
+            name:               "TestRootCmdWithShortAddressFlagIPv6",
+            test:               testGenericSiacCmd,
+            cmd:                root,
+            cmdStrs:            []string{"-a", IPv6addr},
+            expectedOutPattern: regexPatternConstantX,
+        },
+        ...
+    }
+
+    err = runSiacCmdSubTests(t, subTests)
+    ...
+}
+```
