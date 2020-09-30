@@ -83,7 +83,7 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) (err error) {
 		archive = sw
 	}
 
-	// Skip the checkum for now.
+	// Skip the checksum for now.
 	if _, err := f.Seek(crypto.HashSize, io.SeekStart); err != nil {
 		return err
 	}

@@ -374,7 +374,7 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 	// Write the backup to a temporary file and delete it after uploading.
 	tmpDir, err := ioutil.TempDir("", "sia-backup")
 	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	randomSuffix := persist.RandomSuffix()
@@ -402,11 +402,42 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 		WriteError(w, Error{"failed to create backup: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// Create a backup location for siafiles.
+	backupDirPath := filepath.Join(modules.BackupFolder.Path, name)
+	if _, err = os.Stat(backupDirPath); err == nil {
+		WriteError(w, Error{"failed to create backup directory, a directory with that name already exists"}, http.StatusBadRequest)
+		return
+	}
+	if err = os.MkdirAll(backupDirPath, modules.DefaultDirPerm); err != nil {
+		WriteError(w, Error{"failed to create backup directory: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	var backupSuccessfullyCreated bool
+	defer func() {
+		// Clean up the unused backup dir in case of a failure.
+		if !backupSuccessfullyCreated {
+			_ = os.RemoveAll(backupDirPath)
+		}
+	}()
+	// Copy all siafiles from /home/user to the backup location. This is a slow
+	// operation that we can do in parallel with uploading.
+	var copyErrChan chan error
+	go func(errChan chan error) {
+		errChan <- build.CopyDir(modules.UserFolder.Path, backupDirPath)
+	}(copyErrChan)
 	// Upload the backup.
 	if err := api.renter.UploadBackup(backupPath, name); err != nil {
 		WriteError(w, Error{"failed to upload backup: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// Check if we managed to copy all sia files to the backup dir.
+	if err = <-copyErrChan; err != nil {
+		WriteError(w, Error{"failed to copy siafiles to backup dir: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	backupSuccessfullyCreated = true
+	// Create an .info file describing this backup.
+	// TODO create /backups/<backupname>/.info
 	WriteSuccess(w)
 }
 
