@@ -199,7 +199,7 @@ func (r *Renter) managedInitPersist() error {
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
-	err = fs.NewSiaDir(modules.BackupFolder, modules.DefaultDirPerm)
+	err = fs.NewSiaDir(modules.SnapshotFolder, modules.DefaultDirPerm)
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}

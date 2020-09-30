@@ -276,7 +276,7 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.BackupFolder)
+	snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.SnapshotFolder)
 	if err != nil {
 		t.Fatal(err)
 	}

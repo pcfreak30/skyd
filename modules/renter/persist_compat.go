@@ -436,7 +436,7 @@ func (r *Renter) convertPersistVersionFrom140To142(path string) error {
 	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
 	newHomePath := modules.HomeFolder.SiaDirSysPath(fsRoot)
 	newSiaFilesPath := modules.UserFolder.SiaDirSysPath(fsRoot)
-	newSnapshotsPath := modules.BackupFolder.SiaDirSysPath(fsRoot)
+	newSnapshotsPath := modules.SnapshotFolder.SiaDirSysPath(fsRoot)
 	if err := os.MkdirAll(newHomePath, 0700); err != nil {
 		return errors.AddContext(err, "failed to create new home dir")
 	}

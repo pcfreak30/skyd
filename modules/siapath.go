@@ -45,9 +45,9 @@ var (
 )
 
 var (
-	// BackupFolder is the Sia folder where all of the renter's snapshot
-	// siafiles are stored by default.
-	BackupFolder = NewGlobalSiaPath("/snapshots")
+	// BackupFolder is the Sia folder where all of the renter's backups store
+	// a copy of their siafiles by default.
+	BackupFolder = NewGlobalSiaPath("/backups")
 
 	// HomeFolder is the Sia folder that is used to store all of the user
 	// accessible data.
@@ -56,6 +56,10 @@ var (
 	// SkynetFolder is the Sia folder where all of the skyfiles are stored by
 	// default.
 	SkynetFolder = NewGlobalSiaPath("/var/skynet")
+
+	// SnapshotFolder is the Sia folder where all of the renter's snapshot
+	// siafiles are stored by default.
+	SnapshotFolder = NewGlobalSiaPath("/snapshots")
 
 	// UserFolder is the Sia folder that is used to store the renter's siafiles.
 	UserFolder = NewGlobalSiaPath("/home/user")

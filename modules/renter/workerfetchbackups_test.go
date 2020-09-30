@@ -18,7 +18,7 @@ func TestCheckFetchBackupsGouging(t *testing.T) {
 	minAllowance := modules.Allowance{
 		// Funds is set such that the tests come out to an easy, round number.
 		// One siacoin is multiplied by the number of elements that are checked
-		// for gouging, and then divided by the gounging denominator.
+		// for gouging, and then divided by the gouging denominator.
 		Funds: types.SiacoinPrecision.Mul64(3).Div64(fetchBackupsGougingFractionDenom).Sub(oneCurrency),
 
 		ExpectedDownload: modules.StreamDownloadSize, // 1 stream download operation.

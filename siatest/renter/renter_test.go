@@ -3785,7 +3785,7 @@ func TestSiafileCompatCodeV140(t *testing.T) {
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
-	expectedLocation = filepath.Join(renterDir, modules.FileSystemRoot, modules.BackupFolder.String(), dummySnapshot)
+	expectedLocation = filepath.Join(renterDir, modules.FileSystemRoot, modules.SnapshotFolder.String(), dummySnapshot)
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}

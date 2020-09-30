@@ -1201,8 +1201,8 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	// the absolute worst case, each file will be only contributing one chunk to
 	// the heap, so this shortcut will not be missing any important chunks. This
 	// shortcut will also not be used for directories that have fewer than
-	// 'maxUploadHeapChunks' files in them, minimzing the impact of this code in
-	// the typical case.
+	// 'maxUploadHeapChunks' files in them, minimizing the impact of this code
+	// in the typical case.
 	//
 	// This check only applies to normal repairs. Stuck repairs have their own
 	// way of managing the number of chunks added to the heap and backup chunks
@@ -1545,7 +1545,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// and chunks.
 		heapLen := r.uploadHeap.managedLen()
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
-		r.managedBuildChunkHeap(modules.BackupFolder, hosts, targetBackupChunks, offline, goodForRenew)
+		r.managedBuildChunkHeap(modules.SnapshotFolder, hosts, targetBackupChunks, offline, goodForRenew)
 		numBackupChunks := r.uploadHeap.managedLen() - heapLen
 		if numBackupChunks > 0 {
 			r.repairLog.Printf("Added %v backup chunks to the upload heap", numBackupChunks)

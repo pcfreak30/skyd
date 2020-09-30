@@ -116,7 +116,7 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Bubble all the system dirs.
 	beforeBubble := time.Now()
-	err1 := rt.renter.managedBubbleMetadata(modules.BackupFolder)
+	err1 := rt.renter.managedBubbleMetadata(modules.SnapshotFolder)
 	err2 := rt.renter.managedBubbleMetadata(modules.SkynetFolder)
 	err3 := rt.renter.managedBubbleMetadata(modules.UserFolder)
 	err = errors.Compose(err1, err2, err3)
@@ -470,7 +470,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		LastHealthCheckTime:          now,
 	}
 	err1 := rt.openAndUpdateDir(modules.RootSiaPath(), nowMD)
-	err2 := rt.openAndUpdateDir(modules.BackupFolder, nowMD)
+	err2 := rt.openAndUpdateDir(modules.SnapshotFolder, nowMD)
 	err3 := rt.openAndUpdateDir(modules.HomeFolder, nowMD)
 	err4 := rt.openAndUpdateDir(modules.SkynetFolder, nowMD)
 	err5 := rt.openAndUpdateDir(modules.UserFolder, nowMD)
