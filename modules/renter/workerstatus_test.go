@@ -38,27 +38,24 @@ func TestWorkerAccountStatus(t *testing.T) {
 			}
 			return
 		}
+		wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}()
 	w := wt.worker
 
 	// allow the worker some time to fetch a PT and fund its EA
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		if w.staticAccount.managedMinExpectedBalance().IsZero() {
+		if !w.staticPriceTable().staticValid() {
+			return errors.New("no valid PT yet")
+		}
+		if !w.staticAccount.managedAvailableBalance().Equals(w.staticCache().staticBalanceTarget) {
 			return errors.New("account not funded yet")
 		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
-	}
-
-	// fetch the worker's account status and verify its output
-	a := w.staticAccount
-	status := a.managedStatus()
-	if !(!status.AvailableBalance.IsZero() &&
-		status.AvailableBalance.Equals(w.staticCache().staticBalanceTarget) &&
-		status.RecentErr == "" &&
-		status.RecentErrTime == time.Time{}) {
-		t.Fatal("Unexpected account status", ToJSON(status))
 	}
 
 	// ensure the worker is not on maintenance cooldown
@@ -77,7 +74,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 	w.managedRefillAccount()
 
 	// fetch the worker's account status and verify the error is being set
-	status = a.managedStatus()
+	status := w.staticAccount.managedStatus()
 	if !(status.AvailableBalance.IsZero() &&
 		status.AvailableBalance.IsZero() &&
 		status.RecentErr != "" &&
