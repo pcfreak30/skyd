@@ -316,6 +316,13 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Long:  "View detailed information of the workers' upload jobs",
 		Run:   wrap(renterworkersuploadscmd),
 	}
+
+	renterHealthSummaryCmd = &cobra.Command{
+		Use:   "health",
+		Short: "Display a health summary of uploaded files",
+		Long:  "Display a health summary of uploaded files",
+		Run:   wrap(renterhealthsummarycmd),
+	}
 )
 
 // abs returns the absolute representation of a path.
@@ -394,10 +401,13 @@ func rentercmd() {
 	// Print out ratelimit info about the renter
 	fmt.Println()
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
+}
 
+// renterhealthsummarycmd is the handler for displaying the overall health
+// summary for uploaded files.
+func renterhealthsummarycmd() {
 	// Print out file health summary for the renter
 	dirs := getDir(modules.RootSiaPath(), true, true)
-	fmt.Println()
 	renterFileHealthSummary(dirs)
 }
 
@@ -719,7 +729,7 @@ again:
 
 // rentersetallowancecmd is the handler for `siac renter setallowance`.
 // set the allowance or modify individual allowance fields.
-func rentersetallowancecmd(cmd *cobra.Command, args []string) {
+func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	// Get the current period setting.
 	rg, err := httpClient.RenterGet()
 	if err != nil {
@@ -3010,7 +3020,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	maintenanceInfo := "\tOn Cooldown\tCooldown Time\tLast Error"
 	eaHeader := "\tWorker Account"
 	jobHeader := "\tWorker Jobs\t \t "
-	jobInfo := "\tBackups\tDownload By Root\tHas Sector"
+	jobInfo := "\tBackups\tHas Sector"
 	fmt.Fprintln(w, "\n  "+contractHeader+downloadHeader+uploadHeader+maintenanceHeader+eaHeader+jobHeader)
 	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+jobInfo)
 
@@ -3039,9 +3049,8 @@ func writeWorkers(workers []modules.WorkerStatus) {
 			sanitizeErr(worker.MaintenanceCoolDownError))
 
 		// Job Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
+		fmt.Fprintf(w, "\t%v\t%v\n",
 			worker.BackupJobQueueSize,
-			worker.DownloadRootJobQueueSize,
 			worker.HasSectorJobsStatus.JobQueueSize)
 	}
 	w.Flush()

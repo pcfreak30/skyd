@@ -4557,10 +4557,6 @@ returns the the status of all the workers in the renter's workerpool.
       "balancetarget":       "0", // hastings
       
       "backupjobqueuesize":       0, // int
-      "downloadrootjobqueuesize": 0  // int
-
-      "backupjobqueuesize": 0,        // int
-      "downloadrootjobqueuesize": 0,  // int
 
       "maintenanceoncooldown": false,                      // bool
       "maintenancerecenterr": "",                          // string
@@ -4681,9 +4677,6 @@ The worker's Ephemeral Account target balance
 
 **backupjobqueuesize** | int  
 The size of the worker's backup job queue
-
-**downloadrootjobqueuesize** | int  
-The size of the worker's download by root job queue
 
 **maintenanceoncooldown** | boolean  
 Indicates if the worker is on maintenance cooldown
@@ -4930,6 +4923,18 @@ supplied, this metadata will be relative to the given path.
 ]
 }
 ```
+
+**ETag** | string
+
+The ETag response header contains a hash that can be supplied using the
+"If-None-Match" request header. If that header is supplied, and if we find that
+the requested data has not changed, siad will respond with a '304 Not Modified'
+response, letting the caller know it can safely reuse it previously cached
+response data.
+
+See
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag for more
+information on the ETag header.
 
 ### Response Body
 
