@@ -164,6 +164,18 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 		return
 	}
 
+	// Decrypt the piece that has come back.
+	//
+	// TODO: The input to DecryptBytesInPlace needs to accept a block index, if
+	// we aren't decrypting from the beginning of the chunk this will probably
+	// fail.
+	key := pdc.workerSet.staticMasterKey.Derive(pdc.workerSet.staticChunkIndex, uint64(pieceIndex))
+	_, err := key.DecryptBytesInPlace(jrr.staticData, 0)
+	if err != nil {
+		pdc.workerSet.staticRenter.log.Println("decryption of a piece failed")
+		return
+	}
+
 	// The download succeeded, add the piece to the appropriate index.
 	pdc.dataPieces[pieceIndex] = jrr.staticData
 	jrr.staticData = nil // Just in case there's a reference to the job reponse elsewhere.

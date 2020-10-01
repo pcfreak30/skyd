@@ -646,6 +646,8 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	// Compare the data fetched from the Skylink to the local data and the
 	// previously uploaded data
 	if !bytes.Equal(fetchedData, localData) {
+		t.Log(len(fetchedData))
+		t.Log(len(localData))
 		t.Error("converted skylink data doesn't match local data")
 	}
 	if !bytes.Equal(fetchedData, remoteData) {
@@ -660,7 +662,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// create a multipart upload without any files
+	// create a multipart upload that without any files
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	err := writer.Close()
@@ -1453,7 +1455,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	mdF3Expected := modules.SkyfileSubfileMetadata{
 		FileMode:    os.FileMode(0640),
 		Filename:    "b/file3.txt",
-		ContentType: "text/plain; charset=utf-8",
+		ContentType: "application/octet-stream",
 		Offset:      0,
 		Len:         uint64(len(dataFile3)),
 	}

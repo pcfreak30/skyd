@@ -141,9 +141,12 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	// Execute the program and parse the responses.
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	// TODO: we get errors if we don't increase the cost, probably because one
+	// of the estimators is incorrect. Need to debug this further. Instead of
+	// multiplying the cost by 2 we should fix the estimators.
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost.Mul64(2))
 	if err != nil {
-		return nil, errors.AddContext(err, "Unable to execute program")
+		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}
 	for _, resp := range responses {
 		if resp.Error != nil {
