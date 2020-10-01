@@ -9,6 +9,8 @@ package modules
 
 import (
 	"io"
+
+	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 var (
@@ -83,8 +85,15 @@ func (pec *PassthroughErasureCoder) Recover(pieces [][]byte, n uint64, w io.Writ
 	_, err := w.Write(pieces[0][:n])
 	return err
 }
-func (pec *PassthroughErasureCoder) SupportsPartialEncoding() (uint64, bool) { return 1, true }
-func (pec *PassthroughErasureCoder) Type() ErasureCoderType                  { return ECPassthrough }
+func (pec *PassthroughErasureCoder) SupportsPartialEncoding() (uint64, bool) {
+	// The actual protocol is in some places restricted to using an atomic
+	// request size of crypto.SegmentSize, so that's what we use here.
+	//
+	// TODO: I'm not sure if the above comment is completely true, may be okay
+	// to return a segment size of 1.
+	return crypto.SegmentSize, true
+}
+func (pec *PassthroughErasureCoder) Type() ErasureCoderType { return ECPassthrough }
 
 // NewPassthroughErasureCoder will return an erasure coder that does not encode
 // the data. It uses 1-of-1 redundancy and always returns itself or some subset

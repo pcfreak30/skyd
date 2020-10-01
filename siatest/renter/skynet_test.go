@@ -35,9 +35,9 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestSkynet verifies the functionality of Skynet, a decentralized CDN and
+// TestSkynetPlain verifies the functionality of Skynet, a decentralized CDN and
 // sharing platform.
-func TestSkynet(t *testing.T) {
+func TestSkynetPlain(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -88,6 +88,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create some data to upload as a skyfile.
+	println("a")
 	data := fastrand.Bytes(100 + siatest.Fuzz())
 	// Need it to be a reader.
 	reader := bytes.NewReader(data)
@@ -114,10 +115,12 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		},
 		Reader: reader,
 	}
+	println("b")
 	skylink, rshp, err := r.SkynetSkyfilePost(sup)
 	if err != nil {
 		t.Fatal(err)
 	}
+	println("c")
 	var realSkylink modules.Skylink
 	err = realSkylink.LoadString(skylink)
 	if err != nil {
@@ -131,6 +134,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check the redundancy on the file.
+	println("d")
 	skynetUploadPath, err := modules.SkynetFolder.Join(uploadSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +154,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Try to download the file behind the skylink.
+	println("e")
 	fetchedData, metadata, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -168,15 +173,18 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try to download the file explicitly using the ReaderGet method with the
 	// no formatter.
+	println("f")
 	skylinkReader, err := r.SkynetSkylinkReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
+	println("g")
 	readerData, err := ioutil.ReadAll(skylinkReader)
 	if err != nil {
 		err = errors.Compose(err, skylinkReader.Close())
 		t.Fatal(err)
 	}
+	println("h")
 	err = skylinkReader.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -187,10 +195,12 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try to download the file using the ReaderGet method with the concat
 	// formatter.
+	println("i")
 	skylinkReader, err = r.SkynetSkylinkConcatReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
+	println("j")
 	readerData, err = ioutil.ReadAll(skylinkReader)
 	if err != nil {
 		err = errors.Compose(err, skylinkReader.Close())
@@ -199,6 +209,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(readerData, data) {
 		t.Fatal("reader data doesn't match data")
 	}
+	println("k")
 	err = skylinkReader.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -206,6 +217,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try to download the file using the ReaderGet method with the zip
 	// formatter.
+	println("l")
 	_, skylinkReader, err = r.SkynetSkylinkZipReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -264,6 +276,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try to download the file using the ReaderGet method with the targz
 	// formatter.
+	println("m")
 	_, skylinkReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -293,6 +306,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if err != io.EOF {
 		t.Fatal("expected error to be EOF but was", err)
 	}
+	println("n")
 	err = skylinkReader.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -320,6 +334,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Quick fuzz on the force value so that sometimes it is set, sometimes it
 	// is not.
+	println("n")
 	var rootForce bool
 	if fastrand.Intn(2) == 0 {
 		rootForce = true
@@ -343,13 +358,16 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Get the list of files in the skynet directory and see if the file is
 	// present.
+	println("o")
 	rootRdg, err := r.RenterDirRootGet(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
+	println("p")
 	if len(rootRdg.Files) != 1 {
 		t.Fatal("expecting a file to be in the root folder after uploading")
 	}
+	println("q")
 	err = build.Retry(250, 250*time.Millisecond, func() error {
 		uploadedFile, err := r.RenterFileRootGet(rootUploadSiaPath)
 		if err != nil {
@@ -363,6 +381,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	println("r")
 
 	// Upload another skyfile, this time ensure that the skyfile is more than
 	// one sector.
@@ -377,6 +396,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if fastrand.Intn(2) == 0 {
 		force2 = true
 	}
+	println("s")
 	largeLup := modules.SkyfileUploadParameters{
 		SiaPath:             largeSiaPath,
 		Force:               force2,
@@ -390,14 +410,18 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 		Reader: largeReader,
 	}
+	println("t")
 	largeSkylink, _, err := r.SkynetSkyfilePost(largeLup)
 	if err != nil {
 		t.Fatal(err)
 	}
+	println("u")
 	largeFetchedData, _, err := r.SkynetSkylinkGet(largeSkylink)
 	if err != nil {
 		t.Fatal(err)
 	}
+	println("--------------")
+	println("p")
 	if !bytes.Equal(largeFetchedData, largeData) {
 		t.Error("upload and download data does not match for large siafiles", len(largeFetchedData), len(largeData))
 	}
@@ -437,6 +461,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	// Pinning test.
 	//
 	// Try to download the file behind the skylink.
+	println("q")
 	pinSiaPath, err := modules.NewSiaPath("testSmallPinPath")
 	if err != nil {
 		t.Fatal(err)
@@ -453,6 +478,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Get the list of files in the skynet directory and see if the file is
 	// present.
+	println("r")
 	fullPinSiaPath, err := modules.SkynetFolder.Join(pinSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
@@ -472,6 +498,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	// Unpinning test.
 	//
 	// Try deleting the file (equivalent to unpin).
+	println("s")
 	err = r.RenterFileDeleteRootPost(fullPinSiaPath)
 	if err != nil {
 		t.Fatal(err)
@@ -499,6 +526,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Pin the file again but without specifying the BaseChunkRedundancy.
 	// Use a different Siapath to avoid path conflict.
+	println("t")
 	largePinSiaPath, err = modules.NewSiaPath("testLargePinPath2")
 	if err != nil {
 		t.Fatal(err)
@@ -533,11 +561,13 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Make sure the file is no longer present.
+	println("u")
 	_, err = r.RenterFileRootGet(fullLargePinSiaPath)
 	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Fatal("skyfile still present after deletion")
 	}
 
+	println("v")
 	// TODO: We don't actually check at all whether the presence of the new
 	// skylinks is going to keep the file online. We could do that by deleting
 	// the old files and then churning the hosts over, and checking that the
@@ -607,6 +637,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Try to download the skylink.
+	println("failing test is now attempting the download:::::::::::::::::::::::::::::::::::::::::::::::::")
 	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)

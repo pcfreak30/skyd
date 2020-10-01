@@ -209,13 +209,19 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	defer ws.mu.Unlock()
 
 	// Delete the worker from the set of unresolved workers.
+	println("pcws got a response")
 	w := resp.staticWorker
+	if w == nil {
+		panic("nil worker provided in resp")
+	}
 	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
 	ws.closeUpdateChans()
 
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
 	if resp.staticErr != nil {
+		println("got an err repsonse")
+		println(resp.staticErr.Error())
 		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
 			worker: w,
 		})
@@ -227,8 +233,12 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	var indices []uint64
 	for i, available := range resp.staticAvailables {
 		if available {
+			println("worker reporting a piece is available")
 			indices = append(indices, uint64(i))
 		}
+	}
+	if len(resp.staticAvailables) == 0 {
+		println("worker does not have anything to offer")
 	}
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
@@ -408,7 +418,9 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec modules.ErasureCoder, masterKey crypto.CipherKey, chunkIndex uint64) (*projectChunkWorkerSet, error) {
 	// Check that the number of roots provided is consistent with the erasure
 	// coder provided.
-	if len(roots) != ec.NumPieces() {
+	//
+	// NOTE: There's a legacy special case where 1-of-N only needs 1 root.
+	if len(roots) != ec.NumPieces() && !(len(roots) == 1 && ec.MinPieces() == 1) {
 		return nil, fmt.Errorf("%v roots provided, but erasure coder specifies %v pieces", len(roots), ec.NumPieces())
 	}
 

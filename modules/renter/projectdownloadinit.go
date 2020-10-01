@@ -150,7 +150,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		}
 
 		// Push the element into the heap.
-		heap.Push(&workerHeap, pdcInitialWorker{
+		heap.Push(&workerHeap, &pdcInitialWorker{
 			completeTime: completeTime,
 			cost:         cost,
 			readDuration: readDuration,
@@ -253,11 +253,13 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 	// depedning on how cheap the worker is and how slow the worker is. Each
 	// time that the working set is better than the best set, overwrite the best
 	// set with the new working set.
-	for {
+	for len(workerHeap) > 0 {
 		// Grab the next worker from the heap. If the heap is empty, we are
 		// done.
 		nextWorker := heap.Pop(&workerHeap).(*pdcInitialWorker)
 		if nextWorker == nil {
+			// TODO: Not panic
+			panic("wasn't expecting to pop a nil worker")
 			break
 		}
 
@@ -440,6 +442,8 @@ func (pdc *projectDownloadChunk) launchFinalWorkers(finalWorkers []*pdcInitialWo
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+	println("launch init workers")
+	println(pdc)
 	for {
 		var updateChan <-chan struct{}
 		updateChan, finalWorkers, err := pdc.createInitialWorkerSet()

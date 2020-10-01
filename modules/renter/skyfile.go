@@ -777,11 +777,14 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	}
 
 	// Create the data source and add it to the stream buffer set.
+	println("creating data source")
 	dataSource, err := r.skylinkDataSource(link, pricePerMs)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
+	println("creating stream buffer")
 	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0)
+	println("returning stream")
 	return dataSource.Metadata(), stream, nil
 }
 

@@ -48,6 +48,8 @@ type pieceDownload struct {
 // safe.
 type projectDownloadChunk struct {
 	// Parameters for downloading within the chunk.
+	//
+	// TODO: These are poorly named.
 	chunkLength uint64
 	chunkOffset uint64
 	pricePerMS  types.Currency
@@ -107,13 +109,18 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 	}
 	// Add any new resolved workers to the pdc's list of available pieces.
 	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
+		println("considering worker: ", i)
 		// Add the returned worker to available pieces for each piece that the
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
+		println(ws)
 		for _, pieceIndex := range resp.pieceIndices {
+			println("appending to the pdc set of available pieces")
+			println(pdc)
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pieceDownload{
 				worker: resp.worker,
 			})
+			println(len(pdc.availablePieces[pieceIndex]))
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
@@ -185,7 +192,8 @@ func (pdc *projectDownloadChunk) finalize() {
 
 	// The chunk download offset and chunk download length are different from
 	// the requested offset and length because the chunk download offset and
-	// length are required to be
+	// length are required to be a factor of the segment size of the erasure
+	// codes.
 	//
 	// NOTE: This is one of the places where we assume we are using maximum
 	// distance separable erasure codes.
@@ -202,11 +210,13 @@ func (pdc *projectDownloadChunk) finalize() {
 	data := buf.Bytes()
 
 	// The full set of data is recovered, truncate it down to just the pieces of
-	// data requested by the user and return.
+	// data requested by the user and return. We have downloaded a subset of the
+	// chunk as the data, and now we must determine which subset of the data was
+	// actually requested by the user.
 	//
 	// TODO: Unit test this.
 	chunkStartWithinData := pdc.chunkOffset - chunkDLOffset
-	chunkEndWithinData := pdc.chunkLength + chunkStartWithinData
+	chunkEndWithinData := chunkStartWithinData + pdc.chunkLength
 	data = data[chunkStartWithinData:chunkEndWithinData]
 
 	// Return the data to the caller.
@@ -321,6 +331,10 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 
 	// Consistency check some of the erasure coder values. If the check fails,
 	// return that the whole piece must be downloaded.
+	//
+	// TODO: I'm not completely sure why this modulus check is here, it seems to
+	// me at the moment of writing that omitting the modulus check would be
+	// fine.
 	if pieceSegmentSize == 0 || pieceSegmentSize%crypto.SegmentSize != 0 {
 		build.Critical("pcws has a bad erasure coder")
 		return 0, modules.SectorSize
@@ -346,7 +360,7 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 	if overflow != 0 {
 		chunkTerminationOffset += chunkSegmentSize - overflow
 	}
-	pieceTerminationOffset := chunkTerminationOffset / pieceSegmentSize
+	pieceTerminationOffset := chunkTerminationOffset / uint64(ec.MinPieces())
 	pieceLength = pieceTerminationOffset - pieceOffset
 	return pieceOffset, pieceLength
 }
@@ -445,6 +459,10 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		workerSet:            pcws,
 		workerState:          ws,
 	}
+	println("project download chunk created")
+	println(pdc)
+
+	// TODO: Need to move over any completed items here.
 
 	// Launch the initial set of workers for the pdc.
 	err = pdc.launchInitialWorkers()

@@ -1,5 +1,8 @@
 package renter
 
+// TODO: Handle the issue with 1-of-N erasure coded roots having all sorts of
+// speical cases, in particular in the way the erasure coder is used.
+
 import (
 	"context"
 	"sync/atomic"
@@ -82,6 +85,7 @@ func (sds *skylinkDataSource) SilentClose() {
 // until the downloads have been queued, giving the stream buffer control over
 // what approximate order the data is returned.
 func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
+	println("got a read at: ", off, " :: ", len(p), "data size", sds.DataSize())
 	// TODO: Get this as input.
 	pricePerMs := types.SiacoinPrecision
 
@@ -111,14 +115,14 @@ func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
 		}
 
 		// Issue the download.
-		//
-		// TODO: That pricePerMs needs to come from somewhere.
 		respChan, err := sds.staticFanoutPCWS[chunkIndex].managedDownload(sds.staticCtx, pricePerMs, offsetInChunk, downloadSize)
 		if err != nil {
+			println("got an error blue: ", err.Error())
 			return n, errors.AddContext(err, "unable to start download")
 		}
 		resp := <-respChan
 		if resp.err != nil {
+			println("got an error red")
 			return n, errors.AddContext(err, "base sector download did not succeed")
 		}
 		m := copy(p[n:], resp.data)
@@ -187,40 +191,81 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
-
-	// Determine the total number of chunks that are in the file.
-	chunkSize := uint64(layout.fanoutDataPieces) * modules.SectorSize
-	chunks := layout.filesize / chunkSize
-	if layout.filesize%chunkSize != 0 {
-		chunks++
-	}
-
-	// Grab the encryption key and the erasure coding parameters.
-	masterKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
+	fanoutChunks, err := decodeFanout(layout, fanoutBytes)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to derive encryption key")
+		return nil, errors.AddContext(err, "error parsing skyfile fanout")
 	}
-	ec, err := siafile.NewRSSubCode(int(layout.fanoutDataPieces), int(layout.fanoutParityPieces), crypto.SegmentSize)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
-	}
-
-	// Build the pcws for each chunk.
-	fanoutPCWS := make([]*projectChunkWorkerSet, chunks)
-	fanoutOffset := 0
-	for i := uint64(0); i < chunks; i++ {
-		// Get the roots for this chunk.
-		chunkRoots := make([]crypto.Hash, layout.fanoutDataPieces+layout.fanoutParityPieces)
-		for j := 0; j < len(chunkRoots); j++ {
-			copy(chunkRoots[j][:], fanoutBytes[fanoutOffset:])
-			fanoutOffset += crypto.HashSize
-		}
-		pcws, err := r.newPCWSByRoots(ctx, chunkRoots, ec, masterKey, i)
+	fanoutPCWS := make([]*projectChunkWorkerSet, len(fanoutChunks))
+	println("spinning up pcws objects for the fanout chunks")
+	for i, fanoutChunk := range fanoutChunks {
+		println("yo: ", len(fanoutChunk))
+		masterKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
 		if err != nil {
+			return nil, errors.AddContext(err, "unable to derive encryption key")
+		}
+		println(layout.fanoutDataPieces)
+		println(layout.fanoutParityPieces)
+		ec, err := siafile.NewRSSubCode(int(layout.fanoutDataPieces), int(layout.fanoutParityPieces), crypto.SegmentSize)
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
+		}
+		println("new pcws")
+		pcws, err := r.newPCWSByRoots(ctx, fanoutChunk, ec, masterKey, uint64(i))
+		if err != nil {
+			println(len(fanoutChunk))
 			return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
 		}
 		fanoutPCWS[i] = pcws
 	}
+
+	/*
+	// Determine the total number of fanout chunks that are in the file.
+	//
+	// TODO: plenty of edge cases to test here.
+	fanoutChunks := uint64(0)
+	if layout.fanoutDataPieces != 0 {
+		chunkSize := uint64(layout.fanoutDataPieces) * modules.SectorSize
+		fanoutChunks = (layout.filesize - uint64(len(firstChunk))) / chunkSize
+		if layout.filesize%chunkSize != 0 {
+			fanoutChunks++
+		}
+	}
+
+	// Grab the encryption key and the erasure coding parameters.
+	fanoutPCWS := make([]*projectChunkWorkerSet, fanoutChunks)
+	if fanoutChunks > 0 {
+		println("building fanout chunks")
+		masterKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to derive encryption key")
+		}
+		println("building ec")
+		ec, err := siafile.NewRSSubCode(int(layout.fanoutDataPieces), int(layout.fanoutParityPieces), crypto.SegmentSize)
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
+		}
+
+		// Build the pcws for each chunk.
+		println("oh I know what's wrong")
+		fanoutOffset := 0
+		for i := uint64(0); i < fanoutChunks; i++ {
+			// Get the roots for this chunk.
+			chunkRoots := make([]crypto.Hash, layout.fanoutDataPieces+layout.fanoutParityPieces)
+			for j := 0; j < len(chunkRoots); j++ {
+				println("ij")
+				println(i)
+				println(j)
+				copy(chunkRoots[j][:], fanoutBytes[fanoutOffset:])
+				fanoutOffset += crypto.HashSize
+			}
+			pcws, err := r.newPCWSByRoots(ctx, chunkRoots, ec, masterKey, i)
+			if err != nil {
+				return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
+			}
+			fanoutPCWS[i] = pcws
+		}
+	}
+	*/
 
 	sds := &skylinkDataSource{
 		staticID:       link.DataSourceID(),
@@ -234,5 +279,50 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		staticCtx:        ctx,
 		staticRenter:     r,
 	}
+	println("data source init complete")
 	return sds, nil
+}
+
+// decodeFanout will take the fanout bytes from a skyfile and decode them in to
+// the staticChunks filed of the fanoutStreamBufferDataSource.
+func decodeFanout(ll skyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error) {
+	// TODO: Is this the best design?
+	//
+	// There is no fanout if there are no fanout settings.
+	if len(fanoutBytes) == 0 {
+		return nil, nil
+	}
+
+	// Special case: if the data of the file is using 1-of-N erasure coding,
+	// each piece will be identical, so the fanout will only have encoded a
+	// single piece for each chunk.
+	var piecesPerChunk uint64
+	var chunkRootsSize uint64
+	if ll.fanoutDataPieces == 1 && ll.cipherType == crypto.TypePlain {
+		piecesPerChunk = 1
+		chunkRootsSize = crypto.HashSize
+	} else {
+		// This is the case where the file data is not 1-of-N. Every piece is
+		// different, so every piece must get enumerated.
+		piecesPerChunk = uint64(ll.fanoutDataPieces) + uint64(ll.fanoutParityPieces)
+		chunkRootsSize = crypto.HashSize * piecesPerChunk
+	}
+	// Sanity check - the fanout bytes should be an even number of chunks.
+	if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
+		return nil, errors.New("the fanout bytes do not contain an even number of chunks")
+	}
+	numChunks := uint64(len(fanoutBytes)) / chunkRootsSize
+
+	// Decode the fanout data into the list of chunks for the
+	// fanoutStreamBufferDataSource.
+	chunks := make([][]crypto.Hash, 0, numChunks)
+	for i := uint64(0); i < numChunks; i++ {
+		chunk := make([]crypto.Hash, piecesPerChunk)
+		for j := uint64(0); j < piecesPerChunk; j++ {
+			fanoutOffset := (i * chunkRootsSize) + (j * crypto.HashSize)
+			copy(chunk[j][:], fanoutBytes[fanoutOffset:])
+		}
+		chunks = append(chunks, chunk)
+	}
+	return chunks, nil
 }
