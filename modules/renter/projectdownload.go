@@ -109,18 +109,13 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 	}
 	// Add any new resolved workers to the pdc's list of available pieces.
 	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
-		println("considering worker: ", i)
 		// Add the returned worker to available pieces for each piece that the
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
-		println(ws)
 		for _, pieceIndex := range resp.pieceIndices {
-			println("appending to the pdc set of available pieces")
-			println(pdc)
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pieceDownload{
 				worker: resp.worker,
 			})
-			println(len(pdc.availablePieces[pieceIndex]))
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
@@ -471,8 +466,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		workerSet:            pcws,
 		workerState:          ws,
 	}
-	println("project download chunk created")
-	println(pdc)
 
 	// TODO: Need to move over any completed items here.
 

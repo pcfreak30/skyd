@@ -442,8 +442,6 @@ func (pdc *projectDownloadChunk) launchFinalWorkers(finalWorkers []*pdcInitialWo
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
-	println("launch init workers")
-	println(pdc)
 	for {
 		var updateChan <-chan struct{}
 		updateChan, finalWorkers, err := pdc.createInitialWorkerSet()

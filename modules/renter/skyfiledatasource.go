@@ -85,7 +85,6 @@ func (sds *skylinkDataSource) SilentClose() {
 // until the downloads have been queued, giving the stream buffer control over
 // what approximate order the data is returned.
 func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
-	println("got a read at: ", off, " :: ", len(p), "data size", sds.DataSize())
 	// TODO: Get this as input.
 	pricePerMs := types.SiacoinPrecision
 
@@ -117,12 +116,10 @@ func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
 		// Issue the download.
 		respChan, err := sds.staticFanoutPCWS[chunkIndex].managedDownload(sds.staticCtx, pricePerMs, offsetInChunk, downloadSize)
 		if err != nil {
-			println("got an error blue: ", err.Error())
 			return n, errors.AddContext(err, "unable to start download")
 		}
 		resp := <-respChan
 		if resp.err != nil {
-			println("got an error red")
 			return n, errors.AddContext(err, "base sector download did not succeed")
 		}
 		m := copy(p[n:], resp.data)
@@ -196,76 +193,21 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		return nil, errors.AddContext(err, "error parsing skyfile fanout")
 	}
 	fanoutPCWS := make([]*projectChunkWorkerSet, len(fanoutChunks))
-	println("spinning up pcws objects for the fanout chunks")
 	for i, fanoutChunk := range fanoutChunks {
-		println("yo: ", len(fanoutChunk))
 		masterKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to derive encryption key")
 		}
-		println(layout.fanoutDataPieces)
-		println(layout.fanoutParityPieces)
 		ec, err := siafile.NewRSSubCode(int(layout.fanoutDataPieces), int(layout.fanoutParityPieces), crypto.SegmentSize)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
 		}
-		println("new pcws")
 		pcws, err := r.newPCWSByRoots(ctx, fanoutChunk, ec, masterKey, uint64(i))
 		if err != nil {
-			println(len(fanoutChunk))
 			return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
 		}
 		fanoutPCWS[i] = pcws
 	}
-
-	/*
-	// Determine the total number of fanout chunks that are in the file.
-	//
-	// TODO: plenty of edge cases to test here.
-	fanoutChunks := uint64(0)
-	if layout.fanoutDataPieces != 0 {
-		chunkSize := uint64(layout.fanoutDataPieces) * modules.SectorSize
-		fanoutChunks = (layout.filesize - uint64(len(firstChunk))) / chunkSize
-		if layout.filesize%chunkSize != 0 {
-			fanoutChunks++
-		}
-	}
-
-	// Grab the encryption key and the erasure coding parameters.
-	fanoutPCWS := make([]*projectChunkWorkerSet, fanoutChunks)
-	if fanoutChunks > 0 {
-		println("building fanout chunks")
-		masterKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
-		if err != nil {
-			return nil, errors.AddContext(err, "unable to derive encryption key")
-		}
-		println("building ec")
-		ec, err := siafile.NewRSSubCode(int(layout.fanoutDataPieces), int(layout.fanoutParityPieces), crypto.SegmentSize)
-		if err != nil {
-			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
-		}
-
-		// Build the pcws for each chunk.
-		println("oh I know what's wrong")
-		fanoutOffset := 0
-		for i := uint64(0); i < fanoutChunks; i++ {
-			// Get the roots for this chunk.
-			chunkRoots := make([]crypto.Hash, layout.fanoutDataPieces+layout.fanoutParityPieces)
-			for j := 0; j < len(chunkRoots); j++ {
-				println("ij")
-				println(i)
-				println(j)
-				copy(chunkRoots[j][:], fanoutBytes[fanoutOffset:])
-				fanoutOffset += crypto.HashSize
-			}
-			pcws, err := r.newPCWSByRoots(ctx, chunkRoots, ec, masterKey, i)
-			if err != nil {
-				return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
-			}
-			fanoutPCWS[i] = pcws
-		}
-	}
-	*/
 
 	sds := &skylinkDataSource{
 		staticID:       link.DataSourceID(),
@@ -279,7 +221,6 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		staticCtx:        ctx,
 		staticRenter:     r,
 	}
-	println("data source init complete")
 	return sds, nil
 }
 

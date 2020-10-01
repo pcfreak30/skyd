@@ -209,7 +209,6 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	defer ws.mu.Unlock()
 
 	// Delete the worker from the set of unresolved workers.
-	println("pcws got a response")
 	w := resp.staticWorker
 	if w == nil {
 		panic("nil worker provided in resp")
@@ -220,8 +219,6 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
 	if resp.staticErr != nil {
-		println("got an err repsonse")
-		println(resp.staticErr.Error())
 		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
 			worker: w,
 		})
@@ -233,12 +230,8 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	var indices []uint64
 	for i, available := range resp.staticAvailables {
 		if available {
-			println("worker reporting a piece is available")
 			indices = append(indices, uint64(i))
 		}
-	}
-	if len(resp.staticAvailables) == 0 {
-		println("worker does not have anything to offer")
 	}
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).

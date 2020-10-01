@@ -85,7 +85,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// provide payment
 	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
 	if err != nil {
-		println("provide payment failed")
 		return
 	}
 
@@ -99,21 +98,18 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// send the execute program request.
 	err = modules.RPCWrite(buffer, epr)
 	if err != nil {
-		println("writing the buffer failed")
 		return
 	}
 
 	// send the programData.
 	_, err = buffer.Write(data)
 	if err != nil {
-		println("writing the data failed")
 		return
 	}
 
 	// write contents of the buffer to the stream
 	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
-		println("stream writing failed")
 		return
 	}
 
@@ -121,7 +117,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	var ct modules.MDMCancellationToken
 	err = modules.RPCRead(stream, &ct)
 	if err != nil {
-		println("rpc read failed")
 		return
 	}
 
@@ -131,7 +126,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		var response programResponse
 		err = modules.RPCRead(stream, &response)
 		if err != nil {
-			println("rpc read within loop failed")
 			return
 		}
 
@@ -140,7 +134,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		response.Output = make([]byte, outputLen)
 		_, err = io.ReadFull(stream, response.Output)
 		if err != nil {
-			println("read full failed")
 			return
 		}
 
@@ -152,7 +145,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 			break
 		}
 	}
-	println("---- made to bot ----- ")
 	return
 }
 
