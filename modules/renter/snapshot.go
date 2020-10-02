@@ -3,10 +3,12 @@ package renter
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -116,7 +118,98 @@ func (r *Renter) UploadBackup(src, name string) error {
 		return err
 	}
 	defer r.tg.Done()
-	return r.managedUploadBackup(src, name)
+	errCh := make(chan error)
+	// Copy all sia files to the backup location. This might be slow, so we can
+	// do it in parallel with uploading the data which might also be slow.
+	go func() {
+		errCh <- r.managedCreateLocalBackup(name)
+	}()
+	err := r.managedUploadBackup(src, name)
+	// Wait for the local files to finish copying.
+	errLocal := <-errCh
+	err = errors.Compose(err, errLocal)
+	if err != nil {
+		// Clean up the local backup.
+		err1 := r.managedRemoveLocalBackup(name)
+		err = errors.Compose(err, err1)
+	}
+	return err
+}
+
+// managedCreateLocalBackup copies all siafiles from /home/user to the backup
+// location. This is a slow, disk-intensive operation that can be done in
+// parallel with uploading the backup.
+func (r *Renter) managedCreateLocalBackup(name string) error {
+	// Get the local path to the backup location.
+	backupDir, err := modules.BackupFolder.Join(name)
+	if err != nil {
+		return errors.AddContext(err, "failed to create backup directory")
+	}
+	lockId := r.mu.RLock()
+	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
+	r.mu.RUnlock(lockId)
+	backupDirPath := backupDir.SiaDirSysPath(fsRoot)
+	userDirPath := modules.UserFolder.SiaDirSysPath(fsRoot)
+	// Create a backup location for siafiles.
+	if _, err := os.Stat(backupDirPath); err == nil {
+		return errors.AddContext(err, "cannot create backup directory, a directory with that name already exists")
+	}
+	if err := os.MkdirAll(backupDirPath, modules.DefaultDirPerm); err != nil {
+		return errors.AddContext(err, "failed to create backup directory")
+	}
+	if err = build.CopyDir(userDirPath, backupDirPath); err != nil {
+		return errors.AddContext(err, "failed to copy files")
+	}
+	if err = writeBackupInfo(name, backupDirPath); err != nil {
+		return errors.AddContext(err, "failed to ")
+	}
+	return nil
+}
+
+// managedRemoveLocalBackup removes a local backup by its name.
+func (r *Renter) managedRemoveLocalBackup(name string) error {
+	// Get the local path to the backup location.
+	backupDir, err := modules.BackupFolder.Join(name)
+	if err != nil {
+		return errors.AddContext(err, "invalid backup name")
+	}
+	lockId := r.mu.RLock()
+	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
+	r.mu.RUnlock(lockId)
+	backupDirPath := backupDir.SiaDirSysPath(fsRoot)
+	return os.RemoveAll(backupDirPath)
+}
+
+// writeBackupInfo writes a .info file in the backup's directory, describing
+// the backup. The file contains a JSON version of modules.UploadedBackup.
+func writeBackupInfo(name, backupDirPath string) error {
+	// Get the backupSize of the backup.
+	var backupSize int64
+	err := filepath.Walk(backupDirPath, func(_ string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !fi.IsDir() {
+			backupSize += fi.Size()
+		}
+		return err
+	})
+	if err != nil {
+		return errors.AddContext(err, "failed to get backup size")
+	}
+	ub := modules.UploadedBackup{
+		Name:           name,
+		CreationDate:   types.CurrentTimestamp(),
+		Size:           uint64(backupSize),
+		UploadProgress: 0,
+	}
+	fastrand.Read(ub.UID[:])
+	ubBytes, err := json.Marshal(ub)
+	if err != nil {
+		return err
+	}
+	err = ioutil.WriteFile(filepath.Join(backupDirPath, ".info"), ubBytes, modules.DefaultFilePerm)
+	return err
 }
 
 // managedUploadBackup creates a backup of the renter which is uploaded to the
