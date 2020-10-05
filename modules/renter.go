@@ -297,9 +297,9 @@ func (a Allowance) PortalMode() bool {
 	return !a.PaymentContractInitialFunding.IsZero()
 }
 
-// Unset returns true if the allowance has not been set yet, or it has been
+// IsUnset returns true if the allowance has not been set yet, or it has been
 // cleared.
-func (a Allowance) Unset() bool {
+func (a Allowance) IsUnset() bool {
 	return reflect.DeepEqual(a, Allowance{})
 }
 

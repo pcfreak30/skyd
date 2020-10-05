@@ -328,7 +328,7 @@ func (w *worker) threadedWorkLoop() {
 
 		// If the renter's allowance is not set, because the renter cancelled it
 		// for example, we do not want to launch any more jobs.
-		if w.staticCache().staticAllowance.Unset() {
+		if w.staticCache().staticAllowance.IsUnset() {
 			err := errors.New("allowance unset")
 			w.staticJobDownloadSnapshotQueue.discardAll(err)
 			w.staticJobUploadSnapshotQueue.discardAll(err)

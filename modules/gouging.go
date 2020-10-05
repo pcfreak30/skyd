@@ -116,7 +116,7 @@ func (c *check) Error() string {
 // CheckPriceTableGouging performs a series of checks that verify whether or not
 // the given price table indicates price gouging.
 func CheckPriceTableGouging(a Allowance, pt RPCPriceTable, tb types.Currency) PriceTableGougingChecks {
-	if a.Unset() {
+	if a.IsUnset() {
 		build.Critical("CheckPriceTableGouging should not be executed when the allowance has not been set yet.")
 	}
 	return PriceTableGougingChecks{
@@ -131,7 +131,7 @@ func CheckPriceTableGouging(a Allowance, pt RPCPriceTable, tb types.Currency) Pr
 // CheckHostSettingsGouging performs a series of checks that verify whether or
 // not the given host settings indicates price gouging.
 func CheckHostSettingsGouging(a Allowance, hes HostExternalSettings) HostSettingsGougingChecks {
-	if a.Unset() {
+	if a.IsUnset() {
 		build.Critical("CheckHostSettingsGouging should not be executed when the allowance has not been set yet.")
 	}
 	return HostSettingsGougingChecks{
