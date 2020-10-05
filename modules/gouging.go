@@ -18,10 +18,10 @@ const (
 	// be assigned to storage, and this does not account for that.
 	downloadGougingFractionDenom = 4
 
-	// fetchBackupsGougingFractionDenom sets the fraction to 1/100 because
+	// downloadSnapshotGougingFractionDenom sets the fraction to 1/100 because
 	// fetching backups is important, so there is less sensitivity to gouging.
 	// Also, this is a rare operation.
-	fetchBackupsGougingFractionDenom = 100
+	downloadSnapshotGougingFractionDenom = 100
 
 	// fundAccountGougingPercentageThreshold is the percentage threshold, in
 	// relation to the allowance, at which we consider the cost of funding an
@@ -71,6 +71,7 @@ type (
 	// to the host's price table.
 	PriceTableGougingChecks struct {
 		Download         GougingCheck
+		DownloadSnapshot GougingCheck
 		FundAccount      GougingCheck
 		PDBR             GougingCheck
 		UpdatePriceTable GougingCheck
@@ -79,7 +80,6 @@ type (
 	// HostSettingsGougingChecks contains a series of gouging checks that apply
 	// to the host's external settings
 	HostSettingsGougingChecks struct {
-		FetchBackups   GougingCheck
 		FormContract   GougingCheck
 		Upload         GougingCheck
 		UploadSnapshot GougingCheck
@@ -121,6 +121,7 @@ func CheckPriceTableGouging(a Allowance, pt RPCPriceTable, tb types.Currency) Pr
 	}
 	return PriceTableGougingChecks{
 		Download:         &check{err: checkDownloadGouging(a, pt)},
+		DownloadSnapshot: &check{err: checkDownloadSnapshotGouging(a, pt)},
 		FundAccount:      &check{err: checkFundAccountGouging(a, pt, tb)},
 		PDBR:             &check{err: checkPDBRGouging(a, pt)},
 		UpdatePriceTable: &check{err: checkUpdatePriceTableGouging(a, pt)},
@@ -134,7 +135,6 @@ func CheckHostSettingsGouging(a Allowance, hes HostExternalSettings) HostSetting
 		build.Critical("CheckHostSettingsGouging should not be executed when the allowance has not been set yet.")
 	}
 	return HostSettingsGougingChecks{
-		FetchBackups:   &check{err: checkFetchBackupsGouging(a, hes)},
 		FormContract:   &check{err: checkFormContractGouging(a, hes)},
 		Upload:         &check{err: checkUploadGouging(a, hes)},
 		UploadSnapshot: &check{err: checkUploadSnapshotGouging(a, hes)},
@@ -149,18 +149,6 @@ func CheckHostSettingsGouging(a Allowance, hes HostExternalSettings) HostSetting
 func calculateExpectedDownloadCost(a Allowance, pt RPCPriceTable) types.Currency {
 	rpcCost := MDMInitCost(&pt, 48, 1).Add(MDMReadCost(&pt, StreamDownloadSize)) // 48 bytes is the length of a read program with 1 instruction
 	bandwidthCost := pt.DownloadBandwidthCost.Mul64(StreamDownloadSize)
-	downloadCostPerByte := rpcCost.Add(bandwidthCost).Div64(StreamDownloadSize)
-	return downloadCostPerByte.Mul64(a.ExpectedDownload)
-}
-
-// calculateExpectedDownloadCostWithHES is a helper function that returns the
-// cost of downloading the expected download amount as dictated by the
-// allowance and the host's external settings.
-//
-// NOTE: we treat all downloads being the StreamDownloadSize
-func calculateExpectedDownloadCostWithHES(a Allowance, hes HostExternalSettings) types.Currency {
-	rpcCost := hes.BaseRPCPrice.Add(hes.SectorAccessPrice)
-	bandwidthCost := hes.DownloadBandwidthPrice.Mul64(StreamDownloadSize)
 	downloadCostPerByte := rpcCost.Add(bandwidthCost).Div64(StreamDownloadSize)
 	return downloadCostPerByte.Mul64(a.ExpectedDownload)
 }
@@ -211,12 +199,11 @@ func checkDownloadGouging(a Allowance, pt RPCPriceTable) error {
 // checkFetchBackupsGouging looks at the current renter allowance and the active
 // settings for a host and determines whether an backup fetch should be halted
 // due to price gouging.
-func checkFetchBackupsGouging(a Allowance, hes HostExternalSettings) error {
+func checkDownloadSnapshotGouging(a Allowance, pt RPCPriceTable) error {
 	// Check gouging for all related price components.
 	if err := errors.Compose(
-		checkBaseRPCGouging(a, hes),
-		checkDownloadBandwidthGouging(a, hes),
-		checkSectorAccessPriceGouging(a, hes),
+		checkHardcodedConstants(pt),
+		checkDLBandwidthGouging(a, pt),
 	); err != nil {
 		return err
 	}
@@ -231,10 +218,10 @@ func checkFetchBackupsGouging(a Allowance, hes HostExternalSettings) error {
 	// The general idea is to compute the total cost of performing the same
 	// action repeatedly until a fraction of the desired total resource
 	// consumption established by the allowance has been reached.
-	totalCost := calculateExpectedDownloadCostWithHES(a, hes)
-	backupCost := totalCost.Div64(fetchBackupsGougingFractionDenom)
-	if backupCost.Cmp(a.Funds) > 0 {
-		return fmt.Errorf("combined download pricing of host yields %v, which is more than the renter is willing to pay for backups: %v - price gouging protection enabled", backupCost, a.Funds)
+	totalCost := calculateExpectedDownloadCost(a, pt)
+	downloadCost := totalCost.Div64(downloadSnapshotGougingFractionDenom)
+	if downloadCost.Cmp(a.Funds) > 0 {
+		return fmt.Errorf("combined download pricing of host yields %v, which is more than the renter is willing to pay for download a snapshot: %v - price gouging protection enabled", downloadCost, a.Funds)
 	}
 
 	return nil
