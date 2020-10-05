@@ -3645,6 +3645,12 @@ curl -A "Sia-Agent" "localhost:9980/renter/downloads"
 
 Lists all files in the download queue.
 
+### Query String Parameters
+### REQUIRED
+**root** | boolean  
+If root is set, the downloads will contain their absolute paths instead of
+the relative ones starting at home/user.
+
 ### JSON Response
 > JSON Response Example
  
@@ -3971,6 +3977,15 @@ character.
 If provided, this parameter changes the tracking path of a file to the
 specified path. Useful if moving the file to a different location on disk.
 
+**stuck** | bool  
+if set a file will be marked as either stuck or not stuck by marking all of
+its chunks.
+
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.  
+
 ### Response
 
 standard success or error response. See [standard
@@ -4033,6 +4048,9 @@ httpresp.
 **disablelocalfetch** | boolean  
 If disablelocalfetch is true, downloads won't be served from disk even if the
 file is available locally.
+
+**root** | boolean  
+If root is true, the provided siapath will not be prefixed with /home/user but is instead taken as an absolute path.
 
 **length** | bytes  
 Length of the requested data. Has to be <= filesize-offset.  
@@ -4303,6 +4321,9 @@ Path to the file in the renter on the network.
 If disablelocalfetch is true, downloads won't be served from disk even if the
 file is available locally.
 
+**root** | boolean  
+If root is true, the provided siapath will not be prefixed with /home/user but is instead taken as an absolute path.
+
 ### Response
 
 standard success or error response. See [standard
@@ -4545,10 +4566,6 @@ returns the the status of all the workers in the renter's workerpool.
       "balancetarget":       "0", // hastings
       
       "backupjobqueuesize":       0, // int
-      "downloadrootjobqueuesize": 0  // int
-
-      "backupjobqueuesize": 0,        // int
-      "downloadrootjobqueuesize": 0,  // int
 
       "maintenanceoncooldown": false,                      // bool
       "maintenancerecenterr": "",                          // string
@@ -4670,9 +4687,6 @@ The worker's Ephemeral Account target balance
 **backupjobqueuesize** | int  
 The size of the worker's backup job queue
 
-**downloadrootjobqueuesize** | int  
-The size of the worker's download by root job queue
-
 **maintenanceoncooldown** | boolean  
 Indicates if the worker is on maintenance cooldown
 
@@ -4696,19 +4710,19 @@ Details of the workers' has sector jobs queue
 
 # Skynet
 
-## /skynet/blacklist [GET]
+## /skynet/blocklist [GET]
 > curl example
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
+curl -A "Sia-Agent" "localhost:9980/skynet/blocklist"
 ```
 
-returns the list of hashed merkleroots that are blacklisted. 
+returns the list of hashed merkleroots that are blocked. 
 
 NOTE: these are not the same values that were submitted via the POST endpoint.
 This is intentional so that it is harder to find the blocked content.
 	
-NOTE: With v1.5.0 the return value for the Blacklist changed. Pre v1.5.0 the
+NOTE: With v1.5.0 the return value for the Blocklist changed. Pre v1.5.0 the
 []crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash is
 a slice of the Hashes of the MerkleRoots
 
@@ -4717,37 +4731,37 @@ a slice of the Hashes of the MerkleRoots
 
 ```go
 {
-  "blacklist": {
+  "blocklist": {
     "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
     "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
     "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
   }
 }
 ```
-**blacklist** | Hashes  
-The blacklist is a list of hashed merkleroots, that are blacklisted.
+**blocklist** | Hashes  
+The blocklist is a list of hashed merkleroots, that are blocked.
 
-## /skynet/blacklist [POST]
+## /skynet/blocklist [POST]
 > curl example
 
 ```go
-curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blocklist"
 
-curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blocklist"
 ```
 
-updates the list of skylinks that should be blacklisted from Skynet. This
-endpoint can be used to both add and remove skylinks from the blacklist.
+updates the list of skylinks that should be blocked from Skynet. This endpoint
+can be used to both add and remove skylinks from the blocklist.
 
 ### Path Parameters
 ### REQUIRED
 At least one of the following fields needs to be non empty.
 
 **add** | array of strings  
-add is an array of skylinks that should be added to the blacklist.
+add is an array of skylinks that should be added to the blocklist.
 
 **remove** | array of strings  
-remove is an array of skylinks that should be removed from the blacklist.
+remove is an array of skylinks that should be removed from the blocklist.
 
 ### Response
 
@@ -4918,6 +4932,18 @@ supplied, this metadata will be relative to the given path.
 ]
 }
 ```
+
+**ETag** | string
+
+The ETag response header contains a hash that can be supplied using the
+"If-None-Match" request header. If that header is supplied, and if we find that
+the requested data has not changed, siad will respond with a '304 Not Modified'
+response, letting the caller know it can safely reuse it previously cached
+response data.
+
+See
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag for more
+information on the ETag header.
 
 ### Response Body
 

@@ -24,7 +24,10 @@ var (
 	//
 	// Daemon Flags
 	daemonStackOutputFile  string // The file that the stack trace will be written to
-	daemonProfileDirectory string // the Directory where the profile logs are saved
+	daemonCPUProfile       bool   // Indicates that the CPU profile should be started
+	daemonMemoryProfile    bool   // Indicates that the Memory profile should be started
+	daemonProfileDirectory string // The Directory where the profile logs are saved
+	daemonTraceProfile     bool   // Indicates that the Trace profile should be started
 
 	// Host Flags
 	hostContractOutputType string // output type for host contracts
@@ -37,6 +40,7 @@ var (
 	renterDeleteRoot          bool   // Delete path start from root instead of the UserFolder.
 	renterDownloadAsync       bool   // Downloads files asynchronously
 	renterDownloadRecursive   bool   // Downloads folders recursively.
+	renterDownloadRoot        bool   // Download path start from root instead of the UserFolder.
 	renterFuseMountAllowOther bool   // Mount fuse with 'AllowOther' set to true.
 	renterListRecursive       bool   // List files of folder recursively.
 	renterListRoot            bool   // List path start from root instead of the UserFolder.
@@ -71,15 +75,19 @@ var (
 	skykeyType            string // Type used to create a new Skykey.
 
 	// Skynet Flags
-	skynetDownloadPortal string // Portal to use when trying to download a skylink.
-	skynetLsRecursive    bool   // List files of folder recursively.
-	skynetLsRoot         bool   // Use root as the base instead of the Skynet folder.
-	skynetPinPortal      string // Portal to use when trying to pin a skylink.
-	skynetUnpinRoot      bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadDryRun   bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
-	skynetUploadRoot     bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadSilent   bool   // Don't report progress while uploading
-	skynetPortalPublic   bool   // Specify if a portal is public or not
+	skynetBlocklistHash            bool   // Indicates if the input for the blocklist is already a hash.
+	skynetDownloadPortal           string // Portal to use when trying to download a skylink.
+	skynetLsRecursive              bool   // List files of folder recursively.
+	skynetLsRoot                   bool   // Use root as the base instead of the Skynet folder.
+	skynetPinPortal                string // Portal to use when trying to pin a skylink.
+	skynetUnpinRoot                bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadDefaultPath        string // Specify the file to serve when no specific file is specified.
+	skynetUploadDisableDefaultPath bool   // This skyfile will not have a default path. The only way to use it is to download it.
+	skynetUploadDryRun             bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
+	skynetUploadRoot               bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadSeparately         bool   // When uploading all files from a directory, upload each file separately, generating individual skylinks.
+	skynetUploadSilent             bool   // Don't report progress while uploading
+	skynetPortalPublic             bool   // Specify if a portal is public or not
 
 	// Utils Flags
 	dictionaryLanguage string // dictionary for seed utils
@@ -322,7 +330,8 @@ func initCmds() *cobra.Command {
 		renterDownloadsCmd, renterExportCmd, renterFilesDeleteCmd, renterFilesDownloadCmd,
 		renterFilesListCmd, renterFilesRenameCmd, renterFilesUnstuckCmd, renterFilesUploadCmd,
 		renterFuseCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
-		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd, renterWorkersCmd)
+		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd, renterWorkersCmd,
+		renterHealthSummaryCmd)
 	renterWorkersCmd.AddCommand(renterWorkersAccountsCmd, renterWorkersDownloadsCmd, renterWorkersPriceTableCmd, renterWorkersReadJobsCmd, renterWorkersHasSectorJobSCmd, renterWorkersUploadsCmd)
 
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -334,6 +343,7 @@ func initCmds() *cobra.Command {
 	renterFilesDeleteCmd.Flags().BoolVar(&renterDeleteRoot, "root", false, "Delete files and folders from root instead of from the user home directory")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadAsync, "async", "A", false, "Download file asynchronously")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadRecursive, "recursive", "R", false, "Download folder recursively")
+	renterFilesDownloadCmd.Flags().BoolVar(&renterDownloadRoot, "root", false, "Download files and folders from root instead of from the user home directory")
 	renterFilesListCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
 	renterFilesListCmd.Flags().BoolVar(&renterListRoot, "root", false, "List files and folders from root instead of from the user home directory")
 	renterFilesUploadCmd.Flags().StringVar(&dataPieces, "data-pieces", "", "the number of data pieces a files should be uploaded with")
@@ -361,20 +371,25 @@ func initCmds() *cobra.Command {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetBlacklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetUnpinCmd, skynetUploadCmd)
+	skynetCmd.AddCommand(skynetBlocklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetUnpinCmd, skynetUploadCmd)
 	skynetConvertCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
 	skynetConvertCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by id.")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadDryRun, "dry-run", false, "Perform a dry-run of the upload, returning the skylink without actually uploading the file")
+	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSeparately, "separately", "", false, "Upload each file separately, generating individual skylinks")
+	skynetUploadCmd.Flags().StringVar(&skynetUploadDefaultPath, "defaultpath", "", "Specify the file to serve when no specific file is specified.")
+	skynetUploadCmd.Flags().BoolVarP(&skynetUploadDisableDefaultPath, "disabledefaultpath", "", false, "This skyfile will not have a default path. The only way to use it is to download it. Mutually exclusive with --defaultpath")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "s", false, "Don't report progress while uploading")
+	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by its key identifier.")
 	skynetUploadCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
-	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by id.")
 	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetPinCmd.Flags().StringVar(&skynetPinPortal, "portal", "", "Use a Skynet portal to download the skylink in order to pin the skyfile")
-	skynetBlacklistCmd.AddCommand(skynetBlacklistAddCmd, skynetBlacklistRemoveCmd)
+	skynetBlocklistCmd.AddCommand(skynetBlocklistAddCmd, skynetBlocklistRemoveCmd)
+	skynetBlocklistAddCmd.Flags().BoolVar(&skynetBlocklistHash, "hash", false, "Indicates if the input is already a hash of the Skylink's Merkleroot")
+	skynetBlocklistRemoveCmd.Flags().BoolVar(&skynetBlocklistHash, "hash", false, "Indicates if the input is already a hash of the Skylink's Merkleroot")
 	skynetPortalsCmd.AddCommand(skynetPortalsAddCmd, skynetPortalsRemoveCmd)
 	skynetPortalsAddCmd.Flags().BoolVar(&skynetPortalPublic, "public", false, "Add this Skynet portal as public")
 
@@ -382,8 +397,7 @@ func initCmds() *cobra.Command {
 	skykeyCmd.AddCommand(skykeyAddCmd, skykeyCreateCmd, skykeyDeleteCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
 	skykeyAddCmd.Flags().StringVar(&skykeyRenameAs, "rename-as", "", "The new name for the skykey being added")
 	skykeyCreateCmd.Flags().StringVar(&skykeyType, "type", "", "The type of the skykey")
-	skykeyDeleteCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the skykey")
-	skykeyDeleteCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
+	skykeyDeleteCmd.AddCommand(skykeyDeleteNameCmd, skykeyDeleteIDCmd)
 	skykeyGetCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
 	skykeyListCmd.Flags().BoolVar(&skykeyShowPrivateKeys, "show-priv-keys", false, "Show private key data.")
@@ -391,7 +405,10 @@ func initCmds() *cobra.Command {
 	// Daemon Commands
 	root.AddCommand(alertsCmd, globalRatelimitCmd, profileCmd, stackCmd, stopCmd, updateCmd, versionCmd)
 	profileCmd.AddCommand(profileStartCmd, profileStopCmd)
+	profileStartCmd.Flags().BoolVarP(&daemonCPUProfile, "cpu", "c", false, "Start the CPU profile")
+	profileStartCmd.Flags().BoolVarP(&daemonMemoryProfile, "memory", "m", false, "Start the Memory profile")
 	profileStartCmd.Flags().StringVar(&daemonProfileDirectory, "profileDir", "", "Specify the directory where the profile logs are to be saved")
+	profileStartCmd.Flags().BoolVarP(&daemonTraceProfile, "trace", "t", false, "Start the Trace profile")
 	stackCmd.Flags().StringVarP(&daemonStackOutputFile, "filename", "f", "stack.txt", "Specify the output file for the stack trace")
 	updateCmd.AddCommand(updateCheckCmd)
 

@@ -60,7 +60,8 @@ func TestSkynet(t *testing.T) {
 		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
 		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "DisableForce", Test: testSkynetDisableForce},
-		{Name: "Blacklist", Test: testSkynetBlacklist},
+		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
+		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "Stats", Test: testSkynetStats},
@@ -477,7 +478,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Make sure the file is no longer present.
 	_, err = r.RenterFileRootGet(fullPinSiaPath)
-	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Fatal("skyfile still present after deletion")
 	}
 
@@ -533,7 +534,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Make sure the file is no longer present.
 	_, err = r.RenterFileRootGet(fullLargePinSiaPath)
-	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Fatal("skyfile still present after deletion")
 	}
 
@@ -576,7 +577,10 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try and convert to a Skyfile, this should fail due to the original
 	// siafile being a N-of-M redundancy
-	skylink, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if err == nil {
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to fail.")
+	}
 	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
 		t.Fatalf("Expected Error to contain %v but got %v", renter.ErrRedundancyNotSupported, err)
 	}
@@ -598,10 +602,11 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Convert to a Skyfile
-	skylink, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
+	skylink := sshp.Skylink
 
 	// Try to download the skylink.
 	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
@@ -626,7 +631,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// create a multipart upload that without any files
+	// create a multipart upload without any files
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	err := writer.Close()
@@ -664,12 +669,18 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a file at root level
 	data := []byte("File1Contents")
-	subfile := siatest.AddMultipartFile(writer, data, "files[]", "file1", 0600, &offset)
+	subfile, err := modules.AddMultipartFile(writer, data, "files[]", "file1", 0600, &offset)
+	if err != nil {
+		t.Fatal(err)
+	}
 	subfiles[subfile.Filename] = subfile
 
 	// add a nested file
 	data = []byte("File2Contents")
-	subfile = siatest.AddMultipartFile(writer, data, "files[]", "nested/file2.html", 0640, &offset)
+	subfile, err = modules.AddMultipartFile(writer, data, "files[]", "nested/file2.html", 0640, &offset)
+	if err != nil {
+		t.Fatal(err)
+	}
 	subfiles[subfile.Filename] = subfile
 
 	err = writer.Close()
@@ -712,7 +723,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	var length uint64
 	for _, file := range subfiles {
-		length += uint64(file.Len)
+		length += file.Len
 	}
 
 	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles, Length: length}
@@ -740,12 +751,18 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
-	subfile = siatest.AddMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
+	subfile, err = modules.AddMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
+	if err != nil {
+		t.Fatal(err)
+	}
 	subfiles[subfile.Filename] = subfile
 
 	// add a large nested file
 	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
-	subfile = siatest.AddMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
+	subfile, err = modules.AddMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
+	if err != nil {
+		t.Fatal(err)
+	}
 	subfiles[subfile.Filename] = subfile
 
 	err = writer.Close()
@@ -939,7 +956,10 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 		body := new(bytes.Buffer)
 		writer := multipart.NewWriter(body)
 		data = []byte("File1Contents")
-		subfile := siatest.AddMultipartFile(writer, data, "files[]", filename, 0600, nil)
+		subfile, err := modules.AddMultipartFile(writer, data, "files[]", filename, 0600, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		err = writer.Close()
 		if err != nil {
 			t.Fatal(err)
@@ -1012,7 +1032,10 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 
-	subfile := siatest.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testInvalidFilenameMultipart", 0600, nil)
+	subfile, err := modules.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testInvalidFilenameMultipart", 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -1054,9 +1077,18 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	filePath1 := "a/5.f4f8b583.chunk.js"
 	filePath2 := "a/5.f4f.chunk.js.map"
 	filePath3 := "b/file3.txt"
-	siatest.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
-	siatest.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
-	siatest.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	_, err := modules.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = modules.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = modules.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -1342,9 +1374,18 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	filePath1 := "a/5.f4f8b583.chunk.js"
 	filePath2 := "a/5.f4f.chunk.js.map"
 	filePath3 := "b/file3.txt"
-	siatest.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
-	siatest.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
-	siatest.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	_, err := modules.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = modules.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = modules.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
@@ -1419,7 +1460,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	mdF3Expected := modules.SkyfileSubfileMetadata{
 		FileMode:    os.FileMode(0640),
 		Filename:    "b/file3.txt",
-		ContentType: "application/octet-stream",
+		ContentType: "text/plain; charset=utf-8",
 		Offset:      0,
 		Len:         uint64(len(dataFile3)),
 	}
@@ -1454,6 +1495,9 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 
 	// Upload at same path without force, assert this fails
 	_, _, _, err = r.UploadNewSkyfileBlocking(t.Name(), 100, false)
+	if err == nil {
+		t.Fatal("Expected the upload without force to fail but it didn't.")
+	}
 	if !strings.Contains(err.Error(), "already exists") {
 		t.Fatal(err)
 	}
@@ -1479,10 +1523,21 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetBlacklist tests the skynet blacklist module
-func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
-	r := tg.Renters()[0]
+// testSkynetBlocklistHash tests the skynet blocklist module when submitting
+// hashes of the skylink's merkleroot
+func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetBlocklist(t, tg, true)
+}
 
+// testSkynetBlocklistHash tests the skynet blocklist module when submitting
+// skylinks
+func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetBlocklist(t, tg, false)
+}
+
+// testSkynetBlocklist tests the skynet blocklist module
+func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
+	r := tg.Renters()[0]
 	// Create skyfile upload params, data should be larger than a sector size to
 	// test large file uploads and the deletion of their extended data.
 	size := modules.SectorSize + uint64(100+siatest.Fuzz())
@@ -1516,53 +1571,57 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Blacklist the skylink
-	add := []string{skylink}
-	remove := []string{}
-	err = r.SkynetBlacklistPost(add, remove)
+	// Blocklist the skylink
+	var add, remove []string
+	hash := crypto.HashObject(sshp.MerkleRoot)
+	if isHash {
+		add = []string{hash.String()}
+	} else {
+		add = []string{skylink}
+	}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Confirm that the Skylink is blacklisted by verifying the merkleroot is in
-	// the blacklist
-	sbg, err := r.SkynetBlacklistGet()
+	// Confirm that the Skylink is blocked by verifying the merkleroot is in
+	// the blocklist
+	sbg, err := r.SkynetBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sbg.Blacklist) != 1 {
-		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 1, len(sbg.Blacklist))
+	if len(sbg.Blocklist) != 1 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 1, len(sbg.Blocklist))
 	}
-	hash := crypto.HashObject(sshp.MerkleRoot)
-	if sbg.Blacklist[0] != hash {
-		t.Fatalf("Hashes don't match, expected %v got %v", hash, sbg.Blacklist[0])
+	if sbg.Blocklist[0] != hash {
+		t.Fatalf("Hashes don't match, expected %v got %v", hash, sbg.Blocklist[0])
 	}
 
 	// Try to download the file behind the skylink, this should fail because of
-	// the blacklist.
+	// the blocklist.
 	_, _, err = r.SkynetSkylinkGet(skylink)
 	if err == nil {
 		t.Fatal("Download should have failed")
 	}
-	if !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
-		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
 	}
 
 	// Try and upload again with force as true to avoid error of path already
 	// existing. Additionally need to recreate the reader again from the file
-	// data. This should also fail due to the blacklist
+	// data. This should also fail due to the blocklist
 	sup.Force = true
 	sup.Reader = bytes.NewReader(data)
 	_, _, err = r.SkynetSkyfilePost(sup)
 	if err == nil {
 		t.Fatal("Expected upload to fail")
 	}
-	if !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
-		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
 	}
 
 	// Verify that the SiaPath and Extended SiaPath were removed from the renter
-	// due to the upload seeing the blacklist
+	// due to the upload seeing the blocklist
 	_, err = r.RenterFileGet(sp)
 	if err == nil {
 		t.Fatal("expected error for file not found")
@@ -1578,7 +1637,7 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Expected error %v but got %v", filesystem.ErrNotExist, err)
 	}
 
-	// Try Pinning the file, this should fail due to the blacklist
+	// Try Pinning the file, this should fail due to the blocklist
 	pinlup := modules.SkyfilePinParameters{
 		SiaPath:             sup.SiaPath,
 		BaseChunkRedundancy: 2,
@@ -1588,31 +1647,35 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	if err == nil {
 		t.Fatal("Expected pin to fail")
 	}
-	if !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
-		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
 	}
 
-	// Remove skylink from blacklist
+	// Remove skylink from blocklist
 	add = []string{}
-	remove = []string{skylink}
-	err = r.SkynetBlacklistPost(add, remove)
+	if isHash {
+		remove = []string{hash.String()}
+	} else {
+		remove = []string{skylink}
+	}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify that removing the same skylink twice is a noop
-	err = r.SkynetBlacklistPost(add, remove)
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify that the skylink is removed from the Blacklist
-	sbg, err = r.SkynetBlacklistGet()
+	// Verify that the skylink is removed from the Blocklist
+	sbg, err = r.SkynetBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sbg.Blacklist) != 0 {
-		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 0, len(sbg.Blacklist))
+	if len(sbg.Blocklist) != 0 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 0, len(sbg.Blocklist))
 	}
 
 	// Try to download the file behind the skylink. Even though the file was
@@ -1637,10 +1700,7 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a normal siafile with 1-of-N redundancy
 	convertData := fastrand.Bytes(int(size))
 	reader := bytes.NewReader(convertData)
-	siafileSiaPath, err := modules.NewSiaPath("siafileSiaPath")
-	if err != nil {
-		t.Fatal(err)
-	}
+	siafileSiaPath := modules.RandomSiaPath()
 	err = r.RenterUploadStreamPost(reader, siafileSiaPath, 1, 2, false)
 	if err != nil {
 		t.Fatal(err)
@@ -1650,10 +1710,11 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	convertUP := modules.SkyfileUploadParameters{
 		SiaPath: siafileSiaPath,
 	}
-	convertSkylink, err := r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	convertSSHP, err := r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
+	convertSkylink := convertSSHP.Skylink
 
 	// Confirm there is a siafile and a skyfile
 	_, err = r.RenterFileGet(siafileSiaPath)
@@ -1669,42 +1730,47 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Blacklist the skylink
-	add = []string{convertSkylink}
+	// Blocklist the skylink
 	remove = []string{}
-	err = r.SkynetBlacklistPost(add, remove)
+	convertHash := crypto.HashObject(convertSSHP.MerkleRoot)
+	if isHash {
+		add = []string{convertHash.String()}
+	} else {
+		add = []string{convertSkylink}
+	}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify that adding the same skylink twice is a noop
-	err = r.SkynetBlacklistPost(add, remove)
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sbg, err = r.SkynetBlacklistGet()
+	sbg, err = r.SkynetBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sbg.Blacklist) != 1 {
-		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 1, len(sbg.Blacklist))
+	if len(sbg.Blocklist) != 1 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 1, len(sbg.Blocklist))
 	}
 
-	// Confirm skyfile download returns blacklisted error
+	// Confirm skyfile download returns blocklisted error
 	//
 	// NOTE: Calling DownloadSkylink doesn't attempt to delete any underlying file
 	_, _, err = r.SkynetSkylinkGet(convertSkylink)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
-		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
 	}
 
 	// Try and convert to skylink again, should fail. Set the Force Flag to true
 	// to avoid error for file already existing
 	convertUP.Force = true
 	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
-		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
 	}
 
 	// This should delete the skyfile but not the siafile
@@ -1717,19 +1783,23 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Expected error %v but got %v", filesystem.ErrNotExist, err)
 	}
 
-	// remove from blacklist
+	// remove from blocklist
 	add = []string{}
-	remove = []string{convertSkylink}
-	err = r.SkynetBlacklistPost(add, remove)
+	if isHash {
+		remove = []string{convertHash.String()}
+	} else {
+		remove = []string{convertSkylink}
+	}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sbg, err = r.SkynetBlacklistGet()
+	sbg, err = r.SkynetBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sbg.Blacklist) != 0 {
-		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 0, len(sbg.Blacklist))
+	if len(sbg.Blocklist) != 0 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 0, len(sbg.Blocklist))
 	}
 
 	// Convert should succeed
@@ -1803,7 +1873,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortal{}
 	remove = []modules.NetAddress{portal1.Address}
 	err = r.SkynetPortalsPost(add, remove)
-	if !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
+	if err == nil || !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
 		t.Fatal("portal should fail to be removed")
 	}
 
@@ -1867,7 +1937,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortal{portal3}
 	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
-	if !strings.Contains(err.Error(), "missing port in address") {
+	if err == nil || !strings.Contains(err.Error(), "missing port in address") {
 		t.Fatal("expected 'missing port' error")
 	}
 
@@ -2253,7 +2323,7 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 	if err == nil {
 		t.Error("Rename should have failed if the root flag is false")
 	}
-	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+	if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Errorf("Expected error to contain %v but got %v", filesystem.ErrNotExist, err)
 	}
 

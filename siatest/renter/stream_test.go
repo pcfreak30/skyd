@@ -270,7 +270,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	corruptB := fastrand.Bytes(len(b))
 	// Try repairing the file with the corrupt data. This should fail.
 	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(corruptB), remoteFile.SiaPath()); err == nil {
-		t.Fatal(err)
+		t.Fatal("Corrupt file repair should fail")
 	}
 	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't staying at 0", err)
@@ -334,12 +334,12 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Download the file again.
-	_, downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)), true)
+	_, downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Compare downloaded data to original one.
-	if !bytes.Equal([]byte(data), downloadedData) {
+	if !bytes.Equal(data, downloadedData) {
 		t.Log("originalData:", data)
 		t.Log("downloadedData:", downloadedData)
 		t.Fatal("Downloaded data doesn't match uploaded data")
