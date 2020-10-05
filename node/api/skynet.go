@@ -699,6 +699,13 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
 			return
 		}
+		// Manually remove multipart tmp files when we are done since the server
+		// sometimes seems to miss it.
+		if req.MultipartForm != nil {
+			defer func() {
+				_ = req.MultipartForm.RemoveAll()
+			}()
+		}
 
 		// Use the filename of the first subfile if it's not passed as query
 		// string parameter and there's only one subfile.
