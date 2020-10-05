@@ -330,10 +330,12 @@ func (w *worker) threadedWorkLoop() {
 		// for example, we do not want to launch any more jobs.
 		if w.staticCache().staticAllowance.Unset() {
 			err := errors.New("allowance unset")
+			w.staticJobDownloadSnapshotQueue.discardAll(err)
 			w.staticJobUploadSnapshotQueue.discardAll(err)
 			w.staticJobHasSectorQueue.discardAll(err)
 			w.staticJobReadQueue.discardAll(err)
-			// TODO extend with other queues
+			w.managedDropDownloadChunks()
+			w.managedDropUploadChunks()
 			continue
 		}
 
