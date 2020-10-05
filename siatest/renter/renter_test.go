@@ -5281,7 +5281,7 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 }
 
 // TestWorkerCooldownLowMaxBalance verifies workers are being put on cooldown
-// if the host has an unreasonably low max epehemeral account balance.
+// if the host has an unreasonably low max ephemeral account balance.
 func TestWorkerCooldownLowMaxBalance(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
