@@ -63,9 +63,11 @@ func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasS
 // callDiscard will discard a job, sending the provided error.
 func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	w.renter.tg.Launch(func() {
+	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobHasSectorResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
+
+			staticWorker: w,
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -73,6 +75,9 @@ func (j *jobHasSector) callDiscard(err error) {
 		case <-w.renter.tg.StopChan():
 		}
 	})
+	if errLaunch != nil {
+		w.renter.log.Print("callDiscard: launch failed", err)
+	}
 }
 
 // callExecute will run the has sector job.
@@ -89,13 +94,16 @@ func (j *jobHasSector) callExecute() {
 
 		staticWorker: w,
 	}
-	w.renter.tg.Launch(func() {
+	err2 := w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
+	if err2 != nil {
+		w.renter.log.Println("callExececute: launch failed", err)
+	}
 
 	// Report success or failure to the queue.
 	if err == nil {
@@ -212,7 +220,13 @@ func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
 	// Roughly 150 responses can fit into a single frame. To be conservative, we
 	// use a value of 100.
 	uploadMult := numRoots / 30
-	downloadMult := numRoots / 150
+	downloadMult := numRoots / 100
+	// A base of 1500 is used for the packet size. On ipv4, it is technically
+	// smaller, but siamux is general and the packet size is the Ethernet MTU
+	// (1500 bytes) minus any protocol overheads. It's possible if the renter is
+	// connected directly over an interface to a host that there is no overhead,
+	// which means siamux could use the full 1500 bytes. So we use the most
+	// conservative value here as well.
 	ul = uint64(1500 * (1 + uploadMult))
 	dl = uint64(1500 * (1 + downloadMult))
 	return

@@ -111,7 +111,7 @@ type pcwsWorkerState struct {
 	// NOTE: Once 'unresolvedWorkers' has a length of zero, any attempt to add a
 	// channel to the set of workerUpdateChans should fail, as there will be no
 	// more updates. This is specific to this particular worker state, the
-	// pcwsWorkerSet as a whole can reset by replacing the worker state.
+	// pcwsWorkerSet as a whole can be reset by replacing the worker state.
 	workerUpdateChans []chan struct{}
 
 	// Utilities.
@@ -265,7 +265,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// Delete the worker from the set of unresolved workers.
 	w := resp.staticWorker
 	if w == nil {
-		panic("nil worker provided in resp")
+		ws.staticRenter.log.Critical("nil worker provided in resp")
 	}
 	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
 	ws.closeUpdateChans()
