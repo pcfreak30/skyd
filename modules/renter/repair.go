@@ -250,7 +250,6 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 			return siaPath, metadata.LastHealthCheckTime, nil
 		}
 	}
-
 	return siaPath, metadata.LastHealthCheckTime, nil
 }
 
