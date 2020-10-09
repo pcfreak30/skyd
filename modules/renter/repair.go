@@ -585,23 +585,6 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			continue
 		}
 
-		// Check if the time since the last check on the least recently checked
-		// folder is inside the health check interval. If so, the whole
-		// filesystem has been checked recently, and we can sleep until the
-		// least recent check is outside the check interval.
-		timeSinceLastCheck := time.Since(lastHealthCheckTime)
-		if timeSinceLastCheck < healthCheckInterval {
-			// Sleep until the least recent check is outside the check interval.
-			sleepDuration := healthCheckInterval - timeSinceLastCheck
-			r.log.Printf("Health loop sleeping for %v, lastHealthCheckTime %v, directory %v", sleepDuration, lastHealthCheckTime, siaPath)
-			wakeSignal := time.After(sleepDuration)
-			select {
-			case <-r.tg.StopChan():
-				return
-			case <-wakeSignal:
-			}
-		}
-
 		// Update files in dir before bubbling it.
 		err = r.managedUpdateFileMetadatas(siaPath)
 		if err != nil {
@@ -616,6 +599,23 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			case <-time.After(healthLoopErrorSleepDuration):
 			case <-r.tg.StopChan():
 				return
+			}
+		}
+
+		// Check if the time since the last check on the least recently checked
+		// folder is inside the health check interval. If so, the whole
+		// filesystem has been checked recently, and we can sleep until the
+		// least recent check is outside the check interval.
+		timeSinceLastCheck := time.Since(lastHealthCheckTime)
+		if timeSinceLastCheck < healthCheckInterval {
+			// Sleep until the least recent check is outside the check interval.
+			sleepDuration := healthCheckInterval - timeSinceLastCheck
+			r.log.Printf("Health loop sleeping for %v, lastHealthCheckTime %v, directory %v", sleepDuration, lastHealthCheckTime, siaPath)
+			wakeSignal := time.After(sleepDuration)
+			select {
+			case <-r.tg.StopChan():
+				return
+			case <-wakeSignal:
 			}
 		}
 	}
