@@ -484,7 +484,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	}
 
 	// Set the LastHealthCheckTime of SubDir1/SubDir2 to be the oldest
-	oldestCheckTime := now.AddDate(0, 0, -1)
+	oldestCheckTime := now.AddDate(0, 0, -2)
 	oldestHealthCheckUpdate := siadir.Metadata{
 		Health:                       1,
 		StuckHealth:                  0,
