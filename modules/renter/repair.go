@@ -225,8 +225,15 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 			// updated the metadata once, we have confirmed we are not going to get an
 			// incorrect LastHealthCheckTime due to the metadatas being out of date
 			// from a shutdown when there were pending bubbles.
-			if isOldestAggregate && (isOldestDirectory || updated) {
+			if isOldestAggregate && isOldestDirectory {
 				continue
+			}
+			// If the subdirs non-aggregate check time is older than the
+			// aggregate one, set the aggregate one to the non-aggregate time.
+			// Otherwise we might not be able to find the actual oldest health
+			// time.
+			if isOldestAggregate && !isOldestDirectory {
+				subMetadata.AggregateLastHealthCheckTime = subMetadata.LastHealthCheckTime
 			}
 
 			// Update the metadata and siaPath to follow older path. We do not break
