@@ -10,7 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
+
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -118,16 +121,10 @@ func (r *Renter) UploadBackup(src, name string) error {
 		return err
 	}
 	defer r.tg.Done()
-	errCh := make(chan error)
-	// Copy all sia files to the backup location. This might be slow, so we can
-	// do it in parallel with uploading the data which might also be slow.
-	go func() {
-		errCh <- r.managedCreateLocalBackup(name)
-	}()
+	if err := r.managedCreateLocalBackup(name); err != nil {
+		return err
+	}
 	err := r.managedUploadBackup(src, name)
-	// Wait for the local files to finish copying.
-	errLocal := <-errCh
-	err = errors.Compose(err, errLocal)
 	if err != nil {
 		// Clean up the local backup.
 		err1 := r.managedRemoveLocalBackup(name)
@@ -143,27 +140,124 @@ func (r *Renter) managedCreateLocalBackup(name string) error {
 	// Get the local path to the backup location.
 	backupDir, err := modules.BackupFolder.Join(name)
 	if err != nil {
-		return errors.AddContext(err, "failed to create backup directory")
+		return errors.AddContext(err, "failed to create backup directory path")
 	}
 	lockId := r.mu.RLock()
 	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
 	r.mu.RUnlock(lockId)
+	// Create a new filesystem
+	fs, err := filesystem.New(fsRoot, r.log, r.wal)
+	if err != nil {
+		return errors.AddContext(err, "failed to create filesystem")
+	}
+	if err = fs.NewSiaDir(backupDir, modules.DefaultDirPerm); err != nil {
+		return errors.AddContext(err, "failed to create backup directory")
+	}
+
 	backupDirPath := backupDir.SiaDirSysPath(fsRoot)
-	userDirPath := modules.UserFolder.SiaDirSysPath(fsRoot)
 	// Create a backup location for siafiles.
 	if _, err := os.Stat(backupDirPath); err == nil {
 		return errors.AddContext(err, "cannot create backup directory, a directory with that name already exists")
 	}
-	if err := os.MkdirAll(backupDirPath, modules.DefaultDirPerm); err != nil {
-		return errors.AddContext(err, "failed to create backup directory")
-	}
-	if err = build.CopyDir(userDirPath, backupDirPath); err != nil {
-		return errors.AddContext(err, "failed to copy files")
+
+	err = siaDirCopy(fs, modules.UserFolder, backupDir)
+	if err != nil {
+		return errors.AddContext(err, "failed to copy sia files to backup location")
 	}
 	if err = writeBackupInfo(name, backupDirPath); err != nil {
-		return errors.AddContext(err, "failed to ")
+		return errors.AddContext(err, "failed to wrote backup info")
 	}
 	return nil
+}
+
+// siaDirCopy recursively copies a siadir to a destination in an ACID way.
+func siaDirCopy(fs *filesystem.FileSystem, srcDir, dstDir modules.SiaPath) error {
+	// Fetching the prefix calls a managed method, so we want avoid doing that
+	// multiple times.
+	userFolderPrefix := fs.DirPath(srcDir)
+	return fs.Walk(srcDir, func(path string, info os.FileInfo, prevErr error) (err error) {
+		if prevErr != nil {
+			return prevErr
+		}
+		// Nothing to do for non-folders and non-siafiles.
+		if filepath.Ext(path) != modules.SiaFileExtension && filepath.Ext(path) != modules.SiaDirExtension {
+			return nil
+		}
+
+		relPath := strings.TrimPrefix(path, userFolderPrefix)
+		relPath = strings.TrimSuffix(relPath, filepath.Ext(path))
+
+		if filepath.Ext(path) == modules.SiaFileExtension {
+			var siaPath, newSiaPath modules.SiaPath
+			siaPath, err = srcDir.Join(relPath)
+			if err != nil {
+				return err
+			}
+			var fn *filesystem.FileNode
+			fn, err = fs.OpenSiaFile(siaPath)
+			if err != nil {
+				return err
+			}
+			defer func() { err = errors.Compose(err, fn.Close()) }()
+
+			var sr *siafile.SnapshotReader
+			var dst *os.File
+			sr, err = fn.SnapshotReader()
+			if err != nil {
+				return err
+			}
+			defer func() { err = errors.Compose(err, sr.Close()) }()
+			newSiaPath, err = siaPath.Rebase(srcDir, dstDir)
+			if err != nil {
+				return err
+			}
+			dst, err = os.Create(fs.FilePath(newSiaPath))
+			if err != nil {
+				return err
+			}
+			defer func() { err = errors.Compose(err, dst.Close()) }()
+			_, err = io.Copy(dst, sr)
+			return err
+		}
+
+		if filepath.Ext(path) == modules.SiaDirExtension {
+			var siaPath, newSiaPath modules.SiaPath
+			if relPath == "/" {
+				siaPath = srcDir
+			} else {
+				siaPath, err = srcDir.Join(relPath)
+				if err != nil {
+					return err
+				}
+			}
+			var siaDir, newSiaDir *filesystem.DirNode
+			siaDir, err = fs.OpenSiaDir(siaPath)
+			if err != nil {
+				return err
+			}
+			newSiaPath, err = siaPath.Rebase(srcDir, dstDir)
+			if err != nil {
+				return err
+			}
+			// Check if the new dir already exists and create it if it doesn't.
+			if _, err = fs.Stat(newSiaPath); err != nil {
+				if err = fs.NewSiaDir(newSiaPath, info.Mode()); err != nil {
+					return err
+				}
+			}
+			newSiaDir, err = fs.OpenSiaDir(newSiaPath)
+			if err != nil {
+				return err
+			}
+			var meta siadir.Metadata
+			meta, err = siaDir.Metadata()
+			if err != nil {
+				return err
+			}
+			return newSiaDir.UpdateMetadata(meta)
+		}
+		return nil
+	})
 }
 
 // managedRemoveLocalBackup removes a local backup by its name.
