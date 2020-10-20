@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
+	"gitlab.com/NebulousLabs/Sia/persist"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -28,6 +27,16 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+const (
+	// backupInfoExtension is the extension of the info file which describes a
+	// given backup on disk.
+	backupInfoExtension = ".backupinfo"
+
+	// backupInfoVersion defines the Sia version when the backup info format
+	// was last updated
+	backupInfoVersion = "1.5.1"
+)
+
 var (
 	// snapshotKeySpecifier is the specifier used for deriving the secret used to
 	// encrypt a snapshot from the RenterSeed.
@@ -39,6 +48,12 @@ var (
 )
 
 var (
+	// backupInfoMetadata defines the metadata of the .backupinfo file on disk
+	backupInfoMetadata = persist.Metadata{
+		Header:  "Backup Info",
+		Version: backupInfoVersion,
+	}
+
 	// maxSnapshotUploadTime defines the total amount of time that the renter
 	// will allocate to complete an upload of a snapshot .sia file to all hosts.
 	// This is done with each host in parallel, and the .sia file is not
@@ -155,7 +170,9 @@ func (r *Renter) managedCreateLocalBackup(name string) error {
 	}
 
 	backupDirPath := backupDir.SiaDirSysPath(fsRoot)
-	// Create a backup location for siafiles.
+	// Create a backup location for siafiles. We do this before  we copy the
+	// files because copying the files might be time consuming and we want to be
+	// sure that it's worth waiting for that.
 	if _, err := os.Stat(backupDirPath); err == nil {
 		return errors.AddContext(err, "cannot create backup directory, a directory with that name already exists")
 	}
@@ -165,7 +182,10 @@ func (r *Renter) managedCreateLocalBackup(name string) error {
 		return errors.AddContext(err, "failed to copy sia files to backup location")
 	}
 	if err = writeBackupInfo(name, backupDirPath); err != nil {
-		return errors.AddContext(err, "failed to wrote backup info")
+		err = errors.AddContext(err, "failed to wrote backup info")
+		// Clean up the local backup from disk.
+		errCleanup := errors.AddContext(fs.DeleteDir(backupDir), "failed to clean up local backup")
+		return errors.Compose(err, errCleanup)
 	}
 	return nil
 }
@@ -184,73 +204,65 @@ func siaDirCopy(fs *filesystem.FileSystem, srcDir, dstDir modules.SiaPath) error
 			return nil
 		}
 
-		relPath := strings.TrimPrefix(path, userFolderPrefix)
-		relPath = strings.TrimSuffix(relPath, filepath.Ext(path))
+		relPath := strings.TrimPrefix(strings.TrimSuffix(path, filepath.Ext(path)), userFolderPrefix)
 
 		if filepath.Ext(path) == modules.SiaFileExtension {
-			var siaPath, newSiaPath modules.SiaPath
-			siaPath, err = srcDir.Join(relPath)
+			siaPath, err := srcDir.Join(relPath)
 			if err != nil {
 				return err
 			}
-			var fn *filesystem.FileNode
-			fn, err = fs.OpenSiaFile(siaPath)
+			fn, err := fs.OpenSiaFile(siaPath)
 			if err != nil {
 				return err
 			}
 			defer func() { err = errors.Compose(err, fn.Close()) }()
 
-			var sr *siafile.SnapshotReader
-			var dst *os.File
-			sr, err = fn.SnapshotReader()
+			sr, err := fn.SnapshotReader()
 			if err != nil {
 				return err
 			}
 			defer func() { err = errors.Compose(err, sr.Close()) }()
-			newSiaPath, err = siaPath.Rebase(srcDir, dstDir)
+			newSiaPath, err := siaPath.Rebase(srcDir, dstDir)
 			if err != nil {
 				return err
 			}
-			dst, err = os.Create(fs.FilePath(newSiaPath))
+			dst, err := os.Create(fs.FilePath(newSiaPath))
 			if err != nil {
 				return err
 			}
 			defer func() { err = errors.Compose(err, dst.Close()) }()
 			_, err = io.Copy(dst, sr)
-			return err
+			return errors.Compose(err, dst.Sync())
 		}
 
 		if filepath.Ext(path) == modules.SiaDirExtension {
-			var siaPath, newSiaPath modules.SiaPath
-			if relPath == "/" {
-				siaPath = srcDir
-			} else {
+			siaPath := srcDir
+			if relPath != "/" {
 				siaPath, err = srcDir.Join(relPath)
 				if err != nil {
 					return err
 				}
 			}
-			var siaDir, newSiaDir *filesystem.DirNode
-			siaDir, err = fs.OpenSiaDir(siaPath)
+			siaDir, err := fs.OpenSiaDir(siaPath)
 			if err != nil {
 				return err
 			}
-			newSiaPath, err = siaPath.Rebase(srcDir, dstDir)
+			newSiaPath, err := siaPath.Rebase(srcDir, dstDir)
 			if err != nil {
 				return err
 			}
 			// Check if the new dir already exists and create it if it doesn't.
-			if _, err = fs.Stat(newSiaPath); err != nil {
+			_, err = fs.Stat(newSiaPath)
+			if err != nil {
 				if err = fs.NewSiaDir(newSiaPath, info.Mode()); err != nil {
 					return err
 				}
 			}
-			newSiaDir, err = fs.OpenSiaDir(newSiaPath)
+			newSiaDir, err := fs.OpenSiaDir(newSiaPath)
 			if err != nil {
 				return err
 			}
-			var meta siadir.Metadata
-			meta, err = siaDir.Metadata()
+			meta, err := siaDir.Metadata()
 			if err != nil {
 				return err
 			}
@@ -274,8 +286,9 @@ func (r *Renter) managedRemoveLocalBackup(name string) error {
 	return os.RemoveAll(backupDirPath)
 }
 
-// writeBackupInfo writes a .info file in the backup's directory, describing
-// the backup. The file contains a JSON version of modules.UploadedBackup.
+// writeBackupInfo writes a .backupinfo file in the backup's directory,
+// describing the backup. The file contains a JSON version of
+// modules.UploadedBackup.
 func writeBackupInfo(name, backupDirPath string) error {
 	// Get the backupSize of the backup.
 	var backupSize int64
@@ -297,13 +310,7 @@ func writeBackupInfo(name, backupDirPath string) error {
 		Size:           uint64(backupSize),
 		UploadProgress: 0,
 	}
-	fastrand.Read(ub.UID[:])
-	ubBytes, err := json.Marshal(ub)
-	if err != nil {
-		return err
-	}
-	err = ioutil.WriteFile(filepath.Join(backupDirPath, ".info"), ubBytes, modules.DefaultFilePerm)
-	return err
+	return persist.SaveJSON(backupInfoMetadata, ub, filepath.Join(backupDirPath, backupInfoExtension))
 }
 
 // managedUploadBackup creates a backup of the renter which is uploaded to the
@@ -362,14 +369,14 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return errors.AddContext(err, "unable to close fileNode while uploading a backup")
 	}
 	// Save initial snapshot entry.
-	meta := modules.UploadedBackup{
+	ub := modules.UploadedBackup{
 		Name:           name,
 		CreationDate:   types.CurrentTimestamp(),
 		Size:           0,
 		UploadProgress: 0,
 	}
-	fastrand.Read(meta.UID[:])
-	if err := r.managedSaveSnapshot(meta); err != nil {
+	fastrand.Read(ub.UID[:])
+	if err := r.managedSaveSnapshot(ub); err != nil {
 		return err
 	}
 
