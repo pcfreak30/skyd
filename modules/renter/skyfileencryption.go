@@ -44,12 +44,10 @@ func (r *Renter) deriveFanoutKey(sl *skynet.SkyfileLayout, fileSkykey skykey.Sky
 // checkSkyfileEncryptionIDMatch tries to find a Skykey that can decrypt the
 // identifier and be used for decrypting the associated skyfile. It returns an
 // error if it is not found.
-func (r *Renter) checkSkyfileEncryptionIDMatch(encryptionIdentifier []byte, nonce []byte) (skykey.Skykey, error) {
-	allSkykeys := r.staticSkykeyManager.Skykeys()
-	for _, sk := range allSkykeys {
+func checkSkyfileEncryptionIDMatch(encryptionIdentifier []byte, nonce []byte, keys []skykey.Skykey) (skykey.Skykey, error) {
+	for _, sk := range keys {
 		matches, err := sk.MatchesSkyfileEncryptionID(encryptionIdentifier, nonce)
 		if err != nil {
-			r.log.Debugln("SkykeyEncryptionID match err", err)
 			continue
 		}
 		if matches {
@@ -59,10 +57,24 @@ func (r *Renter) checkSkyfileEncryptionIDMatch(encryptionIdentifier []byte, nonc
 	return skykey.Skykey{}, errNoSkykeyMatchesSkyfileEncryptionID
 }
 
-// decryptBaseSector attempts to decrypt the baseSector. If it has the necessary
-// Skykey, it will decrypt the baseSector in-place. It returns the file-specific
-// skykey to be used for decrypting the rest of the associated skyfile.
+// decryptBaseSector is the same as decryptBaseSectorWithKeys but uses all of
+// the renter's available keys as the 'keys' argument.
 func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
+	return r.decryptBaseSectorWithKeys(baseSector, r.staticSkykeyManager.Skykeys())
+}
+
+// decryptBaseSector is the same as decryptBaseSectorWithKeys but uses a
+// specific key as the 'keys' argument. Exists for convenience.
+func (r *Renter) decryptBaseSectorWithKey(baseSector []byte, key skykey.Skykey) (skykey.Skykey, error) {
+	return r.decryptBaseSectorWithKeys(baseSector, []skykey.Skykey{key})
+}
+
+// decryptBaseSectorWithKeys attempts to decrypt the baseSector. If it has the
+// necessary Skykey, it will decrypt the baseSector in-place. If the key lookup
+// fails, it will assume that the key is private and it will try all the keys
+// provided as the 'keys' argument. It returns the file-specific skykey to be
+// used for decrypting the rest of the associated skyfile.
+func (r *Renter) decryptBaseSectorWithKeys(baseSector []byte, keys []skykey.Skykey) (skykey.Skykey, error) {
 	// Sanity check - baseSector should not be more than modules.SectorSize.
 	// Note that the base sector may be smaller in the event of a packed
 	// skyfile.
@@ -88,10 +100,20 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 
 	// Try to get the skykey associated with that ID.
 	masterSkykey, err := r.staticSkykeyManager.KeyByID(keyID)
-	// If the ID is unknown, use the key ID as an encryption identifier and try
-	// finding the associated skykey.
-	if errors.Contains(err, skykey.ErrNoSkykeysWithThatID) {
-		masterSkykey, err = r.checkSkyfileEncryptionIDMatch(keyID[:], nonce)
+
+	if err == nil {
+		// If we found a key, we need to make sure it's part of the valid keys.
+		err = skykey.ErrNoSkykeysWithThatID
+		for _, key := range keys {
+			if key.ID() == masterSkykey.ID() {
+				err = nil
+				break
+			}
+		}
+	} else if errors.Contains(err, skykey.ErrNoSkykeysWithThatID) {
+		// If the ID is unknown, use the key ID as an encryption identifier and try
+		// finding the associated skykey.
+		masterSkykey, err = checkSkyfileEncryptionIDMatch(keyID[:], nonce, keys)
 	}
 	if err != nil {
 		return skykey.Skykey{}, errors.AddContext(err, "Unable to find associated skykey")

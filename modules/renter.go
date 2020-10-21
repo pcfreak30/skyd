@@ -1111,6 +1111,10 @@ type Renter interface {
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
 	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
 
+	// DownloadSkylinkWithKey will fetch a file from the Sia network using the
+	// skylink and try to decrypt it with the given key if it needs decrypting.
+	DownloadSkylinkWithKey(Skylink, skykey.Skykey, time.Duration) (SkyfileMetadata, Streamer, error)
+
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a download
 	// without any decoding of the metadata, fanout, or decryption.
 	DownloadSkylinkBaseSector(Skylink, time.Duration) (Streamer, error)

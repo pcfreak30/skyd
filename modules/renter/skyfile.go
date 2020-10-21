@@ -624,7 +624,18 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 		return modules.SkyfileMetadata{}, nil, err
 	}
 	defer r.tg.Done()
-	return r.managedDownloadSkylink(link, timeout)
+	return r.managedDownloadSkylink(link, timeout, nil)
+}
+
+// DownloadSkylinkWithKey will take a link and turn it into the metadata and
+// data of a download. Only the specified key will be used to try and decrypt
+// the link.
+func (r *Renter) DownloadSkylinkWithKey(link modules.Skylink, key skykey.Skykey, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.SkyfileMetadata{}, nil, err
+	}
+	defer r.tg.Done()
+	return r.managedDownloadSkylink(link, timeout, &key)
 }
 
 // DownloadSkylinkBaseSector will take a link and turn it into the data of
@@ -640,7 +651,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 
 // managedDownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
-func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
+func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration, key *skykey.Skykey) (modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
@@ -661,7 +672,11 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 	// This will fail if we don't have the decryption key.
 	var fileSpecificSkykey skykey.Skykey
 	if isEncryptedBaseSector(baseSector) {
-		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
+		if key != nil {
+			fileSpecificSkykey, err = r.decryptBaseSectorWithKey(baseSector, *key)
+		} else {
+			fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
+		}
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}

@@ -33,8 +33,12 @@ func TestSkyfileBaseSectorEncryption(t *testing.T) {
 		}
 	}()
 
-	testBaseSectorEncryptionWithType(t, r, skykey.TypePublicID)
-	testBaseSectorEncryptionWithType(t, r, skykey.TypePrivateID)
+	t.Run("PublicID", func(t *testing.T) {
+		testBaseSectorEncryptionWithType(t, r, skykey.TypePublicID)
+	})
+	t.Run("PrivateID", func(t *testing.T) {
+		testBaseSectorEncryptionWithType(t, r, skykey.TypePrivateID)
+	})
 }
 
 // testBaseSectorEncryptionWithType tests base sector encryption and decryption
@@ -142,23 +146,49 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 		t.Fatal("Expected base sector encrypted with different skykey to be different from original base sector.")
 	}
 
-	// Now decrypt all the base sectors. They should all be equal to the original
-	// now.
-	sk, err := r.decryptBaseSector(bsCopy1)
+	// Now decrypt all the base sectors. They should all be equal to the
+	// original now. Use copies to do that since we try to decrypt them again
+	// later.
+	sk, err := r.decryptBaseSector(append([]byte{}, bsCopy1...))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.decryptBaseSector(bsCopy2)
+	_, err = r.decryptBaseSector(append([]byte{}, bsCopy2...))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.decryptBaseSector(bsCopy3)
+	_, err = r.decryptBaseSector(append([]byte{}, bsCopy3...))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.decryptBaseSector(otherBSCopy)
+	_, err = r.decryptBaseSector(append([]byte{}, otherBSCopy...))
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Decrypt again but don't specify any keys. This should fail.
+	for _, copy := range [][]byte{bsCopy1, bsCopy2, bsCopy3, otherBSCopy} {
+		_, err = r.decryptBaseSectorWithKeys(copy, nil)
+		if skykeyType == skykey.TypePublicID {
+			if !errors.Contains(err, skykey.ErrNoSkykeysWithThatID) {
+				t.Fatal(err)
+			}
+		} else if skykeyType == skykey.TypePrivateID {
+			if !errors.Contains(err, errNoSkykeyMatchesSkyfileEncryptionID) {
+				t.Fatal(err)
+			}
+		} else {
+			t.Fatal("unknown type")
+		}
+	}
+
+	// Decrypt again and specify exactly the right key. This should work.
+	keysToUse := []skykey.Skykey{fsKey1, fsKey1, fsKey2, otherFSKey}
+	for i, copy := range [][]byte{bsCopy1, bsCopy2, bsCopy3, otherBSCopy} {
+		_, err = r.decryptBaseSectorWithKey(copy, keysToUse[i])
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// All baseSectors should be equal in everything except their keydata.
