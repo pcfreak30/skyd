@@ -397,6 +397,15 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	values.Set("redundancy", redundancyStr)
 	values.Set("convertpath", convert.String())
 
+	// Encode SkykeyName or SkykeyID.
+	if lup.SkykeyName != "" {
+		values.Set("skykeyname", lup.SkykeyName)
+	}
+	hasSkykeyID := lup.SkykeyID != skykey.SkykeyID{}
+	if hasSkykeyID {
+		values.Set("skykeyid", lup.SkykeyID.ToString())
+	}
+
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	_, resp, err := c.postRawResponse(query, lup.Reader)

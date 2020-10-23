@@ -31,6 +31,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -57,6 +58,7 @@ func TestSkynet(t *testing.T) {
 	subTests := []siatest.SubTest{
 		{Name: "Basic", Test: testSkynetBasic},
 		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
+		{Name: "ConvertAndEncryptSiaFile", Test: testConvertAndEncryptSiaFile},
 		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
@@ -628,6 +630,56 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(fetchedData, remoteData) {
 		t.Error("converted skylink data doesn't match remote data")
+	}
+}
+
+// testConvertAndEncryptSiaFile tests converting a siafile to a skyfile. This
+// test checks for 1-of-N redundancies and N-of-M redundancies. The file is
+// encrypted as well using a skykey.
+func testConvertAndEncryptSiaFile(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a new file with a 1-N redundancy by setting the datapieces to 1
+	filesize := int(modules.SectorSize) + siatest.Fuzz()
+	_, remoteFile, err := r.UploadNewFileBlocking(filesize, 1, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the data for comparing later.
+	_, data, err := r.DownloadByStream(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a skykey.
+	_, err = r.SkykeyCreateKeyPost("key", skykey.TypePublicID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create Skyfile Upload Parameters
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:    modules.RandomSiaPath(),
+		SkykeyName: "key",
+	}
+
+	// Convert to a Skyfile using the skykey.
+	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink := sshp.Skylink
+
+	// Try to download the skylink.
+	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compare the fetched data.
+	if !bytes.Equal(fetchedData, data) {
+		t.Error("converted skylink data doesn't match data")
 	}
 }
 
