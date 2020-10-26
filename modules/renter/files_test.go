@@ -24,6 +24,13 @@ import (
 func (r *Renter) newRenterTestFile() (*filesystem.FileNode, error) {
 	// Generate name and erasure coding
 	siaPath, rsc := testingFileParams()
+	return r.newCustomRenterTestFile(siaPath, rsc)
+}
+
+// newCustomRenterTestFile creates a test file from the provided params, so that
+// the file is properly added to the renter. It returns the SiaFileSetEntry that
+// the SiaFile is stored in
+func (r *Renter) newCustomRenterTestFile(siaPath modules.SiaPath, rsc modules.ErasureCoder) (*filesystem.FileNode, error) {
 	// create the renter/files dir if it doesn't exist
 	siaFilePath := r.staticFileSystem.FilePath(siaPath)
 	dir, _ := filepath.Split(siaFilePath)
@@ -108,6 +115,16 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
+	extendedSiaPath, err := modules.NewSiaPath(siapath.String() + ExtendedSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = rt.renter.newCustomRenterTestFile(extendedSiaPath, entry.ErasureCode())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Delete a different file.
 	siaPathOne, err := modules.NewSiaPath("one")
 	if err != nil {
@@ -119,9 +136,8 @@ func TestRenterDeleteFile(t *testing.T) {
 	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Errorf("Expected error to contain %v but got '%v'", filesystem.ErrNotExist, err)
 	}
-	// Delete the file.
-	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
 
+	// Delete the file.
 	if err := entry.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +156,10 @@ func TestRenterDeleteFile(t *testing.T) {
 	_, err = rt.renter.staticFileSystem.OpenSiaFile(siapath)
 	if err == nil {
 		t.Fatal("Deleted file still found in staticFileSet")
+	}
+	_, err = rt.renter.staticFileSystem.OpenSiaFile(extendedSiaPath)
+	if err == nil {
+		t.Fatal("Deleted extended file still found in staticFileSet")
 	}
 
 	// Put a file in the renter, then rename it.
@@ -327,6 +347,10 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	extended1a, err := modules.NewSiaPath(siaPath1a.String() + ExtendedSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = rt.renter.RenameFile(siaPath1, siaPath1a)
 	if err.Error() != filesystem.ErrNotExist.Error() {
 		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
@@ -336,7 +360,19 @@ func TestRenterRenameFile(t *testing.T) {
 	sfs := rt.renter.staticFileSystem
 
 	// Rename a file that does exist.
-	entry, _ := rt.renter.newRenterTestFile()
+	entry, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath := rt.renter.staticFileSystem.FileSiaPath(entry)
+	extendedSiaPath, err := modules.NewSiaPath(siaPath.String() + ExtendedSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = rt.renter.newCustomRenterTestFile(extendedSiaPath, entry.ErasureCode())
+	if err != nil {
+		t.Fatal(err)
+	}
 	var sp modules.SiaPath
 	if err := sp.FromSysPath(entry.SiaFilePath(), sfs.DirPath(modules.RootSiaPath())); err != nil {
 		t.Fatal(err)
@@ -353,16 +389,23 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 1 {
+	if len(files) != 2 {
 		t.Fatal("FileList has unexpected number of files:", len(files))
 	}
 	if !files[0].SiaPath.Equals(siaPath1a) {
 		t.Errorf("RenameFile failed: expected %v, got %v", siaPath1a.String(), files[0].SiaPath)
 	}
+	if !files[1].SiaPath.Equals(extended1a) {
+		t.Errorf("RenameFile failed: expected %v, got %v", extended1a.String(), files[1].SiaPath)
+	}
 	// Confirm SiaFileSet was updated
 	_, err = rt.renter.staticFileSystem.OpenSiaFile(siaPath1a)
 	if err != nil {
 		t.Fatal("renter staticFileSet not updated to new file name:", err)
+	}
+	_, err = rt.renter.staticFileSystem.OpenSiaFile(extended1a)
+	if err != nil {
+		t.Fatal("renter staticFileSet not updated to new extended file name:", err)
 	}
 	_, err = rt.renter.staticFileSystem.OpenSiaFile(siaPath1)
 	if err == nil {
