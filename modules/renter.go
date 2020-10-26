@@ -37,6 +37,11 @@ var (
 	// manually by the user.
 	ErrDownloadCancelled = errors.New("download was cancelled")
 
+	// ErrNotEnoughWorkersInWorkerPool is an error that is returned whenever an
+	// operation expects a certain number of workers but there aren't that many
+	// available.
+	ErrNotEnoughWorkersInWorkerPool = errors.New("not enough workers in worker pool")
+
 	// PriceEstimationScope is the number of hosts that get queried by the
 	// renter when providing price estimates. Especially for the 'Standard'
 	// variable, there should be congruence with the number of contracts being
@@ -734,7 +739,7 @@ type ContractorSpending struct {
 // ContractorChurnStatus contains the current churn budgets for the Contractor's
 // churnLimiter and the aggregate churn for the current period.
 type ContractorChurnStatus struct {
-	// AggregatCurrentePeriodChurn is the total size of files from churned contracts in this
+	// AggregateCurrentPeriodChurn is the total size of files from churned contracts in this
 	// period.
 	AggregateCurrentPeriodChurn uint64 `json:"aggregatecurrentperiodchurn"`
 	// MaxPeriodChurn is the (adjustable) maximum churn allowed per period.
@@ -1016,6 +1021,12 @@ type Renter interface {
 	// settings, assuming perfect age and uptime adjustments
 	EstimateHostScore(entry HostDBEntry, allowance Allowance) (HostScoreBreakdown, error)
 
+	// ReadRegistry starts a registry lookup on all available workers. The
+	// jobs have 'timeout' amount of time to finish their jobs and return a
+	// response. Otherwise the response with the highest revision number will be
+	// used.
+	ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (SignedRegistryValue, error)
+
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
 	ScoreBreakdown(entry HostDBEntry) (HostScoreBreakdown, error)
@@ -1029,6 +1040,10 @@ type Renter interface {
 	// SetFileTrackingPath sets the on-disk location of an uploaded file to a
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
+
+	// UpdateRegistry updates the registries on all workers with the given
+	// registry value.
+	UpdateRegistry(spk types.SiaPublicKey, srv SignedRegistryValue, timeout time.Duration) error
 
 	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
 	// duration
@@ -1096,6 +1111,10 @@ type Renter interface {
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
 	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
 
+	// DownloadSkylinkBaseSector will take a link and turn it into the data of a download
+	// without any decoding of the metadata, fanout, or decryption.
+	DownloadSkylinkBaseSector(Skylink, time.Duration) (Streamer, error)
+
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
 	// file.
@@ -1106,11 +1125,11 @@ type Renter interface {
 	// file.
 	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
 
-	// Blacklist returns the merkleroots that are blacklisted
-	Blacklist() ([]crypto.Hash, error)
+	// Blocklist returns the merkleroots that are blocked
+	Blocklist() ([]crypto.Hash, error)
 
-	// UpdateSkynetBlacklist updates the list of hashed merkleroots that are blacklisted
-	UpdateSkynetBlacklist(additions, removals []crypto.Hash) error
+	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
+	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
 
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.
