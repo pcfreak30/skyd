@@ -94,7 +94,7 @@ type (
 		// worker has a refill mechanism that keeps the account balance filled
 		// up until a certain target. This target depends on the host's pricing
 		// and is calculated and saved on the worker's price table.
-		staticAccount       *account
+		staticAccount *account
 
 		// The loop state contains information about the worker loop. It is
 		// mostly atomic variables that the worker uses to ratelimit the

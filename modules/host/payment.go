@@ -153,6 +153,11 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 		return types.ZeroCurrency, errors.New("can't provide a refund account on a fund account rpc")
 	}
 
+	// disrupt fund account
+	if h.dependencies.Disrupt("FundAccountFail") {
+		return types.ZeroCurrency, errors.New("can't fund  account due to disrupt 'FundAccountFail'")
+	}
+
 	// lock the storage obligation
 	h.managedLockStorageObligation(fcid)
 	defer h.managedUnlockStorageObligation(fcid)

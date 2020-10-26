@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -20,7 +19,10 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 	}
 	t.Parallel()
 
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, modules.ProdDependencies)
+	disableFundAccount := dependencies.NewDependencyFundAccountFail()
+	disableFundAccount.Disable()
+
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, disableFundAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,19 +50,23 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 		t.Fatal("Unexpected maintenance cooldown")
 	}
 
-	// set a negative balance, tricking the worker into thinking it has to
-	// refill
+	// set a negative balance to make the worker think it needs to refill
 	w.staticAccount.mu.Lock()
 	w.staticAccount.negativeBalance = w.staticAccount.balance
 	w.staticAccount.mu.Unlock()
 
-	// manually trigger a refill
-	w.managedRefillAccount()
+	// ensure the refill fails on the host
+	disableFundAccount.Enable()
 
-	// verify the worker has been put on maintenance cooldown
+	// manually trigger a refill and verify we've been put on maintenance
+	// cooldown
+	w.managedRefillAccount()
 	if !w.managedOnMaintenanceCooldown() {
 		t.Fatal("Expected maintenance cooldown")
 	}
+
+	// re-enable refills on the host so we can recover from the situation
+	disableFundAccount.Disable()
 
 	// the workerloop should have synced the account balance
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
@@ -84,10 +90,8 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 		}
 	}
 
-	// manually trigger a refill
+	// manually trigger a refill and verify the account is no longer on cooldown
 	w.managedRefillAccount()
-
-	// verify the account is not on cooldown
 	if w.managedOnMaintenanceCooldown() {
 		t.Fatal("Worker's RHP3 subsystems should not be on cooldown")
 	}

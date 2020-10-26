@@ -203,6 +203,12 @@ func NewDependencyContractRenewalFail() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("ContractRenewFail")
 }
 
+// NewDependencyFundAccountFail creates a new dependency that simulates
+// getting an error while funding an ephemeral account.
+func NewDependencyFundAccountFail() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("FundAccountFail")
+}
+
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
 // method which returns a custom resolver that uses the specified lookupIP
 // method to resolve hostnames.
