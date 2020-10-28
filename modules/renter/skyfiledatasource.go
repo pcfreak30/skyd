@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -27,7 +28,7 @@ type skylinkDataSource struct {
 
 	// Metadata.
 	staticID       modules.DataSourceID
-	staticLayout   skyfileLayout
+	staticLayout   skynet.SkyfileLayout
 	staticMetadata modules.SkyfileMetadata
 
 	// The base sector contains all of the raw data for the skylink, and the
@@ -45,7 +46,7 @@ type skylinkDataSource struct {
 
 // DataSize implements streamBufferDataSource
 func (sds *skylinkDataSource) DataSize() uint64 {
-	return sds.staticLayout.filesize
+	return sds.staticLayout.Filesize
 }
 
 // ID implements streamBufferDataSource
@@ -96,11 +97,11 @@ func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 
 	// Determine how large each chunk is.
-	chunkSize := uint64(sds.staticLayout.fanoutDataPieces) * modules.SectorSize
+	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
 
 	// Keep reading from chunks until all the data has been read.
 	off -= int64(len(sds.staticFirstChunk)) // Ignore data in the first chunk.
-	for n < len(p) && off < int64(sds.staticLayout.filesize) {
+	for n < len(p) && off < int64(sds.staticLayout.Filesize) {
 		// Determine which chunk the offset is currently in.
 		chunkIndex := uint64(off) / chunkSize
 		offsetInChunk := uint64(off) % chunkSize
@@ -142,6 +143,16 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 	// threadgroup but otherwise independent.
 	ctx, cancelFunc := context.WithCancel(r.tg.StopCtx())
 
+	// If this function exits with an error we need to call cancel, due to the
+	// many returns here we use a boolean that cancels by default, only if we
+	// reach the very end of this function we do not call cancel.
+	cancel := true
+	defer func() {
+		if cancel {
+			cancelFunc()
+		}
+	}()
+
 	// Create the pcws for the first chunk, which is just a single root with
 	// both passthrough encryption and passthrough erasure coding.
 	ptec := modules.NewPassthroughErasureCoder()
@@ -169,7 +180,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		return nil, errors.AddContext(err, "base sector download did not succeed")
 	}
 	baseSector := resp.data
-	if len(baseSector) < SkyfileLayoutSize {
+	if len(baseSector) < skynet.SkyfileLayoutSize {
 		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
 
@@ -184,7 +195,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, firstChunk, err := parseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, firstChunk, err := skynet.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
@@ -198,7 +209,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to derive encryption key")
 		}
-		ec, err := siafile.NewRSSubCode(int(layout.fanoutDataPieces), int(layout.fanoutParityPieces), crypto.SegmentSize)
+		ec, err := siafile.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
 		}
@@ -209,6 +220,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		fanoutPCWS[i] = pcws
 	}
 
+	cancel = false
 	sds := &skylinkDataSource{
 		staticID:       link.DataSourceID(),
 		staticLayout:   layout,
@@ -226,7 +238,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 
 // decodeFanout will take the fanout bytes from a skyfile and decode them in to
 // the staticChunks filed of the fanoutStreamBufferDataSource.
-func decodeFanout(ll skyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error) {
+func decodeFanout(ll skynet.SkyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error) {
 	// TODO: Is this the best design?
 	//
 	// There is no fanout if there are no fanout settings.
@@ -239,13 +251,13 @@ func decodeFanout(ll skyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error)
 	// single piece for each chunk.
 	var piecesPerChunk uint64
 	var chunkRootsSize uint64
-	if ll.fanoutDataPieces == 1 && ll.cipherType == crypto.TypePlain {
+	if ll.FanoutDataPieces == 1 && ll.CipherType == crypto.TypePlain {
 		piecesPerChunk = 1
 		chunkRootsSize = crypto.HashSize
 	} else {
 		// This is the case where the file data is not 1-of-N. Every piece is
 		// different, so every piece must get enumerated.
-		piecesPerChunk = uint64(ll.fanoutDataPieces) + uint64(ll.fanoutParityPieces)
+		piecesPerChunk = uint64(ll.FanoutDataPieces) + uint64(ll.FanoutParityPieces)
 		chunkRootsSize = crypto.HashSize * piecesPerChunk
 	}
 	// Sanity check - the fanout bytes should be an even number of chunks.

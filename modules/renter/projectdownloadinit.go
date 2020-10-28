@@ -77,6 +77,7 @@ import (
 	"container/heap"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -259,7 +260,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 		nextWorker := heap.Pop(&workerHeap).(*pdcInitialWorker)
 		if nextWorker == nil {
 			// TODO: Not panic
-			panic("wasn't expecting to pop a nil worker")
+			build.Critical("wasn't expecting to pop a nil worker")
 			break
 		}
 
@@ -464,5 +465,6 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		}
 	}
 
-	return errors.New("never implemented a function to launch the initial workers")
+	// TODO: check with David what the ention was here - unreachable code
+	// return errors.New("never implemented a function to launch the initial workers")
 }
