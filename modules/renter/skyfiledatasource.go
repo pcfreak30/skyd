@@ -9,7 +9,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -209,7 +208,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to derive encryption key")
 		}
-		ec, err := siafile.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
+		ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
 		}
