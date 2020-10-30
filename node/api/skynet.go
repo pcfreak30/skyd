@@ -1223,7 +1223,7 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		}
 		timeout = time.Duration(timeoutInt) * time.Second
 		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", int(renter.MaxRegistryReadTimeout.Seconds()))}, http.StatusBadRequest)
 			return
 		}
 	}

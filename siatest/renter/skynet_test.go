@@ -3276,3 +3276,105 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRegistryReadRepair tests if reading a registry entry repair the entry on
+// the network.
+func TestRegistryReadRepair(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+	h1 := tg.Hosts()[0]
+
+	// Create a random skylink.
+	skylink, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	data := skylink.Bytes()
+	srv := modules.NewRegistryValue(dataKey, data, 0).Sign(sk) // rev 0
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Force a refresh of the worker pool for testing.
+	_, err = r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the regisry.
+	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add another host. This host won't have the entry.
+	_, err = tg.AddNodeN(node.HostTemplate, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Give the node some time to show up in the renter.
+	time.Sleep(time.Second)
+
+	// Force a refresh of the worker pool.
+	_, err = r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the entry. This should work and also repair the new host.
+	readSRV, err := r.RegistryRead(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv, readSRV) {
+		t.Log(srv)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Give the update some time to finish.
+	time.Sleep(time.Second)
+
+	// Shut down the first host and read again. This should work even though the
+	// second host wasn't created yet when we called update.
+	err = tg.StopNode(h1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readSRV, err = r.RegistryRead(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv, readSRV) {
+		t.Log(srv)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+}

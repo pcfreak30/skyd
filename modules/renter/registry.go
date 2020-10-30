@@ -56,7 +56,7 @@ var (
 	MinUpdateRegistrySuccesses = build.Select(build.Var{
 		Dev:      3,
 		Standard: 3,
-		Testing:  3,
+		Testing:  1,
 	}).(int)
 
 	// updateRegistryMemory is the amount of registry that UpdateRegistry will
