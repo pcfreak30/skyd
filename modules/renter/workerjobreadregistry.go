@@ -48,6 +48,7 @@ type (
 	jobReadRegistryResponse struct {
 		staticSignedRegistryValue *modules.SignedRegistryValue
 		staticErr                 error
+		staticWorker              *worker
 	}
 )
 
@@ -128,7 +129,8 @@ func (j *jobReadRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadRegistryResponse{
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			staticErr:    errors.Extend(err, ErrJobDiscarded),
+			staticWorker: j.staticQueue.staticWorker(),
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -152,6 +154,7 @@ func (j *jobReadRegistry) callExecute() {
 			response := &jobReadRegistryResponse{
 				staticSignedRegistryValue: srv,
 				staticErr:                 err,
+				staticWorker:              j.staticQueue.staticWorker(),
 			}
 			select {
 			case j.staticResponseChan <- response:

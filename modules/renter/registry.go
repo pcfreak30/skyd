@@ -74,6 +74,56 @@ var (
 	useHighestRevDefaultTimeout = 100 * time.Millisecond
 )
 
+// readResponseSet is a helper type which allows for returning a set of ongoing
+// ReadRegistry responses.
+type readResponseSet struct {
+	c    <-chan *jobReadRegistryResponse
+	left int
+
+	readResps []*jobReadRegistryResponse
+}
+
+// newReadResponseSet creates a new set from a response chan and number of
+// workers which are expected to write to that chan.
+func newReadResponseSet(responseChan <-chan *jobReadRegistryResponse, numWorkers int) *readResponseSet {
+	return &readResponseSet{
+		c:         responseChan,
+		left:      numWorkers,
+		readResps: make([]*jobReadRegistryResponse, 0, numWorkers),
+	}
+}
+
+// Collect will collect all responses. It will block until it has received all
+// of them or until the provided context is closed.
+func (rrs *readResponseSet) Collect(ctx context.Context) []*jobReadRegistryResponse {
+	for rrs.ResponsesLeft() > 0 {
+		resp := rrs.Next(ctx)
+		if resp == nil {
+			return nil
+		}
+	}
+	return rrs.readResps
+}
+
+// Next returns the next available response. It will block until the response is
+// received or the provided context is closed.
+func (rrs *readResponseSet) Next(ctx context.Context) *jobReadRegistryResponse {
+	select {
+	case <-ctx.Done():
+		return nil
+	case resp := <-rrs.c:
+		rrs.readResps = append(rrs.readResps, resp)
+		rrs.left--
+		return resp
+	}
+}
+
+// ResponsesLeft returns the number of responses that can still be fetched with
+// Next.
+func (rrs *readResponseSet) ResponsesLeft() int {
+	return rrs.left
+}
+
 // ReadRegistry starts a registry lookup on all available workers. The
 // jobs have 'timeout' amount of time to finish their jobs and return a
 // response. Otherwise the response with the highest revision number will be
@@ -97,9 +147,13 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	}
 
 	// Start the ReadRegistry jobs.
-	srv, err := r.managedReadRegistry(ctx, spk, tweak)
+	srv, responseSet, err := r.managedReadRegistry(ctx, spk, tweak)
 	if errors.Contains(err, ErrRegistryLookupTimeout) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	}
+	// Spawn a goroutine to handle the responses once all of them are done.
+	if responseSet != nil {
+		go r.threadedHandleFinishedReadRegistryResponses(spk, tweak, responseSet)
 	}
 	return srv, err
 }
@@ -136,7 +190,7 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // jobs have 'timeout' amount of time to finish their jobs and return a
 // response. Otherwise the response with the highest revision number will be
 // used.
-func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, *readResponseSet, error) {
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -179,8 +233,11 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	workers = workers[:numRegistryWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
-		return modules.SignedRegistryValue{}, errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
+		return modules.SignedRegistryValue{}, nil, errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
+
+	// Create the response set.
+	responseSet := newReadResponseSet(staticResponseChan, numRegistryWorkers)
 
 	// Prepare a context which will be overwritten by a child context with a timeout
 	// when we receive the first response. useHighestRevDefaultTimeout after
@@ -191,28 +248,20 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	var srv *modules.SignedRegistryValue
 	responses := 0
 
-LOOP:
-	for responses < len(workers) {
+	for responseSet.ResponsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
 		var resp *jobReadRegistryResponse
 		if srv != nil {
-			// If we have a successful response already, we wait on both contexts
-			// and the response chan.
-			select {
-			case <-useHighestRevCtx.Done():
-				break LOOP // using best
-			case <-ctx.Done():
-				break LOOP // timeout reached
-			case resp = <-staticResponseChan:
-			}
+			// If we have a successful response already, we wait on the highest
+			// rev ctx.
+			resp = responseSet.Next(useHighestRevCtx)
 		} else {
 			// Otherwise we don't wait on the usehighestRevCtx since we need a
 			// successful response to abort.
-			select {
-			case <-ctx.Done():
-				break LOOP // timeout reached
-			case resp = <-staticResponseChan:
-			}
+			resp = responseSet.Next(ctx)
+		}
+		if resp == nil {
+			break // context triggered
 		}
 
 		// When we get the first response, we initialize the highest rev
@@ -239,17 +288,18 @@ LOOP:
 	}
 
 	// If we don't have a successful response and also not a response for every
-	// worker, we timed out.
+	// worker, we timed out. We still return the response set since there might
+	// be slow successful responses that we missed.
 	if srv == nil && responses < len(workers) {
-		return modules.SignedRegistryValue{}, ErrRegistryLookupTimeout
+		return modules.SignedRegistryValue{}, responseSet, ErrRegistryLookupTimeout
 	}
 
 	// If we don't have a successful response but received a response from every
 	// worker, we were unable to look up the entry.
 	if srv == nil {
-		return modules.SignedRegistryValue{}, ErrRegistryEntryNotFound
+		return modules.SignedRegistryValue{}, responseSet, ErrRegistryEntryNotFound
 	}
-	return *srv, nil
+	return *srv, responseSet, nil
 }
 
 // managedUpdateRegistry updates the registries on all workers with the given
@@ -272,29 +322,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// Filter out hosts that don't support the registry.
 	numRegistryWorkers := 0
 	for _, worker := range workers {
-		cache := worker.staticCache()
-		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
-			continue
-		}
-
-		// check for price gouging
-		// TODO: use upload gouging for some basic protection. Should be
-		// replaced as part of the gouging overhaul.
-		host, ok, err := r.hostDB.Host(worker.staticHostPubKey)
-		if !ok || err != nil {
-			continue
-		}
-		err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
-		if err != nil {
-			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
-			continue
-		}
-
-		// Create the job. We purposefully use the renter's ctx here instead of
-		// the provided one to make sure the jobs can finish in the background
-		// instead of being killed when the timeout channel is closed.
-		jrr := worker.newJobUpdateRegistry(r.tg.StopCtx(), staticResponseChan, spk, srv)
-		if !worker.staticJobUpdateRegistryQueue.callAdd(jrr) {
+		if !worker.callLaunchUpdateRegistry(spk, srv, staticResponseChan) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
 			continue
@@ -366,4 +394,95 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	return nil
+}
+
+// threadedHandleFinishedReadRegistryResponses waits for all provided read
+// registry programs to finish and updates all workers from responses which
+// either didn't provide the highest revision number, or didn't have the entry
+// at all.
+func (r *Renter) threadedHandleFinishedReadRegistryResponses(spk types.SiaPublicKey, tweak crypto.Hash, responseSet *readResponseSet) {
+	if err := r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
+
+	// Register the update to make sure we don't try again if a value is rapidly
+	// polled before this update is done.
+	mapKey := crypto.HashAll(spk, tweak)
+	id := r.mu.Lock()
+	_, exists := r.ongoingRegistryUpdates[mapKey]
+	if !exists {
+		r.ongoingRegistryUpdates[mapKey] = struct{}{}
+	}
+	r.mu.Unlock(id)
+	if exists {
+		return // ongoing update found
+	}
+
+	// Unregister the update once done.
+	defer func() {
+		id := r.mu.Lock()
+		delete(r.ongoingRegistryUpdates, mapKey)
+		r.mu.Unlock(id)
+	}()
+
+	// Collect all responses.
+	resps := responseSet.Collect(r.tg.StopCtx())
+	if resps == nil {
+		return // shutdown
+	}
+
+	// Filter out the workers that didn't fail and find the highest revision
+	// response.
+	var srv *modules.SignedRegistryValue
+	numSuccesses := 0
+	for _, resp := range resps {
+		if resp.staticErr != nil {
+			continue
+		}
+		resps[numSuccesses] = resp
+		numSuccesses++
+
+		// Check if host knew registry value.
+		if resp.staticSignedRegistryValue == nil {
+			continue
+		}
+		// Otherwise remember the highest success response.
+		if srv == nil || resp.staticSignedRegistryValue.Revision > srv.Revision {
+			srv = resp.staticSignedRegistryValue
+		}
+	}
+
+	// If none reported a value, there is nothing we can do.
+	if srv == nil {
+		return
+	}
+
+	// Otherwise we update all workers, that didn't have the latest revision.
+	numRegistryWorkers := 0
+	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(resps))
+	for _, resp := range resps {
+		// Ignore workers that already had the latest version.
+		if resp.staticSignedRegistryValue != nil && resp.staticSignedRegistryValue.Revision == srv.Revision {
+			continue
+		}
+		if !resp.staticWorker.callLaunchUpdateRegistry(spk, *srv, staticResponseChan) {
+			// This will filter out any workers that are on cooldown or
+			// otherwise can't participate in the project.
+			continue
+		}
+		numRegistryWorkers++
+	}
+
+	// Wait for all of them to be updated.
+	for i := 0; i < numRegistryWorkers; i++ {
+		select {
+		case <-r.tg.StopChan():
+			return // shutdown
+		case _ = <-staticResponseChan:
+		}
+		// Ignore the response for now. In the future we might want some special
+		// handling here.
+	}
+	return
 }

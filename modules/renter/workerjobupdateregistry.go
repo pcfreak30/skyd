@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -218,10 +219,9 @@ func (w *worker) initJobUpdateRegistryQueue() {
 // UpdateRegistry is a helper method to run a UpdateRegistry job on a worker.
 func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
 	updateRegistryRespChan := make(chan *jobUpdateRegistryResponse)
-	jur := w.newJobUpdateRegistry(ctx, updateRegistryRespChan, spk, rv)
 
-	// Add the job to the queue.
-	if !w.staticJobUpdateRegistryQueue.callAdd(jur) {
+	// Launch job.
+	if !w.callLaunchUpdateRegistry(spk, rv, updateRegistryRespChan) {
 		return errors.New("worker unavailable")
 	}
 
@@ -233,6 +233,36 @@ func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv 
 	case resp = <-updateRegistryRespChan:
 	}
 	return resp.staticErr
+}
+
+// callLaunchUpdateRegistry launches an UpdateRegistry job and conducts
+// necessary checks like price gouging and version verification.
+func (w *worker) callLaunchUpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, responseChan chan *jobUpdateRegistryResponse) bool {
+	cache := w.staticCache()
+	r := w.renter
+
+	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
+		return false
+	}
+
+	// check for price gouging
+	// TODO: use upload gouging for some basic protection. Should be
+	// replaced as part of the gouging overhaul.
+	host, ok, err := r.hostDB.Host(w.staticHostPubKey)
+	if !ok || err != nil {
+		return false
+	}
+	err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
+	if err != nil {
+		r.log.Debugf("price gouging detected in worker %v, err: %v\n", w.staticHostPubKeyStr, err)
+		return false
+	}
+
+	// Create the job. We purposefully use the renter's ctx here instead of
+	// the provided one to make sure the jobs can finish in the background
+	// instead of being killed when the timeout channel is closed.
+	jrr := w.newJobUpdateRegistry(r.tg.StopCtx(), responseChan, spk, srv)
+	return w.staticJobUpdateRegistryQueue.callAdd(jrr)
 }
 
 // updateRegistryUpdateJobExpectedBandwidth is a helper function that returns

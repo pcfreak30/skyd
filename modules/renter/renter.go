@@ -215,6 +215,10 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 	cachedUtilities cachedUtilities
 
+	// ongoingRegistryUpdates is used to remember which registry entries are
+	// currently being updated on all available hosts.
+	ongoingRegistryUpdates map[crypto.Hash]struct{}
+
 	// Stateful variables related to projects the worker can launch. Typically
 	// projects manage all of their own state, but for example they may track
 	// metrics across running the project multiple times.
@@ -958,6 +962,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		downloadHistory: make(map[modules.DownloadID]*download),
 
 		staticProjectDownloadByRootManager: new(projectDownloadByRootManager),
+
+		ongoingRegistryUpdates: make(map[crypto.Hash]struct{}),
 
 		cs:             cs,
 		deps:           deps,
