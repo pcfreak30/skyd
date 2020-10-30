@@ -162,6 +162,11 @@ func (sp SiaPath) IsRoot() bool {
 	return sp.Path == ""
 }
 
+// IsSkynetPath indicates whether or not the SiaPath path is a Skynet path
+func (sp SiaPath) IsSkynetPath() bool {
+	return strings.HasPrefix(sp.Path, SkynetFolder.Path)
+}
+
 // Join joins the string to the end of the SiaPath with a "/" and returns the
 // new SiaPath.
 func (sp SiaPath) Join(s string) (SiaPath, error) {

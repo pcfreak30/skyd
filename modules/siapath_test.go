@@ -307,3 +307,32 @@ func TestSiapathName(t *testing.T) {
 		}
 	}
 }
+
+// TestSiapathIsSkynetPath probes the IsSkynetPath method
+func TestSiapathIsSkynetPath(t *testing.T) {
+	var pathtests = []struct {
+		path         string
+		isSkynetPath bool
+	}{
+		{"", false},
+		{".", false},
+		{"./", false},
+		{"/", false},
+		{"var", false},
+		{"skynet/a", false},
+		{"home/a", false},
+		{"home/user/a", false},
+		{"var/skynet", true},
+		{"var/skynet/a", true},
+		{"var/skynet/a.sia", true},
+		{"var/skynet/d/d/d/a.sia", true},
+	}
+	for _, pathtest := range pathtests {
+		siaPath := SiaPath{
+			Path: pathtest.path,
+		}
+		if siaPath.IsSkynetPath() != pathtest.isSkynetPath {
+			t.Error("bad ", siaPath.IsSkynetPath(), pathtest.path)
+		}
+	}
+}
