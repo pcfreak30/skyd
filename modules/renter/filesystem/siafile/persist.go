@@ -655,6 +655,13 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) (e
 	return nil
 }
 
+// CreateAndApplyTransaction is a generic version of the
+// createAndApplyTransaction method of the SiaFile. This will result in 2 fsyncs
+// independent of the number of updates.
+func CreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) (err error) {
+	return createAndApplyTransaction(wal, updates...)
+}
+
 // createAndApplyTransaction is a generic version of the
 // createAndApplyTransaction method of the SiaFile. This will result in 2 fsyncs
 // independent of the number of updates.

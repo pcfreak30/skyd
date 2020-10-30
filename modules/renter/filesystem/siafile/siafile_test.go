@@ -16,6 +16,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -1115,6 +1116,70 @@ func TestFileExpiration(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestSiaFileCreateDeleteUpdate probes deleting a file using the
+// CreateDeleteUpdate method
+func TestSiaFileCreateDeleteUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a file
+	sf := newTestFile()
+
+	// CreateDeleteUpdate
+	update, err := sf.CreateDeleteUpdate()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify State
+	if update.Name != updateDeleteName {
+		t.Fatal("bad update name", update.Name)
+	}
+	sf.mu.Lock()
+	if !sf.deleted {
+		t.Fatal("siafile not marked as deleted")
+	}
+	sf.mu.Unlock()
+
+	// Launch thread that calls functions on the siafile rapidly. This should all be
+	// no-ops because the siafile should be marked as deleted
+	closeChan := make(chan struct{})
+	defer close(closeChan)
+	go func() {
+		for {
+			select {
+			case <-closeChan:
+				return
+			default:
+			}
+			sf.Rename(persist.RandomSuffix())
+			sf.Metadata()
+			sf.Delete()
+			sf.GrowNumChunks(1)
+			sf.RemoveLastChunk()
+			sf.SetFileSize(1)
+			sf.CreateDeleteUpdate()
+			sf.SaveHeader()
+			sf.SaveMetadata()
+			sf.SetAllStuck(true)
+		}
+	}()
+
+	// Small sleep to ensure methods in thread have begun to be called
+	time.Sleep(100 * time.Millisecond)
+
+	// Finish deletion using the exported method to verify no panics from methods
+	// being called in the thread
+	err = CreateAndApplyTransaction(sf.wal, update)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TODO: move benachmarks into their own file
 
 // BenchmarkLoadSiaFile benchmarks loading an existing siafile's metadata into
 // memory.

@@ -648,13 +648,72 @@ func TestDeleteFile(t *testing.T) {
 	if !sf.Deleted() {
 		t.Fatal("foo should be marked as deleted but wasn't")
 	}
-	// Check that we can't open another instance of foo and that we can't create
+	// Check that we can't open another instance of foo and that we can create
 	// a new file at the same path.
 	if _, err := fs.OpenSiaFile(sp); !errors.Contains(err, ErrNotExist) {
 		t.Fatal("err should be ErrNotExist but was:", err)
 	}
 	if err := fs.addTestSiaFileWithErr(sp); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDeleteFiles tests that deleting files works as expected and that certain
+// edge cases are covered.
+func TestDeleteFiles(t *testing.T) {
+	if testing.Short() && !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Add two file to the root dir.
+	sp1 := newSiaPath("foo")
+	fs.addTestSiaFile(sp1)
+	sp2 := newSiaPath("bar")
+	fs.addTestSiaFile(sp2)
+	// Open the files.
+	sf1, err := fs.OpenSiaFile(sp1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf2, err := fs.OpenSiaFile(sp2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Files shouldn't be deleted yet.
+	if sf1.Deleted() {
+		t.Fatal("foo is deleted before calling delete")
+	}
+	if sf2.Deleted() {
+		t.Fatal("bar is deleted before calling delete")
+	}
+	// Delete it using the filesystem.
+	siaPaths := []modules.SiaPath{sp1, sp2}
+	if err := fs.DeleteFiles(siaPaths); err != nil {
+		t.Fatal(err)
+	}
+	// Check that the open instances are marked as deleted.
+	if !sf1.Deleted() {
+		t.Fatal("foo should be marked as deleted but wasn't")
+	}
+	if !sf2.Deleted() {
+		t.Fatal("bar should be marked as deleted but wasn't")
+	}
+	// Check that we can't open another instance of either file and that we can
+	// create a new file at the same path.
+	if _, err := fs.OpenSiaFile(sp1); !errors.Contains(err, ErrNotExist) {
+		t.Fatal("err should be ErrNotExist but was:", err)
+	}
+	if err := fs.addTestSiaFileWithErr(sp1); err != nil {
 		t.Fatal("err should be nil but was:", err)
+	}
+	if _, err := fs.OpenSiaFile(sp2); !errors.Contains(err, ErrNotExist) {
+		t.Fatal("err should be ErrNotExist but was:", err)
+	}
+	if err := fs.addTestSiaFileWithErr(sp2); err != nil {
+		t.Fatal(err)
 	}
 }
 

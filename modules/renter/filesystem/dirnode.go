@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 type (
@@ -533,6 +534,29 @@ func (n *DirNode) managedDelete() error {
 	return nil
 }
 
+// managedCreateDeleteFileUpdate creates a wal update containing a delete update
+// for the file with the given name from the directory. If the file is not in
+// memory the file is removed from disk without a wal txn.
+//
+// NOTE: Callers of this method are responsible for submitted the wal update and
+// txns
+func (n *DirNode) managedCreateDeleteFileUpdate(fileName string) (writeaheadlog.Update, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	// Check if the file is open in memory. If it is delete it.
+	sf, exists := n.files[fileName]
+	if exists {
+		update, err := sf.managedCreateDeleteUpdate()
+		if err != nil {
+			return writeaheadlog.Update{}, err
+		}
+		n.removeFile(sf)
+		return update, nil
+	}
+	return writeaheadlog.Update{}, n.removeFileFromDisk(fileName)
+}
+
 // managedDeleteFile deletes the file with the given name from the directory.
 func (n *DirNode) managedDeleteFile(fileName string) error {
 	n.mu.Lock()
@@ -548,9 +572,15 @@ func (n *DirNode) managedDeleteFile(fileName string) error {
 		n.removeFile(sf)
 		return nil
 	}
+	return n.removeFileFromDisk(fileName)
+}
 
+// removeFileFromDisk removes a file from disk.
+//
+// NOTE: This should only be called if the file is not in memory
+func (n *DirNode) removeFileFromDisk(fileName string) error {
 	// Check whether the file is actually a directory.
-	_, exists = n.directories[fileName]
+	_, exists := n.directories[fileName]
 	if exists {
 		return ErrDeleteFileIsDir
 	}

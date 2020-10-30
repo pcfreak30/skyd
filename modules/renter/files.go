@@ -16,7 +16,16 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	defer r.tg.Done()
 
 	// Perform the delete operation.
-	err = r.staticFileSystem.DeleteFile(siaPath)
+	if siaPath.IsSkynetPath() {
+		extendSiaPath, err := modules.NewSiaPath(siaPath.String() + ExtendedSuffix)
+		if err != nil {
+			return err
+		}
+		siaPaths := []modules.SiaPath{siaPath, extendSiaPath}
+		err = r.staticFileSystem.DeleteFiles(siaPaths)
+	} else {
+		err = r.staticFileSystem.DeleteFile(siaPath)
+	}
 	if err != nil {
 		return errors.AddContext(err, "unable to delete siafile from filesystem")
 	}

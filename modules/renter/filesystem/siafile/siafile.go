@@ -463,6 +463,20 @@ func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRen
 	return sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 }
 
+// CreateDeleteUpdate marks a SiaFile as deleted returns a wal update containing
+// a delete update.  Once the file is deleted, certain methods should return an
+// error.
+func (sf *SiaFile) CreateDeleteUpdate() (writeaheadlog.Update, error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// We can't delete a file multiple times.
+	if sf.deleted {
+		return writeaheadlog.Update{}, errors.AddContext(ErrDeleted, "requested file has already been deleted")
+	}
+	sf.deleted = true
+	return sf.createDeleteUpdate(), nil
+}
+
 // Delete removes the file from disk and marks it as deleted. Once the file is
 // deleted, certain methods should return an error.
 func (sf *SiaFile) Delete() (err error) {

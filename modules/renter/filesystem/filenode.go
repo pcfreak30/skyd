@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 type (
@@ -58,6 +59,18 @@ func (n *FileNode) managedCopy() *FileNode {
 	newNode.threadUID = newThreadUID()
 	newNode.threads[newNode.threadUID] = struct{}{}
 	return &newNode
+}
+
+// managedCreateDeleteUpdate creates a wal update to delete the fNode's
+// underlying file from disk. The file will be marked in memory as deleted but
+// still be on disk.
+//
+// NOTE: Callers of this method are responsible for submitted the wal update and
+// txns
+func (n *FileNode) managedCreateDeleteUpdate() (writeaheadlog.Update, error) {
+	n.node.mu.Lock()
+	defer n.node.mu.Unlock()
+	return n.SiaFile.CreateDeleteUpdate()
 }
 
 // Delete deletes the fNode's underlying file from disk.

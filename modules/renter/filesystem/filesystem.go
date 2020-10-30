@@ -233,6 +233,20 @@ func (fs *FileSystem) DeleteFile(siaPath modules.SiaPath) error {
 	return fs.managedDeleteFile(siaPath.String())
 }
 
+// DeleteFiles deletes files from the filesystem in one ACID transaction. The
+// file will be marked as 'deleted' which should cause all remaining instances
+// of the file to be closed shortly. Only when all instances of the file are
+// closed it will be removed from the tree. This means that as long as the
+// deletion is in progress, no new file of the same path can be created and the
+// existing file can't be opened until all instances of it are closed.
+func (fs *FileSystem) DeleteFiles(siaPaths []modules.SiaPath) error {
+	paths := make([]string, len(siaPaths))
+	for i, sp := range siaPaths {
+		paths[i] = sp.String()
+	}
+	return fs.managedDeleteFiles(paths)
+}
+
 // DirInfo returns the Directory Information of the siadir
 func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (_ modules.DirectoryInfo, err error) {
 	dir, err := fs.managedOpenDir(siaPath.String())
@@ -554,6 +568,20 @@ func (fs *FileSystem) RenameDir(oldSiaPath, newSiaPath modules.SiaPath) error {
 // managedDeleteFile on it.
 func (fs *FileSystem) managedDeleteFile(relPath string) (err error) {
 	// Open the folder that contains the file.
+	fileName, dir, err := fs.managedFileDir(relPath)
+	if err != nil {
+		return err
+	}
+	// Close the dir since we are not returning it. The open file keeps it
+	// loaded in memory.
+	defer func() {
+		err = errors.Compose(err, dir.Close())
+	}()
+	return dir.managedDeleteFile(fileName)
+}
+
+func (fs *FileSystem) managedFileDir(relPath string) (string, *DirNode, error) {
+	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(relPath)
 	var dir *DirNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
@@ -562,15 +590,37 @@ func (fs *FileSystem) managedDeleteFile(relPath string) (err error) {
 		var err error
 		dir, err = fs.managedOpenDir(filepath.Dir(relPath))
 		if err != nil {
-			return errors.AddContext(err, "failed to open parent dir of file")
+			return "", nil, errors.AddContext(err, "failed to open parent dir of file")
 		}
-		// Close the dir since we are not returning it. The open file keeps it
-		// loaded in memory.
-		defer func() {
-			err = errors.Compose(err, dir.Close())
-		}()
 	}
-	return dir.managedDeleteFile(fileName)
+	return fileName, dir, nil
+}
+
+// managedDeleteFiles opens the parent folders of the files to delete and calls
+// managedCreateDeleteFileUpdate on them. Once delete updates for all the files
+// have been create a single wal transaction is submitted for the deletion of
+// all the files.
+func (fs *FileSystem) managedDeleteFiles(relPaths []string) (err error) {
+	var updates []writeaheadlog.Update
+	for _, relPath := range relPaths {
+		// Open the folder that contains the file.
+		fileName, dir, fdErr := fs.managedFileDir(relPath)
+		if fdErr != nil {
+			return errors.Compose(err, fdErr)
+		}
+		// Create the delete transaction
+		update, delErr := dir.managedCreateDeleteFileUpdate(fileName)
+		if delErr != nil {
+			return errors.Compose(err, delErr, dir.Close())
+		}
+		updates = append(updates, update)
+
+		// Close the dir.
+		err = errors.Compose(err, dir.Close())
+	}
+
+	// Create and apply the transaction
+	return errors.Compose(err, siafile.CreateAndApplyTransaction(fs.staticWal, updates...))
 }
 
 // managedDeleteDir opens the parent folder of the dir to delete and calls
