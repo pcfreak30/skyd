@@ -93,11 +93,11 @@ func newReadResponseSet(responseChan <-chan *jobReadRegistryResponse, numWorkers
 	}
 }
 
-// Collect will collect all responses. It will block until it has received all
+// collect will collect all responses. It will block until it has received all
 // of them or until the provided context is closed.
-func (rrs *readResponseSet) Collect(ctx context.Context) []*jobReadRegistryResponse {
-	for rrs.ResponsesLeft() > 0 {
-		resp := rrs.Next(ctx)
+func (rrs *readResponseSet) collect(ctx context.Context) []*jobReadRegistryResponse {
+	for rrs.responsesLeft() > 0 {
+		resp := rrs.next(ctx)
 		if resp == nil {
 			return nil
 		}
@@ -105,9 +105,9 @@ func (rrs *readResponseSet) Collect(ctx context.Context) []*jobReadRegistryRespo
 	return rrs.readResps
 }
 
-// Next returns the next available response. It will block until the response is
+// next returns the next available response. It will block until the response is
 // received or the provided context is closed.
-func (rrs *readResponseSet) Next(ctx context.Context) *jobReadRegistryResponse {
+func (rrs *readResponseSet) next(ctx context.Context) *jobReadRegistryResponse {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -120,7 +120,7 @@ func (rrs *readResponseSet) Next(ctx context.Context) *jobReadRegistryResponse {
 
 // ResponsesLeft returns the number of responses that can still be fetched with
 // Next.
-func (rrs *readResponseSet) ResponsesLeft() int {
+func (rrs *readResponseSet) responsesLeft() int {
 	return rrs.left
 }
 
@@ -248,17 +248,17 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	var srv *modules.SignedRegistryValue
 	responses := 0
 
-	for responseSet.ResponsesLeft() > 0 {
+	for responseSet.responsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
 		var resp *jobReadRegistryResponse
 		if srv != nil {
 			// If we have a successful response already, we wait on the highest
 			// rev ctx.
-			resp = responseSet.Next(useHighestRevCtx)
+			resp = responseSet.next(useHighestRevCtx)
 		} else {
 			// Otherwise we don't wait on the usehighestRevCtx since we need a
 			// successful response to abort.
-			resp = responseSet.Next(ctx)
+			resp = responseSet.next(ctx)
 		}
 		if resp == nil {
 			break // context triggered
@@ -427,7 +427,7 @@ func (r *Renter) threadedHandleFinishedReadRegistryResponses(spk types.SiaPublic
 	}()
 
 	// Collect all responses.
-	resps := responseSet.Collect(r.tg.StopCtx())
+	resps := responseSet.collect(r.tg.StopCtx())
 	if resps == nil {
 		return // shutdown
 	}

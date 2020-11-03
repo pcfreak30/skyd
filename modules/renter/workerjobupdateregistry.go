@@ -236,7 +236,8 @@ func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv 
 }
 
 // callLaunchUpdateRegistry launches an UpdateRegistry job and conducts
-// necessary checks like price gouging and version verification.
+// necessary checks like price gouging and version verification. Returns true if
+// the job was launched successfully and false otherwise.
 func (w *worker) callLaunchUpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, responseChan chan *jobUpdateRegistryResponse) bool {
 	cache := w.staticCache()
 	r := w.renter
