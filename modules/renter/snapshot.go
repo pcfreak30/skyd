@@ -146,9 +146,8 @@ func (r *Renter) UploadBackup(src, name string) error {
 }
 
 // managedCreateLocalBackup copies all siafiles from /home/user to the backup
-// location. This is a slow, disk-intensive operation that can be done in
-// parallel with uploading the backup.
-func (r *Renter) managedCreateLocalBackup(name string) error {
+// location.
+func (r *Renter) managedCreateLocalBackup(name string) (err error) {
 	// Get the local path to the backup location.
 	backupDir, err := modules.BackupFolder.Join(name)
 	if err != nil {
@@ -174,15 +173,23 @@ func (r *Renter) managedCreateLocalBackup(name string) error {
 		return errors.AddContext(err, "cannot create backup directory, a directory with that name already exists")
 	}
 
+	// If we error out beyond this point we need to clean up the backup dir we
+	// created, so we can reuse the name.
+	defer func() {
+		if err != nil {
+			// Clean up the local backup from disk.
+			errCleanup := errors.AddContext(fs.DeleteDir(backupDir), "failed to clean up local backup")
+			err = errors.Compose(err, errCleanup)
+		}
+	}()
+
 	err = siaDirCopy(fs, modules.UserFolder, backupDir)
 	if err != nil {
 		return errors.AddContext(err, "failed to copy sia files to backup location")
 	}
-	if err = writeBackupInfo(name, backupDirPath); err != nil {
-		err = errors.AddContext(err, "failed to wrote backup info")
-		// Clean up the local backup from disk.
-		errCleanup := errors.AddContext(fs.DeleteDir(backupDir), "failed to clean up local backup")
-		return errors.Compose(err, errCleanup)
+	err = writeBackupInfo(name, backupDirPath)
+	if err != nil {
+		return errors.AddContext(err, "failed to write backup info")
 	}
 	return nil
 }
