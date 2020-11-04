@@ -33,7 +33,7 @@ const (
 
 	// backupInfoVersion defines the Sia version when the backup info format
 	// was last updated
-	backupInfoVersion = "1.5.1"
+	backupInfoVersion = "1.5.2"
 )
 
 var (
@@ -166,12 +166,6 @@ func (r *Renter) managedCreateLocalBackup(name string) (err error) {
 	}
 
 	backupDirPath := backupDir.SiaDirSysPath(fsRoot)
-	// Create a backup location for siafiles. We do this before  we copy the
-	// files because copying the files might be time consuming and we want to be
-	// sure that it's worth waiting for that.
-	if _, err := os.Stat(backupDirPath); err == nil {
-		return errors.AddContext(err, "cannot create backup directory, a directory with that name already exists")
-	}
 
 	// If we error out beyond this point we need to clean up the backup dir we
 	// created, so we can reuse the name.
@@ -183,9 +177,20 @@ func (r *Renter) managedCreateLocalBackup(name string) (err error) {
 		}
 	}()
 
-	err = siaDirCopy(fs, modules.UserFolder, backupDir)
-	if err != nil {
-		return errors.AddContext(err, "failed to copy sia files to backup location")
+	dirsToBackup := []modules.SiaPath{
+		modules.HomeFolder,
+		modules.VarFolder,
+	}
+	var backupSubDir modules.SiaPath
+	for _, dir := range dirsToBackup {
+		backupSubDir, err = dir.Rebase(modules.RootSiaPath(), backupDir)
+		if err != nil {
+			return errors.AddContext(err, fmt.Sprintf("failed to rebase '%v' under '%v'", dir, backupDir))
+		}
+		err = siaDirCopy(fs, dir, backupSubDir)
+		if err != nil {
+			return errors.AddContext(err, "failed to copy sia files to backup location")
+		}
 	}
 	err = writeBackupInfo(name, backupDirPath)
 	if err != nil {
@@ -230,7 +235,13 @@ func siaDirCopy(fs *filesystem.FileSystem, srcDir, dstDir modules.SiaPath) error
 			if err != nil {
 				return err
 			}
-			dst, err := os.Create(fs.FilePath(newSiaPath))
+			backupFile := fs.FilePath(newSiaPath)
+			// If this dir doesn't exist yet, please create it.
+			err = os.MkdirAll(filepath.Dir(backupFile), modules.DefaultDirPerm)
+			if err != nil {
+				return err
+			}
+			dst, err := os.Create(backupFile)
 			if err != nil {
 				return err
 			}
@@ -262,7 +273,7 @@ func siaDirCopy(fs *filesystem.FileSystem, srcDir, dstDir modules.SiaPath) error
 					return err
 				}
 			}
-			newSiaDir, err := fs.OpenSiaDir(newSiaPath)
+			newSiaDir, err := fs.OpenSiaDirCustom(newSiaPath, true)
 			if err != nil {
 				return err
 			}
@@ -308,8 +319,11 @@ func writeBackupInfo(name, backupDirPath string) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to get backup size")
 	}
+	var uid [16]byte
+	copy(uid[:], fastrand.Bytes(16))
 	ub := modules.UploadedBackup{
 		Name:           name,
+		UID:            uid,
 		CreationDate:   types.CurrentTimestamp(),
 		Size:           uint64(backupSize),
 		UploadProgress: 0,
@@ -459,6 +473,7 @@ func (r *Renter) DownloadBackup(dst string, name string) (err error) {
 func (r *Renter) managedSnapshotExists(name string) bool {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
+	// TODO Check where we populate r.persist.UploadedBackups and make sure that thing reads the new backups.
 	for _, ub := range r.persist.UploadedBackups {
 		if ub.Name == name {
 			return true
