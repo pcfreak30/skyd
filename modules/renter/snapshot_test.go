@@ -19,6 +19,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 )
 
+// TestSiaDirCopy tests the behaviour of siaDirCopy and makes sure the resulting
+// files are identical to the originals.
 func TestSiaDirCopy(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", t.Name())
 	_, wal, _ := writeaheadlog.New(tmpDir + string(filepath.Separator) + "wal.wal")

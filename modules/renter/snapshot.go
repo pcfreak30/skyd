@@ -156,12 +156,7 @@ func (r *Renter) managedCreateLocalBackup(name string) (err error) {
 	lockId := r.mu.RLock()
 	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
 	r.mu.RUnlock(lockId)
-	// Create a new filesystem
-	fs, err := filesystem.New(fsRoot, r.log, r.wal)
-	if err != nil {
-		return errors.AddContext(err, "failed to create filesystem")
-	}
-	if err = fs.NewSiaDir(backupDir, modules.DefaultDirPerm); err != nil {
+	if err = r.staticFileSystem.NewSiaDir(backupDir, modules.DefaultDirPerm); err != nil {
 		return errors.AddContext(err, "failed to create backup directory")
 	}
 
@@ -172,7 +167,7 @@ func (r *Renter) managedCreateLocalBackup(name string) (err error) {
 	defer func() {
 		if err != nil {
 			// Clean up the local backup from disk.
-			errCleanup := errors.AddContext(fs.DeleteDir(backupDir), "failed to clean up local backup")
+			errCleanup := errors.AddContext(r.staticFileSystem.DeleteDir(backupDir), "failed to clean up local backup")
 			err = errors.Compose(err, errCleanup)
 		}
 	}()
@@ -187,12 +182,12 @@ func (r *Renter) managedCreateLocalBackup(name string) (err error) {
 		if err != nil {
 			return errors.AddContext(err, fmt.Sprintf("failed to rebase '%v' under '%v'", dir, backupDir))
 		}
-		err = siaDirCopy(fs, dir, backupSubDir)
+		err = siaDirCopy(r.staticFileSystem, dir, backupSubDir)
 		if err != nil {
 			return errors.AddContext(err, "failed to copy sia files to backup location")
 		}
 	}
-	err = writeBackupInfo(name, backupDirPath)
+	err = createBackupInfo(name, backupDirPath)
 	if err != nil {
 		return errors.AddContext(err, "failed to write backup info")
 	}
@@ -301,10 +296,10 @@ func (r *Renter) managedRemoveLocalBackup(name string) error {
 	return os.RemoveAll(backupDirPath)
 }
 
-// writeBackupInfo writes a .backupinfo file in the backup's directory,
+// createBackupInfo writes a .backupinfo file in the backup's directory,
 // describing the backup. The file contains a JSON version of
 // modules.UploadedBackup.
-func writeBackupInfo(name, backupDirPath string) error {
+func createBackupInfo(name, backupDirPath string) error {
 	// Get the backupSize of the backup.
 	var backupSize int64
 	err := filepath.Walk(backupDirPath, func(_ string, fi os.FileInfo, err error) error {
@@ -473,7 +468,6 @@ func (r *Renter) DownloadBackup(dst string, name string) (err error) {
 func (r *Renter) managedSnapshotExists(name string) bool {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
-	// TODO Check where we populate r.persist.UploadedBackups and make sure that thing reads the new backups.
 	for _, ub := range r.persist.UploadedBackups {
 		if ub.Name == name {
 			return true
