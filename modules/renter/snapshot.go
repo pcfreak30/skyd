@@ -230,30 +230,11 @@ func siaDirCopy(fs *filesystem.FileSystem, srcDir, dstDir modules.SiaPath) error
 					return err
 				}
 			}
-			siaDir, err := fs.OpenSiaDir(siaPath)
-			if err != nil {
-				return err
-			}
 			newSiaPath, err := siaPath.Rebase(srcDir, dstDir)
 			if err != nil {
 				return err
 			}
-			// Check if the new dir already exists and create it if it doesn't.
-			_, err = fs.Stat(newSiaPath)
-			if err != nil {
-				if err = fs.NewSiaDir(newSiaPath, info.Mode()); err != nil {
-					return err
-				}
-			}
-			newSiaDir, err := fs.OpenSiaDirCustom(newSiaPath, true)
-			if err != nil {
-				return err
-			}
-			meta, err := siaDir.Metadata()
-			if err != nil {
-				return err
-			}
-			return newSiaDir.UpdateMetadata(meta)
+			return fs.CopyDir(siaPath, newSiaPath)
 		}
 		return nil
 	})

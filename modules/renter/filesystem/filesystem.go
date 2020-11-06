@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -473,7 +474,7 @@ func (fs *FileSystem) CopyFile(origSiaPath, newSiaPath modules.SiaPath) (err err
 		err = errors.Compose(err, origDir.Close())
 	}()
 	// Open the file.
-	sf, err := origDir.managedOpenFile(origSiaPath.Name())
+	sf, err := origDir.managedOpenFile(strings.TrimSuffix(origSiaPath.Name(), modules.SiaFileExtension))
 	if errors.Contains(err, ErrNotExist) {
 		return ErrNotExist
 	}
@@ -488,7 +489,6 @@ func (fs *FileSystem) CopyFile(origSiaPath, newSiaPath modules.SiaPath) (err err
 	if err != nil {
 		return err
 	}
-	// TODO Can I swap this for fs.OpenSiaDirCustom()?
 	if err := fs.NewSiaDir(newDirSiaPath, sf.managedMode()); err != nil {
 		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newDirSiaPath.String(), origSiaPath.String()))
 	}
@@ -501,6 +501,67 @@ func (fs *FileSystem) CopyFile(origSiaPath, newSiaPath modules.SiaPath) (err err
 	}()
 	// Copy the file.
 	return fs.NewSiaFile(newSiaPath, sf.LocalPath(), sf.ErasureCode(), sf.MasterKey(), sf.Size(), sf.Mode(), !sf.HasPartialChunk())
+}
+
+// CopyDir copies the dir from oldSiaPath to newSiaPath.
+func (fs *FileSystem) CopyDir(origSiaPath, newSiaPath modules.SiaPath) (err error) {
+	// Open the dir to rename.
+	oldDir, err := fs.managedOpenSiaDir(origSiaPath)
+	if errors.Contains(err, ErrNotExist) {
+		return ErrNotExist
+	}
+	if err != nil {
+		return errors.AddContext(err, "failed to open dir for copying")
+	}
+	defer func() {
+		err = errors.Compose(err, oldDir.Close())
+	}()
+
+	// Create and Open parent SiaDir for dir at new location.
+	md, err := oldDir.Metadata()
+	if err != nil {
+		return err
+	}
+	if err := fs.NewSiaDir(newSiaPath, md.Mode); err != nil {
+		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newSiaPath.String(), origSiaPath.String()))
+	}
+	newDir, err := fs.managedOpenSiaDir(newSiaPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Compose(err, newDir.Close())
+	}()
+	// Copy the contents.
+	fsAbsPath := fs.managedAbsPath()
+	return fs.Walk(origSiaPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		origPath, err := modules.NewSiaPath(strings.TrimPrefix(path, fs.Root()))
+		if err != nil {
+			return err
+		}
+		newPath, err := origPath.Rebase(origSiaPath, newSiaPath)
+		if err != nil {
+			return err
+		}
+		// Special case for empty directories. All non-empty directories will be
+		// created by fs.CopyFile().
+		if info.IsDir() {
+			return fs.NewSiaDir(newPath, info.Mode())
+		}
+		// Special case for the non-siafiles, such as .siadir and so on.
+		if filepath.Ext(path) != modules.SiaFileExtension {
+			bytes, err := ioutil.ReadFile(filepath.Join(fsAbsPath, origPath.Path))
+			if err != nil {
+				return err
+			}
+			return ioutil.WriteFile(filepath.Join(fsAbsPath, newPath.Path), bytes, info.Mode())
+		}
+		// Copy the file.
+		return fs.CopyFile(origPath, newPath)
+	})
 }
 
 // RenameFile renames the file with oldSiaPath to newSiaPath.

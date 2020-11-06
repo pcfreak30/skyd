@@ -691,6 +691,203 @@ func TestDeleteDirectory(t *testing.T) {
 	}
 }
 
+// TestCopyFile tests if copying a single file works as expected.
+func TestCopyFile(t *testing.T) {
+	if testing.Short() && !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Add a file to the root dir.
+	origFile := newSiaPath("origFile")
+	copyFile := newSiaPath("copyFile")
+	copyFileNewDir := newSiaPath("bar/origFile")
+	fs.addTestSiaFile(origFile)
+	// Copy the file.
+	if err := fs.CopyFile(origFile, copyFile); err != nil {
+		t.Fatal(err)
+	}
+	// Check if the file was copied.
+	if _, err := fs.OpenSiaFile(origFile); err != nil {
+		t.Fatal("expected to be able to read the original file but got:", err)
+	}
+	sf, err := fs.OpenSiaFile(copyFile)
+	if err != nil {
+		t.Fatal("failed to read the copy:", err)
+	}
+	sf.Close()
+	// Copy the file again. This time it is copied to a non-existent folder.
+	if err := fs.CopyFile(copyFile, copyFileNewDir); err != nil {
+		t.Fatal(err)
+	}
+	sf, err = fs.OpenSiaFile(copyFileNewDir)
+	if err != nil {
+		t.Fatal("failed to read the copy:", err)
+	}
+	sf.Close()
+}
+
+// TestCopyDir tests the CopyDir method of the filesystem with files.
+func TestCopyDir(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Prepare a filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	_ = os.RemoveAll(root)
+	fs := newTestFileSystem(root)
+
+	// Prepare parameters for siafiles.
+	rc, _ := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
+	fileSize := uint64(100)
+	source := ""
+	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
+	fileMode := os.FileMode(persist.DefaultDiskPermissionsTest)
+
+	// Specify a directory structure for this test.
+	var dirStructure = []string{
+		"dir1",
+		"dir1/subdir1",
+		"dir1/subdir1/subsubdir1",
+		"dir1/subdir2",
+		"dir1/subdir2/subsubdir1",
+		"dir1/subdir2/subsubdir2",
+		"dir1/subdir3",
+		"dir1/subdir3/subsubdir1",
+		"dir1/subdir3/subsubdir2",
+		"dir1/subdir3/subsubdir3",
+	}
+	// Specify a function that's executed in parallel which continuously saves a
+	// file to disk.
+	stop := make(chan struct{})
+	wg := new(sync.WaitGroup)
+	f := func(entry *FileNode) {
+		defer wg.Done()
+		defer func() {
+			if err := entry.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			err := entry.SaveHeader()
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	// Create the structure and spawn a goroutine that keeps saving the structure
+	// to disk for each directory.
+	for _, dir := range dirStructure {
+		sp, err := modules.NewSiaPath(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.NewSiaDir(sp, modules.DefaultDirPerm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry, err := fs.OpenSiaDir(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 50% chance to close the dir.
+		if fastrand.Intn(2) == 0 {
+			if err := entry.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Create a file in the dir.
+		fileSP, err := sp.Join(hex.EncodeToString(fastrand.Bytes(16)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = fs.NewSiaFile(fileSP, source, rc, sk, fileSize, fileMode, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sf, err := fs.OpenSiaFile(fileSP)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 50% chance to spawn goroutine. It's not realistic to assume that all dirs
+		// are loaded.
+		if fastrand.Intn(2) == 0 {
+			wg.Add(1)
+			go f(sf)
+		} else {
+			sf.Close()
+		}
+	}
+	// Wait a second for the goroutines to write to disk a few times.
+	time.Sleep(time.Second)
+	// Copy dir1 to dir2.
+	oldPath, err1 := modules.NewSiaPath(dirStructure[0])
+	newPath, err2 := modules.NewSiaPath("dir2")
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.CopyDir(oldPath, newPath); err != nil {
+		t.Fatal(err)
+	}
+	// Wait another second for more writes to disk after renaming the dir before
+	// killing the goroutines.
+	time.Sleep(time.Second)
+	close(stop)
+	wg.Wait()
+	time.Sleep(time.Second)
+	// Make sure we can open all of the old folders/files on disk and we can
+	// also open the new ones.
+	for _, dir := range dirStructure {
+		oldDir, err1 := modules.NewSiaPath(dir)
+		newDir, err2 := oldDir.Rebase(oldPath, newPath)
+		if err := errors.Compose(err1, err2); err != nil {
+			t.Fatal(err)
+		}
+		// Open entry with old dir.
+		_, err := fs.OpenSiaDir(oldDir)
+		if err != nil {
+			t.Fatal("should be able to open old path", oldDir.String(), err)
+		}
+		// Open entry with new dir. Should succeed.
+		entry, err := fs.OpenSiaDir(newDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			err = entry.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+		// New dir should contain 1 siafile.
+		fis, err := fs.ReadDir(newDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		numFiles := 0
+		for _, fi := range fis {
+			if !fi.IsDir() && filepath.Ext(fi.Name()) == modules.SiaFileExtension {
+				numFiles++
+			}
+		}
+		if numFiles != 1 {
+			t.Fatalf("there should be 1 file in the new dir not %v", numFiles)
+		}
+		// Check siapath of entry.
+		if entry.managedAbsPath() != fs.DirPath(newDir) {
+			t.Fatalf("entry should have path '%v' but was '%v'", fs.DirPath(newDir), entry.managedAbsPath())
+		}
+	}
+}
+
 // TestRenameFile tests if renaming a single file works as expected.
 func TestRenameFile(t *testing.T) {
 	if testing.Short() && !build.VLONG {
@@ -699,6 +896,7 @@ func TestRenameFile(t *testing.T) {
 	t.Parallel()
 	// Create filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
+	_ = os.RemoveAll(root)
 	fs := newTestFileSystem(root)
 	// Add a file to the root dir.
 	foo := newSiaPath("foo")
@@ -1585,7 +1783,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 	}
 	// Prepare a filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
-	os.RemoveAll(root)
+	_ = os.RemoveAll(root)
 	fs := newTestFileSystem(root)
 
 	// Prepare parameters for siafiles.
@@ -1647,6 +1845,9 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 		entry, err := fs.OpenSiaDir(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
 		// 50% chance to close the dir.
 		if fastrand.Intn(2) == 0 {
 			if err := entry.Close(); err != nil {
