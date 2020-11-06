@@ -68,7 +68,7 @@ type (
 		partialsSiaFile *SiaFile
 	}
 
-	// Chunks is an exported version of a chunk slice.. It exists for
+	// Chunks is an exported version of a chunk slice. It exists for
 	// convenience to make sure the caller has an exported type to pass around.
 	Chunks struct {
 		chunks []chunk

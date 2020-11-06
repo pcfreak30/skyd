@@ -50,6 +50,11 @@ func (sfr *SnapshotReader) Read(b []byte) (int, error) {
 	return sfr.f.Read(b)
 }
 
+// Seek calls Seek on the underlying file.
+func (sfr *SnapshotReader) Seek(offset int64, whence int) (int64, error) {
+	return sfr.f.Seek(offset, whence)
+}
+
 // Stat returns the FileInfo of the underlying file.
 func (sfr *SnapshotReader) Stat() (os.FileInfo, error) {
 	return sfr.f.Stat()

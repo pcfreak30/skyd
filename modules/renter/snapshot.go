@@ -215,34 +215,11 @@ func siaDirCopy(fs *filesystem.FileSystem, srcDir, dstDir modules.SiaPath) error
 			if err != nil {
 				return err
 			}
-			fn, err := fs.OpenSiaFile(siaPath)
-			if err != nil {
-				return err
-			}
-			defer func() { err = errors.Compose(err, fn.Close()) }()
-
-			sr, err := fn.SnapshotReader()
-			if err != nil {
-				return err
-			}
-			defer func() { err = errors.Compose(err, sr.Close()) }()
 			newSiaPath, err := siaPath.Rebase(srcDir, dstDir)
 			if err != nil {
 				return err
 			}
-			backupFile := fs.FilePath(newSiaPath)
-			// If this dir doesn't exist yet, please create it.
-			err = os.MkdirAll(filepath.Dir(backupFile), modules.DefaultDirPerm)
-			if err != nil {
-				return err
-			}
-			dst, err := os.Create(backupFile)
-			if err != nil {
-				return err
-			}
-			defer func() { err = errors.Compose(err, dst.Close()) }()
-			_, err = io.Copy(dst, sr)
-			return errors.Compose(err, dst.Sync())
+			return fs.CopyFile(siaPath, newSiaPath)
 		}
 
 		if filepath.Ext(path) == modules.SiaDirExtension {
@@ -468,6 +445,7 @@ func (r *Renter) DownloadBackup(dst string, name string) (err error) {
 func (r *Renter) managedSnapshotExists(name string) bool {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
+	// TODO Check where we populate r.persist.UploadedBackups and make sure that thing reads the new backups.
 	for _, ub := range r.persist.UploadedBackups {
 		if ub.Name == name {
 			return true

@@ -78,26 +78,29 @@ func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadl
 // a node and its parent. If no parent it available it will return 'nil'. In
 // either case the node and potential parent will be locked after the call.
 func (n *node) managedLockWithParent() *DirNode {
-	var parent *DirNode
 	for {
-		// If a parent exists, we need to lock it while closing a child.
 		n.mu.Lock()
-		parent = n.parent
-		if parent != nil {
-			n.mu.Unlock()
-			parent.mu.Lock()
-			n.mu.Lock()
+		if n.parent == nil {
+			// There is no parent so we just lock the child.
+			return nil
 		}
-		if n.parent != parent {
-			n.mu.Unlock()
-			if parent != nil {
-				parent.mu.Unlock()
-			}
-			continue // try again
+
+		// Lock the parent.
+		parent := n.parent
+		n.mu.Unlock()
+		parent.mu.Lock()
+		n.mu.Lock()
+
+		// Check whether the parent is still the same.
+		if n.parent == parent {
+			// It is the same. Done.
+			return parent
 		}
-		break
+
+		// It is not the same. Try again.
+		n.mu.Unlock()
+		parent.mu.Unlock()
 	}
-	return parent
 }
 
 // NID returns the node's unique identifier.
@@ -453,6 +456,51 @@ func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FileNode, error) {
 		return nil, err
 	}
 	return sf, nil
+}
+
+// CopyFile copies the file from oldSiaPath to newSiaPath.
+func (fs *FileSystem) CopyFile(origSiaPath, newSiaPath modules.SiaPath) (err error) {
+	// Open SiaDir for file at original location.
+	origDirSiaPath, err := origSiaPath.Dir()
+	if err != nil {
+		return err
+	}
+	origDir, err := fs.managedOpenSiaDir(origDirSiaPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Compose(err, origDir.Close())
+	}()
+	// Open the file.
+	sf, err := origDir.managedOpenFile(origSiaPath.Name())
+	if errors.Contains(err, ErrNotExist) {
+		return ErrNotExist
+	}
+	if err != nil {
+		return errors.AddContext(err, "failed to open file for copying")
+	}
+	defer func() {
+		err = errors.Compose(err, sf.Close())
+	}()
+	// Create and Open SiaDir for file at the new location.
+	newDirSiaPath, err := newSiaPath.Dir()
+	if err != nil {
+		return err
+	}
+	// TODO Can I swap this for fs.OpenSiaDirCustom()?
+	if err := fs.NewSiaDir(newDirSiaPath, sf.managedMode()); err != nil {
+		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newDirSiaPath.String(), origSiaPath.String()))
+	}
+	newDir, err := fs.managedOpenSiaDir(newDirSiaPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Compose(err, newDir.Close())
+	}()
+	// Copy the file.
+	return fs.NewSiaFile(newSiaPath, sf.LocalPath(), sf.ErasureCode(), sf.MasterKey(), sf.Size(), sf.Mode(), !sf.HasPartialChunk())
 }
 
 // RenameFile renames the file with oldSiaPath to newSiaPath.

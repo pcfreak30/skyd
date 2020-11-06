@@ -48,8 +48,8 @@ func LoadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL)
 // from disk but also the chunks which it returns separately. This is useful if
 // the file is read from a buffer in-memory and the chunks can't be read from
 // disk later.
-func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeaheadlog.WAL) (*SiaFile, Chunks, error) {
-	sf, err := LoadSiaFileFromReader(r, path, wal)
+func LoadSiaFileFromReaderWithChunks(rs io.ReadSeeker, path string, wal *writeaheadlog.WAL) (*SiaFile, Chunks, error) {
+	sf, err := LoadSiaFileFromReader(rs, path, wal)
 	if err != nil {
 		return nil, Chunks{}, err
 	}
@@ -57,7 +57,7 @@ func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeahe
 	var chunks []chunk
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
-		if _, err := r.Read(chunkBytes); err != nil && !errors.Contains(err, io.EOF) {
+		if _, err := rs.Read(chunkBytes); err != nil && !errors.Contains(err, io.EOF) {
 			return nil, Chunks{}, errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
 		}
 		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
@@ -795,8 +795,8 @@ func (sf *SiaFile) saveChunkUpdate(chunk chunk) writeaheadlog.Update {
 
 // saveHeaderUpdates creates writeaheadlog updates to saves the metadata and
 // pubKeyTable of the SiaFile to disk using the writeaheadlog. If the metadata
-// and overlap due to growing too large and would therefore corrupt if they
-// were written to disk, a new page is allocated.
+// and the pubKeyTable overlap due to growing too large and would therefore
+// corrupt if they were written to disk, a new page is allocated.
 // NOTE: For consistency chunk updates always need to be created after the
 // header or metadata updates.
 func (sf *SiaFile) saveHeaderUpdates() (_ []writeaheadlog.Update, err error) {
