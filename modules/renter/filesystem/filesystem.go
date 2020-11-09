@@ -460,9 +460,9 @@ func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FileNode, error) {
 }
 
 // CopyFile copies the file from oldSiaPath to newSiaPath.
-func (fs *FileSystem) CopyFile(origSiaPath, newSiaPath modules.SiaPath) (err error) {
+func (fs *FileSystem) CopyFile(oldSiaPath, newSiaPath modules.SiaPath) (err error) {
 	// Open SiaDir for file at original location.
-	origDirSiaPath, err := origSiaPath.Dir()
+	origDirSiaPath, err := oldSiaPath.Dir()
 	if err != nil {
 		return err
 	}
@@ -474,7 +474,7 @@ func (fs *FileSystem) CopyFile(origSiaPath, newSiaPath modules.SiaPath) (err err
 		err = errors.Compose(err, origDir.Close())
 	}()
 	// Open the file.
-	sf, err := origDir.managedOpenFile(strings.TrimSuffix(origSiaPath.Name(), modules.SiaFileExtension))
+	sf, err := origDir.managedOpenFile(strings.TrimSuffix(oldSiaPath.Name(), modules.SiaFileExtension))
 	if errors.Contains(err, ErrNotExist) {
 		return ErrNotExist
 	}
@@ -489,8 +489,8 @@ func (fs *FileSystem) CopyFile(origSiaPath, newSiaPath modules.SiaPath) (err err
 	if err != nil {
 		return err
 	}
-	if err := fs.NewSiaDir(newDirSiaPath, sf.managedMode()); err != nil {
-		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newDirSiaPath.String(), origSiaPath.String()))
+	if err = fs.NewSiaDir(newDirSiaPath, sf.managedMode()); err != nil {
+		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newDirSiaPath.String(), oldSiaPath.String()))
 	}
 	newDir, err := fs.managedOpenSiaDir(newDirSiaPath)
 	if err != nil {
@@ -503,13 +503,10 @@ func (fs *FileSystem) CopyFile(origSiaPath, newSiaPath modules.SiaPath) (err err
 	return fs.NewSiaFile(newSiaPath, sf.LocalPath(), sf.ErasureCode(), sf.MasterKey(), sf.Size(), sf.Mode(), !sf.HasPartialChunk())
 }
 
-// CopyDir copies the dir from oldSiaPath to newSiaPath.
-func (fs *FileSystem) CopyDir(origSiaPath, newSiaPath modules.SiaPath) (err error) {
+// CopyDir recursively copies the dir from oldSiaPath to newSiaPath.
+func (fs *FileSystem) CopyDir(oldSiaPath, newSiaPath modules.SiaPath) (err error) {
 	// Open the dir to rename.
-	oldDir, err := fs.managedOpenSiaDir(origSiaPath)
-	if errors.Contains(err, ErrNotExist) {
-		return ErrNotExist
-	}
+	oldDir, err := fs.managedOpenSiaDir(oldSiaPath)
 	if err != nil {
 		return errors.AddContext(err, "failed to open dir for copying")
 	}
@@ -522,8 +519,8 @@ func (fs *FileSystem) CopyDir(origSiaPath, newSiaPath modules.SiaPath) (err erro
 	if err != nil {
 		return err
 	}
-	if err := fs.NewSiaDir(newSiaPath, md.Mode); err != nil {
-		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newSiaPath.String(), origSiaPath.String()))
+	if err = fs.NewSiaDir(newSiaPath, md.Mode); err != nil {
+		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newSiaPath.String(), oldSiaPath.String()))
 	}
 	newDir, err := fs.managedOpenSiaDir(newSiaPath)
 	if err != nil {
@@ -534,33 +531,47 @@ func (fs *FileSystem) CopyDir(origSiaPath, newSiaPath modules.SiaPath) (err erro
 	}()
 	// Copy the contents.
 	fsAbsPath := fs.managedAbsPath()
-	return fs.Walk(origSiaPath, func(path string, info os.FileInfo, err error) error {
+	return fs.Walk(oldSiaPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		origPath, err := modules.NewSiaPath(strings.TrimPrefix(path, fs.Root()))
-		if err != nil {
-			return err
-		}
-		newPath, err := origPath.Rebase(origSiaPath, newSiaPath)
-		if err != nil {
-			return err
-		}
-		// Special case for empty directories. All non-empty directories will be
-		// created by fs.CopyFile().
-		if info.IsDir() {
-			return fs.NewSiaDir(newPath, info.Mode())
-		}
-		// Special case for the non-siafiles, such as .siadir and so on.
-		if filepath.Ext(path) != modules.SiaFileExtension {
+
+		if info.IsDir() || filepath.Ext(path) == modules.SiaDirExtension {
+			origPath, err := modules.NewSiaPath(strings.TrimPrefix(path, fs.Root()))
+			if err != nil {
+				return err
+			}
+			newPath, err := origPath.Rebase(oldSiaPath, newSiaPath)
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return fs.NewSiaDir(newPath, info.Mode())
+			}
+			// Special case for .siadir files.
 			bytes, err := ioutil.ReadFile(filepath.Join(fsAbsPath, origPath.Path))
 			if err != nil {
 				return err
 			}
 			return ioutil.WriteFile(filepath.Join(fsAbsPath, newPath.Path), bytes, info.Mode())
+			//var m persist.Metadata
+			//var sd siadir.SiaDir
+			//err = persist.LoadJSON(m, &sd, fs.FilePath(oldSiaPath))
+			//if err != nil {
+			//	return err
+			//}
+			//return persist.SaveJSON(m, sd, fs.FilePath(newSiaPath))
 		}
-		// Copy the file.
-		return fs.CopyFile(origPath, newPath)
+
+		oldPath, err := modules.NewSiaPath(strings.TrimSuffix(strings.TrimPrefix(path, fs.Root()), modules.SiaFileExtension))
+		if err != nil {
+			return err
+		}
+		newPath, err := oldPath.Rebase(oldSiaPath, newSiaPath)
+		if err != nil {
+			return err
+		}
+		return fs.CopyFile(oldPath, newPath)
 	})
 }
 

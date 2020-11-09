@@ -17,9 +17,6 @@ import (
 )
 
 const (
-	// SiaDirExtension is the name of the metadata file for the sia directory
-	SiaDirExtension = ".siadir"
-
 	// DefaultDirHealth is the default health for the directory and the fall
 	// back value when there is an error. This is to protect against falsely
 	// trying to repair directories that had a read error

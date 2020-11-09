@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -182,7 +181,7 @@ func (r *Renter) managedCreateLocalBackup(name string) (err error) {
 		if err != nil {
 			return errors.AddContext(err, fmt.Sprintf("failed to rebase '%v' under '%v'", dir, backupDir))
 		}
-		err = siaDirCopy(r.staticFileSystem, dir, backupSubDir)
+		err = r.staticFileSystem.CopyDir(dir, backupSubDir)
 		if err != nil {
 			return errors.AddContext(err, "failed to copy sia files to backup location")
 		}
@@ -192,52 +191,6 @@ func (r *Renter) managedCreateLocalBackup(name string) (err error) {
 		return errors.AddContext(err, "failed to write backup info")
 	}
 	return nil
-}
-
-// siaDirCopy recursively copies a siadir to a destination in an ACID way.
-func siaDirCopy(fs *filesystem.FileSystem, srcDir, dstDir modules.SiaPath) error {
-	// Fetching the prefix calls a managed method, so we want avoid doing that
-	// multiple times.
-	userFolderPrefix := fs.DirPath(srcDir)
-	return fs.Walk(srcDir, func(path string, info os.FileInfo, prevErr error) (err error) {
-		if prevErr != nil {
-			return prevErr
-		}
-		// Nothing to do for non-folders and non-siafiles.
-		if filepath.Ext(path) != modules.SiaFileExtension && filepath.Ext(path) != modules.SiaDirExtension {
-			return nil
-		}
-
-		relPath := strings.TrimPrefix(strings.TrimSuffix(path, filepath.Ext(path)), userFolderPrefix)
-
-		if filepath.Ext(path) == modules.SiaFileExtension {
-			siaPath, err := srcDir.Join(relPath)
-			if err != nil {
-				return err
-			}
-			newSiaPath, err := siaPath.Rebase(srcDir, dstDir)
-			if err != nil {
-				return err
-			}
-			return fs.CopyFile(siaPath, newSiaPath)
-		}
-
-		if filepath.Ext(path) == modules.SiaDirExtension {
-			siaPath := srcDir
-			if relPath != "/" {
-				siaPath, err = srcDir.Join(relPath)
-				if err != nil {
-					return err
-				}
-			}
-			newSiaPath, err := siaPath.Rebase(srcDir, dstDir)
-			if err != nil {
-				return err
-			}
-			return fs.CopyDir(siaPath, newSiaPath)
-		}
-		return nil
-	})
 }
 
 // managedRemoveLocalBackup removes a local backup by its name.

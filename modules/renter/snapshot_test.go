@@ -21,6 +21,7 @@ import (
 
 // TestSiaDirCopy tests the behaviour of siaDirCopy and makes sure the resulting
 // files are identical to the originals.
+// TODO This needs to be renamed and moved.
 func TestSiaDirCopy(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", t.Name())
 	_, wal, _ := writeaheadlog.New(tmpDir + string(filepath.Separator) + "wal.wal")
@@ -65,7 +66,7 @@ func TestSiaDirCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create a backup copy.
-	err = siaDirCopy(fs, modules.UserFolder, backupDir)
+	err = fs.CopyDir(modules.UserFolder, backupDir)
 	if err != nil {
 		t.Fatal(err)
 	}
