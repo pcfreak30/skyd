@@ -1218,3 +1218,13 @@ type HostDB interface {
 	// contracts.
 	UpdateContracts([]RenterContract) error
 }
+
+// Worker is a minimal interface for subpackages of the renter which require
+// access to workers.
+type Worker interface {
+	// HostPubKey returns the public key of the host.
+	HostPubKey() types.SiaPublicKey
+
+	// RenewContract renews the current contract with the host.
+	RenewContract() error
+}

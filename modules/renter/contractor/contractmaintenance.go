@@ -243,6 +243,13 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	return estimatedCost, nil
 }
 
+// InterruptContractMaintenance will issue an interrupt signal to any
+// running maintenance, stopping that maintenance. If there are multiple threads
+// running maintenance, they will all be stopped.
+func (c *Contractor) InterruptContractMaintenance() {
+	c.callInterruptContractMaintenance()
+}
+
 // callInterruptContractMaintenance will issue an interrupt signal to any
 // running maintenance, stopping that maintenance. If there are multiple threads
 // running maintenance, they will all be stopped.
@@ -972,7 +979,7 @@ func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtil
 	return safeContract.UpdateUtility(newUtility)
 }
 
-// threadedContractMaintenance checks the set of contracts that the contractor
+// TriggerContractMaintenance checks the set of contracts that the contractor
 // has against the allownace, renewing any contracts that need to be renewed,
 // dropping contracts which are no longer worthwhile, and adding contracts if
 // there are not enough.
@@ -980,7 +987,7 @@ func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtil
 // Between each network call, the thread checks whether a maintenance interrupt
 // signal is being sent. If so, maintenance returns, yielding to whatever thread
 // issued the interrupt.
-func (c *Contractor) threadedContractMaintenance() {
+func (c *Contractor) TriggerContractMaintenance(workers []modules.Worker) {
 	err := c.tg.Add()
 	if err != nil {
 		return

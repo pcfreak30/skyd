@@ -40,7 +40,7 @@ func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencie
 	}
 
 	// Set an allowance.
-	err = rt.renter.hostContractor.SetAllowance(modules.DefaultAllowance)
+	err = rt.renter.managedSetAllowance(modules.DefaultAllowance)
 	if err != nil {
 		return nil, err
 	}

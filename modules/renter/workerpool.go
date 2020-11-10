@@ -161,6 +161,18 @@ func (wp *workerPool) callWorkers() []*worker {
 	return workers
 }
 
+// Workers is similar to callWorkers but returns the workers as
+// []modules.Worker.
+func (wp *workerPool) Workers() []modules.Worker {
+	wp.mu.RLock()
+	workers := make([]modules.Worker, 0, len(wp.workers))
+	for _, worker := range wp.workers {
+		workers = append(workers, worker)
+	}
+	wp.mu.RUnlock()
+	return workers
+}
+
 // newWorkerPool will initialize and return a worker pool.
 func (r *Renter) newWorkerPool() *workerPool {
 	wp := &workerPool{

@@ -160,11 +160,4 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Add to churnLimiter budget.
 	numBlocksAdded := len(cc.AppliedBlocks) - len(cc.RevertedBlocks)
 	c.staticChurnLimiter.callBumpChurnBudget(numBlocksAdded, c.allowance.Period)
-
-	// Perform contract maintenance if our blockchain is synced. Use a separate
-	// goroutine so that the rest of the contractor is not blocked during
-	// maintenance.
-	if cc.Synced {
-		go c.threadedContractMaintenance()
-	}
 }

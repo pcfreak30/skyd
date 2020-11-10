@@ -110,6 +110,11 @@ type hostContractor interface {
 	// contracts within a separate thread.
 	InitRecoveryScan() error
 
+	// InterruptContractMaintenance will issue an interrupt signal to any
+	// running maintenance, stopping that maintenance. If there are multiple threads
+	// running maintenance, they will all be stopped.
+	InterruptContractMaintenance()
+
 	// PeriodSpending returns the amount spent on contracts during the current
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
@@ -149,6 +154,11 @@ type hostContractor interface {
 	// Synced returns a channel that is closed when the contractor is fully
 	// synced with the peer-to-peer network.
 	Synced() <-chan struct{}
+
+	// TriggerContractMaintenance triggers one round of contract maintenance on
+	// the current set of contracts. This includes forming and renewing
+	// contracts.
+	TriggerContractMaintenance(workers []modules.Worker)
 }
 
 type renterFuseManager interface {
@@ -539,6 +549,26 @@ func (r *Renter) managedUpdateRenterContractsAndUtilities() {
 	r.mu.Unlock(id)
 }
 
+// managedSetAllowance sets a new allowance on the renter and contractor.
+func (r *Renter) managedSetAllowance(a modules.Allowance) error {
+	// Set the allowance in the contractor.
+	err := r.hostContractor.SetAllowance(a)
+	if err != nil {
+		return errors.AddContext(err, "calling SetAllowance on the contractor failed")
+	}
+	// Interrupt any existing maintenance and launch a new round of
+	// maintenance.
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	go func() {
+		defer r.tg.Done()
+		r.hostContractor.InterruptContractMaintenance()
+		r.hostContractor.TriggerContractMaintenance(r.staticWorkerPool.Workers())
+	}()
+	return nil
+}
+
 // setBandwidthLimits will change the bandwidth limits of the renter based on
 // the persist values for the bandwidth.
 func (r *Renter) setBandwidthLimits(downloadSpeed int64, uploadSpeed int64) error {
@@ -575,7 +605,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	}
 
 	// Set allowance.
-	err := r.hostContractor.SetAllowance(s.Allowance)
+	err := r.managedSetAllowance(s.Allowance)
 	if err != nil {
 		return err
 	}
@@ -714,7 +744,12 @@ func (r *Renter) EstimateHostScore(e modules.HostDBEntry, a modules.Allowance) (
 
 // CancelContract cancels a renter's contract by ID by setting goodForRenew and goodForUpload to false
 func (r *Renter) CancelContract(id types.FileContractID) error {
-	return r.hostContractor.CancelContract(id)
+	err := r.hostContractor.CancelContract(id)
+	if err != nil {
+		return err
+	}
+	r.hostContractor.TriggerContractMaintenance(r.staticWorkerPool.Workers())
+	return nil
 }
 
 // Contracts returns an array of host contractor's staticContracts
@@ -802,6 +837,14 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
+
+	// Perform contract maintenance if our blockchain is synced. Use a separate
+	// goroutine so that the rest of the contractor is not blocked during
+	// maintenance.
+	r.staticWorkerPool.callUpdate()
+	if cc.Synced {
+		go r.hostContractor.TriggerContractMaintenance(r.staticWorkerPool.Workers())
+	}
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the

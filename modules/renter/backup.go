@@ -227,7 +227,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) (err error) {
 	// allowance set, import it.
 	if !reflect.DeepEqual(allowance, modules.Allowance{}) &&
 		reflect.DeepEqual(r.hostContractor.Allowance(), modules.Allowance{}) {
-		if err := r.hostContractor.SetAllowance(allowance); err != nil {
+		if err := r.managedSetAllowance(allowance); err != nil {
 			return errors.AddContext(err, "unable to set allowance from backup")
 		}
 	}

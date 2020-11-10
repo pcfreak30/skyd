@@ -119,6 +119,16 @@ type (
 	}
 )
 
+// HostPubKey returns the public key of the host.
+func (w *worker) HostPubKey() types.SiaPublicKey {
+	return w.staticHostPubKey
+}
+
+// RenewContract renews the current contract with the host.
+func (w *worker) RenewContract() error {
+	panic("not impelemented yet")
+}
+
 // managedKill will kill the worker.
 func (w *worker) managedKill() {
 	w.mu.Lock()

@@ -126,7 +126,6 @@ func (c *Contractor) CancelContract(id types.FileContractID) error {
 		return err
 	}
 	defer c.tg.Done()
-	defer c.threadedContractMaintenance()
 	return c.managedCancelContract(id)
 }
 

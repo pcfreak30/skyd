@@ -150,17 +150,6 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	if err != nil {
 		return err
 	}
-
-	// Interrupt any existing maintenance and launch a new round of
-	// maintenance.
-	if err := c.tg.Add(); err != nil {
-		return err
-	}
-	go func() {
-		defer c.tg.Done()
-		c.callInterruptContractMaintenance()
-		c.threadedContractMaintenance()
-	}()
 	return nil
 }
 
