@@ -162,16 +162,9 @@ func (w *worker) staticWake() {
 	}
 }
 
-// newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	_, ok, err := r.hostDB.Host(hostPubKey)
-	if err != nil {
-		return nil, errors.AddContext(err, "could not find host entry")
-	}
-	if !ok {
-		return nil, errors.New("host does not exist")
-	}
-
+// managedNewWorker will create and return a worker that is ready to receive
+// jobs.
+func (r *Renter) managedNewWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	// open the account
 	account, err := r.staticAccountManager.managedOpenAccount(hostPubKey)
 	if err != nil {

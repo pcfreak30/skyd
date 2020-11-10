@@ -841,9 +841,11 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Perform contract maintenance if our blockchain is synced. Use a separate
 	// goroutine so that the rest of the contractor is not blocked during
 	// maintenance.
-	r.staticWorkerPool.callUpdate()
 	if cc.Synced {
-		go r.hostContractor.TriggerContractMaintenance(r.staticWorkerPool.Workers())
+		go func() {
+			r.staticWorkerPool.callUpdate()
+			r.hostContractor.TriggerContractMaintenance(r.staticWorkerPool.Workers())
+		}()
 	}
 }
 

@@ -77,6 +77,15 @@ func (wp *workerPool) callUpdate() {
 			// Do not create workers for bad contracts.
 			continue
 		}
+		_, ok, err := wp.renter.hostDB.Host(contract.HostPublicKey)
+		if err != nil {
+			wp.renter.log.Println("callUpdate: unable to fetch host from key", err)
+			continue
+		}
+		if !ok {
+			// Do not create workers for contracts without a host.
+			continue
+		}
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 
@@ -92,7 +101,7 @@ func (wp *workerPool) callUpdate() {
 		}
 
 		// Create a new worker and add it to the map
-		w, err := wp.renter.newWorker(contract.HostPublicKey)
+		w, err := wp.renter.managedNewWorker(contract.HostPublicKey)
 		if err != nil {
 			wp.renter.log.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
 			continue
