@@ -6,11 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 )
@@ -108,6 +111,15 @@ func TestRenterSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	build.Retry(100, 100*time.Millisecond, func() error {
+		if rt.renter.persist.LatestConsensusChangeID == modules.ConsensusChangeBeginning {
+			return errors.New("LatestConsensusChangeID wasn't updated")
+		}
+		return nil
+	})
+	id := rt.renter.mu.RLock()
+	ccid := rt.renter.persist.LatestConsensusChangeID
+	rt.renter.mu.RUnlock(id)
 
 	// load should now load the files into memory.
 	var errChan <-chan error
@@ -126,6 +138,11 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 	if newSettings.MaxUploadSpeed != newUpSpeed {
 		t.Error("upload settings not being persisted correctly")
+	}
+
+	// Consensus change id shouldn't be the default anymore.
+	if rt.renter.persist.LatestConsensusChangeID != ccid {
+		t.Fatal("LatestConsensusChangeID wasn't persisted")
 	}
 
 	// Check that SiaFileSet loaded the renter's file

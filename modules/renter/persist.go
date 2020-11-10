@@ -57,10 +57,11 @@ var (
 type (
 	// persist contains all of the persistent renter data.
 	persistence struct {
-		MaxDownloadSpeed int64
-		MaxUploadSpeed   int64
-		UploadedBackups  []modules.UploadedBackup
-		SyncedContracts  []types.FileContractID
+		LatestConsensusChangeID modules.ConsensusChangeID
+		MaxDownloadSpeed        int64
+		MaxUploadSpeed          int64
+		UploadedBackups         []modules.UploadedBackup
+		SyncedContracts         []types.FileContractID
 	}
 )
 

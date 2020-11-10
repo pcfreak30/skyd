@@ -836,6 +836,7 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
+	r.persist.LatestConsensusChangeID = cc.ID
 	r.mu.Unlock(id)
 
 	// Perform contract maintenance if our blockchain is synced. Use a separate
@@ -846,6 +847,14 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 			r.staticWorkerPool.callUpdate()
 			r.hostContractor.TriggerContractMaintenance(r.staticWorkerPool.Workers())
 		}()
+		// Only save to disk when fully synced to avoid rapid disk i/o on
+		// initial sync.
+		id = r.mu.Lock()
+		err := r.saveSync()
+		r.mu.Unlock(id)
+		if err != nil {
+			r.log.Print("failed to sync latest consensus change id for renter")
+		}
 	}
 }
 
@@ -1109,14 +1118,14 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 }
 
 // renterAsyncStartup handles the non-blocking portion of NewCustomRenter.
-func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
+func renterAsyncStartup(r *Renter, cs modules.ConsensusSet, ccid modules.ConsensusChangeID) error {
 	if r.deps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
 	// Subscribe to the consensus set in a separate goroutine.
 	done := make(chan struct{})
 	defer close(done)
-	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
+	err := cs.ConsensusSetSubscribe(r, ccid, r.tg.StopChan())
 	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 		return err
 	}
@@ -1168,6 +1177,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 
 	// non-blocking startup
+	ccid := r.persist.LatestConsensusChangeID
 	go func() {
 		defer close(errChan)
 		if err := r.tg.Add(); err != nil {
@@ -1175,7 +1185,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 			return
 		}
 		defer r.tg.Done()
-		err := renterAsyncStartup(r, cs)
+		err := renterAsyncStartup(r, cs, ccid)
 		if err != nil {
 			errChan <- err
 		}
