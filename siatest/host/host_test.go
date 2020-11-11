@@ -336,8 +336,8 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("contract should have 0 datasize")
 	}
 
-	if hc.Contracts[0].RevisionNumber != 1 {
-		t.Fatal("contract should have 1 revision")
+	if hc.Contracts[0].RevisionNumber == 0 {
+		t.Fatal("contract should have at least 1 revision", hc.Contracts[0].RevisionNumber)
 	}
 
 	prevValidPayout := hc.Contracts[0].ValidProofOutputs[1].Value
