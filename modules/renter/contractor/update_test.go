@@ -50,6 +50,7 @@ func TestIntegrationAutoRenew(t *testing.T) {
 			if _, err := m.AddBlock(); err != nil {
 				return err
 			}
+			c.RunContractMaintenance(nil)
 		}
 		numRetries++
 		if len(c.Contracts()) == 0 {
@@ -96,10 +97,8 @@ func TestIntegrationAutoRenew(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// wait for goroutine in ProcessConsensusChange to finish
-	time.Sleep(100 * time.Millisecond)
-	c.maintenanceLock.Lock()
-	c.maintenanceLock.Unlock()
+	// trigger contract maintenance
+	c.RunContractMaintenance(nil)
 
 	// check renewed contract
 	contract = c.Contracts()[0]
@@ -145,6 +144,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 			if _, err := m.AddBlock(); err != nil {
 				return err
 			}
+			c.RunContractMaintenance(nil)
 		}
 		numRetries++
 		// Check for number of contracts and number of pubKeys as there is a
@@ -187,10 +187,8 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// wait for goroutine in ProcessConsensusChange to finish
-	time.Sleep(100 * time.Millisecond)
-	c.maintenanceLock.Lock()
-	c.maintenanceLock.Unlock()
+	// run contract maintenance.
+	c.RunContractMaintenance(nil)
 
 	// check renewed contract
 	contract = c.Contracts()[0]

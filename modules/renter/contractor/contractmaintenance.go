@@ -979,7 +979,7 @@ func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtil
 	return safeContract.UpdateUtility(newUtility)
 }
 
-// TriggerContractMaintenance checks the set of contracts that the contractor
+// RunContractMaintenance checks the set of contracts that the contractor
 // has against the allownace, renewing any contracts that need to be renewed,
 // dropping contracts which are no longer worthwhile, and adding contracts if
 // there are not enough.
@@ -987,7 +987,7 @@ func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtil
 // Between each network call, the thread checks whether a maintenance interrupt
 // signal is being sent. If so, maintenance returns, yielding to whatever thread
 // issued the interrupt.
-func (c *Contractor) TriggerContractMaintenance(workers []modules.Worker) {
+func (c *Contractor) RunContractMaintenance(workers []modules.Worker) {
 	err := c.tg.Add()
 	if err != nil {
 		return

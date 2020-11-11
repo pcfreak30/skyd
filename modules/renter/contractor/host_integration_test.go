@@ -241,6 +241,9 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps modules.Depende
 		return nil, nil, nil, nil, err
 	}
 
+	// run contract maintenance once.
+	c.RunContractMaintenance(nil)
+
 	cf := func() error {
 		return errors.Compose(mux.Close(), m.Close(), contractorCF(), hostCF(), w.Close(), tp.Close(), cs.Close(), g.Close())
 	}
@@ -476,6 +479,7 @@ func TestIntegrationRenew(t *testing.T) {
 			if _, err := m.AddBlock(); err != nil {
 				return err
 			}
+			c.RunContractMaintenance(nil)
 		}
 		numRetries++
 		// Check for number of contracts and number of pubKeys as there is a
@@ -611,6 +615,7 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		c.RunContractMaintenance(nil)
 		if len(c.Contracts()) == 0 {
 			return errors.New("no contracts were formed")
 		}
@@ -717,6 +722,7 @@ func TestIntegrationEditorCaching(t *testing.T) {
 			if _, err := m.AddBlock(); err != nil {
 				return err
 			}
+			c.RunContractMaintenance(nil)
 		}
 		numRetries++
 		if len(c.Contracts()) == 0 {

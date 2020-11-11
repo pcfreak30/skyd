@@ -155,10 +155,9 @@ type hostContractor interface {
 	// synced with the peer-to-peer network.
 	Synced() <-chan struct{}
 
-	// TriggerContractMaintenance triggers one round of contract maintenance on
-	// the current set of contracts. This includes forming and renewing
-	// contracts.
-	TriggerContractMaintenance(workers []modules.Worker)
+	// RunContractMaintenance runcs one round of contract maintenance on the
+	// current set of contracts. This includes forming and renewing contracts.
+	RunContractMaintenance(workers []modules.Worker)
 }
 
 type renterFuseManager interface {
@@ -564,7 +563,7 @@ func (r *Renter) managedSetAllowance(a modules.Allowance) error {
 	go func() {
 		defer r.tg.Done()
 		r.hostContractor.InterruptContractMaintenance()
-		r.hostContractor.TriggerContractMaintenance(r.staticWorkerPool.Workers())
+		r.hostContractor.RunContractMaintenance(r.staticWorkerPool.Workers())
 	}()
 	return nil
 }
@@ -748,7 +747,7 @@ func (r *Renter) CancelContract(id types.FileContractID) error {
 	if err != nil {
 		return err
 	}
-	r.hostContractor.TriggerContractMaintenance(r.staticWorkerPool.Workers())
+	r.hostContractor.RunContractMaintenance(r.staticWorkerPool.Workers())
 	return nil
 }
 
@@ -845,7 +844,7 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	if cc.Synced {
 		go func() {
 			r.staticWorkerPool.callUpdate()
-			r.hostContractor.TriggerContractMaintenance(r.staticWorkerPool.Workers())
+			r.hostContractor.RunContractMaintenance(r.staticWorkerPool.Workers())
 		}()
 		// Only save to disk when fully synced to avoid rapid disk i/o on
 		// initial sync.

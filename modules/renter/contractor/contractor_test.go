@@ -267,14 +267,9 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = build.Retry(50, 100*time.Millisecond, func() error {
-		if len(c.Contracts()) != 1 {
-			return errors.New("allowance forming seems to have failed")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Error(err)
+	c.RunContractMaintenance(nil)
+	if len(c.Contracts()) != 1 {
+		t.Fatal("allowance forming seems to have failed")
 	}
 
 	// set same allowance; should no-op
@@ -298,6 +293,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.RunContractMaintenance(nil)
 	err = build.Retry(50, 100*time.Millisecond, func() error {
 		if len(c.Contracts()) != 2 {
 			return errors.New("allowance forming seems to have failed")
@@ -314,6 +310,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.RunContractMaintenance(nil)
 	err = build.Retry(50, 100*time.Millisecond, func() error {
 		if len(c.Contracts()) != 2 {
 			return errors.New("allowance forming seems to have failed")
@@ -336,6 +333,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.RunContractMaintenance(nil)
 	err = build.Retry(50, 100*time.Millisecond, func() error {
 		if len(c.Contracts()) != 2 {
 			return errors.New("allowance forming seems to have failed")
@@ -436,6 +434,7 @@ func TestHostMaxDuration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.RunContractMaintenance(nil)
 
 	// Wait for Contract creation
 	err = build.Retry(600, 100*time.Millisecond, func() error {
@@ -529,6 +528,7 @@ func TestPayment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.RunContractMaintenance(nil)
 
 	// create a refund account
 	aid, _ := modules.NewAccountID()
@@ -701,6 +701,7 @@ func TestLinkedContracts(t *testing.T) {
 			if _, err := m.AddBlock(); err != nil {
 				return err
 			}
+			c.RunContractMaintenance(nil)
 		}
 		numRetries++
 		if len(c.Contracts()) != 1 {
@@ -734,6 +735,7 @@ func TestLinkedContracts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		c.RunContractMaintenance(nil)
 	}
 
 	// Confirm Contracts got renewed
@@ -803,6 +805,7 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.RunContractMaintenance(nil)
 
 	// create a refund account
 	aid, _ := modules.NewAccountID()

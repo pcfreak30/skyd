@@ -218,6 +218,7 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = build.Retry(50, 200*time.Millisecond, func() error {
+		c.RunContractMaintenance(nil)
 		if len(c.Contracts()) == 0 {
 			return errors.New("contracts were not formed")
 		}
@@ -348,6 +349,7 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.RunContractMaintenance(nil)
 
 	var revTxn types.Transaction
 	err = build.Retry(10, time.Second, func() error {
