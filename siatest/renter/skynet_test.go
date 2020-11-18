@@ -39,7 +39,7 @@ import (
 
 // TestSkynet verifies the functionality of Skynet, a decentralized CDN and
 // sharing platform.
-func TestSkynet(t *testing.T) {
+func TestSkynetX(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -55,28 +55,29 @@ func TestSkynet(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		{Name: "Basic", Test: testSkynetBasic},
-		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
-		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
-		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
-		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
-		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
-		{Name: "DisableForce", Test: testSkynetDisableForce},
-		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
-		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
-		{Name: "Portals", Test: testSkynetPortals},
-		{Name: "HeadRequest", Test: testSkynetHeadRequest},
-		{Name: "Stats", Test: testSkynetStats},
-		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
-		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
-		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		{Name: "RenameSiaPath", Test: testRenameSiaPath},
-		{Name: "NoWorkers", Test: testSkynetNoWorkers},
-		{Name: "DefaultPath", Test: testSkynetDefaultPath},
-		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
-		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
-		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
-		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSector},
+		//		{Name: "Basic", Test: testSkynetBasic},
+		//		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
+		//		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
+		//		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
+		//		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
+		//		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
+		//		{Name: "DisableForce", Test: testSkynetDisableForce},
+		//		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
+		//		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
+		//		{Name: "Portals", Test: testSkynetPortals},
+		//		{Name: "HeadRequest", Test: testSkynetHeadRequest},
+		//		{Name: "Stats", Test: testSkynetStats},
+		//		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
+		//		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
+		//		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		//		{Name: "RenameSiaPath", Test: testRenameSiaPath},
+		//		{Name: "NoWorkers", Test: testSkynetNoWorkers},
+		//		{Name: "DefaultPath", Test: testSkynetDefaultPath},
+		//		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
+		//		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
+		//		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
+		//		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSector},
+		{Name: "Monetization", Test: testSkynetMonetization},
 	}
 
 	// Run tests
@@ -676,7 +677,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a file at root level
 	data := []byte("File1Contents")
-	subfile, err := modules.AddMultipartFile(writer, data, "files[]", "file1", 0600, &offset)
+	subfile, err := modules.AddMultipartFile(writer, data, "file1", 0600, &offset, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,7 +685,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a nested file
 	data = []byte("File2Contents")
-	subfile, err = modules.AddMultipartFile(writer, data, "files[]", "nested/file2.html", 0640, &offset)
+	subfile, err = modules.AddMultipartFile(writer, data, "nested/file2.html", 0640, &offset, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -758,7 +759,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
-	subfile, err = modules.AddMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
+	subfile, err = modules.AddMultipartFile(writer, smallData, "smallfile1.txt", 0600, &offset, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -766,7 +767,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a large nested file
 	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
-	subfile, err = modules.AddMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
+	subfile, err = modules.AddMultipartFile(writer, largeData, "nested/largefile2.txt", 0644, &offset, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -963,7 +964,7 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 		body := new(bytes.Buffer)
 		writer := multipart.NewWriter(body)
 		data = []byte("File1Contents")
-		subfile, err := modules.AddMultipartFile(writer, data, "files[]", filename, 0600, nil)
+		subfile, err := modules.AddMultipartFile(writer, data, filename, 0600, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1039,7 +1040,7 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 
-	subfile, err := modules.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testInvalidFilenameMultipart", 0600, nil)
+	subfile, err := modules.AddMultipartFile(writer, []byte("File1Contents"), "testInvalidFilenameMultipart", 0600, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1084,15 +1085,15 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	filePath1 := "a/5.f4f8b583.chunk.js"
 	filePath2 := "a/5.f4f.chunk.js.map"
 	filePath3 := "b/file3.txt"
-	_, err := modules.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	_, err := modules.AddMultipartFile(writer, dataFile1, filePath1, 0600, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = modules.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	_, err = modules.AddMultipartFile(writer, dataFile2, filePath2, 0600, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = modules.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	_, err = modules.AddMultipartFile(writer, dataFile3, filePath3, 0640, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1435,15 +1436,15 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	filePath1 := "a/5.f4f8b583.chunk.js"
 	filePath2 := "a/5.f4f.chunk.js.map"
 	filePath3 := "b/file3.txt"
-	_, err := modules.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	_, err := modules.AddMultipartFile(writer, dataFile1, filePath1, 0600, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = modules.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	_, err = modules.AddMultipartFile(writer, dataFile2, filePath2, 0600, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = modules.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	_, err = modules.AddMultipartFile(writer, dataFile3, filePath3, 0640, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3274,5 +3275,140 @@ func TestRegistryUpdateRead(t *testing.T) {
 	err = r.RegistryUpdate(spk, dataKey, srv3.Revision, invalidSig, skylink3)
 	if err == nil || !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
 		t.Fatal(err)
+	}
+}
+
+func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(100 + siatest.Fuzz())
+	// Need it to be a reader.
+	reader := bytes.NewReader(data)
+	// Call the upload skyfile client call.
+	filename := "test"
+	uploadSiaPath, err := modules.NewSiaPath("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Prepare monetization info.
+	mi0 := []modules.SkyfileMonetizationInfo{
+		{
+			Address: types.UnlockHash{1},
+			Value:   types.SiacoinPrecision,
+		},
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename:     filename,
+			Mode:         0640, // Intentionally does not match any defaults.
+			Monetization: mi0,
+		},
+		Reader: reader,
+	}
+	skylink, _, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the file.
+	_, metadata, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The metadata should contain the monetization info.
+	if !reflect.DeepEqual(metadata.Monetization, mi0) {
+		t.Fatal("metadatas don't match")
+	}
+
+	// Create a multipart upload that uploads several files.
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	subfiles := make(modules.SkyfileSubfiles)
+
+	// add a file at root level
+	data = []byte("File1Contents")
+	mi1 := []modules.SkyfileMonetizationInfo{
+		{
+			Address: types.UnlockHash{2},
+			Value:   types.SiacoinPrecision,
+		},
+	}
+	var offset uint64
+	subfile, err := modules.AddMultipartFile(writer, data, "file1", 0600, &offset, mi1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subfiles[subfile.Filename] = subfile
+
+	// add a nested file
+	data = []byte("File2Contents")
+	mi2 := []modules.SkyfileMonetizationInfo{
+		{
+			Address: types.UnlockHash{3},
+			Value:   types.SiacoinPrecision,
+		},
+	}
+	subfile, err = modules.AddMultipartFile(writer, data, "nested/file2.html", 0640, &offset, mi2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subfiles[subfile.Filename] = subfile
+
+	err = writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader = bytes.NewReader(body.Bytes())
+
+	// Call the upload skyfile client call.
+	uploadSiaPath, err = modules.NewSiaPath("TestFolderUpload")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msup := modules.SkyfileMultipartUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Reader:              reader,
+		ContentType:         writer.FormDataContentType(),
+		Filename:            "TestFolderUpload",
+	}
+
+	skylink, _, err = r.SkynetSkyfileMultiPartPost(msup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the files and make sure their monetization is set correctly.
+	_, metadata, err = r.SkynetSkylinkGet(skylink + "/file1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(metadata.Monetization, mi1) {
+		t.Log(metadata.Monetization)
+		t.Log(mi1)
+		t.Fatal("metadatas don't match")
+	}
+	_, metadata, err = r.SkynetSkylinkGet(skylink + "/nested/file2.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(metadata.Monetization, mi2) {
+		t.Log(metadata.Monetization)
+		t.Log(mi2)
+		t.Fatal("metadatas don't match")
+	}
+	_, metadata, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("m", metadata.Monetization)
+	if !reflect.DeepEqual(metadata.Monetization, nil) {
+		t.Fatal("metadatas don't match")
 	}
 }

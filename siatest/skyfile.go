@@ -108,7 +108,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 	// add the files
 	var offset uint64
 	for _, tf := range files {
-		_, err = modules.AddMultipartFile(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset)
+		_, err = modules.AddMultipartFile(writer, tf.Data, tf.Name, modules.DefaultFilePerm, &offset, nil)
 		if err != nil {
 			panic(err)
 		}

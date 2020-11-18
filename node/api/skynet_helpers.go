@@ -106,7 +106,7 @@ func parseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reade
 		}
 
 		// parse monetization from multipart header
-		monetizationStr := fh.Header.Get("Mode")
+		monetizationStr := fh.Header.Get("Monetization")
 		var monetization []modules.SkyfileMonetizationInfo
 		if monetizationStr != "" {
 			err = json.Unmarshal([]byte(monetizationStr), &monetization)

@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -169,11 +170,15 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 		if EnsurePrefix(sf.Filename, "/") == path {
 			isFile = true
 			metadata.Subfiles[sf.Filename] = sf
+			metadata.Monetization = sf.Monetization
+			fmt.Println("assigning", sf.Monetization)
 			break
 		}
 	}
 
 	// If there is no exact match look for directories.
+	// TODO: how do we handle monetization for directories?
+	println("forpath")
 	pathDir := EnsureSuffix(path, "/")
 	if len(metadata.Subfiles) == 0 {
 		for _, sf := range sm.Subfiles {

@@ -2,6 +2,7 @@ package modules
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -11,21 +12,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // AddMultipartFile is a helper function to add a file to multipart form-data.
 // Note that the given data will be treated as binary data and the multipart
 // ContentType header will be set accordingly.
-func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) (SkyfileSubfileMetadata, error) {
+func AddMultipartFile(w *multipart.Writer, filedata []byte, filename string, filemode uint64, offset *uint64, monetization []SkyfileMonetizationInfo) (SkyfileSubfileMetadata, error) {
 	filemodeStr := fmt.Sprintf("%o", filemode)
 	contentType, err := fileContentType(filename, bytes.NewReader(filedata))
 	if err != nil {
 		return SkyfileSubfileMetadata{}, err
 	}
-	partHeader := createFormFileHeaders(filekey, filename, filemodeStr, contentType)
+	partHeader := createFormFileHeaders("files[]", filename, filemodeStr, contentType)
 	part, err := w.CreatePart(partHeader)
 	if err != nil {
 		return SkyfileSubfileMetadata{}, err
+	}
+	if monetization != nil {
+		mBytes, err := json.Marshal(monetization)
+		if err != nil {
+			return SkyfileSubfileMetadata{}, errors.AddContext(err, "failed to marshal monetization")
+		}
+		partHeader.Add("Monetization", string(mBytes))
 	}
 	_, err = part.Write(filedata)
 	if err != nil {

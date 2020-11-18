@@ -844,7 +844,7 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 				fmt.Printf("Failed to read file %s.\n", path)
 				die(err)
 			}
-			_, err = modules.AddMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
+			_, err = modules.AddMultipartFile(writer, data, info.Name(), modules.DefaultFilePerm, &offset, nil)
 			if err != nil {
 				fmt.Printf("Failed to add file %s to multipart upload.\n", path)
 				die(err)
