@@ -3,6 +3,7 @@ package api
 import (
 	"archive/tar"
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -34,6 +35,7 @@ type (
 		filename            string
 		force               bool
 		mode                os.FileMode
+		monetization        []modules.SkyfileMonetizationInfo
 		root                bool
 		siaPath             modules.SiaPath
 		skyKeyID            skykey.SkykeyID
@@ -103,6 +105,16 @@ func parseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reade
 			}
 		}
 
+		// parse monetization from multipart header
+		monetizationStr := fh.Header.Get("Mode")
+		var monetization []modules.SkyfileMonetizationInfo
+		if monetizationStr != "" {
+			err = json.Unmarshal([]byte(monetizationStr), &monetization)
+			if err != nil {
+				return subfiles, nil, errors.AddContext(err, "failed to parse monetization info")
+			}
+		}
+
 		// parse filename from multipart
 		filename := fh.Filename
 		if filename == "" {
@@ -112,11 +124,12 @@ func parseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reade
 		// parse content type from multipart header
 		contentType := fh.Header.Get("Content-Type")
 		subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
-			FileMode:    mode,
-			Filename:    filename,
-			ContentType: contentType,
-			Offset:      offset,
-			Len:         uint64(fh.Size),
+			FileMode:     mode,
+			Filename:     filename,
+			ContentType:  contentType,
+			Offset:       offset,
+			Len:          uint64(fh.Size),
+			Monetization: monetization,
 		}
 		offset += uint64(fh.Size)
 	}
@@ -289,6 +302,16 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		}
 	}
 
+	// parse 'monetization' query parameter
+	var monetization []modules.SkyfileMonetizationInfo
+	monetizationStr := queryForm.Get("monetization")
+	if monetizationStr != "" {
+		err = json.Unmarshal([]byte(monetizationStr), &monetization)
+		if err != nil {
+			return nil, nil, errors.AddContext(err, "unable to parse 'monetization'")
+		}
+	}
+
 	// validate parameter combos
 
 	// verify force is not set if disable force header was set
@@ -330,6 +353,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		filename:            filename,
 		force:               force,
 		mode:                mode,
+		monetization:        monetization,
 		root:                root,
 		siaPath:             siaPath,
 		skyKeyID:            skykeyID,

@@ -284,6 +284,15 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 	rootStr := fmt.Sprintf("%t", params.Root)
 	values.Set("root", rootStr)
 
+	// Set monetization.
+	if params.FileMetadata.Monetization != nil {
+		monetization, err := json.Marshal(params.FileMetadata.Monetization)
+		if err != nil {
+			return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to marshal monetization")
+		}
+		values.Set("monetization", string(monetization))
+	}
+
 	// Encode SkykeyName or SkykeyID.
 	if params.SkykeyName != "" {
 		values.Set("skykeyname", params.SkykeyName)
@@ -397,6 +406,15 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
 	values.Set("convertpath", convert.String())
+
+	// Set monetization.
+	if lup.FileMetadata.Monetization != nil {
+		monetization, err := json.Marshal(lup.FileMetadata.Monetization)
+		if err != nil {
+			return api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to marshal monetization")
+		}
+		values.Set("monetization", string(monetization))
+	}
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())

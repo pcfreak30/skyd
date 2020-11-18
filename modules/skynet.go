@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (
@@ -32,10 +33,11 @@ type (
 	// leading bytes of the skyfile, meaning that this struct can be extended
 	// without breaking compatibility.
 	SkyfileMetadata struct {
-		Filename string          `json:"filename,omitempty"`
-		Length   uint64          `json:"length,omitempty"`
-		Mode     os.FileMode     `json:"mode,omitempty"`
-		Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
+		Filename     string                    `json:"filename,omitempty"`
+		Length       uint64                    `json:"length,omitempty"`
+		Mode         os.FileMode               `json:"mode,omitempty"`
+		Monetization []SkyfileMonetizationInfo `json:"monetization,omitempty"`
+		Subfiles     SkyfileSubfiles           `json:"subfiles,omitempty"`
 
 		// DefaultPath indicates what content to serve if the user has not specified
 		// a path and the user is not trying to download the Skylink as an archive.
@@ -138,6 +140,13 @@ type (
 		Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
 		Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
 
+	}
+
+	// SkyfileMonetizationInfo contains information about the content
+	// monetization of a skyfile.
+	SkyfileMonetizationInfo struct {
+		Address types.UnlockHash `json:"address"`
+		Value   types.Currency   `json:"value"`
 	}
 )
 
@@ -247,11 +256,12 @@ func (sm SkyfileMetadata) offset() uint64 {
 // as nested files and directories are allowed within a single Skyfile, but it
 // is not allowed to contain ./, ../, be empty, or start with a forward slash.
 type SkyfileSubfileMetadata struct {
-	FileMode    os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
-	Filename    string      `json:"filename,omitempty"`
-	ContentType string      `json:"contenttype,omitempty"`
-	Offset      uint64      `json:"offset,omitempty"`
-	Len         uint64      `json:"len,omitempty"`
+	ContentType  string                    `json:"contenttype,omitempty"`
+	FileMode     os.FileMode               `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
+	Filename     string                    `json:"filename,omitempty"`
+	Len          uint64                    `json:"len,omitempty"`
+	Monetization []SkyfileMonetizationInfo `json:"monetization,omitempty"`
+	Offset       uint64                    `json:"offset,omitempty"`
 }
 
 // IsDir implements the os.FileInfo interface for SkyfileSubfileMetadata.

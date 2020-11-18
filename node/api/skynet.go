@@ -838,12 +838,14 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			Subfiles:           subfiles,
 			DefaultPath:        defaultPath,
 			DisableDefaultPath: params.disableDefaultPath,
+			Monetization:       nil, // root level monetization is ignored for multipart uploads
 		}
 	} else {
 		lup.Reader = req.Body
 		lup.FileMetadata = modules.SkyfileMetadata{
-			Mode:     params.mode,
-			Filename: params.filename,
+			Mode:         params.mode,
+			Filename:     params.filename,
+			Monetization: params.monetization,
 		}
 	}
 

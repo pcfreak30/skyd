@@ -1525,7 +1525,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 		Offset:      0,
 		Len:         uint64(len(dataFile3)),
 	}
-	if mdF3 != mdF3Expected {
+	if !reflect.DeepEqual(mdF3, mdF3Expected) {
 		t.Log("expected: ", mdF3Expected)
 		t.Log("actual: ", mdF3)
 		t.Fatal("Unexpected subfile metadata for file 3")
