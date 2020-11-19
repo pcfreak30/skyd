@@ -86,6 +86,11 @@ var (
 	// subsidy per block.
 	FoundationSubsidyPerBlock = SiacoinPrecision.Mul64(30e3)
 
+	// FoundationSubsidyFrequency defines Foundation subsidy frequency instead
+	// of original monthly frequency.
+	// Antfarm fix: Speedup Foundation subsidy interval.
+	FoundationSubsidyFrequency = BlockHeight(40)
+
 	// FutureThreshold is a temporal limit beyond which Blocks are
 	// discarded by the consensus rules. When incoming Blocks are processed, their
 	// Timestamp is allowed to exceed the processor's current time by no more than
