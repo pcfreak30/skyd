@@ -23,7 +23,7 @@ type (
 	jobHasSector struct {
 		staticSectors []crypto.Hash
 
-		staticResponseChan chan *jobHasSectorResponse // Channel to send a response down
+		staticResponseChan chan *jobHasSectorResponse
 
 		*jobGeneric
 	}
@@ -106,13 +106,11 @@ func (j *jobHasSector) callExecute() {
 	}
 
 	// Report success or failure to the queue.
-	if err == nil {
-		j.staticQueue.staticWorker().renter.log.Println("expected vs. actual time:", j.externEstimatedJobDuration, " :: ", time.Since(j.externJobStartTime))
-		j.staticQueue.callReportSuccess()
-	} else {
+	if err != nil {
 		j.staticQueue.callReportFailure(err)
 		return
 	}
+	j.staticQueue.callReportSuccess()
 
 	// Job was a success, update the performance stats on the queue.
 	jq := j.staticQueue.(*jobHasSectorQueue)
@@ -159,7 +157,6 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 			return nil, errors.AddContext(resp.Error, "Output error")
 		}
 		hasSectors = append(hasSectors, resp.Output[0] == 1)
-		break
 	}
 	if len(responses) != len(program) {
 		return nil, errors.New("received invalid number of responses but no error")

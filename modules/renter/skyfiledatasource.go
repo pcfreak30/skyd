@@ -186,7 +186,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
 	var fileSpecificSkykey skykey.Skykey
-	if isEncryptedBaseSector(baseSector) {
+	if skynet.IsEncryptedBaseSector(baseSector) {
 		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to decrypt skyfile base sector")
