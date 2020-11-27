@@ -27,7 +27,7 @@ package renter
 // To get a baseline, we pop of 'MinPieces' workers, tally up the financial
 // cost, and track the duration of the slowest worker. We then compute the total
 // adjusted cost of using the fastest possible set of workers. We save a copy of
-// this set as the 'bestSet', retaining the inital consturction as the
+// this set as the 'bestSet', retaining the initial construction as the
 // 'workingSet'.
 //
 // Then we iterate by popping a new worker off of the heap. Two things are at
@@ -130,7 +130,7 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // workers with no pieces that can be resolved or workers that are currently on
 // cooldown for the read job.
 func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
-	// Add all of the unresovled workers to the heap.
+	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
 		// Determine the expected readDuration and cost for this worker. Add the
@@ -243,15 +243,15 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 	// best set, we just keep building out the working set. This is guaranteed
 	// to find the optimal best set while only using a linear amount of total
 	// computation.
-	bestSet := make([]*pdcInitialWorker, ec.NumPieces())
-	workingSet := make([]*pdcInitialWorker, ec.NumPieces())
+	bestSet := make([]*pdcInitialWorker, ec.MinPieces())
+	workingSet := make([]*pdcInitialWorker, ec.MinPieces())
 	var bestSetCost types.Currency
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
 	// Build the best set that we can. Each iteration will attempt to improve
 	// the working set by adding a new worker. This may or may not succeed,
-	// depedning on how cheap the worker is and how slow the worker is. Each
+	// depending on how cheap the worker is and how slow the worker is. Each
 	// time that the working set is better than the best set, overwrite the best
 	// set with the new working set.
 	for len(workerHeap) > 0 {
@@ -259,7 +259,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 		// done.
 		nextWorker := heap.Pop(&workerHeap).(*pdcInitialWorker)
 		if nextWorker == nil {
-			// TODO: Not panic
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
 		}
@@ -435,7 +434,7 @@ func (pdc *projectDownloadChunk) launchFinalWorkers(finalWorkers []*pdcInitialWo
 		//
 		// TODO: ensure there is no difference between an initial worker and an
 		// overdrive worker for the launch.
-		pdc.launchOverdriveWorker(iw.worker, uint64(i))
+		pdc.launchWorker(iw.worker, uint64(i))
 	}
 }
 
@@ -464,7 +463,4 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			}
 		}
 	}
-
-	// TODO: check with David what the ention was here - unreachable code
-	// return errors.New("never implemented a function to launch the initial workers")
 }

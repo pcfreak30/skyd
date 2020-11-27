@@ -6,12 +6,15 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// errNotEnoughPieces is returned when there are not enough pieces found to
+// successfully complete the download
+var errNotEnoughPieces = errors.New("not enough pieces to complete download")
 
 // pieceDownload tracks a worker downloading a piece, whether that piece has
 // returned, and what time the piece is/was expected to return.
@@ -48,14 +51,12 @@ type pieceDownload struct {
 // safe.
 type projectDownloadChunk struct {
 	// Parameters for downloading within the chunk.
-	//
-	// TODO: These are poorly named.
 	chunkLength uint64
 	chunkOffset uint64
 	pricePerMS  types.Currency
 
 	// Values derived from the chunk download parameters. The offset and length
-	// specify the offset and length that will be sent to the host, which much
+	// specify the offset and length that will be sent to the host, which must
 	// be segment aligned.
 	pieceLength uint64
 	pieceOffset uint64
@@ -63,12 +64,17 @@ type projectDownloadChunk struct {
 	// availablePieces are pieces where there are one or more workers that have
 	// been tasked with fetching the piece.
 	//
-	// workersConsidered is a map of which workers have been moved from the
-	// worker set's list of available pieces to the download chunk's list of
-	// available pieces. This enables the worker selection code to realize which
-	// pieces in the worker set have been resolved since the last check.
+	// workersConsideredIndex keeps track of what workers were already
+	// considered after looking at the pcws. This enables the worker selection
+	// code to realize which pieces in the worker set have been resolved since
+	// the last check.
+	//
+	// workersRemaining is the number of unresolved workers at the time the
+	// available pieces were last updated. This enables counting the hopeful
+	// pieces without introducing a race condition in the finished check.
 	availablePieces        [][]pieceDownload
 	workersConsideredIndex int
+	workersRemaining       int
 
 	// dataPieces is the buffer that is used to place data as it comes back.
 	// There is one piece per chunk, and pieces can be nil. To know if the
@@ -119,6 +125,7 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
+	pdc.workersRemaining = len(ws.unresolvedWorkers)
 
 	// If there are more unresolved workers, fetch a channel that will be closed
 	// when more results from unresolved workers are available.
@@ -145,10 +152,6 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 
 	// Check whether the job failed.
 	if jrr.staticErr != nil {
-		// TODO: Log? - we should probably have toggle-able log levels for stuff
-		// like this. Maybe a worker.log which allows us to turn on logging just
-		// for specific workers.
-		//
 		// The download failed, update the pdc available pieces to reflect the
 		// failure.
 		for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
@@ -173,7 +176,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 
 	// The download succeeded, add the piece to the appropriate index.
 	pdc.dataPieces[pieceIndex] = jrr.staticData
-	jrr.staticData = nil // Just in case there's a reference to the job reponse elsewhere.
+	jrr.staticData = nil // Just in case there's a reference to the job response elsewhere.
 	for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
 		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
 			pdc.availablePieces[pieceIndex][i].completed = true
@@ -220,8 +223,6 @@ func (pdc *projectDownloadChunk) finalize() {
 	// data requested by the user and return. We have downloaded a subset of the
 	// chunk as the data, and now we must determine which subset of the data was
 	// actually requested by the user.
-	//
-	// TODO: Unit test this.
 	chunkStartWithinData := pdc.chunkOffset - chunkDLOffset
 	chunkEndWithinData := chunkStartWithinData + pdc.chunkLength
 	data = data[chunkStartWithinData:chunkEndWithinData]
@@ -236,14 +237,11 @@ func (pdc *projectDownloadChunk) finalize() {
 
 // finished returns true if the download is finished, and returns an error if
 // the download is unable to complete.
-//
-// TODO: Unit test this.
 func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// Convenience variables.
-	ws := pdc.workerState
 	ec := pdc.workerSet.staticErasureCoder
 
-	// Count the number of completed pieces and hopefuly pieces in our list of
+	// Count the number of completed pieces and hopeful pieces in our list of
 	// potential downloads.
 	completedPieces := 0
 	hopefulPieces := 0
@@ -273,18 +271,63 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	}
 
 	// Count the number of workers that haven't completed their results yet.
-	//
-	// TODO: Is using this here a race condition?
-	ws.mu.Lock()
-	hopefulPieces += len(ws.unresolvedWorkers)
-	ws.mu.Unlock()
+	hopefulPieces += pdc.workersRemaining
 
 	// Ensure that there are enough pieces that could potentially become
 	// completed to finish the download.
 	if hopefulPieces < ec.MinPieces() {
-		return false, errors.New("not enough pieces to complete download")
+		return false, errNotEnoughPieces
 	}
 	return false, nil
+}
+
+// launchWorker will launch a worker and update the corresponding available
+// piece.
+//
+// A time is returned which indicates the expected return time of the worker's
+// download. A bool is returned which indicates whether or not the launch was
+// successful.
+func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (time.Time, bool) {
+	// Create the read sector job for the worker.
+	//
+	// TODO: The launch process should minimally have as input the ctx of
+	// the pdc, that way if the pdc closes we know to garbage collect the
+	// channel and not send down it. Ideally we can even cancel the job if
+	// it is in-flight.
+	jrs := &jobReadSector{
+		jobRead: jobRead{
+			staticResponseChan: pdc.workerResponseChan,
+			staticLength:       pdc.pieceLength,
+
+			staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
+
+			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue),
+		},
+		staticOffset: pdc.pieceOffset,
+	}
+	// Submit the job.
+	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
+
+	// Update the status of the piece that was launched. 'launched' should be
+	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If
+	// the launch succeeded, the expected completion time of the job should be
+	// set.
+	//
+	// NOTE: We don't break out of the loop when we find a piece/worker
+	// match. If all is going well, each worker should appear at most once
+	// in this piece, but for the sake of defensive programming we check all
+	// elements anyway.
+	for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
+		if w.staticHostPubKeyStr == pieceDownload.worker.staticHostPubKeyStr {
+			pieceDownload.launched = true
+			if added {
+				pieceDownload.expectedCompleteTime = expectedCompleteTime
+			} else {
+				pieceDownload.failed = true
+			}
+		}
+	}
+	return expectedCompleteTime, added
 }
 
 // threadedCollectAndOverdrivePieces will wait for responses from the workers.
@@ -338,11 +381,7 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 
 	// Consistency check some of the erasure coder values. If the check fails,
 	// return that the whole piece must be downloaded.
-	//
-	// TODO: I'm not completely sure why this modulus check is here, it seems to
-	// me at the moment of writing that omitting the modulus check would be
-	// fine.
-	if pieceSegmentSize == 0 || pieceSegmentSize%crypto.SegmentSize != 0 {
+	if pieceSegmentSize == 0 {
 		build.Critical("pcws has a bad erasure coder")
 		return 0, modules.SectorSize
 	}
@@ -395,6 +434,11 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+	// Sanity check pricePerMS is greater than zero
+	if pricePerMS.IsZero() {
+		build.Critical("pricePerMS is expected to be greater than zero")
+	}
+
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
 
@@ -439,12 +483,12 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// that the overdrive code is not going to be so aggressive that 5x or more
 	// overhead on download will be needed.
 	//
-	// TODO: If this ends up being a problem, we could implement the jobs
-	// process to send the result down a channel in goroutine if the first
-	// attempt to send the job fails. Then we could probably get away with a
-	// smaller buffer, since exceeding the limit currently would cause a worker
-	// to stall, where as with the goroutine-on-block method, exceeding the
-	// limit merely causes extra goroutines to be spawned.
+	// If this ends up being a problem, we could implement the jobs process to
+	// send the result down a channel in goroutine if the first attempt to send
+	// the job fails. Then we could probably get away with a smaller buffer,
+	// since exceeding the limit currently would cause a worker to stall, where
+	// as with the goroutine-on-block method, exceeding the limit merely causes
+	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
 	// Build the full pdc.

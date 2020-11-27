@@ -4,13 +4,14 @@ import (
 	"math"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TODO: Better handling of time.After
 
 // TODO: The pricing mechanism for these overdrive workers is not optimal
-// because the pricing mechnism right now assumes there is only one overdrive
+// because the pricing mechanism right now assumes there is only one overdrive
 // worker and that the overdrive worker definitely is the slowest/latest worker
 // out of everyone that has already launched. For the most part, these
 // assumptions are going to be true in 99% of cases, so this doesn't need to be
@@ -20,27 +21,18 @@ import (
 // take to return, taking into account the penalties for the price of the
 // download.
 func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
-	readTime := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
-	if readTime < 0 {
-		readTime = 0
+	jobTime := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
+	if jobTime < 0 {
+		jobTime = 0
 	}
-	// Add a penalty to performance based on the cost of the job. Need to be
-	// careful with the underflow cases.
-	//
-	// TODO: Break into helper function and unit test.
-	if pdc.pricePerMS.IsZero() {
-		pdc.pricePerMS = types.NewCurrency64(1)
+
+	pricePerMS := pdc.pricePerMS
+	if pricePerMS.IsZero() {
+		pricePerMS = types.NewCurrency64(1)
 	}
-	expectedRSCompletionCost := w.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-	rsPricePenalty, err := expectedRSCompletionCost.Div(pdc.pricePerMS).Uint64()
-	if err != nil || rsPricePenalty > math.MaxInt64 {
-		readTime = time.Duration(math.MaxInt64)
-	} else if reduced := math.MaxInt64 - int64(rsPricePenalty); int64(readTime) > reduced {
-		readTime = time.Duration(math.MaxInt64)
-	} else {
-		readTime += time.Duration(rsPricePenalty)
-	}
-	return readTime
+
+	// Add a penalty to performance based on the cost of the job.
+	return addCostPenalty(jobTime, w.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength), pdc.pricePerMS)
 }
 
 // bestOverdriveUnresolvedWorker will scan through a proveded list of unresolved
@@ -68,7 +60,7 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 	// Loop through the unresovled workers and find the best unresovled worker.
 	for _, uw := range puws {
 		// Figure how much time is expected to remain until the worker is
-		// avaialble. Note that no price penatly is attached to the HasSector
+		// available. Note that no price penalty is attached to the HasSector
 		// call, because that call is being made regardless of the cost.
 		hasSectorTime := time.Until(uw.staticExpectedCompleteTime)
 		if hasSectorTime < 0 {
@@ -185,57 +177,6 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	return baw, uint64(bawPieceIndex), nil, nil
 }
 
-// launchOverdriveWorker will launch a worker and update the corresponding
-// available piece.
-//
-// A time is returned which indicates the expected return time of the worker's
-// download. A bool is returned which indicates whether or not the launch was
-// successful.
-//
-// TODO: Rename this function and move it back to projectdownload.go
-func (pdc *projectDownloadChunk) launchOverdriveWorker(w *worker, pieceIndex uint64) (time.Time, bool) {
-	// Create the read sector job for the worker.
-	//
-	// TODO: The launch process should minimally have as input the ctx of
-	// the pdc, that way if the pdc closes we know to garbage collect the
-	// channel and not send down it. Ideally we can even cancel the job if
-	// it is in-flight.
-	jrs := &jobReadSector{
-		jobRead: jobRead{
-			staticResponseChan: pdc.workerResponseChan,
-			staticLength:       pdc.pieceLength,
-
-			staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
-
-			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue),
-		},
-		staticOffset: pdc.pieceOffset,
-	}
-	// Submit the job.
-	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
-
-	// Update the status of the piece that was launched. 'launched' should be
-	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If
-	// the launch succeeded, the expected completion time of the job should be
-	// set.
-	//
-	// NOTE: We don't break out of the loop when we find a piece/worker
-	// match. If all is going well, each worker should appear at most once
-	// in this piece, but for the sake of defensive programming we check all
-	// elements anyway.
-	for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
-		if w.staticHostPubKeyStr == pieceDownload.worker.staticHostPubKeyStr {
-			pieceDownload.launched = true
-			if added {
-				pieceDownload.expectedCompleteTime = expectedCompleteTime
-			} else {
-				pieceDownload.failed = true
-			}
-		}
-	}
-	return expectedCompleteTime, added
-}
-
 // tryLaunchOverdriveWorker will attempt to launch an overdrive worker. A worker
 // may not be launched if the best worker is not yet available.
 //
@@ -254,7 +195,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 		}
 
 		// If there was a worker found, launch the worker.
-		expectedReturnTime, success := pdc.launchOverdriveWorker(worker, pieceIndex)
+		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
 		if !success {
 			continue
 		}
@@ -337,4 +278,23 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 	// All needed overdrive workers have been launched. No need to try again
 	// until the current set of workers are late.
 	return nil, time.After(time.Until(latestReturn))
+}
+
+// addCostPenalty takes a certain job time and adds a penalty to it depending on
+// the jobcost and the pdc's price per MS.
+func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) time.Duration {
+	if pricePerMS.IsZero() {
+		build.Critical("pricePerMS should always be greater than zero")
+	}
+
+	var adjusted time.Duration
+	penalty, err := jobCost.Div(pricePerMS).Uint64()
+	if err != nil || penalty > math.MaxInt64 {
+		adjusted = time.Duration(math.MaxInt64)
+	} else if reduced := math.MaxInt64 - int64(penalty); int64(jobTime) > reduced {
+		adjusted = time.Duration(math.MaxInt64)
+	} else {
+		adjusted = jobTime + time.Duration(penalty)
+	}
+	return adjusted
 }
