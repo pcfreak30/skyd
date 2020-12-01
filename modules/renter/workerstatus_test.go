@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestWorkerAccountStatus is a small unit test that verifies the output of the
@@ -169,12 +168,20 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	w := wt.worker
+
+	var hostClosed bool
 	defer func() {
+		if hostClosed {
+			if err := wt.rt.Close(); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		if err := wt.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
-	w := wt.worker
 
 	// allow the worker some time to fetch a PT and fund its EA
 	err = build.Retry(600, 100*time.Millisecond, func() error {
@@ -183,13 +190,6 @@ func TestWorkerReadJobStatus(t *testing.T) {
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sectorData := fastrand.Bytes(int(modules.SectorSize))
-	sectorRoot := crypto.MerkleRoot(sectorData)
-	err = wt.host.AddSector(sectorRoot, sectorData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,55 +206,18 @@ func TestWorkerReadJobStatus(t *testing.T) {
 		t.Fatal("Unexpected read job status", ToJSON(status))
 	}
 
-	// prevent the worker from doing any work by manipulating its read limit
-	//
-	// TODO: Need a new way of doing this.
+	// close the host to ensure the job fails
+	err = wt.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostClosed = true
 
 	// add the job to the worker
 	ctx := context.Background()
 	rc := make(chan *jobReadResponse)
 
 	jhs := &jobReadSector{
-		jobRead: jobRead{
-			staticLength:       modules.SectorSize,
-			staticResponseChan: rc,
-			staticSector:       sectorRoot,
-
-			jobGeneric: &jobGeneric{
-				staticCtx:   ctx,
-				staticQueue: w.staticJobReadQueue,
-			},
-		},
-		staticOffset: 0,
-	}
-	if !w.staticJobReadQueue.callAdd(jhs) {
-		t.Fatal("Could not add job to queue")
-	}
-
-	// fetch the worker's read job status again and verify its output
-	status = w.callReadJobStatus()
-	if status.JobQueueSize != 1 {
-		t.Fatal("Unexpected read job status", ToJSON(status))
-	}
-
-	// restore the read limit
-	//
-	// TODO: Need a new way of doing this.
-
-	// verify the status in a build.Retry to allow the worker some time to
-	// process the job
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		status = w.callReadJobStatus()
-		if status.AvgJobTime64k == 0 {
-			return fmt.Errorf("Unexpected read job status %v", ToJSON(status))
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	// add another job to the worker
-	jhs = &jobReadSector{
 		jobRead: jobRead{
 			staticLength:       modules.SectorSize,
 			staticResponseChan: rc,
