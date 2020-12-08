@@ -157,7 +157,6 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Try to download the file behind the skylink.
 	fetchedData, metadata, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
@@ -1788,8 +1787,6 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected subfile metadata of file3 to be present")
 	}
 
-	// TODO: Don't skip this, lol this is an important test.
-	t.SkipNow()
 	mdF3Expected := modules.SkyfileSubfileMetadata{
 		FileMode:    os.FileMode(0640),
 		Filename:    "b/file3.txt",
@@ -2468,9 +2465,6 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Perform a HEAD request for a skylink that does not exist
-	//
-	// TODO: Don't skip this
-	t.SkipNow()
 	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
@@ -2604,7 +2598,6 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 
 		// verify the skylink can't be found after a dry run
 		status, _, err := r.SkynetSkylinkHead(skylinkDry)
-		t.SkipNow() // TODO: don't skip this here
 		if status != http.StatusNotFound {
 			t.Fatal(fmt.Errorf("expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d and err %v", status, err))
 		}
@@ -2701,7 +2694,6 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	}()
 
 	// Verify timeout on head request
-	t.SkipNow() // TODO: don't merge this with this test skipped
 	status, _, err := r.SkynetSkylinkHeadWithTimeout(skylink, 1)
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)

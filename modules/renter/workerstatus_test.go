@@ -227,6 +227,7 @@ func TestWorkerReadJobStatus(t *testing.T) {
 				staticQueue: w.staticJobReadQueue,
 			},
 		},
+		staticSector: crypto.Hash{},
 		staticOffset: 0,
 	}
 	if !w.staticJobReadQueue.callAdd(jhs) {

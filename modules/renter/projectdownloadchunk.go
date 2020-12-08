@@ -74,8 +74,8 @@ type projectDownloadChunk struct {
 	// time the available pieces were last updated. This enables counting the
 	// hopeful pieces without introducing a race condition in the finished
 	// check.
-	availablePieces        [][]*pieceDownload
-	workersConsideredIndex int
+	availablePieces            [][]*pieceDownload
+	workersConsideredIndex     int
 	unresolvedWorkersRemaining int
 
 	// dataPieces is the buffer that is used to place data as it comes back.
@@ -326,6 +326,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue),
 		},
 		staticOffset: pdc.pieceOffset,
+		staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
 	}
 	// Submit the job.
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
