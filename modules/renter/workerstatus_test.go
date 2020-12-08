@@ -196,10 +196,7 @@ func TestWorkerReadJobStatus(t *testing.T) {
 
 	// fetch the worker's read jobs status and verify its output
 	status := w.callReadJobStatus()
-	if !(status.AvgJobTime64k == 0 &&
-		status.AvgJobTime1m == 0 &&
-		status.AvgJobTime4m == 0 &&
-		status.ConsecutiveFailures == 0 &&
+	if !(status.ConsecutiveFailures == 0 &&
 		status.JobQueueSize == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
@@ -221,7 +218,9 @@ func TestWorkerReadJobStatus(t *testing.T) {
 		jobRead: jobRead{
 			staticLength:       modules.SectorSize,
 			staticResponseChan: rc,
-			staticSector:       crypto.Hash{},
+
+			// set metadata
+			staticSector: crypto.Hash{},
 
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,

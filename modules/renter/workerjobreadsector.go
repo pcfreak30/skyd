@@ -14,6 +14,7 @@ type (
 	jobReadSector struct {
 		jobRead
 
+		staticSector crypto.Hash
 		staticOffset uint64
 	}
 )
@@ -67,7 +68,9 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 		jobRead: jobRead{
 			staticLength:       length,
 			staticResponseChan: readSectorRespChan,
-			staticSector:       root,
+
+			// set metadata
+			staticSector: root,
 
 			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue),
 		},

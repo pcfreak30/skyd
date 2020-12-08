@@ -2,8 +2,8 @@ package renter
 
 import (
 	"bytes"
-	"container/heap"
 	"context"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -71,7 +71,7 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 	sectorRoot := crypto.MerkleRoot(sectorData)
 
 	// create an EC and a passhtrough cipher key
-	ec := modules.NewRSCodeDefault()
+	ec := modules.NewRSSubCodeDefault()
 	ck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -94,18 +94,16 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 		staticRenter: new(Renter),
 	}
 
-	// select a random number of segments to read at random offset
-	numSegments := fastrand.Uint64n(5) + 1
-	totalSegments := modules.SectorSize / crypto.SegmentSize
-	offset := fastrand.Uint64n(totalSegments-numSegments+1) * crypto.SegmentSize
-	length := numSegments * crypto.SegmentSize
+	// download a random amount of data at random offset
+	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
+	offset := fastrand.Uint64n(modules.SectorSize - length)
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
 	// create PDC manually
 	responseChan := make(chan *downloadResponse, 1)
 	pdc := &projectDownloadChunk{
-		chunkOffset: offset,
-		chunkLength: length,
+		offsetInChunk: offset,
+		lengthInChunk: length,
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
@@ -125,8 +123,8 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 		t.Fatal("unexpected error", downloadResponse.err)
 	}
 	if !bytes.Equal(downloadResponse.data, sectorData[offset:offset+length]) {
-		t.Log(downloadResponse.data)
-		t.Log(sectorData[offset : offset+length])
+		t.Log(downloadResponse.data, "length:", len(downloadResponse.data))
+		t.Log(sectorData[offset:offset+length], "length:", len(sectorData[offset:offset+length]))
 		t.Fatal("unexpected data")
 	}
 }
@@ -162,8 +160,8 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	pdc := &projectDownloadChunk{workerSet: pcws}
 
 	// mock unresolved state with hope of successful download
-	pdc.availablePieces = make([][]pieceDownload, 0)
-	pdc.workersRemaining = 4
+	pdc.availablePieces = make([][]*pieceDownload, 0)
+	pdc.unresolvedWorkersRemaining = 4
 	finished, err := pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -173,8 +171,8 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock one completed piece - still unresolved and hopeful
-	pdc.workersRemaining = 3
-	pdc.availablePieces = append(pdc.availablePieces, []pieceDownload{{completed: true}})
+	pdc.unresolvedWorkersRemaining = 3
+	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{completed: true}})
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -184,7 +182,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock resolved state - not hopeful and not finished
-	pdc.workersRemaining = 0
+	pdc.unresolvedWorkersRemaining = 0
 	finished, err = pdc.finished()
 	if err != errNotEnoughPieces {
 		t.Fatal("unexpected error", err)
@@ -194,9 +192,9 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock resolves state - add 3 pieces in limbo -> hopeful again
-	pdc.availablePieces = append(pdc.availablePieces, []pieceDownload{{}})
-	pdc.availablePieces = append(pdc.availablePieces, []pieceDownload{{}})
-	pdc.availablePieces = append(pdc.availablePieces, []pieceDownload{{}})
+	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{}})
+	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{}})
+	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{}})
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -206,8 +204,10 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock two failures -> hope gone again
-	pdc.availablePieces[1][0].failed = true
-	pdc.availablePieces[2][0].failed = true
+	pdc.availablePieces[1][0].completed = true
+	pdc.availablePieces[1][0].downloadErr = errors.New("failed")
+	pdc.availablePieces[2][0].completed = true
+	pdc.availablePieces[2][0].downloadErr = errors.New("failed")
 	finished, err = pdc.finished()
 	if err != errNotEnoughPieces {
 		t.Fatal("unexpected error", err)
@@ -217,7 +217,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// undo one failure and add 2 completed -> finished
-	pdc.availablePieces[2][0].failed = false
+	pdc.availablePieces[2][0].downloadErr = nil
 	pdc.availablePieces[2][0].completed = true
 	pdc.availablePieces[3][0].completed = true
 	finished, err = pdc.finished()
@@ -229,42 +229,139 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 }
 
-// TestProjectDownloadChunkHeap is a unit test that covers the functionality of
-// the pdcWorkerHeap
-func TestProjectDownloadChunkHeap(t *testing.T) {
-	var wh pdcWorkerHeap
-	if wh.Len() != 0 {
+// TestProjectDownloadChunkLaunchWorker is a unit test for the 'launchWorker'
+// function on the pdc.
+func TestProjectDownloadChunkLaunchWorker(t *testing.T) {
+	t.Parallel()
+
+	ec := modules.NewRSCodeDefault()
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       fastrand.Bytes(crypto.PublicKeySize),
+	}
+
+	// mock a worker, ensure the readqueue returns a non zero time estimate
+	worker := new(worker)
+	worker.initJobReadQueue()
+	worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
+	worker.staticJobReadQueue.weightedJobsCompleted64k = 10
+	worker.staticHostPubKeyStr = spk.String()
+
+	// mock a pcws
+	pcws := new(projectChunkWorkerSet)
+	pcws.staticPieceRoots = make([]crypto.Hash, ec.NumPieces())
+
+	// mock a pdc, ensure available pieces is not nil
+	pdc := new(projectDownloadChunk)
+	pdc.workerSet = pcws
+	pdc.pieceLength = 1 << 16 // 64kb
+	pdc.availablePieces = make([][]*pieceDownload, ec.NumPieces())
+	for pieceIndex := range pdc.availablePieces {
+		pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
+			worker: worker,
+		})
+	}
+
+	// launch a worker and expect it to have enqueued a job and expect the
+	// complete time to be somewhere in the future
+	expectedCompleteTime, added := pdc.launchWorker(worker, 0)
+	if !added {
 		t.Fatal("unexpected")
 	}
+	if expectedCompleteTime.Before(time.Now()) {
+		t.Fatal("unexpected")
+	}
+
+	// verify one worker was launched without failure
+	numLWF := 0 // launchedWithoutFail
+	for _, pieces := range pdc.availablePieces {
+		launchedWithoutFail := false
+		for _, pieceDownload := range pieces {
+			if pieceDownload.launched && pieceDownload.downloadErr == nil {
+				launchedWithoutFail = true
+			}
+		}
+		if launchedWithoutFail {
+			numLWF++
+		}
+	}
+	if numLWF != 1 {
+		t.Fatal("unexpected", numLWF)
+	}
+
+	// launch the worker again but kill the queue, expect it to have not added
+	// the job to the queue and updated the pieceDownload's status to failed
+	worker.staticJobReadQueue.killed = true
+	_, added = pdc.launchWorker(worker, 0)
+	if added {
+		t.Fatal("unexpected")
+	}
+	numFailed := 0
+	for _, pieces := range pdc.availablePieces {
+		for _, pieceDownload := range pieces {
+			if pieceDownload.downloadErr != nil {
+				numFailed++
+			}
+		}
+	}
+	if numFailed != 1 {
+		t.Fatal("unexpected", numFailed)
+	}
+}
+
+// TestProjectDownloadChunkOverdriveStatus is a unit test for the
+// 'overdriveStatus' function on the pdc.
+func TestProjectDownloadChunkOverdriveStatus(t *testing.T) {
+	t.Parallel()
 
 	now := time.Now()
-	tMin1 := now.Add(time.Minute)
-	tMin5 := now.Add(5 * time.Minute)
-	tMin10 := now.Add(10 * time.Minute)
 
-	// add one element
-	heap.Push(&wh, &pdcInitialWorker{completeTime: tMin5})
-	if wh.Len() != 1 {
+	pcws := new(projectChunkWorkerSet)
+	pcws.staticErasureCoder = modules.NewRSCodeDefault()
+
+	pdc := new(projectDownloadChunk)
+	pdc.workerSet = pcws
+	pdc.availablePieces = [][]*pieceDownload{
+		{
+			{expectedCompleteTime: now.Add(-1 * time.Minute)},
+			{expectedCompleteTime: now.Add(-3 * time.Minute)},
+		},
+		{
+			{expectedCompleteTime: now.Add(-2 * time.Minute)},
+		},
+	}
+
+	// verify we return the correct amount of overdrive workers that need to be
+	// launched if no pieces have launched yet, also verify last return time
+	toLaunch, returnTime := pdc.overdriveStatus()
+	if toLaunch != modules.RenterDefaultDataPieces {
+		t.Fatal("unexpected")
+	}
+	if returnTime != (time.Time{}) {
+		t.Fatal("unexpected", returnTime)
+	}
+
+	// launch a piece and verify we get 1 worker to launch due to the return
+	// time being in the past
+	pdc.availablePieces[0][0].launched = true
+	toLaunch, returnTime = pdc.overdriveStatus()
+	if toLaunch != 1 {
+		t.Fatal("unexpected")
+	}
+	if returnTime != now.Add(-1*time.Minute) {
 		t.Fatal("unexpected")
 	}
 
-	// add more elements in a way they should be popped off in a different order
-	heap.Push(&wh, &pdcInitialWorker{completeTime: tMin1})
-	heap.Push(&wh, &pdcInitialWorker{completeTime: tMin10})
-	if wh.Len() != 3 {
+	// add a piecedownload that returns somewhere in the future
+	pdc.availablePieces[1] = append(pdc.availablePieces[1], &pieceDownload{
+		launched:             true,
+		expectedCompleteTime: now.Add(time.Minute),
+	})
+	toLaunch, returnTime = pdc.overdriveStatus()
+	if toLaunch != 0 {
 		t.Fatal("unexpected")
 	}
-
-	worker := heap.Pop(&wh).(*pdcInitialWorker)
-	if worker == nil || worker.completeTime != tMin1 {
-		t.Fatal("unexpected")
-	}
-	worker = heap.Pop(&wh).(*pdcInitialWorker)
-	if worker == nil || worker.completeTime != tMin5 {
-		t.Fatal("unexpected")
-	}
-	worker = heap.Pop(&wh).(*pdcInitialWorker)
-	if worker == nil || worker.completeTime != tMin10 {
+	if returnTime != now.Add(time.Minute) {
 		t.Fatal("unexpected")
 	}
 }
