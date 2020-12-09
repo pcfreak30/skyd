@@ -32,11 +32,11 @@ var (
 
 	// ErrRegistryEntryNotFound is returned if all workers were unable to fetch
 	// the entry.
-	ErrRegistryEntryNotFound = errors.New("failed to look up the registry entry")
+	ErrRegistryEntryNotFound = errors.New("registry entry not found")
 
 	// ErrRegistryLookupTimeout is similar to ErrRegistryEntryNotFound but it is
 	// returned instead if the lookup timed out before all workers returned.
-	ErrRegistryLookupTimeout = errors.New("looking up a registry entry timed out")
+	ErrRegistryLookupTimeout = errors.New("registry entry not found within given time")
 
 	// ErrRegistryUpdateInsufficientRedundancy is returned if updating the
 	// registry failed due to running out of workers before reaching
@@ -118,7 +118,7 @@ func (rrs *readResponseSet) next(ctx context.Context) *jobReadRegistryResponse {
 	}
 }
 
-// ResponsesLeft returns the number of responses that can still be fetched with
+// responsesLeft returns the number of responses that can still be fetched with
 // Next.
 func (rrs *readResponseSet) responsesLeft() int {
 	return rrs.left
