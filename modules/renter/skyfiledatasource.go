@@ -5,7 +5,9 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -120,7 +122,7 @@ func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
 		}
 		resp := <-respChan
 		if resp.err != nil {
-			return n, errors.AddContext(err, "base sector download did not succeed")
+			return n, errors.AddContext(errors.Compose(err, ErrRootNotFound), "base sector download did not succeed")
 		}
 		m := copy(p[n:], resp.data)
 		off += int64(m)
@@ -137,7 +139,7 @@ func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
 // source, we want the data source to outlive the initial call. That is why
 // there is no input for a context - the data source will live as long as the
 // stream buffer determines is appropriate.
-func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Currency) (streamBufferDataSource, error) {
+func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Currency, downloadTimeout time.Duration) (streamBufferDataSource, error) {
 	// Create the context for the data source - a child of the renter
 	// threadgroup but otherwise independent.
 	ctx, cancelFunc := context.WithCancel(r.tg.StopCtx())
@@ -151,6 +153,17 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 			cancelFunc()
 		}
 	}()
+
+	// Create the context for the download - the user might have passed a custom
+	// timeout that has to be applied within the scope of a single request. This
+	// needs to be different from the data source context as that outlives the
+	// single request scope.
+	dlCtx := r.tg.StopCtx()
+	if downloadTimeout > 0 {
+		var dlCancel context.CancelFunc
+		dlCtx, dlCancel = context.WithTimeout(r.tg.StopCtx(), downloadTimeout)
+		defer dlCancel()
+	}
 
 	// Create the pcws for the first chunk, which is just a single root with
 	// both passthrough encryption and passthrough erasure coding.
@@ -170,8 +183,11 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to parse skylink")
 	}
-	respChan, err := pcws.managedDownload(ctx, pricePerMs, offset, fetchSize)
+	respChan, err := pcws.managedDownload(dlCtx, pricePerMs, offset, fetchSize)
 	if err != nil {
+		if errors.Contains(err, ErrProjectTimedOut) {
+			err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", downloadTimeout.Seconds()))
+		}
 		return nil, errors.AddContext(err, "unable to start download")
 	}
 	resp := <-respChan

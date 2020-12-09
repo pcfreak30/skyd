@@ -477,6 +477,11 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+	// Potentially force a timeout via a disrupt for testing.
+	if pcws.staticRenter.deps.Disrupt("timeoutProjectDownloadByRoot") {
+		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+	}
+
 	// Sanity check pricePerMS is greater than zero
 	if pricePerMS.IsZero() {
 		build.Critical("pricePerMS is expected to be greater than zero")
@@ -509,9 +514,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		return nil, errors.AddContext(err, "unable to initiate download")
 	}
 	// After refresh, grab the worker state.
-	pcws.mu.Lock()
-	ws := pcws.workerState
-	pcws.mu.Unlock()
+	ws := pcws.managedWorkerState()
 
 	// Create the workerResponseChan.
 	//
@@ -557,7 +560,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// Launch the initial set of workers for the pdc.
 	err = pdc.launchInitialWorkers()
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to launch initial set of workers")
+		return nil, errors.Compose(err, ErrRootNotFound)
 	}
 
 	// All initial workers have been launched. The function can return now,

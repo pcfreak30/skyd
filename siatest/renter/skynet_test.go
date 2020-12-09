@@ -1790,7 +1790,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	mdF3Expected := modules.SkyfileSubfileMetadata{
 		FileMode:    os.FileMode(0640),
 		Filename:    "b/file3.txt",
-		ContentType: "application/octet-stream",
+		ContentType: "text/plain; charset=utf-8",
 		Offset:      0,
 		Len:         uint64(len(dataFile3)),
 	}
@@ -2467,7 +2467,7 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	// Perform a HEAD request for a skylink that does not exist
 	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
 	if status != http.StatusNotFound {
-		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v, err: %v", status, err)
 	}
 }
 
