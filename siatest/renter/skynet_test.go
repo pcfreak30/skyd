@@ -3749,9 +3749,6 @@ func TestRegistryReadRepair(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Give the node some time to show up in the renter.
-	time.Sleep(time.Second)
-
 	// Force a refresh of the worker pool.
 	_, err = r.RenterWorkersGet()
 	if err != nil {
@@ -3769,17 +3766,12 @@ func TestRegistryReadRepair(t *testing.T) {
 		t.Fatal("srvs don't match")
 	}
 
-	// Give the update some time to finish.
-	time.Sleep(time.Second)
-
 	// Shut down the first host and read again. This should work even though the
 	// second host wasn't created yet when we called update.
 	err = tg.StopNode(h1)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	time.Sleep(5 * time.Second)
 
 	// Force a refresh of the worker pool.
 	workers, err := r.RenterWorkersGet()
@@ -3790,11 +3782,8 @@ func TestRegistryReadRepair(t *testing.T) {
 		t.Fatal("wrong number of workers", len(workers.Workers))
 	}
 
-	time.Sleep(time.Second)
-	err = build.Retry(1, 100*time.Millisecond, func() error {
-		readSRV, err = r.RegistryRead(spk, dataKey)
-		return err
-	})
+	// Read the entry.
+	readSRV, err = r.RegistryRead(spk, dataKey)
 	if err != nil {
 		t.Fatal(err)
 	}
