@@ -74,6 +74,12 @@ var (
 	useHighestRevDefaultTimeout = 100 * time.Millisecond
 )
 
+// readRegistryBackgroundWaitTimeout is a timeout for that exists for safety
+// reasons in case threadedHandleFinishedReadRegistryResponse blocks forever on
+// collect. This shouldn't be the case since the streams have a timeout too, but
+// you never know.
+var readRegistryBackgroundWaitTimeout = 10 * time.Minute
+
 // readResponseSet is a helper type which allows for returning a set of ongoing
 // ReadRegistry responses.
 type readResponseSet struct {
@@ -99,7 +105,7 @@ func (rrs *readResponseSet) collect(ctx context.Context) []*jobReadRegistryRespo
 	for rrs.responsesLeft() > 0 {
 		resp := rrs.next(ctx)
 		if resp == nil {
-			return nil
+			break
 		}
 	}
 	return rrs.readResps
@@ -221,7 +227,10 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 			continue
 		}
 
-		jrr := worker.newJobReadRegistry(ctx, staticResponseChan, spk, tweak)
+		// The jobs are created with the renter's context to make sure they will
+		// finish executing after this method terminates. That way we can later
+		// block for the slow results and update hosts if necessary.
+		jrr := worker.newJobReadRegistry(r.tg.StopCtx(), staticResponseChan, spk, tweak)
 		if !worker.staticJobReadRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
@@ -237,7 +246,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	}
 
 	// Create the response set.
-	responseSet := newReadResponseSet(staticResponseChan, numRegistryWorkers)
+	responseSet := newReadResponseSet(staticResponseChan, len(workers))
 
 	// Prepare a context which will be overwritten by a child context with a timeout
 	// when we receive the first response. useHighestRevDefaultTimeout after
@@ -427,9 +436,18 @@ func (r *Renter) threadedHandleFinishedReadRegistryResponses(spk types.SiaPublic
 	}()
 
 	// Collect all responses.
-	resps := responseSet.collect(r.tg.StopCtx())
+	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), readRegistryBackgroundWaitTimeout)
+	defer cancel()
+	resps := responseSet.collect(ctx)
 	if resps == nil {
+		return // nothing to do
+	}
+
+	// Check for shutdown since collect might have taken some time.
+	select {
+	case <-r.tg.StopChan():
 		return // shutdown
+	default:
 	}
 
 	// Filter out the workers that didn't fail and find the highest revision

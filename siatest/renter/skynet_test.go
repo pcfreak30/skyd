@@ -3778,7 +3778,23 @@ func TestRegistryReadRepair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	readSRV, err = r.RegistryRead(spk, dataKey)
+
+	time.Sleep(5 * time.Second)
+
+	// Force a refresh of the worker pool.
+	workers, err := r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(workers.Workers) != 2 {
+		t.Fatal("wrong number of workers", len(workers.Workers))
+	}
+
+	time.Sleep(time.Second)
+	err = build.Retry(1, 100*time.Millisecond, func() error {
+		readSRV, err = r.RegistryRead(spk, dataKey)
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
