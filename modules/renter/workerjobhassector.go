@@ -48,7 +48,6 @@ type (
 		// on one channel for a bunch of workers and still know which worker
 		// successfully found the sector root.
 		staticWorker *worker
-		staticJob    *jobHasSector
 	}
 )
 

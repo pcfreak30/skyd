@@ -33,12 +33,6 @@ var (
 	sectorLookupToDownloadRatio = 16
 )
 
-// projectDownloadResult contains the result of a download operation.
-type projectDownloadResult struct {
-	data []byte
-	err  error
-}
-
 // projectDownloadByRootManager tracks metrics across multiple runs of
 // DownloadByRoot projects, and is used by the projects to set expectations for
 // performance.
@@ -161,7 +155,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 
 		// check for price gouging
 		pt := worker.staticPriceTable().staticPriceTable
-		err := checkPDBRGouging(pt, cache.staticRenterAllowance, 1)
+		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
 		if err != nil {
 			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
@@ -400,7 +394,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 // checkPDBRGouging verifies the cost of executing the jobs performed by the
 // PDBR are reasonable in relation to the user's allowance and the amount of
 // data they intend to download
-func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance, numRoots int) error {
+func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
 	// Check whether the download bandwidth price is too high.
 	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
 		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)

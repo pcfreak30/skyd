@@ -14,8 +14,8 @@ type (
 	jobReadSector struct {
 		jobRead
 
-		staticSector crypto.Hash
 		staticOffset uint64
+		staticSector crypto.Hash
 	}
 )
 
@@ -66,16 +66,16 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 	readSectorRespChan := make(chan *jobReadResponse)
 	jro := &jobReadSector{
 		jobRead: jobRead{
-			staticLength:       length,
 			staticResponseChan: readSectorRespChan,
+			staticLength:       length,
 
 			// set metadata
 			staticSector: root,
 
 			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue),
 		},
-		staticSector: root,
 		staticOffset: offset,
+		staticSector: root,
 	}
 
 	// Add the job to the queue.
