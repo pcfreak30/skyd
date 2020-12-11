@@ -1,7 +1,7 @@
 package renter
 
 // TODO: Handle the issue with 1-of-N erasure coded roots having all sorts of
-// speical cases, in particular in the way the erasure coder is used.
+// special cases, in particular in the way the erasure coder is used.
 
 import (
 	"context"
