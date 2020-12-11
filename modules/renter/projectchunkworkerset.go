@@ -157,6 +157,18 @@ type projectChunkWorkerSet struct {
 	mu           sync.Mutex
 }
 
+// chunkFetcher is an interface that exposes a download function, the PCWS
+// adheres this interface and it is used by the SkyfileDataSource. Introduced
+// only to facilitate testing.
+type chunkFetcher interface {
+	Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error)
+}
+
+// Download will download a range from a chunk.
+func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+	return pcws.managedDownload(ctx, pricePerMS, offset, length)
+}
+
 // checkPCWSGouging verifies the cost of grabbing the HasSector information from
 // a host is reasonble. The cost of completing the download is not checked.
 //

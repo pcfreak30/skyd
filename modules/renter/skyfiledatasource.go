@@ -35,8 +35,8 @@ type skylinkDataSource struct {
 	// fanoutPCWS contains one pcws for every chunk in the fanout. The worker
 	// sets are spun up in advance so that the HasSector queries have completed
 	// by the time that someone needs to fetch the data.
-	staticFirstChunk []byte
-	staticFanoutPCWS []*projectChunkWorkerSet
+	staticFirstChunk    []byte
+	staticChunkFetchers []chunkFetcher
 
 	// Utilities
 	staticCancelFunc context.CancelFunc
@@ -115,7 +115,7 @@ func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
 		}
 
 		// Issue the download.
-		respChan, err := sds.staticFanoutPCWS[chunkIndex].managedDownload(sds.staticCtx, pricePerMs, offsetInChunk, downloadSize)
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(sds.staticCtx, pricePerMs, offsetInChunk, downloadSize)
 		if err != nil {
 			return n, errors.AddContext(err, "unable to start download")
 		}
@@ -217,7 +217,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile fanout")
 	}
-	fanoutPCWS := make([]*projectChunkWorkerSet, len(fanoutChunks))
+	fanoutChunkFetchers := make([]chunkFetcher, len(fanoutChunks))
 	for i, fanoutChunk := range fanoutChunks {
 		masterKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
 		if err != nil {
@@ -231,7 +231,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
 		}
-		fanoutPCWS[i] = pcws
+		fanoutChunkFetchers[i] = pcws
 	}
 
 	cancel = false
@@ -240,8 +240,8 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		staticLayout:   layout,
 		staticMetadata: metadata,
 
-		staticFirstChunk: firstChunk,
-		staticFanoutPCWS: fanoutPCWS,
+		staticFirstChunk:    firstChunk,
+		staticChunkFetchers: fanoutChunkFetchers,
 
 		staticCancelFunc: cancelFunc,
 		staticCtx:        ctx,
