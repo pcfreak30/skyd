@@ -12,7 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/skykey"
-	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -29,7 +28,7 @@ type skylinkDataSource struct {
 
 	// Metadata.
 	staticID       modules.DataSourceID
-	staticLayout   skynet.SkyfileLayout
+	staticLayout   modules.SkyfileLayout
 	staticMetadata modules.SkyfileMetadata
 
 	// The base sector contains all of the raw data for the skylink, and the
@@ -195,14 +194,14 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		return nil, errors.AddContext(err, "base sector download did not succeed")
 	}
 	baseSector := resp.data
-	if len(baseSector) < skynet.SkyfileLayoutSize {
+	if len(baseSector) < modules.SkyfileLayoutSize {
 		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
 	var fileSpecificSkykey skykey.Skykey
-	if skynet.IsEncryptedBaseSector(baseSector) {
+	if modules.IsEncryptedBaseSector(baseSector) {
 		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to decrypt skyfile base sector")
@@ -210,7 +209,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, firstChunk, err := skynet.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, firstChunk, err := modules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
@@ -253,7 +252,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 
 // decodeFanout will take the fanout bytes from a skyfile and decode them in to
 // the staticChunks filed of the fanoutStreamBufferDataSource.
-func decodeFanout(ll skynet.SkyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error) {
+func decodeFanout(ll modules.SkyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error) {
 	// TODO: Is this the best design?
 	//
 	// There is no fanout if there are no fanout settings.
