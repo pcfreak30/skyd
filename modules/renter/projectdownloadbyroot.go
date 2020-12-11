@@ -314,16 +314,16 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		readSectorRespChan := make(chan *jobReadResponse)
 		jrs := &jobReadSector{
 			jobRead: jobRead{
-				staticLength:       length,
 				staticResponseChan: readSectorRespChan,
+				staticLength:       length,
 
 				// set metadata
 				staticSector: root,
 
 				jobGeneric: newJobGeneric(ctx, bestWorker.staticJobReadQueue),
 			},
-			staticSector: root,
 			staticOffset: offset,
+			staticSector: root,
 		}
 		if !bestWorker.staticJobReadQueue.callAdd(jrs) {
 			continue

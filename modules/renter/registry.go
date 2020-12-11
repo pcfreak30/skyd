@@ -158,7 +158,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 		}
 
 		// check for price gouging
-		//
 		// TODO: use PDBR gouging for some basic protection. Should be replaced
 		// as part of the gouging overhaul.
 		pt := worker.staticPriceTable().staticPriceTable
