@@ -494,18 +494,13 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
 
-	// Sanity check pricePerMS is greater than zero
-	if pricePerMS.IsZero() {
-		build.Critical("pricePerMS is expected to be greater than zero")
-	}
-
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
 
-	// Check encryption type. If the encryption overhead is not zero, the piece
-	// offset and length need to download the full chunk. This is due to the
-	// overhead being a checksum that has to be verified against the entire
-	// piece.
+	// Depending on the encryption type we might have to download the entire
+	// entire chunk. For the ciphers we support, this will be the case when the
+	// overhead is not zero. This is due to the overhead being a checksum that
+	// has to be verified against the entire piece.
 	//
 	// NOTE: These checks assume that any upload with encryption overhead needs
 	// to be downloaded as full sectors. This feels reasonable because smaller

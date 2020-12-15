@@ -4,7 +4,6 @@ import (
 	"math"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -25,11 +24,6 @@ func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
 	jobTime := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
 	if jobTime < 0 {
 		jobTime = 0
-	}
-
-	pricePerMS := pdc.pricePerMS
-	if pricePerMS.IsZero() {
-		pricePerMS = types.NewCurrency64(1)
 	}
 
 	// Add a penalty to performance based on the cost of the job.
@@ -64,17 +58,18 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 	waitDuration = time.Duration(math.MaxInt64)
 	workerIndex = -1
 
-	// Loop through the unresovled workers and find the best unresovled worker.
+	// Loop through the unresovled workers and find the best unresolved worker.
 	for i, uw := range puws {
 		// Figure how much time is expected to remain until the worker is
 		// available. Note that no price penalty is attached to the HasSector
 		// call, because that call is being made regardless of the cost.
+		uwLate := false
 		hasSectorTime := time.Until(uw.staticExpectedCompleteTime)
 		if hasSectorTime < 0 {
 			hasSectorTime = 0
+			uwLate = true
 		}
 		// Skip this worker if the best is not late but this worker is late.
-		uwLate := hasSectorTime <= 0
 		if uwLate && !late {
 			continue
 		}
@@ -143,25 +138,16 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	bawAdjustedDuration := time.Duration(math.MaxInt64)
 	bawPieceIndex := 0
 	var baw *worker
-	for i, activePiece := range pdc.availablePieces {
-		// This piece should be skipped if it is completed.
-		complete := false
-		for _, pieceDownload := range activePiece {
-			// No need to check the rest of the pieces if this piece is
-			// complete.
-			if pieceDownload.completed {
-				complete = true
-				break
-			}
-		}
-		// Don't consider any workers from this piece if the piece is completed.
-		if complete {
-			continue
-		}
 
-		// Determine whether any worker for the piece is better than the
-		// current baw.
+LOOP:
+	for i, activePiece := range pdc.availablePieces {
 		for _, pieceDownload := range activePiece {
+			// Don't consider any workers from this piece if the piece is
+			// completed.
+			if pieceDownload.completed {
+				break LOOP
+			}
+
 			// Skip over failed pieces or pieces that have already launched.
 			if pieceDownload.downloadErr != nil || pieceDownload.launched {
 				continue
@@ -206,20 +192,6 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 // will be returned which indicates when the worker flips over to being late and
 // therefore another worker should be selected.
 func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-chan struct{}, <-chan time.Time) {
-	// delayMS is a helper function that implements a very rudimentary
-	// exponential backoff that prevents the following loop from spamming the
-	// read queue if it is on a cooldown.
-	delayMS := func(retry int) time.Duration {
-		base := int(math.Pow(2, float64(retry)))
-		base += fastrand.Intn(1000) // jitter
-
-		maxDelay := 30000 // 30s
-		if base > maxDelay {
-			return time.Duration(maxDelay) * time.Millisecond
-		}
-		return time.Duration(base) * time.Millisecond
-	}
-
 	// Loop until either a launch succeeds or until the best worker is not
 	// found.
 	retry := 0
@@ -238,7 +210,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 			select {
 			case <-pdc.workerSet.staticRenter.tg.StopChan():
 				return false, time.Time{}, wakeChan, workerLateChan
-			case <-time.After(delayMS(retry)):
+			case <-time.After(expBackoffDelayMS(retry)):
 				retry++
 				continue
 			}
@@ -327,18 +299,19 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 // addCostPenalty takes a certain job time and adds a penalty to it depending on
 // the jobcost and the pdc's price per MS.
 func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) time.Duration {
-	if pricePerMS.IsZero() {
-		build.Critical("pricePerMS should always be greater than zero")
-	}
-
-	// If the pricePerMS is higher or equal than the cost of the job, simply add
-	// a millisecond penalty to avoid rounding errors.
-	var adjusted time.Duration
+	// If the pricePerMS is higher or equal than the cost of the job, simply
+	// return without penalty.
 	if pricePerMS.Cmp(jobCost) >= 0 {
-		adjusted = jobTime + time.Millisecond
-		return adjusted
+		return jobTime
 	}
 
+	// If the pricePerMS is zero, initialize it to 1H to avoid division by zero
+	if pricePerMS.IsZero() {
+		pricePerMS = types.NewCurrency64(1)
+	}
+
+	// Otherwise, add a penalty
+	var adjusted time.Duration
 	penalty, err := jobCost.Div(pricePerMS).Uint64()
 	if err != nil || penalty > math.MaxInt64 {
 		adjusted = time.Duration(math.MaxInt64)
@@ -348,4 +321,24 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 		adjusted = jobTime + (time.Duration(penalty) * time.Millisecond)
 	}
 	return adjusted
+}
+
+// expBackoffDelayMS is a helper function that implements a very rudimentary
+// exponential backoff delay.
+func expBackoffDelayMS(retry int) time.Duration {
+	maxDelayMS := 30000 // 30s
+	maxDelayDur := time.Duration(maxDelayMS) * time.Millisecond
+
+	// seeing as a retry of 15 guarantees a delay of 30s, return the max delay,
+	// this also prevents an overflow for large retry values
+	if retry > 15 {
+		return maxDelayDur
+	}
+
+	delayMS := int(math.Pow(2, float64(retry)))
+	delayMS += fastrand.Intn(1000) // jitter
+	if delayMS > maxDelayMS {
+		return maxDelayDur
+	}
+	return time.Duration(delayMS) * time.Millisecond
 }

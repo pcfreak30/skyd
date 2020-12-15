@@ -200,13 +200,12 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		// about itself.
 		staticLoopState: new(workerLoopState),
 
-		staticMaintenanceState: new(workerMaintenanceState),
-
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}
 	w.newPriceTable()
+	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
 	w.initJobRenewQueue()

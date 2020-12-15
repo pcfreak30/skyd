@@ -13,10 +13,48 @@ import (
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper
 // function.
 func TestAddCostPenalty(t *testing.T) {
+	t.Parallel()
+
+	// verify happy case
+	jt := time.Duration(fastrand.Intn(10) + 1)
+	jc := types.NewCurrency64(fastrand.Uint64n(100) + 10)
+	pricePerMS := types.NewCurrency64(5)
+
+	// calculate the expected outcome
+	penalty, err := jc.Div(pricePerMS).Uint64()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := jt + (time.Duration(penalty) * time.Millisecond)
+	adjusted := addCostPenalty(jt, jc, pricePerMS)
+	if adjusted != expected {
+		t.Error("unexpected", adjusted, expected)
+	}
+
+	// verify no penalty if pricePerMS is higher than the cost of the job
+	adjusted = addCostPenalty(jt, jc, types.SiacoinPrecision)
+	if adjusted != jt {
+		t.Error("unexpected")
+	}
+
+	// verify penalty is set to 1H if zero is passed
+	//
+	// calculate the expected outcome
+	hasting := types.NewCurrency64(1)
+	penalty, err = jc.Div(hasting).Uint64()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = jt + (time.Duration(penalty) * time.Millisecond)
+	adjusted = addCostPenalty(jt, jc, types.ZeroCurrency)
+	if adjusted != expected {
+		t.Error("unexpected", adjusted, expected)
+	}
+
 	// verify overflow
-	jt := time.Duration(1)
-	jc := types.NewCurrency64(math.MaxUint64).Mul64(10)
-	pricePerMS := types.NewCurrency64(2)
+	jt = time.Duration(1)
+	jc = types.NewCurrency64(math.MaxUint64).Mul64(10)
+	pricePerMS = types.NewCurrency64(2)
 	jt = addCostPenalty(jt, jc, pricePerMS)
 	if jt != time.Duration(math.MaxInt64) {
 		t.Error("Expected job time to be adjusted to MaxInt64 on overflow")
@@ -39,23 +77,25 @@ func TestAddCostPenalty(t *testing.T) {
 	if jt != time.Duration(math.MaxInt64) {
 		t.Error("Expected job time to be adjusted to MaxInt64 when job time + penalty exceeds MaxInt64")
 	}
+}
 
-	// verify happy case
-	jt = time.Duration(fastrand.Intn(10) + 1)
-	jc = types.NewCurrency64(fastrand.Uint64n(100) + 1)
-	pricePerMS = types.NewCurrency64(fastrand.Uint64n(10) + 1)
-	adjusted := addCostPenalty(jt, jc, pricePerMS)
-	if adjusted <= jt {
-		t.Error("unexpected")
-	}
+// TestExpBackoffDelayMS is a unit test that probes the expBackoffDelayMS helper
+// function
+func TestExpBackoffDelayMS(t *testing.T) {
+	t.Parallel()
 
-	// verify we assert pricePerMS to be higher than zero
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Expected a panic when pricePerMS is zero")
+	maxDelay := time.Duration(30 * time.Second)
+	for i := 0; i < 20; i++ {
+		if expBackoffDelayMS(i) == time.Duration(0) {
+			t.Fatal("unexpected", i) // verify not null
 		}
-	}()
-	addCostPenalty(jt, jc, types.ZeroCurrency)
+		if expBackoffDelayMS(i) > maxDelay {
+			t.Fatal("unexpected") // verify max delay
+		}
+		if i > 15 && expBackoffDelayMS(i) != maxDelay {
+			t.Fatal("unexpected") // verify max delay for retry count over 15
+		}
+	}
 }
 
 // TestProjectDownloadChunk_adjustedReadDuration is a unit test for the
