@@ -1073,7 +1073,7 @@ type Renter interface {
 	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
+	DownloadSkylink(Skylink, time.Duration, types.Currency) (SkyfileMetadata, Streamer, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a download
 	// without any decoding of the metadata, fanout, or decryption.

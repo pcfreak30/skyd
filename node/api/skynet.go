@@ -563,8 +563,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
+	// TODO: fetch from query string? renter allowance?
+	pricePerMS := types.SiacoinPrecision.MulFloat(1e-12) // pS
+
 	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return

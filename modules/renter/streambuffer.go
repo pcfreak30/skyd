@@ -94,8 +94,6 @@ var (
 // TODO: ReadAt is actually not taking full advantage of the new pcws model,
 // because data reads can be issued asynchronously, but be piled up
 // synchronously. May need to reconsider this interface to get better speeds.
-//
-// TODO: ReadAt should probably have a pricePerMs as well.
 type streamBufferDataSource interface {
 	// DataSize should return the size of the data. When the streamBuffer is
 	// reading from the data source, it will ensure that none of the read calls

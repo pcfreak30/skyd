@@ -31,6 +31,10 @@ type skylinkDataSource struct {
 	staticLayout   modules.SkyfileLayout
 	staticMetadata modules.SkyfileMetadata
 
+	// The "price per millisecond", it is the budget that we are
+	// willing to spend on faster workers. See projectchunkworkset.go.
+	staticPricePerMS types.Currency
+
 	// The base sector contains all of the raw data for the skylink, and the
 	// fanoutPCWS contains one pcws for every chunk in the fanout. The worker
 	// sets are spun up in advance so that the HasSector queries have completed
@@ -81,14 +85,11 @@ func (sds *skylinkDataSource) SilentClose() {
 // ReadAt implements streamBufferDataSource
 //
 // TODO: Adjust the interface so that ReadAt returns a channel instead of the
-// full data, and so that it takes a pricePerMs as input. The channel allows the
-// stream buffer to queue data more intelligently - the channel doesn't return
-// until the downloads have been queued, giving the stream buffer control over
-// what approximate order the data is returned.
+// full data. The channel allows the stream buffer to queue data more
+// intelligently - the channel doesn't return until the downloads have been
+// queued, giving the stream buffer control over what approximate order the data
+// is returned.
 func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
-	// TODO: Get this as input.
-	pricePerMs := types.SiacoinPrecision
-
 	// Determine if the first part of the data needs to be read from the first
 	// chunk.
 	if off < int64(len(sds.staticFirstChunk)) {
@@ -115,7 +116,7 @@ func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
 		}
 
 		// Issue the download.
-		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(sds.staticCtx, pricePerMs, offsetInChunk, downloadSize)
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(sds.staticCtx, sds.staticPricePerMS, offsetInChunk, downloadSize)
 		if err != nil {
 			return n, errors.AddContext(err, "unable to start download")
 		}
@@ -138,7 +139,7 @@ func (sds *skylinkDataSource) ReadAt(p []byte, off int64) (n int, err error) {
 // source, we want the data source to outlive the initial call. That is why
 // there is no input for a context - the data source will live as long as the
 // stream buffer determines is appropriate.
-func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Currency, downloadTimeout time.Duration) (streamBufferDataSource, error) {
+func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Currency, downloadTimeout time.Duration) (streamBufferDataSource, error) {
 	// Create the context for the data source - a child of the renter
 	// threadgroup but otherwise independent.
 	ctx, cancelFunc := context.WithCancel(r.tg.StopCtx())
@@ -182,7 +183,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to parse skylink")
 	}
-	respChan, err := pcws.managedDownload(dlCtx, pricePerMs, offset, fetchSize)
+	respChan, err := pcws.managedDownload(dlCtx, pricePerMS, offset, fetchSize)
 	if err != nil {
 		if errors.Contains(err, ErrProjectTimedOut) {
 			err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", downloadTimeout.Seconds()))
@@ -239,6 +240,8 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMs types.Curren
 		staticID:       link.DataSourceID(),
 		staticLayout:   layout,
 		staticMetadata: metadata,
+
+		staticPricePerMS: pricePerMS,
 
 		staticFirstChunk:    firstChunk,
 		staticChunkFetchers: fanoutChunkFetchers,
