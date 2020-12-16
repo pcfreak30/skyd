@@ -256,8 +256,6 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 // decodeFanout will take the fanout bytes from a skyfile and decode them in to
 // the staticChunks filed of the fanoutStreamBufferDataSource.
 func decodeFanout(ll modules.SkyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error) {
-	// TODO: Is this the best design?
-	//
 	// There is no fanout if there are no fanout settings.
 	if len(fanoutBytes) == 0 {
 		return nil, nil

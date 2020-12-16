@@ -1073,6 +1073,10 @@ type Renter interface {
 	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
+	// Aside from the skylink, it accepts a timeout parameter after which the
+	// download will be canceled should it not be completed by then, and a price
+	// per millisecond, which acts as a budget to spend on faster, and thus
+	// possibly more expensive, hosts.
 	DownloadSkylink(Skylink, time.Duration, types.Currency) (SkyfileMetadata, Streamer, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a download
