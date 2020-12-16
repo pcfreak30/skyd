@@ -295,11 +295,6 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 		t.Fatal("Unexpected has sector job status", ToJSON(status))
 	}
 
-	// prevent the worker from doing any work by manipulating its read limit
-	//
-	// TODO: We removed the limit so now we need a dependency injection or
-	// something.
-
 	// add the job to the worker
 	ctx := context.Background()
 	rc := make(chan *jobHasSectorResponse)
@@ -307,17 +302,6 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
-
-	// fetch the worker's has sector job status again and verify its output
-	status = w.callHasSectorJobStatus()
-	if status.JobQueueSize != 1 {
-		t.Fatal("Unexpected has sector job status", ToJSON(status))
-	}
-
-	// restore the read limit
-	//
-	// TODO: We removed the limit so now we need a dependency injection or
-	// something.
 
 	// verify the status in a build.Retry to allow the worker some time to
 	// process the job

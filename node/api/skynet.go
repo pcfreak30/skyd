@@ -563,8 +563,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
-	// TODO: fetch from query string? renter allowance?
-	pricePerMS := types.SiacoinPrecision.MulFloat(1e-12) // pS
+	// TODO: need to find a way to calculate pricePerMS
+	pricePerMS := types.SiacoinPrecision.MulFloat(1e-6) // uS
 
 	// Fetch the skyfile's metadata and a streamer to download the file
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
