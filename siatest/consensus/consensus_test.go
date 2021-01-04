@@ -7,11 +7,15 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // TestApiHeight checks if the consensus api endpoint works
@@ -319,12 +323,13 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal("bad")
 	}
 	w := ws[0]
+	r := tg.Renters()[0]
+	m := tg.Miners()[0]
 
 	// Have the renter upload some files to Sia prior to the foundation fork
 	// activating. We will check at the end of the test whether these files are
 	// still retrievable, indicating that upgraded renters and hosts had no
 	// trouble following along in the fork.
-	r := tg.Renters()[0]
 	localFile, remoteFile, err := r.UploadNewFileBlocking(100+siatest.Fuzz(), 1, 1, false)
 	if err != nil {
 		t.Fatal(err)
@@ -334,9 +339,8 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// TODO: Check that the height is still pre-hardfork at this point. If it's
-	// not, we'll need to adjust the constant that sets when the hardfork
-	// activates.
+	// Check that the height is still pre-hardfork at this point. If it's not,
+	// we'll need to adjust the constant that sets when the hardfork activates.
 	height, err := w.BlockHeight()
 	if err != nil {
 		t.Fatal(height)
@@ -347,13 +351,199 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal("test has already passed the foundation hardfork height, test is invalid")
 	}
 
-	// TODO: Create a transaction that updates the foudation addresses, to be
+	// Create a transaction that updates the foundation addresses, to be
 	// submitted to the blockchain prior to the fork. Because of how the
 	// foundation code scans for updates, this will require sending money to the
 	// foundation addresses prior to the hardfork activating.
+	//
+	// Generate the foundation primary and failsafe addresses and keys.
+	foundationPrimaryUnlockConditions, foundationPrimaryKeys := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSpecifier)
+	foundationFailsafeUnlockConditions, foundationFailsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSpecifier)
+	foundationPrimaryAddress := foundationPrimaryUnlockConditions.UnlockHash()
+	foundationFailsafeAddress := foundationFailsafeUnlockConditions.UnlockHash()
+	//
+	// Send money to the foundation addresses from the wallet.
+	balance, err := w.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance.Cmp(types.SiacoinPrecision.Mul64(100)) < 0 {
+		t.Log(balance)
+		t.Fatal("balance is too low in the wallet")
+	}
+	//
+	// Check that the miner tpool is empty before sending transactions.
+	tptg, err := m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) != 0 {
+		t.Fatal("too many transactions")
+	}
+	primaryWSP, err := w.WalletSiacoinsPost(types.SiacoinPrecision, foundationPrimaryAddress, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failsafeWSP, err := w.WalletSiacoinsPost(types.SiacoinPrecision, foundationFailsafeAddress, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Grab the output ids for the siacoin outputs that were sent to the
+	// foundation addresses. These will be needed to create the transaction that
+	// updates the subsidy ownership.
+	var primaryOutputID types.SiacoinOutputID
+	var failsafeOutputID types.SiacoinOutputID
+	found := false
+	for _, txn := range primaryWSP.Transactions {
+		for i, output := range txn.SiacoinOutputs {
+			if output.UnlockHash == foundationPrimaryAddress {
+				found = true
+				primaryOutputID = txn.SiacoinOutputID(uint64(i))
+			}
+		}
+	}
+	if !found {
+		t.Fatal("didn't find output id")
+	}
+	found = false
+	for _, txn := range failsafeWSP.Transactions {
+		for i, output := range txn.SiacoinOutputs {
+			if output.UnlockHash == foundationFailsafeAddress {
+				found = true
+				failsafeOutputID = txn.SiacoinOutputID(uint64(i))
+			}
+		}
+	}
+	if !found {
+		t.Fatal("didn't find output id")
+	}
+	if primaryOutputID == failsafeOutputID {
+		t.Fatal("setup is incorrect")
+	}
+	//
+	// Block until the miner has the transactions in its tpool.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		tptg, err := m.TransactionPoolTransactionsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Check that there is a transaction for both output ids.
+		primaryFound := false
+		failsafeFound := false
+		for _, txn := range tptg.Transactions {
+			for _, output := range txn.SiacoinOutputs {
+				if output.UnlockHash == foundationPrimaryAddress {
+					primaryFound = true
+				}
+				if output.UnlockHash == foundationFailsafeAddress {
+					failsafeFound = true
+				}
+			}
+		}
+		if !primaryFound || !failsafeFound {
+			return errors.New("transactions are not in miner tpool")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Confirm the transactions that fund the foundation outputs in a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Get the new height, which is needed to sign transcations.
+	height, err = w.BlockHeight()
+	if err != nil {
+		t.Fatal(height)
+	}
+	//
+	// Create the transaction that attempts to update the foundation addresses
+	// using the primary address.
+	updateWithPrimaryTxn := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         primaryOutputID,
+			UnlockConditions: foundationPrimaryUnlockConditions,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{
+			{Value: types.SiacoinPrecision},
+		},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  types.UnlockHash{},
+			NewFailsafe: types.InitialFoundationFailsafeUnlockHash,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, foundationPrimaryUnlockConditions.SignaturesRequired),
+	}
+	for i := range updateWithPrimaryTxn.TransactionSignatures {
+		updateWithPrimaryTxn.TransactionSignatures[i].ParentID = crypto.Hash(primaryOutputID)
+		updateWithPrimaryTxn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		updateWithPrimaryTxn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(updateWithPrimaryTxn.SigHash(i, height), foundationPrimaryKeys[i])
+		updateWithPrimaryTxn.TransactionSignatures[i].Signature = sig[:]
+	}
+	//
+	// Create the transaction that attempts to update the foundation addresses
+	// using the failsafe address.
+	updateWithFailsafeTxn := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         failsafeOutputID,
+			UnlockConditions: foundationFailsafeUnlockConditions,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{
+			{Value: types.SiacoinPrecision},
+		},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  types.UnlockHash{},
+			NewFailsafe: types.InitialFoundationUnlockHash,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, foundationFailsafeUnlockConditions.SignaturesRequired),
+	}
+	for i := range updateWithFailsafeTxn.TransactionSignatures {
+		updateWithFailsafeTxn.TransactionSignatures[i].ParentID = crypto.Hash(failsafeOutputID)
+		updateWithFailsafeTxn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		updateWithFailsafeTxn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(updateWithFailsafeTxn.SigHash(i, height), foundationFailsafeKeys[i])
+		updateWithFailsafeTxn.TransactionSignatures[i].Signature = sig[:]
+	}
+	//
+	// Submit the update transactions to the miner tpool.
+	err = m.TransactionPoolRawPost(updateWithPrimaryTxn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = m.TransactionPoolRawPost(updateWithFailsafeTxn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) != 2 {
+		t.Fatal("wrong number of transactions")
+	}
+	//
+	// Mine the transactions into a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Check that we are still below the foundation hardfork height.
+	height, err = w.BlockHeight()
+	if err != nil {
+		t.Fatal(height)
+	}
+	if height >= types.FoundationHardforkHeight {
+		t.Fatal("foundation fork height passed already")
+	}
 
 	// TODO: Mine until we are after the hardfork. Check that the foundation
-	// addresses were not changed by the transaction submitted before the
+	// addresses were not changed by the transactions submitted before the
 	// hardfork.
 
 	// TODO: Create a transaction that spends the initial foundation subsidy to
