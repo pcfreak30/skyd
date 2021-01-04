@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
@@ -284,5 +285,137 @@ func TestConsensusSubscribe(t *testing.T) {
 	defer unsubscribe()
 	if s.height != cg.Height {
 		t.Fatal("subscriber not synced", s.height, cg.Height)
+	}
+}
+
+// TestFoundationHardfork tests the foundation hardfork, ensuring that upgraded
+// nodes have the ability to follow the hardfork, and ensuring that the
+// mechanisms for spending the foundation coins are functional.
+func TestFoundationHardfork(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a testgroup. Include hosts and renters to check that basic renting
+	// functions continue to work after the fork.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(consensusTestDir(t.Name()), groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	ws, err := tg.AddNodes(node.WalletTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ws) != 1 {
+		t.Fatal("bad")
+	}
+	w := ws[0]
+
+	// Have the renter upload some files to Sia prior to the foundation fork
+	// activating. We will check at the end of the test whether these files are
+	// still retrievable, indicating that upgraded renters and hosts had no
+	// trouble following along in the fork.
+	r := tg.Renters()[0]
+	localFile, remoteFile, err := r.UploadNewFileBlocking(100+siatest.Fuzz(), 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localFileData, err := localFile.Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO: Check that the height is still pre-hardfork at this point. If it's
+	// not, we'll need to adjust the constant that sets when the hardfork
+	// activates.
+	height, err := w.BlockHeight()
+	if err != nil {
+		t.Fatal(height)
+	}
+	if height >= types.FoundationHardforkHeight {
+		t.Log(height)
+		t.Log(types.FoundationHardforkHeight)
+		t.Fatal("test has already passed the foundation hardfork height, test is invalid")
+	}
+
+	// TODO: Create a transaction that updates the foudation addresses, to be
+	// submitted to the blockchain prior to the fork. Because of how the
+	// foundation code scans for updates, this will require sending money to the
+	// foundation addresses prior to the hardfork activating.
+
+	// TODO: Mine until we are after the hardfork. Check that the foundation
+	// addresses were not changed by the transaction submitted before the
+	// hardfork.
+
+	// TODO: Create a transaction that spends the initial foundation subsidy to
+	// a wallet. Verify that the coins make it to the wallet, and that the
+	// wallet can send those coins like any other coins.
+
+	// TODO: Mine until the first monthy output is created. Then create a
+	// transaction that spends that monthly output and verify that the monthly
+	// outputs are usable like any other outputs.
+
+	// TODO: Mine until the second monthly output is created. Then create a
+	// transaction that changes the foundation addresses using the primary
+	// address.
+	//
+	// Then try to spend the second monthly output using both the original
+	// address and the updated address. If the fork is updated to retro-actively
+	// re-assign the address of the output, use the original address first and
+	// see that it fails. If the fork is not updated to do that, use the new
+	// address first and see that it fails. After trying the address that is
+	// supposed to fail, try that address that is supposed to work and ensure it
+	// still works.
+
+	// TODO: Mine until the third monthly output is created. Try to spend the
+	// thrid monthly output using the old foundation address. Ensure it fails.
+	// Try to spend the third monthly output using the updated foundation
+	// address. Ensure that it succeeds.
+
+	// TODO: Mine until the fourth monthly output is created. Then create a
+	// transaction that changes the foundation addresses using the failsafe
+	// address.
+	//
+	// Then try to spend the fourth monthly output using both the original
+	// address and the updated address. If the fork is updated to retro-actively
+	// re-assign the address of the output, use the original address first and
+	// see that it fails. If the fork is not updated to do that, use the new
+	// address first and see that it fails. After trying the address that is
+	// supposed to fail, try that address that is supposed to work and ensure it
+	// still works.
+
+	// TODO: Update the failsafe foundation address to have a timelock that
+	// expires after the fifth monthly output is created. Mine until the fifth
+	// monthly output is created.
+	///
+	// Then create a transaction that simultaneously spends the fifth monthly
+	// output and also updates the failsafe address to extend the timeout to
+	// being after the sixth monthly payout.
+
+	// TODO: Mine until after the sixth monthly payout is available, but not so
+	// far that the failsafe is supposed to be able to spend the sixth payout.
+	// Then try change the foundation outputs using the failsafe, which should
+	// not work. This ensures that the timelock extension was effective.
+
+	/////// I think that's it ////////
+
+	// Check that the files uploaded before the hardfork activiation height are
+	// still doing well, even after all of the paces that we have put the group
+	// through with managing the foundation subsidy.
+	_, remoteFileData, err := r.DownloadByStream(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(localFileData, remoteFileData) {
+		t.Fatal(err)
 	}
 }
