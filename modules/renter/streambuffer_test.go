@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 
@@ -96,6 +97,12 @@ func (mds *mockDataSource) SilentClose() {
 	mds.mu.Lock()
 	mds.data = nil
 	mds.mu.Unlock()
+}
+
+// ReadChannel implements streamBufferDataSource.
+func (mds *mockDataSource) ReadChannel(offset, fetchSize int64) (chan byte, chan error) {
+	build.Critical("// TODO not implemented")
+	return nil, nil
 }
 
 // TestStreamSmoke checks basic logic on the stream to see that reading and

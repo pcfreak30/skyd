@@ -128,6 +128,14 @@ type streamBufferDataSource interface {
 	// if the closing fails.
 	SilentClose()
 
+	// ReadChannel returns a channel on which the data at requested offset and
+	// of requested size will be sent. If there is no more data to send the
+	// channel will get closed. Upon a closed data channel the caller should
+	// check whether or not an error occurred and can do so by reading from the
+	// error channel, which is a buffered channel and will only ever hold a
+	// single error, namely the first one that occurred.
+	ReadChannel(offset, fetchSize int64) (chan byte, chan error)
+
 	// ReaderAt allows the stream buffer to request specific data chunks.
 	io.ReaderAt
 }

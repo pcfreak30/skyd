@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -226,4 +227,10 @@ func (fs *fanoutStreamBufferDataSource) RequestSize() uint64 {
 func (fs *fanoutStreamBufferDataSource) SilentClose() {
 	// Nothing to clean up.
 	return
+}
+
+// ReadChannel implements streamBufferDataSource.
+func (fs *fanoutStreamBufferDataSource) ReadChannel(offset, fetchSize int64) (chan byte, chan error) {
+	build.Critical("// TODO not implemented")
+	return nil, nil
 }
