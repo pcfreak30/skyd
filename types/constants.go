@@ -115,18 +115,19 @@ var (
 	// receives the initial Foundation subsidy. The keys that this address was
 	// derived from can also be used to set a new primary and failsafe address.
 	InitialFoundationUnlockHash UnlockHash
-	// InitialFoundationUnlockConditions contains the UnlockConditions of the
-	// InitialFoundationUnlockHash during testing.
-	InitialFoundationUnlockConditions UnlockConditions
+	// InitialFoundationTestingSpecifier is the specifier used to generate the
+	// UnlockConditions and signing keys for the InitialFoundationUnlockHash.
+	InitialFoundationTestingSpecifier = NewSpecifier("genprimary")
 	// InitialFoundationFailsafeUnlockHash is the "backup" Foundation address.
 	// It does not receive the Foundation subsidy, but its keys can be used to
 	// set a new primary and failsafe address. These UnlockConditions should
 	// also be subject to a timelock that prevents the failsafe from being used
 	// immediately.
 	InitialFoundationFailsafeUnlockHash UnlockHash
-	// InitialFoundationFailsafeUnlockConditions contains the UnlockConditions
-	// of the InitialFoundationFailsafeUnlockHash during testing.
-	InitialFoundationFailsafeUnlockConditions UnlockConditions
+	// InitialFoundationFailsafeTestingSpecifier is the specifier used to
+	// generate the UnlockConditions and signing keys for the
+	// InitialFoundationFailsafeUnlockHash.
+	InitialFoundationFailsafeTestingSpecifier = NewSpecifier("genfailsafe")
 	// InitialFoundationSubsidy is the one-time subsidy sent to the Foundation
 	// address upon activation of the hardfork, representing one year's worth of
 	// block subsidies.
@@ -232,13 +233,13 @@ func init() {
 		ASICHardforkTotalTarget = Target{0, 0, 0, 8}
 		ASICHardforkTotalTime = 800
 
-		FoundationHardforkHeight = 30
+		FoundationHardforkHeight = 100
 		FoundationSubsidyFrequency = 10
 
-		InitialFoundationFailsafeUnlockConditions, _ = generateDeterministicMultisig(2, 3, NewSpecifier("primaryuc"))
-		InitialFoundationUnlockConditions, _ = generateDeterministicMultisig(3, 5, NewSpecifier("failsafeuc"))
-		InitialFoundationUnlockHash = InitialFoundationFailsafeUnlockConditions.UnlockHash()
-		InitialFoundationFailsafeUnlockHash = InitialFoundationUnlockConditions.UnlockHash()
+		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSpecifier)
+		initialFoundationFailsafeUnlockConditions, _ := GenerateDeterministicMultisig(3, 5, InitialFoundationFailsafeTestingSpecifier)
+		InitialFoundationUnlockHash = initialFoundationUnlockConditions.UnlockHash()
+		InitialFoundationFailsafeUnlockHash = initialFoundationFailsafeUnlockConditions.UnlockHash()
 
 		BlockFrequency = 12                      // 12 seconds: slow enough for developers to see ~each block, fast enough that blocks don't waste time.
 		MaturityDelay = 10                       // 60 seconds before a delayed output matures.
@@ -290,13 +291,13 @@ func init() {
 		ASICHardforkTotalTarget = Target{255, 255}
 		ASICHardforkTotalTime = 10e3
 
-		FoundationHardforkHeight = 10
+		FoundationHardforkHeight = 50
 		FoundationSubsidyFrequency = 5
 
-		InitialFoundationFailsafeUnlockConditions, _ = generateDeterministicMultisig(2, 3, NewSpecifier("primaryuc"))
-		InitialFoundationUnlockConditions, _ = generateDeterministicMultisig(3, 5, NewSpecifier("failsafeuc"))
-		InitialFoundationUnlockHash = InitialFoundationFailsafeUnlockConditions.UnlockHash()
-		InitialFoundationFailsafeUnlockHash = InitialFoundationUnlockConditions.UnlockHash()
+		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSpecifier)
+		initialFoundationFailsafeUnlockConditions, _ := GenerateDeterministicMultisig(3, 5, InitialFoundationFailsafeTestingSpecifier)
+		InitialFoundationUnlockHash = initialFoundationUnlockConditions.UnlockHash()
+		InitialFoundationFailsafeUnlockHash = initialFoundationFailsafeUnlockConditions.UnlockHash()
 
 		BlockFrequency = 1 // As fast as possible
 		MaturityDelay = 3
@@ -670,9 +671,9 @@ func init() {
 	GenesisID = GenesisBlock.ID()
 }
 
-// generateDeterministicMultisig is a helper function that generates a set of
+// GenerateDeterministicMultisig is a helper function that generates a set of
 // multisig UnlockConditions along with their signing keys.
-func generateDeterministicMultisig(m, n int, salt Specifier) (UnlockConditions, []crypto.SecretKey) {
+func GenerateDeterministicMultisig(m, n int, salt Specifier) (UnlockConditions, []crypto.SecretKey) {
 	uc := UnlockConditions{
 		PublicKeys:         make([]SiaPublicKey, n),
 		SignaturesRequired: uint64(m),
