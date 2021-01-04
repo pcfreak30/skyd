@@ -473,8 +473,8 @@ func TestFoundationHardfork(t *testing.T) {
 			{Value: types.SiacoinPrecision},
 		},
 		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
-			NewPrimary:  types.UnlockHash{},
-			NewFailsafe: types.InitialFoundationFailsafeUnlockHash,
+			NewPrimary:  types.UnlockHash{1, 2},
+			NewFailsafe: types.UnlockHash{3, 4},
 		})},
 		TransactionSignatures: make([]types.TransactionSignature, foundationPrimaryUnlockConditions.SignaturesRequired),
 	}
@@ -497,8 +497,8 @@ func TestFoundationHardfork(t *testing.T) {
 			{Value: types.SiacoinPrecision},
 		},
 		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
-			NewPrimary:  types.UnlockHash{},
-			NewFailsafe: types.InitialFoundationUnlockHash,
+			NewPrimary:  types.UnlockHash{5, 6},
+			NewFailsafe: types.UnlockHash{7, 8},
 		})},
 		TransactionSignatures: make([]types.TransactionSignature, foundationFailsafeUnlockConditions.SignaturesRequired),
 	}
@@ -542,9 +542,14 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal("foundation fork height passed already")
 	}
 
-	// TODO: Mine until we are after the hardfork. Check that the foundation
-	// addresses were not changed by the transactions submitted before the
-	// hardfork.
+	// Mine until after the hardfork.
+	for i := height; i <= types.FoundationHardforkHeight+1; i++ {
+		err = m.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// TODO: Check that the foundation addresses match the original.
 
 	// TODO: Create a transaction that spends the initial foundation subsidy to
 	// a wallet. Verify that the coins make it to the wallet, and that the
