@@ -1152,8 +1152,7 @@ func TestFoundationHardfork(t *testing.T) {
 	//
 	// Create the transaction that using the failsafe to rotate the foundation
 	// address.
-	newPrimaryUC, _ = types.GenerateDeterministicMultisig(4, 5, types.Specifier{4, 5})
-	//newPrimaryUC, newPrimaryKeys = types.GenerateDeterministicMultisig(4, 5, types.Specifier{4, 5})
+	newPrimaryUC, newPrimaryKeys = types.GenerateDeterministicMultisig(4, 5, types.Specifier{4, 5})
 	newPrimaryAddr = newPrimaryUC.UnlockHash()
 	newFailsafeUC, _ := types.GenerateDeterministicMultisig(5, 6, types.Specifier{5, 6})
 	// newFailsafeUC, newFailsafeKeys := types.GenerateDeterministicMultisig(5, 6, types.Specifier{5, 6})
@@ -1211,11 +1210,83 @@ func TestFoundationHardfork(t *testing.T) {
 	}
 	time.Sleep(time.Second) // give some time for contract maintenance
 
-	// TODO: Depending on how we implement the hardfork, the fourth month
-	// subsidy is now either spendable or not spendable. Write a transaction to
-	// verify. We can do this before we know how the implementation is, the only
-	// thing we won't know is whether or not the transaction is supposed to be
-	// valid.
+	// Spend the fourth month subsidy using the new primary address, now that we
+	// have reset the foundation addresses with the failsafe. Ensure that makes
+	// into a wallet and can be spent from the wallet.
+	cbhg, err = m.ConsensusBlocksHeightGet(monthFourHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	monthFourSubsidyID := cbhg.ID.FoundationSubsidyID()
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         monthFourSubsidyID,
+			UnlockConditions: newPrimaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      subsidyCoins.Sub(types.SiacoinPrecision),
+			UnlockHash: addr,
+		}},
+		MinerFees: []types.Currency{
+			types.SiacoinPrecision,
+		},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  types.UnlockHash{},
+			NewFailsafe: foundationFailsafeAddress,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, newPrimaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(monthFourSubsidyID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, mineToHeight), newPrimaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	err = txn.StandaloneValid(mineToHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Get the old balance of the wallet.
+	balance, err = w.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Mine the transaction into the blockchain and check that the balance of
+	// the wallet updated.
+	err = m.TransactionPoolRawPost(txn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) != 1 {
+		t.Fatal("wrong number of transactions", len(tptg.Transactions))
+	}
+	//
+	// Mine the transactions into a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
+	//
+	// Verify that the subsidy is now in the wallet.
+	newBalance, err = w.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newBalance.Cmp(balance.Add(subsidyCoins).Sub(types.SiacoinPrecision)) != 0 {
+		t.Fatal("unexpected balance")
+	}
 
 	// TODO: Update the failsafe foundation address to have a timelock that
 	// expires after the fifth monthly output is created. Mine until the fifth
