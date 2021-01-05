@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
 
 	"gitlab.com/NebulousLabs/bolt"
@@ -35,8 +36,11 @@ func validSiacoins(tx *bolt.Tx, t types.Transaction) error {
 	var inputSum types.Currency
 	for _, sci := range t.SiacoinInputs {
 		// Check that the input spends an existing output.
+		fmt.Println("zoom:", sci.ParentID)
 		scoBytes := scoBucket.Get(sci.ParentID[:])
 		if scoBytes == nil {
+			fmt.Println("zoom-bad:", sci.ParentID)
+			// panic("oh no")
 			return errMissingSiacoinOutput
 		}
 

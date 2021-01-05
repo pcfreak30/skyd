@@ -262,12 +262,14 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	if len(ts) == 0 {
 		return nil, modules.ErrDuplicateTransactionSet
 	}
+	println("new tranasction confirmed")
 
 	// Check the composition of the transaction set.
 	setSize, err := tp.checkTransactionSetComposition(ts)
 	if err != nil {
 		return nil, err
 	}
+	println("set has good composition")
 
 	// Check that the transaction set has enough fees to justify adding it to
 	// the transaction list.
@@ -287,6 +289,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 		}
 		return nil, errLowMinerFees
 	}
+	println("set has enough fees")
 
 	// Check for conflicts with other transactions, which would indicate a
 	// double-spend. Legal children of a transaction set will also trigger the
@@ -300,12 +303,16 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 		}
 	}
 	if len(conflicts) > 0 {
+		println("WE ARE HANKDLING CONFLICTS")
 		return tp.handleConflicts(ts, conflicts, txnFn)
 	}
+	println("calling txnFn(ts)")
 	cc, err := txnFn(ts)
 	if err != nil {
-		return nil, modules.NewConsensusConflict("provided transaction set is standalone and invalid: " + err.Error())
+		println("HERE IS THE PROBLEM, txnFn DOESNT LIKE YOU")
+		return nil, modules.NewConsensusConflict("provided transaction set is invalid: " + err.Error())
 	}
+	println("txnFn _accepted_ the txn")
 
 	// Add the transaction set to the pool.
 	setID := modules.TransactionSetID(crypto.HashObject(ts))
@@ -346,34 +353,44 @@ func (tp *TransactionPool) submitTransactionSet(ts []types.Transaction) ([]types
 
 	var superset []types.Transaction
 	var acceptErr error
+	println("doing a locked try transaction set")
 	err := cs.LockedTryTransactionSet(func(txnFn func(txns []types.Transaction) (modules.ConsensusChange, error)) error {
 		tp.mu.Lock()
 		defer tp.mu.Unlock()
 
 		// Attempt to get the transaction set into the transaction pool.
+		println("runing 'acceptTransactionSet")
 		superset, acceptErr = tp.acceptTransactionSet(ts, txnFn)
 		if errors.Contains(acceptErr, modules.ErrDuplicateTransactionSet) {
+			println("duplicate transaction set error")
 			tp.log.Debugln("Transaction set is a duplicate:", acceptErr)
 			return acceptErr
 		}
 		if acceptErr != nil {
+			println("other transaction set error")
+			println(acceptErr.Error())
 			tp.log.Debugln("Transaction set broadcast has failed:", acceptErr)
 			if build.DEBUG && modules.IsConsensusConflict(acceptErr) {
 				tp.printConflicts(ts)
 			}
 			return acceptErr
 		}
+		println("acceptErr is nil, should be updating subscribers transactions now")
 		// Notify subscribers of an accepted transaction set
 		tp.updateSubscribersTransactions()
 		return nil
 	})
+	println("we tried the transaction set")
 	if err != nil {
+		println("trying the transaction set appears to have failed")
 		return nil, err
 	}
 
 	// Get the minimum required set from the superset for the input transaction
 	// set.
+	println("making the minimum set")
 	minSuperSet := typesutil.MinimumTransactionSet(ts, superset)
+	println("yay")
 	return minSuperSet, nil
 }
 
@@ -387,20 +404,27 @@ func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 	defer tp.tg.Done()
 
 	// Drop the transaction set and return ErrTxnSetNotAccepted
+	println("called AcceptTransactionSet")
 	if tp.deps.Disrupt("DoNotAcceptTxnSet") {
 		return ErrTxnSetNotAccepted
 	}
 
 	tp.log.Debugln("Received a transaction (internal or external), attempting to broadcast")
+	println("calling submit transaction ste")
 	minSuperSet, err := tp.submitTransactionSet(ts)
+	println("submit transaction ste finished")
 	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
+		println("error on submit transaction set")
 		return err
 	}
 	if err != nil {
+		println("broadcasting error")
 		tp.log.Debugln("Transaction set will not be broadcast due to an error:", err)
 		return err
 	}
+	println("doing a broadcast")
 	go tp.gateway.Broadcast("RelayTransactionSet", minSuperSet, tp.gateway.Peers())
+	println("broadcast was called, reutrning nil")
 	tp.log.Debugln("Transaction set broadcast appears to have succeeded")
 	return nil
 }
@@ -413,6 +437,7 @@ func (tp *TransactionPool) relayTransactionSet(conn modules.PeerConn) error {
 		return err
 	}
 	defer tp.tg.Done()
+	println("called relay transaction set")
 
 	// Connection stability and cleanup code.
 	err := conn.SetDeadline(time.Now().Add(relayTransactionSetTimeout))

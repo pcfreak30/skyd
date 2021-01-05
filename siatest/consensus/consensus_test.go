@@ -455,6 +455,11 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
 	//
 	// Get the new height, which is needed to sign transcations.
 	height, err = w.BlockHeight()
@@ -532,6 +537,11 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
 	//
 	// Check that we are still below the foundation hardfork height.
 	height, err = w.BlockHeight()
@@ -548,12 +558,116 @@ func TestFoundationHardfork(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		err = tg.Sync()
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Second) // give some time for contract maintenance
 	}
-	// TODO: Check that the foundation addresses match the original.
+	// Check that the foundation addresses match the original.
+	cg, err := m.ConsensusGet()
+	if cg.FoundationPrimaryUnlockHash != foundationPrimaryAddress {
+		t.Fatal("foundation unlock hash changed by a pre-hardfork txn")
+	}
+	if cg.FoundationFailsafeUnlockHash != foundationFailsafeAddress {
+		t.Fatal("foundation failsafe changed by a pre-hardfork txn")
+	}
 
-	// TODO: Create a transaction that spends the initial foundation subsidy to
-	// a wallet. Verify that the coins make it to the wallet, and that the
-	// wallet can send those coins like any other coins.
+	// Create a transaction that spends the initial foundation subsidy to a
+	// wallet.
+	//
+	// Determine the id of the subsidy output.
+	cbhg, err := m.ConsensusBlocksHeightGet(types.FoundationHardforkHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialSubsidyID := cbhg.ID.FoundationSubsidyID()
+	t.Log(cbhg.ID)
+	t.Log(initialSubsidyID)
+	//
+	// Fetch an address from the wallet.
+	wag, err := w.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := wag.Address
+	//
+	// Create the transaction that spends the foundation subsidy to the wallet
+	// addr.
+	txn := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         initialSubsidyID,
+			UnlockConditions: foundationPrimaryUnlockConditions,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      types.InitialFoundationSubsidy.Sub(types.SiacoinPrecision),
+			UnlockHash: addr,
+		}},
+		MinerFees: []types.Currency{
+			types.SiacoinPrecision,
+		},
+		TransactionSignatures: make([]types.TransactionSignature, foundationPrimaryUnlockConditions.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(initialSubsidyID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, types.FoundationHardforkHeight+1), foundationPrimaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	err = txn.StandaloneValid(types.FoundationHardforkHeight + 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Submit the update transactions to the miner tpool.
+	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
+	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
+	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
+	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
+	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
+	err = m.TransactionPoolRawPost(txn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) != 1 {
+		t.Fatal("wrong number of transactions", len(tptg.Transactions))
+	}
+	//
+	// Mine the transactions into a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
+	//
+	// Verify that the coins make it to the wallet.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		balance, err := w.ConfirmedBalance()
+		if err != nil {
+			return err
+		}
+		if balance.Cmp(types.InitialFoundationSubsidy) < 0 {
+			return errors.New("wallet does not seem to possess the foundation subsidy")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// TODO: Verify that the wallet can send those coins like any other coins.
 
 	// TODO: Mine until the first monthy output is created. Then create a
 	// transaction that spends that monthly output and verify that the monthly
