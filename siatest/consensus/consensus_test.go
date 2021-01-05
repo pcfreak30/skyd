@@ -685,10 +685,172 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Second) // give some time for contract maintenance
+	//
+	// Verfiy that the wallet sent the coins.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		balance, err := w.ConfirmedBalance()
+		if err != nil {
+			return err
+		}
+		if balance.Cmp(types.InitialFoundationSubsidy) >= 0 {
+			return errors.New("wallet does not seem to possess the foundation subsidy")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// TODO: Mine until the first monthy output is created. Then create a
-	// transaction that spends that monthly output and verify that the monthly
-	// outputs are usable like any other outputs.
+	// Mine until the first monthy output is created. Then create a transaction
+	// that spends that monthly output and verify that the monthly outputs are
+	// usable like any other outputs.
+	height, err = m.BlockHeight()
+	if err != nil {
+		t.Fatal(height)
+	}
+	monthOneHeight := types.FoundationHardforkHeight + types.FoundationSubsidyFrequency
+	mineToHeight := monthOneHeight + types.MaturityDelay
+	for i := height; i <= mineToHeight; i++ {
+		err = m.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = tg.Sync()
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Second) // give some time for contract maintenance
+	}
+	//
+	// Determine the id of the subsidy output.
+	cbhg, err = m.ConsensusBlocksHeightGet(monthOneHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	monthOneSubsidyID := cbhg.ID.FoundationSubsidyID()
+	//
+	// Fetch an address from the wallet.
+	wag, err = w.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr = wag.Address
+	//
+	// Create the transaction that spends the foundation subsidy to the wallet
+	// addr.
+	subsidyCoins := types.FoundationSubsidyPerBlock.Mul64(uint64(types.FoundationSubsidyFrequency))
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         monthOneSubsidyID,
+			UnlockConditions: foundationPrimaryUnlockConditions,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      subsidyCoins.Sub(types.SiacoinPrecision),
+			UnlockHash: addr,
+		}},
+		MinerFees: []types.Currency{
+			types.SiacoinPrecision,
+		},
+		TransactionSignatures: make([]types.TransactionSignature, foundationPrimaryUnlockConditions.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(monthOneSubsidyID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, mineToHeight), foundationPrimaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	err = txn.StandaloneValid(mineToHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Get the original balance of the wallet.
+	originalBalance, err := w.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Submit the update transactions to the miner tpool.
+	err = m.TransactionPoolRawPost(txn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) != 1 {
+		t.Fatal("wrong number of transactions", len(tptg.Transactions))
+	}
+	//
+	// Mine the transactions into a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
+	//
+	// Verify that the coins make it to the wallet.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		balance, err := w.ConfirmedBalance()
+		if err != nil {
+			return err
+		}
+		if balance.Cmp(originalBalance.Add(subsidyCoins).Sub(types.SiacoinPrecision)) < 0 {
+			return errors.New("wallet does not seem to possess the foundation subsidy")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Verify that the wallet can send those coins like any other coins.
+	wag, err = m.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = w.WalletSiacoinsPost(subsidyCoins, wag.Address, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) == 0 {
+		t.Fatal("wrong number of transactions", len(tptg.Transactions))
+	}
+	//
+	// Mine the transactions into a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
+	//
+	// Verfiy that the wallet sent the coins.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		balance, err := w.ConfirmedBalance()
+		if err != nil {
+			return err
+		}
+		if balance.Cmp(originalBalance) >= 0 {
+			return errors.New("wallet does not seem to have sent the foundation subsidy")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// TODO: Mine until the second monthly output is created. Then create a
 	// transaction that changes the foundation addresses using the primary
