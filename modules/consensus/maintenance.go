@@ -215,14 +215,7 @@ func applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
 // Maintenance is applied after all of the transactions for the block have been
 // applied.
 func applyMaintenance(tx *bolt.Tx, pb *processedBlock) {
-	if pb.Height >= types.FoundationHardforkHeight {
-		// A Foundation subsidy is generated once per month.
-		// Antfarm fix: Speedup Foundation subsidy interval.
-		// if (pb.Height-types.FoundationHardforkHeight)%types.BlocksPerMonth == 0 {
-		if (pb.Height-types.FoundationHardforkHeight)%types.FoundationSubsidyFrequency == 0 {
-			applyFoundationSubsidy(tx, pb)
-		}
-	}
+	applyFoundationSubsidy(tx, pb)
 	applyMinerPayouts(tx, pb)
 	applyMaturedSiacoinOutputs(tx, pb)
 	applyFileContractMaintenance(tx, pb)
