@@ -1301,16 +1301,6 @@ func TestFoundationHardfork(t *testing.T) {
 	// Then try change the foundation outputs using the failsafe, which should
 	// not work. This ensures that the timelock extension was effective.
 
-	// TODO: try to spend the second monthly output using both the original
-	// address and the updated address. If the fork is updated to retro-actively
-	// re-assign the address of the output, use the original address first and
-	// see that it fails. If the fork is not updated to do that, use the new
-	// address first and see that it fails. After trying the address that is
-	// supposed to fail, try that address that is supposed to work and ensure it
-	// still works.
-	//
-	// TODO: Actually let's do this test after month two.
-
 	/////// I think that's it ////////
 
 	// Check that the files uploaded before the hardfork activiation height are
