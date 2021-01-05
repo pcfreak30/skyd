@@ -619,6 +619,7 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	time.Sleep(time.Second * 20)
 	//
 	// Submit the update transactions to the miner tpool.
 	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
