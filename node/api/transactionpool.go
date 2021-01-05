@@ -113,7 +113,7 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	// Broadcast the transaction set, so that they are passed to any peers that
 	// may have rejected them earlier.
 	txnSet := append(parents, txn)
-	// api.tpool.Broadcast(txnSet)
+	api.tpool.Broadcast(txnSet)
 	err := api.tpool.AcceptTransactionSet(txnSet)
 	if err != nil && !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		WriteError(w, Error{"error accepting transaction set: " + err.Error()}, http.StatusBadRequest)
