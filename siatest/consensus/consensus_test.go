@@ -296,6 +296,9 @@ func TestConsensusSubscribe(t *testing.T) {
 // nodes have the ability to follow the hardfork, and ensuring that the
 // mechanisms for spending the foundation coins are functional.
 func TestFoundationHardfork(t *testing.T) {
+	if types.FoundationSubsidyFrequency < types.MaturityDelay+2 {
+		t.Fatal("Bad constants: subsidy freqency needs to be 2 greater than maturity delay")
+	}
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -335,6 +338,10 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal(err)
 	}
 	localFileData, err := localFile.Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Sync()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,12 +395,17 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	failsafeWSP2, err := w.WalletSiacoinsPost(types.SiacoinPrecision, foundationFailsafeAddress, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	//
 	// Grab the output ids for the siacoin outputs that were sent to the
 	// foundation addresses. These will be needed to create the transaction that
 	// updates the subsidy ownership.
 	var primaryOutputID types.SiacoinOutputID
 	var failsafeOutputID types.SiacoinOutputID
+	var failsafeOutputID2 types.SiacoinOutputID
 	found := false
 	for _, txn := range primaryWSP.Transactions {
 		for i, output := range txn.SiacoinOutputs {
@@ -416,9 +428,27 @@ func TestFoundationHardfork(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("didn't find output id")
+		t.Fatal("didn't find output ids")
+	}
+	found = false
+	for _, txn := range failsafeWSP2.Transactions {
+		for i, output := range txn.SiacoinOutputs {
+			if output.UnlockHash == foundationFailsafeAddress {
+				found = true
+				failsafeOutputID2 = txn.SiacoinOutputID(uint64(i))
+			}
+		}
+	}
+	if !found {
+		t.Fatal("didn't find output ids")
 	}
 	if primaryOutputID == failsafeOutputID {
+		t.Fatal("setup is incorrect")
+	}
+	if failsafeOutputID2 == primaryOutputID {
+		t.Fatal("setup is incorrect")
+	}
+	if failsafeOutputID2 == failsafeOutputID {
 		t.Fatal("setup is incorrect")
 	}
 	//
@@ -852,34 +882,340 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// TODO: Mine until the second monthly output is created. Then create a
-	// transaction that changes the foundation addresses using the primary
-	// address.
+	// Mine until the second monthly output is created. Then create a
+	// transaction that spends the subisdy while also changing the foundation
+	// addresses using the current primary address.
 	//
-	// Then try to spend the second monthly output using both the original
-	// address and the updated address. If the fork is updated to retro-actively
-	// re-assign the address of the output, use the original address first and
-	// see that it fails. If the fork is not updated to do that, use the new
-	// address first and see that it fails. After trying the address that is
-	// supposed to fail, try that address that is supposed to work and ensure it
-	// still works.
+	// Mine until the second monthly subsidy has been allocated.
+	height, err = m.BlockHeight()
+	if err != nil {
+		t.Fatal(height)
+	}
+	monthTwoHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 2)
+	mineToHeight = monthTwoHeight + types.MaturityDelay
+	for i := height; i <= mineToHeight; i++ {
+		err = m.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = tg.Sync()
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Second) // give some time for contract maintenance
+	}
+	//
+	// Determine the id of the subsidy output.
+	cbhg, err = m.ConsensusBlocksHeightGet(monthTwoHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	monthTwoSubsidyID := cbhg.ID.FoundationSubsidyID()
+	//
+	// Create the new keys for the new foundation addresses.
+	newPrimaryUC, newPrimaryKeys := types.GenerateDeterministicMultisig(3, 4, types.Specifier{1, 2})
+	newPrimaryAddr := newPrimaryUC.UnlockHash()
+	//
+	// Create the transaction that attempts to rotate the old signing keys,
+	// while simultaneously spending the month two subsidy output.
+	monthTwoTxn := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         monthTwoSubsidyID,
+			UnlockConditions: foundationPrimaryUnlockConditions,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      subsidyCoins.Sub(types.SiacoinPrecision),
+			UnlockHash: addr,
+		}},
+		MinerFees: []types.Currency{
+			types.SiacoinPrecision,
+		},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  newPrimaryAddr,
+			NewFailsafe: foundationFailsafeAddress,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, foundationPrimaryUnlockConditions.SignaturesRequired),
+	}
+	for i := range monthTwoTxn.TransactionSignatures {
+		monthTwoTxn.TransactionSignatures[i].ParentID = crypto.Hash(monthTwoSubsidyID)
+		monthTwoTxn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		monthTwoTxn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(monthTwoTxn.SigHash(i, height), foundationPrimaryKeys[i])
+		monthTwoTxn.TransactionSignatures[i].Signature = sig[:]
+	}
+	err = monthTwoTxn.StandaloneValid(mineToHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Get the old balance of the wallet.
+	balance, err = w.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Get the transaction onto the blockchain.
+	err = m.TransactionPoolRawPost(monthTwoTxn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) != 1 {
+		t.Fatal("wrong number of transactions", len(tptg.Transactions))
+	}
+	//
+	// Mine the transactions into a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
+	//
+	// Verify that the subsidy is now in the wallet.
+	newBalance, err := w.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newBalance.Cmp(balance.Add(subsidyCoins).Sub(types.SiacoinPrecision)) != 0 {
+		t.Fatal("unexpected balance")
+	}
 
-	// TODO: Mine until the third monthly output is created. Try to spend the
-	// thrid monthly output using the old foundation address. Ensure it fails.
-	// Try to spend the third monthly output using the updated foundation
+	// Mine until the third monthly output is created. Try to spend the thrid
+	// monthly output using the old foundation address. Ensure it fails.  Then
+	// try to spend the third monthly output using the updated foundation
 	// address. Ensure that it succeeds.
-
-	// TODO: Mine until the fourth monthly output is created. Then create a
-	// transaction that changes the foundation addresses using the failsafe
-	// address.
 	//
-	// Then try to spend the fourth monthly output using both the original
-	// address and the updated address. If the fork is updated to retro-actively
-	// re-assign the address of the output, use the original address first and
-	// see that it fails. If the fork is not updated to do that, use the new
-	// address first and see that it fails. After trying the address that is
-	// supposed to fail, try that address that is supposed to work and ensure it
-	// still works.
+	// Mine until the third monthly subsidy has been allocated.
+	height, err = m.BlockHeight()
+	if err != nil {
+		t.Fatal(height)
+	}
+	monthThreeHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 3)
+	mineToHeight = monthThreeHeight + types.MaturityDelay
+	for i := height; i <= mineToHeight; i++ {
+		err = m.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = tg.Sync()
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Second) // give some time for contract maintenance
+	}
+	//
+	// Determine the id of the subsidy output.
+	cbhg, err = m.ConsensusBlocksHeightGet(monthThreeHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	monthThreeSubsidyID := cbhg.ID.FoundationSubsidyID()
+	//
+	// Create the transaction that attempts to spend the month three subsidy
+	// with the old foundation primary address.
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         monthThreeSubsidyID,
+			UnlockConditions: foundationPrimaryUnlockConditions,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      subsidyCoins.Sub(types.SiacoinPrecision),
+			UnlockHash: addr,
+		}},
+		MinerFees: []types.Currency{
+			types.SiacoinPrecision,
+		},
+		TransactionSignatures: make([]types.TransactionSignature, foundationPrimaryUnlockConditions.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(primaryOutputID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, height), foundationPrimaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	//
+	// Get the transaction onto the blockchain.
+	err = m.TransactionPoolRawPost(txn, nil)
+	if err == nil {
+		t.Fatal("the transaction is supposed to be rejected as invalid")
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) != 0 {
+		t.Fatal("there should be no transactions in the tpool")
+	}
+	//
+	// Actually spend month 3 of the subsidy with the rotated keys, and make
+	// sure the rotation worked. At the same time, rotate the primary address to
+	// the void, forcing a recovery using the failsafe.
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         monthThreeSubsidyID,
+			UnlockConditions: newPrimaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      subsidyCoins.Sub(types.SiacoinPrecision),
+			UnlockHash: addr,
+		}},
+		MinerFees: []types.Currency{
+			types.SiacoinPrecision,
+		},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  types.UnlockHash{},
+			NewFailsafe: foundationFailsafeAddress,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, newPrimaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(monthThreeSubsidyID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, mineToHeight), newPrimaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	err = txn.StandaloneValid(mineToHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Get the old balance of the wallet.
+	balance, err = w.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Mine the transaction into the blockchain and check that the balance of
+	// the wallet updated.
+	err = m.TransactionPoolRawPost(txn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) != 1 {
+		t.Fatal("wrong number of transactions", len(tptg.Transactions))
+	}
+	//
+	// Mine the transactions into a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
+	//
+	// Verify that the subsidy is now in the wallet.
+	newBalance, err = w.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newBalance.Cmp(balance.Add(subsidyCoins).Sub(types.SiacoinPrecision)) != 0 {
+		t.Fatal("unexpected balance")
+	}
+
+	// Mine until the fourth monthly output is created. Because we set the
+	// primary foundation address to the void in the previous transaction, the
+	// new output will be unspendable. Create a transaction that changes the
+	// foundation addresses using the failsafe address.
+	height, err = m.BlockHeight()
+	if err != nil {
+		t.Fatal(height)
+	}
+	monthFourHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 4)
+	mineToHeight = monthFourHeight + types.MaturityDelay
+	for i := height; i <= mineToHeight; i++ {
+		err = m.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = tg.Sync()
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Second) // give some time for contract maintenance
+	}
+	//
+	// Create the transaction that using the failsafe to rotate the foundation
+	// address.
+	newPrimaryUC, _ = types.GenerateDeterministicMultisig(4, 5, types.Specifier{4, 5})
+	//newPrimaryUC, newPrimaryKeys = types.GenerateDeterministicMultisig(4, 5, types.Specifier{4, 5})
+	newPrimaryAddr = newPrimaryUC.UnlockHash()
+	newFailsafeUC, _ := types.GenerateDeterministicMultisig(5, 6, types.Specifier{5, 6})
+	// newFailsafeUC, newFailsafeKeys := types.GenerateDeterministicMultisig(5, 6, types.Specifier{5, 6})
+	newFailsafeAddr := newFailsafeUC.UnlockHash()
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         failsafeOutputID2,
+			UnlockConditions: foundationFailsafeUnlockConditions,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{
+			{Value: types.SiacoinPrecision},
+		},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  newPrimaryAddr,
+			NewFailsafe: newFailsafeAddr,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, foundationFailsafeUnlockConditions.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(failsafeOutputID2)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, height), foundationFailsafeKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	//
+	// Mine the transaction into a block.
+	err = txn.StandaloneValid(mineToHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Mine the transaction into the blockchain and check that the balance of
+	// the wallet updated.
+	err = m.TransactionPoolRawPost(txn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) != 1 {
+		t.Fatal("wrong number of transactions", len(tptg.Transactions))
+	}
+	//
+	// Mine the transactions into a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
+
+	// TODO: Depending on how we implement the hardfork, the fourth month
+	// subsidy is now either spendable or not spendable. Write a transaction to
+	// verify. We can do this before we know how the implementation is, the only
+	// thing we won't know is whether or not the transaction is supposed to be
+	// valid.
 
 	// TODO: Update the failsafe foundation address to have a timelock that
 	// expires after the fifth monthly output is created. Mine until the fifth
@@ -893,6 +1229,16 @@ func TestFoundationHardfork(t *testing.T) {
 	// far that the failsafe is supposed to be able to spend the sixth payout.
 	// Then try change the foundation outputs using the failsafe, which should
 	// not work. This ensures that the timelock extension was effective.
+
+	// TODO: try to spend the second monthly output using both the original
+	// address and the updated address. If the fork is updated to retro-actively
+	// re-assign the address of the output, use the original address first and
+	// see that it fails. If the fork is not updated to do that, use the new
+	// address first and see that it fails. After trying the address that is
+	// supposed to fail, try that address that is supposed to work and ensure it
+	// still works.
+	//
+	// TODO: Actually let's do this test after month two.
 
 	/////// I think that's it ////////
 
