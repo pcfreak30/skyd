@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"errors"
-	"fmt"
 
 	"gitlab.com/NebulousLabs/bolt"
 
@@ -43,7 +42,6 @@ func applyFoundationSubsidy(tx *bolt.Tx, pb *processedBlock) {
 		},
 		MaturityHeight: pb.Height + types.MaturityDelay,
 	}
-	fmt.Println("creating foundation subsidy output:", dscod.ID)
 	pb.DelayedSiacoinOutputDiffs = append(pb.DelayedSiacoinOutputDiffs, dscod)
 	commitDelayedSiacoinOutputDiff(tx, dscod, modules.DiffApply)
 }

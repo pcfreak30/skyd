@@ -450,7 +450,8 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal(err)
 	}
 	//
-	// Confirm the transactions that fund the foundation outputs in a block.
+	// Confirm the transactions that attempt to change the foundation outputs in
+	// a block.
 	err = m.MineBlock()
 	if err != nil {
 		t.Fatal(err)
@@ -553,7 +554,7 @@ func TestFoundationHardfork(t *testing.T) {
 	}
 
 	// Mine until after the hardfork.
-	for i := height; i <= types.FoundationHardforkHeight+1; i++ {
+	for i := height; i <= types.FoundationHardforkHeight+1+types.MaturityDelay; i++ {
 		err = m.MineBlock()
 		if err != nil {
 			t.Fatal(err)
@@ -582,8 +583,6 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal(err)
 	}
 	initialSubsidyID := cbhg.ID.FoundationSubsidyID()
-	t.Log(cbhg.ID)
-	t.Log(initialSubsidyID)
 	//
 	// Fetch an address from the wallet.
 	wag, err := w.WalletAddressGet()
@@ -619,18 +618,9 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(time.Second * 20)
 	//
 	// Submit the update transactions to the miner tpool.
-	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
-	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
-	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
-	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
-	println("now attempting to post the -foundation subsidy- transaction to the miner's tpool")
 	err = m.TransactionPoolRawPost(txn, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,7 +658,33 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal(err)
 	}
 	//
-	// TODO: Verify that the wallet can send those coins like any other coins.
+	// Verify that the wallet can send those coins like any other coins.
+	wag, err = m.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = w.WalletSiacoinsPost(types.InitialFoundationSubsidy, wag.Address, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tptg, err = m.TransactionPoolTransactionsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tptg.Transactions) == 0 {
+		t.Fatal("wrong number of transactions", len(tptg.Transactions))
+	}
+	//
+	// Mine the transactions into a block.
+	err = m.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second) // give some time for contract maintenance
 
 	// TODO: Mine until the first monthy output is created. Then create a
 	// transaction that spends that monthly output and verify that the monthly
