@@ -360,7 +360,7 @@ func TestFoundationHardfork(t *testing.T) {
 
 	// mineBlock is a helper to mine a block using the miner.
 	mineBlock := func() {
-		err = m.MineBlock()
+		err := m.MineBlock()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -376,14 +376,48 @@ func TestFoundationHardfork(t *testing.T) {
 		time.Sleep(time.Second)
 	}
 
+	// waitForTxns waits until the miner tpool has the specified number of
+	// transactions in it. Use this when sending transactions from one node to
+	// another to ensure that they get confirmed.
+	waitForTxns := func(numTransactions int) {
+		err := build.Retry(100, 100*time.Millisecond, func() error {
+			tptg, err := m.TransactionPoolTransactionsGet()
+			if err != nil {
+				return err
+			}
+			if len(tptg.Transactions) != numTransactions {
+				return errors.New("wrong number of txns")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// submitTxnToMiner will submit a transaction to the tpool of the miner.
+	submitTxnToMiner := func(txn types.Transaction) {
+		err := m.TransactionPoolRawPost(txn, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tptg, err := m.TransactionPoolTransactionsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tptg.Transactions) != 1 {
+			t.Fatal("wrong number of transactions", len(tptg.Transactions))
+		}
+	}
+
 	// Create a transaction that updates the foundation addresses, to be
 	// submitted to the blockchain prior to the fork. Because of how the
 	// foundation code scans for updates, this will require sending money to the
 	// foundation addresses prior to the hardfork activating.
 	//
 	// Generate the foundation primary and failsafe addresses and keys.
-	foundationPrimaryUnlockConditions, foundationPrimaryKeys := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSpecifier)
-	foundationFailsafeUnlockConditions, foundationFailsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSpecifier)
+	foundationPrimaryUnlockConditions, foundationPrimaryKeys := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSalt)
+	foundationFailsafeUnlockConditions, foundationFailsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSalt)
 	foundationPrimaryAddress := foundationPrimaryUnlockConditions.UnlockHash()
 	foundationFailsafeAddress := foundationFailsafeUnlockConditions.UnlockHash()
 	//
@@ -480,17 +514,24 @@ func TestFoundationHardfork(t *testing.T) {
 		// Check that there is a transaction for both output ids.
 		primaryFound := false
 		failsafeFound := false
+		failsafe2Found := false
 		for _, txn := range tptg.Transactions {
 			for _, output := range txn.SiacoinOutputs {
 				if output.UnlockHash == foundationPrimaryAddress {
 					primaryFound = true
+					continue
 				}
-				if output.UnlockHash == foundationFailsafeAddress {
+				if output.UnlockHash == foundationFailsafeAddress && !failsafeFound {
 					failsafeFound = true
+					continue
+				}
+				if output.UnlockHash == foundationFailsafeAddress && failsafeFound {
+					failsafe2Found = true
+					continue
 				}
 			}
 		}
-		if !primaryFound || !failsafeFound {
+		if !primaryFound || !failsafeFound || !failsafe2Found {
 			return errors.New("transactions are not in miner tpool")
 		}
 		return nil
@@ -569,7 +610,7 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(tptg.Transactions) != 2 {
-		t.Fatal("wrong number of transactions")
+		t.Fatal("wrong number of transactions", len(tptg.Transactions))
 	}
 	mineBlock()
 	//
@@ -583,16 +624,9 @@ func TestFoundationHardfork(t *testing.T) {
 	}
 
 	// Mine until after the hardfork.
-	for i := height; i <= types.FoundationHardforkHeight+1+types.MaturityDelay; i++ {
-		err = m.MineBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = tg.Sync()
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(time.Second) // give some time for contract maintenance
+	mineToHeight := types.FoundationHardforkHeight + 1 + types.MaturityDelay
+	for i := height; i <= mineToHeight; i++ {
+		mineBlock()
 	}
 	// Check that the foundation addresses match the original.
 	cg, err := m.ConsensusGet()
@@ -643,34 +677,14 @@ func TestFoundationHardfork(t *testing.T) {
 		sig := crypto.SignHash(txn.SigHash(i, types.FoundationHardforkHeight+1), foundationPrimaryKeys[i])
 		txn.TransactionSignatures[i].Signature = sig[:]
 	}
-	err = txn.StandaloneValid(types.FoundationHardforkHeight + 1)
+	err = txn.StandaloneValid(mineToHeight)
 	if err != nil {
 		t.Fatal(err)
 	}
 	//
 	// Submit the update transactions to the miner tpool.
-	err = m.TransactionPoolRawPost(txn, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tptg, err = m.TransactionPoolTransactionsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tptg.Transactions) != 1 {
-		t.Fatal("wrong number of transactions", len(tptg.Transactions))
-	}
-	//
-	// Mine the transactions into a block.
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(time.Second) // give some time for contract maintenance
+	submitTxnToMiner(txn)
+	mineBlock()
 	//
 	// Verify that the coins make it to the wallet.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -696,13 +710,7 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tptg, err = m.TransactionPoolTransactionsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tptg.Transactions) == 0 {
-		t.Fatal("wrong number of transactions", len(tptg.Transactions))
-	}
+	waitForTxns(2)
 	//
 	// Mine the transactions into a block.
 	err = m.MineBlock()
@@ -738,17 +746,9 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal(height)
 	}
 	monthOneHeight := types.FoundationHardforkHeight + types.FoundationSubsidyFrequency
-	mineToHeight := monthOneHeight + types.MaturityDelay
+	mineToHeight = monthOneHeight + types.MaturityDelay
 	for i := height; i <= mineToHeight; i++ {
-		err = m.MineBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = tg.Sync()
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(time.Second) // give some time for contract maintenance
+		mineBlock()
 	}
 	//
 	// Determine the id of the subsidy output.
@@ -798,30 +798,8 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
-	// Submit the update transactions to the miner tpool.
-	err = m.TransactionPoolRawPost(txn, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tptg, err = m.TransactionPoolTransactionsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tptg.Transactions) != 1 {
-		t.Fatal("wrong number of transactions", len(tptg.Transactions))
-	}
-	//
-	// Mine the transactions into a block.
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(time.Second) // give some time for contract maintenance
+	submitTxnToMiner(txn)
+	mineBlock()
 	//
 	// Verify that the coins make it to the wallet.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -847,24 +825,11 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tptg, err = m.TransactionPoolTransactionsGet()
+	waitForTxns(2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tptg.Transactions) == 0 {
-		t.Fatal("wrong number of transactions", len(tptg.Transactions))
-	}
-	//
-	// Mine the transactions into a block.
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(time.Second) // give some time for contract maintenance
+	mineBlock()
 	//
 	// Verfiy that the wallet sent the coins.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -893,15 +858,7 @@ func TestFoundationHardfork(t *testing.T) {
 	monthTwoHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 2)
 	mineToHeight = monthTwoHeight + types.MaturityDelay
 	for i := height; i <= mineToHeight; i++ {
-		err = m.MineBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = tg.Sync()
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(time.Second) // give some time for contract maintenance
+		mineBlock()
 	}
 	//
 	// Determine the id of the subsidy output.
@@ -912,7 +869,7 @@ func TestFoundationHardfork(t *testing.T) {
 	monthTwoSubsidyID := cbhg.ID.FoundationSubsidyID()
 	//
 	// Create the new keys for the new foundation addresses.
-	newPrimaryUC, newPrimaryKeys := types.GenerateDeterministicMultisig(3, 4, types.Specifier{1, 2})
+	newPrimaryUC, newPrimaryKeys := types.GenerateDeterministicMultisig(3, 4, "12")
 	newPrimaryAddr := newPrimaryUC.UnlockHash()
 	//
 	// Create the transaction that attempts to rotate the old signing keys,
@@ -952,30 +909,8 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
-	// Get the transaction onto the blockchain.
-	err = m.TransactionPoolRawPost(monthTwoTxn, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tptg, err = m.TransactionPoolTransactionsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tptg.Transactions) != 1 {
-		t.Fatal("wrong number of transactions", len(tptg.Transactions))
-	}
-	//
-	// Mine the transactions into a block.
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(time.Second) // give some time for contract maintenance
+	submitTxnToMiner(monthTwoTxn)
+	mineBlock()
 	//
 	// Verify that the subsidy is now in the wallet.
 	newBalance, err := w.ConfirmedBalance()
@@ -999,15 +934,7 @@ func TestFoundationHardfork(t *testing.T) {
 	monthThreeHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 3)
 	mineToHeight = monthThreeHeight + types.MaturityDelay
 	for i := height; i <= mineToHeight; i++ {
-		err = m.MineBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = tg.Sync()
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(time.Second) // give some time for contract maintenance
+		mineBlock()
 	}
 	//
 	// Determine the id of the subsidy output.
@@ -1070,7 +997,7 @@ func TestFoundationHardfork(t *testing.T) {
 			types.SiacoinPrecision,
 		},
 		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
-			NewPrimary:  types.UnlockHash{},
+			NewPrimary:  types.UnlockHash{1},
 			NewFailsafe: foundationFailsafeAddress,
 		})},
 		TransactionSignatures: make([]types.TransactionSignature, newPrimaryUC.SignaturesRequired),
@@ -1092,31 +1019,8 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
-	// Mine the transaction into the blockchain and check that the balance of
-	// the wallet updated.
-	err = m.TransactionPoolRawPost(txn, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tptg, err = m.TransactionPoolTransactionsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tptg.Transactions) != 1 {
-		t.Fatal("wrong number of transactions", len(tptg.Transactions))
-	}
-	//
-	// Mine the transactions into a block.
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(time.Second) // give some time for contract maintenance
+	submitTxnToMiner(txn)
+	mineBlock()
 	//
 	// Verify that the subsidy is now in the wallet.
 	newBalance, err = w.ConfirmedBalance()
@@ -1138,22 +1042,14 @@ func TestFoundationHardfork(t *testing.T) {
 	monthFourHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 4)
 	mineToHeight = monthFourHeight + types.MaturityDelay
 	for i := height; i <= mineToHeight; i++ {
-		err = m.MineBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = tg.Sync()
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(time.Second) // give some time for contract maintenance
+		mineBlock()
 	}
 	//
 	// Create the transaction that using the failsafe to rotate the foundation
 	// address.
-	newPrimaryUC, newPrimaryKeys = types.GenerateDeterministicMultisig(4, 5, types.Specifier{4, 5})
+	newPrimaryUC, newPrimaryKeys = types.GenerateDeterministicMultisig(4, 5, "45")
 	newPrimaryAddr = newPrimaryUC.UnlockHash()
-	newFailsafeUC, _ := types.GenerateDeterministicMultisig(5, 6, types.Specifier{5, 6})
+	newFailsafeUC, _ := types.GenerateDeterministicMultisig(5, 6, "56")
 	// newFailsafeUC, newFailsafeKeys := types.GenerateDeterministicMultisig(5, 6, types.Specifier{5, 6})
 	newFailsafeAddr := newFailsafeUC.UnlockHash()
 	txn = types.Transaction{
@@ -1183,31 +1079,8 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
-	// Mine the transaction into the blockchain and check that the balance of
-	// the wallet updated.
-	err = m.TransactionPoolRawPost(txn, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tptg, err = m.TransactionPoolTransactionsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tptg.Transactions) != 1 {
-		t.Fatal("wrong number of transactions", len(tptg.Transactions))
-	}
-	//
-	// Mine the transactions into a block.
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(time.Second) // give some time for contract maintenance
+	submitTxnToMiner(txn)
+	mineBlock()
 
 	// Spend the fourth month subsidy using the new primary address, now that we
 	// have reset the foundation addresses with the failsafe. Ensure that makes
@@ -1230,7 +1103,7 @@ func TestFoundationHardfork(t *testing.T) {
 			types.SiacoinPrecision,
 		},
 		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
-			NewPrimary:  types.UnlockHash{},
+			NewPrimary:  types.UnlockHash{2},
 			NewFailsafe: foundationFailsafeAddress,
 		})},
 		TransactionSignatures: make([]types.TransactionSignature, newPrimaryUC.SignaturesRequired),
@@ -1252,31 +1125,8 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
-	// Mine the transaction into the blockchain and check that the balance of
-	// the wallet updated.
-	err = m.TransactionPoolRawPost(txn, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tptg, err = m.TransactionPoolTransactionsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tptg.Transactions) != 1 {
-		t.Fatal("wrong number of transactions", len(tptg.Transactions))
-	}
-	//
-	// Mine the transactions into a block.
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(time.Second) // give some time for contract maintenance
+	submitTxnToMiner(txn)
+	mineBlock()
 	//
 	// Verify that the subsidy is now in the wallet.
 	newBalance, err = w.ConfirmedBalance()
