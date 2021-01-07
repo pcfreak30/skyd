@@ -358,6 +358,24 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal("test has already passed the foundation hardfork height, test is invalid")
 	}
 
+	// mineBlock is a helper to mine a block using the miner.
+	mineBlock := func() {
+		err = m.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = tg.Sync()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The renter and host need to run contract maintenance in the
+		// background, if we mine blocks too quickly we may reach the point
+		// where the contracts have expired before the renter and host have had
+		// time to run the renewal protocol. By waiting a full second after each
+		// block, we ensure that there is plety of time for renewals to happen.
+		time.Sleep(time.Second)
+	}
+
 	// Create a transaction that updates the foundation addresses, to be
 	// submitted to the blockchain prior to the fork. Because of how the
 	// foundation code scans for updates, this will require sending money to the
@@ -452,7 +470,8 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal("setup is incorrect")
 	}
 	//
-	// Block until the miner has the transactions in its tpool.
+	// Block until the miner has the transactions in its tpool, then mine a
+	// block.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		tptg, err := m.TransactionPoolTransactionsGet()
 		if err != nil {
@@ -479,18 +498,7 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//
-	// Confirm the transactions that attempt to change the foundation outputs in
-	// a block.
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(time.Second) // give some time for contract maintenance
+	mineBlock()
 	//
 	// Get the new height, which is needed to sign transcations.
 	height, err = w.BlockHeight()
@@ -546,7 +554,8 @@ func TestFoundationHardfork(t *testing.T) {
 		updateWithFailsafeTxn.TransactionSignatures[i].Signature = sig[:]
 	}
 	//
-	// Submit the update transactions to the miner tpool.
+	// Submit the update transactions to the miner tpool and mine them into a
+	// block.
 	err = m.TransactionPoolRawPost(updateWithPrimaryTxn, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -562,17 +571,7 @@ func TestFoundationHardfork(t *testing.T) {
 	if len(tptg.Transactions) != 2 {
 		t.Fatal("wrong number of transactions")
 	}
-	//
-	// Mine the transactions into a block.
-	err = m.MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(time.Second) // give some time for contract maintenance
+	mineBlock()
 	//
 	// Check that we are still below the foundation hardfork height.
 	height, err = w.BlockHeight()
