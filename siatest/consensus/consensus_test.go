@@ -418,6 +418,12 @@ func TestFoundationHardfork(t *testing.T) {
 	// Generate the foundation primary and failsafe addresses and keys.
 	foundationPrimaryUnlockConditions, foundationPrimaryKeys := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSalt)
 	foundationFailsafeUnlockConditions, foundationFailsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSalt)
+	//
+	// Slip a timelock into the failsafe such that it cannot be used until the
+	// month four output has been created. This will allow us to test prior to
+	// month four that the timelock prevents the failsafe from being used early.
+	monthFourHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 4)
+	foundationFailsafeUnlockConditions.Timelock = monthFourHeight
 	foundationPrimaryAddress := foundationPrimaryUnlockConditions.UnlockHash()
 	foundationFailsafeAddress := foundationFailsafeUnlockConditions.UnlockHash()
 	//
@@ -1031,6 +1037,38 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal("unexpected balance")
 	}
 
+	// Create a transaction that attempts to use the failsafe to change the
+	// foundation addresses before the timelock on the failsafe has expired.
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         monthThreeSubsidyID, // doesn't matter since this txn isn't going into consensus
+			UnlockConditions: foundationFailsafeUnlockConditions,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      subsidyCoins.Sub(types.SiacoinPrecision),
+			UnlockHash: addr,
+		}},
+		MinerFees: []types.Currency{
+			types.SiacoinPrecision,
+		},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  types.UnlockHash{1},
+			NewFailsafe: foundationFailsafeAddress,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, newPrimaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(monthThreeSubsidyID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, mineToHeight), foundationFailsafeKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	err = txn.StandaloneValid(mineToHeight)
+	if err == nil {
+		t.Fatal("there's supposed to be a timelock err here")
+	}
+
 	// Mine until the fourth monthly output is created. Because we set the
 	// primary foundation address to the void in the previous transaction, the
 	// new output will be unspendable. Create a transaction that changes the
@@ -1039,7 +1077,6 @@ func TestFoundationHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(height)
 	}
-	monthFourHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 4)
 	mineToHeight = monthFourHeight + types.MaturityDelay
 	for i := height; i <= mineToHeight; i++ {
 		mineBlock()
@@ -1050,7 +1087,6 @@ func TestFoundationHardfork(t *testing.T) {
 	newPrimaryUC, newPrimaryKeys = types.GenerateDeterministicMultisig(4, 5, "45")
 	newPrimaryAddr = newPrimaryUC.UnlockHash()
 	newFailsafeUC, _ := types.GenerateDeterministicMultisig(5, 6, "56")
-	// newFailsafeUC, newFailsafeKeys := types.GenerateDeterministicMultisig(5, 6, types.Specifier{5, 6})
 	newFailsafeAddr := newFailsafeUC.UnlockHash()
 	txn = types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
@@ -1136,21 +1172,6 @@ func TestFoundationHardfork(t *testing.T) {
 	if newBalance.Cmp(balance.Add(subsidyCoins).Sub(types.SiacoinPrecision)) != 0 {
 		t.Fatal("unexpected balance")
 	}
-
-	// TODO: Update the failsafe foundation address to have a timelock that
-	// expires after the fifth monthly output is created. Mine until the fifth
-	// monthly output is created.
-	///
-	// Then create a transaction that simultaneously spends the fifth monthly
-	// output and also updates the failsafe address to extend the timeout to
-	// being after the sixth monthly payout.
-
-	// TODO: Mine until after the sixth monthly payout is available, but not so
-	// far that the failsafe is supposed to be able to spend the sixth payout.
-	// Then try change the foundation outputs using the failsafe, which should
-	// not work. This ensures that the timelock extension was effective.
-
-	/////// I think that's it ////////
 
 	// Check that the files uploaded before the hardfork activiation height are
 	// still doing well, even after all of the paces that we have put the group
