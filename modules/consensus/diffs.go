@@ -185,6 +185,9 @@ func updateCurrentPath(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirectio
 
 // commitFoundationUpdate updates the current Foundation unlock hashes in
 // accordance with the specified block and direction.
+//
+// Because these updates do not have associated diffs, we cannot apply multiple
+// updates per block. Instead, we apply the first update and ignore the rest.
 func commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	if dir == modules.DiffApply {
 		for i := range pb.Block.Transactions {
@@ -196,7 +199,7 @@ func commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDir
 		if exists {
 			setFoundationUnlockHashes(tx, primary, failsafe)
 			deletePriorFoundationUnlockHashes(tx, pb.Height)
-			transferFoundationOutputs(tx, primary)
+			transferFoundationOutputs(tx, pb.Height, primary)
 		}
 	}
 }
@@ -213,7 +216,6 @@ func commitDiffSet(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	deleteObsoleteDelayedOutputMaps(tx, pb, dir)
 	commitFoundationUpdate(tx, pb, dir)
 	updateCurrentPath(tx, pb, dir)
-
 }
 
 // generateAndApplyDiff will verify the block and then integrate it into the
