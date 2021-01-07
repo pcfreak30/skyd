@@ -418,12 +418,6 @@ func TestFoundationHardfork(t *testing.T) {
 	// Generate the foundation primary and failsafe addresses and keys.
 	foundationPrimaryUnlockConditions, foundationPrimaryKeys := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSalt)
 	foundationFailsafeUnlockConditions, foundationFailsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSalt)
-	//
-	// Slip a timelock into the failsafe such that it cannot be used until the
-	// month four output has been created. This will allow us to test prior to
-	// month four that the timelock prevents the failsafe from being used early.
-	monthFourHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 4)
-	foundationFailsafeUnlockConditions.Timelock = monthFourHeight
 	foundationPrimaryAddress := foundationPrimaryUnlockConditions.UnlockHash()
 	foundationFailsafeAddress := foundationFailsafeUnlockConditions.UnlockHash()
 	//
@@ -1039,10 +1033,14 @@ func TestFoundationHardfork(t *testing.T) {
 
 	// Create a transaction that attempts to use the failsafe to change the
 	// foundation addresses before the timelock on the failsafe has expired.
+	// This is done on an imaginary failsafe address with a timelock.
+	monthFourHeight := types.FoundationHardforkHeight + (types.FoundationSubsidyFrequency * 4)
+	timelockUC := foundationFailsafeUnlockConditions
+	timelockUC.Timelock = monthFourHeight
 	txn = types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
 			ParentID:         monthThreeSubsidyID, // doesn't matter since this txn isn't going into consensus
-			UnlockConditions: foundationFailsafeUnlockConditions,
+			UnlockConditions: timelockUC,
 		}},
 		SiacoinOutputs: []types.SiacoinOutput{{
 			Value:      subsidyCoins.Sub(types.SiacoinPrecision),
