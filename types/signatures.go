@@ -212,19 +212,19 @@ func (t Transaction) SigHash(i int, height BlockHeight) (hash crypto.Hash) {
 func replayPrefix(height BlockHeight) []byte {
 	switch {
 	case height >= FoundationHardforkHeight:
-		_, err := FFF.WriteString("height >= FoundationHardforkHeight: " + strconv.FormatInt(int64(height), 10))
+		_, err := FFF.WriteString("height >= FoundationHardforkHeight: " + strconv.FormatInt(int64(height), 10) + "\n")
 		if err != nil {
 			panic(err)
 		}
 		return FoundationHardforkReplayProtectionPrefix
 	case height >= ASICHardforkHeight:
-		_, err := FFF.WriteString("height >= ASICHardforkHeight: " + strconv.FormatInt(int64(height), 10))
+		_, err := FFF.WriteString("height >= ASICHardforkHeight: " + strconv.FormatInt(int64(height), 10) + "\n")
 		if err != nil {
 			panic(err)
 		}
 		return ASICHardforkReplayProtectionPrefix
 	default:
-		_, err := FFF.WriteString("default (before ASICHardforkHeight): " + strconv.FormatInt(int64(height), 10))
+		_, err := FFF.WriteString("default (before ASICHardforkHeight): " + strconv.FormatInt(int64(height), 10) + "\n")
 		if err != nil {
 			panic(err)
 		}

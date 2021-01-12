@@ -341,7 +341,7 @@ func (t Transaction) validUnlockConditions(currentHeight BlockHeight) (err error
 // transaction. StandaloneValid will not check that all outputs being spent are
 // legal outputs, as it has no confirmed or unconfirmed set to look at.
 func (t Transaction) StandaloneValid(currentHeight BlockHeight) (err error) {
-	_, err = FFF.WriteString(strconv.FormatInt(int64(currentHeight), 10))
+	_, err = FFF.WriteString(strconv.FormatInt(int64(currentHeight), 10) + "\n")
 	if err != nil {
 		panic(err)
 	}
