@@ -8,9 +8,28 @@ package types
 import (
 	"bytes"
 	"errors"
+	"log"
+	"os"
+	"strconv"
 
 	"gitlab.com/NebulousLabs/encoding"
 )
+
+//xxx begin
+
+// FFF aaa
+var FFF *os.File
+
+func init() {
+	f, err := os.OpenFile("text.log",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Println(err)
+	}
+	FFF = f
+}
+
+//xxx end
 
 var (
 	// ErrDoubleSpend is an error when a transaction uses a parent object
@@ -322,6 +341,10 @@ func (t Transaction) validUnlockConditions(currentHeight BlockHeight) (err error
 // transaction. StandaloneValid will not check that all outputs being spent are
 // legal outputs, as it has no confirmed or unconfirmed set to look at.
 func (t Transaction) StandaloneValid(currentHeight BlockHeight) (err error) {
+	_, err = FFF.WriteString(strconv.FormatInt(int64(currentHeight), 10))
+	if err != nil {
+		panic(err)
+	}
 	err = t.fitsInABlock(currentHeight)
 	if err != nil {
 		return
