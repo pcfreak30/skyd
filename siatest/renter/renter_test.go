@@ -5417,3 +5417,53 @@ func TestRenterClean(t *testing.T) {
 	// Second test should remove the now unrecoverable Skyfile
 	cleanAndVerify(1, 0)
 }
+
+// TestUploadContinuouslyDownload uploads a file and downloads the file in a
+// loop till the test timeouts or an error occures.
+func TestUploadContinuouslyDownload(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test group
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Hosts:   5,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Upload file, creating a piece for each host in the group
+	r := tg.Renters()[0]
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := int(modules.SectorSize * 256)
+	localFile, remoteFile, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	var i int
+	start := time.Now()
+	for {
+		i++
+		// Download the file synchronously to a file on disk
+		_, downloadedLocalFile, err := r.DownloadToDisk(remoteFile, false)
+		if err != nil {
+			t.Fatalf("time since start: %v, download #%d error: %v\n", time.Since(start), i, err)
+		}
+		if downloadedLocalFile.Size() != localFile.Size() {
+			t.Fatalf("time since start: %v, download #%d, downloaded file size %d doesn't match original file size %d", time.Since(start), i, downloadedLocalFile.Size(), localFile.Size())
+		}
+	}
+}
