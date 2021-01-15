@@ -429,6 +429,8 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 	values.Set("basechunkredundancy", redundancyStr)
 	rootStr := fmt.Sprintf("%t", params.Root)
 	values.Set("root", rootStr)
+	batchStr := fmt.Sprintf("%t", params.Batch)
+	values.Set("batch", batchStr)
 
 	// Encode SkykeyName or SkykeyID.
 	if params.SkykeyName != "" {

@@ -5335,7 +5335,7 @@ func TestRenterClean(t *testing.T) {
 	// Since it doesn't have a local file it will appear as unrecoverable if the
 	// hosts are taken down.
 	data := fastrand.Bytes(100)
-	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", 2, false)
+	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", 2, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}

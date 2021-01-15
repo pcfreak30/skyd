@@ -942,6 +942,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// build the upload parameters
 	sup := modules.SkyfileUploadParameters{
 		BaseChunkRedundancy: params.baseChunkRedundancy,
+		Batch:               params.batch,
 		DryRun:              params.dryRun,
 		Force:               params.force,
 		SiaPath:             params.siaPath,
@@ -961,13 +962,38 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// set the reader
 	var reader modules.SkyfileUploadReader
-	if isMultipartRequest(headers.mediaType) {
+	isMultiPart := isMultipartRequest(headers.mediaType)
+	if isMultiPart {
 		reader, err = modules.NewSkyfileMultipartReaderFromRequest(req, sup)
 	} else {
 		reader = modules.NewSkyfileReader(req.Body, sup)
 	}
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("unable to create multipart reader: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Check if this upload is intended to be batched
+	if params.batch {
+		// Converted siafiles cannot be batched
+		if params.convertPath != "" {
+			WriteError(w, Error{"cannot batch siafile conversions"}, http.StatusBadRequest)
+			return
+		}
+		// Encrypted uploads cannot be batched
+		isEncrypted := params.skyKeyName != "" || params.skyKeyID != skykey.SkykeyID{}
+		if isEncrypted {
+			WriteError(w, Error{"cannot batch encrypted uploads"}, http.StatusBadRequest)
+			return
+		}
+		// Not currently supporting multipart uploads
+		if isMultiPart {
+			WriteError(w, Error{"cannot batch multipart uploads"}, http.StatusBadRequest)
+			return
+		}
+
+		// Batch upload
+		WriteError(w, Error{"batching is not implemented"}, http.StatusBadRequest)
 		return
 	}
 

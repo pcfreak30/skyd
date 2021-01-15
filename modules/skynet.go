@@ -119,6 +119,9 @@ type (
 		// a Skykey will be derived from the Master Skykey found under that
 		// name/ID to be used for this specific upload.
 		FileSpecificSkykey skykey.Skykey
+
+		// Batch determines whether the upload should be batched with other uploads.
+		Batch bool
 	}
 
 	// SkyfileMultipartUploadParameters defines the parameters specific to

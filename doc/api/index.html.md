@@ -5346,6 +5346,10 @@ system's default skynet folder.
 The amount of redundancy to use when uploading the base chunk. The base chunk is
 the first chunk of the file, and is always uploaded using 1-of-N redundancy.
 
+**batch** | bool  
+Indicates if the skyfile upload should attempt to be batched with other skyfile
+uploads.
+
 **convertpath** string  
 The siapath of an existing siafile that should be converted to a skylink. A new
 skyfile will be created. Both the new skyfile and the existing siafile are

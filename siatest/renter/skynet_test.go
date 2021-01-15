@@ -85,6 +85,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "DownloadByRoot", Test: testSkynetDownloadByRootNoEncryption},
 		{Name: "DownloadByRootEncrypted", Test: testSkynetDownloadByRootEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
+		{Name: "Batching", Test: testSkynetBatching},
 	}
 
 	// Run tests
@@ -1725,7 +1726,7 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 	// to be generated.
 	size := 2*int(modules.SectorSize) + siatest.Fuzz()
 	data := fastrand.Bytes(size)
-	skylink, _, _, _, err := r.UploadSkyfileCustom("regression", data, sk.Name, 20, false)
+	skylink, _, _, _, err := r.UploadSkyfileCustom("regression", data, sk.Name, 20, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1758,6 +1759,38 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 		}
 		i = end
 	}
+}
+
+// testSkynetBatching ...
+func testSkynetBatching(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Batch two small files
+	files := make(map[string]uint64)
+	files["file1"] = 100
+	files["file2"] = 200
+	files["file3"] = 300
+	files["file4"] = modules.SectorSize - 1000
+	fps, sectors, err := modules.PackFiles(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(fps)
+	fmt.Println(sectors)
+
+	// Upload files
+	filename := "test"
+	filedata := fastrand.Bytes(100)
+	skykeyName := ""
+	bcr := uint8(renter.SkyfileDefaultBaseChunkRedundancy)
+	force := false
+	batch := true
+	_, _, _, err = r.UploadSkyfileBlockingCustom(filename, filedata, skykeyName, bcr, force, batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download each file with their individual skylink
 }
 
 // testSkynetSubDirDownload verifies downloading data from a skyfile using a
