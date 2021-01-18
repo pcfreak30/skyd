@@ -5455,6 +5455,7 @@ func TestUploadContinuouslyDownload(t *testing.T) {
 
 	var i int
 	start := time.Now()
+	timeout := time.Minute * 15
 	for {
 		i++
 		// Download the file synchronously to a file on disk
@@ -5464,6 +5465,10 @@ func TestUploadContinuouslyDownload(t *testing.T) {
 		}
 		if downloadedLocalFile.Size() != localFile.Size() {
 			t.Fatalf("time since start: %v, download #%d, downloaded file size %d doesn't match original file size %d", time.Since(start), i, downloadedLocalFile.Size(), localFile.Size())
+		}
+
+		if time.Since(start) > timeout {
+			return
 		}
 	}
 }
