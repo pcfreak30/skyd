@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -134,10 +135,6 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
-	if w.managedHasDownloadJob() {
-		w.externLaunchSerialJob(w.managedPerformDownloadChunkJob)
-		return
-	}
 	if w.managedHasUploadJob() {
 		w.externLaunchSerialJob(w.managedPerformUploadChunkJob)
 		return
@@ -173,6 +170,39 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -uploadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, ^uint64(0)) // subtract 1
+		return true
+	}
+	return true
+}
+
+// externLaunchAsyncDLChunkJob is a custom launch function for the download
+// chunk jobs. It enables launching the download chunk job as an async job
+// without refactoring that legacy code to adhere to the workerJob interface.
+func (w *worker) externLaunchAsyncDLChunkJob() bool {
+	// create a dummy read sector job to get the expected ul and dl bandwidth
+	dummy := &jobReadSector{jobRead: jobRead{staticLength: modules.SectorSize}}
+	ulBW, dlBW := dummy.callExpectedBandwidth()
+
+	// update atomics
+	atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, dlBW)
+	atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, ulBW)
+	atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, 1)
+	fn := func() {
+		w.managedPerformDownloadChunkJob()
+
+		// subtract from atomics after job is done
+		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -dlBW)
+		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -ulBW)
+		atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, ^uint64(0))
+
+		w.staticWake()
+	}
+	err := w.renter.tg.Launch(fn)
+	if err != nil {
+		// subtract from atomics on error
+		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -dlBW)
+		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -ulBW)
+		atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, ^uint64(0))
 		return true
 	}
 	return true
@@ -239,6 +269,15 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	}
 
 	// Check every potential async job that can be launched.
+
+	// Check if we can execute a download job, note that these jobs are launched
+	// a little bit differently, this to avoid refactoring the old download code
+	// to adhere to the workerJob interface at this point in time.
+	if w.managedHasDownloadJob() {
+		w.externLaunchAsyncDLChunkJob()
+		return true
+	}
+
 	job := w.staticJobHasSectorQueue.callNext()
 	if job != nil {
 		w.externLaunchAsyncJob(job)

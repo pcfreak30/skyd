@@ -69,16 +69,7 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 // ReadSector is a helper method to run a ReadSector job on a worker.
 func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
 	readSectorRespChan := make(chan *jobReadResponse)
-	jro := &jobReadSector{
-		jobRead: jobRead{
-			staticResponseChan: readSectorRespChan,
-			staticLength:       length,
-
-			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, &jobReadSectorMetadata{staticSector: root}),
-		},
-		staticOffset: offset,
-		staticSector: root,
-	}
+	jro := w.newJobReadSector(ctx, readSectorRespChan, root, offset, length)
 
 	// Add the job to the queue.
 	if !w.staticJobReadQueue.callAdd(jro) {
@@ -93,6 +84,20 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 	case resp = <-readSectorRespChan:
 	}
 	return resp.staticData, resp.staticErr
+}
+
+// newJobReadSector is a helper method to create a new ReadSector job.
+func (w *worker) newJobReadSector(ctx context.Context, respChan chan *jobReadResponse, root crypto.Hash, offset, length uint64) *jobReadSector {
+	return &jobReadSector{
+		jobRead: jobRead{
+			staticResponseChan: respChan,
+			staticLength:       length,
+
+			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, &jobReadSectorMetadata{staticSector: root}),
+		},
+		staticOffset: offset,
+		staticSector: root,
+	}
 }
 
 // readSectorJobExpectedBandwidth is a helper function that returns the expected
