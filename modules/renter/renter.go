@@ -228,6 +228,9 @@ type Renter struct {
 	// metrics across running the project multiple times.
 	staticProjectDownloadByRootManager *projectDownloadByRootManager
 
+	// staticBatchManager manages batching skyfile uploads for the Renter.
+	staticBatchManager *skylinkBatchManager
+
 	// The renter's bandwidth ratelimit.
 	rl *ratelimit.RateLimit
 
@@ -1075,6 +1078,10 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		}
 		go r.threadedUpdateRenterHealth()
 	}
+
+	// Initialize the batch manager
+	r.newSkylinkBatchManager()
+
 	// Unsubscribe on shutdown.
 	err = r.tg.OnStop(func() error {
 		cs.Unsubscribe(r)

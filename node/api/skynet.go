@@ -975,25 +975,41 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Check if this upload is intended to be batched
 	if params.batch {
-		// Converted siafiles cannot be batched
-		if params.convertPath != "" {
-			WriteError(w, Error{"cannot batch siafile conversions"}, http.StatusBadRequest)
-			return
-		}
-		// Encrypted uploads cannot be batched
-		isEncrypted := params.skyKeyName != "" || params.skyKeyID != skykey.SkykeyID{}
-		if isEncrypted {
-			WriteError(w, Error{"cannot batch encrypted uploads"}, http.StatusBadRequest)
-			return
-		}
 		// Not currently supporting multipart uploads
 		if isMultiPart {
 			WriteError(w, Error{"cannot batch multipart uploads"}, http.StatusBadRequest)
 			return
 		}
+		// Converted siafiles cannot be batched
+		if params.convertPath != "" {
+			WriteError(w, Error{"cannot batch siafile conversions"}, http.StatusBadRequest)
+			return
+		}
 
 		// Batch upload
-		WriteError(w, Error{"batching is not implemented"}, http.StatusBadRequest)
+		skylink, err := api.renter.BatchSkyfile(sup, reader)
+		if errors.Contains(err, renter.ErrSkylinkBlocked) {
+			WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+			return
+		} else if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to upload file in a batch to Skynet: %v", err)}, http.StatusBadRequest)
+			return
+		}
+
+		// Update performance stats
+		skynetPerformanceStatsMu.Lock()
+		skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
+		skynetPerformanceStatsMu.Unlock()
+
+		// Set the Skylink response header
+		w.Header().Set("Skynet-Skylink", skylink.String())
+
+		// Return success
+		WriteJSON(w, SkynetSkyfileHandlerPOST{
+			Skylink:    skylink.String(),
+			MerkleRoot: skylink.MerkleRoot(),
+			Bitfield:   skylink.Bitfield(),
+		})
 		return
 	}
 
