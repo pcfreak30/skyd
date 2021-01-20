@@ -257,6 +257,7 @@ func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
 
 		// Delete the sector and mark the usage as available.
 		delete(wal.cm.sectorLocations, id)
+		delete(wal.cm.sectorLocationsCountOverflow, id)
 		sf.availableSectors[id] = location.index
 
 		// Block until the change has been committed.
@@ -320,6 +321,7 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		if location.count.Value() == 0 {
 			// Delete the sector and mark it as available.
 			delete(wal.cm.sectorLocations, id)
+			delete(wal.cm.sectorLocationsCountOverflow, id)
 			sf.availableSectors[id] = location.index
 		} else {
 			// Reduce the sector usage.
@@ -349,7 +351,6 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 			return build.ExtendErr("failed to write sector metadata", err)
 		}
 	}
-
 	// Only update the usage after the sector removal has been committed to
 	// disk entirely. The usage is not updated until after the commit has
 	// completed to prevent the actual sector data from being overwritten in
@@ -359,6 +360,7 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		sf.clearUsage(location.index)
 		delete(sf.availableSectors, id)
 		delete(wal.cm.sectorLocations, id)
+		delete(wal.cm.sectorLocationsCountOverflow, id)
 		wal.mu.Unlock()
 	}
 	return nil
@@ -380,12 +382,13 @@ func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate
 	// Only persist if there is a value > 0 that we haven't persisted yet, or if
 	// the persisted value is outdated.
 	if !exist && su.Count.Value() > 0 || existingOverflow != overflow {
-		err = persist.SaveJSON(overflowMetadata, wal.cm.sectorLocationsCountOverflow, "<missing>")
+		err = wal.cm.dependencies.SaveFileSync(overflowMetadata, wal.cm.sectorLocationsCountOverflow, wal.overflowFilePath)
 		if err != nil {
 			wal.cm.log.Printf("ERROR: unable to write sector overflow metadata when adding sector: %v\n", err)
 			atomic.AddUint64(&sf.atomicFailedWrites, 1)
 			return err
 		}
+		wal.cm.sectorLocationsCountOverflow[su.ID] = overflow
 	}
 	atomic.AddUint64(&sf.atomicSuccessfulWrites, 1)
 	return nil
