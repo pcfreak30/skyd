@@ -122,6 +122,7 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (_
 		staticAlerter: modules.NewAlerter("contractmanager"),
 	}
 	cm.wal.cm = cm
+	cm.wal.overflowFilePath = filepath.Join(persistDir, sectorOverflowFile)
 	cm.tg.AfterStop(func() {
 		dependencies.Destruct()
 	})

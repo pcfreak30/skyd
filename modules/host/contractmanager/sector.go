@@ -53,25 +53,32 @@ type (
 		mu      sync.Mutex
 	}
 
+	// sectorLocationCount is a helper type to correctly update a virtual
+	// sector's counter.
 	sectorLocationCount struct {
 		count uint64
 	}
 )
 
+// newSectorLocationCount creates a new location counter.
 func newSectorLocationCount(count uint64) sectorLocationCount {
 	return sectorLocationCount{
 		count: count,
 	}
 }
 
+// Copy creates a deep-copy of a counter.
 func (slc sectorLocationCount) Copy() sectorLocationCount {
 	return newSectorLocationCount(slc.count)
 }
 
+// Value returns the total value of the counter.
 func (slc sectorLocationCount) Value() uint64 {
 	return slc.count
 }
 
+// Count returns the value of the counter split into a uint16 value and a uint64
+// overflow.
 func (slc sectorLocationCount) Count() (uint16, uint64) {
 	if slc.count > math.MaxUint16 {
 		return math.MaxUint16, slc.count - math.MaxUint16
@@ -79,24 +86,24 @@ func (slc sectorLocationCount) Count() (uint16, uint64) {
 	return uint16(slc.count), 0
 }
 
-func (slc *sectorLocationCount) Increment() (uint16, uint64, error) {
+// Increment safely increments a counter.
+func (slc *sectorLocationCount) Increment() error {
 	if slc.count == math.MaxUint64 {
-		return 0, 0, errMaxVirtualSectors
+		return errMaxVirtualSectors
 	}
 	slc.count++
-	c, o := slc.Count()
-	return c, o, nil
+	return nil
 }
 
-func (slc *sectorLocationCount) Decrement() (uint16, uint64, error) {
+// Decrement safely decrements a counter.
+func (slc *sectorLocationCount) Decrement() {
 	if slc.count == 0 {
 		err := errors.New("virtual sector count decrement causes underflow")
 		build.Critical(err)
-		return 0, 0, nil // ignore error
+		return
 	}
 	slc.count--
-	c, o := slc.Count()
-	return c, o, nil
+	return
 }
 
 // readPartialSector will read a sector from the storage manager, returning the

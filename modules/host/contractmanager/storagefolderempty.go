@@ -42,7 +42,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 
 	// Create the sector update that will remove the old sector.
 	oldSU := sectorUpdate{
-		Count:  0,
+		Count:  newSectorLocationCount(0),
 		ID:     id,
 		Folder: oldLocation.storageFolder,
 		Index:  oldLocation.index,
@@ -103,9 +103,8 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			}
 
 			// Try writing the sector metadata to disk.
-			count, _ := oldLocation.count.Count()
 			su := sectorUpdate{
-				Count:  count,
+				Count:  oldLocation.count,
 				ID:     id,
 				Folder: sf.index,
 				Index:  sectorIndex,
