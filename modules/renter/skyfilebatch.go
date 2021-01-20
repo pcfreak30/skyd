@@ -28,6 +28,15 @@ import (
  */
 
 var (
+	// The following are the errors returned when checking if the
+	// SkyfileUploadParameters are valid for batching.
+	errBatchDefaultPath = errors.New("batching does not supports the use of DefaultPath or DisableDefaultPath")
+	errBatchDryRun      = errors.New("cannot perform a dry run with batched uploads")
+	errBatchEncrypted   = errors.New("cannot use force param with batching")
+	errBatchForce       = errors.New("cannot use force param with batching")
+	errBatchNotEnabled  = errors.New("SkyfileUploadParameters do not indicate file should be batched")
+	errBatchRedundancy  = errors.New("batching only supports the default base chunk redundancy value")
+
 	// errFileToLarge is returned if a file that is too large is submitted to the
 	// batch manager
 	errFileToLarge = errors.New("upload too large for batching")
@@ -117,9 +126,6 @@ type skyFileObj struct {
 
 	// Packing information
 	fp modules.FilePlacement
-
-	// Upload information
-	sup modules.SkyfileUploadParameters
 }
 
 // BatchSkyfile will submit a skyfile to the batch manager to be uploaded as
@@ -179,7 +185,6 @@ func (sbm *skylinkBatchManager) callAddFile(sup modules.SkyfileUploadParameters,
 	f := &skyFileObj{
 		data: buf,
 		size: uint64(numBytes),
-		sup:  sup,
 	}
 
 	// addFile does not block, instead it returns a channel that
@@ -195,7 +200,11 @@ func (sbm *skylinkBatchManager) callAddFile(sup modules.SkyfileUploadParameters,
 	// externSkylinkData until 'finalChan' has closed.  The batching code will be
 	// updating the information in the externSkylinkData throughout the batching
 	// process.
-	<-finalChan
+	select {
+	case <-finalChan:
+	case <-sbm.r.tg.StopChan():
+		return modules.Skylink{}, errors.New("renter shutdown before batch could complete")
+	}
 	return externSkylinkData.skylink, externSkylinkData.err
 }
 
@@ -203,10 +212,11 @@ func (sbm *skylinkBatchManager) callAddFile(sup modules.SkyfileUploadParameters,
 // batch.
 func (sbm *skylinkBatchManager) createNewBatch() {
 	sbm.activeBatch = &skylinkBatch{
-		batchManager:    sbm,
-		currentFiles:    make(map[batchUID]*skyFileObj),
-		remainingMemory: maxBatchSize,
-		resultChan:      make(chan struct{}),
+		batchManager:      sbm,
+		currentFiles:      make(map[batchUID]*skyFileObj),
+		externSkylinkData: make(map[batchUID]*skylinkData),
+		remainingMemory:   maxBatchSize,
+		resultChan:        make(chan struct{}),
 	}
 }
 
@@ -260,6 +270,7 @@ func (sb *skylinkBatch) addFile(f *skyFileObj) (*skylinkData, chan struct{}) {
 // batch. This will trigger a background timer to check on the status of the
 // batch.
 func (sb *skylinkBatch) initSkylinkBatch() {
+	// Launch background timer
 	time.AfterFunc(maxBatchTime, func() {
 		sb.batchManager.mu.Lock()
 		defer sb.batchManager.mu.Unlock()
@@ -267,13 +278,18 @@ func (sb *skylinkBatch) initSkylinkBatch() {
 			// Batch was already finalized because it filled up
 			return
 		}
+		sb.finalized = true
 
 		// Create a new active batch for the Batch Managed. This ensures that
 		// nothing is reference the current batch anymore.
 		sb.batchManager.createNewBatch()
 
 		// Upload the data from the batch
-		go sb.threadedUploadData()
+		//
+		// Ignore error from Launch as that just indicates that the renter has
+		// shutdown, in which case threadedUploadData won't be called.
+		r := sb.batchManager.r
+		_ = r.tg.Launch(func() { sb.threadedUploadData() })
 	})
 }
 
@@ -288,12 +304,14 @@ func (sb *skylinkBatch) threadedUploadData() {
 	// skylinkData.
 	defer close(sb.resultChan)
 
-	// Set errors in the extern data
 	defer func() {
 		if sb.err == nil {
 			return
 		}
+		// Set errors in the extern data and null out the skylinks in the event of
+		// an error.
 		for _, esd := range sb.externSkylinkData {
+			esd.skylink = modules.Skylink{}
 			esd.err = sb.err
 		}
 	}()
@@ -324,7 +342,9 @@ func (sb *skylinkBatch) threadedUploadData() {
 
 	// Move file placements back to skyFileObj and build basesector data based on
 	// packed files. The file placements are returned in order of the offsets.
-	baseSectorData := make([]byte, modules.SectorSize)
+	lastFP := fps[len(fps)-1]
+	totalSize := lastFP.SectorOffset + lastFP.Size
+	baseSectorData := make([]byte, totalSize)
 	for _, fp := range fps {
 		sfo, ok := sb.currentFiles[batchUID(fp.FileID)]
 		// Sanity check that the UIDs used in the file packing are the same as the
@@ -478,24 +498,35 @@ func (sb *skylinkBatch) threadedUploadData() {
 func validBatchSUP(sup modules.SkyfileUploadParameters) error {
 	// Check that the file should be batched.
 	if !sup.Batch {
-		return errors.New("SkyfileUploadParameters do not indicate file should be batched")
+		return errBatchNotEnabled
 	}
 	// Cannot use force param with batching
 	if sup.Force {
-		return errors.New("cannot use force param with batching")
+		return errBatchForce
 	}
 	// Encrypted uploads cannot be batched
 	isEncrypted := sup.SkykeyName != "" || sup.SkykeyID != skykey.SkykeyID{}
 	if isEncrypted {
-		return errors.New("cannot batch encrypted uploads")
+		return errBatchEncrypted
 	}
 	// Not currently supporting dryRun with batching
 	if sup.DryRun {
-		return errors.New("cannot perform a dry run with batched uploads")
+		return errBatchDryRun
 	}
 	// Batched files should use the default BaseChunkRedundancy
 	if sup.BaseChunkRedundancy != 0 && sup.BaseChunkRedundancy != SkyfileDefaultBaseChunkRedundancy {
-		return errors.New("batching only supports the default base chunk redundancy value")
+		return errBatchRedundancy
 	}
+	// DefaultPath and DisableDefaultPath cannot be set.
+	if sup.DisableDefaultPath || sup.DefaultPath != "" {
+		return errBatchDefaultPath
+	}
+
+	// SiaPath,Root, Filename and Mode are just ignored. It is not an issue if
+	// they are set because they do not impact the other files in the batch nor
+	// are they needed for the download. They will just not be used.
+	//
+	// The Reader is ignored because the SkyfileUploadReader should be submitted
+	// and used for the batch.
 	return nil
 }
