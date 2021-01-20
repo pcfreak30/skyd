@@ -103,8 +103,9 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			}
 
 			// Try writing the sector metadata to disk.
+			count, _ := oldLocation.count.Count()
 			su := sectorUpdate{
-				Count:  oldLocation.count,
+				Count:  count,
 				ID:     id,
 				Folder: sf.index,
 				Index:  sectorIndex,

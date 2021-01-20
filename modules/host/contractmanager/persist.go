@@ -122,10 +122,17 @@ func (cm *ContractManager) loadSectorLocations(sf *storageFolder) {
 		var id sectorID
 		copy(id[:], sectorLookupBytes[readHead:readHead+12])
 		count := binary.LittleEndian.Uint16(sectorLookupBytes[readHead+12 : readHead+14])
+
+		// Get the potential overflow and add it.
+		count64 := uint64(count)
+		overflow := cm.sectorLocationsCountOverflow[id]
+		count64 += overflow
+
+		// Create the location.
 		sl := sectorLocation{
 			index:         sectorIndex,
 			storageFolder: sf.index,
-			count:         count,
+			count:         newSectorLocationCount(count64),
 		}
 
 		// Add the sector to the sector location map.

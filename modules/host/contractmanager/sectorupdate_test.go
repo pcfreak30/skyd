@@ -86,7 +86,7 @@ func TestAddSector(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.storageFolder != index {
@@ -147,7 +147,7 @@ func TestAddSector(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -473,7 +473,7 @@ func TestAddSectorRecovery(t *testing.T) {
 		}
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.storageFolder != index {
@@ -530,7 +530,7 @@ func TestAddSectorRecovery(t *testing.T) {
 		}
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -613,7 +613,7 @@ func TestAddVirtualSectorSerial(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 2 {
+		if sl.count.Value() != 2 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.storageFolder != index {
@@ -667,7 +667,7 @@ func TestAddVirtualSectorSerial(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 2 {
+		if sl.count.Value() != 2 {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -759,7 +759,7 @@ func TestAddVirtualSectorParallel(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 2 {
+		if sl.count.Value() != 2 {
 			t.Error("Sector location should be reporting a count of 2 for this sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -813,7 +813,7 @@ func TestAddVirtualSectorParallel(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 2 {
+		if sl.count.Value() != 2 {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -901,7 +901,7 @@ func TestAddVirtualSectorMassiveParallel(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != parallelAdds {
+		if sl.count.Value() != uint64(parallelAdds) {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -955,7 +955,7 @@ func TestAddVirtualSectorMassiveParallel(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != parallelAdds {
+		if sl.count.Value() != uint64(parallelAdds) {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -1040,7 +1040,7 @@ func TestRemoveSector(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.storageFolder != index {
@@ -1094,7 +1094,7 @@ func TestRemoveSector(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -1180,7 +1180,7 @@ func TestRemoveSectorVirtual(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.storageFolder != index {
@@ -1234,7 +1234,7 @@ func TestRemoveSectorVirtual(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -1319,7 +1319,7 @@ func TestDeleteSector(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.storageFolder != index {
@@ -1373,7 +1373,7 @@ func TestDeleteSector(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -1463,7 +1463,7 @@ func TestDeleteSectorVirtual(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.storageFolder != index {
@@ -1517,7 +1517,7 @@ func TestDeleteSectorVirtual(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -1624,7 +1624,7 @@ func TestSectorBalancing(t *testing.T) {
 		if sl.storageFolder != index {
 			continue
 		}
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.index > 64*2 {
@@ -1669,7 +1669,7 @@ func TestSectorBalancing(t *testing.T) {
 		if sl.storageFolder != index {
 			continue
 		}
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.index > 64*2 {
@@ -1804,7 +1804,7 @@ func TestFailingStorageFolder(t *testing.T) {
 		if sl.storageFolder != index {
 			continue
 		}
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.index > 128 {
@@ -1878,7 +1878,7 @@ func TestFailingStorageFolder(t *testing.T) {
 		if sl.storageFolder != index {
 			continue
 		}
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.index > 128 {
@@ -1940,7 +1940,7 @@ func TestFailingStorageFolder(t *testing.T) {
 		if sl.storageFolder != index {
 			continue
 		}
-		if sl.count != 1 {
+		if sl.count.Value() != 1 {
 			t.Error("Sector location should only be reporting one sector")
 		}
 		if sl.index > 128 {

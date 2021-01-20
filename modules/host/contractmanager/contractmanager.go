@@ -84,9 +84,10 @@ type ContractManager struct {
 	// including metadata about which sector slots are currently populated vs.
 	// which sector slots are available. For performance information, see
 	// BenchmarkStorageFolders.
-	sectorSalt      crypto.Hash
-	sectorLocations map[sectorID]sectorLocation
-	storageFolders  map[uint16]*storageFolder
+	sectorSalt                   crypto.Hash
+	sectorLocations              map[sectorID]sectorLocation
+	sectorLocationsCountOverflow map[sectorID]uint64
+	storageFolders               map[uint16]*storageFolder
 
 	// lockedSectors contains a list of sectors that are currently being read
 	// or modified.

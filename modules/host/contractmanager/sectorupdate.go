@@ -38,7 +38,7 @@ func (wal *writeAheadLog) commitUpdateSector(su sectorUpdate) {
 
 // managedAddPhysicalSector is a WAL operation to add a physical sector to the
 // contract manager.
-func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, count uint16) error {
+func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) error {
 	// Sanity check - data should have modules.SectorSize bytes.
 	if uint64(len(data)) != modules.SectorSize {
 		wal.cm.log.Critical("sector has the wrong size", modules.SectorSize, len(data))
@@ -104,7 +104,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 
 			// Try writing the sector metadata to disk.
 			su := sectorUpdate{
-				Count:  count,
+				Count:  1,
 				ID:     id,
 				Folder: sf.index,
 				Index:  sectorIndex,
@@ -124,7 +124,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 			sl := sectorLocation{
 				index:         sectorIndex,
 				storageFolder: sf.index,
-				count:         count,
+				count:         newSectorLocationCount(1),
 			}
 			wal.mu.Lock()
 			wal.appendChange(stateChange{
@@ -162,15 +162,17 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 
 // managedAddVirtualSector will add a virtual sector to the contract manager.
 func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLocation) error {
+	oldCount := location.count.Copy()
+
 	// Update the location count.
-	if location.count == 65535 {
-		return errMaxVirtualSectors
+	count, _, err := location.count.Increment()
+	if err != nil {
+		return errors.AddContext(err, "failed to increment sector location count")
 	}
-	location.count++
 
 	// Prepare the sector update.
 	su := sectorUpdate{
-		Count:  location.count,
+		Count:  count,
 		ID:     id,
 		Folder: location.storageFolder,
 		Index:  location.index,
@@ -196,12 +198,12 @@ func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLo
 	// Update the metadata on disk. Metadata is updated on disk after the sync
 	// so that there is no risk of obliterating the previous count in the event
 	// that the change is not fully committed during unclean shutdown.
-	err := wal.writeSectorMetadata(sf, su)
+	err = wal.writeSectorMetadata(sf, su)
 	if err != nil {
 		// Revert the sector update in the WAL to reflect the fact that adding
 		// the sector has failed.
 		su.Count--
-		location.count--
+		location.count = oldCount
 		wal.mu.Lock()
 		wal.appendChange(stateChange{
 			SectorUpdates: []sectorUpdate{su},
@@ -273,6 +275,7 @@ func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
 func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 	// Inform the WAL of the removed sector.
 	var location sectorLocation
+	var oldCount sectorLocationCount
 	var su sectorUpdate
 	var sf *storageFolder
 	var syncChan chan struct{}
@@ -287,6 +290,7 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		if !exists {
 			return ErrSectorNotFound
 		}
+		oldCount = location.count.Copy()
 		sf, exists = wal.cm.storageFolders[location.storageFolder]
 		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 			wal.cm.log.Critical("deleting a sector from a storage folder that does not exist?")
@@ -294,9 +298,12 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		}
 
 		// Inform the WAL of the sector update.
-		location.count--
+		count, _, err := location.count.Decrement()
+		if err != nil {
+			return errors.AddContext(err, "failed to decrement virtual sector count")
+		}
 		su = sectorUpdate{
-			Count:  location.count,
+			Count:  count,
 			ID:     id,
 			Folder: location.storageFolder,
 			Index:  location.index,
@@ -306,7 +313,7 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		})
 
 		// Update the in-memeory representation of the sector.
-		if location.count == 0 {
+		if location.count.Value() == 0 {
 			// Delete the sector and mark it as available.
 			delete(wal.cm.sectorLocations, id)
 			sf.availableSectors[id] = location.index
@@ -324,13 +331,13 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 	<-syncChan
 
 	// Update the metadata, and the usage.
-	if location.count != 0 {
+	if location.count.Value() != 0 {
 		err = wal.writeSectorMetadata(sf, su)
 		if err != nil {
 			// Revert the previous change.
 			wal.mu.Lock()
 			su.Count++
-			location.count++
+			location.count = oldCount
 			wal.appendChange(stateChange{
 				SectorUpdates: []sectorUpdate{su},
 			})
@@ -344,7 +351,7 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 	// disk entirely. The usage is not updated until after the commit has
 	// completed to prevent the actual sector data from being overwritten in
 	// the event of unclean shutdown.
-	if location.count == 0 {
+	if location.count.Value() == 0 {
 		wal.mu.Lock()
 		sf.clearUsage(location.index)
 		delete(sf.availableSectors, id)
@@ -401,7 +408,7 @@ func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error 
 	if exists {
 		err = cm.wal.managedAddVirtualSector(id, location)
 	} else {
-		err = cm.wal.managedAddPhysicalSector(id, sectorData, 1)
+		err = cm.wal.managedAddPhysicalSector(id, sectorData)
 	}
 	if errors.Contains(err, errDiskTrouble) {
 		cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)

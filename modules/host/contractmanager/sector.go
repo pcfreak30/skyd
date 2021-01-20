@@ -3,6 +3,7 @@ package contractmanager
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -42,7 +43,7 @@ type (
 		// physical sector described by this object. A maximum of 2^16 virtual
 		// sectors are allowed for each sector. Proper use by the renter should
 		// mean that the host never has more than 3 virtual sectors for any sector.
-		count uint16
+		count sectorLocationCount
 	}
 
 	// sectorLock contains a lock plus a count of the number of threads
@@ -51,7 +52,52 @@ type (
 		waiting int
 		mu      sync.Mutex
 	}
+
+	sectorLocationCount struct {
+		count uint64
+	}
 )
+
+func newSectorLocationCount(count uint64) sectorLocationCount {
+	return sectorLocationCount{
+		count: count,
+	}
+}
+
+func (slc sectorLocationCount) Copy() sectorLocationCount {
+	return newSectorLocationCount(slc.count)
+}
+
+func (slc sectorLocationCount) Value() uint64 {
+	return slc.count
+}
+
+func (slc sectorLocationCount) Count() (uint16, uint64) {
+	if slc.count > math.MaxUint16 {
+		return math.MaxUint16, slc.count - math.MaxUint16
+	}
+	return uint16(slc.count), 0
+}
+
+func (slc *sectorLocationCount) Increment() (uint16, uint64, error) {
+	if slc.count == math.MaxUint64 {
+		return 0, 0, errMaxVirtualSectors
+	}
+	slc.count++
+	c, o := slc.Count()
+	return c, o, nil
+}
+
+func (slc *sectorLocationCount) Decrement() (uint16, uint64, error) {
+	if slc.count == 0 {
+		err := errors.New("virtual sector count decrement causes underflow")
+		build.Critical(err)
+		return 0, 0, nil // ignore error
+	}
+	slc.count--
+	c, o := slc.Count()
+	return c, o, nil
+}
 
 // readPartialSector will read a sector from the storage manager, returning the
 // 'length' bytes at offset 'offset' that match the input sector root.
