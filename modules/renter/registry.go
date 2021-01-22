@@ -82,11 +82,14 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
 	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
+	// TODO: Revisit
+	/*
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+			defer cancel()
+		}
+	*/
 
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
@@ -110,11 +113,14 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
 	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
+	// TODO: Revisit
+	/*
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+			defer cancel()
+		}
+	*/
 
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
