@@ -15,18 +15,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-/*
-*  TODO
-*  1)  Siatest that submits two separate uploads, they are batched, they can be
-*     downloaded.
-*  2) Stress test that uploads files that are batched for a set time.
-*  3) Test SUP validation
-*  4) Test blocklist, single batched file, combined basesector is blocked.
-*  5) Blocklist should prevent re-upload of batch unless blocked file is
-*     removed. Any blocklist request should result in nothing being
-*     downloadable.
- */
-
 var (
 	// The following are the errors returned when checking if the
 	// SkyfileUploadParameters are valid for batching.
@@ -441,16 +429,12 @@ func (sb *skylinkBatch) threadedUploadData() {
 		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
 		SiaPath:             siaPath,
 	}
-	err = skyfileEstablishDefaults(&sup)
-	if err != nil {
-		sb.err = errors.AddContext(err, "batch upload failed to establish defaults for SkyfileUploadParameters")
-		return
-	}
+	skyfileEstablishDefaults(&sup)
 
 	// Upload the base sector. We do not call managedUploadBaseSector because we
 	// want to have access to the filenode to add the skylinks for all the batched
 	// files to it.
-	fileUploadParams, err := fileUploadParamsFromLUP(sup)
+	fileUploadParams, err := fileUploadParamsFromSUP(sup)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to create siafile upload parameters")
 		return
@@ -490,8 +474,6 @@ func (sb *skylinkBatch) threadedUploadData() {
 			return
 		}
 	}
-	// Update the stats. A small skyfile is padded to a sector.
-	r.managedAddFileToSkynetStats(modules.SectorSize, false)
 }
 
 // validBatchSUP checks if the SkyfileUploadParameters are valid for batching

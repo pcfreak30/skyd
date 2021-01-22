@@ -996,9 +996,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 
-		// Update performance stats
+		// Update performance stats, assume a sector size because of batching
+		// a small skyfile.
 		skynetPerformanceStatsMu.Lock()
-		skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
+		skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime), modules.SectorSize)
 		skynetPerformanceStatsMu.Unlock()
 
 		// Set the Skylink response header

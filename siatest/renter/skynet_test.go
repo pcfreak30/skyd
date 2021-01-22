@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,7 +46,7 @@ func TestSkynet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// t.Parallel()
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -1762,35 +1763,213 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 }
 
 // testSkynetBatching ...
+/*
+*  TODO
+*  2) Stress test that uploads files that are batched for a set time.
+ */
 func testSkynetBatching(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// Batch two small files
-	files := make(map[string]uint64)
-	files["file1"] = 100
-	files["file2"] = 200
-	files["file3"] = 300
-	files["file4"] = modules.SectorSize - 1000
-	fps, sectors, err := modules.PackFiles(files)
+	// Build a slice of files to upload as a batch
+	type file struct {
+		filename string
+		data     []byte
+	}
+	var batchFiles []file
+	numFiles := 2 + fastrand.Intn(3)
+	t.Logf("Batching %v files", numFiles)
+	for i := 0; i < numFiles; i++ {
+		filename := fmt.Sprintf("batchFile_%v", i)
+		size := (i + 1) * 100
+		data := fastrand.Bytes(size)
+		batchFiles = append(batchFiles, file{filename, data})
+	}
+
+	// Upload small files as batch in go routines
+	uploadBatchFiles := func(batchFiles []file, batch bool) (map[string][]byte, error) {
+		var wg sync.WaitGroup
+		var skylinksMu sync.Mutex
+		skylinksMap := make(map[string][]byte)
+		errChan := make(chan error)
+		for _, bf := range batchFiles {
+			wg.Add(1)
+			go func(filename string, data []byte) {
+				defer wg.Done()
+				// Submit the upload for the file to be batched. This will blocked until
+				// the maxBatchTime since all the files total are less than the
+				// maxBatchSize
+				skylink, _, _, err := r.UploadSkyfileBlockingCustom(filename, data, "", 0, false, batch)
+				if err != nil {
+					select {
+					case errChan <- fmt.Errorf("unable to upload file %v; %v", filename, err):
+					default:
+					}
+					return
+				}
+				// Add the skylink and file data to the map
+				skylinksMu.Lock()
+				skylinksMap[skylink] = data
+				skylinksMu.Unlock()
+			}(bf.filename, bf.data)
+		}
+		wg.Wait()
+		return skylinksMap, modules.PeekErr(errChan)
+	}
+
+	// Upload the batch
+	skylinksMap, err := uploadBatchFiles(batchFiles, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(fps)
-	fmt.Println(sectors)
 
-	// Upload files
-	filename := "test"
-	filedata := fastrand.Bytes(100)
-	skykeyName := ""
-	bcr := uint8(renter.SkyfileDefaultBaseChunkRedundancy)
-	force := false
-	batch := true
-	_, _, _, err = r.UploadSkyfileBlockingCustom(filename, filedata, skykeyName, bcr, force, batch)
+	// Download each skylink
+	downloadBatch := func(skylinksMap map[string][]byte) error {
+		var wg sync.WaitGroup
+		errChan := make(chan error)
+		for skylink, data := range skylinksMap {
+			wg.Add(1)
+			go func(skylink string, data []byte) {
+				defer wg.Done()
+				// Download should be successful
+				skylinkData, _, err := r.SkynetSkylinkGet(skylink)
+				if err != nil {
+					select {
+					case errChan <- fmt.Errorf("unable to download skylink %v; %v", skylink, err):
+					default:
+					}
+					return
+				}
+				// Bytes should be equal to the data uploaded for this skylink
+				if !bytes.Equal(skylinkData, data) {
+					select {
+					case errChan <- fmt.Errorf("downloaded bytes not equal to file bytes for skylink %v", skylink):
+					default:
+					}
+				}
+			}(skylink, data)
+		}
+		wg.Wait()
+		return modules.PeekErr(errChan)
+	}
+
+	// Download the batch
+	err = downloadBatch(skylinksMap)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Download each file with their individual skylink
+	// Randomly block a skylink. Since maps do not have a guaranteed order we can
+	// just iterate over the map and block the first one.
+	for skylink := range skylinksMap {
+		err := r.SkynetBlocklistPost([]string{skylink}, []string{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		break
+	}
+
+	// If one skylink in a batch is blocked, all the skylinks are blocked. Verify
+	// that none of the skylinks can be downloaded now.
+	//
+	// NOTE: Not reusing the downloadBatch function because this test should check
+	// the errors from every skylink and only return an error if it is not
+	// ErrSkylinkBlocked. The downloadBatch function would return on any error.
+	var wg sync.WaitGroup
+	errChan := make(chan error)
+	for skylink := range skylinksMap {
+		wg.Add(1)
+		go func(skylink string) {
+			defer wg.Done()
+			// Attempt download, should get ErrSkylinkBlocked
+			_, _, err := r.SkynetSkylinkGet(skylink)
+			if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+				select {
+				case errChan <- fmt.Errorf("Expected ErrSkylinkBlocked but got %v for skylink %v", err, skylink):
+				default:
+				}
+				return
+			}
+		}(skylink)
+	}
+	wg.Wait()
+	err = modules.PeekErr(errChan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// NOTE: These next tests show the edge cases for the batched uploads.
+	//
+	// First, that reuploading the batch will succeed because the filename in the
+	// metadata will change.
+	//
+	// Second, that even if only of the skylinks was previously blocked, since it is
+	// the MerkleRoot of the batch that is blocked the file itself can be
+	// re-uploaded.
+	//
+	// Third, is that if another file is added or a file is removed from the
+	// batch, the upload will succeed since that also changes the MerkleRoot.
+	//
+	// Upload the batch again, won't fail due to the filename changing in the
+	// metadata
+	_, err = uploadBatchFiles(batchFiles, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//
+	// Upload all the files individually.
+	_, err = uploadBatchFiles(batchFiles, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Delete one file from the map and reupload the batch.
+	_, err = uploadBatchFiles(batchFiles[1:], true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test hitting the size limit for the batch, upload 4 files that will be more
+	// than a sector size
+	batchFiles = []file{}
+	for i := 0; i < 4; i++ {
+		filename := fmt.Sprintf("batchFile_%v", i)
+		size := modules.SectorSize/4 + 100
+		data := fastrand.Bytes(int(size))
+		batchFiles = append(batchFiles, file{filename, data})
+	}
+
+	// Upload with batching
+	skylinksMap, err = uploadBatchFiles(batchFiles, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download all the skylinks
+	err = downloadBatch(skylinksMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The metadata returned from one of the skylinks should be different than the
+	// rest
+	var md modules.SkyfileMetadata
+	differentMD := false
+	for skylink := range skylinksMap {
+		_, skylinkMD, err := r.SkynetSkylinkGet(skylink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reflect.DeepEqual(md, modules.SkyfileMetadata{}) {
+			md = skylinkMD
+			continue
+		}
+		if !reflect.DeepEqual(md, skylinkMD) {
+			differentMD = true
+			break
+		}
+	}
+	if !differentMD {
+		t.Fatal("All metadatas the same")
+	}
 }
 
 // testSkynetSubDirDownload verifies downloading data from a skyfile using a
@@ -3791,9 +3970,9 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 // TestSkynetCleanupOnError verifies files are cleaned up on upload error
 func TestSkynetCleanupOnError(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
+	// if testing.Short() {
+	t.SkipNow()
+	// }
 	t.Parallel()
 
 	// Create a testgroup.
