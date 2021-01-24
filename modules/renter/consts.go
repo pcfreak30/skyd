@@ -76,13 +76,13 @@ var (
 	// of the memory usage accurately.
 	memoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
-		Standard: uint64(1 << 30), // 1 GiB
+		Standard: uint64(3 << 29), // 1.5 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
 	// defaultPriorityMemory is the amount of memory that is held in reserve
 	// explicitly for priority actions such as download streaming.
-	memoryPriorityDefault = memoryDefault
+	memoryPriorityDefault = memoryDefault / 2
 
 	// initialStreamerCacheSize defines the cache size that each streamer will
 	// start using when it is created. A lower initial cache size will mean that
