@@ -82,7 +82,7 @@ var (
 
 	// defaultPriorityMemory is the amount of memory that is held in reserve
 	// explicitly for priority actions such as download streaming.
-	memoryPriorityDefault = memoryDefault / 4
+	memoryPriorityDefault = memoryDefault
 
 	// initialStreamerCacheSize defines the cache size that each streamer will
 	// start using when it is created. A lower initial cache size will mean that
