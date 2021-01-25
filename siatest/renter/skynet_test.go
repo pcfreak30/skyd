@@ -46,7 +46,7 @@ func TestSkynet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// t.Parallel()
+	t.Parallel()
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -1762,11 +1762,8 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetBatching ...
-/*
-*  TODO
-*  2) Stress test that uploads files that are batched for a set time.
- */
+// testSkynetBatching tests batching small skyfiles together in a single
+// basesector upload.
 func testSkynetBatching(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
@@ -1902,8 +1899,8 @@ func testSkynetBatching(t *testing.T, tg *siatest.TestGroup) {
 	// First, that reuploading the batch will succeed because the filename in the
 	// metadata will change.
 	//
-	// Second, that even if only of the skylinks was previously blocked, since it is
-	// the MerkleRoot of the batch that is blocked the file itself can be
+	// Second, that even if any of the skylinks was previously blocked, since it
+	// is the MerkleRoot of the batch that is blocked the file itself can be
 	// re-uploaded.
 	//
 	// Third, is that if another file is added or a file is removed from the
@@ -3970,9 +3967,9 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 // TestSkynetCleanupOnError verifies files are cleaned up on upload error
 func TestSkynetCleanupOnError(t *testing.T) {
-	// if testing.Short() {
-	t.SkipNow()
-	// }
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	// Create a testgroup.

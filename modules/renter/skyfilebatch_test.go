@@ -190,7 +190,7 @@ func TestBatchManager(t *testing.T) {
 	reader := bytes.NewReader(fastrand.Bytes(int(fileSize)))
 	sur := modules.NewSkyfileReader(reader, sup)
 	_, err = rt.renter.BatchSkyfile(sup, sur)
-	if err != errFileToLarge {
+	if err != errFileTooLarge {
 		t.Error("expected errFileToLarge", err)
 	}
 

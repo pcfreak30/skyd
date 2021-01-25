@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 	"time"
 
@@ -20,14 +21,14 @@ var (
 	// SkyfileUploadParameters are valid for batching.
 	errBatchDefaultPath = errors.New("batching does not supports the use of DefaultPath or DisableDefaultPath")
 	errBatchDryRun      = errors.New("cannot perform a dry run with batched uploads")
-	errBatchEncrypted   = errors.New("cannot use force param with batching")
+	errBatchEncrypted   = errors.New("cannot batch encrypted uploads")
 	errBatchForce       = errors.New("cannot use force param with batching")
 	errBatchNotEnabled  = errors.New("SkyfileUploadParameters do not indicate file should be batched")
 	errBatchRedundancy  = errors.New("batching only supports the default base chunk redundancy value")
 
-	// errFileToLarge is returned if a file that is too large is submitted to the
+	// errFileTooLarge is returned if a file that is too large is submitted to the
 	// batch manager
-	errFileToLarge = errors.New("upload too large for batching")
+	errFileTooLarge = fmt.Errorf("upload is too large for batching, max size is %v", maxBatchFileSize)
 
 	// maxBatchFileSize is the maximum size of a skyfile that will be batched
 	maxBatchFileSize = modules.SectorSize / 2
@@ -158,6 +159,9 @@ func (sbm *skylinkBatchManager) callAddFile(sup modules.SkyfileUploadParameters,
 	// Read the data from the reader
 	buf := make([]byte, maxBatchFileSize)
 	numBytes, err := io.ReadFull(reader, buf)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to read file data from reader")
+	}
 	buf = buf[:numBytes] // truncate the buffer
 
 	// If we did not reach the EOF then they file is too large to be batched.
@@ -166,7 +170,7 @@ func (sbm *skylinkBatchManager) callAddFile(sup modules.SkyfileUploadParameters,
 		// upload should fail and the caller should resubmit without a batch
 		// attempt.
 		sbm.mu.Unlock()
-		return modules.Skylink{}, errFileToLarge
+		return modules.Skylink{}, errFileTooLarge
 	}
 
 	// Define the skyFileObj
@@ -304,8 +308,6 @@ func (sb *skylinkBatch) threadedUploadData() {
 		}
 	}()
 
-	// step 1: merge all the files and create a single skyfile
-	//
 	// Package the files
 	//
 	// Build Files Map
@@ -315,23 +317,28 @@ func (sb *skylinkBatch) threadedUploadData() {
 	}
 
 	// Pack Files
-	fps, sectors, err := modules.PackFiles(filesMap)
+	fps, numSectors, err := modules.PackFiles(filesMap)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to pack files")
 		return
 	}
 
 	// Sanity check that we are only packing files into a single sector.
-	if sectors != 1 {
+	if numSectors != 1 {
 		sb.err = errors.New("batch upload failed due to unexpected number of sectors")
 		build.Critical(sb.err)
 		return
 	}
 
-	// Move file placements back to skyFileObj and build basesector data based on
-	// packed files. The file placements are returned in order of the offsets.
+	// Sort slice by offset
+	sort.Slice(fps, func(i, j int) bool { return fps[i].SectorOffset < fps[j].SectorOffset })
+
+	// Determine the total size of the batch
 	lastFP := fps[len(fps)-1]
 	totalSize := lastFP.SectorOffset + lastFP.Size
+
+	// Move file placements back to skyFileObj and build basesector data based on
+	// packed files.
 	baseSectorData := make([]byte, totalSize)
 	for _, fp := range fps {
 		sfo, ok := sb.currentFiles[batchUID(fp.FileID)]

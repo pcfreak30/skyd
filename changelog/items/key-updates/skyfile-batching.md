@@ -1,3 +1,1 @@
-- Add skyfile batching
--
-- TODO: Expand this
+- Add `batch` upload param for skyfile uploads to enable batching of small skyfiles
