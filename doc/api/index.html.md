@@ -5348,7 +5348,7 @@ the first chunk of the file, and is always uploaded using 1-of-N redundancy.
 
 **batch** | bool  
 Indicates if the skyfile upload should attempt to be batched with other skyfile
-uploads.
+uploads. The current `maxBatchFileSize` is 2MB.
 
 **convertpath** string  
 The siapath of an existing siafile that should be converted to a skylink. A new
