@@ -417,9 +417,6 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 	// see if we can fit the entire upload in a single chunk
 	buf := make([]byte, modules.SectorSize)
 	numBytes, err := io.ReadFull(reader, buf)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "unable to read data from reader")
-	}
 	buf = buf[:numBytes] // truncate the buffer
 
 	// if we've reached EOF, we can safely fetch the metadata and calculate the

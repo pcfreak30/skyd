@@ -203,6 +203,8 @@ func TestBatchManager(t *testing.T) {
 	// Launch batch call in a go routine. Call will fail when it tries to upload
 	// but the point is that it blocks until maxBatchTime
 	go func() {
+		// Ignoring error as we only care about the blocking nature and we know the
+		// call will error for the upload not succeeding.
 		rt.renter.BatchSkyfile(sup, sur)
 		close(done1)
 	}()
@@ -223,12 +225,17 @@ func TestBatchManager(t *testing.T) {
 	sur2 := modules.NewSkyfileReader(reader2, sup)
 
 	// Launch two batch call in a separate go routines. The second call will
-	// trigger the first batch to finalize.
+	// trigger the first batch to finalize. To ensure the second call executes
+	// second we also sleep for a bit before calling BatchSkyfile.
+	//
+	// NOTE: we ignore errors here again as we are checking the blocking nature of
+	// the tests and we know both calls will error when trying to upload.
 	go func() {
 		rt.renter.BatchSkyfile(sup, sur)
 		close(done2)
 	}()
 	go func() {
+		time.Sleep(maxBatchTime / 3)
 		rt.renter.BatchSkyfile(sup, sur2)
 	}()
 	select {

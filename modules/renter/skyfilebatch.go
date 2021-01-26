@@ -46,7 +46,7 @@ var (
 	maxBatchTime = build.Select(build.Var{
 		Dev:      time.Second,
 		Standard: time.Second * 10,
-		Testing:  time.Millisecond * 100,
+		Testing:  time.Second, // Set to 1 second to help with NDFs
 	}).(time.Duration)
 )
 
@@ -154,14 +154,12 @@ func (sbm *skylinkBatchManager) callAddFile(sup modules.SkyfileUploadParameters,
 		return modules.Skylink{}, err
 	}
 
+	// Acquire the batchManager lock
 	sbm.mu.Lock()
 
 	// Read the data from the reader
 	buf := make([]byte, maxBatchFileSize)
 	numBytes, err := io.ReadFull(reader, buf)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "unable to read file data from reader")
-	}
 	buf = buf[:numBytes] // truncate the buffer
 
 	// If we did not reach the EOF then they file is too large to be batched.
