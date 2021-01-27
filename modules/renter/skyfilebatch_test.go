@@ -205,7 +205,7 @@ func TestBatchManager(t *testing.T) {
 	go func() {
 		// Ignoring error as we only care about the blocking nature and we know the
 		// call will error for the upload not succeeding.
-		rt.renter.BatchSkyfile(sup, sur)
+		_, _ = rt.renter.BatchSkyfile(sup, sur)
 		close(done1)
 	}()
 	select {
@@ -226,17 +226,17 @@ func TestBatchManager(t *testing.T) {
 
 	// Launch two batch call in a separate go routines. The second call will
 	// trigger the first batch to finalize. To ensure the second call executes
-	// second we also sleep for a bit before calling BatchSkyfile.
+	// after the first we also sleep for a bit before calling BatchSkyfile.
 	//
 	// NOTE: we ignore errors here again as we are checking the blocking nature of
 	// the tests and we know both calls will error when trying to upload.
 	go func() {
-		rt.renter.BatchSkyfile(sup, sur)
+		_, _ = rt.renter.BatchSkyfile(sup, sur)
 		close(done2)
 	}()
 	go func() {
 		time.Sleep(maxBatchTime / 3)
-		rt.renter.BatchSkyfile(sup, sur2)
+		_, _ = rt.renter.BatchSkyfile(sup, sur2)
 	}()
 	select {
 	case <-done2:
