@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
@@ -39,6 +42,7 @@ func TestSkynetBackupAndRestore(t *testing.T) {
 		{Name: "DirectoryBasic", Test: testDirectoryBasic},
 		{Name: "DirectoryNested", Test: testDirectoryNested},
 		{Name: "ConvertedSiafile", Test: testConvertedSiaFile},
+		{Name: "Batch", Test: testBatchedSkyFiles},
 	}
 
 	// Run tests
@@ -325,6 +329,63 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	convertTest("largeSiafile", "", largeSize)
 	// Large siafile with encrypted conversion
 	convertTest("largeSiafile_Encryption", sk.Name, largeSize)
+}
+
+// testBatchedSkyFiles verifies that all the skyfiles in a batch can be backed
+// up.
+func testBatchedSkyFiles(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the portals
+	portals := tg.Portals()
+	portal1 := portals[0]
+	portal2 := portals[1]
+
+	// User an errChan for the batchTest since they will be called in parallel
+	errChan := make(chan error)
+
+	// Define test function
+	batchTest := func(filename string, size int) {
+		// Portal 1 uploads a siafile
+		data := fastrand.Bytes(size)
+		skylink, sup, _, err := portal1.UploadSkyfileBlockingCustom(filename, data, "", renter.SkyfileDefaultBaseChunkRedundancy, false, true)
+		if err != nil {
+			select {
+			case errChan <- fmt.Errorf("Test %v failed to batch skyfile: %v", filename, err):
+			default:
+			}
+			return
+		}
+
+		// Verify the backup and restoration of the skylink
+		err = verifyBackupAndRestore(tg, portal1, portal2, skylink, sup.SiaPath.String())
+		if err != nil {
+			select {
+			case errChan <- fmt.Errorf("Test %v failed to backup and restore batch skyfile: %v", filename, err):
+			default:
+			}
+			return
+		}
+	}
+
+	// Use waitgroup and submitted batch tests in go routine
+	var wg sync.WaitGroup
+
+	// Run 2-6 tests
+	numTests := fastrand.Intn(5) + 2
+	t.Log("# of Backup Batch Tests", numTests)
+	for i := 0; i < numTests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fileName := "batchFile" + persist.RandomSuffix()
+			batchTest(fileName, 100)
+		}()
+	}
+	wg.Wait()
+
+	// Check for errors
+	if err := modules.PeekErr(errChan); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // verifyBackupAndRestore verifies the backup and restore functionality of
