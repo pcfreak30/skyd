@@ -376,6 +376,7 @@ type DirectoryInfo struct {
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
 	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 
@@ -395,6 +396,7 @@ type DirectoryInfo struct {
 	NumFiles            uint64      `json:"numfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
+	RepairSize          uint64      `json:"repairsize"`
 	SiaPath             SiaPath     `json:"siapath"`
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
 	StuckHealth         float64     `json:"stuckhealth"`
@@ -574,8 +576,19 @@ type HostScoreBreakdown struct {
 	VersionAdjustment          float64 `json:"versionadjustment"`
 }
 
-// MemoryStatus contains information about the status of the memory manager
+// MemoryStatus contains information about the status of the memory managers in
+// the renter.
 type MemoryStatus struct {
+	MemoryManagerStatus
+
+	Registry     MemoryManagerStatus `json:"registry"`
+	UserUpload   MemoryManagerStatus `json:"userupload"`
+	UserDownload MemoryManagerStatus `json:"userdownload"`
+	System       MemoryManagerStatus `json:"system"`
+}
+
+// MemoryManagerStatus contains the memory status of a single memory manager.
+type MemoryManagerStatus struct {
 	Available uint64 `json:"available"`
 	Base      uint64 `json:"base"`
 	Requested uint64 `json:"requested"`
@@ -586,9 +599,9 @@ type MemoryStatus struct {
 	PriorityReserve   uint64 `json:"priorityreserve"`
 }
 
-// Add combines two MemoryStatus objects into one.
-func (ms MemoryStatus) Add(ms2 MemoryStatus) MemoryStatus {
-	return MemoryStatus{
+// Add combines two MemoryManagerStatus objects into one.
+func (ms MemoryManagerStatus) Add(ms2 MemoryManagerStatus) MemoryManagerStatus {
+	return MemoryManagerStatus{
 		Available:         ms.Available + ms2.Available,
 		Base:              ms.Base + ms2.Base,
 		Requested:         ms.Requested + ms2.Requested,
