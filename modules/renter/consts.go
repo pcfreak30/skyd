@@ -120,7 +120,6 @@ var (
 	// gcMemoryThreshold is the amount of memory after which a memory manager
 	// triggers a garbage collection.
 	gcMemoryThreshold = uint64(1 << 28) // 256 MiB
->>>>>>> master
 
 	// initialStreamerCacheSize defines the cache size that each streamer will
 	// start using when it is created. A lower initial cache size will mean that
