@@ -379,6 +379,10 @@ type DirectoryInfo struct {
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 
+	// Skynet Fields
+	AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
+	AggregateSkynetSize  uint64 `json:"aggregateskynetsize"`
+
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
 	Health              float64     `json:"health"`
@@ -395,6 +399,10 @@ type DirectoryInfo struct {
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
 	StuckHealth         float64     `json:"stuckhealth"`
 	UID                 uint64      `json:"uid"`
+
+	// Skynet Fields
+	SkynetFiles uint64 `json:"skynetfiles"`
+	SkynetSize  uint64 `json:"skynetsize"`
 }
 
 // Name implements os.FileInfo.
@@ -576,6 +584,19 @@ type MemoryStatus struct {
 	PriorityBase      uint64 `json:"prioritybase"`
 	PriorityRequested uint64 `json:"priorityrequested"`
 	PriorityReserve   uint64 `json:"priorityreserve"`
+}
+
+// Add combines two MemoryStatus objects into one.
+func (ms MemoryStatus) Add(ms2 MemoryStatus) MemoryStatus {
+	return MemoryStatus{
+		Available:         ms.Available + ms2.Available,
+		Base:              ms.Base + ms2.Base,
+		Requested:         ms.Requested + ms2.Requested,
+		PriorityAvailable: ms.PriorityAvailable + ms2.PriorityAvailable,
+		PriorityBase:      ms.PriorityBase + ms2.PriorityBase,
+		PriorityRequested: ms.PriorityRequested + ms2.PriorityRequested,
+		PriorityReserve:   ms.PriorityReserve + ms2.PriorityReserve,
+	}
 }
 
 // MountInfo contains information about a mounted FUSE filesystem.
