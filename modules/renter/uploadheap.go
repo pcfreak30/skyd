@@ -1301,7 +1301,8 @@ func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkT
 	}
 
 	// Prepare and send the chunk to the workers.
-	err = r.managedPrepareNextChunk(uuc)
+	// err = r.managedPrepareNextChunk(uuc)
+	err = errors.New("uploading disabled for now")
 	if err != nil {
 		return pushed, errors.AddContext(err, "unable to prepare chunk for workers")
 	}
@@ -1475,6 +1476,7 @@ func (r *Renter) managedRepairLoop() error {
 		nextChunk.mu.Unlock()
 		r.repairLog.Println("uh: preparing next chunk from core loop")
 		err := r.managedPrepareNextChunk(nextChunk)
+		r.repairLog.Println("uh: prep complete")
 		if err != nil {
 			// An error was return which means the renter was unable to allocate
 			// memory for the repair. Since that is not an issue with the file
