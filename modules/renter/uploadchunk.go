@@ -330,8 +330,10 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 // threadedFetchAndRepairChunk will fetch the logical data for a chunk, create
 // the physical pieces for the chunk, and then distribute them.
 func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
+	r.repairLog.Println("uh: fetching chunk")
 	err := r.tg.Add()
 	if err != nil {
+		r.repairLog.Println("uh: tg stopped")
 		close(chunk.staticWorkDistributedChan)
 		return
 	}
@@ -352,12 +354,14 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	}
 
 	// Fetch the logical data for the chunk.
+	r.repairLog.Println("uh: fetching logical chunk data")
 	err = r.managedFetchLogicalChunkData(chunk)
 	if err != nil {
 		// Logical data is not available, cannot upload. Chunk will not be
 		// distributed to workers, therefore set workersRemaining equal to zero.
 		// The erasure coding memory has not been released yet, be sure to
 		// release that as well.
+		r.repairLog.Println("uh: fetching logical chunk data failed")
 		close(chunk.staticWorkDistributedChan)
 		chunk.mu.Lock()
 		chunk.logicalChunkData = nil
@@ -381,6 +385,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		}
 		return
 	}
+	r.repairLog.Println("uh: fetching logical chunk data succeeded")
 	// Return the erasure coding memory. This is not handled by the data
 	// fetching, where the erasure coding occurs.
 	chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
@@ -395,12 +400,14 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// Sanity check - we should have at least as many physical data pieces as we
 	// do elements in our piece usage.
 	if len(chunk.physicalChunkData) < len(chunk.pieceUsage) {
+		r.repairLog.Println("uh: not enough workers")
 		r.log.Critical("not enough physical pieces to match the upload settings of the file")
 		close(chunk.staticWorkDistributedChan)
 		return
 	}
 
 	// Distribute the chunk to the workers.
+	r.repairLog.Println("uh: sending chunk to the dist queue")
 	r.staticUploadChunkDistributionQueue.callAddUploadChunk(chunk)
 }
 
