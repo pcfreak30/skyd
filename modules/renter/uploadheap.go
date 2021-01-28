@@ -791,7 +791,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		// Pop an explored directory off of the directory heap
 		r.repairLog.Println("uh: exploring a directory")
 		dir, err := r.managedNextExploredDirectory()
-		r.repairLog.Println("uh: exploration complete")
+		r.repairLog.Println("uh: exploration complete:", dir.staticSiaPath)
 		if errors.Contains(err, threadgroup.ErrStopped) {
 			// Check to see if the error is due to a shutdown. If so then avoid the
 			// log Severe.
