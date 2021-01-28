@@ -1312,9 +1312,11 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
+	r.repairLog.Println("uh: grabbing some memory")
 	if !uuc.staticMemoryManager.Request(context.Background(), uuc.staticMemoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memotatiy")
 	}
+	r.repairLog.Println("uh: memory acquired")
 	go r.threadedFetchAndRepairChunk(uuc)
 
 	// Block until the chunk has been distributed to workers. This ensures that
@@ -1330,10 +1332,12 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// In the case of streaming uploads, it gives a little bit better balance
 	// between different streams that are competing for the same bandwidth in
 	// the worker queues.
+	r.repairLog.Println("uh: waiting for the work to be distributed")
 	select {
 	case <-r.tg.StopChan():
 	case <-uuc.staticWorkDistributedChan:
 	}
+	r.repairLog.Println("uh: the work was distributed")
 	return nil
 }
 
