@@ -1338,12 +1338,14 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// In the case of streaming uploads, it gives a little bit better balance
 	// between different streams that are competing for the same bandwidth in
 	// the worker queues.
+	/*
 	r.repairLog.Println("uhp: waiting for the work to be distributed")
 	select {
 	case <-r.tg.StopChan():
 	case <-uuc.staticWorkDistributedChan:
 	}
 	r.repairLog.Println("uhp: the work was distributed")
+	*/
 	return nil
 }
 
