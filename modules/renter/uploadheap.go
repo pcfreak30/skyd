@@ -781,6 +781,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	consecutiveDirHeapFailures := 0
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
+		r.repairLog.Println("uh: top of add chunks loop")
 		select {
 		case <-r.tg.StopChan():
 			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
@@ -788,7 +789,9 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		}
 
 		// Pop an explored directory off of the directory heap
+		r.repairLog.Println("uh: exploring a directory")
 		dir, err := r.managedNextExploredDirectory()
+		r.repairLog.Println("uh: exploration complete")
 		if errors.Contains(err, threadgroup.ErrStopped) {
 			// Check to see if the error is due to a shutdown. If so then avoid the
 			// log Severe.
@@ -819,7 +822,9 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		}
 
 		// Add chunks from the directory to the uploadHeap.
+		r.repairLog.Println("uh: building the chunk heap")
 		r.managedBuildChunkHeap(dir.staticSiaPath, hosts, targetUnstuckChunks, offline, goodForRenew)
+		r.repairLog.Println("uh: chunk heap built")
 
 		// Check to see if we are still adding chunks
 		heapLen := r.uploadHeap.managedLen()
