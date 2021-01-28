@@ -1383,7 +1383,9 @@ func (r *Renter) managedRepairLoop() error {
 	// Work through the heap repairing chunks until heap is empty for
 	// smallRepairs or heap drops below minUploadHeapSize for larger repairs, or
 	// until the total amount of time spent in one repair iteration has elapsed.
+	r.repairLog.Println("uh: entering core loop")
 	for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.Now().After(repairBreakTime) {
+		r.repairLog.Println("uh: top of core repair loop")
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
@@ -1397,7 +1399,9 @@ func (r *Renter) managedRepairLoop() error {
 		}
 
 		// Check if the repair has been paused
+		r.repairLog.Println("uh: checking for pause reset in core repair loop")
 		if r.uploadHeap.managedIsPaused() {
+			r.repairLog.Println("uh: pause confirmed")
 			// If paused we reset the upload heap and return so that when the
 			// repair is resumes the upload heap can be built fresh.
 			errPaused := errors.New("could not finish repairing upload heap because repair was paused")
@@ -1407,9 +1411,11 @@ func (r *Renter) managedRepairLoop() error {
 
 		// Check if there is work by trying to pop off the next chunk from the
 		// heap.
+		r.repairLog.Println("uh: popping a chunk")
 		nextChunk := r.uploadHeap.managedPop()
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
+			r.repairLog.Println("uh: resetting upload heap from core loop")
 			r.uploadHeap.managedReset()
 			return nil
 		}
@@ -1422,6 +1428,7 @@ func (r *Renter) managedRepairLoop() error {
 		availableWorkers := len(r.staticWorkerPool.workers)
 		r.staticWorkerPool.mu.RUnlock()
 		if availableWorkers < nextChunk.staticMinimumPieces {
+			r.repairLog.Println("uh: marking chunk as stuck, not enough workers")
 			r.repairLog.Printf("WARN: Not enough workers to repair %s, have %v but need %v", chunkPath, availableWorkers, nextChunk.staticMinimumPieces)
 			// If the chunk is not stuck, check whether there are enough hosts
 			// in the allowance to support the chunk.
@@ -1457,6 +1464,7 @@ func (r *Renter) managedRepairLoop() error {
 		nextChunk.mu.Lock()
 		nextChunk.chunkPoppedFromHeapTime = time.Now()
 		nextChunk.mu.Unlock()
+		r.repairLog.Println("uh: preparing next chunk from core loop")
 		err := r.managedPrepareNextChunk(nextChunk)
 		if err != nil {
 			// An error was return which means the renter was unable to allocate
@@ -1466,10 +1474,12 @@ func (r *Renter) managedRepairLoop() error {
 			r.repairLog.Printf("WARN: error while preparing chunk %v from %s: %v", nextChunk.staticIndex, chunkPath, err)
 			nextChunk.fileEntry.Close()
 			// Remove the chunk from the repairingChunks map
+			r.repairLog.Println("uh: preparation resulted in an error")
 			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
 			continue
 		}
 	}
+	r.repairLog.Println("uh: exiting core loop")
 	return nil
 }
 
@@ -1506,6 +1516,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Wait until the contractor is synced.
+		r.repairLog.Println("uh: blocking until synced")
 		if !r.managedBlockUntilSynced() {
 			// The renter shut down before the contract was synced.
 			return
@@ -1513,11 +1524,13 @@ func (r *Renter) threadedUploadAndRepair() {
 
 		// Wait until the renter is online to proceed. This function will return
 		// 'false' if the renter has shut down before being online.
+		r.repairLog.Println("uh: blocking until online")
 		if !r.managedBlockUntilOnline() {
 			return
 		}
 
 		// Check if repair process has been paused
+		r.repairLog.Println("uh: blocking until pause is released")
 		if r.uploadHeap.managedIsPaused() {
 			r.repairLog.Println("Repairs and Uploads have been paused")
 			// Block until the repair process is restarted
@@ -1553,6 +1566,7 @@ func (r *Renter) threadedUploadAndRepair() {
 
 		// If enough time has elapsed to trigger a directory reset, reset the
 		// directory.
+		r.repairLog.Println("uh: performing a directory reset if needed")
 		if time.Now().After(resetTime) {
 			resetTime = time.Now().Add(repairLoopResetFrequency)
 			r.directoryHeap.managedReset()
@@ -1567,6 +1581,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// storing system files and chunks such as those related to snapshot
 		// backups is different from the siafileset that stores non-system files
 		// and chunks.
+		r.repairLog.Println("uh: building the chunk heap")
 		heapLen := r.uploadHeap.managedLen()
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
 		r.managedBuildChunkHeap(modules.BackupFolder, hosts, targetBackupChunks, offline, goodForRenew)
@@ -1578,6 +1593,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Check if there is work to do. If the filesystem is healthy and the
 		// heap is empty, there is no work to do and the thread should block
 		// until there is work to do.
+		r.repairLog.Println("uh: establishing the need for repairs")
 		dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
 		if r.uploadHeap.managedLen() == 0 && dirHeapHealth < RepairThreshold {
 			// TODO: This has a tiny window where it might be dumping out chunks
@@ -1617,6 +1633,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Add chunks to heap.
+		r.repairLog.Println("uh: adding chunks to the heap")
 		dirSiaPaths, err := r.managedAddChunksToHeap(hosts)
 		if err != nil {
 			// Log the error but don't sleep as there are potentially chunks in
@@ -1637,6 +1654,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		if uploadHeapLen > 0 {
 			r.repairLog.Printf("Executing an upload and repair cycle, uploadHeap has %v chunks in it", uploadHeapLen)
 		}
+		r.repairLog.Println("uh: running repair loop")
 		err = r.managedRepairLoop()
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
