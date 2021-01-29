@@ -158,12 +158,21 @@ func (udc *unfinishedDownloadChunk) managedFinalizeRecovery() {
 }
 
 // managedRemoveWorker will decrement a worker from the set of remaining workers
-// in the udc. After a worker has been removed, the udc needs to be cleaned up.
+// in the udc. If the worker has already been registered for a download, use
+// managedUnregisterWorker instead.
+// NOTE: managedCleanUp needs to be called after removing one or more workers.
 func (udc *unfinishedDownloadChunk) managedRemoveWorker() {
 	udc.mu.Lock()
+	defer udc.mu.Unlock()
+	udc.removeWorker()
+}
+
+// removeWorker will decrement a worker from the set of remaining workers in the
+// udc. If the worker has already been registered for a download, use
+// unregisterWorker instead.
+// NOTE: managedCleanUp needs to be called after removing one or more workers.
+func (udc *unfinishedDownloadChunk) removeWorker() {
 	udc.workersRemaining--
-	udc.mu.Unlock()
-	udc.managedCleanUp()
 }
 
 // markPieceCompleted marks the piece with pieceIndex as completed.
@@ -218,10 +227,6 @@ func (udc *unfinishedDownloadChunk) returnMemory() {
 // downloaded and encode them into the logical data which is then written to the
 // underlying writer for the download.
 func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
-	// Ensure cleanup occurs after the data is recovered, whether recovery
-	// succeeds or fails.
-	defer udc.managedCleanUp()
-
 	// Write the pieces to the requested output.
 	dataOffset := recoveredDataOffset(udc.staticFetchOffset, udc.erasureCode)
 	err := udc.destination.WritePieces(udc.erasureCode, udc.physicalChunkData, dataOffset, udc.staticWriteOffset, udc.staticFetchLength)

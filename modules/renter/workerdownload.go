@@ -137,6 +137,9 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	}
 	w.downloadMu.Unlock()
 
+	// Make sure a cleanup happens in any case.
+	defer udc.managedCleanUp()
+
 	// Process this chunk. If the worker is not fit to do the download, or is
 	// put on standby, 'nil' will be returned. After the chunk has been
 	// processed, the worker will be registered with the chunk.
@@ -147,9 +150,6 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	if udc == nil {
 		return
 	}
-	// Worker is being given a chance to work. After the work is complete,
-	// whether successful or failed, the worker needs to be removed.
-	defer udc.managedRemoveWorker()
 
 	// Before performing the download, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()
@@ -157,7 +157,7 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	if err != nil {
 		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
 		w.managedDownloadFailed(err)
-		udc.managedUnregisterWorker(w)
+		udc.managedUnregisterWorker(w, false)
 		return
 	}
 
@@ -177,7 +177,7 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	case _ = <-w.renter.tg.StopChan():
 		w.renter.log.Debugln("worker shut down before download completed")
 		w.managedDownloadFailed(threadgroup.ErrStopped)
-		udc.managedUnregisterWorker(w)
+		udc.managedUnregisterWorker(w, false)
 		return
 	case resp = <-readSectorRespChan:
 	}
@@ -187,7 +187,7 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		w.managedDownloadFailed(err)
-		udc.managedUnregisterWorker(w)
+		udc.managedUnregisterWorker(w, false)
 		return
 	}
 
@@ -211,7 +211,7 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	decryptedPiece, err := key.DecryptBytesInPlace(pieceData, uint64(fetchOffset/crypto.SegmentSize))
 	if err != nil {
 		w.renter.log.Debugln("worker failed to decrypt piece:", err)
-		udc.managedUnregisterWorker(w)
+		udc.managedUnregisterWorker(w, false)
 		return
 	}
 
@@ -219,8 +219,7 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	// enough pieces to do so. Chunk recovery is an expensive operation that
 	// should be performed in a separate thread as to not block the worker.
 	udc.mu.Lock()
-	udc.markPieceCompleted(pieceIndex)
-	udc.piecesRegistered--
+	udc.unregisterWorker(w, true)
 	if udc.piecesCompleted <= udc.erasureCode.MinPieces() {
 		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength/uint64(udc.erasureCode.MinPieces()))
 		udc.physicalChunkData[pieceIndex] = decryptedPiece
@@ -244,6 +243,10 @@ func (w *worker) managedPerformDownloadChunkJob() {
 		go func() {
 			defer w.renter.tg.Done()
 			udc.threadedRecoverLogicalData()
+
+			// Ensure cleanup occurs after the data is recovered, whether recovery
+			// succeeds or fails.
+			udc.managedCleanUp()
 		}()
 	}
 	udc.mu.Unlock()
@@ -273,6 +276,7 @@ func (w *worker) managedDropDownloadChunks() {
 	w.downloadMu.Unlock()
 	for i := 0; i < len(removedChunks); i++ {
 		removedChunks[i].managedRemoveWorker()
+		removedChunks[i].managedCleanUp()
 	}
 }
 
@@ -297,17 +301,32 @@ func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 	// happen without holding the worker lock.
 	if !goodWorker {
 		udc.managedRemoveWorker()
+		udc.managedCleanUp()
 	}
 }
 
 // managedUnregisterWorker will remove the worker from an unfinished download
 // chunk, and then un-register the pieces that it grabbed. This function should
 // only be called when a worker download fails.
-func (udc *unfinishedDownloadChunk) managedUnregisterWorker(w *worker) {
+func (udc *unfinishedDownloadChunk) managedUnregisterWorker(w *worker, pieceCompleted bool) {
 	udc.mu.Lock()
+	defer udc.mu.Unlock()
+	udc.unregisterWorker(w, pieceCompleted)
+}
+
+// unregisterWorker will remove the worker from an unfinished download chunk,
+// and then un-register the pieces that it grabbed. If the download failed,
+// pieceCompleted should be set to 'false' and to 'true' otherwise. This allows
+// for unregistering the pieces, incrementing the completed pieces and removing
+// the worker atomically.
+func (udc *unfinishedDownloadChunk) unregisterWorker(w *worker, pieceCompleted bool) {
 	udc.piecesRegistered--
-	udc.pieceUsage[udc.staticChunkMap[w.staticHostPubKey.String()].index] = false
-	udc.mu.Unlock()
+	pieceInfo := udc.staticChunkMap[w.staticHostPubKey.String()]
+	udc.pieceUsage[pieceInfo.index] = false
+	if pieceCompleted {
+		udc.markPieceCompleted(pieceInfo.index)
+	}
+	udc.removeWorker()
 }
 
 // onDownloadCooldown returns true if the worker is on cooldown from failed
@@ -339,8 +358,12 @@ func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfi
 	pieceData, workerHasPiece := udc.staticChunkMap[w.staticHostPubKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
 	if chunkComplete || chunkFailed || onCooldown || !workerHasPiece || pieceCompleted {
+		// Remove the worker.
+		udc.removeWorker()
 		udc.mu.Unlock()
-		udc.managedRemoveWorker()
+
+		// Clean up the chunk.
+		udc.managedCleanUp()
 
 		// Extra check - if a worker is unusable, drop all the queued jobs.
 		if onCooldown {
