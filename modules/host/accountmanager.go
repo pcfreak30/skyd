@@ -442,6 +442,11 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 	errRotate := am.staticAccountsPersister.callRotateFingerprintBuckets()
 	am.mu.Lock()
 
+	//xxx
+	if errRotate != nil {
+		am.h.log.Debugf("XXX errRotate: %v", errRotate)
+	}
+
 	// Rotate in memory only if the on-disk rotation succeeded
 	if errRotate == nil {
 		am.fingerprints.rotate()
