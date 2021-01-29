@@ -326,7 +326,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 	w.renter.repairLog.Printf("Worker upload failed. Worker: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, uc.staticIndex, uc.staticSiaPath, failureErr)
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
-	if w.renter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted)) {
+	if w.renter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error())) {
 		w.mu.Lock()
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr
