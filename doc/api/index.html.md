@@ -176,6 +176,58 @@ There are a number of environment variables supported by siad and siac.
    "0.00018 mBTC") to extend the output of some siac subcommands when displaying
    currency amounts
 
+# Accounting
+
+The accounting endpoints provide some basic accounting information for the sia
+node.
+
+## /accounting [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/accounting
+```
+
+Returns basic accounting information for the modules that are running.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "renter": {
+    "unspentunallocated": "990000000000000000000000000", // hastings, big int
+    "withheldfunds":      "0", // hastings, big int
+  },
+  "wallet": {
+    "confirmedsiacoinbalance": "3365276858974358974358974358950" // hastings, big int
+    "confirmedsiafundbalance": "0" // siafunds, big int
+  }
+}
+```
+
+**renter** | RenterAccounting\
+Basic accounting information about the renter module.
+
+**unspentunallocated** | hastings, big int\
+The amount of funds currently tied up in the current period contracts that have
+not been allocated for upload, download, or storage spending.
+
+**withheldfunds** | hastings, big int\
+The amount of funds currently tied up in expired contracts that have not been
+released yet.
+
+**wallet** | WalletAccounting\
+Basic accounting information about the wallet module.
+
+**confirmedsiacoinbalance** | hastings, big int\
+Number of siacoins, in hastings, available to the wallet as of the most recent
+block in the blockchain.
+
+**confirmedsiafundbalance** | big int\
+Number of siafunds available to the wallet as of the most recent block in the
+blockchain.
+
 # Consensus
 
 The consensus set manages everything related to consensus and keeps the
