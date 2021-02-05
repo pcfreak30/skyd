@@ -455,7 +455,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		totalWorkers++
 		isUnresolved = isUnresolved || worker.unresolved
 		if worker.unresolved {
-			fmt.Println("not resolved yet", time.Until(worker.completeTime))
+			fmt.Printf("%v not resolved yet %v\n", worker.worker.staticHostPubKey.ShortString(), time.Until(worker.completeTime))
 			return nil, nil
 		}
 	}
