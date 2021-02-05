@@ -162,10 +162,11 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		}
 
 		// Fetch the resolveTime, which is the time until the HS job is expected
-		// to resolve. If that time is in the past, set it in the future.
+		// to resolve. If that time is in the past, set it to a time in the
+		// future, equal to the amount that it's late.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Before(time.Now()) {
-			resolveTime = time.Now().Add(40 * time.Millisecond)
+			resolveTime = time.Now().Add(time.Since(resolveTime))
 		}
 
 		// Verify whether the read queue is on a cooldown, if so account for
@@ -181,6 +182,10 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// complete time for the download
 		cost := jrq.callExpectedJobCost(pdc.pieceLength)
 		readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
+		if readDuration == 0 {
+			continue
+		}
+
 		completeTime := resolveTime.Add(readDuration).Add(unresolvedWorkerTimePenalty)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
