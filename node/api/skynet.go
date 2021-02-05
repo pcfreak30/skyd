@@ -61,7 +61,7 @@ var (
 	// is able to spend on faster workers when downloading a Skyfile. By default
 	// this is 1KSC and thus very high, meaning faster workers will always be
 	// favored.
-	DefaultSkynetPricePerMS = types.SiacoinPrecision.Mul64(1e3)
+	DefaultSkynetPricePerMS = types.SiacoinPrecision.MulFloat(1e-12) // pS
 )
 
 type (
