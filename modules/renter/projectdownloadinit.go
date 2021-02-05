@@ -339,7 +339,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
 		}
-		fmt.Printf("%v | next worker %v complete in %v cost %v (%v)\n", hex.EncodeToString(pdc.uid[:]), nextWorker.worker.staticHostPubKey.ShortString(), time.Until(nextWorker.completeTime), nextWorker.cost.HumanString(), nextWorker.cost)
+		fmt.Printf("%v | next worker %v complete in %v cost %v read dur %v\n", hex.EncodeToString(pdc.uid[:]), nextWorker.worker.staticHostPubKey.ShortString(), time.Until(nextWorker.completeTime), nextWorker.cost.HumanString(), nextWorker.readDuration)
 
 		// Iterate through the working set and determine the cost and index of
 		// the most expensive worker. If the new worker is not cheaper, the
@@ -457,7 +457,12 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
 			currTotal, currTimeCost, currExpTime := grabInfo(bestSet)
 			updaTotal, updaTimeCost, updaExpTime := grabInfo(workingSet)
-			fmt.Printf("%v | swap working set into best | exp time %v -> %v | time cost %v -> %v | total cost %v -> %v | added worker %v | %v < %v\n", hex.EncodeToString(pdc.uid[:]), currExpTime, updaExpTime, currTimeCost.HumanString(), updaTimeCost.HumanString(), currTotal.HumanString(), updaTotal.HumanString(), nextWorker.worker.staticHostPubKey.ShortString(), workingSetTotalCost.HumanString(), bestSetCost.HumanString())
+			fmt.Printf("%v | swap working set into best | exp time %v -> %v | time cost %v -> %v | total cost %v -> %v | added worker %v | %v < %v\n", hex.EncodeToString(pdc.uid[:]),
+				currExpTime, updaExpTime,
+				currTimeCost.HumanString(), updaTimeCost.HumanString(),
+				currTotal.HumanString(), updaTotal.HumanString(),
+				nextWorker.worker.staticHostPubKey.ShortString(), workingSetTotalCost.HumanString(), bestSetCost.HumanString(),
+			)
 
 			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
