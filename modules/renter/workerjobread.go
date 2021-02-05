@@ -240,8 +240,9 @@ func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
 		completed = jq.weightedJobsCompleted4m
 	}
 
+	// if we don't have any historic data yet, return a sane default of 40ms
 	if completed == 0 {
-		return jq.initialEstimate
+		return 40 * time.Millisecond
 	}
 	return time.Duration(weightedJobTime / completed)
 }
@@ -260,14 +261,6 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	return cost.Add(bandwidthCost)
-}
-
-// callSetInitialEstimate will set the given duration as the initial estimate,
-// returned as estimate when we have not processed any jobs yet.
-func (jq *jobReadQueue) callSetInitialEstimate(estimate time.Duration) {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-	jq.initialEstimate = estimate
 }
 
 // managedUpdateJobTimeMetrics takes a length and the duration it took to fulfil
