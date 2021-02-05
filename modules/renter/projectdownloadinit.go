@@ -456,7 +456,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
 			currTotal, currTimeCost, currExpTime := grabInfo(bestSet)
 			updaTotal, updaTimeCost, updaExpTime := grabInfo(workingSet)
-			fmt.Printf("%v | swap working set into best | CURR total cost %v expected time %v time cost %v | UPDATE total cost %v expected time %v time cost %v | added worker %v\n", hex.EncodeToString(pdc.uid[:]), currTotal.HumanString(), currExpTime, currTimeCost.HumanString(), updaTotal.HumanString(), updaExpTime, updaTimeCost.HumanString(), nextWorker.worker.staticHostPubKey.ShortString())
+			fmt.Printf("%v | swap working set into best | exp time %v -> %v | time cost %v -> %v | total cost %v -> %v | added worker %v\n", hex.EncodeToString(pdc.uid[:]), currExpTime, updaExpTime, currTimeCost.HumanString(), updaTimeCost.HumanString(), currTotal.HumanString(), updaTotal.HumanString(), nextWorker.worker.staticHostPubKey.ShortString())
 
 			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
