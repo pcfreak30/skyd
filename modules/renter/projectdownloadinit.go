@@ -322,7 +322,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		}
 
 		timeCost = pdc.pricePerMS.Mul64(uint64(maxReadDuration.Milliseconds()))
-		return totalCost, timeCost, expectedTime
+		return totalCost.Add(timeCost), timeCost, expectedTime
 	}
 	// fmt.Println(grabInfo(bestSet))
 
@@ -456,7 +456,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
 			currTotal, currTimeCost, currExpTime := grabInfo(bestSet)
 			updaTotal, updaTimeCost, updaExpTime := grabInfo(workingSet)
-			fmt.Printf("%v | swap working set into best | CURR total cost %v expected time %v time cost %v | UPDATE total cost %v expected time %v time cost %v | added worker %v\n", hex.EncodeToString(pdc.uid[:]), currTotal, currExpTime, currTimeCost.HumanString(), updaTotal, updaExpTime, updaTimeCost.HumanString(), nextWorker.worker.staticHostPubKey.ShortString())
+			fmt.Printf("%v | swap working set into best | CURR total cost %v expected time %v time cost %v | UPDATE total cost %v expected time %v time cost %v | added worker %v\n", hex.EncodeToString(pdc.uid[:]), currTotal.HumanString(), currExpTime, currTimeCost.HumanString(), updaTotal.HumanString(), updaExpTime, updaTimeCost.HumanString(), nextWorker.worker.staticHostPubKey.ShortString())
 
 			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
