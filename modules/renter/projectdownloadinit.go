@@ -2,6 +2,7 @@ package renter
 
 import (
 	"container/heap"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"time"
@@ -299,6 +300,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
 		}
+		fmt.Printf("%v | next worker %v complete in %v cost %v\n", hex.EncodeToString(pdc.uid[:]), nextWorker.worker.staticHostPubKey.ShortString(), time.Until(nextWorker.complete), nextWorker.cost.HumanString())
 
 		// Iterate through the working set and determine the cost and index of
 		// the most expensive worker. If the new worker is not cheaper, the
@@ -329,7 +331,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// and the loop can exit.
 		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
 		if workerTimeCost.Cmp(bestSetCost) > 0 && enoughWorkers {
-			fmt.Printf("workertime cost higher than bestset cost %v > %v (%v > %v) nextworker cost %v\n", workerTimeCost.HumanString(), bestSetCost.HumanString(), workerTimeCost, bestSetCost, nextWorker.cost.HumanString())
+			fmt.Printf("%v | workertime cost higher than bestset cost %v > %v \n", hex.EncodeToString(pdc.uid[:]), workerTimeCost.HumanString(), bestSetCost.HumanString())
 			break
 		}
 
@@ -414,7 +416,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration.Milliseconds()))
 		workingSetTotalCost := workingSetCost.Add(workingSetTimeCost)
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
-			fmt.Printf("worker set cost was less than best set, swapping %v < %v (%v < %v) we added worker %v\n", workingSetTotalCost.HumanString(), bestSetCost.HumanString(), workingSetTotalCost, bestSetCost, nextWorker.worker.staticHostPubKey.ShortString())
+			fmt.Printf("%v | copy working set into best set %v < %v, added worker %v\n", hex.EncodeToString(pdc.uid[:]), workingSetTotalCost.HumanString(), bestSetCost.HumanString(), nextWorker.worker.staticHostPubKey.ShortString())
 			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
 			// then changes to the working set will update the best set.
@@ -455,7 +457,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		totalWorkers++
 		isUnresolved = isUnresolved || worker.unresolved
 		if worker.unresolved {
-			fmt.Printf("%v not resolved yet %v\n", worker.worker.staticHostPubKey.ShortString(), time.Until(worker.completeTime))
+			fmt.Printf("%v | worker %v not resolved yet %v\n", hex.EncodeToString(pdc.uid[:]), worker.worker.staticHostPubKey.ShortString(), time.Until(worker.completeTime))
 			return nil, nil
 		}
 	}
