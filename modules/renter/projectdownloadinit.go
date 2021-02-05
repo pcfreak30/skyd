@@ -461,9 +461,11 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if isUnresolved {
+		fmt.Println("not resolved yet")
 		return nil, nil
 	}
 
+	fmt.Println("best set found")
 	return bestSet, nil
 }
 
