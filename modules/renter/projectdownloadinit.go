@@ -299,7 +299,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	grabInfo := func(workers []*pdcInitialWorker) (types.Currency, types.Currency, time.Duration) {
 		var totalCost types.Currency
 		var timeCost types.Currency
-		var expectedTime time.Duration
 
 		var maxComplete time.Time
 		var maxReadDuration time.Duration
@@ -315,7 +314,13 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 				maxReadDuration = iw.readDuration
 			}
 		}
-		expectedTime = time.Until(maxComplete)
+		var expectedTime time.Duration
+		if maxComplete != (time.Time{}) {
+			expectedTime = time.Until(maxComplete)
+		} else {
+			expectedTime = 0
+		}
+
 		timeCost = pdc.pricePerMS.Mul64(uint64(maxReadDuration.Milliseconds()))
 		return totalCost, timeCost, expectedTime
 	}
@@ -449,10 +454,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration.Milliseconds()))
 		workingSetTotalCost := workingSetCost.Add(workingSetTimeCost)
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
-
 			currTotal, currTimeCost, currExpTime := grabInfo(bestSet)
 			updaTotal, updaTimeCost, updaExpTime := grabInfo(workingSet)
-			fmt.Printf("%v | swap working set into best | CURR total cost %v expected time %v time cost %v | UPDATE total cost %v expected time %v time cost %v | added worker %v\n", hex.EncodeToString(pdc.uid[:]), currTotal, currExpTime, currTimeCost, updaTotal, updaExpTime, updaTimeCost, nextWorker.worker.staticHostPubKey.ShortString())
+			fmt.Printf("%v | swap working set into best | CURR total cost %v expected time %v time cost %v | UPDATE total cost %v expected time %v time cost %v | added worker %v\n", hex.EncodeToString(pdc.uid[:]), currTotal, currExpTime, currTimeCost.HumanString(), updaTotal, updaExpTime, updaTimeCost.HumanString(), nextWorker.worker.staticHostPubKey.ShortString())
 
 			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
