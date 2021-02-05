@@ -300,7 +300,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
 		}
-		fmt.Printf("%v | next worker %v complete in %v cost %v\n", hex.EncodeToString(pdc.uid[:]), nextWorker.worker.staticHostPubKey.ShortString(), time.Until(nextWorker.complete), nextWorker.cost.HumanString())
+		fmt.Printf("%v | next worker %v complete in %v cost %v\n", hex.EncodeToString(pdc.uid[:]), nextWorker.worker.staticHostPubKey.ShortString(), time.Until(nextWorker.completeTime), nextWorker.cost.HumanString())
 
 		// Iterate through the working set and determine the cost and index of
 		// the most expensive worker. If the new worker is not cheaper, the
