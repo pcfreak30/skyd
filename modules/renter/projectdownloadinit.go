@@ -296,6 +296,23 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
+	grabInfo := func(workers []*pdcInitialWorker) (totalCost, timeCost types.Currency, expectedTime time.Duration) {
+		var maxComplete time.Time
+		var maxReadDuration time.Duration
+		for _, iw := range workers {
+			totalCost = totalCost.Add(iw.cost)
+			if iw.completeTime.After(maxComplete) {
+				maxComplete = iw.completeTime
+			}
+			if iw.readDuration > maxReadDuration {
+				maxReadDuration = iw.readDuration
+			}
+		}
+		expectedTime = time.Until(maxComplete)
+		timeCost = pdc.pricePerMS.Mul64(uint64(maxReadDuration.Milliseconds()))
+		return
+	}
+
 	// Build the best set that we can. Each iteration will attempt to improve
 	// the working set by adding a new worker. This may or may not succeed,
 	// depending on how cheap the worker is and how slow the worker is. Each
@@ -424,7 +441,10 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration.Milliseconds()))
 		workingSetTotalCost := workingSetCost.Add(workingSetTimeCost)
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
-			fmt.Printf("%v | copy working set into best set %v < %v, added worker %v\n", hex.EncodeToString(pdc.uid[:]), workingSetTotalCost.HumanString(), bestSetCost.HumanString(), nextWorker.worker.staticHostPubKey.ShortString())
+			currTotal, currTimeCost, currExpTime := grabInfo(bestSet)
+			updaTotal, updaTimeCost, updaExpTime := grabInfo(workingSet)
+			fmt.Printf("%v | swap working set into best | CURR total cost %v expected time %v time cost %v | UPDATE total cost %v expected time %v time cost %v | added worker %v\n", hex.EncodeToString(pdc.uid[:]), currTotal, currExpTime, currTimeCost, updaTotal, updaExpTime, updaTimeCost, nextWorker.worker.staticHostPubKey.ShortString())
+
 			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
 			// then changes to the working set will update the best set.
