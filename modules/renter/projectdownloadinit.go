@@ -161,12 +161,11 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			continue
 		}
 
-		// Fetch the resolveTime, which is the time until the HS job is
-		// expected to resolve. If that time is in the past, set it to the
-		// current time.
+		// Fetch the resolveTime, which is the time until the HS job is expected
+		// to resolve. If that time is in the past, set it in the future.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Before(time.Now()) {
-			resolveTime = time.Now()
+			resolveTime = time.Now().Add(40 * time.Millisecond)
 		}
 
 		// Verify whether the read queue is on a cooldown, if so account for

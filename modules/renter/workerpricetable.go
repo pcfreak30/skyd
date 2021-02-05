@@ -151,6 +151,7 @@ func (w *worker) staticUpdatePriceTable() {
 			elapsed = time.Second
 		}
 		w.staticSetInitialEstimates.Do(func() {
+			fmt.Println(elapsed)
 			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
 			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
 			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
