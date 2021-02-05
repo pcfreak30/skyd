@@ -296,10 +296,17 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
-	grabInfo := func(workers []*pdcInitialWorker) (totalCost, timeCost types.Currency, expectedTime time.Duration) {
+	grabInfo := func(workers []*pdcInitialWorker) (types.Currency, types.Currency, time.Duration) {
+		var totalCost types.Currency
+		var timeCost types.Currency
+		var expectedTime time.Duration
+
 		var maxComplete time.Time
 		var maxReadDuration time.Duration
 		for _, iw := range workers {
+			if iw == nil {
+				continue
+			}
 			totalCost = totalCost.Add(iw.cost)
 			if iw.completeTime.After(maxComplete) {
 				maxComplete = iw.completeTime
@@ -310,8 +317,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		}
 		expectedTime = time.Until(maxComplete)
 		timeCost = pdc.pricePerMS.Mul64(uint64(maxReadDuration.Milliseconds()))
-		return
+		return totalCost, timeCost, expectedTime
 	}
+	// fmt.Println(grabInfo(bestSet))
 
 	// Build the best set that we can. Each iteration will attempt to improve
 	// the working set by adding a new worker. This may or may not succeed,
@@ -441,6 +449,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration.Milliseconds()))
 		workingSetTotalCost := workingSetCost.Add(workingSetTimeCost)
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
+
 			currTotal, currTimeCost, currExpTime := grabInfo(bestSet)
 			updaTotal, updaTimeCost, updaExpTime := grabInfo(workingSet)
 			fmt.Printf("%v | swap working set into best | CURR total cost %v expected time %v time cost %v | UPDATE total cost %v expected time %v time cost %v | added worker %v\n", hex.EncodeToString(pdc.uid[:]), currTotal, currExpTime, currTimeCost, updaTotal, updaExpTime, updaTimeCost, nextWorker.worker.staticHostPubKey.ShortString())
