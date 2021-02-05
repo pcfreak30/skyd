@@ -454,6 +454,10 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		}
 		totalWorkers++
 		isUnresolved = isUnresolved || worker.unresolved
+		if worker.unresolved {
+			fmt.Println("not resolved yet", time.Until(worker.completeTime))
+			return nil, nil
+		}
 	}
 
 	if totalWorkers < ec.MinPieces() {
@@ -461,7 +465,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if isUnresolved {
-		fmt.Println("not resolved yet")
 		return nil, nil
 	}
 
