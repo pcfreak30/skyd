@@ -138,7 +138,7 @@ func (w *worker) staticUpdatePriceTable() {
 		})
 	}()
 
-	start := time.Now()
+	var elapsed time.Duration
 
 	// All remaining errors represent short term issues with the host, so the
 	// price table should be updated to represent the failure, but should retain
@@ -160,7 +160,6 @@ func (w *worker) staticUpdatePriceTable() {
 			// update for this worker, we use the time it took as an initial
 			// estimate for both the HS and RJ queue.
 			w.staticSetInitialEstimates.Do(func() {
-				elapsed := time.Since(start)
 				w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
 				w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
 				w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
@@ -205,6 +204,7 @@ func (w *worker) staticUpdatePriceTable() {
 	}()
 
 	// write the specifier
+	start := time.Now()
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		err = errors.AddContext(err, "unable to write price table specifier")
@@ -218,6 +218,7 @@ func (w *worker) staticUpdatePriceTable() {
 		err = errors.AddContext(err, "unable to read price table response")
 		return
 	}
+	elapsed = time.Since(start)
 
 	// decode the JSON
 	var pt modules.RPCPriceTable
