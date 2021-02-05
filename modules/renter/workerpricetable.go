@@ -138,14 +138,31 @@ func (w *worker) staticUpdatePriceTable() {
 		})
 	}()
 
+	var err error
+
+	// If this is the first time we are fetching a price table update from the
+	// host, we use the time it took for a single round trip as an initial
+	// estimate for both the HS and RJ queue job time estimates.
 	var elapsed time.Duration
+	defer func() {
+		// As a safety precaution, set the elapsed duration to be a second in
+		// case we did not manage to update the price table.
+		if err != nil {
+			elapsed = time.Second
+		}
+		w.staticSetInitialEstimates.Do(func() {
+			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, elapsed)
+		})
+	}()
 
 	// All remaining errors represent short term issues with the host, so the
 	// price table should be updated to represent the failure, but should retain
 	// the existing price table, which will allow the renter to continue
 	// performing tasks even though it's having trouble getting a new price
 	// table.
-	var err error
 	currentPT := w.staticPriceTable()
 	defer func() {
 		// Track the result of the pricetable update, in case of failure this
@@ -156,15 +173,6 @@ func (w *worker) staticUpdatePriceTable() {
 
 		// If there was no error, return.
 		if err == nil {
-			// If this was the first time we successfully complete a price table
-			// update for this worker, we use the time it took as an initial
-			// estimate for both the HS and RJ queue.
-			w.staticSetInitialEstimates.Do(func() {
-				w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
-				w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
-				w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
-				w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, elapsed)
-			})
 			return
 		}
 

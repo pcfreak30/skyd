@@ -175,7 +175,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// complete time for the download
 		cost := jrq.callExpectedJobCost(pdc.pieceLength)
 		readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
-		fmt.Println("add read dur", readDuration)
 		completeTime := resolveTime.Add(readDuration).Add(unresolvedWorkerTimePenalty)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
@@ -218,7 +217,8 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if the worker is not currently equipped to
 			// perform async work, or if the read queue is on a cooldown.
 			jrq := w.staticJobReadQueue
-			if !w.managedAsyncReady() || jrq.cooldownUntil.After(time.Now()) {
+			onCoolDown, _ := jrq.callOnCooldown()
+			if !w.managedAsyncReady() || onCoolDown {
 				continue
 			}
 
