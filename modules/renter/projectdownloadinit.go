@@ -329,7 +329,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// and the loop can exit.
 		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
 		if workerTimeCost.Cmp(bestSetCost) > 0 && enoughWorkers {
-			fmt.Printf("workertime cost higher than bestset cost %v > %v (%v > %v)\n", workerTimeCost.HumanString(), bestSetCost.HumanString(), workerTimeCost, bestSetCost)
+			fmt.Printf("workertime cost higher than bestset cost %v > %v (%v > %v) nextworker cost %v\n", workerTimeCost.HumanString(), bestSetCost.HumanString(), workerTimeCost, bestSetCost, nextWorker.cost.HumanString())
 			break
 		}
 
