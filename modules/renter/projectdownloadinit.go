@@ -269,7 +269,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // Note that we only return this best set if all workers from the worker set are
 // resolved, if that is not the case we simply return nil.
 func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
-	fmt.Printf("%v | creating initial worker set\n", hex.EncodeToString(pdc.uid[:]))
+	fmt.Printf("%v | creating initial worker set, priceperms is set to %v\n", hex.EncodeToString(pdc.uid[:]), pdc.pricePerMS.HumanString())
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
