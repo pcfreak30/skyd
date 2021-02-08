@@ -3,7 +3,6 @@ package renter
 import (
 	"container/list"
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
