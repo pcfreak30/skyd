@@ -154,23 +154,10 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
-		// Ignore workers that are still in the process of doing their
-		// maintenance (getting PT and filling EA, among other things), or that
-		// are on a maintenance cooldown. Good performing workers are generally
-		// never on maintenance cooldown, so by skipping them here we avoid ever
-		// waiting for them to resolve.
-		if !uw.staticWorker.managedMaintenanceSucceeded() || uw.staticWorker.managedOnMaintenanceCooldown() {
-
-			if !uw.staticWorker.managedMaintenanceSucceeded() {
-				wms := uw.staticWorker.staticMaintenanceState
-				wms.mu.Lock()
-				fmt.Println("refill:", wms.accountRefillSucceeded)
-				fmt.Println("accountsync:", wms.accountSyncSucceeded)
-				fmt.Println("pricetable:", wms.priceTableUpdateSucceeded)
-				fmt.Println("revision:", wms.revisionsMismatchFixSucceeded)
-				wms.mu.Unlock()
-			}
-
+		// Ignore workers that are on a maintenance cooldown. Good performing
+		// workers are generally never on maintenance cooldown, so by skipping
+		// them here we avoid ever waiting for them to resolve.
+		if uw.staticWorker.managedOnMaintenanceCooldown() {
 			continue
 		}
 
