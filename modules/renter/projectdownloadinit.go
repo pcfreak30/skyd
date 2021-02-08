@@ -160,6 +160,17 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// never on maintenance cooldown, so by skipping them here we avoid ever
 		// waiting for them to resolve.
 		if !uw.staticWorker.managedMaintenanceSucceeded() || uw.staticWorker.managedOnMaintenanceCooldown() {
+
+			if !uw.staticWorker.managedMaintenanceSucceeded() {
+				wms := uw.staticWorker.staticMaintenanceState
+				wms.mu.Lock()
+				fmt.Println("refill:", wms.accountRefillSucceeded)
+				fmt.Println("accountsync:", wms.accountSyncSucceeded)
+				fmt.Println("pricetable:", wms.priceTableUpdateSucceeded)
+				fmt.Println("revision:", wms.revisionsMismatchFixSucceeded)
+				wms.mu.Unlock()
+			}
+
 			continue
 		}
 
