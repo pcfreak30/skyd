@@ -306,7 +306,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		var timeCost types.Currency
 
 		var maxComplete time.Time
-		var maxReadDuration time.Duration
 		for _, iw := range workers {
 			if iw == nil {
 				continue
@@ -314,9 +313,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			totalCost = totalCost.Add(iw.cost)
 			if iw.completeTime.After(maxComplete) {
 				maxComplete = iw.completeTime
-			}
-			if iw.readDuration > maxReadDuration {
-				maxReadDuration = iw.readDuration
 			}
 		}
 		var expectedTime time.Duration
@@ -326,7 +322,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			expectedTime = 0
 		}
 
-		timeCost = pdc.pricePerMS.Mul64(uint64(maxReadDuration.Milliseconds()))
+		timeCost = pdc.pricePerMS.Mul64(uint64(time.Until(maxComplete).Milliseconds()))
 		return totalCost.Add(timeCost), timeCost, expectedTime
 	}
 	// fmt.Println(grabInfo(bestSet))
@@ -343,6 +339,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
 		}
+
 		fmt.Printf("%v | next worker %v complete in %v cost %v read dur %v\n", hex.EncodeToString(pdc.uid[:]), nextWorker.worker.staticHostPubKey.ShortString(), time.Until(nextWorker.completeTime), nextWorker.cost.HumanString(), nextWorker.readDuration)
 
 		// Iterate through the working set and determine the cost and index of
@@ -372,7 +369,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// If the time cost of this worker is strictly higher than the full cost
 		// of the best set, there can be no more improvements to the best set,
 		// and the loop can exit.
-		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
+		workerTimeCost := pdc.pricePerMS.Mul64(uint64(time.Until(nextWorker.completeTime).Milliseconds()))
 		if workerTimeCost.Cmp(bestSetCost) > 0 && enoughWorkers {
 			fmt.Printf("%v | workertime cost higher than bestset cost %v > %v \n", hex.EncodeToString(pdc.uid[:]), workerTimeCost.HumanString(), bestSetCost.HumanString())
 			break
@@ -424,8 +421,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// previous interation due to being evicted from its spot. If it was
 		// evicted and re-added, that means there is hope that this worker was
 		// useful in a different place.
-		if nextWorker.readDuration > workingSetDuration {
-			workingSetDuration = nextWorker.readDuration
+		if time.Until(nextWorker.completeTime) > workingSetDuration {
+			workingSetDuration = time.Until(nextWorker.completeTime)
 		}
 
 		// Perform the actual replacement. Remember to update the total cost of
