@@ -606,16 +606,16 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		}
 
 		// Prepare the subtree for being bubbled
-		urp, err := r.managedPrepareForBubble(siaPath)
+		urp, err := r.managedPrepareForBubble(siaPath, false)
 		if err != nil {
-			// Log the error but don't sleep for the error duration as some refresh
-			// paths might have been returned
+			// Log the error
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
 		}
 		if urp == nil || urp.callNumChildDirs() == 0 {
-			// Treat a urp with no ChildDirs as an error and sleep to prevent
-			// potential rapid cycling.
-			r.log.Debugf("WARN: No refresh paths returned from '%v'", siaPath)
+			// This should never happen, build.Critical and sleep to prevent potential
+			// rapid cycling.
+			msg := fmt.Sprintf("WARN: No refresh paths returned from '%v'", siaPath)
+			build.Critical(msg)
 			select {
 			case <-time.After(healthLoopErrorSleepDuration):
 			case <-r.tg.StopChan():
@@ -641,21 +641,32 @@ func (r *Renter) threadedUpdateRenterHealth() {
 // directories in the subtree that need to be updated. This includes updating
 // the metadatas for all the files in the subtree and updating the
 // LastHealthCheckTime for the supplied root directory.
-func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefreshPaths, error) {
+//
+// This method will at a minimum return a uniqueRefreshPaths with the rootDir
+// added.
+//
+// If the force boolean is supplied, the LastHealthCheckTime of the directories
+// will be ignored so all directories will be considered.
+func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
 	// Initiate helpers
 	urp := r.newUniqueRefreshPaths()
 	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 	aggregateLastHealthCheckTime := time.Now()
 
+	// Add the rootDir to urp.
+	err := urp.callAdd(rootDir)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to add initial rootDir to uniqueRefreshPaths")
+	}
+
 	// Define DirectoryInfo function
-	var err error
 	var mu sync.Mutex
 	dlf := func(di modules.DirectoryInfo) {
 		mu.Lock()
 		defer mu.Unlock()
 
 		// Skip any directories that have been updated recently
-		if time.Since(di.LastHealthCheckTime) < healthCheckInterval {
+		if !force && time.Since(di.LastHealthCheckTime) < healthCheckInterval {
 			// Track the LastHealthCheckTime of the skipped directory
 			if di.LastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
 				aggregateLastHealthCheckTime = di.LastHealthCheckTime
@@ -747,7 +758,7 @@ func (r *Renter) managedUpdateFileMetadata(sf *filesystem.FileNode, offlineMap, 
 		return errors.AddContext(err, "WARN: Could not update cached redundancy")
 	}
 	// Update cached health values.
-	_, _, _, _, _, _ = sf.Health(offlineMap, goodForRenew)
+	_, _, _, _, _, _, _ = sf.Health(offlineMap, goodForRenew)
 	// Set the LastHealthCheckTime
 	sf.SetLastHealthCheckTime()
 	// Update the cached expiration of the siafile.

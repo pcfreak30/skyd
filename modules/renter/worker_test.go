@@ -6,10 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
-	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -192,6 +190,7 @@ func TestManagedAsyncReady(t *testing.T) {
 	w := new(worker)
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobLowPrioReadQueue()
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 
@@ -202,26 +201,11 @@ func TestManagedAsyncReady(t *testing.T) {
 	w.newPriceTable()
 	w.staticPriceTable().staticExpiryTime = timeInFuture
 
-	// ensure cache indicates host version meets min requirements
-	w.newCache()
-	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(&workerCache{
-		staticHostVersion: minAsyncVersion,
-	}))
-
-	// ensure the worker has a maintenancestate, by default it will pass the
-	// checks
+	// ensure the worker has a maintenancestate, by default it will pass
 	w.newMaintenanceState()
 
 	// verify worker is considered async ready
 	if !w.managedAsyncReady() {
-		t.Fatal("unexpected")
-	}
-
-	// tweak the version to make it non async ready
-	badWorkerVersion := w
-	cache := &workerCache{staticHostVersion: "1.4.8"} // pre-dates RHP3
-	atomic.StorePointer(&badWorkerVersion.atomicCache, unsafe.Pointer(cache))
-	if badWorkerVersion.managedAsyncReady() {
 		t.Fatal("unexpected")
 	}
 
@@ -236,6 +220,35 @@ func TestManagedAsyncReady(t *testing.T) {
 	badWorkerMaintenanceState := w
 	badWorkerMaintenanceState.staticMaintenanceState.cooldownUntil = timeInFuture
 	if badWorkerMaintenanceState.managedAsyncReady() {
+		t.Fatal("unexpected")
+	}
+}
+
+// TestJobQueueInitialEstimate verifies the initial time estimates are set on
+// both the HS and RJ queues right after performing the pricetable update for
+// the first time.
+func TestJobQueueInitialEstimate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// verify it has set the initial estimates on both queues
+	if w.staticJobHasSectorQueue.callExpectedJobTime(fastrand.Uint64n(10)) == 0 {
+		t.Fatal("unexpected")
+	}
+	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
 		t.Fatal("unexpected")
 	}
 }

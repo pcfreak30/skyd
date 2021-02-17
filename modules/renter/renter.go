@@ -223,11 +223,6 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 	cachedUtilities cachedUtilities
 
-	// Stateful variables related to projects the worker can launch. Typically
-	// projects manage all of their own state, but for example they may track
-	// metrics across running the project multiple times.
-	staticProjectDownloadByRootManager *projectDownloadByRootManager
-
 	// The renter's bandwidth ratelimit.
 	rl *ratelimit.RateLimit
 
@@ -253,28 +248,30 @@ type Renter struct {
 	repairMemoryManager       *memoryManager
 
 	// Utilities.
-	cs                    modules.ConsensusSet
-	deps                  modules.Dependencies
-	g                     modules.Gateway
-	w                     modules.Wallet
-	hostContractor        hostContractor
-	hostDB                modules.HostDB
-	log                   *persist.Logger
-	persist               persistence
-	persistDir            string
-	mu                    *siasync.RWMutex
-	repairLog             *persist.Logger
-	staticAccountManager  *accountManager
-	staticAlerter         *modules.GenericAlerter
-	staticFileSystem      *filesystem.FileSystem
-	staticFuseManager     renterFuseManager
-	staticSkykeyManager   *skykey.SkykeyManager
-	staticStreamBufferSet *streamBufferSet
-	tg                    threadgroup.ThreadGroup
-	tpool                 modules.TransactionPool
-	wal                   *writeaheadlog.WAL
-	staticWorkerPool      *workerPool
-	staticMux             *siamux.SiaMux
+	cs                                 modules.ConsensusSet
+	deps                               modules.Dependencies
+	g                                  modules.Gateway
+	w                                  modules.Wallet
+	hostContractor                     hostContractor
+	hostDB                             modules.HostDB
+	log                                *persist.Logger
+	persist                            persistence
+	persistDir                         string
+	mu                                 *siasync.RWMutex
+	repairLog                          *persist.Logger
+	staticAccountManager               *accountManager
+	staticAlerter                      *modules.GenericAlerter
+	staticFileSystem                   *filesystem.FileSystem
+	staticFuseManager                  renterFuseManager
+	staticSkykeyManager                *skykey.SkykeyManager
+	staticStreamBufferSet              *streamBufferSet
+	tg                                 threadgroup.ThreadGroup
+	tpool                              modules.TransactionPool
+	wal                                *writeaheadlog.WAL
+	staticWorkerPool                   *workerPool
+	staticMux                          *siamux.SiaMux
+	memoryManager                      *memoryManager
+	staticUploadChunkDistributionQueue *uploadChunkDistributionQueue
 }
 
 // Close closes the Renter and its dependencies
@@ -1001,8 +998,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
-		staticProjectDownloadByRootManager: new(projectDownloadByRootManager),
-
 		cs:             cs,
 		deps:           deps,
 		g:              g,
@@ -1017,6 +1012,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		tpool:          tpool,
 	}
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
+	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.uploadHeap.pauseChan)
 
 	// Init the statsChan and close it right away to signal that no scan is

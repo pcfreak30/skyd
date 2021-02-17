@@ -16,7 +16,7 @@ import (
 type (
 	// sectorUpdate is an idempotent update to the sector metadata.
 	sectorUpdate struct {
-		Count  uint16
+		Count  uint64
 		Folder uint16
 		ID     sectorID
 		Index  uint32
@@ -287,6 +287,7 @@ func (wal *writeAheadLog) load() error {
 		wal.cm.log.Println("WARN: WAL file detected, performing recovery after unclean shutdown.")
 		err = wal.recoverWAL(walFile)
 		if err != nil {
+			err = errors.Compose(err, walFile.Close())
 			return build.ExtendErr("failed to recover WAL", err)
 		}
 		err = walFile.Close()

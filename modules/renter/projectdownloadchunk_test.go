@@ -3,15 +3,18 @@ package renter
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"strings"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -22,9 +25,9 @@ import (
 func TestProjectDownloadChunk_finalize(t *testing.T) {
 	t.Parallel()
 
-	// create a random sector
-	sectorData := fastrand.Bytes(int(modules.SectorSize))
-	sectorRoot := crypto.MerkleRoot(sectorData)
+	// create data
+	originalData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(originalData)
 
 	// create an EC and a passhtrough cipher key
 	ec := modules.NewRSSubCodeDefault()
@@ -34,7 +37,9 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	}
 
 	// RS encode the data
-	pieces, err := ec.Encode(sectorData)
+	data := make([]byte, modules.SectorSize)
+	copy(data, originalData)
+	pieces, err := ec.Encode(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +60,12 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	offset := fastrand.Uint64n(modules.SectorSize - length)
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
+	sliced := make([][]byte, len(pieces))
+	for i, piece := range pieces {
+		sliced[i] = make([]byte, pieceLength)
+		copy(sliced[i], piece[pieceOffset:pieceOffset+pieceLength])
+	}
+
 	// create PDC manually
 	responseChan := make(chan *downloadResponse, 1)
 	pdc := &projectDownloadChunk{
@@ -64,11 +75,20 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
-		dataPieces: pieces,
+		dataPieces: sliced,
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,
 	}
+
+	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
+		launchTime:           time.Now(),
+		expectedCompleteTime: time.Now().Add(time.Minute),
+		expectedDuration:     time.Minute,
+
+		pdc:    pdc,
+		worker: new(worker),
+	})
 
 	// call finalize
 	pdc.finalize()
@@ -78,10 +98,27 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	if downloadResponse.err != nil {
 		t.Fatal("unexpected error", downloadResponse.err)
 	}
-	if !bytes.Equal(downloadResponse.data, sectorData[offset:offset+length]) {
-		t.Log(downloadResponse.data, "length:", len(downloadResponse.data))
-		t.Log(sectorData[offset:offset+length], "length:", len(sectorData[offset:offset+length]))
+	if !bytes.Equal(downloadResponse.data, originalData[offset:offset+length]) {
+		t.Log("offset", offset)
+		t.Log("length", length)
+		t.Log("bytes downloaded", len(downloadResponse.data))
+
+		t.Log("actual:\n", downloadResponse.data)
+		t.Log("expected:\n", originalData[offset:offset+length])
 		t.Fatal("unexpected data")
+	}
+	if downloadResponse.launchedWorkers == nil || len(downloadResponse.launchedWorkers) != 1 || downloadResponse.launchedWorkers[0].expectedDuration != time.Minute {
+		t.Fatal("unexpected")
+	}
+
+	// call fail
+	pdc.fail(errors.New("failure"))
+	downloadResponse = <-responseChan
+	if downloadResponse.err == nil {
+		t.Fatal("unexpected error")
+	}
+	if downloadResponse.launchedWorkers == nil {
+		t.Fatal("unexpected")
 	}
 }
 
@@ -213,9 +250,17 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		empty,
 		empty,
 		empty,
-		crypto.MerkleRoot(pieces[0]),
+		crypto.MerkleRoot(pieces[3]),
 		empty,
 	}
+
+	renter := new(Renter)
+	logger, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		t.Fatal("unexpected")
+	}
+	renter.log = logger
+	pcws.staticRenter = renter
 
 	pdc := new(projectDownloadChunk)
 	pdc.workerSet = pcws
@@ -229,12 +274,19 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		{{launched: true, worker: w}},
 	}
 
+	lwi := launchedWorkerInfo{}
+	pdc.launchedWorkers = []*launchedWorkerInfo{&lwi}
+
 	// verify the pdc after a successful read response for piece at index 3
 	success := &jobReadResponse{
-		staticData:       pieces[2],
-		staticErr:        nil,
-		staticSectorRoot: crypto.MerkleRoot(pieces[3]),
-		staticWorker:     w,
+		staticData: pieces[3],
+		staticErr:  nil,
+		staticMetadata: jobReadMetadata{
+			staticLaunchedWorkerIndex: 0,
+			staticPieceRootIndex:      3,
+			staticSectorRoot:          crypto.MerkleRoot(pieces[3]),
+			staticWorker:              w,
+		},
 	}
 	pdc.handleJobReadResponse(success)
 	if !pdc.availablePieces[3][0].completed {
@@ -252,10 +304,13 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 
 	// verify the pdc after a failed read
 	pdc.handleJobReadResponse(&jobReadResponse{
-		staticData:       nil,
-		staticErr:        errors.New("read failed"),
-		staticSectorRoot: empty, // it'll see this as piece index 0
-		staticWorker:     w,
+		staticData: nil,
+		staticErr:  errors.New("read failed"),
+		staticMetadata: jobReadMetadata{
+			staticPieceRootIndex: 0,
+			staticSectorRoot:     empty,
+			staticWorker:         w,
+		},
 	})
 	if !pdc.availablePieces[0][0].completed {
 		t.Fatal("unexpected")
@@ -294,7 +349,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	}
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
-	worker := mockWorker(10)
+	worker := mockWorker(100 * time.Millisecond)
 	worker.staticHostPubKeyStr = spk.String()
 
 	// mock a pcws
@@ -319,6 +374,26 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 	if expectedCompleteTime.Before(time.Now()) {
+		t.Fatal("unexpected")
+	}
+
+	// mention of the launched worker should be present in the PDC's launched
+	// worker map, which holds debug information about all workers that were
+	// launched.
+	if len(pdc.launchedWorkers) != 1 {
+		t.Fatal("unexpected")
+	}
+	lw := pdc.launchedWorkers[0]
+
+	// assert the launched worker info contains what we expect it to contain
+	if lw.launchTime == (time.Time{}) ||
+		lw.completeTime != (time.Time{}) ||
+		lw.expectedCompleteTime == (time.Time{}) ||
+		lw.jobDuration != 0 ||
+		lw.totalDuration != 0 ||
+		lw.expectedDuration == 0 ||
+		!bytes.Equal(lw.pdc.uid[:], pdc.uid[:]) ||
+		lw.worker.staticHostPubKeyStr != spk.String() {
 		t.Fatal("unexpected")
 	}
 
@@ -405,19 +480,129 @@ func TestGetPieceOffsetAndLen(t *testing.T) {
 	getPieceOffsetAndLen(ec, 0, 0)
 }
 
+// TestGetPieceOffsetAndLenWithRecover is a unit test that isolates both
+// 'getPieceOffsetAndLen' in combination with the Recover function on the EC and
+// asserts we can properly encode and then recover at random offset and length
+func TestGetPieceOffsetAndLenWithRecover(t *testing.T) {
+	t.Parallel()
+
+	// create data
+	cntr := 0
+	originalData := make([]byte, modules.SectorSize)
+	for i := 0; i < int(modules.SectorSize); i += 2 {
+		binary.BigEndian.PutUint16(originalData[i:], uint16(cntr))
+		cntr += 1
+	}
+
+	// RS encode the data
+	data := make([]byte, modules.SectorSize)
+	copy(data, originalData)
+	ec := modules.NewRSSubCodeDefault()
+	pieces, err := ec.Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Declare helper for testing.
+	run := func(offset, length uint64) {
+		pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
+		skipLength := offset % (crypto.SegmentSize * uint64(ec.MinPieces()))
+
+		sliced := make([][]byte, len(pieces))
+		for i, piece := range pieces {
+			sliced[i] = make([]byte, pieceLength)
+			copy(sliced[i], piece[pieceOffset:pieceOffset+pieceLength])
+		}
+
+		buf := bytes.NewBuffer(nil)
+		skipWriter := &skipWriter{
+			writer: buf,
+			skip:   int(skipLength),
+		}
+		err = ec.Recover(sliced, length+uint64(skipLength), skipWriter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := buf.Bytes()
+
+		expected := originalData[offset : offset+length]
+		if !bytes.Equal(actual, expected) {
+			t.Log("Input       :", offset, length, pieceOffset, pieceLength)
+			t.Log("original    :", originalData[:crypto.SegmentSize*8])
+			t.Log("expected    :", expected)
+			t.Log("expected len:", len(expected))
+			t.Log("actual      :", actual)
+			t.Log("actual   len:", len(actual))
+			t.Fatal("unexpected")
+		}
+	}
+
+	// Test some cases manually.
+	run(0, crypto.SegmentSize)
+	run(crypto.SegmentSize, crypto.SegmentSize)
+	run(2*crypto.SegmentSize, crypto.SegmentSize)
+	run(crypto.SegmentSize, 2*crypto.SegmentSize)
+	run(1, crypto.SegmentSize)
+	run(0, crypto.SegmentSize-1)
+	run(0, crypto.SegmentSize+1)
+	run(crypto.SegmentSize-1, crypto.SegmentSize+1)
+
+	// Test random inputs.
+	for rounds := 0; rounds < 100; rounds++ {
+		// random length and offset
+		length := (fastrand.Uint64n(5*crypto.SegmentSize) + 1)
+		offset := fastrand.Uint64n(modules.SectorSize - length)
+		run(offset, length)
+	}
+}
+
+// TestLaunchedWorkerInfo_String is a small unit test that verifies the output
+// of the String implementation on the launched worker info object.
+func TestLaunchedWorkerInfo_String(t *testing.T) {
+	t.Parallel()
+
+	pdc := new(projectDownloadChunk)
+	fastrand.Read(pdc.uid[:])
+
+	w := new(worker)
+	w.staticHostPubKey = types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       fastrand.Bytes(32),
+	}
+
+	lwi := &launchedWorkerInfo{
+		launchTime:           time.Now().Add(-5 * time.Second),
+		expectedCompleteTime: time.Now().Add(10 * time.Second),
+		expectedDuration:     10 * time.Second,
+
+		pdc:    pdc,
+		worker: w,
+	}
+
+	expected := fmt.Sprintf("%v was estimated to complete after 10000 ms but has not yet responded after 5000ms", w.staticHostPubKey.ShortString())
+	if !strings.Contains(lwi.String(), expected) {
+		t.Fatal("unexpected", lwi.String())
+	}
+
+	lwi.completeTime = time.Now()
+	lwi.jobDuration = 20 * time.Second
+	lwi.totalDuration = time.Since(lwi.launchTime)
+
+	expected = fmt.Sprintf("%v was estimated to complete after 10000 ms and responded after 5000ms, read job took 20000ms", w.staticHostPubKey.ShortString())
+	if !strings.Contains(lwi.String(), expected) {
+		t.Fatal("unexpected", lwi.String())
+	}
+}
+
 // mockWorker is a helper function that returns a worker with a pricetable
 // and an initialised read queue that returns a non zero value for read
-// estimates depending on the given jobsCompleted value.
-//
-// for example, passing in 10 yields 100ms expected read time for 64kb jobs only
-// as the weightedJobTime64k is set to 1s, passing in 5 yields 200ms.
-func mockWorker(jobsCompleted float64) *worker {
+// estimates depending on the given jobTime value.
+func mockWorker(jobTime time.Duration) *worker {
 	worker := new(worker)
 	worker.newPriceTable()
 	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
 	worker.initJobReadQueue()
-	worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
-	worker.staticJobReadQueue.weightedJobsCompleted64k = jobsCompleted
+	worker.staticJobReadQueue.weightedJobTime64k = float64(jobTime)
 	return worker
 }
 
