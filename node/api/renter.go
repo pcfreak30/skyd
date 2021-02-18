@@ -1739,6 +1739,7 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 	var start func() error
 	if params.Async {
 		var cancel func()
+		fmt.Println("download async")
 		id, start, cancel, err = api.renter.DownloadAsync(params, func(_ error) error {
 			api.downloadMu.Lock()
 			delete(api.downloads, id)
@@ -1752,6 +1753,7 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 			api.downloadMu.Unlock()
 		}
 	} else {
+		fmt.Println("download")
 		id, start, err = api.renter.Download(params)
 	}
 	if err != nil {

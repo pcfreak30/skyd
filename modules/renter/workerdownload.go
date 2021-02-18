@@ -210,7 +210,7 @@ func (udc *unfinishedDownloadChunk) managedUnregisterWorker(w *worker) {
 // If no immediate action is required, 'nil' will be returned.
 func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfinishedDownloadChunk {
 	onCooldown := w.staticJobLowPrioReadQueue.callOnCooldown()
-
+	fmt.Println("processing dl chunk")
 	// Determine whether the worker needs to drop the chunk. If so, remove the
 	// worker and return nil. Worker only needs to be removed if worker is being
 	// dropped.
@@ -220,6 +220,7 @@ func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfi
 	pieceData, workerHasPiece := udc.staticChunkMap[w.staticHostPubKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
 	if chunkComplete || chunkFailed || onCooldown || !workerHasPiece || pieceCompleted {
+		fmt.Println("removing worker", chunkComplete, chunkFailed, onCooldown, workerHasPiece, pieceCompleted)
 		udc.mu.Unlock()
 		udc.managedRemoveWorker()
 

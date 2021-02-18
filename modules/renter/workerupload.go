@@ -221,9 +221,11 @@ func (w *worker) managedPerformUploadChunkJob() {
 	err = uc.fileEntry.AddPiece(w.staticHostPubKey, uc.staticIndex, pieceIndex, root)
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
+		fmt.Printf("uploaded piece failed, err: %v", failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
+	fmt.Printf("uploaded piece %v w root %v to host %v\n", pieceIndex, root, w.staticHostPubKey.ShortString())
 
 	id := w.renter.mu.Lock()
 	w.renter.mu.Unlock(id)

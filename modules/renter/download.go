@@ -93,6 +93,8 @@ func (d *download) managedFail(err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	d.r.log.Printf("debug | download failed with err %v\n", err)
+
 	// If the download is already complete, extend the error.
 	complete := d.staticComplete()
 	if complete && d.err != nil {
@@ -102,6 +104,7 @@ func (d *download) managedFail(err error) {
 		return
 	}
 
+	d.r.log.Printf("debug | setting the error %v\n", err)
 	// Mark the download as complete and set the error.
 	d.err = err
 	d.markComplete()
