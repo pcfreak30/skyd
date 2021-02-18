@@ -119,7 +119,9 @@ func (d *download) markComplete() {
 	// downloadCompleteFunc to nil after executing them. We still don't want to
 	// close the completeChan again though to avoid a crash.
 	if d.staticComplete() {
+		d.r.log.Debug("OMG WERE CALLING IT TWICE")
 		build.Critical("Can't call markComplete multiple times")
+		return
 	} else {
 		defer close(d.completeChan)
 	}
