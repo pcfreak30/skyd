@@ -159,6 +159,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 		return
 	}
 
+	w.renter.log.Debugln("worker succeed to download sector")
 	// Mark the piece as completed. Perform chunk recovery if we newly have
 	// enough pieces to do so. Chunk recovery is an expensive operation that
 	// should be performed in a separate thread as to not block the worker.
