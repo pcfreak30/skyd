@@ -145,9 +145,11 @@ func (w *worker) staticSchedulePriceTableUpdate() {
 func (w *worker) staticTryForcePriceTableUpdate() {
 	current := w.staticPriceTable()
 	if time.Now().Before(current.staticLastForcedUpdate.Add(minElapsedTimeSinceLastScheduledUpdate)) {
+		w.renter.log.Debug("tried forcing update, too soon since last one")
 		w.renter.log.Debugf("worker for host %v tried scheduling a price table update before the minimum elapsed time", w.staticHostPubKeyStr)
 		return
 	}
+	w.renter.log.Debug("forcing PT update")
 	w.staticSchedulePriceTableUpdate()
 }
 
@@ -191,6 +193,7 @@ func (w *worker) staticUpdatePriceTable() {
 	}
 	defer atomic.StoreUint64(&w.atomicPriceTableUpdateRunning, 0)
 
+	w.renter.log.Debug("updating price table")
 	// Create a goroutine to wake the worker when the time has come to check the
 	// price table again. Make sure to grab the update time inside of the defer
 	// func, after the price table has been updated.
@@ -237,6 +240,7 @@ func (w *worker) staticUpdatePriceTable() {
 		// were completed successfully.
 		cd := w.managedTrackPriceTableUpdateErr(err)
 
+		w.renter.log.Debug("updating price table result in err ", err)
 		// If there was no error, return.
 		if err == nil {
 			return
