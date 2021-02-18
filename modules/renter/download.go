@@ -140,6 +140,7 @@ func (d *download) markComplete() {
 	}
 	// Set downloadCompleteFuncs to nil to avoid executing them multiple times.
 	d.downloadCompleteFuncs = nil
+	d.r.log.Debug("error right before closing", d.err)
 }
 
 // onComplete registers a function to be called when the download is completed.
