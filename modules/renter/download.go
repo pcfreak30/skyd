@@ -620,6 +620,8 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 		} else {
 			downloads[i].Error = ""
 		}
+
+		r.log.Debugf("returning DI for path '%v' complete '%v' error '%v'\n", downloads[i].SiaPath.String(), downloads[i].Completed, downloads[i].Error)
 	}
 	return downloads
 }
