@@ -121,8 +121,8 @@ func (d *download) markComplete() {
 	if d.staticComplete() {
 		d.r.log.Debug("OMG WERE CALLING IT TWICE")
 		build.Critical("Can't call markComplete multiple times")
-		return
 	} else {
+		d.r.log.Debug("deferring closing completechan")
 		defer close(d.completeChan)
 	}
 	// Execute the downloadCompleteFuncs before closing the channel. This gives
@@ -132,6 +132,7 @@ func (d *download) markComplete() {
 	var err error
 	for _, f := range d.downloadCompleteFuncs {
 		err = errors.Compose(err, f(d.err))
+		d.r.log.Debug("running complete function, result", err)
 	}
 	// Log potential errors.
 	if err != nil {
