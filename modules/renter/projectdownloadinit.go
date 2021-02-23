@@ -91,6 +91,12 @@ import (
 // worker set.
 const maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
 
+// maxWaitEnoughWorkers is the maximum amount of time we allow the download code
+// to wait for enough workers to be part of the initial worker heap. It is
+// possible we do not have enough workers in the heap to complete the download
+// due to cooldowns.
+const maxWaitEnoughWorkers = 5 * time.Second
+
 // errNotEnoughWorkers is returned if the working set does not have enough
 // workers to successfully complete the download
 var errNotEnoughWorkers = errors.New("not enough workers to complete download")
@@ -465,7 +471,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if totalWorkers < ec.MinPieces() {
-		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalWorkers, ec.MinPieces()))
+		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v, %v workers in heap", totalWorkers, ec.MinPieces(), len(workerHeap)))
 	}
 
 	if isUnresolved {
@@ -498,7 +504,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
-		if err != nil {
+		if err != nil && (!errors.Contains(err, errNotEnoughWorkers) || time.Now().After(start.Add(maxWaitEnoughWorkers))) {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
 
