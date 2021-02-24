@@ -486,7 +486,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	start := time.Now()
-
+	notEnoughWorkers := false
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -508,12 +508,21 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
 
+		// tmp log
+		if errors.Contains(err, errNotEnoughWorkers) {
+			println("not enough workers")
+			notEnoughWorkers = true
+		}
+
 		// If the function returned an actual set of workers, we are good to
 		// launch.
 		if finalWorkers != nil {
 			for i, fw := range finalWorkers {
 				if fw == nil {
 					continue
+				}
+				if notEnoughWorkers {
+					println("wait was useful")
 				}
 				pdc.launchWorker(fw.worker, uint64(i))
 			}
