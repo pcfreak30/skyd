@@ -56,6 +56,14 @@ var (
 		Run:   wrap(renterallowancecmd),
 	}
 
+	renterBubbleCmd = &cobra.Command{
+		Use:   "bubble [directory]",
+		Short: "Call bubble on a directory.",
+		Long: `Call bubble on a directory to manually force an update of the directories metadata.
+To bubble the root directory pass in '.' as the directory.`,
+		Run: wrap(renterbubblecmd),
+	}
+
 	renterBackupCreateCmd = &cobra.Command{
 		Use:   "createbackup [name]",
 		Short: "Create a backup of the renter's siafiles",
@@ -428,7 +436,7 @@ func rentercmd() {
 
 	// File and Contract Data
 	fmt.Println()
-	fmt.Printf(`Data Storage:`)
+	fmt.Println(`Data Storage:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
 		die(err)
@@ -440,20 +448,30 @@ func rentercmd() {
 
 	// Print out the memory information for the renter
 	ms := rg.MemoryStatus
+	ud := ms.UserDownload
+	uu := ms.UserUpload
+	reg := ms.Registry
+	sys := ms.System
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "\nMemory Status\n")
-	fmt.Fprintf(w, "  Available Memory\t%v\n", sizeString(ms.Available))
-	fmt.Fprintf(w, "  Starting Memory\t%v\n", sizeString(ms.Base))
-	fmt.Fprintf(w, "  Requested Memory\t%v\n", sizeString(ms.Requested))
-	fmt.Fprintf(w, "\n  Available Priority Memory\t%v\n", sizeString(ms.PriorityAvailable))
-	fmt.Fprintf(w, "  Starting Priority Memory\t%v\n", sizeString(ms.PriorityBase))
-	fmt.Fprintf(w, "  Requested Priority Memory\t%v\n", sizeString(ms.PriorityRequested))
+	fmt.Fprintf(w, "\nMemory Status\tUser Download\tUser Upload\tRegistry\tSystem\tTotal\n")
+	fmt.Fprintf(w, "  Available Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.Available), sizeString(uu.Available), sizeString(reg.Available), sizeString(sys.Available), sizeString(ms.Available))
+	fmt.Fprintf(w, "  Starting Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.Base), sizeString(uu.Base), sizeString(reg.Base), sizeString(sys.Base), sizeString(ms.Base))
+	fmt.Fprintf(w, "  Requested Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.Requested), sizeString(uu.Requested), sizeString(reg.Requested), sizeString(sys.Requested), sizeString(ms.Requested))
+	fmt.Fprintf(w, " \t \t \t \t \t \n")
+	fmt.Fprintf(w, "  Available Priority Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.PriorityAvailable), sizeString(uu.PriorityAvailable), sizeString(reg.PriorityAvailable), sizeString(sys.PriorityAvailable), sizeString(ms.PriorityAvailable))
+	fmt.Fprintf(w, "  Starting Priority Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.PriorityBase), sizeString(uu.PriorityBase), sizeString(reg.PriorityBase), sizeString(sys.PriorityBase), sizeString(ms.PriorityBase))
+	fmt.Fprintf(w, "  Requested Priority Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.PriorityRequested), sizeString(uu.PriorityRequested), sizeString(reg.PriorityRequested), sizeString(sys.PriorityRequested), sizeString(ms.PriorityRequested))
+	fmt.Fprintln(w, "")
 
 	// Print out if the uploads are paused
 	if verbose {
+		var pauseEndTime time.Duration
+		if rg.Settings.UploadsStatus.PauseEndTime.After(time.Now()) {
+			pauseEndTime = time.Until(rg.Settings.UploadsStatus.PauseEndTime)
+		}
 		fmt.Fprintf(w, "\nUploads Status\n")
 		fmt.Fprintf(w, "  Paused:\t%v\n", yesNo(rg.Settings.UploadsStatus.Paused))
-		fmt.Fprintf(w, "  Pause End Time:\t%v\n", time.Until(rg.Settings.UploadsStatus.PauseEndTime))
+		fmt.Fprintf(w, "  Pause End Time:\t%v\n", pauseEndTime)
 	}
 
 	// Flush the writer
@@ -658,7 +676,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 
 	// parse funds
 	if allowanceFunds != "" {
-		hastings, err := parseCurrency(allowanceFunds)
+		hastings, err := types.ParseCurrency(allowanceFunds)
 		if err != nil {
 			die("Could not parse amount:", err)
 		}
@@ -708,7 +726,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse the payment contract initial funding
 	if allowancePaymentContractInitialFunding != "" {
-		priceStr, err := parseCurrency(allowancePaymentContractInitialFunding)
+		priceStr, err := types.ParseCurrency(allowancePaymentContractInitialFunding)
 		if err != nil {
 			die("Could not parse payment contract initial funding:", err)
 		}
@@ -773,7 +791,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxrpcprice
 	if allowanceMaxRPCPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxRPCPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxRPCPrice)
 		if err != nil {
 			die("Could not parse max rpc price:", err)
 		}
@@ -788,7 +806,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxcontractprice
 	if allowanceMaxContractPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxContractPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxContractPrice)
 		if err != nil {
 			die("Could not parse max contract price:", err)
 		}
@@ -802,7 +820,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxdownloadbandwidthprice
 	if allowanceMaxDownloadBandwidthPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxDownloadBandwidthPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxDownloadBandwidthPrice)
 		if err != nil {
 			die("Could not parse max download bandwidth price:", err)
 		}
@@ -817,7 +835,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxsectoraccessprice
 	if allowanceMaxSectorAccessPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxSectorAccessPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxSectorAccessPrice)
 		if err != nil {
 			die("Could not parse max sector access price:", err)
 		}
@@ -832,7 +850,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxstorageprice
 	if allowanceMaxStoragePrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxStoragePrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxStoragePrice)
 		if err != nil {
 			die("Could not parse max storage price:", err)
 		}
@@ -847,7 +865,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxuploadbandwidthprice
 	if allowanceMaxUploadBandwidthPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxUploadBandwidthPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxUploadBandwidthPrice)
 		if err != nil {
 			die("Could not parse max upload bandwidth price:", err)
 		}
@@ -942,7 +960,7 @@ The following units can be used to set the allowance:
 			break
 		}
 
-		hastings, err := parseCurrency(allowanceFunds)
+		hastings, err := types.ParseCurrency(allowanceFunds)
 		if err != nil {
 			fmt.Printf("Could not parse currency in '%v': %v\n", allowanceFunds, err)
 			continue
@@ -1329,6 +1347,30 @@ how large the files are.`)
 	fmt.Println()
 
 	return req
+}
+
+// renterbubblecmd is the handler for the command `siac renter
+// bubble`.
+func renterbubblecmd(directory string) {
+	// Parse the siapath
+	var siaPath modules.SiaPath
+	if directory == "." {
+		directory = "root" // For UX
+		siaPath = modules.RootSiaPath()
+	} else {
+		err := siaPath.LoadString(directory)
+		if err != nil {
+			die("Unable to load siapath:", err)
+		}
+	}
+	fmt.Println("Calling bubble on:", directory)
+
+	// Bubble Directory
+	err := httpClient.RenterBubblePost(siaPath, true, renterBubbleAll)
+	if err != nil {
+		die("Unable to bubble", directory, ":", err)
+	}
+	fmt.Println("Bubble successful!")
 }
 
 // renterbackcreatecmd is the handler for the command `siac renter
@@ -1767,7 +1809,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	for _, dir := range dirs {
 		fmt.Println(dir.dir.SiaPath.String() + "/")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
+		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
 		for _, subDir := range dir.subDirs {
 			name := subDir.SiaPath.Name() + "/"
 			size := modules.FilesizeUnits(subDir.AggregateSize)
@@ -1775,9 +1817,10 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 			if subDir.AggregateMinRedundancy == -1 {
 				redundancyStr = "-"
 			}
-			healthStr := fmt.Sprintf("%.2f%%", subDir.AggregateMaxHealthPercentage)
+			healthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(subDir.AggregateHealth))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(subDir.AggregateStuckHealth))
 			stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
-			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckStr, "-", "-", "-")
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckHealthStr, stuckStr, "-", "-", "-")
 		}
 
 		for _, file := range dir.files {
@@ -1793,12 +1836,14 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 			if file.Redundancy == -1 {
 				redundancyStr = "-"
 			}
-			healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
+
+			healthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(file.Health))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(file.StuckHealth))
 			stuckStr := yesNo(file.Stuck)
 			renewStr := yesNo(file.Renewing)
 			onDiskStr := yesNo(file.OnDisk)
 			recoverStr := yesNo(file.Recoverable)
-			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckStr, renewStr, onDiskStr, recoverStr)
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckHealthStr, stuckStr, renewStr, onDiskStr, recoverStr)
 		}
 		if err := w.Flush(); err != nil {
 			die("failed to flush writer:", err)
@@ -2076,7 +2121,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 		os.Exit(exitCodeUsage)
 	}
 	if len(args) > 0 {
-		hastings, err := parseCurrency(args[0])
+		hastings, err := types.ParseCurrency(args[0])
 		if err != nil {
 			die("Could not parse amount:", err)
 		}

@@ -134,10 +134,6 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
-	if w.managedHasDownloadJob() {
-		w.externLaunchSerialJob(w.managedPerformDownloadChunkJob)
-		return
-	}
 	if w.managedHasUploadJob() {
 		w.externLaunchSerialJob(w.managedPerformUploadChunkJob)
 		return
@@ -182,13 +178,6 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 // performing async work have not been met. 'true' will be returned if the
 // worker is ready for async work.
 func (w *worker) managedAsyncReady() bool {
-	// Hosts that do not support the async protocol cannot do async jobs.
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
-		w.managedDiscardAsyncJobs(errors.New("host version does not support async jobs"))
-		return false
-	}
-
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
 		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
@@ -263,6 +252,11 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		w.externLaunchAsyncJob(job)
 		return true
 	}
+	job = w.staticJobLowPrioReadQueue.callNext()
+	if job != nil {
+		w.externLaunchAsyncJob(job)
+		return true
+	}
 	return false
 }
 
@@ -275,9 +269,7 @@ func (w *worker) managedBlockUntilReady() bool {
 	// connectivity, block until connectivity is restored.
 	for !w.renter.g.Online() {
 		select {
-		case <-w.renter.tg.StopChan():
-			return false
-		case <-w.killChan:
+		case <-w.staticTG.StopChan():
 			return false
 		case <-time.After(offlineCheckFrequency):
 		}
@@ -292,6 +284,7 @@ func (w *worker) managedDiscardAsyncJobs(err error) {
 	w.staticJobUpdateRegistryQueue.callDiscardAll(err)
 	w.staticJobReadRegistryQueue.callDiscardAll(err)
 	w.staticJobReadQueue.callDiscardAll(err)
+	w.staticJobLowPrioReadQueue.callDiscardAll(err)
 }
 
 // threadedWorkLoop is a perpetual loop run by the worker that accepts new jobs
@@ -307,39 +300,37 @@ func (w *worker) threadedWorkLoop() {
 
 	// Upon shutdown, release all jobs.
 	defer w.managedKillUploading()
-	defer w.managedKillDownloading()
+	defer w.staticJobLowPrioReadQueue.callKill()
 	defer w.staticJobHasSectorQueue.callKill()
 	defer w.staticJobUpdateRegistryQueue.callKill()
 	defer w.staticJobReadQueue.callKill()
 	defer w.staticJobDownloadSnapshotQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
-		// Ensure the renter's revision number of the underlying file contract
-		// is in sync with the host's revision number. This check must happen at
-		// the top as consecutive checks make use of the file contract for
-		// payment.
-		w.externTryFixRevisionMismatch()
+	// Ensure the renter's revision number of the underlying file contract
+	// is in sync with the host's revision number. This check must happen at
+	// the top as consecutive checks make use of the file contract for
+	// payment.
+	w.externTryFixRevisionMismatch()
 
-		// The worker cannot execute any async tasks unless the price table of
-		// the host is known, the balance of the worker account is known, and
-		// the account has sufficient funds in it. This update is done as a
-		// blocking update to ensure nothing else runs until the price table is
-		// available.
-		w.staticUpdatePriceTable()
+	// The worker cannot execute any async tasks unless the price table of
+	// the host is known, the balance of the worker account is known, and
+	// the account has sufficient funds in it. This update is done as a
+	// blocking update to ensure nothing else runs until the price table is
+	// available.
+	w.staticUpdatePriceTable()
 
-		// Perform a balance check on the host and sync it to his version if
-		// necessary. This avoids running into MaxBalanceExceeded errors upon
-		// refill after an unclean shutdown.
-		if w.staticPriceTable().staticValid() {
-			w.externSyncAccountBalanceToHost()
-		}
+	// Perform a balance check on the host and sync it to his version if
+	// necessary. This avoids running into MaxBalanceExceeded errors upon
+	// refill after an unclean shutdown.
+	if w.staticPriceTable().staticValid() {
+		w.externSyncAccountBalanceToHost()
+	}
 
-		// This update is done as a blocking update to ensure nothing else runs
-		// until the account has filled.
-		if w.managedNeedsToRefillAccount() {
-			w.managedRefillAccount()
-		}
+	// This update is done as a blocking update to ensure nothing else runs
+	// until the account has filled.
+	if w.managedNeedsToRefillAccount() {
+		w.managedRefillAccount()
 	}
 
 	// The worker will continuously perform jobs in a loop.
@@ -396,9 +387,7 @@ func (w *worker) threadedWorkLoop() {
 		select {
 		case <-w.wakeChan:
 			continue
-		case <-w.killChan:
-			return
-		case <-w.renter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 			return
 		}
 	}

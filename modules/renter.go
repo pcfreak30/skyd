@@ -379,6 +379,7 @@ type DirectoryInfo struct {
 	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
+	AggregateStuckSize           uint64    `json:"aggregatestucksize"`
 
 	// Skynet Fields
 	AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
@@ -400,6 +401,7 @@ type DirectoryInfo struct {
 	SiaPath             SiaPath     `json:"siapath"`
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
 	StuckHealth         float64     `json:"stuckhealth"`
+	StuckSize           uint64      `json:"stucksize"`
 	UID                 uint64      `json:"uid"`
 
 	// Skynet Fields
@@ -483,9 +485,11 @@ type FileInfo struct {
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`
+	RepairBytes      uint64            `json:"repairbytes"`
 	Skylinks         []string          `json:"skylinks"`
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
+	StuckBytes       uint64            `json:"stuckbytes"`
 	StuckHealth      float64           `json:"stuckhealth"`
 	UID              uint64            `json:"uid"`
 	UploadedBytes    uint64            `json:"uploadedbytes"`
@@ -576,8 +580,19 @@ type HostScoreBreakdown struct {
 	VersionAdjustment          float64 `json:"versionadjustment"`
 }
 
-// MemoryStatus contains information about the status of the memory manager
+// MemoryStatus contains information about the status of the memory managers in
+// the renter.
 type MemoryStatus struct {
+	MemoryManagerStatus
+
+	Registry     MemoryManagerStatus `json:"registry"`
+	UserUpload   MemoryManagerStatus `json:"userupload"`
+	UserDownload MemoryManagerStatus `json:"userdownload"`
+	System       MemoryManagerStatus `json:"system"`
+}
+
+// MemoryManagerStatus contains the memory status of a single memory manager.
+type MemoryManagerStatus struct {
 	Available uint64 `json:"available"`
 	Base      uint64 `json:"base"`
 	Requested uint64 `json:"requested"`
@@ -588,9 +603,9 @@ type MemoryStatus struct {
 	PriorityReserve   uint64 `json:"priorityreserve"`
 }
 
-// Add combines two MemoryStatus objects into one.
-func (ms MemoryStatus) Add(ms2 MemoryStatus) MemoryStatus {
-	return MemoryStatus{
+// Add combines two MemoryManagerStatus objects into one.
+func (ms MemoryManagerStatus) Add(ms2 MemoryManagerStatus) MemoryManagerStatus {
+	return MemoryManagerStatus{
 		Available:         ms.Available + ms2.Available,
 		Base:              ms.Base + ms2.Base,
 		Requested:         ms.Requested + ms2.Requested,
@@ -1151,8 +1166,8 @@ type Renter interface {
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
 
-	// UploadStreamFromReader reads from the provided reader until io.EOF is reached and
-	// upload the data to the Sia network.
+	// UploadStreamFromReader reads from the provided reader until io.EOF is
+	// reached and upload the data to the Sia network.
 	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
@@ -1170,8 +1185,8 @@ type Renter interface {
 	// CreateSkykey creates a new Skykey with the given name and SkykeyType.
 	CreateSkykey(string, skykey.SkykeyType) (skykey.Skykey, error)
 
-	// DeleteSkykeyByID deletes the Skykey with the given name from the renter's skykey
-	// manager if it exists.
+	// DeleteSkykeyByID deletes the Skykey with the given name from the renter's
+	// skykey manager if it exists.
 	DeleteSkykeyByID(skykey.SkykeyID) error
 
 	// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
@@ -1203,16 +1218,27 @@ type Renter interface {
 	// separately as well.
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
-	// DownloadByRoot will fetch data using the merkle root of that data. This
-	// uses all of the async worker primitives to improve speed and throughput.
-	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
+	// DownloadByRoot will fetch data using the merkle root of that data. The
+	// given timeout will make sure this call won't block for a time that
+	// exceeds the given timeout value. Passing a timeout of 0 is considered as
+	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
+	// potentially more expensive, hosts.
+	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration, pricePerMS types.Currency) ([]byte, error)
 
-	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink, time.Duration) (SkyfileLayout, SkyfileMetadata, Streamer, error)
+	// DownloadSkylink will fetch a file from the Sia network using the given
+	// skylink. The given timeout will make sure this call won't block for a
+	// time that exceeds the given timeout value. Passing a timeout of 0 is
+	// considered as no timeout. The pricePerMS acts as a budget to spend on
+	// faster, and thus potentially more expensive, hosts.
+	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileLayout, SkyfileMetadata, Streamer, error)
 
-	// DownloadSkylinkBaseSector will take a link and turn it into the data of a download
-	// without any decoding of the metadata, fanout, or decryption.
-	DownloadSkylinkBaseSector(Skylink, time.Duration) (Streamer, error)
+	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
+	// download without any decoding of the metadata, fanout, or decryption. The
+	// given timeout will make sure this call won't block for a time that
+	// exceeds the given timeout value. Passing a timeout of 0 is considered as
+	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
+	// potentially more expensive, hosts.
+	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
@@ -1227,12 +1253,12 @@ type Renter interface {
 	// Blocklist returns the merkleroots that are blocked
 	Blocklist() ([]crypto.Hash, error)
 
-	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
-	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
-
 	// PinSkylink re-uploads the data stored at the file under that skylink with
-	// the given parameters.
-	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration) error
+	// the given parameters. Alongside the parameters we can pass a timeout and
+	// a price per millisecond. The timeout ensures fetching the base sector
+	// does not surpass it, the price per millisecond is the budget we are
+	// allowed to spend on faster hosts.
+	PinSkylink(link Skylink, sup SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) error
 
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortal, error)
@@ -1240,11 +1266,26 @@ type Renter interface {
 	// RestoreSkyfile restores a skyfile such that the skylink is preserved.
 	RestoreSkyfile(reader io.Reader) (Skylink, error)
 
+	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are
+	// blocked
+	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
+
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
 
 	// WorkerPoolStatus returns the current status of the Renter's worker pool
 	WorkerPoolStatus() (WorkerPoolStatus, error)
+
+	// BubbleMetadata calculates the updated values of a directory's metadata and
+	// updates the siadir metadata on disk then calls callThreadedBubbleMetadata
+	// on the parent directory so that it is only blocking for the current
+	// directory
+	//
+	// If the recursive boolean is supplied, all sub directories will be bubbled.
+	//
+	// If the force boolean is supplied, the LastHealthCheckTime of the directories
+	// will be ignored so all directories will be considered.
+	BubbleMetadata(siaPath SiaPath, force, recursive bool) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -1282,6 +1323,23 @@ func HealthPercentage(health float64) float64 {
 		healthPercent = 0
 	}
 	return healthPercent
+}
+
+var (
+	// RepairThreshold defines the threshold at which the renter decides to
+	// repair a file. The renter will start repairing the file when the health
+	// is equal to or greater than this value.
+	RepairThreshold = build.Select(build.Var{
+		Dev:      0.25,
+		Standard: 0.25,
+		Testing:  0.25,
+	}).(float64)
+)
+
+// NeedsRepair is a helper to ensure consistent comparison with the
+// RepairThreshold
+func NeedsRepair(health float64) bool {
+	return health >= RepairThreshold
 }
 
 // A HostDB is a database of hosts that the renter can use for figuring out who

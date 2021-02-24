@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 // randomRegistryValue is a helper to create a signed registry value for
@@ -67,28 +68,29 @@ func assertNumSubscriptions(host *Host, n int) error {
 // assertSubscriptionInfos asserts the number of times a specific entry has been
 // subscribed to and returns the corresponding nsubscription infos.
 func assertSubscriptionInfos(host *Host, spk types.SiaPublicKey, tweak crypto.Hash, n int) ([]*subscriptionInfo, error) {
-	sid := deriveSubscriptionID(spk, tweak)
+	sid := modules.RegistrySubscriptionID(spk, tweak)
 	host.staticRegistrySubscriptions.mu.Lock()
 	subInfos, found := host.staticRegistrySubscriptions.subscriptions[sid]
+	host.staticRegistrySubscriptions.mu.Unlock()
 	if !found {
-		host.staticRegistrySubscriptions.mu.Unlock()
 		return nil, errors.New("subscription not found for id")
 	}
-	if len(subInfos) != 1 {
-		host.staticRegistrySubscriptions.mu.Unlock()
+	if len(subInfos) != n {
 		return nil, fmt.Errorf("wrong number of subscription infos %v != %v", len(subInfos), n)
 	}
 	var infos []*subscriptionInfo
 	for _, info := range subInfos {
 		infos = append(infos, info)
+		if _, ok := info.subscriptions[sid]; !ok {
+			return nil, errors.New("info doesn't contain subscription")
+		}
 	}
-	host.staticRegistrySubscriptions.mu.Unlock()
 	return infos, nil
 }
 
 // readAndAssertRegistryValueNotification reads a notification, checks that the
 // notification is valid and compares the entry to the provided one.
-func readAndAssertRegistryValueNotification(rv modules.SignedRegistryValue, r io.Reader) error {
+func readAndAssertRegistryValueNotification(spk types.SiaPublicKey, rv modules.SignedRegistryValue, r io.Reader) error {
 	var snt modules.RPCRegistrySubscriptionNotificationType
 	err := modules.RPCRead(r, &snt)
 	if err != nil {
@@ -104,6 +106,9 @@ func readAndAssertRegistryValueNotification(rv modules.SignedRegistryValue, r io
 	}
 	if !reflect.DeepEqual(rv, sneu.Entry) {
 		return errors.New("wrong entry in notification")
+	}
+	if !sneu.PubKey.Equals(spk) {
+		return errors.New("wrong pubkey returned")
 	}
 	return nil
 }
@@ -284,7 +289,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Read the notification and make sure it's the right one.
-	err = readAndAssertRegistryValueNotification(rv, notificationReader)
+	err = readAndAssertRegistryValueNotification(spk, rv, notificationReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +318,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Extend the subscription.
-	err = rhp.ExtendSubscription(stream, pt)
+	err = modules.RPCExtendSubscription(stream, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +503,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Read the notification and make sure it's the right one.
-	err = readAndAssertRegistryValueNotification(rv, notificationReader)
+	err = readAndAssertRegistryValueNotification(spk, rv, notificationReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +532,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Extend the subscription.
-	err = rhp.ExtendSubscription(stream, pt)
+	err = modules.RPCExtendSubscription(stream, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -727,7 +732,7 @@ func testRPCSubscribeExtendTimeout(t *testing.T, rhp *renterHostPair) {
 	n := 3
 	for i := 0; i < n; i++ {
 		time.Sleep(modules.SubscriptionPeriod / 2)
-		err = rhp.ExtendSubscription(stream, pt)
+		err = modules.RPCExtendSubscription(stream, pt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -784,10 +789,10 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	fastrand.Read(sub[:])
 
 	// Register a listener for notifications.
-	var notificationUploaded, notificationDownloaded uint64
 	var notificationMu sync.Mutex
 	numNotifications := 0
 	var wg sync.WaitGroup
+	var limits []mux.BandwidthLimit
 	err := rhp.staticRenterMux.NewListener(hex.EncodeToString(sub[:]), func(stream siamux.Stream) {
 		wg.Add(1)
 		defer wg.Done()
@@ -833,8 +838,7 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 		}
 
 		// Collect stats.
-		notificationDownloaded += stream.Limit().Downloaded()
-		notificationUploaded += stream.Limit().Uploaded()
+		limits = append(limits, stream.Limit())
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -901,7 +905,7 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	n := 3
 	for i := 0; i < n; i++ {
 		time.Sleep(modules.SubscriptionPeriod / 2)
-		err = rhp.ExtendSubscription(stream, pt)
+		err = modules.RPCExtendSubscription(stream, pt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -912,7 +916,46 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 		t.Fatal(err)
 	}
 
-	// Close listener to prevent new incoming notifications.
+	// When checking the prices we give the host a grace period after stopping
+	// the subscription before closing the listener. That way we don't miss any
+	// streams which were send at the same time as the subscription was stopped.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Compute used bandwidth from limits.
+		var nu, nd uint64
+		notificationMu.Lock()
+		for _, limit := range limits {
+			nu += limit.Uploaded()
+			nd += limit.Downloaded()
+		}
+		nn := numNotifications
+		notificationMu.Unlock()
+
+		// Check balance afterwards.
+		l := stream.Limit()
+		lu, ld := l.Uploaded(), l.Downloaded()
+		upCost := pt.UploadBandwidthCost.Mul64(lu + nu)
+		downCost := pt.DownloadBandwidthCost.Mul64(ld + nd)
+		bandwidthCost := upCost.Add(downCost)
+		cost := bandwidthCost.Add(modules.MDMSubscribeCost(pt, 1, 1))
+		cost = cost.Add(modules.MDMSubscriptionMemoryCost(pt, 1).Mul64(uint64(n)))
+		cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(nn)))
+
+		currentBalance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+		expected := expectedBalance.Sub(cost)
+		if !currentBalance.Equals(expected) {
+			return fmt.Errorf("wrong balance %v != %v", currentBalance, expected)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop the ticker and wait for the goroutine to finish.
+	close(cancelTicker)
+	updateWG.Wait()
+
+	// Close listener.
 	err = rhp.staticRenterMux.CloseListener(hex.EncodeToString(sub[:]))
 	if err != nil {
 		t.Fatal(err)
@@ -921,28 +964,35 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	// Wait for last notification to finish.
 	wg.Wait()
 
-	// Stop the ticker and wait for the goroutine to finish.
-	close(cancelTicker)
-	updateWG.Wait()
+	// Check total subscriptions.
+	err = assertNumSubscriptions(host, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute used bandwidth from limits. Nothing should have changed.
+	var nu, nd uint64
+	notificationMu.Lock()
+	for _, limit := range limits {
+		nu += limit.Uploaded()
+		nd += limit.Downloaded()
+	}
+	nn := numNotifications
+	notificationMu.Unlock()
 
 	// Check balance afterwards.
 	l := stream.Limit()
-	upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + notificationUploaded)
-	downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + notificationDownloaded)
+	lu, ld := l.Uploaded(), l.Downloaded()
+	upCost := pt.UploadBandwidthCost.Mul64(lu + nu)
+	downCost := pt.DownloadBandwidthCost.Mul64(ld + nd)
 	bandwidthCost := upCost.Add(downCost)
 	cost := bandwidthCost.Add(modules.MDMSubscribeCost(pt, 1, 1))
 	cost = cost.Add(modules.MDMSubscriptionMemoryCost(pt, 1).Mul64(uint64(n)))
-	cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(numNotifications)))
+	cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(nn)))
 
 	currentBalance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
 	expected := expectedBalance.Sub(cost)
 	if !currentBalance.Equals(expected) {
 		t.Fatalf("wrong balance %v != %v", currentBalance, expected)
-	}
-
-	// Check total subscriptions.
-	err = assertNumSubscriptions(host, 0)
-	if err != nil {
-		t.Fatal(err)
 	}
 }

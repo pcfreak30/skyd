@@ -100,6 +100,13 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetada
 	return c.SkynetSkylinkGetWithTimeout(skylink, -1)
 }
 
+// SkynetSkylinkRange uses the /skynet/skylink endpoint to download a range from
+// a skylink file.
+func (c *Client) SkynetSkylinkRange(skylink string, from, to uint64) ([]byte, error) {
+	getQuery := skylinkQueryWithValues(skylink, url.Values{})
+	return c.getRawPartialResponse(getQuery, from, to)
+}
+
 // SkynetSkylinkGetWithTimeout uses the /skynet/skylink endpoint to download a
 // skylink file, specifying the given timeout.
 func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byte, modules.SkyfileMetadata, error) {
@@ -110,6 +117,30 @@ func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byt
 		params["timeout"] = fmt.Sprintf("%d", timeout)
 	}
 	return c.skynetSkylinkGetWithParameters(skylink, params)
+}
+
+// SkynetSkylinkGetWithLayout uses the /skynet/skylink endpoint to download
+// a skylink file, specifying the given value for the 'include-layout'
+// parameter.
+func (c *Client) SkynetSkylinkGetWithLayout(skylink string, incLayout bool) ([]byte, modules.SkyfileLayout, error) {
+	// Submit get request
+	header, fileData, err := c.skynetSkylinkGetWithParametersRaw(skylink, map[string]string{
+		"include-layout": fmt.Sprintf("%t", incLayout),
+	})
+	if err != nil {
+		return nil, modules.SkyfileLayout{}, errors.AddContext(err, "unable to download skylink with parameters")
+	}
+	// Parse the Layout from the header
+	var layout modules.SkyfileLayout
+	layoutStr := header.Get("Skynet-File-Layout")
+	if layoutStr != "" {
+		layoutBytes, err := hex.DecodeString(layoutStr)
+		if err != nil {
+			return nil, modules.SkyfileLayout{}, errors.AddContext(err, "unable to decode layout")
+		}
+		layout.Decode(layoutBytes)
+	}
+	return fileData, layout, nil
 }
 
 // SkynetSkylinkGetWithNoMetadata uses the /skynet/skylink endpoint to download
@@ -125,15 +156,9 @@ func (c *Client) SkynetSkylinkGetWithNoMetadata(skylink string, nometadata bool)
 // a skylink file, specifying the given parameters.
 // The caller of this function is responsible for validating the parameters!
 func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[string]string) ([]byte, modules.SkyfileMetadata, error) {
-	values := url.Values{}
-	for k, v := range params {
-		values.Set(k, v)
-	}
-
-	getQuery := skylinkQueryWithValues(skylink, values)
-	header, fileData, err := c.getRawResponse(getQuery)
+	header, fileData, err := c.skynetSkylinkGetWithParametersRaw(skylink, params)
 	if err != nil {
-		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "skynetSkylnkGet with parameters failed getRawResponse")
+		return nil, modules.SkyfileMetadata{}, err
 	}
 
 	var sm modules.SkyfileMetadata
@@ -145,6 +170,20 @@ func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[strin
 		}
 	}
 	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// skynetSkylinkGetWithParametersRaw uses the /skynet/skylink endpoint to
+// download a skylink file, specifying the given parameters.
+// The caller of this function is responsible for validating the parameters!
+func (c *Client) skynetSkylinkGetWithParametersRaw(skylink string, params map[string]string) (http.Header, []byte, error) {
+	values := url.Values{}
+	for k, v := range params {
+		values.Set(k, v)
+	}
+
+	getQuery := skylinkQueryWithValues(skylink, values)
+	header, fileData, err := c.getRawResponse(getQuery)
+	return header, fileData, errors.AddContext(err, "skynetSkylnkGet with parameters failed getRawResponse")
 }
 
 // SkynetSkylinkHead uses the /skynet/skylink endpoint to get the headers that
@@ -462,6 +501,15 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 		values.Set("skykeyid", params.SkykeyID.ToString())
 	}
 
+	// Encode the monetizers.
+	if len(params.Monetization) > 0 {
+		b, err := json.Marshal(params.Monetization)
+		if err != nil {
+			return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to marshal monetization")
+		}
+		values.Set("monetization", string(b))
+	}
+
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
 	_, resp, err := c.postRawResponse(query, params.Reader)
@@ -543,6 +591,15 @@ func (c *Client) SkynetSkyfileMultiPartEncryptedPost(params modules.SkyfileMulti
 		values.Set("skykeyid", skykeyID.ToString())
 	}
 
+	// Encode the monetizers.
+	if len(params.Monetization) > 0 {
+		b, err := json.Marshal(params.Monetization)
+		if err != nil {
+			return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to marshal monetizers")
+		}
+		values.Set("monetization", string(b))
+	}
+
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
 
@@ -580,6 +637,15 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	values.Set("skykeyname", lup.SkykeyName)
 	if lup.SkykeyID != (skykey.SkykeyID{}) {
 		values.Set("skykeyid", lup.SkykeyID.ToString())
+	}
+
+	// Encode the monetization.
+	if len(lup.Monetization) > 0 {
+		b, err := json.Marshal(lup.Monetization)
+		if err != nil {
+			return api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to marshal monetizers")
+		}
+		values.Set("monetization", string(b))
 	}
 
 	// Make the call to upload the file.

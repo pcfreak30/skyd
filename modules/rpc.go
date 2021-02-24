@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -18,6 +19,10 @@ const (
 	// entry takes up in memory. This is a conservative estimation to prevent
 	// DoS attacks on the host.
 	SubscriptionEntrySize = 512
+
+	// RenewDecodeMaxLen is the maximum length for decoding received objects
+	// read during a contract renewal.
+	RenewDecodeMaxLen = 1 << 18 // 256 kib
 )
 
 // Subcription request related enum.
@@ -36,9 +41,18 @@ const (
 	SubscriptionResponseRegistryValue
 
 	SubscriptionResponseSubscriptionSuccess
+	SubscriptionResponseUnsubscribeSuccess
 )
 
 var (
+	// ErrPriceTableNotFound is returned by the host if it can not find a price
+	// table for the provided price table UID.
+	ErrPriceTableNotFound = errors.New("Price table not found")
+
+	// ErrPriceTableExpired is returned by the host when the specified price
+	// table has expired.
+	ErrPriceTableExpired = errors.New("Price table requested is expired")
+
 	// SubscriptionPeriod is the duration by which a period gets extended after
 	// a payment.
 	SubscriptionPeriod = build.Select(build.Var{
@@ -282,7 +296,8 @@ type (
 
 	// RPCRegistrySubscriptionNotificationEntryUpdate contains an updated entry.
 	RPCRegistrySubscriptionNotificationEntryUpdate struct {
-		Entry SignedRegistryValue
+		Entry  SignedRegistryValue
+		PubKey types.SiaPublicKey
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
@@ -375,10 +390,11 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 	return dc.Err()
 }
 
-// RPCRead tries to read the given object from the stream.
-func RPCRead(r io.Reader, obj interface{}) error {
+// RPCReadMaxLen tries to read the given object from the stream. It will
+// allocate at most maxLen bytes for the object.
+func RPCReadMaxLen(r io.Reader, obj interface{}, maxLen uint64) error {
 	resp := rpcResponse{nil, obj}
-	err := encoding.ReadObject(r, &resp, uint64(RPCMinLen))
+	err := encoding.ReadObject(r, &resp, maxLen)
 	if err != nil {
 		return err
 	}
@@ -387,6 +403,11 @@ func RPCRead(r io.Reader, obj interface{}) error {
 		return errors.New(resp.err.Error())
 	}
 	return nil
+}
+
+// RPCRead tries to read the given object from the stream.
+func RPCRead(r io.Reader, obj interface{}) error {
+	return RPCReadMaxLen(r, obj, uint64(RPCMinLen))
 }
 
 // RPCWrite writes the given object to the stream.
@@ -477,4 +498,13 @@ func (uid *UniqueID) UnmarshalJSON(b []byte) error {
 
 	// b[1 : len(b)-1] cuts off the leading and trailing `"` in the JSON string.
 	return uid.LoadString(string(b[1 : len(b)-1]))
+}
+
+// IsPriceTableInvalidErr is a helper function that verifies whether the
+// given error indicates the pricetable is invalid. It is used during error
+// handling, when the renter sends its pricetable UID to the host and that
+// returns with an error. If the host deems the price table invalid, the renter
+// wants to update it as fast as possible.
+func IsPriceTableInvalidErr(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error()))
 }

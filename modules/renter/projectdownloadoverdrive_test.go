@@ -37,20 +37,6 @@ func TestAddCostPenalty(t *testing.T) {
 		t.Error("unexpected")
 	}
 
-	// verify penalty is set to 1H if zero is passed
-	//
-	// calculate the expected outcome
-	hasting := types.NewCurrency64(1)
-	penalty, err = jc.Div(hasting).Uint64()
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected = jt + (time.Duration(penalty) * time.Millisecond)
-	adjusted = addCostPenalty(jt, jc, types.ZeroCurrency)
-	if adjusted != expected {
-		t.Error("unexpected", adjusted, expected)
-	}
-
 	// verify overflow
 	jt = time.Duration(1)
 	jc = types.NewCurrency64(math.MaxUint64).Mul64(10)
@@ -104,7 +90,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	t.Parallel()
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
-	worker := mockWorker(10)
+	worker := mockWorker(100 * time.Millisecond)
 	jrq := worker.staticJobReadQueue
 
 	// fetch the expected job time for a 64kb download job, verify it's not 0
@@ -142,9 +128,9 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 	ec := modules.NewRSSubCodeDefault()
 
 	// mock two workers with different traits
-	w1 := mockWorker(5) // avg 200ms job time
+	w1 := mockWorker(200 * time.Millisecond) // avg 200ms job time
 	w1.staticHostPubKeyStr = "w1"
-	w2 := mockWorker(10) // avg 100ms job time
+	w2 := mockWorker(100 * time.Millisecond) // avg 100ms job time
 	w2.staticHostPubKeyStr = "w2"
 
 	// mock a pdc
@@ -155,11 +141,11 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 		unresolvedWorkers: map[string]*pcwsUnresolvedWorker{
 			"w1": {
 				staticWorker:               w1,
-				staticExpectedCompleteTime: now.Add(50 * time.Millisecond),
+				staticExpectedResolvedTime: now.Add(50 * time.Millisecond),
 			}, // ~250ms total dur
 			"w2": {
 				staticWorker:               w2,
-				staticExpectedCompleteTime: now.Add(10 * time.Millisecond),
+				staticExpectedResolvedTime: now.Add(10 * time.Millisecond),
 			}, // ~110ms total dur
 		},
 	}
@@ -191,7 +177,7 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 
 	// tweak it so the unresolved becomes slower than the first worker, for
 	// which we have an available piece
-	pdc.workerState.unresolvedWorkers["w2"].staticExpectedCompleteTime = now.Add(200 * time.Millisecond)
+	pdc.workerState.unresolvedWorkers["w2"].staticExpectedResolvedTime = now.Add(200 * time.Millisecond)
 	worker, pieceIndex, _, _ := pdc.findBestOverdriveWorker()
 	if worker != w1 {
 		t.Fatal("unexpected", worker)
@@ -236,16 +222,16 @@ func TestProjectDownloadChunk_bestOverdriveUnresolvedWorker(t *testing.T) {
 	}
 
 	// mock two workers with different traits
-	w1 := mockWorker(10) // avg 100ms job time
-	w2 := mockWorker(5)  // avg 200ms job time
+	w1 := mockWorker(100 * time.Millisecond) // avg 100ms job time
+	w2 := mockWorker(200 * time.Millisecond) // avg 200ms job time
 	uws = []*pcwsUnresolvedWorker{
 		{
 			staticWorker:               w1,
-			staticExpectedCompleteTime: now.Add(200 * time.Millisecond),
+			staticExpectedResolvedTime: now.Add(200 * time.Millisecond),
 		}, // ~300ms total dur
 		{
 			staticWorker:               w2,
-			staticExpectedCompleteTime: now.Add(50 * time.Millisecond),
+			staticExpectedResolvedTime: now.Add(50 * time.Millisecond),
 		}, // ~250ms total dur
 	}
 
@@ -263,7 +249,7 @@ func TestProjectDownloadChunk_bestOverdriveUnresolvedWorker(t *testing.T) {
 	}
 
 	// now alter w1 to be late, the best overdrive worker should become w2
-	uws[0].staticExpectedCompleteTime = now.Add(-50 * time.Millisecond)
+	uws[0].staticExpectedResolvedTime = now.Add(-50 * time.Millisecond)
 	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
 	if !exists || late || wIndex != 1 {
 		t.Fatal("unexpected")
@@ -271,7 +257,7 @@ func TestProjectDownloadChunk_bestOverdriveUnresolvedWorker(t *testing.T) {
 
 	// now alter w2 to be late as well, we expect the worker with the lowest
 	// read time to be the best one here
-	uws[1].staticExpectedCompleteTime = now.Add(-100 * time.Millisecond)
+	uws[1].staticExpectedResolvedTime = now.Add(-100 * time.Millisecond)
 	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
 	if !exists || !late || waitDur != max || wIndex != 0 {
 		t.Fatal("unexpected")

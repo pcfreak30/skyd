@@ -8,16 +8,18 @@ import (
 
 // callStatus returns the status of the worker.
 func (w *worker) callStatus() modules.WorkerStatus {
-	w.downloadMu.Lock()
-	downloadOnCoolDown := w.onDownloadCooldown()
-	downloadTerminated := w.downloadTerminated
-	downloadQueueSize := w.downloadChunks.Len()
+	downloadQueue := w.staticJobLowPrioReadQueue
+	downloadQueue.mu.Lock()
+	downloadOnCoolDown := downloadQueue.onCooldown()
+	downloadTerminated := downloadQueue.killed
+	downloadQueueSize := downloadQueue.jobs.Len()
+	downloadCoolDownTime := downloadQueue.cooldownUntil.Sub(time.Now())
+
 	var downloadCoolDownErr string
-	if w.downloadRecentFailureErr != nil {
-		downloadCoolDownErr = w.downloadRecentFailureErr.Error()
+	if downloadQueue.recentErr != nil {
+		downloadCoolDownErr = downloadQueue.recentErr.Error()
 	}
-	downloadCoolDownTime := w.downloadRecentFailure.Add(downloadFailureCooldown).Sub(time.Now())
-	w.downloadMu.Unlock()
+	downloadQueue.mu.Unlock()
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -145,12 +147,7 @@ func (w *worker) callHasSectorJobStatus() modules.WorkerHasSectorJobsStatus {
 		recentErrStr = status.recentErr.Error()
 	}
 
-	// Use 30 sectors for the expected job time since that is the default
-	// redundancy for files.
-	var avgJobTimeInMs uint64 = 0
-	if d := hsq.callExpectedJobTime(uint64(modules.RenterDefaultDataPieces + modules.RenterDefaultParityPieces)); d > 0 {
-		avgJobTimeInMs = uint64(d.Milliseconds())
-	}
+	avgJobTimeInMs := uint64(hsq.callExpectedJobTime().Milliseconds())
 
 	return modules.WorkerHasSectorJobsStatus{
 		AvgJobTime:          avgJobTimeInMs,

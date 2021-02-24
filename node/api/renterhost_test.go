@@ -19,7 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -174,8 +173,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	// Inject a dependency that forces legacy contract renewal without clearing
 	// the contract.
 	pd := modules.ProdDependencies
-	csDeps := &dependencies.DependencyRenewWithoutClear{}
-	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, csDeps, pd)
+	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, pd, pd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +280,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(time.Second)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
 		t.Fatal("the uploading is not succeeding for some reason:", rf.Files[0])
@@ -307,7 +305,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(time.Second)
 	}
 	if len(rf.Files) != 2 || rf.Files[0].UploadProgress < 10 || rf.Files[1].UploadProgress < 10 {
 		t.Fatal("the uploading is not succeeding for some reason:", rf.Files[0], rf.Files[1])
@@ -1689,7 +1687,7 @@ func TestUploadedBytesReporting(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatal("allowance setting failed")
+		t.Fatal(err)
 	}
 
 	// Create a file to upload.
@@ -2048,11 +2046,6 @@ func TestRemoteFileRepairMassive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := stH1.server.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 	testGroup := []*serverTester{st, stH1}
 
 	// Connect the testers to eachother so that they are all on the same

@@ -38,6 +38,7 @@ var (
 	dataPieces                string // the number of data pieces a file should be uploaded with
 	parityPieces              string // the number of parity pieces a file should be uploaded with
 	renterAllContracts        bool   // Show all active and expired contracts
+	renterBubbleAll           bool   // Bubble the entire directory tree
 	renterDeleteRoot          bool   // Delete path start from root instead of the UserFolder.
 	renterDownloadAsync       bool   // Downloads files asynchronously
 	renterDownloadRecursive   bool   // Downloads folders recursively.
@@ -330,7 +331,7 @@ func initCmds() *cobra.Command {
 	minerCmd.AddCommand(minerStartCmd, minerStopCmd)
 
 	root.AddCommand(renterCmd)
-	renterCmd.AddCommand(renterAllowanceCmd, renterBackupCreateCmd, renterBackupListCmd, renterBackupLoadCmd,
+	renterCmd.AddCommand(renterAllowanceCmd, renterBubbleCmd, renterBackupCreateCmd, renterBackupListCmd, renterBackupLoadCmd,
 		renterCleanCmd, renterContractsCmd, renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd,
 		renterDownloadsCmd, renterExportCmd, renterFilesDeleteCmd, renterFilesDownloadCmd,
 		renterFilesListCmd, renterFilesRenameCmd, renterFilesUnstuckCmd, renterFilesUploadCmd,
@@ -340,6 +341,7 @@ func initCmds() *cobra.Command {
 	renterWorkersCmd.AddCommand(renterWorkersAccountsCmd, renterWorkersDownloadsCmd, renterWorkersPriceTableCmd, renterWorkersReadJobsCmd, renterWorkersHasSectorJobSCmd, renterWorkersUploadsCmd, renterWorkersReadRegistryCmd, renterWorkersUpdateRegistryCmd)
 
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
+	renterBubbleCmd.Flags().BoolVarP(&renterBubbleAll, "all", "A", false, "Bubble the entire directory tree")
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterFilesUploadCmd.AddCommand(renterFilesUploadPauseCmd, renterFilesUploadResumeCmd)
 
@@ -376,7 +378,7 @@ func initCmds() *cobra.Command {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetBlocklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetIsBlockedCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetUnpinCmd, skynetUploadCmd)
+	skynetCmd.AddCommand(skynetBackupCmd, skynetBlocklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetIsBlockedCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetRestoreCmd, skynetUnpinCmd, skynetUploadCmd)
 	skynetConvertCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
 	skynetConvertCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by id.")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
@@ -384,7 +386,7 @@ func initCmds() *cobra.Command {
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSeparately, "separately", "", false, "Upload each file separately, generating individual skylinks")
 	skynetUploadCmd.Flags().StringVar(&skynetUploadDefaultPath, "defaultpath", "", "Specify the file to serve when no specific file is specified.")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadDisableDefaultPath, "disabledefaultpath", "", false, "This skyfile will not have a default path. The only way to use it is to download it. Mutually exclusive with --defaultpath")
-	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "s", false, "Don't report progress while uploading")
+	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "", false, "Don't report progress while uploading")
 	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by its key identifier.")
 	skynetUploadCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
 	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")

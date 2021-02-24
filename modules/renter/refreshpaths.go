@@ -33,22 +33,22 @@ func (r *Renter) newUniqueRefreshPaths() *uniqueRefreshPaths {
 }
 
 // callAdd adds a path to uniqueRefreshPaths.
-func (ufp *uniqueRefreshPaths) callAdd(path modules.SiaPath) error {
-	ufp.mu.Lock()
-	defer ufp.mu.Unlock()
+func (urp *uniqueRefreshPaths) callAdd(path modules.SiaPath) error {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
 
 	// Check if the path is in the parent directory map
-	if _, ok := ufp.parentDirs[path]; ok {
+	if _, ok := urp.parentDirs[path]; ok {
 		return nil
 	}
 
 	// Check if the path is in the child directory map
-	if _, ok := ufp.childDirs[path]; ok {
+	if _, ok := urp.childDirs[path]; ok {
 		return nil
 	}
 
 	// Add path to the childDir map
-	ufp.childDirs[path] = struct{}{}
+	urp.childDirs[path] = struct{}{}
 
 	// Check all path elements to make sure any parent directories are removed
 	// from the child directory map and added to the parent directory map
@@ -60,11 +60,12 @@ func (ufp *uniqueRefreshPaths) callAdd(path modules.SiaPath) error {
 			return errors.AddContext(err, contextStr)
 		}
 		// Check if the parentDir is in the childDirs map
-		if _, ok := ufp.childDirs[parentDir]; ok {
+		if _, ok := urp.childDirs[parentDir]; ok {
 			// Remove from childDir map and add to parentDir map
-			delete(ufp.childDirs, parentDir)
-			ufp.parentDirs[parentDir] = struct{}{}
+			delete(urp.childDirs, parentDir)
 		}
+		// Make sure the parentDir is in the parentDirs map
+		urp.parentDirs[parentDir] = struct{}{}
 		// Set path equal to the parentDir
 		path = parentDir
 	}
@@ -73,29 +74,79 @@ func (ufp *uniqueRefreshPaths) callAdd(path modules.SiaPath) error {
 
 // callNumChildDirs returns the number of child directories currently being
 // tracked.
-func (ufp *uniqueRefreshPaths) callNumChildDirs() int {
-	ufp.mu.Lock()
-	defer ufp.mu.Unlock()
-	return len(ufp.childDirs)
+func (urp *uniqueRefreshPaths) callNumChildDirs() int {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
+	return len(urp.childDirs)
 }
 
-// callRefreshAll uses the uniqueRefreshPaths's Renter to call
-// callThreadedBubbleMetadata on all the directories in the childDir map
-func (ufp *uniqueRefreshPaths) callRefreshAll() {
-	ufp.mu.Lock()
-	defer ufp.mu.Unlock()
-	for sp := range ufp.childDirs {
-		go ufp.r.callThreadedBubbleMetadata(sp)
-	}
+// callNumParentDirs returns the number of parent directories currently being
+// tracked.
+func (urp *uniqueRefreshPaths) callNumParentDirs() int {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
+	return len(urp.parentDirs)
 }
 
-// callRefreshAllBlocking uses the uniqueRefreshPaths's Renter to call
-// managedBubbleMetadata on all the directories in the childDir map
-func (ufp *uniqueRefreshPaths) callRefreshAllBlocking() (err error) {
-	ufp.mu.Lock()
-	defer ufp.mu.Unlock()
-	for sp := range ufp.childDirs {
-		err = errors.Compose(err, ufp.r.managedBubbleMetadata(sp))
+// callRefreshAll will update the directories in the childDir map by calling
+// refreshAll in a go routine.
+func (urp *uniqueRefreshPaths) callRefreshAll() error {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
+	return urp.r.tg.Launch(func() {
+		err := urp.refreshAll()
+		if err != nil {
+			urp.r.log.Println("WARN: error with uniqueRefreshPaths refreshAll:", err)
+		}
+	})
+}
+
+// callRefreshAllBlocking will update the directories in the childDir map by
+// calling refreshAll.
+func (urp *uniqueRefreshPaths) callRefreshAllBlocking() error {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
+	return urp.refreshAll()
+}
+
+// refreshAll calls the urp's Renter's managedBubbleMetadata method on all the
+// directories in the childDir map
+func (urp *uniqueRefreshPaths) refreshAll() (err error) {
+	// Create a siaPath channel with numBubbleWorkerThreads spaces
+	siaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
+
+	// Launch worker groups
+	var wg sync.WaitGroup
+	var errMU sync.Mutex
+	for i := 0; i < numBubbleWorkerThreads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for siaPath := range siaPathChan {
+				bubbleErr := urp.r.managedBubbleMetadata(siaPath)
+				errMU.Lock()
+				err = errors.Compose(err, bubbleErr)
+				errMU.Unlock()
+			}
+		}()
 	}
+
+	// Add all child dir siaPaths to the siaPathChan
+	for sp := range urp.childDirs {
+		select {
+		case siaPathChan <- sp:
+		case <-urp.r.tg.StopChan():
+			// Renter has shutdown, close the channel and return
+			close(siaPathChan)
+			// We wait to avoid the data race of one of the workers updating err
+			wg.Wait()
+			return
+		}
+	}
+
+	// Close siaPathChan and wait for worker groups to complete
+	close(siaPathChan)
+	wg.Wait()
+
 	return
 }

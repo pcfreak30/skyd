@@ -439,7 +439,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 	// Upload the base sector. We do not call managedUploadBaseSector because we
 	// want to have access to the filenode to add the skylinks for all the batched
 	// files to it.
-	fileUploadParams, err := fileUploadParamsFromSUP(sup)
+	fileUploadParams, err := baseSectorUploadParamsFromSUP(sup)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to create siafile upload parameters")
 		return

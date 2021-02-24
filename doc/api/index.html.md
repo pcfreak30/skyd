@@ -3208,6 +3208,49 @@ Cancel the Renter's allowance.
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /renter/bubble [POST]
+> curl example  
+
+```go
+// Call recursive bubble for non root directory
+curl -A "Sia-Agent" -u "":<apipassword> --data "siapath=home/user/folder&recursive=true"  "localhost:9980/renter/bubble"
+
+// Call force bubble on the root directory
+curl -A "Sia-Agent" -u "":<apipassword> --data "rootsiapath=true&force=true"  "localhost:9980/renter/bubble"
+```
+
+Manually trigger a bubble update for a directory. This will update the
+directory metadata for the directory as well as all parent directories.
+Updates to sub directories are dependent on the parameters.
+
+### Query String Parameters
+### REQUIRED
+One of the following is required. Both **CANNOT** be used at the same time.
+
+**siapath** | string\
+The path to the directory that is to be bubbled. All paths should be relative
+to the renter's root filesystem directory.
+
+**rootsiapath** | boolean\
+Indicates if the bubble is intended for the root directory, ie `/renter/fs/`.
+If provided, no `siapath` should be provided.
+
+### OPTIONAL
+**force** | boolean\
+Indicates if the bubble should only update out of date directories. If `force`
+is true, all directories will be updated even if they have a recent
+`LastHealthCheckTime`.
+
+**recursive** | boolean\
+Indicates if the bubble should also be called on all subdirectories of the
+provided directory. **NOTE** it is not recommend to manually the bubble entire
+filesystem, i.e. calling this endpoint recursively from the root directory.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
 ## /renter/clean [POST]
 > curl example  
 
@@ -3613,69 +3656,123 @@ relative to 'home/user/'.
 {
   "directories": [
     {
-      "aggregatenumfiles":       2,    // uint64
-      "aggregatenumstuckchunks": 4,    // uint64
-      "aggregatesize":           4096, // uint64
+      "aggregatehealth":              1.0,  // float64
+      "aggregatelasthealthchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "aggregatemaxhealth":           1.0,  // float64
+      "aggregatemaxhealthpercentage": 1.0,  // float64
+      "aggregateminredundancy":       2.6,  // float64
+      "aggregatemostrecentmodtime":   "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "aggregatenumfiles":            2,    // uint64
+      "aggregatenumstuckchunks":      4,    // uint64
+      "aggregatenumsubdirs":          4,    // uint64
+      "aggregaterepairsize":          4096, // uint64
+      "aggregatesize":                4096, // uint64
+      "aggregatestuckhealth":         1.0,  // float64
+      "aggregatestucksize":           4096, // uint64
+      
+      "aggregateskynetfiles": 40,   // uint64
+      "aggregateskynetsize":  4096, // uint64
 
-      "health":             1.0,      // float64
-      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "maxhealth":          0.5,      // float64
-      "minredundancy":      2.6,      // float64
-      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "numfiles":           3,        // uint64
-      "numsubdirs":         2,        // uint64
-      "siapath":            "foo/bar" // string
-      "stuckhealth":        1.0,      // float64
+      "health":              1.0,      // float64
+      "lasthealthchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "maxhealth":           0.5,      // float64
+      "maxhealthpercentage": 1.0,      // float64
+      "minredundancy":       2.6,      // float64
+      "mode":                0666,     // uint32
+      "mostrecentmodtime":   "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "numfiles":            3,        // uint64
+      "numstuckchunks":      3,        // uint64
+      "numsubdirs":          2,        // uint64
+      "repairsize":          4096,     // uint64
+      "siapath":             "foo/bar" // string
+      "size":                4096,     // uint64
+      "stuckhealth":         1.0,      // float64
+      "stucksize":           4096,     // uint64
+
+      "UID": "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd", // string
+      
+      "skynetfiles": 40,   // uint64
+      "skynetsize":  4096, // uint64
     }
   ],
   "files": []
 }
 ```
-**directories** An array of sia directories
 
-**aggregatenumfiles** | uint64  
-the total number of files in the sub directory tree
+**directories**\
+An array of sia directories. Directories contain directory level metadata and
+aggregate metadata for the subtree of the filesystem of which the directory
+is the root of.
 
-**aggregatenumstuckchunks** | uint64  
-the total number of stuck chunks in the sub directory tree
-
-**aggregatesize** | uint64  
-the total size in bytes of files in the sub directory tree
-
-**health** | float64  
+**aggregatehealth** | **health** | float64\
 This is the worst health of any of the files or subdirectories. Health is the
 percent of parity pieces missing.
  - health = 0 is full redundancy
  - health <= 1 is recoverable
  - health > 1 needs to be repaired from disk
 
-**lasthealthchecktime** | timestamp  
+**aggregatelasthealthchecktime** | **lasthealthchecktime** | timestamp\
 The oldest time that the health of the directory or any of its files or sub
 directories' health was checked.
 
-**maxhealth** | float64  
+**aggregatemaxhealth** | **maxhealth** | float64\
 This is the worst health when comparing stuck health vs health
 
-**minredundancy** | float64  
-the lowest redundancy of any file or directory in the sub directory tree
+**aggregatemaxhealthpercentage** | **maxhealthpercentage** | float64\
+This is the `maxhealth` displayed as a percentage. Since health is the amount
+of redundancy missing, files can have up to 25% of the redundancy missing and
+still be considered 100% healthy.
 
-**mostrecentmodtime** | timestamp  
-the most recent mod time of any file or directory in the sub directory tree
+**aggregateminredundancy** | **minredundancy** | float64\
+The lowest redundancy of any file or directory in the sub directory tree
 
-**numfiles** | uint64  
-the number of files in the directory
+**mode** | unit32\
+The filesystem mode of the directory. There is no corresponding aggregate
+field for mode.
 
-**numsubdirs** | uint64  
-the number of directories in the directory
+**aggregatemostrecentmodtime** | **mostrecentmodtime** | timestamp\
+The most recent mod time of any file or directory in the sub directory tree
 
-**siapath** | string  
-The path to the directory on the sia network
+**aggregatenumfiles** | **numfiles** | uint64\
+The total number of files in the sub directory tree
 
-**size** | string
-The size in bytes of files in the directory
+**aggregatenumstuckchunks** | **aggregatenumstuckchunks** | uint64\
+The total number of stuck chunks in the sub directory tree
 
-**stuckhealth** | string
-The health of the most in need siafile in the directory, stuck or not stuck
+**aggregatenumsubdirs** | **numsubdirs** | uint64\
+The number of directories in the directory
+
+**aggregaterepairsize** | **repairsize** | uint64\
+The total size in bytes that needs to be handled by the repair loop. This
+does not include files that only have less than 25% of the redundancy missing
+as the repair loop will ignore these files until they lose more redundancy.
+This also does not include any stuck data.
+
+**siapath** | string\
+The path to the directory on the sia network. There is no corresponding
+aggregate value for siapath.
+
+**aggregatesize** | **size** | uint64\
+The total size in bytes of files in the sub directory tree
+
+**aggregatestuckhealth** | **stuckhealth** | floatt64\
+The health of the most in need stuck siafile in the directory
+
+**aggregatestucksize** | **stucksize** | uint64\
+The total size in bytes that needs to be handled by the stuck loop. This does
+include files that only have less than 25% of the redundancy missing as the
+stuck loop does not take into account the health of the stuck file.
+
+**UID** | string\
+The unique identifier for the directory in the filesystem. There is no corresponding aggregate field for UID.
+
+**aggregateskynetfiles** | **skynetfiles** | uint64\
+The total number of skyfiles. This includes skyfile uploads and siafile to
+skyfile conversions.
+
+**aggregateskynetsize** | **skynetsize** | uint64\
+The total size in bytes that corresponds to a skyfile. This includes skyfile
+uploads and siafile to skyfile conversions.
 
 **files** Same response as [files](#files)
 
@@ -4004,14 +4101,22 @@ lists the status of all files.
       "maxhealth":        0.0,                  // float64  
       "maxhealthpercent": 100%,                 // float64
       "modtime":          12578940002019-02-20T17:46:20.34810935+01:00,  // timestamp
+      "mode":             640,                  // uint32
       "numstuckchunks":   0,                    // uint64
       "ondisk":           true,                 // boolean
       "recoverable":      true,                 // boolean
       "redundancy":       5,                    // float64
       "renewing":         true,                 // boolean
+      "repairbytes":      4096,                 // uint64
       "siapath":          "foo/bar.txt",        // string
+      "skylinks": [                             // []string
+        "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+        "GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"
+      ], 
       "stuck":            false,                // bool
+      "stuckbytes":       4096,                 // uint64
       "stuckhealth":      0.0,                  // float64
+      "UID":              "00112233445566778899aabbccddeeff",            // string
       "uploadedbytes":    209715200,            // total bytes uploaded
       "uploadprogress":   100,                  // percent
     }
@@ -4066,6 +4171,11 @@ understood
 **modtime** | timestamp  
 indicates the last time the siafile contents where modified
 
+**mode** | uint32\
+The file mode / permissions of the file. Users who download this file will be
+presented a file with this mode. If no mode is set, the default of 0644 will be
+used.
+
 **numstuckchunks** | uint64  
 indicates the number of stuck chunks in a file. A chunk is stuck if it cannot
 reach full redundancy
@@ -4086,8 +4196,17 @@ will be equal to the lowest redundancy of any of  the file's chunks.
 **renewing** | boolean  
 true if the file's contracts will be automatically renewed by the renter.  
 
+**repairbytes** | uint64\
+The total size in bytes that needs to be handled by the repair loop. This does
+not include anything less than 25% of the redundancy missing as the repair loop
+will ignore files until they lose more redundancy.  This also does not include
+any stuck data.
+
 **siapath** | string  
 Path to the file in the renter on the network.  
+
+**skylinks** | []string\
+All the skylinks related to the file.
 
 **stuck** | bool  
 a file is stuck if there are any stuck chunks in the file, which means the file
@@ -4095,6 +4214,14 @@ cannot reach full redundancy
 
 **stuckhealth** | float64  
 stuckhealth is the worst health of any of the stuck chunks.
+
+**stuckbytes** | uint64\
+The total size in bytes that needs to be handled by the stuck loop. This does
+include anything less than 25% of the redundancy missing as the stuck loop does
+not take into account the health of the stuck file.
+
+**UID** | string\
+A unique identifier for the file.
 
 **uploadedbytes** | bytes  
 Total number of bytes successfully uploaded via current file contracts. This
@@ -4913,6 +5040,17 @@ a timeout value of 0 will be ignored. If no timeout is given, the default will
 be used, which is a 30 second timeout. The maximum allowed timeout is 900s (15
 minutes).
 
+**priceperms** | string  
+'price per millisecond' is a value that helps the downloader determine whether
+to download from cheaper hosts or faster hosts. For a ppms of '0', the
+downloader will always select the cheapest hosts that it is able to download
+from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
+by choosing more expensive hosts to download from, it will choose those hosts if
+and only if the total cost of the download increases by less than 10 SC,
+otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
+"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
+value will be treated as hastings. The default ppms is 100nS.
+
 ### Response Body
 
 The response body is the raw data for the basesector.
@@ -5257,12 +5395,30 @@ in the "Skynet-File-Metadata" response header. This might be useful in cases
 where the metadata is not used, or where the size of the response header is
 proving to be an issue.
 
+**include-layout** | string  
+If 'include-layout' is set to true, the API will return the layout in the
+"Skynet-File-Layout" response header. In most cases the layout is not needed for
+the download which is why it is not returned by default. Cases that require the
+layout include backing up skylinks where all the original upload information
+about a skylink is needed.
+
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
 time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
 value of 0 will be ignored. If no timeout is given, the default will be used,
 which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
+
+**priceperms** | string  
+'price per millisecond' is a value that helps the downloader determine whether
+to download from cheaper hosts or faster hosts. For a ppms of '0', the
+downloader will always select the cheapest hosts that it is able to download
+from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
+by choosing more expensive hosts to download from, it will choose those hosts if
+and only if the total cost of the download increases by less than 10 SC,
+otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
+"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
+value will be treated as hastings. The default ppms is 100nS.
 
 ### Response Header
 
@@ -5278,6 +5434,13 @@ supplied, this metadata will be relative to the given path.
 {
   "mode":     640,      // os.FileMode
   "filename": "folder", // string
+  "monetization": [
+    {
+      "address": "e81107109496fe714a492f557c2af4b281e4913c674d10e8b3cd5cd3b7e59c582590531607c8", // hash
+      "amount": "1000000000000000000000000" // types.Currency
+      "currency": "usd"                     // string
+    }
+  ],
   "subfiles": {         // map[string]SkyfileSubfileMetadata | null
     "folder/file1.txt": {                 // string
       "mode":         640,                // os.FileMode
@@ -5285,6 +5448,13 @@ supplied, this metadata will be relative to the given path.
       "contenttype":  "text/plain",       // string
       "offset":       0,                  // uint64
       "len":          6                   // uint64
+      "monetization": [
+        {
+          "address": "284f6fe9c9c394015c04f04e112c0b571a518980fab4e7f5b4e09a592ad7e001231ddbfbc262", // hash
+          "amount": "10000000000000000000000" // types.Currency
+          "currency": "usd"                   // string
+        }
+      ]
     }
   }
 }
@@ -5323,6 +5493,11 @@ curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myIm
 // This command uploads a directory with the local files `src/main.rs` and
 // `src/test.c` to the Sia folder 'var/skynet/src'.
 curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/src?filename=src" -F 'files[]=@./src/main.rs' -F 'files[]=@./src/test.c'
+
+// This command uploads the file 'myImage.png' to the Sia folder
+// 'var/skynet/images/myImage.png' as before. This time with a monetizer that
+// consists of a payout address and payout amount.
+curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?monetization=%5B%7B%22address%22%3A%22035e40b78367b31dae22399b2e09ac6914273b6ae01f8006871ed8baaf294ac888ca82b0c884%22%2C%22amount%22%3A%2260%22%2C%22currency%22%3A%22usd%22%7D%5D" -F 'file=@image.png'
 ```
 
 Uploads a file to the network using a stream. If the upload stream POST call
@@ -5406,6 +5581,13 @@ existing data.
 The file mode / permissions of the file. Users who download this file will be
 presented a file with this mode. If no mode is set, the default of 0644 will be
 used.
+
+**monetization** | string  
+A json encoded array of monetizers. Each monetizer contains contains an
+address, a payout amount and a currency. The specified amount has to be >0
+and the only supported currency is "usd" at the moment. NOTE: The precision
+for $1 is the same as the siacoin precision. So `1000000000000000000000000`
+equals $1.
 
 **root** | bool  
 Whether or not to treat the siapath as being relative to the root directory. If

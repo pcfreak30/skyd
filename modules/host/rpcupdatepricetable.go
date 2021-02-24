@@ -15,13 +15,9 @@ import (
 )
 
 var (
-	// ErrPriceTableNotFound is returned when the price table for a certain UID
-	// can not be found in the tracked price tables
-	ErrPriceTableNotFound = errors.New("Price table not found")
-
-	// ErrPriceTableExpired is returned when the specified price table has
-	// expired
-	ErrPriceTableExpired = errors.New("Price table requested is expired")
+	// errEmptyPriceTableUID is returned if a user provides a zero UID for the
+	// price table to use.
+	errEmptyPriceTableUID = errors.New("empty price table UID was provided")
 )
 
 type (
@@ -93,10 +89,9 @@ func (pth *rpcPriceTableHeap) Pop() interface{} {
 	return pt
 }
 
-// managedRPCUpdatePriceTable returns a copy of the host's current rpc price
-// table. These prices are valid for the duration of the
-// rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
-func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
+// managedPriceTableForRenter returns a copy of the host's current rpc price
+// table ready for handing it to a renter but without tracking it yet.
+func (h *Host) managedPriceTableForRenter() *modules.RPCPriceTable {
 	// update the price table to make sure it has the most recent information.
 	h.managedUpdatePriceTable()
 
@@ -110,6 +105,14 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
 	// set the host's current blockheight, this allows the renter to create
 	// valid withdrawal messages in case it is not synced yet
 	pt.HostBlockHeight = h.BlockHeight()
+	return &pt
+}
+
+// managedRPCUpdatePriceTable returns a copy of the host's current rpc price
+// table. These prices are valid for the duration of the
+// rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
+func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
+	pt := *h.managedPriceTableForRenter()
 
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
@@ -128,7 +131,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
 	// stream if it does not agree with pricing. The price table has not yet
 	// been added to the map, which means that the renter has to pay for it in
 	// order for it to became active and accepted by the host.
-	payment, err := h.ProcessPayment(stream)
+	payment, err := h.ProcessPayment(stream, pt.HostBlockHeight)
 	if errors.Contains(err, io.ErrClosedPipe) {
 		return nil // renter didn't intend to pay
 	}
@@ -167,16 +170,25 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 		return nil, errors.AddContext(err, "failed to read price table UID")
 	}
 
+	// disrupt and return the price table is not found
+	if h.dependencies.Disrupt("HostLosePriceTable") {
+		return nil, errors.AddContext(modules.ErrPriceTableNotFound, fmt.Sprint(uid))
+	}
+	// if an empty price table was provided, we are not going to find a table.
+	if uid == (modules.UniqueID{}) {
+		return nil, errEmptyPriceTableUID
+	}
+
 	// check if we know the uid, if we do return it
 	var found bool
 	pt, found := h.staticPriceTables.managedGet(uid)
 	if !found {
-		return nil, errors.AddContext(ErrPriceTableNotFound, fmt.Sprint(uid))
+		return nil, errors.AddContext(modules.ErrPriceTableNotFound, fmt.Sprint(uid))
 	}
 
 	// make sure the table isn't expired.
 	if time.Now().After(pt.Expiry()) {
-		return nil, errors.AddContext(ErrPriceTableExpired, fmt.Sprint(uid))
+		return nil, errors.AddContext(modules.ErrPriceTableExpired, fmt.Sprint(uid))
 	}
 	return &pt.RPCPriceTable, nil
 }

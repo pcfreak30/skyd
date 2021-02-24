@@ -40,9 +40,9 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestSkynet verifies the functionality of Skynet, a decentralized CDN and
+// TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
 // sharing platform.
-func TestSkynet(t *testing.T) {
+func TestSkynetSuite(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -72,6 +72,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "NoMetadata", Test: testSkynetNoMetadata},
+		{Name: "IncludeLayout", Test: testSkynetIncludeLayout},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
@@ -83,10 +84,10 @@ func TestSkynet(t *testing.T) {
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
-		{Name: "DownloadByRoot", Test: testSkynetDownloadByRootNoEncryption},
-		{Name: "DownloadByRootEncrypted", Test: testSkynetDownloadByRootEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 		{Name: "Batching", Test: testSkynetBatching},
+		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
+		{Name: "MetadataMonetization", Test: testSkynetMonetizers},
 	}
 
 	// Run tests
@@ -409,6 +410,26 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("upload and download data does not match for large siafiles", len(largeFetchedData), len(largeData))
 	}
 
+	// Fetch the base sector and parse the skyfile layout
+	baseSectorReader, err := r.SkynetBaseSectorGet(largeSkylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseSector, err := ioutil.ReadAll(baseSectorReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skyfileLayout modules.SkyfileLayout
+	skyfileLayout.Decode(baseSector)
+
+	// Assert the skyfile layout's data and parity pieces matches the defaults
+	if int(skyfileLayout.FanoutDataPieces) != modules.RenterDefaultDataPieces {
+		t.Fatal("unexpected number of data pieces")
+	}
+	if int(skyfileLayout.FanoutParityPieces) != modules.RenterDefaultParityPieces {
+		t.Fatal("unexpected number of parity pieces")
+	}
+
 	// Check the metadata of the siafile, see that the metadata of the siafile
 	// has the skylink referenced.
 	largeUploadPath, err := modules.NewSiaPath("testLargePath")
@@ -582,14 +603,11 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		SiaPath: modules.RandomSiaPath(),
 	}
 
-	// Try and convert to a Skyfile, this should fail due to the original
-	// siafile being a N-of-M redundancy
+	// Try and convert to a Skyfile, this should succeed, even if the original
+	// siafile is of N-of-M redundancy and not 1-N
 	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	if err == nil {
-		t.Fatal("Expected conversion from Siafile to Skyfile Post to fail.")
-	}
-	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
-		t.Fatalf("Expected Error to contain %v but got %v", renter.ErrRedundancyNotSupported, err)
+	if err != nil {
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
 	}
 
 	// Upload a new file with a 1-N redundancy by setting the datapieces to 1
@@ -606,6 +624,11 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	_, remoteData, err := r.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Recreate Skyfile Upload Parameters
+	sup = modules.SkyfileUploadParameters{
+		SiaPath: modules.RandomSiaPath(),
 	}
 
 	// Convert to a Skyfile
@@ -672,7 +695,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	//
 	// Define test func
 	testSmallFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
-		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -743,7 +766,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	largeTestFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
 		// Upload the skyfile
-		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1400,6 +1423,49 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetDownloadRangeEncrypted verifies we can download a certain range
+// within an encrypted large skyfile. This test was added to verify whether
+// `DecryptBytesInPlace` was properly decrypting the fanout bytes for offsets
+// other than 0.
+func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// add a skykey
+	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// generate file params
+	name := t.Name() + persist.RandomSuffix()
+	size := uint64(4 * int(modules.SectorSize))
+	data := fastrand.Bytes(int(size))
+
+	// upload a large encrypted skyfile to ensure we have a fanout
+	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(name, data, sk.Name, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// calculate random range parameters
+	segment := uint64(crypto.SegmentSize)
+	offset := fastrand.Uint64n(size-modules.SectorSize) + 1
+	length := fastrand.Uint64n(size-offset-segment) + 1
+
+	// fetch the data at given range
+	result, err := r.SkynetSkylinkRange(sshp.Skylink, offset, offset+length)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(result, data[offset:offset+length]) {
+		t.Logf("range %v-%v\n", offset, offset+length)
+		t.Log("expected:", data[offset:offset+length], len(data[offset:offset+length]))
+		t.Log("actual:", result, len(result))
+		t.Fatal("unexpected")
+	}
+}
+
 // testSkynetDownloadBaseSectorEncrypted tests downloading a skylink's encrypted
 // baseSector
 func testSkynetDownloadBaseSectorEncrypted(t *testing.T, tg *siatest.TestGroup) {
@@ -1540,14 +1606,50 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 }
 
-// testSkynetDownloadByRootEncrypted tests encrypted downloading by root
-func testSkynetDownloadByRootEncrypted(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetDownloadByRoot(t, tg, "rootkey")
-}
+// TestSkynetDownloadByRoot verifies the functionality of the download by root
+// routes. It is separate as it requires an amount of hosts equal to the total
+// amount of pieces per chunk.
+func TestSkynetDownloadByRoot(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
 
-// testSkynetDownloadByRootNoEncryption tests downloading by root
-func testSkynetDownloadByRootNoEncryption(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetDownloadByRoot(t, tg, "")
+	// Define the parameters.
+	numHosts := 6
+	groupParams := siatest.GroupParams{
+		Hosts:  numHosts,
+		Miners: 1,
+	}
+	groupDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "failed to create group"))
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Update the renter's allowance to support 6 hosts
+	renterParams := node.Renter(filepath.Join(groupDir, "renter"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Hosts = uint64(numHosts)
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test the standard flow.
+	t.Run("NoEncryption", func(t *testing.T) {
+		testSkynetDownloadByRoot(t, tg, "")
+	})
+	t.Run("Encrypted", func(t *testing.T) {
+		testSkynetDownloadByRoot(t, tg, "rootkey")
+	})
 }
 
 // testSkynetDownloadByRoot tests downloading by root
@@ -1623,7 +1725,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 
 	// For large files there should be fanout bytes
 	if len(fanoutBytes) == 0 {
-		t.Error("no fanout bytes")
+		t.Fatal("no fanout bytes")
 	}
 
 	// Decode Fanout
@@ -1632,21 +1734,24 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 		t.Fatal(err)
 	}
 
+	// Calculate the expected pieces per chunk, and keep track of the original
+	// pieces per chunk. If there's no encryption and there's only 1 data piece,
+	// the fanout bytes will only contain a single piece (as the other pieces
+	// will be identical, so that would be wasting space). We need to take this
+	// into account when recovering the data as the EC will expect the original
+	// amount of pieces.
+	expectedPPC := layout.FanoutDataPieces + layout.FanoutParityPieces
+	originalPPC := expectedPPC
+	if layout.FanoutDataPieces == 1 && layout.CipherType == crypto.TypePlain {
+		expectedPPC = 1
+	}
+
 	// Verify fanout information
-	if encrypted {
-		if piecesPerChunk != uint64(layout.FanoutDataPieces+layout.FanoutParityPieces) {
-			t.Fatal("piecesPerChunk incorrect for encrypted 1-of-N scheme", piecesPerChunk)
-		}
-		if chunkRootsSize != crypto.HashSize*piecesPerChunk {
-			t.Fatal("chunkRootsSize incorrect for encrypted 1-of-N scheme", chunkRootsSize)
-		}
-	} else {
-		if piecesPerChunk != 1 {
-			t.Fatal("piecesPerChunk incorrect for 1-of-N scheme", piecesPerChunk)
-		}
-		if chunkRootsSize != crypto.HashSize {
-			t.Fatal("chunkRootsSize incorrect for 1-of-N scheme", chunkRootsSize)
-		}
+	if piecesPerChunk != uint64(expectedPPC) {
+		t.Fatal("piecesPerChunk incorrect", piecesPerChunk)
+	}
+	if chunkRootsSize != crypto.HashSize*piecesPerChunk {
+		t.Fatal("chunkRootsSize incorrect", chunkRootsSize)
 	}
 
 	// Derive the fanout key
@@ -1659,16 +1764,12 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Create the erasure coder
-	// Only the encrypted upload is erasure coded.
-	var ec modules.ErasureCoder
-	if encrypted {
-		ec, err = modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
-		if err != nil {
-			t.Fatal(err)
-		}
+	ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
 	}
-	chunkSize := (modules.SectorSize - layout.CipherType.Overhead()) * uint64(layout.FanoutDataPieces)
 
+	chunkSize := (modules.SectorSize - layout.CipherType.Overhead()) * uint64(layout.FanoutDataPieces)
 	// Create list of chunk roots
 	chunkRoots := make([][]crypto.Hash, 0, numChunks)
 	for i := uint64(0); i < numChunks; i++ {
@@ -1721,14 +1822,22 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 		var chunkBytes []byte
 		if ec != nil {
 			buf := bytes.NewBuffer(nil)
+			if len(pieces) == 1 && originalPPC > 1 {
+				deduped := make([][]byte, originalPPC)
+				for i := range deduped {
+					deduped[i] = make([]byte, len(pieces[0]))
+					copy(deduped[i], pieces[0])
+				}
+				pieces = deduped
+			}
 			err = ec.Recover(pieces, chunkSize, buf)
 			if err != nil {
 				t.Fatal(err)
 			}
 			chunkBytes = buf.Bytes()
 		} else {
-			// The unencrypted file is not erasure coded so just read the piece data
-			// directly
+			// The unencrypted file is not erasure coded so just read the piece
+			// data directly
 			for _, p := range pieces {
 				chunkBytes = append(chunkBytes, p...)
 			}
@@ -1763,7 +1872,7 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 	// to be generated.
 	size := 2*int(modules.SectorSize) + siatest.Fuzz()
 	data := fastrand.Bytes(size)
-	skylink, _, _, _, err := r.UploadSkyfileCustom("regression", data, sk.Name, 20, false, false)
+	skylink, _, _, _, err := r.UploadSkyfileCustom("regression", data, sk.Name, 20, false, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1831,7 +1940,7 @@ func testSkynetBatching(t *testing.T, tg *siatest.TestGroup) {
 				// Submit the upload for the file to be batched. This will blocked until
 				// the maxBatchTime since all the files total are less than the
 				// maxBatchSize
-				skylink, _, _, err := r.UploadSkyfileBlockingCustom(filename, data, "", 0, false, batch)
+				skylink, _, _, err := r.UploadSkyfileBlockingCustom(filename, data, "", 0, false, batch, nil)
 				if err != nil {
 					select {
 					case errChan <- fmt.Errorf("unable to upload file %v; %v", filename, err):
@@ -2109,7 +2218,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 		Offset:      0,
 		Len:         uint64(len(dataFile3)),
 	}
-	if mdF3 != mdF3Expected {
+	if !reflect.DeepEqual(mdF3, mdF3Expected) {
 		t.Log("expected: ", mdF3Expected)
 		t.Log("actual: ", mdF3)
 		t.Fatal("Unexpected subfile metadata for file 3")
@@ -2191,6 +2300,9 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 		t.Fatal(err)
 	}
 
+	// Remember the siaPaths of the blocked files
+	var blockedSiaPaths []modules.SiaPath
+
 	// Confirm that the skyfile and its extended info are registered with the
 	// renter
 	sp, err := modules.SkynetFolder.Join(sup.SiaPath.String())
@@ -2209,6 +2321,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	blockedSiaPaths = append(blockedSiaPaths, sp, spExtended)
 
 	// Download the data
 	data, _, err := r.SkynetSkylinkGet(skylink)
@@ -2394,6 +2507,13 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 		t.Fatal(err)
 	}
 
+	// Make sure all blockedSiaPaths are root paths
+	sp, err = modules.UserFolder.Join(rf.SiaPath().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockedSiaPaths = append(blockedSiaPaths, sp, skyfilePath)
+
 	// Blocklist the skylink
 	remove = []string{}
 	convertHash := crypto.HashObject(convertSSHP.MerkleRoot)
@@ -2474,6 +2594,68 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	_, err = r.RenterFileRootGet(skyfilePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Adding links to the block list does not immediately delete the files, but
+	// the health/bubble loops should eventually delete the files.
+	//
+	// First verify the test assumptions and confirm that the files still exist
+	// in the renter.
+	for _, siaPath := range blockedSiaPaths {
+		_, err = r.RenterFileRootGet(siaPath)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
+	// Add both skylinks back to the blocklist
+	remove = []string{}
+	if isHash {
+		add = []string{hash.String(), convertHash.String()}
+	} else {
+		add = []string{skylink, convertSkylink}
+	}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbg, err = r.SkynetBlocklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blocklist) != 2 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 2, len(sbg.Blocklist))
+	}
+
+	// Wait until all the files have been deleted
+	//
+	// Using 15 checks at 1 second intervals because the health loop check
+	// interval in testing is 5s and there are potential error sleeps of 3s.
+	if err := build.Retry(15, time.Second, func() error {
+		for _, siaPath := range blockedSiaPaths {
+			_, err = r.RenterFileRootGet(siaPath)
+			if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+				return fmt.Errorf("File %v, not deleted; error: %v", siaPath, err)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Error(err)
+	}
+
+	// Reset the blocklist for other tests
+	remove = add
+	add = []string{}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbg, err = r.SkynetBlocklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blocklist) != 0 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 0, len(sbg.Blocklist))
 	}
 }
 
@@ -2829,6 +3011,61 @@ func testSkynetNoMetadata(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetIncludeLayout verifies the functionality of sending
+// a 'include-layout' query string parameter to the skylink GET route.
+func testSkynetIncludeLayout(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a skyfile
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// GET without specifying the 'include-layout' query string parameter
+	_, layout, err := r.SkynetSkylinkGetWithLayout(skylink, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(layout, modules.SkyfileLayout{}) {
+		t.Fatal("unexpected")
+	}
+
+	// GET with specifying the 'include-layout' query string parameter
+	_, layout, err = r.SkynetSkylinkGetWithLayout(skylink, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(layout, modules.SkyfileLayout{}) {
+		t.Fatal("unexpected")
+	}
+
+	// Perform a HEAD call to verify the same thing in the headers directly
+	params := url.Values{}
+	params.Set("include-layout", fmt.Sprintf("%t", true))
+	status, header, err := r.SkynetSkylinkHeadWithParameters(skylink, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("Unexpected status for HEAD request, expected %v but received %v", http.StatusOK, status)
+	}
+
+	strSkynetFileLayout := header.Get("Skynet-File-Layout")
+	if strSkynetFileLayout == "" {
+		t.Fatal("unexpected")
+	}
+	var layout2 modules.SkyfileLayout
+	layoutBytes, err := hex.DecodeString(strSkynetFileLayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout2.Decode(layoutBytes)
+	if !reflect.DeepEqual(layout, layout2) {
+		t.Fatal("unexpected")
+	}
+}
+
 // testSkynetNoWorkers verifies that SkynetSkylinkGet returns an error and does
 // not deadlock if there are no workers.
 func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
@@ -2856,7 +3093,7 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = r.SkynetSkylinkGet(modules.Skylink{}.String())
 	if err == nil {
 		t.Fatal("Error is nil, expected error due to not enough workers")
-	} else if !strings.Contains(err.Error(), modules.ErrNotEnoughWorkersInWorkerPool.Error()) {
+	} else if !(strings.Contains(err.Error(), modules.ErrNotEnoughWorkersInWorkerPool.Error()) || strings.Contains(err.Error(), "not enough workers to complete download")) {
 		t.Errorf("Expected error containing '%v' but got %v", modules.ErrNotEnoughWorkersInWorkerPool, err)
 	}
 }
@@ -4107,5 +4344,159 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 	if skyfileDeleted(largePathExtended) {
 		t.Fatal("unexpected")
+	}
+}
+
+// testSkynetMonetizers verifies that skynet uploads correctly set the
+// monetizers in the skyfile's metadata.
+func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Create monetization.
+	monetization := []modules.Monetizer{
+		{
+			Address:  types.UnlockHash{},
+			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Currency: modules.CurrencyUSD,
+		},
+	}
+	fastrand.Read(monetization[0].Address[:])
+
+	// Test regular small file.
+	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("TestRegularSmall", fastrand.Bytes(1), false, monetization)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, md, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(md.Monetization, monetization) {
+		t.Log("got", md.Monetization)
+		t.Log("want", monetization)
+		t.Error("wrong monetizers")
+	}
+
+	// Test regular large file.
+	skylink, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularLarge", fastrand.Bytes(int(modules.SectorSize)+1), false, monetization)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, md, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(md.Monetization, monetization) {
+		t.Log("got", md.Monetization)
+		t.Log("want", monetization)
+		t.Error("wrong monetizers")
+	}
+
+	// Test multipart file with monetization for the whole link and monetization
+	// for a subfile.
+	fileMonetization := []modules.Monetizer{
+		{
+			Address:  types.UnlockHash{},
+			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Currency: modules.CurrencyUSD,
+		},
+	}
+	fastrand.Read(fileMonetization[0].Address[:])
+
+	nestedFile := siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: fileMonetization}
+	files := []siatest.TestFile{nestedFile}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartMonetized", files, "", false, false, monetization)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, md, err = r.SkynetSkylinkConcatGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(md.Monetization, monetization) {
+		t.Log("got", md.Monetization)
+		t.Log("want", monetization)
+		t.Error("wrong monetizeres")
+	}
+	if len(md.Subfiles) != 1 {
+		t.Fatal("wrong number of subfiles")
+	}
+	var smd modules.SkyfileSubfileMetadata
+	for _, md := range md.Subfiles {
+		smd = md
+		break
+	}
+	if !reflect.DeepEqual(smd.Monetization, fileMonetization) {
+		t.Log("got", smd.Monetization)
+		t.Log("want", fileMonetization)
+		t.Error("wrong monetizers")
+	}
+
+	// Test converted file.
+	filesize := int(modules.SectorSize) + siatest.Fuzz()
+	_, rf, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:      modules.RandomSiaPath(),
+		Monetization: monetization,
+	}
+	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, rf.SiaPath())
+	if err != nil {
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
+	}
+	_, md, err = r.SkynetSkylinkGet(sshp.Skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(md.Monetization, monetization) {
+		t.Log("got", md.Monetization)
+		t.Log("want", monetization)
+		t.Error("wrong monetizers")
+	}
+
+	// Create zero amount monetization.
+	zeroMonetization := []modules.Monetizer{
+		{
+			Address:  types.UnlockHash{},
+			Amount:   types.ZeroCurrency,
+			Currency: modules.CurrencyUSD,
+		},
+	}
+	fastrand.Read(monetization[0].Address[:])
+
+	// Test zero amount monetization.
+	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularZeroMonetizer", fastrand.Bytes(1), false, zeroMonetization)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrZeroMonetizer.Error()) {
+		t.Fatal("should fail", err)
+	}
+	nestedFile = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: zeroMonetization}
+	files = []siatest.TestFile{nestedFile}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartZeroMonetizer", files, "", false, false, monetization)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrZeroMonetizer.Error()) {
+		t.Fatal("should fail", err)
+	}
+
+	// Create zero amount monetization.
+	unknownMonetization := []modules.Monetizer{
+		{
+			Address:  types.UnlockHash{},
+			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Currency: "",
+		},
+	}
+	fastrand.Read(monetization[0].Address[:])
+
+	// Test unknown currency monetization.
+	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownMonetizer", fastrand.Bytes(1), false, unknownMonetization)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
+		t.Fatal("should fail", err)
+	}
+	nestedFile = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: unknownMonetization}
+	files = []siatest.TestFile{nestedFile}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownMonetizer", files, "", false, false, monetization)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
+		t.Fatal("should fail", err)
 	}
 }

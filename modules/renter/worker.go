@@ -20,13 +20,15 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
-	// minAsyncVersion defines the minimum version that supports RHP3.
-	minAsyncVersion = "1.4.10"
+	// minRHP3Version defines the minimum version that supports RHP3. Note that
+	// this constant is not used, it is left in for documentation purposes only.
+	minRHP3Version = "1.4.10"
 
 	// minRegistryVersion defines the minimum version that is required for a
 	// host to support the registry.
@@ -75,19 +77,11 @@ type (
 		staticHostPubKey    types.SiaPublicKey
 		staticHostPubKeyStr string
 
-		// Download variables related to queuing work. They have a separate
-		// mutex to minimize lock contention.
-		downloadChunks              *downloadChunks // Yet unprocessed work items.
-		downloadMu                  sync.Mutex
-		downloadTerminated          bool      // Has downloading been terminated for this worker?
-		downloadConsecutiveFailures int       // How many failures in a row?
-		downloadRecentFailure       time.Time // How recent was the last failure?
-		downloadRecentFailureErr    error     // What was the reason for the last failure?
-
 		// Job queues for the worker.
 		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
 		staticJobHasSectorQueue        *jobHasSectorQueue
 		staticJobReadQueue             *jobReadQueue
+		staticJobLowPrioReadQueue      *jobReadQueue
 		staticJobReadRegistryQueue     *jobReadRegistryQueue
 		staticJobRenewQueue            *jobRenewQueue
 		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
@@ -122,7 +116,12 @@ type (
 		staticRegistryCache *registryRevisionCache
 
 		// Utilities.
-		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
+
+		// staticSetInitialEstimates is an object that ensures the initial queue
+		// estimates of the HS and RJ queues are only set once.
+		staticSetInitialEstimates sync.Once
+
+		staticTG threadgroup.ThreadGroup
 		mu       sync.Mutex
 		renter   *Renter
 		wakeChan chan struct{} // Worker will check queues if given a wake signal.
@@ -176,11 +175,9 @@ func (w *worker) managedKill() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	select {
-	case <-w.killChan:
-		return
-	default:
-		close(w.killChan)
+	err := w.staticTG.Stop()
+	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+		w.renter.log.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
 	}
 }
 
@@ -188,7 +185,7 @@ func (w *worker) managedKill() {
 // killed or not.
 func (w *worker) staticKilled() bool {
 	select {
-	case <-w.killChan:
+	case <-w.staticTG.StopChan():
 		return true
 	default:
 		return false
@@ -246,9 +243,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
-		downloadChunks:    newDownloadChunks(),
 		unprocessedChunks: newUploadChunks(),
-		killChan:          make(chan struct{}),
 		wakeChan:          make(chan struct{}, 1),
 		renter:            r,
 	}
@@ -256,11 +251,21 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobLowPrioReadQueue()
 	w.initJobRenewQueue()
 	w.initJobDownloadSnapshotQueue()
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
+
+	// Close the worker when the renter is stopped.
+	err = r.tg.OnStop(func() error {
+		w.managedKill()
+		return nil
+	})
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to register OnStop for worker threadgroup")
+	}
 
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
