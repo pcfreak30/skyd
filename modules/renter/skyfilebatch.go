@@ -33,12 +33,12 @@ var (
 	// maxBatchFileSize is the maximum size of a skyfile that will be batched
 	maxBatchFileSize = modules.SectorSize / 2
 
-	// maxBatchSize is the maximum size of a batched
+	// maxBatchSize is the maximum size of a batch of skyfile uploads
 	//
 	// TODO: If we want to increase this and limit edge cases, we will want to
 	// link this with the packing code so that the remaining memory takes into
 	// account the padding needed for packing to avoid edge cases of the data
-	// being packed into larger than a sector.
+	// being packed into batches exceeding a sector in size.
 	maxBatchSize = modules.SectorSize / 2
 
 	// maxBatchTime is the maximum amount of time that the skylinkBatchManager
@@ -58,64 +58,72 @@ func newBatchUID() batchUID {
 	return batchUID(persist.UID())
 }
 
-// skylinkBatchManager handles the batching of skyfile uploads. The batch
-// manager manages one active batch at a time that  will execute when it exceeds
-// 2 MiB, ie half a sector size.  Files will be batched if they are under 2 MiB.
-// This makes code that handles edges cases nice and easy.
-//
-// NOTE: only one batch manager should be active at a time
-type skylinkBatchManager struct {
-	// activeBatch is the batch that is currently collecting files to be uploaded
-	activeBatch *skylinkBatch
+type (
+	// skylinkBatchManager handles the batching of skyfile uploads. The batch
+	// manager manages one active batch at a time that  will execute when it
+	// exceeds 2 MiB, i.e. half a sector size.  Files will be batched if they are
+	// under 2 MiB.  This makes code that handles edge cases nice and easy.
+	//
+	// NOTE: only one batch manager should be active at a time
+	skylinkBatchManager struct {
+		// activeBatch is the batch that is currently collecting files to be uploaded
+		activeBatch *skylinkBatch
 
-	// Utilities
-	r  *Renter
-	mu sync.Mutex
-}
+		// Utilities
+		staticRenter *Renter
+		mu           sync.Mutex
+	}
 
-// skylinkBatch contains the information about batching of skyfile uploads.
-type skylinkBatch struct {
-	// finalized indicates if the batch is finalized and ready for uploading
-	finalized bool
+	// skylinkBatch contains the information about batching of skyfile uploads.
+	skylinkBatch struct {
+		// available is the channel used to signal that the upload is complete and the
+		// externSkylinkData is available to be accessed
+		available chan struct{}
 
-	// remainingMemory indicates the remaining memory available in the batch
-	remainingMemory uint64
+		// currentFiles are the files currently being batched
+		currentFiles map[batchUID]*skyFileObj
 
-	// currentFiles are the files currently being batched
-	currentFiles map[batchUID]*skyFileObj
+		// externSkylinkData is the data associated with the Skylink from the upload.
+		//
+		// NOTE: the externSkylinkData should be handled as an extern struct. The
+		// batch will continue to work with this skylinkData until the upload is
+		// complete, at which point the available chan will be closed, signaling
+		// that the skylinkData is safe to handle.
+		externSkylinkData map[batchUID]*skylinkData
 
-	// resultChan returns when the uploads complete
-	resultChan chan struct{}
+		// finalized indicates if the batch is finalized and ready for uploading
+		finalized bool
 
-	// externSkylinkData is the data associated with the Skylink from the upload.
-	externSkylinkData map[batchUID]*skylinkData
+		// remainingMemory indicates the remaining memory available in the batch
+		remainingMemory uint64
 
-	// batchManager is the global batchManager
-	batchManager *skylinkBatchManager
+		// staticBatchManager is the global batchManager
+		staticBatchManager *skylinkBatchManager
 
-	err error
-}
+		err error
+	}
 
-// skylinkData is the information returned to the upload caller. It contains the
-// resulting skylink that points to the uploaded file within the batch.
-type skylinkData struct {
-	err     error
-	skylink modules.Skylink
-}
+	// skylinkData is the information returned to the upload caller. It contains
+	// the resulting skylink that points to the uploaded file within the batch.
+	skylinkData struct {
+		err     error
+		skylink modules.Skylink
+	}
 
-// skyFileObj contains the information about a skyfile that is needed for
-// batching and uploading
-type skyFileObj struct {
-	// Batch information
-	uid batchUID
+	// skyFileObj contains the information about a skyfile that is needed for
+	// batching and uploading
+	skyFileObj struct {
+		// Batch information
+		uid batchUID
 
-	// File data
-	data []byte
-	size uint64
+		// File data
+		data []byte
+		size uint64
 
-	// Packing information
-	fp modules.FilePlacement
-}
+		// Packing information
+		fp modules.FilePlacement
+	}
+)
 
 // BatchSkyfile will submit a skyfile to the batch manager to be uploaded as
 // a batch to skynet.
@@ -125,7 +133,7 @@ func (r *Renter) BatchSkyfile(sup modules.SkyfileUploadParameters, reader module
 		return modules.Skylink{}, err
 	}
 	defer r.tg.Done()
-	return r.staticBatchManager.callAddFile(sup, reader)
+	return r.staticBatchManager.managedAddFile(sup, reader)
 }
 
 // newSkylinkBatchManager creates a new skylinkBatchManager for the Renter
@@ -138,17 +146,29 @@ func (r *Renter) newSkylinkBatchManager() {
 	}
 
 	// Initialize the batch manager and a batch
-	bm := &skylinkBatchManager{r: r}
+	bm := &skylinkBatchManager{staticRenter: r}
 	bm.createNewBatch()
 	r.staticBatchManager = bm
 	return
 }
 
-// callAddFile will add a file to the batch manager.
+// createNewBatch creates a new batch and sets it as the batch manager's active
+// batch.
+func (sbm *skylinkBatchManager) createNewBatch() {
+	sbm.activeBatch = &skylinkBatch{
+		staticBatchManager: sbm,
+		currentFiles:       make(map[batchUID]*skyFileObj),
+		externSkylinkData:  make(map[batchUID]*skylinkData),
+		remainingMemory:    maxBatchSize,
+		available:          make(chan struct{}),
+	}
+}
+
+// managedAddFile will add a file to the batch manager.
 //
 // NOTE: we call the method on the batch manager to ensure we are only adding
 // files to the current active batch.
-func (sbm *skylinkBatchManager) callAddFile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (modules.Skylink, error) {
+func (sbm *skylinkBatchManager) managedAddFile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (modules.Skylink, error) {
 	err := validBatchSUP(sup)
 	if err != nil {
 		return modules.Skylink{}, err
@@ -192,22 +212,10 @@ func (sbm *skylinkBatchManager) callAddFile(sup modules.SkyfileUploadParameters,
 	// process.
 	select {
 	case <-finalChan:
-	case <-sbm.r.tg.StopChan():
+	case <-sbm.staticRenter.tg.StopChan():
 		return modules.Skylink{}, errors.New("renter shutdown before batch could complete")
 	}
 	return externSkylinkData.skylink, externSkylinkData.err
-}
-
-// createNewBatch creates a new batch and sets it as the batch manager's active
-// batch.
-func (sbm *skylinkBatchManager) createNewBatch() {
-	sbm.activeBatch = &skylinkBatch{
-		batchManager:      sbm,
-		currentFiles:      make(map[batchUID]*skyFileObj),
-		externSkylinkData: make(map[batchUID]*skylinkData),
-		remainingMemory:   maxBatchSize,
-		resultChan:        make(chan struct{}),
-	}
 }
 
 // addFile adds a file to the skylinkBatch. If this is the first file in the
@@ -226,13 +234,13 @@ func (sb *skylinkBatch) addFile(f *skyFileObj) (*skylinkData, chan struct{}) {
 		sb.finalized = true
 
 		// Create a new batch
-		sb.batchManager.createNewBatch()
+		sb.staticBatchManager.createNewBatch()
 
 		// Upload current batch
 		go sb.threadedUploadData()
 
 		// Add this file to the new batch
-		return sb.batchManager.activeBatch.addFile(f)
+		return sb.staticBatchManager.activeBatch.addFile(f)
 	}
 
 	// Initialize the batch if this is the first file added
@@ -253,7 +261,7 @@ func (sb *skylinkBatch) addFile(f *skyFileObj) (*skylinkData, chan struct{}) {
 	// Initialize the skylink data that will be returned
 	res := &skylinkData{}
 	sb.externSkylinkData[uid] = res
-	return res, sb.resultChan
+	return res, sb.available
 }
 
 // initSkylinkBatch is called the first time a file is added to the skylink
@@ -262,8 +270,8 @@ func (sb *skylinkBatch) addFile(f *skyFileObj) (*skylinkData, chan struct{}) {
 func (sb *skylinkBatch) initSkylinkBatch() {
 	// Launch background timer
 	time.AfterFunc(maxBatchTime, func() {
-		sb.batchManager.mu.Lock()
-		defer sb.batchManager.mu.Unlock()
+		sb.staticBatchManager.mu.Lock()
+		defer sb.staticBatchManager.mu.Unlock()
 		if sb.finalized {
 			// Batch was already finalized because it filled up
 			return
@@ -271,15 +279,15 @@ func (sb *skylinkBatch) initSkylinkBatch() {
 		sb.finalized = true
 
 		// Create a new active batch for the Batch Managed. This ensures that
-		// nothing is reference the current batch anymore.
-		sb.batchManager.createNewBatch()
+		// nothing is referencing the current batch anymore.
+		sb.staticBatchManager.createNewBatch()
 
 		// Upload the data from the batch
 		//
 		// Ignore error from Launch as that just indicates that the renter has
 		// shutdown, in which case threadedUploadData won't be called.
-		r := sb.batchManager.r
-		_ = r.tg.Launch(func() { sb.threadedUploadData() })
+		r := sb.staticBatchManager.staticRenter
+		_ = r.tg.Launch(sb.threadedUploadData)
 	})
 }
 
@@ -289,10 +297,10 @@ func (sb *skylinkBatch) initSkylinkBatch() {
 // access to the object. We guarantee that by creating a new batch while holding
 // the skylinkBatchManager lock before calling threadedUploadData.
 func (sb *skylinkBatch) threadedUploadData() {
-	// Close the results chan at the end to signal the batch is complete. This
+	// Close the available chan at the end to signal the batch is complete. This
 	// will signal the original file upload callers that it is OK to look at the
 	// skylinkData.
-	defer close(sb.resultChan)
+	defer close(sb.available)
 
 	defer func() {
 		if sb.err == nil {
@@ -397,10 +405,10 @@ func (sb *skylinkBatch) threadedUploadData() {
 	}
 
 	// Check if the skylink for the basesector is blocked. We only need to check
-	// this because the blocklist contains the hash of the merkleroot. Since the
-	// all the batched files will have the same merkleroot that means that if any
+	// this because the blocklist contains the hash of the merkleroot. Since all
+	// the batched files will have the same merkleroot that means that if any
 	// skylink from this batch has been blocked then they are all blocked.
-	r := sb.batchManager.r
+	r := sb.staticBatchManager.staticRenter
 	if r.staticSkynetBlocklist.IsBlocked(baseSectorSkylink) {
 		sb.err = errors.AddContext(ErrSkylinkBlocked, "batch upload failed, batch is blocked")
 		return
@@ -447,7 +455,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 
 	// Normally this is set because the baseSector should be encrypted by the
 	// caller. In this instance we also are setting it to TypePlain because batched
-	// files do not current support encryption.
+	// files do not currently support encryption.
 	fileUploadParams.CipherType = crypto.TypePlain
 
 	// Create a reader from the basesector and upload.
@@ -509,7 +517,7 @@ func validBatchSUP(sup modules.SkyfileUploadParameters) error {
 		return errBatchDefaultPath
 	}
 
-	// SiaPath,Root, Filename and Mode are just ignored. It is not an issue if
+	// SiaPath, Root, Filename and Mode are just ignored. It is not an issue if
 	// they are set because they do not impact the other files in the batch nor
 	// are they needed for the download. They will just not be used.
 	//

@@ -47,7 +47,7 @@ func TestBatchAddFile(t *testing.T) {
 	// than the batch time
 	initialBatch := bm.activeBatch
 	select {
-	case <-initialBatch.resultChan:
+	case <-initialBatch.available:
 		t.Fatal("resultChan closed before maxBatchTime")
 	case <-time.After(maxBatchTime * 2):
 	}
@@ -98,7 +98,7 @@ func TestBatchAddFile(t *testing.T) {
 	// The active batch on the batchManager should now be fresh. Check the
 	// resultChan of the active batch
 	select {
-	case <-bm.activeBatch.resultChan:
+	case <-bm.activeBatch.available:
 		t.Fatal("channel shouldn't be close")
 	default:
 	}
@@ -118,7 +118,7 @@ func TestBatchAddFile(t *testing.T) {
 		}()
 	}
 	select {
-	case <-batch.resultChan:
+	case <-batch.available:
 	case <-time.After(maxBatchTime):
 		t.Fatal("result chan should have closed before the maxBatchTime")
 	}
@@ -149,7 +149,7 @@ func TestBatchAddFile(t *testing.T) {
 	bm.mu.Lock()
 	defer bm.mu.Unlock()
 	select {
-	case <-bm.activeBatch.resultChan:
+	case <-bm.activeBatch.available:
 		t.Fatal("result chan should not have been closed before maxBatchTime")
 	case <-time.After(maxBatchTime):
 	}

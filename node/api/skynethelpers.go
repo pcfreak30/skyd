@@ -279,9 +279,19 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		return nil, nil, errors.New("DefaultPath and DisableDefaultPath can only be set on multipart uploads")
 	}
 
+	// verify multipart uploads and batch are not combined
+	if !isMultipartRequest(mediaType) && batch {
+		return nil, nil, errors.New("cannot batch multipart uploads")
+	}
+
 	// verify convertpath and filename are not combined
 	if convertPath != "" && filename != "" {
 		return nil, nil, errors.New("cannot set both a 'convertpath' and a 'filename'")
+	}
+
+	// verify convertpath and batch are not combined
+	if convertPath != "" && batch {
+		return nil, nil, errors.New("cannot batch siafile conversion")
 	}
 
 	// verify skykeyname and skykeyid are not combined

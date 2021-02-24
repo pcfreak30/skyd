@@ -1071,24 +1071,13 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Check if this upload is intended to be batched
 	if params.batch {
-		// Not currently supporting multipart uploads
-		if isMultiPart {
-			WriteError(w, Error{"cannot batch multipart uploads"}, http.StatusBadRequest)
-			return
-		}
-		// Converted siafiles cannot be batched
-		if params.convertPath != "" {
-			WriteError(w, Error{"cannot batch siafile conversions"}, http.StatusBadRequest)
-			return
-		}
-
 		// Batch upload
 		skylink, err := api.renter.BatchSkyfile(sup, reader)
 		if errors.Contains(err, renter.ErrSkylinkBlocked) {
 			WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 			return
 		} else if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to upload file in a batch to Skynet: %v", err)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("failed to upload file in a batch to Skynet: %v", err)}, http.StatusInternalServerError)
 			return
 		}
 

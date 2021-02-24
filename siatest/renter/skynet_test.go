@@ -2091,26 +2091,21 @@ func testSkynetBatching(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// The metadata returned from one of the skylinks should be different than the
-	// rest
-	var md modules.SkyfileMetadata
-	differentMD := false
+	// The metadatas should be different for all other metadatas
+	var mds []modules.SkyfileMetadata
 	for skylink := range skylinksMap {
 		_, skylinkMD, err := r.SkynetSkylinkGet(skylink)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if reflect.DeepEqual(md, modules.SkyfileMetadata{}) {
-			md = skylinkMD
-			continue
-		}
-		if !reflect.DeepEqual(md, skylinkMD) {
-			differentMD = true
-			break
-		}
+		mds = append(mds, skylinkMD)
 	}
-	if !differentMD {
-		t.Fatal("All metadatas the same")
+	for _, md1 := range mds {
+		for _, md2 := range mds {
+			if reflect.DeepEqual(md1, md2) {
+				t.Fatal("Found matching metadatas")
+			}
+		}
 	}
 }
 
