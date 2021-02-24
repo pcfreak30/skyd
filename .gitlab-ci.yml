@@ -264,7 +264,7 @@ siatest-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs="$siatest_pkgs"
+    - make test-custom
 
 siatest-renter-tests:
   <<: *default_test_params
@@ -275,7 +275,7 @@ siatest-renter-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs="$siatest_renter_pkgs"
+    - make test-custom
 
 siatest-renter-sub-tests:
   <<: *default_test_params
@@ -286,7 +286,7 @@ siatest-renter-sub-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs="$siatest_renter_sub_pkgs"
+    - make test-custom
 
 ############################
 # Nightly Tests 

@@ -189,6 +189,8 @@ test-v:
 test-long: clean fmt vet lint
 	@mkdir -p cover
 	GORACE='$(racevars)' go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
+test-custom:
+	go test -count=100 -race -v -timeout="7200s" -tags='debug testing netgo' -run "TestSkynetDownloadByRoot" ./siatest/renter
 
 test-vlong: clean fmt vet lint
 ifneq ("$(OS)","Windows_NT")
