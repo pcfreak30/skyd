@@ -527,8 +527,11 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		// tmp log
 		if errors.Contains(err, errNotEnoughWorkers) {
-			println("not enough workers")
-			println(pdc.unresolvedWorkersRemaining)
+			status := pdc.workerState.staticRenter.staticWorkerPool.callStatus()
+			println(status.NumWorkers)
+			for _, ws := range status.Workers {
+				println(fmt.Sprintf("DL_CD %v UL_CD %v M_CD %v\n", ws.DownloadOnCoolDown, ws.UploadOnCoolDown, ws.MaintenanceOnCooldown))
+			}
 			pdc.initialWorkerHeap(unresolvedWorkers, time.Duration(123456))
 			notEnoughWorkers = true
 		}
