@@ -156,6 +156,18 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // Cost is taken into account at a later point where the initial worker set is
 // built.
 func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker, unresolvedWorkerTimePenalty time.Duration) pdcWorkerHeap {
+	debug := false
+	if unresolvedWorkerTimePenalty == 123456 {
+		unresolvedWorkerTimePenalty = 0
+		debug = true
+	}
+
+	log := func(msg string) {
+		if debug {
+			println(msg)
+		}
+	}
+
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
@@ -163,6 +175,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// workers are generally never on maintenance cooldown, so by skipping
 		// them here we avoid ever waiting for them to resolve.
 		if uw.staticWorker.managedOnMaintenanceCooldown() {
+			log(fmt.Sprintf("worker %v on maintenance cooldown", uw.staticWorker.staticHostPubKey.ShortString()))
 			continue
 		}
 
@@ -170,6 +183,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// worker.
 		jrq := uw.staticWorker.staticJobReadQueue
 		if jrq.callOnCooldown() {
+			log(fmt.Sprintf("worker %v JRQ cooldown", uw.staticWorker.staticHostPubKey.ShortString()))
 			continue
 		}
 
@@ -187,6 +201,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		cost := jrq.callExpectedJobCost(pdc.pieceLength)
 		readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
 		if readDuration == 0 {
+			log(fmt.Sprintf("worker %v read dur 0", uw.staticWorker.staticHostPubKey.ShortString()))
 			continue
 		}
 
@@ -226,6 +241,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if its host is considered to be price gouging.
 			err := checkProjectDownloadGouging(pt, allowance)
 			if err != nil {
+				log(fmt.Sprintf("worker %v gouging", w.staticHostPubKey.ShortString()))
 				continue
 			}
 
@@ -233,6 +249,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// perform async work, or if the read queue is on a cooldown.
 			jrq := w.staticJobReadQueue
 			if !w.managedAsyncReady() || w.staticJobReadQueue.callOnCooldown() {
+				log(fmt.Sprintf("worker %v not async ready or JRQ cooldown", w.staticHostPubKey.ShortString()))
 				continue
 			}
 
@@ -511,6 +528,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		// tmp log
 		if errors.Contains(err, errNotEnoughWorkers) {
 			println("not enough workers")
+			println(pdc.unresolvedWorkersRemaining)
+			pdc.initialWorkerHeap(unresolvedWorkers, time.Duration(123456))
 			notEnoughWorkers = true
 		}
 
