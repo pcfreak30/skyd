@@ -158,6 +158,7 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker, unresolvedWorkerTimePenalty time.Duration) pdcWorkerHeap {
 	debug := false
 	if unresolvedWorkerTimePenalty == 123456 {
+		println("debug enabled")
 		unresolvedWorkerTimePenalty = 0
 		debug = true
 	}
@@ -281,6 +282,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 	for _, rw := range resolvedWorkersMap {
 		heap.Push(&workerHeap, rw)
 	}
+	log(fmt.Sprintf("%v resolved workers", len(resolvedWorkersMap)))
 	return workerHeap
 }
 
@@ -529,6 +531,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		if errors.Contains(err, errNotEnoughWorkers) {
 			status := pdc.workerState.staticRenter.staticWorkerPool.callStatus()
 			println(status.NumWorkers)
+			println(len(unresolvedWorkers))
 			for _, ws := range status.Workers {
 				println(fmt.Sprintf("DL_CD %v UL_CD %v M_CD %v\n", ws.DownloadOnCoolDown, ws.UploadOnCoolDown, ws.MaintenanceOnCooldown))
 			}
