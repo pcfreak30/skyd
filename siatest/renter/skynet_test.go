@@ -57,35 +57,36 @@ func TestSkynetSuite(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		{Name: "Basic", Test: testSkynetBasic},
-		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
-		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
-		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
-		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
-		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
-		{Name: "DisableForce", Test: testSkynetDisableForce},
-		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
-		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
-		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
-		{Name: "Stats", Test: testSkynetStats},
-		{Name: "Portals", Test: testSkynetPortals},
-		{Name: "HeadRequest", Test: testSkynetHeadRequest},
-		{Name: "NoMetadata", Test: testSkynetNoMetadata},
-		{Name: "IncludeLayout", Test: testSkynetIncludeLayout},
-		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
-		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
-		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		{Name: "RenameSiaPath", Test: testRenameSiaPath},
-		{Name: "NoWorkers", Test: testSkynetNoWorkers},
-		{Name: "DefaultPath", Test: testSkynetDefaultPath},
-		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
-		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
-		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
-		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
-		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
-		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
-		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
-		{Name: "MetadataMonetization", Test: testSkynetMonetizers},
+		// {Name: "Basic", Test: testSkynetBasic},
+		// {Name: "ConvertSiaFile", Test: testConvertSiaFile},
+		// {Name: "LargeMetadata", Test: testSkynetLargeMetadata},
+		// {Name: "MultipartUpload", Test: testSkynetMultipartUpload},
+		// {Name: "InvalidFilename", Test: testSkynetInvalidFilename},
+		// {Name: "SubDirDownload", Test: testSkynetSubDirDownload},
+		// {Name: "DisableForce", Test: testSkynetDisableForce},
+		// {Name: "BlocklistHash", Test: testSkynetBlocklistHash},
+		// {Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
+		// {Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
+		// {Name: "Stats", Test: testSkynetStats},
+		// {Name: "Portals", Test: testSkynetPortals},
+		// {Name: "HeadRequest", Test: testSkynetHeadRequest},
+		// {Name: "NoMetadata", Test: testSkynetNoMetadata},
+		// {Name: "IncludeLayout", Test: testSkynetIncludeLayout},
+		// {Name: "RequestTimeout", Test: testSkynetRequestTimeout},
+		// {Name: "DryRunUpload", Test: testSkynetDryRunUpload},
+		// {Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		// {Name: "RenameSiaPath", Test: testRenameSiaPath},
+		// {Name: "NoWorkers", Test: testSkynetNoWorkers},
+		// {Name: "DefaultPath", Test: testSkynetDefaultPath},
+		// {Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
+		// {Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
+		// {Name: "DownloadFormats", Test: testSkynetDownloadFormats},
+		// {Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
+		// {Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
+		// {Name: "FanoutRegression", Test: testSkynetFanoutRegression},
+		// {Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
+		// {Name: "MetadataMonetization", Test: testSkynetMonetizers},
+		{Name: "Waha", Test: testSkynetDownloadLargeZipFile},
 	}
 
 	// Run tests
@@ -4135,6 +4136,61 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 	if skyfileDeleted(largePathExtended) {
 		t.Fatal("unexpected")
+	}
+}
+
+func testSkynetDownloadLargeZipFile(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// upload a multi-file skyfile
+	ss := int(modules.SectorSize)
+	files := []siatest.TestFile{
+		{Name: "song1.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+		{Name: "song2.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+		{Name: "song3.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+		{Name: "song4.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+		{Name: "song5.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+		{Name: "song6.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+		{Name: "song7.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+		{Name: "song8.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+		{Name: "song9.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+		{Name: "song10.flac", Data: fastrand.Bytes(ss * (fastrand.Intn(5) + 1))},
+	}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, "", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(skylink)
+
+	// data, metadata, err := r.SkynetSkylinkGet(skylink)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+
+	// zip
+	header, reader, err := r.SkynetSkylinkZipReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	actual, err := readZipArchive(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = reader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := fileMapFromFiles(files)
+	if !reflect.DeepEqual(expected, actual) {
+		t.Log("Test:", t.Name())
+		t.Log("expected:", expected)
+		t.Log("actual  :", actual)
+		t.Fatal("unexpected")
+	}
+	ct := header.Get("Content-type")
+	if ct != "application/zip" {
+		t.Fatalf("unexpected 'Content-Type' header, expected 'application/zip' actual '%v'", ct)
 	}
 }
 

@@ -308,6 +308,7 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 	// Get the files to archive.
 	var files []modules.SkyfileSubfileMetadata
 	for _, file := range md.Subfiles {
+		fmt.Printf("found file '%v', off: %v len: %v\n", file.Filename, file.Offset, file.Len)
 		files = append(files, file)
 	}
 	sort.Slice(files, func(i, j int) bool {
@@ -375,13 +376,15 @@ func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetada
 func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
 	zw := zip.NewWriter(dst)
 	for _, file := range files {
+		fmt.Println("adding file to zip", file.Filename)
 		f, err := zw.Create(file.Filename)
 		if err != nil {
 			return errors.AddContext(err, "serveZip: failed to add the file to the zip")
 		}
 
 		// Write file content.
-		_, err = io.CopyN(f, src, int64(file.Len))
+		n, err := io.CopyN(f, src, int64(file.Len))
+		fmt.Printf("wrote %v bytes\n", n)
 		if err != nil {
 			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
 		}

@@ -776,6 +776,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// If we are serving more than one file, and the format is not
 	// specified, default to downloading it as a zip archive.
 	if !isSubfile && metadata.IsDirectory() && format == modules.SkyfileFormatNotSpecified {
+		fmt.Println("using zip format")
 		format = modules.SkyfileFormatZip
 	}
 
@@ -871,6 +872,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if format == modules.SkyfileFormatZip {
+		fmt.Println("serving zip archive")
 		w.Header().Set("Content-Type", "application/zip")
 		err = serveArchive(w, streamer, metadata, serveZip)
 		if err != nil {
