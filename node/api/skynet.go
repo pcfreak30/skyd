@@ -855,6 +855,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// archive or zip archive.
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("Content-Type", "application/x-tar")
+		w.Header().Add("Transfer-Encoding", "chunked")
 		err = serveArchive(w, streamer, metadata, serveTar)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
@@ -863,6 +864,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	if format == modules.SkyfileFormatTarGz {
 		w.Header().Set("Content-Type", "application/gzip")
+		w.Header().Add("Transfer-Encoding", "chunked")
 		gzw := gzip.NewWriter(w)
 		err = serveArchive(gzw, streamer, metadata, serveTar)
 		err = errors.Compose(err, gzw.Close())
@@ -874,6 +876,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == modules.SkyfileFormatZip {
 		fmt.Println("serving zip archive")
 		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Add("Transfer-Encoding", "chunked")
 		err = serveArchive(w, streamer, metadata, serveZip)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
