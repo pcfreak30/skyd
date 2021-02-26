@@ -388,6 +388,10 @@ func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetada
 		if err != nil {
 			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
 		}
+		err = zw.Flush()
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to flush buffered content to underlying writer")
+		}
 	}
 	return zw.Close()
 }
