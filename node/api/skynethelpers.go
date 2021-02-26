@@ -393,6 +393,7 @@ func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetada
 			return errors.AddContext(err, "serveZip: failed to flush buffered content to underlying writer")
 		}
 		if f, ok := dst.(http.Flusher); ok {
+			fmt.Println("flushing underlying writer")
 			f.Flush()
 		}
 	}
