@@ -533,11 +533,14 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			println("num workers", status.NumWorkers)
 			println("num unresolved", len(unresolvedWorkers))
 			println("num resolved", len(pdc.workerState.resolvedWorkers))
-			println("num avail pieces", len(pdc.availablePieces))
+			for _, rw := range pdc.workerState.resolvedWorkers {
+				println("resolw avail pieces", rw.pieceIndices)
+			}
 			for _, ws := range status.Workers {
 				println(fmt.Sprintf("DL_CD %v UL_CD %v M_CD %v\n", ws.DownloadOnCoolDown, ws.UploadOnCoolDown, ws.MaintenanceOnCooldown))
 			}
-			pdc.initialWorkerHeap(unresolvedWorkers, time.Duration(123456))
+			workerHeap = pdc.initialWorkerHeap(unresolvedWorkers, time.Duration(123456))
+			println("num workers in heap", len(workerHeap))
 			notEnoughWorkers = true
 		}
 
