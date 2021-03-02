@@ -6,63 +6,23 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
-var (
-	// bubbleWaitInTestTime is the amount of time a test should wait before
-	// returning an error in test. This is a conservative value to prevent test
-	// timeouts.
-	bubbleWaitInTestTime = time.Minute
-)
-
-// bubble is a helper for the renterTester to call bubble on a directory and
-// block until the bubble has executed.
-func (rt *renterTester) bubble(siaPath skymodules.SiaPath) error {
-	complete := rt.renter.staticBubbleScheduler.callQueueBubble(siaPath)
-	select {
-	case <-complete:
-	case <-time.After(bubbleWaitInTestTime):
-		return errors.New("test blocked too long for bubble")
-	}
-	return nil
-}
-
-// bubbleAll is a helper for the renterTester to call bubble on multiple
-// directories and block until all the bubbles has executed.
-func (rt *renterTester) bubbleAll(siaPaths []skymodules.SiaPath) (errs error) {
-	// Define common variables
-	var errMU sync.Mutex
-	siaPathChan := make(chan skymodules.SiaPath, numBubbleWorkerThreads)
-	var wg sync.WaitGroup
-
-	// Define bubbleWorker to call bubble on siaPaths
-	bubbleWorker := func() {
-		for siaPath := range siaPathChan {
-			err := rt.bubble(siaPath)
-			errMU.Lock()
-			errs = errors.Compose(errs, err)
-			errMU.Unlock()
-		}
-	}
-
-	// Launch bubble workers
-	for i := 0; i < numBubbleWorkerThreads; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			bubbleWorker()
-		}()
-	}
-
-	// Send siaPaths to bubble workers over the siaPathChan
-	for _, siaPath := range siaPaths {
-		// renterTester bubble method has timeout protection so no need for it here
-		siaPathChan <- siaPath
-	}
-	return
-}
+// TODO:
+//  - Combine following tests to verify managedCalculateDirectoryMetadata and
+//  move to metadata_test.go
+//		- TestBubbleHealth
+//		- TestNumFiles
+//		- TestDirectorySize
+//		- TestDirectoryModTime
+//  - Combine following tests to verify the right information is bubbled all the
+//  way to root
+//		- TestBubbleHealth
+//		- TestNumFiles
+//		- TestDirectorySize
+//		- TestDirectoryModTime
+//
 
 // TestBubble tests the bubble code.
 //
@@ -149,6 +109,7 @@ func testBubbleScheduler(t *testing.T) {
 
 	// Blocking functionality test
 	t.Run("Blocking", testBubbleScheduler_Blocking)
+	t.Run("BubbledMetadata", testBubbleScheduler_BubbledMetadata)
 }
 
 // testBubbleScheduler_Basic probes the basic functionality of the
@@ -464,3 +425,6 @@ func testBubbleScheduler_managedQueueParent(t *testing.T) {
 		t.Error("map and popped update don't match")
 	}
 }
+
+// testBubbleScheduler_BubbledMetadata probes the metadata that is bubbled
+func testBubbleScheduler_BubbledMetadata(t *testing.T) {}
