@@ -305,6 +305,7 @@ func initCmds() *cobra.Command {
 	}
 
 	// create command tree (alphabetized by root command)
+	root.AddCommand(accountingCmd)
 	root.AddCommand(consensusCmd)
 	root.AddCommand(jsonCmd)
 
