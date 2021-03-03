@@ -85,7 +85,7 @@ func testAccounting(t *testing.T, np node.NodeParams) {
 	}
 
 	// Get the Node accounting
-	ag, err := n.AccountingGet()
+	ag, err := n.AccountingGet(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,5 +119,5 @@ func testAccounting(t *testing.T, np node.NodeParams) {
 		Renter: ra,
 		Wallet: wa,
 	}
-	checkAccounting(ag, expected)
+	checkAccounting(ag[0], expected)
 }

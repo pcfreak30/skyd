@@ -51,7 +51,7 @@ type (
 // node.
 type Accounting interface {
 	// Accounting returns the current accounting information
-	Accounting() (AccountingInfo, error)
+	Accounting(start, end int64) ([]AccountingInfo, error)
 
 	// Close closes the accounting module
 	Close() error

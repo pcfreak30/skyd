@@ -69,7 +69,10 @@ func (a *Accounting) callThreadedPersistAccounting() {
 
 	// Determine the initial interval for persisting the accounting information
 	a.mu.Lock()
-	lastPersistTime := time.Unix(a.persistence.Timestamp, 0)
+	var lastPersistTime time.Time
+	if len(a.history) > 0 {
+		lastPersistTime = time.Unix(a.history[len(a.history)-1].Timestamp, 0)
+	}
 	a.mu.Unlock()
 	interval := persistInterval - time.Since(lastPersistTime)
 	if interval <= 0 {
@@ -137,9 +140,10 @@ func (a *Accounting) initPersist() error {
 		return errors.AddContext(err, "unable to unmarshal persistence")
 	}
 
-	// Keep the last persist entry in memory
+	// Load persistence into memory
+	a.history = persistence
 	if len(persistence) > 0 {
-		a.persistence = persistence[len(persistence)-1]
+		a.currentInfo = persistence[len(persistence)-1]
 	}
 	return nil
 }
@@ -158,7 +162,7 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 
 	// Marshall the persistence
 	a.mu.Lock()
-	p := a.persistence
+	p := a.currentInfo
 	a.mu.Unlock()
 	data, err := marshalPersistence(p)
 	if err != nil {
@@ -168,12 +172,17 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 	}
 
 	// Persist
-	_, err = a.staticAOP.Write(data[:])
+	_, err = a.staticAOP.Write(data)
 	if err != nil {
 		err = errors.AddContext(err, "unable to write persistence to disk")
 		a.staticLog.Printf("WARN: %v:%v", logStr, err)
 		return err
 	}
+
+	// Add to the history
+	a.mu.Lock()
+	a.history = append(a.history, p)
+	a.mu.Unlock()
 
 	return nil
 }

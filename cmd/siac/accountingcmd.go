@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -46,13 +47,13 @@ func accountingcmd() {
 	defer w.Flush()
 
 	// Grab the accounting information
-	ai, err := httpClient.AccountingGet()
+	ais, err := httpClient.AccountingGet(0, time.Now().Unix())
 	if err != nil {
 		die("Unable to get accounting information: ", err)
 	}
 
 	// Write the information to the csv file.
-	err = writeAccountingCSV(ai, w)
+	err = writeAccountingCSV(ais[0], w)
 	if err != nil {
 		die("Unable to write accounting information to csv file: ", err)
 	}

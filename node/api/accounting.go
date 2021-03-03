@@ -1,20 +1,55 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/julienschmidt/httprouter"
 )
 
 // accountingHandlerGet handles the API call for /accounting
-func (api *API) accountingHandlerGet(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	ai, err := api.accounting.Accounting()
+func (api *API) accountingHandlerGet(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Check for range
+	var err error
+
+	// Check for Start time
+	startStr := req.Form.Get("start")
+	var start int64
+	if startStr != "" {
+		start, err = strconv.ParseInt(startStr, 10, 64)
+		if err != nil {
+			WriteError(w, Error{"unable to parse start time" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Check for End time
+	endStr := req.Form.Get("end")
+	var end int64
+	if endStr != "" {
+		end, err = strconv.ParseInt(endStr, 10, 64)
+		if err != nil {
+			WriteError(w, Error{"unable to parse end time" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Sanity check range
+	if (start != 0 && end != 0) && (end < start) {
+		errStr := fmt.Sprintf("cannot provided end time that is before start time: start %v > end %v", start, end)
+		WriteError(w, Error{errStr}, http.StatusBadRequest)
+		return
+	}
+
+	// Request the range of accounting information
+	ais, err := api.accounting.Accounting(start, end)
 	if err != nil {
-		WriteError(w, Error{"unable to get current accounting information" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"unable to get accounting information" + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	// Return the Accounting information
-	WriteJSON(w, ai)
+	WriteJSON(w, ais)
 	return
 }
