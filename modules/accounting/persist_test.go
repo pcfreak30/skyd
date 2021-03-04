@@ -42,12 +42,12 @@ func testBasic(t *testing.T) {
 
 	// Check initial persistence
 	a.mu.Lock()
-	initP := a.currentInfo
+	initInfo := a.currentInfo
 	lenHistory := len(a.history)
 	a.mu.Unlock()
-	if !reflect.DeepEqual(initP, persistence{}) {
-		t.Log("initial persistence:", initP)
-		t.Error("initial persistence should be empty")
+	if !reflect.DeepEqual(initInfo, modules.AccountingInfo{}) {
+		t.Log("initial info:", initInfo)
+		t.Error("initial info should be empty")
 	}
 	if lenHistory != 0 {
 		t.Error("history should be empty")
@@ -61,7 +61,7 @@ func testBasic(t *testing.T) {
 
 		// Grab the current persistence
 		a.mu.Lock()
-		initP = a.currentInfo
+		initInfo = a.currentInfo
 		a.mu.Unlock()
 		expectedHistoryLen++
 
@@ -79,13 +79,13 @@ func testBasic(t *testing.T) {
 
 		// Check persistence
 		a.mu.Lock()
-		p := a.currentInfo
+		info := a.currentInfo
 		lenHistory = len(a.history)
 		a.mu.Unlock()
-		if !reflect.DeepEqual(initP, p) {
-			t.Log("initial persistence:", initP)
-			t.Log("loaded persistence:", p)
-			t.Error("loaded persistence should match persistence from before close")
+		if !reflect.DeepEqual(initInfo, info) {
+			t.Log("initial info:", initInfo)
+			t.Log("loaded info:", info)
+			t.Error("loaded info should match persistence from before close")
 		}
 		if lenHistory != expectedHistoryLen {
 			t.Error("history length unexpected", lenHistory, expectedHistoryLen)
@@ -117,7 +117,7 @@ func testCallThreadedPersistAccounting(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		// Grab the current persistence
 		a.mu.Lock()
-		initP := a.currentInfo
+		initInfo := a.currentInfo
 		initLen := len(a.history)
 		a.mu.Unlock()
 
@@ -126,11 +126,11 @@ func testCallThreadedPersistAccounting(t *testing.T) {
 
 		// Validate the persistence was updated
 		a.mu.Lock()
-		p := a.currentInfo
+		info := a.currentInfo
 		lenHistory := len(a.history)
 		a.mu.Unlock()
-		if reflect.DeepEqual(initP, p) {
-			t.Error("persistence should be updated")
+		if reflect.DeepEqual(initInfo, info) {
+			t.Error("accounting info should be updated")
 		}
 		if initLen == lenHistory {
 			t.Error("History not updated")
@@ -157,7 +157,7 @@ func testManagedUpdateAndPersistAccounting(t *testing.T) {
 
 	// Grab the persistence beforehand
 	a.mu.Lock()
-	initP := a.currentInfo
+	initInfo := a.currentInfo
 	initLen := len(a.history)
 	a.mu.Unlock()
 
@@ -166,11 +166,11 @@ func testManagedUpdateAndPersistAccounting(t *testing.T) {
 
 	// Validate expectations
 	a.mu.Lock()
-	p := a.currentInfo
+	info := a.currentInfo
 	lenHistory := len(a.history)
 	a.mu.Unlock()
-	if reflect.DeepEqual(initP, p) {
-		t.Error("persistence should be updated")
+	if reflect.DeepEqual(initInfo, info) {
+		t.Error("accounting info should be updated")
 	}
 	if initLen == lenHistory {
 		t.Error("History should have been updated")
@@ -179,8 +179,8 @@ func testManagedUpdateAndPersistAccounting(t *testing.T) {
 
 // testMarshal probes the marshalling and unmarshalling of the persistence
 func testMarshal(t *testing.T) {
-	// Create persistence
-	p := persistence{
+	// Create AccountingInfo
+	ai := modules.AccountingInfo{
 		Renter: modules.RenterAccounting{
 			WithheldFunds:      randomCurrency(),
 			UnspentUnallocated: randomCurrency(),
@@ -193,25 +193,25 @@ func testMarshal(t *testing.T) {
 	}
 
 	// Marshal persistence
-	data, err := marshalPersistence(p)
+	data, err := marshalPersistence(ai)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Unmarshal persistence
-	unmarshalledP, err := unmarshalPersistence(bytes.NewReader(data))
+	unmarshalledInfo, err := unmarshalPersistence(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(unmarshalledP) != 1 {
+	if len(unmarshalledInfo) != 1 {
 		t.Fatal("unexpected")
 	}
 
 	// Compare
-	if !reflect.DeepEqual(p, unmarshalledP[0]) {
-		t.Log("p", p)
-		t.Log("unmarshaledP", unmarshalledP[0])
-		t.Fatal("persistence mismatch")
+	if !reflect.DeepEqual(ai, unmarshalledInfo[0]) {
+		t.Log("ai", ai)
+		t.Log("unmarshalledInfo", unmarshalledInfo[0])
+		t.Fatal("info mismatch")
 	}
 
 	// Append several persist elements together
@@ -221,19 +221,19 @@ func testMarshal(t *testing.T) {
 	}
 
 	// Unmarshal
-	unmarshalledP, err = unmarshalPersistence(bytes.NewReader(datas))
+	unmarshalledInfo, err = unmarshalPersistence(bytes.NewReader(datas))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(unmarshalledP) != 5 {
+	if len(unmarshalledInfo) != 5 {
 		t.Fatal("unexpected")
 	}
 	// Compare each element to the original persistence
-	for _, up := range unmarshalledP {
-		if !reflect.DeepEqual(p, up) {
-			t.Log("p", p)
-			t.Log("up", up)
-			t.Fatal("persistence mismatch")
+	for _, uai := range unmarshalledInfo {
+		if !reflect.DeepEqual(ai, uai) {
+			t.Log("ai", ai)
+			t.Log("uai", uai)
+			t.Fatal("accounting info mismatch")
 		}
 	}
 }

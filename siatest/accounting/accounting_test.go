@@ -116,8 +116,9 @@ func testAccounting(t *testing.T, np node.NodeParams) {
 
 	// Check Accounting
 	expected := modules.AccountingInfo{
-		Renter: ra,
-		Wallet: wa,
+		Renter:    ra,
+		Wallet:    wa,
+		Timestamp: ag[0].Timestamp,
 	}
 	checkAccounting(ag[0], expected)
 }

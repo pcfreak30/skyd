@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,7 +15,7 @@ import (
 var (
 	// csvHeaders is the headers for the csv file generated for the accounting
 	// information
-	csvHeaders = []string{"Siacoin Balance", "Siafund Balance", "Unspent Unallocated", "Withheld Funds"}
+	csvHeaders = []string{"TimeStammp", "Siacoin Balance", "Siafund Balance", "Unspent Unallocated", "Withheld Funds"}
 )
 
 var (
@@ -73,11 +74,12 @@ func writeAccountingCSV(ai modules.AccountingInfo, w *csv.Writer) error {
 	}
 
 	// Write Wallet info first, then Renter info.
+	timeStr := strconv.FormatInt(ai.Timestamp, 10)
 	scStr := ai.Wallet.ConfirmedSiacoinBalance.String()
 	sfStr := ai.Wallet.ConfirmedSiafundBalance.String()
 	usStr := ai.Renter.UnspentUnallocated.String()
 	whStr := ai.Renter.WithheldFunds.String()
-	csvOutput := []string{scStr, sfStr, usStr, whStr}
+	csvOutput := []string{timeStr, scStr, sfStr, usStr, whStr}
 
 	// Write output to file
 	err = w.Write(csvOutput)

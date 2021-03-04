@@ -43,21 +43,6 @@ var (
 	}).(time.Duration)
 )
 
-// persistence contains the accounting information that is persisted on disk
-type persistence struct {
-	// Not implemented yet
-	//
-	// FeeManager modules.FeeManagerAccounting `json:"feemanager"`
-	// Host       modules.HostAccounting       `json:"host"`
-	// Miner      modules.MinerAccounting      `json:"miner"`
-
-	Renter modules.RenterAccounting `json:"renter"`
-	Wallet modules.WalletAccounting `json:"wallet"`
-
-	// Unix Timestamp
-	Timestamp int64 `json:"timestamp"`
-}
-
 // callThreadedPersistAccounting is a background loop that persists the
 // accounting information based on the persistInterval.
 func (a *Accounting) callThreadedPersistAccounting() {
@@ -153,7 +138,7 @@ func (a *Accounting) initPersist() error {
 func (a *Accounting) managedUpdateAndPersistAccounting() error {
 	logStr := "Update and Persist error"
 	// Update the persistence information
-	_, err := a.callUpdateAccounting()
+	ai, err := a.callUpdateAccounting()
 	if err != nil {
 		err = errors.AddContext(err, "unable to update accounting information")
 		a.staticLog.Printf("WARN: %v:%v", logStr, err)
@@ -161,10 +146,7 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 	}
 
 	// Marshall the persistence
-	a.mu.Lock()
-	p := a.currentInfo
-	a.mu.Unlock()
-	data, err := marshalPersistence(p)
+	data, err := marshalPersistence(ai)
 	if err != nil {
 		err = errors.AddContext(err, "unable to marshal persistence")
 		a.staticLog.Printf("WARN: %v:%v", logStr, err)
@@ -181,16 +163,16 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 
 	// Add to the history
 	a.mu.Lock()
-	a.history = append(a.history, p)
+	a.history = append(a.history, ai)
 	a.mu.Unlock()
 
 	return nil
 }
 
 // marshalPersistence marshals the persistence.
-func marshalPersistence(p persistence) ([]byte, error) {
+func marshalPersistence(ai modules.AccountingInfo) ([]byte, error) {
 	// Marshal the persistence
-	data, err := json.Marshal(p)
+	data, err := json.Marshal(ai)
 	if err != nil {
 		return nil, err
 	}
@@ -199,15 +181,15 @@ func marshalPersistence(p persistence) ([]byte, error) {
 
 // unmarshalPersistence uses a json Decoder to read the persisted json entries
 // and unmarshals them.
-func unmarshalPersistence(r io.Reader) ([]persistence, error) {
+func unmarshalPersistence(r io.Reader) ([]modules.AccountingInfo, error) {
 	// Create decoder
 	d := json.NewDecoder(r)
 
-	var persist []persistence
+	var ais []modules.AccountingInfo
 	for {
 		// Decode persisted json entry
-		var p persistence
-		err := d.Decode(&p)
+		var ai modules.AccountingInfo
+		err := d.Decode(&ai)
 		if errors.Contains(err, io.EOF) {
 			break
 		}
@@ -215,7 +197,7 @@ func unmarshalPersistence(r io.Reader) ([]persistence, error) {
 			return nil, errors.AddContext(err, "unable to read from reader")
 		}
 		// Append to persist
-		persist = append(persist, p)
+		ais = append(ais, ai)
 	}
-	return persist, nil
+	return ais, nil
 }

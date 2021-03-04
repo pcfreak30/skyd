@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -67,11 +68,12 @@ func TestWriteAccountingCSV(t *testing.T) {
 
 	// Generated expected
 	headerStr := strings.Join(csvHeaders, ",")
+	timeStr := strconv.FormatInt(ai.Timestamp, 10)
 	scStr := ai.Wallet.ConfirmedSiacoinBalance.String()
 	sfStr := ai.Wallet.ConfirmedSiafundBalance.String()
 	usStr := ai.Renter.UnspentUnallocated.String()
 	whStr := ai.Renter.WithheldFunds.String()
-	data := []string{scStr, sfStr, usStr, whStr}
+	data := []string{timeStr, scStr, sfStr, usStr, whStr}
 	dataStr := strings.Join(data, ",")
 	expected := fmt.Sprintf("%v\n%v\n", headerStr, dataStr)
 	if expected != string(bytes) {

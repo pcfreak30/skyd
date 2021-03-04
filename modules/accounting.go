@@ -21,6 +21,9 @@ type (
 
 		Renter RenterAccounting `json:"renter"`
 		Wallet WalletAccounting `json:"wallet"`
+
+		// Unix Timestamp
+		Timestamp int64 `json:"timestamp"`
 	}
 
 	// RenterAccounting contains the accounting information related to the Renter

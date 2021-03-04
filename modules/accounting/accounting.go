@@ -37,13 +37,13 @@ type Accounting struct {
 
 	// currentInfo is the current in memory accounting information. This may or
 	// may not have been persisted yet.
-	currentInfo persistence
+	currentInfo modules.AccountingInfo
 
 	// history is the entire persisted history of the accounting information
 	//
 	// NOTE: We only persist a small amount of data daily so this is OK and we are
 	// not concerned with this struct taking up much memory.
-	history []persistence
+	history []modules.AccountingInfo
 
 	// staticPersistDir is the accounting persist location on disk
 	staticPersistDir string
@@ -139,10 +139,10 @@ func (a *Accounting) Close() error {
 
 // accountingRange returns a range of accounting information from a provided
 // history
-func accountingRange(history []persistence, start, end int64) []modules.AccountingInfo {
+func accountingRange(history []modules.AccountingInfo, start, end int64) []modules.AccountingInfo {
 	// Find the range of entries requested
-	var ais []modules.AccountingInfo
-	for _, entry := range history {
+	var startIndex, endIndex int = -1, -1
+	for i, entry := range history {
 		// Break if we reach a Timestamp that is older than end if end is provided
 		if end != 0 && entry.Timestamp > end {
 			break
@@ -151,18 +151,30 @@ func accountingRange(history []persistence, start, end int64) []modules.Accounti
 		if entry.Timestamp < start {
 			continue
 		}
-		// Entry found that is within the range. Append it to the list.
-		ais = append(ais, modules.AccountingInfo{
-			Renter: entry.Renter,
-			Wallet: entry.Wallet,
-		})
+		// If we have found a later entry that satisfies the end time, update the
+		// end index
+		endIndex = i
+		// If we haven't initialized the start index yet, set it.
+		if startIndex == -1 {
+			startIndex = i
+		}
 	}
-	return ais
+	// Sanity
+	if startIndex == -1 || endIndex == -1 {
+		return nil
+	}
+	// Increment endIndex to be inclusive
+	endIndex++
+	if endIndex == len(history) {
+		return history[startIndex:]
+	}
+	return history[startIndex:endIndex]
 }
 
 // callUpdateAccounting updates the accounting information
 func (a *Accounting) callUpdateAccounting() (modules.AccountingInfo, error) {
 	var ai modules.AccountingInfo
+	ai.Timestamp = time.Now().Unix()
 
 	// Get Renter information
 	//
@@ -189,9 +201,7 @@ func (a *Accounting) callUpdateAccounting() (modules.AccountingInfo, error) {
 	err := errors.Compose(renterErr, walletErr)
 	if err == nil {
 		a.mu.Lock()
-		a.currentInfo.Renter = ai.Renter
-		a.currentInfo.Wallet = ai.Wallet
-		a.currentInfo.Timestamp = time.Now().Unix()
+		a.currentInfo = ai
 		a.mu.Unlock()
 	}
 	return ai, err
