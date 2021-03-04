@@ -61,15 +61,9 @@ func (a *Accounting) callThreadedPersistAccounting() {
 	a.mu.Unlock()
 	interval := persistInterval - time.Since(lastPersistTime)
 	if interval <= 0 {
-		// If it has been longer than the persistInterval then persist the
-		// accounting information immediately
-		err = a.managedUpdateAndPersistAccounting()
-		if err != nil {
-			a.staticLog.Println("WARN: Persist loop error:", err)
-			interval = persistErrorInterval
-		} else {
-			interval = persistInterval
-		}
+		// If it has been longer than the persistInterval then set the interval to
+		// 0 so that we persist immediately
+		interval = 0
 	}
 
 	// Persist the accounting information in a loop until there is a shutdown
@@ -127,9 +121,6 @@ func (a *Accounting) initPersist() error {
 
 	// Load persistence into memory
 	a.history = persistence
-	if len(persistence) > 0 {
-		a.currentInfo = persistence[len(persistence)-1]
-	}
 	return nil
 }
 
@@ -196,7 +187,7 @@ func unmarshalPersistence(r io.Reader) ([]modules.AccountingInfo, error) {
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to read from reader")
 		}
-		// Append to persist
+		// Append entry
 		ais = append(ais, ai)
 	}
 	return ais, nil

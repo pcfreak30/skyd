@@ -35,10 +35,6 @@ type Accounting struct {
 	staticRenter     modules.Renter
 	staticWallet     modules.Wallet
 
-	// currentInfo is the current in memory accounting information. This may or
-	// may not have been persisted yet.
-	currentInfo modules.AccountingInfo
-
 	// history is the entire persisted history of the accounting information
 	//
 	// NOTE: We only persist a small amount of data daily so this is OK and we are
@@ -120,7 +116,7 @@ func (a *Accounting) Accounting(start, end int64) ([]modules.AccountingInfo, err
 
 	// Return the requested range
 	a.mu.Lock()
-	history := a.history
+	history := append(a.history, ai)
 	a.mu.Unlock()
 	ais := accountingRange(history, start, end)
 	if len(ais) == 0 {
@@ -197,14 +193,7 @@ func (a *Accounting) callUpdateAccounting() (modules.AccountingInfo, error) {
 		ai.Wallet.ConfirmedSiafundBalance = sf
 	}
 
-	// Update the Accounting state
-	err := errors.Compose(renterErr, walletErr)
-	if err == nil {
-		a.mu.Lock()
-		a.currentInfo = ai
-		a.mu.Unlock()
-	}
-	return ai, err
+	return ai, errors.Compose(renterErr, walletErr)
 }
 
 // Enforce that Accounting satisfies the modules.Accounting interface.

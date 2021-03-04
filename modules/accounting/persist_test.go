@@ -42,13 +42,8 @@ func testBasic(t *testing.T) {
 
 	// Check initial persistence
 	a.mu.Lock()
-	initInfo := a.currentInfo
 	lenHistory := len(a.history)
 	a.mu.Unlock()
-	if !reflect.DeepEqual(initInfo, modules.AccountingInfo{}) {
-		t.Log("initial info:", initInfo)
-		t.Error("initial info should be empty")
-	}
 	if lenHistory != 0 {
 		t.Error("history should be empty")
 	}
@@ -61,7 +56,7 @@ func testBasic(t *testing.T) {
 
 		// Grab the current persistence
 		a.mu.Lock()
-		initInfo = a.currentInfo
+		initHistory := a.history
 		a.mu.Unlock()
 		expectedHistoryLen++
 
@@ -79,16 +74,15 @@ func testBasic(t *testing.T) {
 
 		// Check persistence
 		a.mu.Lock()
-		info := a.currentInfo
-		lenHistory = len(a.history)
+		history := a.history
 		a.mu.Unlock()
-		if !reflect.DeepEqual(initInfo, info) {
-			t.Log("initial info:", initInfo)
-			t.Log("loaded info:", info)
-			t.Error("loaded info should match persistence from before close")
+		if !reflect.DeepEqual(initHistory, history) {
+			t.Log("Expected:", initHistory)
+			t.Log("Actual:", history)
+			t.Error("history mismatch")
 		}
-		if lenHistory != expectedHistoryLen {
-			t.Error("history length unexpected", lenHistory, expectedHistoryLen)
+		if len(history) != expectedHistoryLen {
+			t.Error("history length unexpected", len(history), expectedHistoryLen)
 		}
 	}
 	// Close accounting
@@ -117,7 +111,6 @@ func testCallThreadedPersistAccounting(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		// Grab the current persistence
 		a.mu.Lock()
-		initInfo := a.currentInfo
 		initLen := len(a.history)
 		a.mu.Unlock()
 
@@ -126,13 +119,9 @@ func testCallThreadedPersistAccounting(t *testing.T) {
 
 		// Validate the persistence was updated
 		a.mu.Lock()
-		info := a.currentInfo
 		lenHistory := len(a.history)
 		a.mu.Unlock()
-		if reflect.DeepEqual(initInfo, info) {
-			t.Error("accounting info should be updated")
-		}
-		if initLen == lenHistory {
+		if initLen >= lenHistory {
 			t.Error("History not updated")
 		}
 	}
@@ -157,7 +146,6 @@ func testManagedUpdateAndPersistAccounting(t *testing.T) {
 
 	// Grab the persistence beforehand
 	a.mu.Lock()
-	initInfo := a.currentInfo
 	initLen := len(a.history)
 	a.mu.Unlock()
 
@@ -166,12 +154,8 @@ func testManagedUpdateAndPersistAccounting(t *testing.T) {
 
 	// Validate expectations
 	a.mu.Lock()
-	info := a.currentInfo
 	lenHistory := len(a.history)
 	a.mu.Unlock()
-	if reflect.DeepEqual(initInfo, info) {
-		t.Error("accounting info should be updated")
-	}
 	if initLen == lenHistory {
 		t.Error("History should have been updated")
 	}

@@ -41,12 +41,8 @@ func testAccounting(t *testing.T) {
 
 	// Initial persistence should be empty
 	a.mu.Lock()
-	ai := a.currentInfo
 	lenHistroy := len(a.history)
 	a.mu.Unlock()
-	if !reflect.DeepEqual(ai, modules.AccountingInfo{}) {
-		t.Error("initial persistence should be empty")
-	}
 	if lenHistroy != 0 {
 		t.Error("history should be empty")
 	}
@@ -56,7 +52,7 @@ func testAccounting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ai = ais[0]
+	ai := ais[0]
 	// Check renter explicitly
 	if reflect.DeepEqual(ai.Renter, modules.RenterAccounting{}) {
 		t.Error("renter accounting information is empty")
@@ -70,27 +66,11 @@ func testAccounting(t *testing.T) {
 		t.Error("timestamp not set")
 	}
 
-	// Persistence should have been updated but the history should still be empty
-	// as a call to Accounting does not persist the update to disk.
+	// The history should still be empty as a call to Accounting does not persist
+	// the update to disk.
 	a.mu.Lock()
-	current := a.currentInfo
 	lenHistroy = len(a.history)
 	a.mu.Unlock()
-	if !reflect.DeepEqual(current, ai) {
-		t.Log("Expected:", ai)
-		t.Log("Actual:", current)
-		t.Error("accounting information is incorrect")
-	}
-	if !reflect.DeepEqual(current.Renter, ai.Renter) {
-		t.Log("Expected:", ai.Renter)
-		t.Log("Actual:", current.Renter)
-		t.Error("renter accounting information not updated")
-	}
-	if !reflect.DeepEqual(current.Wallet, ai.Wallet) {
-		t.Log("Expected:", ai.Wallet)
-		t.Log("Actual:", current.Wallet)
-		t.Error("wallet accounting information not updated")
-	}
 	if lenHistroy != 0 {
 		t.Error("history should be empty")
 	}

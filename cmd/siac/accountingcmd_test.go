@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -61,7 +62,7 @@ func TestWriteAccountingCSV(t *testing.T) {
 
 	// Read the written data from the file.
 	_, err = f.Seek(0, io.SeekStart)
-	bytes, err := io.ReadAll(f)
+	bytes, err := ioutil.ReadAll(f)
 	if err != nil {
 		t.Fatal(err)
 	}
