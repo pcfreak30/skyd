@@ -147,7 +147,7 @@ func accountingRange(history []persistence, start, end int64) []modules.Accounti
 		if end != 0 && entry.Timestamp > end {
 			break
 		}
-		// If the Timestamp is before start, and start is provided, then continue
+		// If the Timestamp is before start then continue
 		if entry.Timestamp < start {
 			continue
 		}

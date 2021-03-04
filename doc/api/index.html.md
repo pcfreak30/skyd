@@ -185,24 +185,36 @@ node.
 > curl example
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/accounting
+curl -A "Sia-Agent" "localhost:9980/accounting?start=1234&end=5678"
 ```
 
 Returns basic accounting information for the modules that are running.
+
+### Query String Parameters
+### OPTIONAL
+**star, end** | int64\
+Unix timestamp of the range of accounting information to request. To request
+a single entry that is a current snapshot leave the range fields empty. To
+request the entire history, just submit an end time of the current unix
+timestamp.
 
 ### JSON Response
 > JSON Response Example
 
 ```go
 {
-  "renter": {
-    "unspentunallocated": "990000000000000000000000000", // hastings, big int
-    "withheldfunds":      "0", // hastings, big int
-  },
-  "wallet": {
-    "confirmedsiacoinbalance": "3365276858974358974358974358950" // hastings, big int
-    "confirmedsiafundbalance": "0" // siafunds, big int
-  }
+  [
+    {
+      "renter": {
+        "unspentunallocated": "990000000000000000000000000", // hastings, big int
+        "withheldfunds":      "0", // hastings, big int
+      },
+      "wallet": {
+        "confirmedsiacoinbalance": "3365276858974358974358974358950" // hastings, big int
+        "confirmedsiafundbalance": "0" // siafunds, big int
+      }
+    }
+  ]
 }
 ```
 
