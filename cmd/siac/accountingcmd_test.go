@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -49,6 +50,7 @@ func TestWriteAccountingCSV(t *testing.T) {
 			UnspentUnallocated: types.NewCurrency64(fastrand.Uint64n(1000)),
 			WithheldFunds:      types.NewCurrency64(fastrand.Uint64n(1000)),
 		},
+		Timestamp: time.Now().Unix(),
 	}
 
 	// Write the information to the csv file.
