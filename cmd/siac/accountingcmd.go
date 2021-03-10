@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -45,7 +44,7 @@ func accountingcmd() {
 	}()
 
 	// Grab the accounting information
-	ais, err := httpClient.AccountingGet(0, time.Now().Unix())
+	ais, err := httpClient.AccountingGet(accountingRangeStartTime, accountingRangeEndTime)
 	if err != nil {
 		die("Unable to get accounting information: ", err)
 	}

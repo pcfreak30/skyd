@@ -23,6 +23,10 @@ var (
 
 	// Module Specific Flags
 	//
+	// Accounting Flags
+	accountingRangeEndTime   int64 // The end time for requesting a range of accounting information
+	accountingRangeStartTime int64 // The start time for requesting a range of accounting information
+
 	// Daemon Flags
 	daemonStackOutputFile  string // The file that the stack trace will be written to
 	daemonCPUProfile       bool   // Indicates that the CPU profile should be started
@@ -306,6 +310,8 @@ func initCmds() *cobra.Command {
 
 	// create command tree (alphabetized by root command)
 	root.AddCommand(accountingCmd)
+	accountingCmd.Flags().Int64Var(&accountingRangeEndTime, "end", 0, "Unix timestamp for the end of the accounting info range.")
+	accountingCmd.Flags().Int64Var(&accountingRangeStartTime, "start", 0, "Unix timestamp for the start of the accounting info range.")
 	root.AddCommand(consensusCmd)
 	root.AddCommand(jsonCmd)
 

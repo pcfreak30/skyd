@@ -3,6 +3,7 @@ package accounting
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
@@ -84,10 +85,20 @@ func testAccounting(t *testing.T, np node.NodeParams) {
 		}
 	}
 
-	// Get the Node accounting
+	// Sleep for 2 seconds. This should mean that the accounting information has
+	// been persisted twice
+	time.Sleep(2 * time.Second)
+
+	// Get the Node accounting. Submitting 0 0 should result in the end time being
+	// set as the default and the entire list being returned.
 	ag, err := n.AccountingGet(0, 0)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// We should have at least 2 entries
+	if len(ag) < 2 {
+		t.Errorf("Expected 2 entries got %v", len(ag))
 	}
 
 	// Get the wallet information
