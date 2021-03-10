@@ -134,12 +134,12 @@ files are rounded up to the minimum chunks size.`,
 	}
 )
 
-// bashcmlcmd is the handler for the command `siac utils bash-completion`.
+// bashcmlcmd is the handler for the command `skyc utils bash-completion`.
 func bashcomplcmd(path string) {
 	rootCmd.GenBashCompletionFile(path)
 }
 
-// mangencmd is the handler for the command `siac utils man-generation`.
+// mangencmd is the handler for the command `skyc utils man-generation`.
 // generates siac man pages
 func mangencmd(path string) {
 	doc.GenManTree(rootCmd, &doc.GenManHeader{
@@ -149,7 +149,7 @@ func mangencmd(path string) {
 	}, path)
 }
 
-// utilshastingscmd is the handler for the command `siac utils hastings`.
+// utilshastingscmd is the handler for the command `skyc utils hastings`.
 // converts a Siacoin amount into hastings.
 func utilshastingscmd(amount string) {
 	hastings, err := types.ParseCurrency(amount)
@@ -159,7 +159,7 @@ func utilshastingscmd(amount string) {
 	fmt.Println(hastings)
 }
 
-// utilsdecoderawtxncmd is the handler for command `siac utils decoderawtxn`.
+// utilsdecoderawtxncmd is the handler for command `skyc utils decoderawtxn`.
 // converts a base64-encoded transaction to JSON encoding
 func utilsdecoderawtxncmd(b64 string) {
 	bin, err := base64.StdEncoding.DecodeString(b64)
@@ -174,7 +174,7 @@ func utilsdecoderawtxncmd(b64 string) {
 	fmt.Println(string(js))
 }
 
-// utilsencoderawtxncmd is the handler for command `siac utils encoderawtxn`.
+// utilsencoderawtxncmd is the handler for command `skyc utils encoderawtxn`.
 // converts a JSON encoded transaction to base64-encoding
 func utilsencoderawtxncmd(jstxn string) {
 	var jsBytes []byte
@@ -196,7 +196,7 @@ func utilsencoderawtxncmd(jstxn string) {
 	fmt.Println(base64.StdEncoding.EncodeToString(encoding.Marshal(txn)))
 }
 
-// utilssighashcmd is the handler for the command `siac utils sighash`.
+// utilssighashcmd is the handler for the command `skyc utils sighash`.
 // calculates the SigHash of a transaction
 func utilssighashcmd(indexStr, txnStr string) {
 	index, err := strconv.Atoi(indexStr)
@@ -231,7 +231,7 @@ func utilssighashcmd(indexStr, txnStr string) {
 	fmt.Println(txn.SigHash(index, 180e3))
 }
 
-// utilschecksigcmd is the handler for the command `siac utils checksig`.
+// utilschecksigcmd is the handler for the command `skyc utils checksig`.
 // verifies the signature of a hash
 func utilschecksigcmd(base64Sig, hexHash, pkStr string) {
 	var sig crypto.Signature
@@ -262,7 +262,7 @@ func utilschecksigcmd(base64Sig, hexHash, pkStr string) {
 	}
 }
 
-// utilsverifyseedcmd is the handler for the command `siac utils verify-seed`.
+// utilsverifyseedcmd is the handler for the command `skyc utils verify-seed`.
 // verifies a seed matches the required formatting.  This can be used to help
 // troubleshot seeds that are not being accepted by siad.
 func utilsverifyseedcmd() {
@@ -278,14 +278,14 @@ func utilsverifyseedcmd() {
 	fmt.Println("No issues detected with your seed")
 }
 
-// utilsdisplayapipasswordcmd is the handler for the command `siac utils
+// utilsdisplayapipasswordcmd is the handler for the command `skyc utils
 // display-api-password`.
 // displays the API Password to the user.
 func utilsdisplayapipasswordcmd() {
 	fmt.Println(httpClient.Password)
 }
 
-// utilsbruteforceseedcmd is the handler for the command `siac utils
+// utilsbruteforceseedcmd is the handler for the command `skyc utils
 // bruteforce-seed`
 // attempts to find the one word missing from a seed.
 func utilsbruteforceseedcmd() {

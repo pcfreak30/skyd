@@ -32,8 +32,8 @@ variables:
   package_pkgs: >-
     ./build
     ./cmd/sia-node-scanner
-    ./cmd/siac
-    ./cmd/siad
+    ./cmd/skyc
+    ./cmd/skyd
     ./cmd/skynet-benchmark
     ./compatibility
     ./crypto

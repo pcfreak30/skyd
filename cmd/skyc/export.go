@@ -27,7 +27,7 @@ var (
 	}
 )
 
-// renterexportcontracttxnscmd is the handler for the command `siac renter export contract-txns`.
+// renterexportcontracttxnscmd is the handler for the command `skyc renter export contract-txns`.
 // Exports the current contract set to JSON.
 func renterexportcontracttxnscmd(destination string) {
 	cs, err := httpClient.RenterContractsGet()

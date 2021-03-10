@@ -414,7 +414,7 @@ Contract %v
 }
 
 // renterallowancespending prints info about the current period spending
-// this also get called by 'siac renter -v' which is why it's in its own
+// this also get called by 'skyc renter -v' which is why it's in its own
 // function
 func renterallowancespending(rg api.RenterGET) {
 	// Show spending detail

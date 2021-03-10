@@ -7,90 +7,90 @@ as `./siac` from the same folder, or just by calling `siac` if you move the
 binary into your path.
 
 Most of the following commands have online help. For example, executing `siac
-wallet send help` will list the arguments for that command, while `siac host
+wallet send help` will list the arguments for that command, while `skyc host
 help` will list the commands that can be called pertaining to hosting. `siac
 help` will list all of the top level command groups that can be used.
 
 You can change the address of where siad is pointing using the `-a` flag. For
-example, `siac -a :9000 status` will display the status of the siad instance
-launched on the local machine with `siad -a :9000`.
+example, `skyc -a :9000 status` will display the status of the siad instance
+launched on the local machine with `skyd -a :9000`.
 
 Common tasks
 ------------
-* `siac consensus` view block height
-* `siac stop` sends the stop signal to siad to safely terminate. This has the
+* `skyc consensus` view block height
+* `skyc stop` sends the stop signal to siad to safely terminate. This has the
   same effect as C^c on the terminal.
-* `siac update` checks the server for updates.
-* `siac version` displays the version string of siac.
+* `skyc update` checks the server for updates.
+* `skyc version` displays the version string of siac.
 
 Wallet:
-* `siac wallet init [-p]` initialize a wallet
-* `siac wallet unlock` unlock a wallet
-* `siac wallet balance` retrieve wallet balance
-* `siac wallet address` get a wallet address
-* `siac wallet send [amount] [dest]` sends siacoin to an address
+* `skyc wallet init [-p]` initialize a wallet
+* `skyc wallet unlock` unlock a wallet
+* `skyc wallet balance` retrieve wallet balance
+* `skyc wallet address` get a wallet address
+* `skyc wallet send [amount] [dest]` sends siacoin to an address
 
 Renter:
-* `siac renter ls` list all renter files and subdirectories
-* `siac renter upload [filepath] [nickname]` upload a file
-* `siac renter download [nickname] [filepath]` download a file
-* `siac renter workers` show worker status
-* `siac renter workers dj` show worker download info
-* `siac renter workers ea` show worker account status
-* `siac renter workers hsj` show worker has sector jobs status
-* `siac renter workers pt` show worker price table status
-* `siac renter workers rj` show worker read jobs status
-* `siac renter workers uj` show worker upload info
+* `skyc renter ls` list all renter files and subdirectories
+* `skyc renter upload [filepath] [nickname]` upload a file
+* `skyc renter download [nickname] [filepath]` download a file
+* `skyc renter workers` show worker status
+* `skyc renter workers dj` show worker download info
+* `skyc renter workers ea` show worker account status
+* `skyc renter workers hsj` show worker has sector jobs status
+* `skyc renter workers pt` show worker price table status
+* `skyc renter workers rj` show worker read jobs status
+* `skyc renter workers uj` show worker upload info
 
 Full Descriptions
 -----------------
 
 ### Consensus tasks
 
-* `siac consensus` prints the current block ID, current block height, and
+* `skyc consensus` prints the current block ID, current block height, and
   current target.
 
 ### Daemon tasks
 
-* `siac profile` performs actions related to the profiles for the daemon.
+* `skyc profile` performs actions related to the profiles for the daemon.
 
-* `siac profile start` starts a profile for the daemon.
+* `skyc profile start` starts a profile for the daemon.
 
-* `siac profile stop` stops a profile for the daemon.
+* `skyc profile stop` stops a profile for the daemon.
 
-* `siac stack` writes the current stack trace to an output file.
+* `skyc stack` writes the current stack trace to an output file.
 
-* `siac stop` sends the stop signal to siad to safely terminate. This has the
+* `skyc stop` sends the stop signal to siad to safely terminate. This has the
   same effect as C^c on the terminal.
 
-* `siac update` checks the server for updates.
+* `skyc update` checks the server for updates.
 
-* `siac version` displays the version string of siac.
+* `skyc version` displays the version string of siac.
 
 ### FeeManager tasks
 
-* `siac feemanager` prints info about the feemanager such as pending fees and
+* `skyc feemanager` prints info about the feemanager such as pending fees and
   the next fee payout height.
 
-* `siac feemanager cancel <feeUID>` cancels a pending fee. If a transaction has
+* `skyc feemanager cancel <feeUID>` cancels a pending fee. If a transaction has
   already been created the fee cannot be cancelled.
 
 ### Gateway tasks
 
-* `siac gateway` prints info about the gateway, including its address and how
+* `skyc gateway` prints info about the gateway, including its address and how
   many peers it's connected to.
 
-* `siac gateway connect [address:port]` manually connects to a peer and adds it
+* `skyc gateway connect [address:port]` manually connects to a peer and adds it
   to the gateway's node list.
 
-* `siac gateway disconnect [address:port]` manually disconnects from a peer, but
+* `skyc gateway disconnect [address:port]` manually disconnects from a peer, but
   leaves it in the gateway's node list.
 
-* `siac gateway list` prints a list of all currently connected peers.
+* `skyc gateway list` prints a list of all currently connected peers.
 
 ### Host tasks
 
-* `siac host -v` outputs some of your hosting settings.
+* `skyc host -v` outputs some of your hosting settings.
 
 Example:
 ```bash
@@ -104,12 +104,12 @@ Max Duration: 8640
 Contracts:    32
 ```
 
-* `siac host announce` makes an host announcement. You may optionally supply
+* `skyc host announce` makes an host announcement. You may optionally supply
   a specific address to be announced; this allows you to announce a domain name.
 Announcing a second time after changing settings is not necessary, as the
 announcement only contains enough information to reach your host.
 
-* `siac host config [setting] [value]` is used to configure hosting.
+* `skyc host config [setting] [value]` is used to configure hosting.
 
 In version `1.4.3.0`, sia hosting is configured as follows:
 
@@ -134,144 +134,144 @@ Alternatively, you can manually adjust these parameters inside the
 
 ### HostDB tasks
 
-* `siac hostdb -v` prints a list of all the known active hosts on the network.
+* `skyc hostdb -v` prints a list of all the known active hosts on the network.
 
 ### Miner tasks
 
-* `siac miner start` starts running the CPU miner on one thread. This is
+* `skyc miner start` starts running the CPU miner on one thread. This is
   virtually useless outside of debugging.
 
-* `siac miner status` returns information about the miner. It is only valid for
+* `skyc miner status` returns information about the miner. It is only valid for
   when siad is running.
 
-* `siac miner stop` halts the CPU miner.
+* `skyc miner stop` halts the CPU miner.
 
 ### Renter tasks
 
-* `siac renter allowance` views the current allowance, which controls how much
+* `skyc renter allowance` views the current allowance, which controls how much
   money is spent on file contracts.
 
-* `siac renter delete [nickname]` removes a file from your list of stored files.
+* `skyc renter delete [nickname]` removes a file from your list of stored files.
   This does not remove it from the network, but only from your saved list.
 
-* `siac renter download [nickname] [destination]` downloads a file from the sia
+* `skyc renter download [nickname] [destination]` downloads a file from the sia
   network onto your computer. `nickname` is the name used to refer to your file
 in the sia network, and `destination` is the path to where the file will be. If
 a file already exists there, it will be overwritten.
 
-* `siac renter ls` displays a list of uploaded files and subdirectories
+* `skyc renter ls` displays a list of uploaded files and subdirectories
   currently on the sia network by nickname, and their filesizes.
 
-* `siac renter queue` shows the download queue. This is only relevant if you
+* `skyc renter queue` shows the download queue. This is only relevant if you
   have multiple downloads happening simultaneously.
 
-* `siac renter rename [nickname] [newname]` changes the nickname of a file.
+* `skyc renter rename [nickname] [newname]` changes the nickname of a file.
 
-* `siac renter setallowance` sets the amount of money that can be spent over
+* `skyc renter setallowance` sets the amount of money that can be spent over
   a given period. If no flags are set you will be walked through the interactive
 allowance setting. To update only certain fields, pass in those values with the
 corresponding field flag, for example '--amount 500SC'.
 
-* `siac renter upload [filename] [nickname]` uploads a file to the sia network.
+* `skyc renter upload [filename] [nickname]` uploads a file to the sia network.
   `filename` is the path to the file you want to upload, and nickname is what
 you will use to refer to that file in the network. For example, it is common to
 have the nickname be the same as the filename.
 
-* `siac renter workers` shows a detailed overview of all workers. It shows
+* `skyc renter workers` shows a detailed overview of all workers. It shows
   information about their accounts, contract and download and upload status.
 
-* `siac renter workers dj` shows a detailed overview of the workers' download
+* `skyc renter workers dj` shows a detailed overview of the workers' download
   statuses, such as whether its on cooldown or not and potentially the most
   recent error.
 
-* `siac renter workers ea` shows a detailed overview of the workers' ephemeral
+* `skyc renter workers ea` shows a detailed overview of the workers' ephemeral
   account statuses, such as balance information, whether its on cooldown or not
   and potentially the most recent error.
 
-* `siac renter workers hsj` shows information about the has sector jobs queue.
+* `skyc renter workers hsj` shows information about the has sector jobs queue.
   How many jobs are in the queue and their average completion time. In case
   there was an error it will also display the most recent error and when it
   occurred.
 
-* `siac renter workers pt` shows a detailed overview of the workers's price table
+* `skyc renter workers pt` shows a detailed overview of the workers's price table
   statuses, such as when it was updated, when it expires, whether its on cooldown
   or not and potentially the most recent error.
 
-* `siac renter workers rj` shows information about the read jobs queue. How many
+* `skyc renter workers rj` shows information about the read jobs queue. How many
   jobs are in the queue and their average completion time. In case there was an
   error it will also display the most recent error and when it occurred.
 
-* `siac renter workers uj` shows a detailed overview of the workers' upload
+* `skyc renter workers uj` shows a detailed overview of the workers' upload
   statuses, such as whether its on cooldown or not and potentially the most
   recent error.
 
 ### Skykey tasks
-* `siac skykey add [skykey base64-encoded skykey]` will add a base64-encoded
+* `skyc skykey add [skykey base64-encoded skykey]` will add a base64-encoded
   skykey to the key manager.
 
-* `siac skykey create [name]` will create a skykey  with the given name. The
+* `skyc skykey create [name]` will create a skykey  with the given name. The
   --type flag can be used to specify the skykey type. Its default is private-id.
 
-* `siac skykey delete` will delete the base64-encoded skykey using either its
+* `skyc skykey delete` will delete the base64-encoded skykey using either its
   name with --name or id with --id
 
-* `siac skykey get` will get the base64-encoded skykey using either its name
+* `skyc skykey get` will get the base64-encoded skykey using either its name
   with --name or id with --id
 
-* `siac skykey get-id [name]` will get the base64-encoded skykey id by its name
+* `skyc skykey get-id [name]` will get the base64-encoded skykey id by its name
 
-* `siac skykey ls` will list all skykeys. Use with --show-priv-keys to show full
+* `skyc skykey ls` will list all skykeys. Use with --show-priv-keys to show full
   encoding with private key also.
 
 ### Skynet tasks
 
-* `siac skynet backup` back up a skyfile.
+* `skyc skynet backup` back up a skyfile.
 
-* `siac skynet blocklist` lists the merkleroots of all blocked skylinks.
+* `skyc skynet blocklist` lists the merkleroots of all blocked skylinks.
 
-* `siac skynet blocklist add [skylink]` will add any skylinks separated by
+* `skyc skynet blocklist add [skylink]` will add any skylinks separated by
   spaces to the blocklist.
 
-* `siac skynet blocklist remove [skylinks]` will remove any skylinks
+* `skyc skynet blocklist remove [skylinks]` will remove any skylinks
   separated by spaces from the blocklist.
 
-* `siac skynet convert [source siaPath] [destination siaPath]` converts
+* `skyc skynet convert [source siaPath] [destination siaPath]` converts
   a siafile to a skyfile and then generates its skylink. A new skylink will be
 created in the user's skyfile directory. The skyfile and the original siafile
 are both necessary to pin the file and keep the skylink active. The skyfile will
 consume an additional 40 MiB of storage.
 
-* `siac skynet download [skylink] [destination]` downloads a file from Skynet
+* `skyc skynet download [skylink] [destination]` downloads a file from Skynet
   using a skylink.
 
-* `siac skynet isblocked` will check if a skylink(s) is on the blocklist.
+* `skyc skynet isblocked` will check if a skylink(s) is on the blocklist.
 
-* `siac skynet ls` lists all skyfiles and subdirectories that the user has
+* `skyc skynet ls` lists all skyfiles and subdirectories that the user has
   pinned along with the corresponding skylinks. By default, only files in
 var/skynet/ will be displayed. Files that are not tracking skylinks are not
 counted.
 
-* `siac skynet pin [skylink] [destination siapath]` pins the file associated
+* `skyc skynet pin [skylink] [destination siapath]` pins the file associated
   with this skylink by re-uploading an exact copy. This ensures that the file
 will still be available on skynet as long as you continue maintaining the file
 in your renter.
 
-* `siac skynet portals` list the persisted Skynet portals.
+* `skyc skynet portals` list the persisted Skynet portals.
 
-* `siac skynet portals add [url]` adds a Skynet portals which is either
+* `skyc skynet portals add [url]` adds a Skynet portals which is either
 public or private to the list of persisted Skynet portals. The Skynet portal
 URL is of the form `url:port`. Add the `--public` if you want it to be public.
 It defaults to private.
 
-* `siac skynet portals remove [url]` removes the Skynet portal from the
+* `skyc skynet portals remove [url]` removes the Skynet portal from the
 persisted list. The Skynet portal URL is of the form `url:port`.
 
-* `siac skynet restore` restore a skyfile.
+* `skyc skynet restore` restore a skyfile.
 
-* `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
+* `skyc skynet unpin [siapath]` unpins one or more skyfiles or directories,
   deleting them from your list of stored files or directories.
 
-* `siac skynet upload [source filepath] [destination siapath]` uploads a file or
+* `skyc skynet upload [source filepath] [destination siapath]` uploads a file or
   directory to Skynet. A skylink will be produced for each file. The link can be
 shared and used to retrieve the file. The file(s) that get uploaded will be
 pinned to this Sia node, meaning that this node will pay for storage and repairs
@@ -283,14 +283,14 @@ TODO - Fill in
 
 ### Wallet tasks
 
-* `siac wallet address` returns a never seen before address for sending siacoins
+* `skyc wallet address` returns a never seen before address for sending siacoins
   to.
 
-* `siac wallet addseed` prompts the user for his encryption password, as well as
+* `skyc wallet addseed` prompts the user for his encryption password, as well as
   a new secret seed. The wallet will then incorporate this seed into itself.
 This can be used for wallet recovery and merging.
 
-* `siac wallet balance` prints information about your wallet.
+* `skyc wallet balance` prints information about your wallet.
 
 Example:
 ```bash
@@ -302,7 +302,7 @@ Unconfirmed Balance: 64516461.00 SC
 Exact:               61516457999999999999999999999999 H
 ```
 
-* `siac wallet init [-p]` encrypts and initializes the wallet. If the `-p` flag
+* `skyc wallet init [-p]` encrypts and initializes the wallet. If the `-p` flag
   is provided, an encryption password is requested from the user. Otherwise the
 initial seed is used as the encryption password. The wallet must be initialized
 and unlocked before any actions can be performed on the wallet.
@@ -325,18 +325,18 @@ Seed is:
 Wallet encrypted with given password
 ```
 
-* `siac wallet lock` locks a wallet. After calling, the wallet must be unlocked
+* `skyc wallet lock` locks a wallet. After calling, the wallet must be unlocked
   using the encryption password in order to use it further
 
-* `siac wallet seeds` returns the list of secret seeds in use by the wallet.
+* `skyc wallet seeds` returns the list of secret seeds in use by the wallet.
   These can be used to regenerate the wallet
 
-* `siac wallet send [amount] [dest]` Sends `amount` siacoins to `dest`. `amount`
+* `skyc wallet send [amount] [dest]` Sends `amount` siacoins to `dest`. `amount`
   is in the form XXXXUU where an X is a number and U is a unit, for example MS,
 S, mS, ps, etc. If no unit is given hastings is assumed. `dest` must be a valid
 siacoin address.
 
-* `siac wallet unlock` prompts the user for the encryption password to the
+* `skyc wallet unlock` prompts the user for the encryption password to the
   wallet, supplied by the `init` command. The wallet must be initialized and
 unlocked before any actions can take place.
 
@@ -347,7 +347,7 @@ New type of testing siac command line commands is now available from go tests.
 
 Siac is using [Cobra](https://github.com/spf13/cobra) golang library to
 generate command line commands (and subcommands) interface. In
-`cmd/siac/main.go` file root siac Cobra command with all subcommands is created
+`cmd/skyc/main.go` file root siac Cobra command with all subcommands is created
 using `initCmds()`, siac/siad node instance specific flags of siac commands are
 initialized using `initClient(...)`.
 
@@ -438,7 +438,7 @@ more information see [below](#preparation-of-command-handler-for-cobra-Output-te
 ## Errors
 
 In case of failure in the executed subtest, error log output from
-`testGenericSiacCmd()` in `cmd/siac/helpers_test.go` will include the following 5 items:
+`testGenericSiacCmd()` in `cmd/skyc/helpers_test.go` will include the following 5 items:
 
 * Regex pattern didn't match between row x, and row y
 * Regex pattern part that didn't match
@@ -504,8 +504,8 @@ handlers.
 ## Examples
 
 First examples of siac Cobra command tests are tests located in
-`cmd/siac/maincmd_test.go` file in `TestRootSiacCmd` test group, helpers for
-these tests are located in `cmd/siac/helpers_test.go` file.
+`cmd/skyc/maincmd_test.go` file in `TestRootSiacCmd` test group, helpers for
+these tests are located in `cmd/skyc/helpers_test.go` file.
 
 Simplified example code:
 

@@ -23,12 +23,12 @@ Latest:
 - Add `/renter/bubble` route to be able to manually trigger bubble updates
 - siac breaks down memory consumption of the individual memory managers
 - Improve download speeds and consistency.
-- Add `siac skynet backup` and `siac skynet restore` commands for backing up and restoring skyfiles.
+- Add `skyc skynet backup` and `skyc skynet restore` commands for backing up and restoring skyfiles.
 - Update default redundancy to be 10-30 for Skyfiles that exceed a single sector
   in size.
 
 **Bugs Fixed**
-- The 'siac skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
+- The 'skyc skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
 - Introduce overflow file for sectors where the location counter has reached a value of >= 2^16 to fix uploads failing for all zero sectors
 
 **Other**
@@ -39,13 +39,13 @@ Latest:
 **Key Updates**
 - Adds `/skynet/root` GET request to allow downloading a specific sector of a skyfile
 - allow for migrating registry to custom path
-- extend `siac renter` with optional currency conversion based on
+- extend `skyc renter` with optional currency conversion based on
     SIA_EXCHANGE_RATE env variable
 - Update health loop to batch bubbles by subtree instead of individual
     directories
 - add RHP3 RPC for atomic contract renewal
-- Add `/renter/clean` API route with `siac renter clean` to remove lost files
- from renter. Also added `siac renter lost` to view lost files that would be
+- Add `/renter/clean` API route with `skyc renter clean` to remove lost files
+ from renter. Also added `skyc renter lost` to view lost files that would be
  removed.
 
 **Bugs Fixed**
@@ -63,8 +63,8 @@ Latest:
   'Skynet-File-Metadata' header from the response.
 - Added a job to `.gitlab-ci.yml` to trigger Sia Antfarm version tests on Sia
   master updates and on Sia nightly executions.
-- Add `siac skynet isblocked` command as a helper to check if a skylink is
-blocked since `siac skynet blocklist` returns a list of hashed merkleroots, so
+- Add `skyc skynet isblocked` command as a helper to check if a skylink is
+blocked since `skyc skynet blocklist` returns a list of hashed merkleroots, so
 the list cannot be visually verified.
 
 ## Nov 10, 2020:
@@ -89,7 +89,7 @@ the list cannot be visually verified.
 **Key Updates**
 - Add basic watchdog to the feemanager
 - Add `/skynet/basesector` to the API.
-- Add `--portal` flag to `siac skynet pin`
+- Add `--portal` flag to `skyc skynet pin`
 - Add the ability to start and stop the profile via the API
 - Add Skykey flags to convert command for encryption
 - Enable adding or removing hashes of skylink merkleroots to the skynet
@@ -101,18 +101,18 @@ the list cannot be visually verified.
 - reduced default period to 2 months
 - extend /host [GET] to contain pricetable
 - add API support for setting registry size
-- move health summary from `siac renter -v` to `siac renter health`
+- move health summary from `skyc renter -v` to `skyc renter health`
 - add timeout param to read registry api call
 - add root flag to download endpoints
 - add root flag to list downloads endpoint
 - Add support for skykey delete in siac.
-- Add support for uploading entire directories as skyfiles (e.g. `siac skynet
+- Add support for uploading entire directories as skyfiles (e.g. `skyc skynet
   upload dir skyfile_name`). The previous behavior of uploading all files
   individually is now available when the `--separately` flag is passed.
   Additional flags: `--defaultpath` and `--disabledefaultpath`. Those are full
   equivalents to the flags with the same names on the `/skynet/skyfile/*siapath*
   [POST]` endpoint.
-- Added feature to use pipes with 'siac skynet upload'. e.g. 
+- Added feature to use pipes with 'skyc skynet upload'. e.g. 
   'dd if=/dev/zero bs=1M count=1000 | siac skynet upload 1GB.dat'
 
 **Bugs Fixed**
@@ -128,7 +128,7 @@ the list cannot be visually verified.
 - Fix skykey default type in siac
 
 **Other**
-- Split out `siac renter workers` download and upload info
+- Split out `skyc renter workers` download and upload info
 - Rename `skynetblacklist` to `skynetblocklist`
 - Add ETag response header
 - Fix setting `GORACE` for `test-vlong` in `Makefile` for Windows Gitlab
@@ -159,7 +159,7 @@ the list cannot be visually verified.
   skyfile.
 - Add 'siac' commands for the FeeManager
 - Add `TypePrivateID` Skykeys with skyfile encryption support
-- Added available and priority memory output to `siac renter -v`
+- Added available and priority memory output to `skyc renter -v`
 
 **Bugs Fixed**
 - Set 'Content-Disposition' header for archives.
@@ -185,10 +185,10 @@ the list cannot be visually verified.
 - Optimise writes when we execute an MDM program on the host to lower overall
   (upload) bandwidth consumption.
 - Change status returned when module is not loaded from 404 to 490
-- Add `siac renter workers ea` command to siac
-- Add `siac renter workers pt` command to siac
-- Add `siac renter workers rj` command to siac
-- Add `siac renter workers hsj` command to siac
+- Add `skyc renter workers ea` command to siac
+- Add `skyc renter workers pt` command to siac
+- Add `skyc renter workers rj` command to siac
+- Add `skyc renter workers hsj` command to siac
 - Add testing for blacklisting skylinks associated with siafile conversions
 - Rename `Gateway` `blacklist` to `blocklist`
 - Allow host netAddress and announcements with local network IP on dev builds.
@@ -222,7 +222,7 @@ log repo.
 - Add start time for the API server for siad uptime
 - Add new `/consensus/subscribe/:id` endpoint to allow subscribing to consensus
   change events
-- Add /skykeys endpoint and `siac skykey ls` command
+- Add /skykeys endpoint and `skyc skykey ls` command
 - Updated skykey encoding and format
 
 **Bugs Fixed**
@@ -247,14 +247,14 @@ log repo.
 **Key Updates**
 - Enable FundEphemeralAccountRPC on the host
 - Enable UpdatePriceTableRPC on the host
-- Add `startheight` and `endheight` flags for `siac wallet transactions`
+- Add `startheight` and `endheight` flags for `skyc wallet transactions`
   pagination
 - Add progress bars to Skynet uploads. Those can be disabled by passing the
   `--silent` flag.
 - Add the Execute Program RPC to the host
 - Added Skykey API endpoints and siac commands.
 - Add /skynet/portals API endpoints.
-- Add MinBaseRPCPrice and MinSectorAccessPrice to `siac host -v`
+- Add MinBaseRPCPrice and MinSectorAccessPrice to `skyc host -v`
 - Add `basePriceAdjustment` to the host score to check for `BaseRPCPrice` and
   `SectorAccessPrice` price violations.
 - Add support for unpinning directories from Skynet.
@@ -267,14 +267,14 @@ log repo.
   siad-specific data. This complements the SIA_DATA_DIR variable which tells
   `siad` where to store general Sia data, such as the API password,
   configuration, etc.
-- Update the `siac renter` summaries to use the `root` flags for the API calls
+- Update the `skyc renter` summaries to use the `root` flags for the API calls
 - Add `root` flag to `renter/rename` so that all file in the filesystem can be
   renamed
 - Allow for `wallet/verifypassword` endpoint to accept the primary seed as well
   as a password
 - Add `/renter/workers` API endpoint to get the current status of the workers.
   This pulls it out of the log files as well. 
-- Add `siac renter workers` command to siac
+- Add `skyc renter workers` command to siac
 - Add valid and missed proof outputs to StorageObligation for `/host/contracts` 
 
 **Bugs Fixed**
@@ -286,7 +286,7 @@ log repo.
 - Fix bug in converting siafile to skyfile and enable testing.
 - Fixed bug in bubble code that would overwrite the `siadir` metadata with old
   metadata
-- Fixed the output of `siac skynet ls` not counting subdirectories.
+- Fixed the output of `skyc skynet ls` not counting subdirectories.
 - Fix a bug in `parsePercentages` and added randomized testing
 - Fixed bug where backups where not being repaired
 - The `AggregateNumSubDirs` count was fixed as it was always 0. This is a piece
@@ -298,7 +298,7 @@ log repo.
 - workers now more consistently use the most recent contract
 - improved performance logging in repair.log, especially in debug mode
 - general upload performance improvements (minor)
-- Fixed bug in `siac renter -v` where the health summary wasn't considering
+- Fixed bug in `skyc renter -v` where the health summary wasn't considering
   `OnDisk` when deciding if the file was recoverable
 - Fix panic condition in Renter's `uploadheap` due to change in chunk's stuck
   status
@@ -319,7 +319,7 @@ log repo.
   process.
 - Remove backslash check in SiaPath validation, add `\` to list of accepted
   characters
-- `siac skynet upload` with the `--dry-run` flag will now print more clear
+- `skyc skynet upload` with the `--dry-run` flag will now print more clear
   messages to emphasize that no files are actually uploaded.
 - Move `scanCheckInterval` to be a build variable for the `hostdb`
 - Skynet portals and blacklist persistence errors have been made more clear and
@@ -361,23 +361,23 @@ log repo.
 ### v1.4.5
 **Key Updates**
 - Alerts returned by /daemon/alerts route are sorted by severity
-- Add `--fee-included` parameter to `siac wallet send siacoins` that allows
+- Add `--fee-included` parameter to `skyc wallet send siacoins` that allows
    sending an exact wallet balance with the fees included.
-- Extend `siac hostdb view` to include all the fields returned from the API.
-- `siac renter delete` now accepts a list of files.
+- Extend `skyc hostdb view` to include all the fields returned from the API.
+- `skyc renter delete` now accepts a list of files.
 - add pause and resume uploads to siac
-- Extended `siac renter` to include number of passive and disabled contracts
-- Add contract data to `siac renter`
+- Extended `skyc renter` to include number of passive and disabled contracts
+- Add contract data to `skyc renter`
 - Add getters and setter to `FileContract` and `FileContractRevision` types to
   prevent index-out-of-bounds panics after a `RenewAndClear`.
 
 **Bugs Fixed**
-- Fixed file health output of `siac renter -v` not adding to 100% by adding
+- Fixed file health output of `skyc renter -v` not adding to 100% by adding
   parsePercentage function.
 - Fix `unlock of unlocked mutex` panic in the download destination writer.
 - Fix potential channel double closed panic in DownloadByRootProject 
-- Fix divide by zero panic in `renterFileHealthSummary` for `siac renter -v`
-- Fix negative currency panic in `siac renter contracts view`
+- Fix divide by zero panic in `renterFileHealthSummary` for `skyc renter -v`
+- Fix negative currency panic in `skyc renter contracts view`
 
 **Other**
 - Add timeout parameter to Skylink pin route
@@ -396,7 +396,7 @@ log repo.
 **Key Updates**
 - Add a delay when modifying large contracts on hosts to prevent hosts from
   becoming unresponsive due to massive disk i/o.
-- Add `--root` parameter to `siac renter delete` that allows passing absolute
+- Add `--root` parameter to `skyc renter delete` that allows passing absolute
   instead of relative file paths.
 - Add ability to blacklist skylinks by merkleroot.
 - Uploading resumes more quickly after restart.
@@ -405,21 +405,21 @@ log repo.
   producing unique skylinks for each file.
 - Fix default expected upload/download values displaying 0 when setting an
   initial allowance.
-- `siac skynet upload` now supports uploading directories. All files are
+- `skyc skynet upload` now supports uploading directories. All files are
   uploaded individually and result in separate skylinks.
 - No user-agent needed for Skylink downloads.
 - Add `go get` command to `make dependencies`.
 - Add flags for tag and targz for skyfile streaming.
 - Add new endpoint `/skynet/stats` that provides statistical information about
   skynet, how many files were uploaded and the combined size of said files.
-- The `siac renter setallowance` UX is considerably improved.
+- The `skyc renter setallowance` UX is considerably improved.
 - Add XChaCha20 CipherKey.
 - Add Skykey Manager.
-- Add `siac skynet unpin` subcommand.
-- Extend `siac renter -v` to show breakdown of file health.
+- Add `skyc skynet unpin` subcommand.
+- Extend `skyc renter -v` to show breakdown of file health.
 - Add Skynet-Disable-Force header to allow disabling the force update feature
   on Skynet uploads
-- Add bandwidth usage to `siac gateway`
+- Add bandwidth usage to `skyc gateway`
 
 **Bugs Fixed**
 - Fixed bug in startup where an error being returned by the renter's blocking
@@ -428,11 +428,11 @@ log repo.
   siafile
 - Fix threadgroup violation in the watchdog that allowed writing to the log
   file after a shutdown
-- Fix bug where `siac renter -v` wasn't working due to the wrong flag being
+- Fix bug where `skyc renter -v` wasn't working due to the wrong flag being
   used.
 - Fixed bug in siafile snapshot code where the `hostKey()` method was not used
   to safely acquire the host pubkey.
-- Fixed `siac skynet ls` not working when files were passed as input. It is now
+- Fixed `skyc skynet ls` not working when files were passed as input. It is now
   able to access specific files in the Skynet folder.
 - Fixed a deadlock when performing a Skynet download with no workers
 - Fix a parsing bug for malformed skylinks
@@ -460,7 +460,7 @@ log repo.
 **Key Updates**
 - Introduced Skynet with initial feature set for portals, web portals, skyfiles,
   skylinks, uploads, downloads, and pinning
-- Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
+- Add `data-pieces` and `parity-pieces` flags to `skyc renter upload`
 - Integrate SiaMux
 - Initialize defaults for the host's ephemeral account settings
 - Add SIA_DATA_DIR environment variable for setting the data directory for

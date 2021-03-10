@@ -173,7 +173,7 @@ func runSubTests(t *testing.T, directory string, tests []subTest) error {
 // This should only every be called once per test. Otherwise it will delete the
 // directory again.
 func siacTestDir(testName string) string {
-	path := siatest.TestDir("cmd/siac", testName)
+	path := siatest.TestDir("cmd/skyc", testName)
 	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}

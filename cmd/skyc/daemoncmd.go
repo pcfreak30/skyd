@@ -200,7 +200,7 @@ func versioncmd() {
 	}
 }
 
-// stopcmd is the handler for the command `siac stop`.
+// stopcmd is the handler for the command `skyc stop`.
 // Stops the daemon.
 func stopcmd() {
 	err := httpClient.DaemonStopGet()
@@ -210,7 +210,7 @@ func stopcmd() {
 	fmt.Println("Skynet daemon stopped.")
 }
 
-// stackcmd is the handler for the command `siac stack` and writes the current
+// stackcmd is the handler for the command `skyc stack` and writes the current
 // stack trace to an output file.
 func stackcmd() {
 	// Get the stack trace
@@ -239,7 +239,7 @@ func stackcmd() {
 	fmt.Println("Current stack trace written to:", daemonStackOutputFile)
 }
 
-// updatecmd is the handler for the command `siac update`.
+// updatecmd is the handler for the command `skyc update`.
 // Updates the daemon version to latest general release.
 func updatecmd() {
 	update, err := httpClient.DaemonUpdateGet()
@@ -260,7 +260,7 @@ func updatecmd() {
 	fmt.Printf("Updated to version %s! Restart siad now.\n", update.Version)
 }
 
-// updatecheckcmd is the handler for the command `siac check`.
+// updatecheckcmd is the handler for the command `skyc check`.
 // Checks is there is an newer daemon version available.
 func updatecheckcmd() {
 	update, err := httpClient.DaemonUpdateGet()
@@ -269,13 +269,13 @@ func updatecheckcmd() {
 		return
 	}
 	if update.Available {
-		fmt.Printf("A new release (v%s) is available! Run 'siac update' to install it.\n", update.Version)
+		fmt.Printf("A new release (v%s) is available! Run 'skyc update' to install it.\n", update.Version)
 	} else {
 		fmt.Println("Up to date.")
 	}
 }
 
-// globalratelimitcmd is the handler for the command `siac ratelimit`.
+// globalratelimitcmd is the handler for the command `skyc ratelimit`.
 // Sets the global maxuploadspeed and maxdownloadspeed the daemon can use.
 func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 	downloadSpeedInt, err := parseRatelimit(downloadSpeedStr)

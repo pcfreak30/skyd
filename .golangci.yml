@@ -115,11 +115,11 @@ issues:
   # Additional exclusion rules.
   exclude-rules:
     # Ignore  gosec hardcoded credentials false positive.
-    - path: cmd/siac/
+    - path: cmd/skyc/
       text: "G101: Potential hardcoded credentials"
       linters:
         - gosec
-    - path: cmd/siac/
+    - path: cmd/skyc/
       text: "G107: Potential HTTP request made with variable url"
       linters:
         - gosec

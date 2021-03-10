@@ -73,7 +73,7 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 	}
 }
 
-// hostdbcmd is the handler for the command `siac hostdb`.
+// hostdbcmd is the handler for the command `skyc hostdb`.
 // Lists hosts known to the hostdb
 func hostdbcmd() {
 	if !verbose {
@@ -314,7 +314,7 @@ func hostdbcmd() {
 	}
 }
 
-// hostdbfiltermodecmd is the handler for the command `siac hostdb
+// hostdbfiltermodecmd is the handler for the command `skyc hostdb
 // filtermode`.
 func hostdbfiltermodecmd() {
 	hdfmg, err := httpClient.HostDbFilterModeGet()
@@ -330,7 +330,7 @@ func hostdbfiltermodecmd() {
 	fmt.Println()
 }
 
-// hostdbsetfiltermodecmd is the handler for the command `siac hostdb
+// hostdbsetfiltermodecmd is the handler for the command `skyc hostdb
 // setfiltermode`. sets the hostdb filtermode (whitelist, blacklist, disable)
 func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 	var fm modules.FilterMode
@@ -367,7 +367,7 @@ func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 	fmt.Println("Successfully set the filter mode")
 }
 
-// hostdbviewcmd is the handler for the command `siac hostdb view`.
+// hostdbviewcmd is the handler for the command `skyc hostdb view`.
 // shows detailed information about a host in the hostdb.
 func hostdbviewcmd(pubkey string) {
 	var publicKey types.SiaPublicKey

@@ -92,7 +92,7 @@ To bubble the root directory pass in '.' as the directory.`,
 the renter that do not have a local copy on disk and have a redundancy of < 1.
 
 You will be asked if you want to see these lost files. Additionally you can use
-the command 'siac renter lost' to see the renter's lost files.`,
+the command 'skyc renter lost' to see the renter's lost files.`,
 		Run: wrap(rentercleancmd),
 	}
 
@@ -221,7 +221,7 @@ flags can be used to set a custom redundancy for the file.`,
 		Short: "Pause renter uploads for a duration",
 		Long: `Temporarily pause renter uploads for the duration specified.
 Available durations include "s" for seconds, "m" for minutes, and "h" for hours.
-For Example: 'siac renter upload pause 3h' would pause uploads for 3 hours.`,
+For Example: 'skyc renter upload pause 3h' would pause uploads for 3 hours.`,
 		Run: wrap(renterfilesuploadpausecmd),
 	}
 
@@ -503,7 +503,7 @@ func renterhealthsummarycmd() {
 	renterFileHealthSummary(dirs)
 }
 
-// renteruploadscmd is the handler for the command `siac renter uploads`.
+// renteruploadscmd is the handler for the command `skyc renter uploads`.
 // Lists files currently uploading.
 func renteruploadscmd() {
 	rf, err := httpClient.RenterFilesGet(false)
@@ -533,7 +533,7 @@ func renteruploadscmd() {
 	}
 }
 
-// renterdownloadscmd is the handler for the command `siac renter downloads`.
+// renterdownloadscmd is the handler for the command `skyc renter downloads`.
 // Lists files currently downloading, and optionally previously downloaded
 // files if the -H or --history flag is specified.
 func renterdownloadscmd() {
@@ -577,7 +577,7 @@ func renterdownloadscmd() {
 	}
 }
 
-// renterallowancecmd is the handler for the command `siac renter allowance`.
+// renterallowancecmd is the handler for the command `skyc renter allowance`.
 // displays the current allowance.
 func renterallowancecmd() {
 	rg, err := httpClient.RenterGet()
@@ -644,7 +644,7 @@ Price Protections:
 	}
 }
 
-// renterallowancecancelcmd is the handler for `siac renter allowance cancel`.
+// renterallowancecancelcmd is the handler for `skyc renter allowance cancel`.
 // cancels the current allowance.
 func renterallowancecancelcmd() {
 	fmt.Println(`Canceling your allowance will disable uploading new files,
@@ -661,7 +661,7 @@ to be accessible after a short period of time.`)
 	fmt.Println("Allowance canceled.")
 }
 
-// rentersetallowancecmd is the handler for `siac renter setallowance`.
+// rentersetallowancecmd is the handler for `skyc renter setallowance`.
 // set the allowance or modify individual allowance fields.
 func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	// Get the current period setting.
@@ -904,7 +904,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	fmt.Printf("Allowance updated. %v setting(s) changed.\n", changedFields)
 }
 
-// rentersetallowancecmdInteractive is the interactive handler for `siac renter
+// rentersetallowancecmdInteractive is the interactive handler for `skyc renter
 // setallowance`.
 func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowance modules.Allowance) *client.AllowanceRequestPost {
 	br := bufio.NewReader(os.Stdin)
@@ -934,7 +934,7 @@ up into state channels. In the allowance reports, these funds will typically be
 reported as 'unspent allocated'. The funds that have been set aside for forming
 contracts later in the billing cycle will be reported as 'unspent unallocated'.
 
-The command 'siac renter allowance' can be used to see a breakdown of spending.
+The command 'skyc renter allowance' can be used to see a breakdown of spending.
 
 The following units can be used to set the allowance:
 
@@ -1349,7 +1349,7 @@ how large the files are.`)
 	return req
 }
 
-// renterbubblecmd is the handler for the command `siac renter
+// renterbubblecmd is the handler for the command `skyc renter
 // bubble`.
 func renterbubblecmd(directory string) {
 	// Parse the siapath
@@ -1373,7 +1373,7 @@ func renterbubblecmd(directory string) {
 	fmt.Println("Bubble successful!")
 }
 
-// renterbackcreatecmd is the handler for the command `siac renter
+// renterbackcreatecmd is the handler for the command `skyc renter
 // createbackup`.
 func renterbackupcreatecmd(name string) {
 	// Create backup.
@@ -1384,7 +1384,7 @@ func renterbackupcreatecmd(name string) {
 	fmt.Println("Backup initiated. Monitor progress with the 'listbackups' command.")
 }
 
-// renterbackuprestorecmd is the handler for the command `siac renter
+// renterbackuprestorecmd is the handler for the command `skyc renter
 // restorebackup`.
 func renterbackuprestorecmd(name string) {
 	err := httpClient.RenterRecoverBackupPost(name)
@@ -1393,7 +1393,7 @@ func renterbackuprestorecmd(name string) {
 	}
 }
 
-// renterbackuplistcmd is the handler for the command `siac renter listbackups`.
+// renterbackuplistcmd is the handler for the command `skyc renter listbackups`.
 func renterbackuplistcmd() {
 	ubs, err := httpClient.RenterBackups()
 	if err != nil {
@@ -1413,7 +1413,7 @@ func renterbackuplistcmd() {
 	}
 }
 
-// rentercontractscmd is the handler for the command `siac renter contracts`.
+// rentercontractscmd is the handler for the command `skyc renter contracts`.
 // It lists the Renter's contracts.
 func rentercontractscmd() {
 	rc, err := httpClient.RenterDisabledContractsGet()
@@ -1518,7 +1518,7 @@ func rentercontractscmd() {
 	}
 }
 
-// rentercontractsviewcmd is the handler for the command `siac renter contracts <id>`.
+// rentercontractsviewcmd is the handler for the command `skyc renter contracts <id>`.
 // It lists details of a specific contract.
 func rentercontractsviewcmd(cid string) {
 	rc, err := httpClient.RenterAllContractsGet()
@@ -1586,7 +1586,7 @@ func renterdirdownload(path, destination string) {
 	os.Exit(1)
 }
 
-// renterdownloadcancelcmd is the handler for the command `siac renter download cancel [cancelID]`
+// renterdownloadcancelcmd is the handler for the command `skyc renter download cancel [cancelID]`
 // Cancels the ongoing download.
 func renterdownloadcancelcmd(cancelID modules.DownloadID) {
 	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
@@ -1595,7 +1595,7 @@ func renterdownloadcancelcmd(cancelID modules.DownloadID) {
 	fmt.Println("Download canceled successfully")
 }
 
-// renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
+// renterfilesdeletecmd is the handler for the command `skyc renter delete [path]`.
 // Removes the specified path from the Sia network.
 func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 	for _, path := range paths {
@@ -1643,7 +1643,7 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 	return
 }
 
-// renterfilesdownload is the handler for the command `siac renter download
+// renterfilesdownload is the handler for the command `skyc renter download
 // [path] [destination]`. It determines whether a file or a folder is downloaded
 // and calls the corresponding sub-handler.
 func renterfilesdownloadcmd(path, destination string) {
@@ -1709,7 +1709,7 @@ func rentercontractrecoveryscanprogresscmd() {
 	}
 }
 
-// renterfileslistcmd is the handler for the command `siac renter ls`. Lists
+// renterfileslistcmd is the handler for the command `skyc renter ls`. Lists
 // files known to the renter on the network.
 func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	var path string
@@ -1852,7 +1852,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-// renterfilesrenamecmd is the handler for the command `siac renter rename [path] [newpath]`.
+// renterfilesrenamecmd is the handler for the command `skyc renter rename [path] [newpath]`.
 // Renames a file on the Sia network.
 func renterfilesrenamecmd(path, newpath string) {
 	// Parse SiaPath.
@@ -1907,7 +1907,7 @@ func renterfusecmd() {
 	fmt.Println()
 }
 
-// renterfusemountcmd is the handler for the command `siac renter fuse mount [path] [siapath]`.
+// renterfusemountcmd is the handler for the command `skyc renter fuse mount [path] [siapath]`.
 func renterfusemountcmd(path, siaPathStr string) {
 	// TODO: Once read-write is supported on the backend, the 'true' flag can be
 	// set to 'false' - siac will support mounting read-write by default. Need
@@ -1935,7 +1935,7 @@ func renterfusemountcmd(path, siaPathStr string) {
 	fmt.Printf("mounted %s to %s\n", siaPathStr, path)
 }
 
-// renterfuseunmountcmd is the handler for the command `siac renter fuse unmount [path]`.
+// renterfuseunmountcmd is the handler for the command `skyc renter fuse unmount [path]`.
 func renterfuseunmountcmd(path string) {
 	path = abs(path)
 	err := httpClient.RenterFuseUnmount(path)
@@ -1946,7 +1946,7 @@ func renterfuseunmountcmd(path string) {
 	fmt.Printf("Unmounted %s successfully\n", path)
 }
 
-//rentersetlocalpathcmd is the handler for the command `siac renter setlocalpath [siapath] [newlocalpath]`
+//rentersetlocalpathcmd is the handler for the command `skyc renter setlocalpath [siapath] [newlocalpath]`
 //Changes the trackingpath of the file
 //through API Endpoint
 func rentersetlocalpathcmd(siapath, newlocalpath string) {
@@ -1962,7 +1962,7 @@ func rentersetlocalpathcmd(siapath, newlocalpath string) {
 	fmt.Printf("Updated %s localpath to %s\n", siapath, newlocalpath)
 }
 
-// renterfilesunstuckcmd is the handler for the command `siac renter
+// renterfilesunstuckcmd is the handler for the command `skyc renter
 // unstuckall`. Sets all files to unstuck.
 func renterfilesunstuckcmd() {
 	// Get all dirs and their files recursively.
@@ -2017,7 +2017,7 @@ func renterfilesunstuckcmd() {
 	fmt.Println("\nSet all files to 'unstuck'")
 }
 
-// renterfilesuploadcmd is the handler for the command `siac renter upload
+// renterfilesuploadcmd is the handler for the command `skyc renter upload
 // [source] [path]`. Uploads the [source] file to [path] on the Sia network.
 // If [source] is a directory, all files inside it will be uploaded and named
 // relative to [path].
@@ -2084,7 +2084,7 @@ func renterfilesuploadcmd(source, path string) {
 	}
 }
 
-// renterfilesuploadpausecmd is the handler for the command `siac renter upload
+// renterfilesuploadpausecmd is the handler for the command `skyc renter upload
 // pause`.  It pauses all renter uploads for the duration (in minutes)
 // passed in.
 func renterfilesuploadpausecmd(dur string) {
@@ -2099,7 +2099,7 @@ func renterfilesuploadpausecmd(dur string) {
 	fmt.Println("Renter uploads have been paused for", dur)
 }
 
-// renterfilesuploadresumecmd is the handler for the command `siac renter upload
+// renterfilesuploadresumecmd is the handler for the command `skyc renter upload
 // resume`.  It resumes all renter uploads that have been paused.
 func renterfilesuploadresumecmd() {
 	err := httpClient.RenterUploadsResumePost()
@@ -2109,7 +2109,7 @@ func renterfilesuploadresumecmd() {
 	fmt.Println("Renter uploads have been resumed")
 }
 
-// renterpricescmd is the handler for the command `siac renter prices`, which
+// renterpricescmd is the handler for the command `skyc renter prices`, which
 // displays the prices of various storage operations. The user can submit an
 // allowance to have the estimate reflect those settings or the user can submit
 // nothing
@@ -2187,7 +2187,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-// renterratelimitcmd is the handler for the command `siac renter ratelimit`
+// renterratelimitcmd is the handler for the command `skyc renter ratelimit`
 // which sets the maxuploadspeed and maxdownloadspeed in bytes-per-second for
 // the renter module
 func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
@@ -2207,7 +2207,7 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }
 
-// renterworkerscmd is the handler for the command `siac renter workers`.
+// renterworkerscmd is the handler for the command `skyc renter workers`.
 // It lists the Renter's workers.
 func renterworkerscmd() {
 	rw, err := httpClient.RenterWorkersGet()
@@ -2258,7 +2258,7 @@ func renterworkerscmd() {
 	}
 }
 
-// renterworkerseacmd is the handler for the command `siac renter workers ea`.
+// renterworkerseacmd is the handler for the command `skyc renter workers ea`.
 // It lists the status of the account of every worker.
 func renterworkerseacmd() {
 	rw, err := httpClient.RenterWorkersGet()
@@ -2320,7 +2320,7 @@ func renterworkerseacmd() {
 	}
 }
 
-// renterworkersdownloadscmd is the handler for the command `siac renter workers
+// renterworkersdownloadscmd is the handler for the command `skyc renter workers
 // dj`.  It lists the status of the download jobs of every worker.
 func renterworkersdownloadscmd() {
 	rw, err := httpClient.RenterWorkersGet()
@@ -2345,7 +2345,7 @@ func renterworkersdownloadscmd() {
 	writeWorkerDownloadUploadInfo(true, w, rw)
 }
 
-// renterworkersptcmd is the handler for the command `siac renter workers pt`.
+// renterworkersptcmd is the handler for the command `skyc renter workers pt`.
 // It lists the status of the price table of every worker.
 func renterworkersptcmd() {
 	rw, err := httpClient.RenterWorkersGet()
@@ -2406,7 +2406,7 @@ func renterworkersptcmd() {
 	}
 }
 
-// renterworkersrjcmd is the handler for the command `siac renter workers rj`.
+// renterworkersrjcmd is the handler for the command `skyc renter workers rj`.
 // It lists the status of the read job queue for every worker.
 func renterworkersrjcmd() {
 	rw, err := httpClient.RenterWorkersGet()
@@ -2452,7 +2452,7 @@ func renterworkersrjcmd() {
 	}
 }
 
-// renterworkershsjcmd is the handler for the command `siac renter workers hs`.
+// renterworkershsjcmd is the handler for the command `skyc renter workers hs`.
 // It lists the status of the has sector job queue for every worker.
 func renterworkershsjcmd() {
 	rw, err := httpClient.RenterWorkersGet()
@@ -2496,7 +2496,7 @@ func renterworkershsjcmd() {
 	}
 }
 
-// renterworkersuploadscmd is the handler for the command `siac renter workers
+// renterworkersuploadscmd is the handler for the command `skyc renter workers
 // uj`.  It lists the status of the upload jobs of every worker.
 func renterworkersuploadscmd() {
 	rw, err := httpClient.RenterWorkersGet()
@@ -2574,7 +2574,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	}
 }
 
-// renterworkerreadregistrycmd is the handler for the command `siac renter workers
+// renterworkerreadregistrycmd is the handler for the command `skyc renter workers
 // rrj`.  It lists the status of the read registry jobs of every worker.
 func renterworkersreadregistrycmd() {
 	rw, err := httpClient.RenterWorkersGet()
@@ -2599,7 +2599,7 @@ func renterworkersreadregistrycmd() {
 	writeWorkerReadUpdateRegistryInfo(true, w, rw)
 }
 
-// renterworkerupdateregistrycmd is the handler for the command `siac renter
+// renterworkerupdateregistrycmd is the handler for the command `skyc renter
 // workers urj`. It lists the status of the update registry jobs of every
 // worker.
 func renterworkersupdateregistrycmd() {

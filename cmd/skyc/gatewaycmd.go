@@ -114,7 +114,7 @@ Set them to 0 for no limit.`,
 	}
 )
 
-// gatewayconnectcmd is the handler for the command `siac gateway add [address]`.
+// gatewayconnectcmd is the handler for the command `skyc gateway add [address]`.
 // Adds a new peer to the peer list.
 func gatewayconnectcmd(addr string) {
 	err := httpClient.GatewayConnectPost(modules.NetAddress(addr))
@@ -124,7 +124,7 @@ func gatewayconnectcmd(addr string) {
 	fmt.Println("Added", addr, "to peer list.")
 }
 
-// gatewaydisconnectcmd is the handler for the command `siac gateway remove [address]`.
+// gatewaydisconnectcmd is the handler for the command `skyc gateway remove [address]`.
 // Removes a peer from the peer list.
 func gatewaydisconnectcmd(addr string) {
 	err := httpClient.GatewayDisconnectPost(modules.NetAddress(addr))
@@ -134,7 +134,7 @@ func gatewaydisconnectcmd(addr string) {
 	fmt.Println("Removed", addr, "from peer list.")
 }
 
-// gatewayaddresscmd is the handler for the command `siac gateway address`.
+// gatewayaddresscmd is the handler for the command `skyc gateway address`.
 // Prints the gateway's network address.
 func gatewayaddresscmd() {
 	info, err := httpClient.GatewayGet()
@@ -144,7 +144,7 @@ func gatewayaddresscmd() {
 	fmt.Println("Address:", info.NetAddress)
 }
 
-//gatewaybandwidthcmd is the handler for the command `siac gateway bandwidth`.
+//gatewaybandwidthcmd is the handler for the command `skyc gateway bandwidth`.
 //returns the total upload and download bandwidth usage for the gateway
 func gatewaybandwidthcmd() {
 	bandwidth, err := httpClient.GatewayBandwidthGet()
@@ -158,7 +158,7 @@ Duration: %v
 `, modules.FilesizeUnits(bandwidth.Download), modules.FilesizeUnits(bandwidth.Upload), fmtDuration(time.Since(bandwidth.StartTime)))
 }
 
-// gatewaycmd is the handler for the command `siac gateway`.
+// gatewaycmd is the handler for the command `skyc gateway`.
 // Prints the gateway's network address and number of peers.
 func gatewaycmd() {
 	info, err := httpClient.GatewayGet()
@@ -171,7 +171,7 @@ func gatewaycmd() {
 	fmt.Println("Max upload speed:", info.MaxUploadSpeed)
 }
 
-// gatewayblocklistcmd is the handler for the command `siac gateway blocklist`
+// gatewayblocklistcmd is the handler for the command `skyc gateway blocklist`
 // Prints the ip addresses on the gateway blocklist
 func gatewayblocklistcmd() {
 	gbg, err := httpClient.GatewayBlocklistGet()
@@ -185,7 +185,7 @@ func gatewayblocklistcmd() {
 }
 
 // gatewayblocklistappendcmd is the handler for the command
-// `siac gateway blocklist append`
+// `skyc gateway blocklist append`
 // Adds one or more new ip addresses to the gateway's blocklist
 func gatewayblocklistappendcmd(cmd *cobra.Command, addresses []string) {
 	if len(addresses) == 0 {
@@ -201,7 +201,7 @@ func gatewayblocklistappendcmd(cmd *cobra.Command, addresses []string) {
 }
 
 // gatewayblocklistclearcmd is the handler for the command
-// `siac gateway blocklist clear`
+// `skyc gateway blocklist clear`
 // Clears the gateway blocklist
 func gatewayblocklistclearcmd(cmd *cobra.Command, addresses []string) {
 	err := httpClient.GatewaySetBlocklistPost(addresses)
@@ -212,7 +212,7 @@ func gatewayblocklistclearcmd(cmd *cobra.Command, addresses []string) {
 }
 
 // gatewayblocklistremovecmd is the handler for the command
-// `siac gateway blocklist remove`
+// `skyc gateway blocklist remove`
 // Removes one or more ip addresses from the gateway's blocklist
 func gatewayblocklistremovecmd(cmd *cobra.Command, addresses []string) {
 	if len(addresses) == 0 {
@@ -228,7 +228,7 @@ func gatewayblocklistremovecmd(cmd *cobra.Command, addresses []string) {
 }
 
 // gatewayblocklistsetcmd is the handler for the command
-// `siac gateway blocklist set`
+// `skyc gateway blocklist set`
 // Sets the gateway blocklist to the ip addresses passed in
 func gatewayblocklistsetcmd(cmd *cobra.Command, addresses []string) {
 	if len(addresses) == 0 {
@@ -243,7 +243,7 @@ func gatewayblocklistsetcmd(cmd *cobra.Command, addresses []string) {
 	fmt.Println(addresses, "was successfully set as the gateway blocklist")
 }
 
-// gatewaylistcmd is the handler for the command `siac gateway list`.
+// gatewaylistcmd is the handler for the command `skyc gateway list`.
 // Prints a list of all peers.
 func gatewaylistcmd() {
 	info, err := httpClient.GatewayGet()
@@ -265,7 +265,7 @@ func gatewaylistcmd() {
 	}
 }
 
-// gatewayratelimitcmd is the handler for the command `siac gateway ratelimit`.
+// gatewayratelimitcmd is the handler for the command `skyc gateway ratelimit`.
 // sets the maximum upload & download bandwidth the gateway module is permitted
 // to use.
 func gatewayratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {

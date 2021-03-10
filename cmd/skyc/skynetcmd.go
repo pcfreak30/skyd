@@ -87,7 +87,7 @@ file from a chosen skynet portal.`,
 		Use:   "isblocked [skylink] ...",
 		Short: "Checks if a skylink is on the blocklist.",
 		Long: `Checks if a skylink, or a list of space separated skylinks, is on the blocklist 
-since the list returned from 'siac skynet blocklist' is a list of hashes of the skylinks' 
+since the list returned from 'skyc skynet blocklist' is a list of hashes of the skylinks' 
 merkleroots so they cannot be visually verified.`,
 		Run: skynetisblockedcmd,
 	}
@@ -357,8 +357,8 @@ func skynetisblockedcmd(_ *cobra.Command, skylinkStrs []string) {
 	}
 }
 
-// skynetlscmd is the handler for the command `siac skynet ls`. Works very
-// similar to 'siac renter ls' but defaults to the SkynetFolder and only
+// skynetlscmd is the handler for the command `skyc skynet ls`. Works very
+// similar to 'skyc renter ls' but defaults to the SkynetFolder and only
 // displays files that are pinning skylinks.
 func skynetlscmd(cmd *cobra.Command, args []string) {
 	var path string

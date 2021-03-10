@@ -70,7 +70,7 @@ Available settings:
      registrysize:       filesize
      customregistrypath: string
 
-Currency units can be specified, e.g. 10SC; run 'siac help wallet' for details.
+Currency units can be specified, e.g. 10SC; run 'skyc help wallet' for details.
 
 Durations (maxduration and windowsize) must be specified in either blocks (b),
 hours (h), days (d), or weeks (w). A block is approximately 10 minutes, so one
@@ -147,7 +147,7 @@ sector may impact host revenue.`,
 	}
 )
 
-// hostcmd is the handler for the command `siac host`.
+// hostcmd is the handler for the command `skyc host`.
 // Prints info about the host and its storage folders.
 func hostcmd() {
 	hg, err := httpClient.HostGet()
@@ -366,7 +366,7 @@ RPC Stats:
 	}
 }
 
-// hostconfigcmd is the handler for the command `siac host config [setting] [value]`.
+// hostconfigcmd is the handler for the command `skyc host config [setting] [value]`.
 // Modifies host settings.
 func hostconfigcmd(param, value string) {
 	var err error
@@ -453,7 +453,7 @@ func hostconfigcmd(param, value string) {
 	fmt.Printf("Estimated conversion rate: %v%%\n", eg.ConversionRate)
 }
 
-// hostcontractcmd is the handler for the command `siac host contracts [type]`.
+// hostcontractcmd is the handler for the command `skyc host contracts [type]`.
 func hostcontractcmd() {
 	cg, err := httpClient.HostContractInfoGet()
 	if err != nil {
@@ -483,7 +483,7 @@ func hostcontractcmd() {
 	}
 }
 
-// hostannouncecmd is the handler for the command `siac host announce`.
+// hostannouncecmd is the handler for the command `skyc host announce`.
 // Announces yourself as a host to the network. Optionally takes an address to
 // announce as.
 func hostannouncecmd(cmd *cobra.Command, args []string) {
