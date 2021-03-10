@@ -21,8 +21,8 @@ var (
 
 	stopCmd = &cobra.Command{
 		Use:   "stop",
-		Short: "Stop the Sia daemon",
-		Long:  "Stop the Sia daemon.",
+		Short: "Stop the Skynet daemon",
+		Long:  "Stop the Skynet daemon.",
 		Run:   wrap(stopcmd),
 	}
 
@@ -192,7 +192,7 @@ func versioncmd() {
 		fmt.Println("Could not get daemon version:", err)
 		return
 	}
-	fmt.Println("Sia Daemon")
+	fmt.Println("Skynet daemon")
 	fmt.Println("\tVersion " + dvg.Version)
 	if build.GitRevision != "" {
 		fmt.Println("\tGit Revision " + dvg.GitRevision)
@@ -207,7 +207,7 @@ func stopcmd() {
 	if err != nil {
 		die("Could not stop daemon:", err)
 	}
-	fmt.Println("Sia daemon stopped.")
+	fmt.Println("Skynet daemon stopped.")
 }
 
 // stackcmd is the handler for the command `siac stack` and writes the current

@@ -260,7 +260,7 @@ func updateToRelease(version string) (err error) {
 
 	// Process zip, finding siad/siac binaries and validate the checksum against
 	// the signed checksums file.
-	for _, binary := range []string{"siad", "siac"} {
+	for _, binary := range []string{"skyd", "skyc"} {
 		var binData io.ReadCloser
 		var binaryName string // needed for TargetPath below
 		for _, zf := range z.File {

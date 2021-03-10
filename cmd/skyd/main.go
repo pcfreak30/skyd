@@ -71,13 +71,13 @@ func versionCmd(*cobra.Command, []string) {
 	}
 	switch build.Release {
 	case "dev":
-		fmt.Println("Sia Daemon v" + version + "-dev")
+		fmt.Println("Skynet daemon v" + version + "-dev")
 	case "standard":
-		fmt.Println("Sia Daemon v" + version)
+		fmt.Println("Skynet daemon v" + version)
 	case "testing":
-		fmt.Println("Sia Daemon v" + version + "-testing")
+		fmt.Println("Skynet daemon v" + version + "-testing")
 	default:
-		fmt.Println("Sia Daemon v" + version + "-???")
+		fmt.Println("Skynet daemon v" + version + "-???")
 	}
 }
 
@@ -180,15 +180,15 @@ func main() {
 	}
 	root := &cobra.Command{
 		Use:   os.Args[0],
-		Short: "Sia Daemon v" + build.Version,
-		Long:  "Sia Daemon v" + build.Version,
+		Short: "Skynet daemon v" + build.Version,
+		Long:  "Skynet daemon v" + build.Version,
 		Run:   startDaemonCmd,
 	}
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print version information",
-		Long:  "Print version information about the Sia Daemon",
+		Long:  "Print version information about the Skynet daemon",
 		Run:   versionCmd,
 	})
 

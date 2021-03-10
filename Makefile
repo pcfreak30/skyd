@@ -25,8 +25,8 @@ pkgs = \
 	./benchmark \
 	./build \
 	./cmd/sia-node-scanner \
-	./cmd/siac \
-	./cmd/siad \
+	./cmd/skyc \
+	./cmd/skyd \
 	./cmd/skynet-benchmark \
 	./compatibility \
 	./crypto \
@@ -81,15 +81,15 @@ pkgs = \
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
-release-pkgs = ./cmd/siac ./cmd/siad
+release-pkgs = ./cmd/skyc ./cmd/skyd
 
 # lockcheckpkgs are the packages that are checked for locking violations.
 lockcheckpkgs = \
 	./benchmark \
 	./build \
 	./cmd/sia-node-scanner \
-	./cmd/siac \
-	./cmd/siad \
+	./cmd/skyc \
+	./cmd/skyd \
 	./cmd/skynet-benchmark \
 	./node \
 	./node/api \

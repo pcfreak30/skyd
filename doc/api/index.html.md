@@ -523,7 +523,7 @@ that are about to expire due to that.
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/constants"
 ```
 
-Returns the some of the constants that the Sia daemon uses. 
+Returns the some of the constants that the Skynet daemon uses. 
 
 ### JSON Response
 > JSON Response Example
@@ -797,7 +797,7 @@ responses](#standard-responses).
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/daemon/version"
 ```
 
-Returns the version of the Sia daemon currently running. 
+Returns the version of the Skynet daemon currently running. 
 
 ### JSON Response
 > JSON Response Example
@@ -2929,7 +2929,7 @@ root. The above process can then be repeated for the new block header.
 The other fields can generally be ignored. The parent block ID field is the hash
 of the parent block's header. Modifying this field will result in an orphan
 block. The timestamp is the time at which the block was mined and is set by the
-Sia Daemon. Modifying this field can result in invalid block. The merkle root is
+Skynet daemon. Modifying this field can result in invalid block. The merkle root is
 the merkle root of a merkle tree consisting of the timestamp, the miner outputs
 (one leaf per payout), and the transactions (one leaf per transaction).
 Modifying this field will result in an invalid block.
@@ -2968,7 +2968,7 @@ root. The above process can then be repeated for the new block header.
 The other fields can generally be ignored. The parent block ID field is the hash
 of the parent block's header. Modifying this field will result in an orphan
 block. The timestamp is the time at which the block was mined and is set by the
-Sia Daemon. Modifying this field can result in invalid block. The merkle root is
+Skynet daemon. Modifying this field can result in invalid block. The merkle root is
 the merkle root of a merkle tree consisting of the timestamp, the miner outputs
 (one leaf per payout), and the transactions (one leaf per transaction).
 Modifying this field will result in an invalid block.
