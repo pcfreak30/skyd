@@ -99,7 +99,6 @@ lockcheckpkgs = \
 	./modules/host/mdm \
 	./modules/host/registry \
 	./modules/renter/hostdb \
-	./modules/renter/proto \
 	./modules/renter/skynetblocklist \
 	./siatest/accounting \
 	./skykey \
