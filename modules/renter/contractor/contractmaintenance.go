@@ -76,6 +76,19 @@ func initialContractFunding(a modules.Allowance, host modules.HostDBEntry, txnFe
 	return contractFunds
 }
 
+// minimumContractFunding determines the minimun amount of money that goes into
+// a refreshed/renewed contract. To account for portals, the gfrContracts are
+// passed in and are used instead of allowance.Hosts for the computation.
+// That way, a portal with 150 contracts and an allowance of 50 hosts will have
+// a minimum that is 1/3 of a renter with 50 contracts and 50 hosts.
+func minimumContractRenewalFunding(allowance modules.Allowance, gfrContracts uint64) types.Currency {
+	numHosts := gfrContracts
+	if numHosts < allowance.Hosts {
+		numHosts = allowance.Hosts
+	}
+	return allowance.Funds.MulFloat(fileContractMinimumFunding).Div64(numHosts)
+}
+
 // callNotifyDoubleSpend is used by the watchdog to alert the contractor
 // whenever a monitored file contract input is double-spent. This function
 // marks down the host score, and marks the contract as !GoodForRenew and
@@ -163,7 +176,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 // contract is going to need in the next billing cycle by looking at how much
 // storage is in the contract and what the historic usage pattern of the
 // contract has been.
-func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.RenterContract, blockHeight types.BlockHeight, allowance modules.Allowance) (types.Currency, error) {
+func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.RenterContract, gfrContracts uint64, blockHeight types.BlockHeight, allowance modules.Allowance) (types.Currency, error) {
 	// Fetch the host pricing to use in the estimate.
 	host, exists, err := c.hdb.Host(contract.HostPublicKey)
 	if err != nil {
@@ -277,7 +290,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	// Check for a sane minimum. The contractor should not be forming contracts
 	// with less than 'fileContractMinimumFunding / (num contracts)' of the
 	// value of the allowance.
-	minimum := allowance.Funds.MulFloat(fileContractMinimumFunding).Div64(allowance.Hosts)
+	minimum := minimumContractRenewalFunding(allowance, gfrContracts)
 	if estimatedCost.Cmp(minimum) < 0 {
 		estimatedCost = minimum
 		c.log.Printf("Contract renew amount %v below minimum amount %v", estimatedCost, minimum)
@@ -1106,6 +1119,14 @@ func (c *Contractor) threadedContractMaintenance() {
 	endHeight := c.contractEndHeight()
 	c.mu.Unlock()
 
+	// Get the number of gfrContracts we have.
+	var gfrContracts uint64
+	for _, c := range c.staticContracts.ViewAll() {
+		if c.Utility.GoodForRenew {
+			gfrContracts++
+		}
+	}
+
 	// Create the renewSet and refreshSet. Each is a list of contracts that need
 	// to be renewed, paired with the amount of money to use in each renewal.
 	//
@@ -1157,7 +1178,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// much money was spend on the contract throughout this billing cycle
 		// (which is now ending).
 		if blockHeight+allowance.RenewWindow >= contract.EndHeight && !c.staticDeps.Disrupt("disableRenew") {
-			renewAmount, err := c.managedEstimateRenewFundingRequirements(contract, blockHeight, allowance)
+			renewAmount, err := c.managedEstimateRenewFundingRequirements(contract, gfrContracts, blockHeight, allowance)
 			if err != nil {
 				c.log.Debugln("Contract skipped because there was an error estimating renew funding requirements", renewAmount, err)
 				continue
@@ -1197,7 +1218,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			// the user in the event that the user stops uploading immediately
 			// after the renew.
 			refreshAmount := contract.TotalCost.Mul64(2)
-			minimum := allowance.Funds.MulFloat(fileContractMinimumFunding).Div64(allowance.Hosts)
+			minimum := minimumContractRenewalFunding(allowance, gfrContracts)
 			if refreshAmount.Cmp(minimum) < 0 {
 				refreshAmount = minimum
 				c.log.Printf("Contract refresh amount %v below minimum amount %v", refreshAmount, minimum)
