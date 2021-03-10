@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/Sia/modules/accounting"
 )
 
 // accountingHandlerGet handles the API call for /accounting
@@ -26,7 +27,7 @@ func (api *API) accountingHandlerGet(w http.ResponseWriter, req *http.Request, _
 
 	// Check for End time
 	endStr := req.Form.Get("end")
-	var end int64
+	var end int64 = accounting.DefaultEndRangeTime
 	if endStr != "" {
 		end, err = strconv.ParseInt(endStr, 10, 64)
 		if err != nil {
@@ -36,7 +37,7 @@ func (api *API) accountingHandlerGet(w http.ResponseWriter, req *http.Request, _
 	}
 
 	// Sanity check range
-	if (start != 0 && end != 0) && (end < start) {
+	if end < start {
 		errStr := fmt.Sprintf("cannot provided end time that is before start time: start %v > end %v", start, end)
 		WriteError(w, Error{errStr}, http.StatusBadRequest)
 		return

@@ -1,16 +1,29 @@
 package accounting
 
 import (
+	"math"
+	"sort"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
+const (
+	// DefaultEndRangeTime is the default end time used when one isn't provided
+	// by the user.
+	DefaultEndRangeTime = math.MaxInt64
+)
+
 var (
+	// ErrInvalidRange is the error returned if the end time is before the start
+	// time.
+	ErrInvalidRange = errors.New("invalid range, end must be after start")
+
 	// errNilDeps is the error returned when no dependencies are provided
 	errNilDeps = errors.New("dependencies cannot be nil")
 
@@ -103,15 +116,15 @@ func (a *Accounting) Accounting(start, end int64) ([]modules.AccountingInfo, err
 	}
 	defer a.staticTG.Done()
 
+	// Check start and end range
+	if end < start {
+		return nil, ErrInvalidRange
+	}
+
 	// Update the accounting information
 	ai, err := a.callUpdateAccounting()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to update the accounting information")
-	}
-
-	// If no start of end time is provided, then return the current snapshot
-	if start == 0 && end == 0 {
-		return []modules.AccountingInfo{ai}, nil
 	}
 
 	// Return the requested range
@@ -136,31 +149,21 @@ func (a *Accounting) Close() error {
 // accountingRange returns a range of accounting information from a provided
 // history
 func accountingRange(history []modules.AccountingInfo, start, end int64) []modules.AccountingInfo {
-	// Find the range of entries requested
-	var startIndex, endIndex int = -1, -1
-	for i, entry := range history {
-		// Break if we reach a Timestamp that is older than end if end is provided
-		if end != 0 && entry.Timestamp > end {
-			break
-		}
-		// If the Timestamp is before start then continue
-		if entry.Timestamp < start {
-			continue
-		}
-		// If we have found a later entry that satisfies the end time, update the
-		// end index
-		endIndex = i
-		// If we haven't initialized the start index yet, set it.
-		if startIndex == -1 {
-			startIndex = i
-		}
-	}
-	// Sanity
-	if startIndex == -1 || endIndex == -1 {
+	// Sanity check
+	if end < start {
+		build.Critical(ErrInvalidRange)
 		return nil
 	}
-	// Increment endIndex to be inclusive
-	endIndex++
+
+	// Find Start and end indexes
+	startIndex := sort.Search(len(history), func(i int) bool {
+		return history[i].Timestamp >= start
+	})
+	endIndex := sort.Search(len(history), func(i int) bool {
+		return history[i].Timestamp > end
+	})
+
+	// Return range
 	if endIndex == len(history) {
 		return history[startIndex:]
 	}

@@ -79,29 +79,50 @@ func testAccounting(t *testing.T) {
 // testAccountingRange probes the accountingRange function
 func testAccountingRange(t *testing.T) {
 	// Create a history
+	var first, mid, last int64 = 2, 4, 10
 	history := []modules.AccountingInfo{
-		{Timestamp: 2},
+		{Timestamp: first},
 		{Timestamp: 3},
-		{Timestamp: 4},
-		{Timestamp: 5},
-		{Timestamp: 6},
+		{Timestamp: mid},
+		{Timestamp: mid},
+		{Timestamp: mid},
+		{Timestamp: last},
 	}
 	all := len(history)
 
 	// Create range tests
-	var start, mid, end int64 = 1, 4, 7
+	before := first - 1
+	after := last + 1
 	var rangeTests = []struct {
 		start      int64
 		end        int64
 		numEntries int
 	}{
-		{start, 0, all},
-		{0, end, all},
-		{0, start, 0},
-		{end, 0, 0},
-		{start, mid, 3},
-		{mid, end, 3},
-		{start, end, all},
+		// Conditions that should return all
+		{0, after, all},
+		{0, DefaultEndRangeTime, all},
+		{0, last, all},
+		{before, after, all},
+		{before, last, all},
+		{first, last, all},
+		{first, after, all},
+
+		// Conditions that should return none
+		{0, 0, 0},
+		{0, before, 0},
+		{before, before, 0},
+		{mid + 1, last - 1, 0},
+		{after, after, 0},
+
+		// Conditions that should return a set amount
+		{0, first, 1},
+		{first, first, 1},
+		{before, mid, 5},
+		{first, mid, 5},
+		{mid, mid, 3},
+		{mid, last, 4},
+		{mid, after, 4},
+		{last, last, 1},
 	}
 
 	// Run range tests
@@ -114,6 +135,14 @@ func testAccountingRange(t *testing.T) {
 			t.Errorf("expected %v got %v", rt.numEntries, len(ais))
 		}
 	}
+
+	// Test build.Critical for end < start
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected build.critical")
+		}
+	}()
+	accountingRange(nil, 1, 0)
 }
 
 // testNewCustomAccounting probes the NewCustomAccounting function
