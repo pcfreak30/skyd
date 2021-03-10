@@ -192,11 +192,10 @@ Returns basic accounting information for the modules that are running.
 
 ### Query String Parameters
 ### OPTIONAL
-**star, end** | int64\
-Unix timestamp of the range of accounting information to request. To request
-a single entry that is a current snapshot leave the range fields empty. To
-request the entire history, just submit an end time of the current unix
-timestamp.
+**start, end** | int64\
+Unix timestamp of the range of accounting information to request. The default
+value for `end` is `math.MaxInt64`. If neither param is provided, then the
+entire history will be returned. 
 
 ### JSON Response
 > JSON Response Example
@@ -212,7 +211,8 @@ timestamp.
       "wallet": {
         "confirmedsiacoinbalance": "3365276858974358974358974358950" // hastings, big int
         "confirmedsiafundbalance": "0" // siafunds, big int
-      }
+      },
+      "timestamp": 0123456789 // unix timestamp
     }
   ]
 }
@@ -239,6 +239,9 @@ block in the blockchain.
 **confirmedsiafundbalance** | big int\
 Number of siafunds available to the wallet as of the most recent block in the
 blockchain.
+
+**timestamp** | unix timestamp\
+Unix timestamp of when the accounting information was recorded.
 
 # Consensus
 

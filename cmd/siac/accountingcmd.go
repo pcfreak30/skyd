@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"time"
@@ -15,7 +16,7 @@ import (
 var (
 	// csvHeaders is the headers for the csv file generated for the accounting
 	// information
-	csvHeaders = []string{"TimeStammp", "Siacoin Balance", "Siafund Balance", "Unspent Unallocated", "Withheld Funds"}
+	csvHeaders = []string{"TimeStamp", "Siacoin Balance", "Siafund Balance", "Unspent Unallocated", "Withheld Funds"}
 )
 
 var (
@@ -43,10 +44,6 @@ func accountingcmd() {
 		}
 	}()
 
-	// Create csv writer
-	w := csv.NewWriter(f)
-	defer w.Flush()
-
 	// Grab the accounting information
 	ais, err := httpClient.AccountingGet(0, time.Now().Unix())
 	if err != nil {
@@ -54,7 +51,7 @@ func accountingcmd() {
 	}
 
 	// Write the information to the csv file.
-	err = writeAccountingCSV(ais[0], w)
+	err = writeAccountingCSV(ais, f)
 	if err != nil {
 		die("Unable to write accounting information to csv file: ", err)
 	}
@@ -64,27 +61,40 @@ func accountingcmd() {
 
 // writeAccountingCSV is a helper to write the accounting information to a csv
 // file.
-func writeAccountingCSV(ai modules.AccountingInfo, w *csv.Writer) error {
+func writeAccountingCSV(ais []modules.AccountingInfo, w io.Writer) error {
+	// Create csv writer
+	csvW := csv.NewWriter(w)
+
 	// Convert to csv format
 	//
 	// Write Headers for Reference
-	err := w.Write(csvHeaders)
+	err := csvW.Write(csvHeaders)
 	if err != nil {
 		return errors.AddContext(err, "unable to write header")
 	}
 
 	// Write Wallet info first, then Renter info.
-	timeStr := strconv.FormatInt(ai.Timestamp, 10)
-	scStr := ai.Wallet.ConfirmedSiacoinBalance.String()
-	sfStr := ai.Wallet.ConfirmedSiafundBalance.String()
-	usStr := ai.Renter.UnspentUnallocated.String()
-	whStr := ai.Renter.WithheldFunds.String()
-	csvOutput := []string{timeStr, scStr, sfStr, usStr, whStr}
+	var records [][]string
+	for _, ai := range ais {
+		timeStr := strconv.FormatInt(ai.Timestamp, 10)
+		scStr := ai.Wallet.ConfirmedSiacoinBalance.String()
+		sfStr := ai.Wallet.ConfirmedSiafundBalance.String()
+		usStr := ai.Renter.UnspentUnallocated.String()
+		whStr := ai.Renter.WithheldFunds.String()
+		record := []string{timeStr, scStr, sfStr, usStr, whStr}
+		records = append(records, record)
+	}
 
 	// Write output to file
-	err = w.Write(csvOutput)
+	err = csvW.WriteAll(records)
 	if err != nil {
-		return errors.AddContext(err, "unable to write data")
+		return errors.AddContext(err, "unable to write records")
+	}
+
+	// Flush the writer and check for an error
+	csvW.Flush()
+	if err := csvW.Error(); err != nil {
+		die("Error when flushing csv writer: ", err)
 	}
 	return nil
 }

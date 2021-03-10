@@ -114,6 +114,10 @@ func testAccounting(t *testing.T, np node.NodeParams) {
 		}
 	}
 
+	// Quick check that the timestamp is sane and not zero
+	if ag[0].Timestamp == 0 {
+		t.Error("timestamp is 0")
+	}
 	// Check Accounting
 	expected := modules.AccountingInfo{
 		Renter:    ra,

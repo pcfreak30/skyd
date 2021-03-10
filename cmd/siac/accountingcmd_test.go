@@ -1,12 +1,8 @@
 package main
 
 import (
-	"encoding/csv"
+	"bytes"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,68 +13,59 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// randomAcountingInfo is a helper that generates random accounting information
+func randomAcountingInfo(num int) []modules.AccountingInfo {
+	var ais []modules.AccountingInfo
+	for i := 0; i < num; i++ {
+		ais = append(ais, modules.AccountingInfo{
+			Wallet: modules.WalletAccounting{
+				ConfirmedSiacoinBalance: types.NewCurrency64(fastrand.Uint64n(1000)),
+				ConfirmedSiafundBalance: types.NewCurrency64(fastrand.Uint64n(1000)),
+			},
+			Renter: modules.RenterAccounting{
+				UnspentUnallocated: types.NewCurrency64(fastrand.Uint64n(1000)),
+				WithheldFunds:      types.NewCurrency64(fastrand.Uint64n(1000)),
+			},
+			Timestamp: time.Now().Unix(),
+		})
+	}
+	return ais
+}
+
 // TestWriteAccountingCSV tests the writeAccountingCSV function
 func TestWriteAccountingCSV(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
 	t.Parallel()
 
-	// Create csv file
-	testDir := siacTestDir(t.Name())
-	f, err := os.Create(filepath.Join(testDir, "accounting.csv"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err = f.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+	// Create buffer
+	var buf bytes.Buffer
 
-	// Create csv writer
-	w := csv.NewWriter(f)
-
-	// Grab the accounting information
-	ai := modules.AccountingInfo{
-		Wallet: modules.WalletAccounting{
-			ConfirmedSiacoinBalance: types.NewCurrency64(fastrand.Uint64n(1000)),
-			ConfirmedSiafundBalance: types.NewCurrency64(fastrand.Uint64n(1000)),
-		},
-		Renter: modules.RenterAccounting{
-			UnspentUnallocated: types.NewCurrency64(fastrand.Uint64n(1000)),
-			WithheldFunds:      types.NewCurrency64(fastrand.Uint64n(1000)),
-		},
-		Timestamp: time.Now().Unix(),
-	}
+	// Create accounting information
+	ais := randomAcountingInfo(5)
 
 	// Write the information to the csv file.
-	err = writeAccountingCSV(ai, w)
+	err := writeAccountingCSV(ais, &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Flush the writer
-	w.Flush()
 
 	// Read the written data from the file.
-	_, err = f.Seek(0, io.SeekStart)
-	bytes, err := ioutil.ReadAll(f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	bytes := buf.Bytes()
 
 	// Generated expected
 	headerStr := strings.Join(csvHeaders, ",")
-	timeStr := strconv.FormatInt(ai.Timestamp, 10)
-	scStr := ai.Wallet.ConfirmedSiacoinBalance.String()
-	sfStr := ai.Wallet.ConfirmedSiafundBalance.String()
-	usStr := ai.Renter.UnspentUnallocated.String()
-	whStr := ai.Renter.WithheldFunds.String()
-	data := []string{timeStr, scStr, sfStr, usStr, whStr}
-	dataStr := strings.Join(data, ",")
-	expected := fmt.Sprintf("%v\n%v\n", headerStr, dataStr)
+	expected := fmt.Sprintf("%v\n", headerStr)
+	for _, ai := range ais {
+		timeStr := strconv.FormatInt(ai.Timestamp, 10)
+		scStr := ai.Wallet.ConfirmedSiacoinBalance.String()
+		sfStr := ai.Wallet.ConfirmedSiafundBalance.String()
+		usStr := ai.Renter.UnspentUnallocated.String()
+		whStr := ai.Renter.WithheldFunds.String()
+		data := []string{timeStr, scStr, sfStr, usStr, whStr}
+		dataStr := strings.Join(data, ",")
+		expected = fmt.Sprintf("%v%v\n", expected, dataStr)
+	}
+
+	// Check bytes vs expected
 	if expected != string(bytes) {
 		t.Log("actual", string(bytes))
 		t.Log("expected", expected)
