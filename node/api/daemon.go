@@ -23,11 +23,11 @@ import (
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/profile"
 	"gitlab.com/skynetlabs/skyd/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 const (

@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/modules"

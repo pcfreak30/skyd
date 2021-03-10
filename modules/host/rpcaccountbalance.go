@@ -2,8 +2,8 @@ package host
 
 import (
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // managedRPCAccountBalance handles the RPC which returns the balance of the

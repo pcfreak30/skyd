@@ -10,8 +10,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 var (

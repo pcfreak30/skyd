@@ -74,6 +74,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
@@ -83,7 +84,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/persist"
 	siasync "gitlab.com/skynetlabs/skyd/sync"
 	"gitlab.com/skynetlabs/skyd/types"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 const (

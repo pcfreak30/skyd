@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // managedRPCLatestRevision handles the RPC that fetches the latest revision for

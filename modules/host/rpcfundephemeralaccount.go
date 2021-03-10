@@ -4,9 +4,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/skynetlabs/skyd/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // managedRPCFundEphemeralAccount handles the RPC request from the renter to

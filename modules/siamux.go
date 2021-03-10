@@ -5,12 +5,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/crypto"
 	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/types"
-	"gitlab.com/NebulousLabs/siamux"
-	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 const (
