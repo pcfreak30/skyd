@@ -13,7 +13,7 @@ set -e
 for arch in amd64 arm64; do
   for os in darwin linux windows freebsd; do
     echo Building ${os}/${arch}...
-    for pkg in siac siad; do
+    for pkg in skyc skyd; do
       # Ignore unsupported arch/os combinations.
       if [ "$arch" == "arm64" ]; then
         if [ "$os" == "windows" ] || [ "$os" == "darwin" ] || [ "$os" == "freebsd" ]; then
@@ -21,7 +21,7 @@ for arch in amd64 arm64; do
         fi
       fi
 
-      # Binaries are called 'siac' and 'siad'.
+      # Binaries are called 'skyc' and 'skyd'.
       bin=$pkg
 
       # Different naming convention for windows.
