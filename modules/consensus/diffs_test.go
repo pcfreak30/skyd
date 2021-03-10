@@ -5,8 +5,8 @@ import (
 
 	"gitlab.com/NebulousLabs/bolt"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestCommitDelayedSiacoinOutputDiffBadMaturity commits a delayed siacoin

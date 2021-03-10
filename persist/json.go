@@ -16,8 +16,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/crypto"
 )
 
 // verifyChecksum will disregard the metadata of the saved file, and just verify

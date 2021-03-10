@@ -11,8 +11,8 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/sync"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/sync"
 )
 
 var (

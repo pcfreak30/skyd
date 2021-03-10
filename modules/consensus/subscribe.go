@@ -6,10 +6,10 @@ import (
 
 	"gitlab.com/NebulousLabs/bolt"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
 
-	siasync "gitlab.com/NebulousLabs/Sia/sync"
+	siasync "gitlab.com/skynetlabs/skyd/sync"
 )
 
 // computeConsensusChangeDiffs computes the ConsensusChangeDiffs for the

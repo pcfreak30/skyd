@@ -3,8 +3,8 @@ package mdm
 import (
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // sectors contains the program cache, including gained and removed sectors as

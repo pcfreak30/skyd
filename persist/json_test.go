@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 // TestSaveLoadJSON creates a simple object and then tries saving and loading

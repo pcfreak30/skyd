@@ -3,10 +3,10 @@ package renter
 import (
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 type (

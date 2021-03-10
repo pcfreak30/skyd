@@ -1,7 +1,7 @@
 package renter
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // Alerts implements the modules.Alerter interface for the renter. It returns

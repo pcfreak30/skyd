@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // TestLimitStreamer verifies the limit streamer properly returns the data

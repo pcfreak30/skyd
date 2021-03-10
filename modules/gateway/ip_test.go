@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // TestIpRPC tests the ip discovery RPC.

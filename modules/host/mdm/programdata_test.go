@@ -6,9 +6,9 @@ import (
 	"io"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/skynetlabs/skyd/crypto"
 )
 
 // TestNewProgramData tests starting and stopping a ProgramData object.

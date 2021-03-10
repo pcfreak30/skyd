@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestNewAccountID tests the NewAccountID utility method.

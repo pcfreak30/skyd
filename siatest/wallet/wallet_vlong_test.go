@@ -3,10 +3,10 @@ package wallet
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules/wallet"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules/wallet"
+	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestWalletTransactionsSumUpToWalletBalance tests that even with file

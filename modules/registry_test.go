@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/skynetlabs/skyd/crypto"
 )
 
 // TestHashRegistryValue tests that signing registry values results in expected

@@ -3,8 +3,8 @@ package miner
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // TestIntegrationBlockHeightReorg checks that the miner has the correct block

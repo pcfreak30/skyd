@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/skynetlabs/skyd/crypto"
 )
 
 // TestTransactionIDs probes all of the ID functions of the Transaction type.

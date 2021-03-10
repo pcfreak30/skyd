@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // TestStuckStack probes the implementation of the stuck stack

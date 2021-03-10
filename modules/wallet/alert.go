@@ -1,7 +1,7 @@
 package wallet
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // Alerts implements the Alerter interface for the wallet.

@@ -16,12 +16,12 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
+	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem/siafile"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 const (

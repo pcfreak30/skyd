@@ -14,11 +14,11 @@ import (
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // managedMustAcquire is a convenience function for acquiring contracts that are

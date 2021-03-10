@@ -5,16 +5,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/feemanager"
-	"gitlab.com/NebulousLabs/Sia/modules/host"
-	"gitlab.com/NebulousLabs/Sia/modules/miner"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
-	"gitlab.com/NebulousLabs/Sia/modules/wallet"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/feemanager"
+	"gitlab.com/skynetlabs/skyd/modules/host"
+	"gitlab.com/skynetlabs/skyd/modules/miner"
+	"gitlab.com/skynetlabs/skyd/modules/renter"
+	"gitlab.com/skynetlabs/skyd/modules/wallet"
+	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // accountingTestDir joins the provided directories and prefixes them with the

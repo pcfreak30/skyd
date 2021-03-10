@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 // TestIntegrationRandomSuffix checks that the random suffix creator creates

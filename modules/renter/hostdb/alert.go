@@ -1,6 +1,6 @@
 package hostdb
 
-import "gitlab.com/NebulousLabs/Sia/modules"
+import "gitlab.com/skynetlabs/skyd/modules"
 
 // Alerts implements the modules.Alerter interface for the hostdb. It returns
 // all alerts of the hostdb.

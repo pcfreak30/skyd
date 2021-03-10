@@ -7,8 +7,8 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // dependencyTestJobSerialExecution is a special dependency to change the

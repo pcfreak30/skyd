@@ -3,8 +3,8 @@ package api
 import (
 	"io"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // limitStreamer is a helper struct that wraps a modules.Streamer so it starts

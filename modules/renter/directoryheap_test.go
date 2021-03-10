@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 )
 
 // updateSiaDirHealth is a helper method to update the health and the aggregate

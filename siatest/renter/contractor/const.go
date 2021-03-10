@@ -3,8 +3,8 @@ package contractor
 import (
 	"os"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/siatest"
 )
 
 // contractorTestDir creates a temporary testing directory for a contractor

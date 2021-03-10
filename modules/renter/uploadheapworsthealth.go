@@ -1,6 +1,6 @@
 package renter
 
-import "gitlab.com/NebulousLabs/Sia/modules"
+import "gitlab.com/skynetlabs/skyd/modules"
 
 type (
 	// worstIgnoredHealth is a helper struct for the callBuildAndPushChunks

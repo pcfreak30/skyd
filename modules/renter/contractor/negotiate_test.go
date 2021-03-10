@@ -4,17 +4,17 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/consensus"
-	"gitlab.com/NebulousLabs/Sia/modules/gateway"
-	"gitlab.com/NebulousLabs/Sia/modules/miner"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
-	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
-	modWallet "gitlab.com/NebulousLabs/Sia/modules/wallet" // name conflicts with type
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/consensus"
+	"gitlab.com/skynetlabs/skyd/modules/gateway"
+	"gitlab.com/skynetlabs/skyd/modules/miner"
+	"gitlab.com/skynetlabs/skyd/modules/renter/hostdb"
+	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
+	modWallet "gitlab.com/skynetlabs/skyd/modules/wallet" // name conflicts with type
+	"gitlab.com/skynetlabs/skyd/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )

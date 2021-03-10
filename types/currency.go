@@ -13,7 +13,7 @@ import (
 	"math/big"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 type (

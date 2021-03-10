@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/persist"
 )
 
 // upgradeFromV120ToV143 is an upgrade layer that aids the integration of the

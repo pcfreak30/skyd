@@ -10,8 +10,8 @@ import (
 
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 const (

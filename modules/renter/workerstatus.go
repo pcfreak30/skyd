@@ -3,7 +3,7 @@ package renter
 import (
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // callStatus returns the status of the worker.

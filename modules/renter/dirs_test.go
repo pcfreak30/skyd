@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem/siadir"
+	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 )
 
 // FileListCollect returns information on all of the files stored by the

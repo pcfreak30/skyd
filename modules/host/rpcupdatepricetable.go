@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/NebulousLabs/siamux"
 )
 

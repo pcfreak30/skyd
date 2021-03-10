@@ -20,11 +20,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5/decor"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/renter"
+	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
 )
 
 var (

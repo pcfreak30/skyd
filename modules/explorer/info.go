@@ -3,9 +3,9 @@ package explorer
 import (
 	"gitlab.com/NebulousLabs/bolt"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // Block takes a block ID and finds the corresponding block, provided that the

@@ -1,6 +1,6 @@
 package consensus
 
-import "gitlab.com/NebulousLabs/Sia/modules"
+import "gitlab.com/skynetlabs/skyd/modules"
 
 type (
 	// dependencySleepAfterInitializeSubscribe is a dependency used to make the consensusSet sleep for a few seconds after calling managedInitializeSubscribe.

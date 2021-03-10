@@ -5,8 +5,8 @@ import (
 	"sort"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // CreateDir creates a directory for the renter

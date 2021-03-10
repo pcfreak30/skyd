@@ -1,7 +1,7 @@
 package wallet
 
 import (
-	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 const (

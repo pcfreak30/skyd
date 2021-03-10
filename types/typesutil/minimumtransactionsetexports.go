@@ -1,7 +1,7 @@
 package typesutil
 
 import (
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // MinimumTransactionSet takes two transaction sets as input and returns a

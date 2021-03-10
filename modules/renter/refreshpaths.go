@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // uniqueRefreshPaths is a helper struct for determining the minimum number of

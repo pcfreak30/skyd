@@ -3,8 +3,8 @@ package host
 import (
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // upgradeFromV143ToV151 is an upgrade layer that fixes a bug in the host's

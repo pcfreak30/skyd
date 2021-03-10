@@ -3,8 +3,8 @@ package hostdb
 import (
 	"os"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/siatest"
 )
 
 // hostdbTestDir creates a temporary testing directory for a hostdb test. This

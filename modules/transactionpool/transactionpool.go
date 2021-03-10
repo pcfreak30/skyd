@@ -9,13 +9,13 @@ import (
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/demotemutex"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/sync"
-	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/Sia/types/typesutil"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/sync"
+	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/types/typesutil"
 )
 
 var (

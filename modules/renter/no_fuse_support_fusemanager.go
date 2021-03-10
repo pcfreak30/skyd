@@ -5,7 +5,7 @@ package renter
 import (
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 var errNoFuseSupportOnSystem = errors.New("Fuse library is incompatible with this operating system.")

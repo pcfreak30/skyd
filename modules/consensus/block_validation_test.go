@@ -3,7 +3,7 @@ package consensus
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // mockMarshaler is a mock implementation of the encoding.GenericMarshaler

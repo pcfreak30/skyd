@@ -1,7 +1,7 @@
 package dependencies
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // DependencyDoNotAcceptTxnSet will not accept a transaction set.

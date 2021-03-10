@@ -1,4 +1,4 @@
-module gitlab.com/NebulousLabs/Sia
+module gitlab.com/skynetlabs/skyd
 
 go 1.13
 

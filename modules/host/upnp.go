@@ -3,8 +3,8 @@ package host
 import (
 	"net"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // managedLearnHostname discovers the external IP of the Host. If the host's

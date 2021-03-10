@@ -4,8 +4,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
 )
 
 // errCausedByRevisionMismatch returns true if (we suspect) the given error is

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io/ioutil"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 const (

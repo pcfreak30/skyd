@@ -3,7 +3,7 @@ package consensus
 import (
 	"gitlab.com/NebulousLabs/bolt"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/skynetlabs/skyd/crypto"
 )
 
 // dbConsensusChecksum is a convenience function to call consensusChecksum

@@ -3,7 +3,7 @@ package host
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // TestSaneDefaults verifies that the defaults satisfy the ratios

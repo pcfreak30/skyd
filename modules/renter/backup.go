@@ -18,10 +18,10 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/twofish"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem/siadir"
 )
 
 // backupHeader defines the structure of the backup's JSON header.

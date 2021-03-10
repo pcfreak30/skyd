@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/node/api/client"
+	"gitlab.com/skynetlabs/skyd/skykey"
 )
 
 var (

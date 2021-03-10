@@ -5,14 +5,14 @@ import (
 	"math/big"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
-	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
+	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/skynetlabs/skyd/node/api/client"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // CheckBalanceVsSpending checks the renters confirmed siacoin balance in their

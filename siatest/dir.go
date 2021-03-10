@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/skynetlabs/skyd/persist"
 )
 
 var (

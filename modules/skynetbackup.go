@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/persist"
 )
 
 const (

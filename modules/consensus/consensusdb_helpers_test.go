@@ -6,8 +6,8 @@ package consensus
 import (
 	"gitlab.com/NebulousLabs/bolt"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // dbBlockHeight is a convenience function allowing blockHeight to be called

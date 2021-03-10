@@ -10,9 +10,9 @@ import (
 	"strings"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/crypto"
 )
 
 // MarshalSia implements the encoding.SiaMarshaler interface.

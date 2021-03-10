@@ -3,7 +3,7 @@ package renter
 import (
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 type (

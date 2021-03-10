@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // HostRejectAllSessionLocks is a dependency injection for the host that will

@@ -1,7 +1,7 @@
 package dependencies
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // DependencyDisableAutoOnline will disable the gateway always being online

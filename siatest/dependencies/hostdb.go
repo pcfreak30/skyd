@@ -1,7 +1,7 @@
 package dependencies
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // DependencyBlockScan blocks the scan progress of the hostdb until Scan is

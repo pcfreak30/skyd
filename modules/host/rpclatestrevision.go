@@ -3,8 +3,8 @@ package host
 import (
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/NebulousLabs/siamux"
 )
 

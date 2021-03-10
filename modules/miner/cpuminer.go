@@ -3,7 +3,7 @@ package miner
 import (
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 // threadedMine starts a gothread that does CPU mining. threadedMine is the

@@ -3,9 +3,9 @@ package siafile
 import (
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // CombinedChunkIndex is a helper method which translates a chunk's index to the

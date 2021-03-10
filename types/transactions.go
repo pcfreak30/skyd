@@ -9,8 +9,8 @@ import (
 	"errors"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/skynetlabs/skyd/crypto"
 )
 
 const (

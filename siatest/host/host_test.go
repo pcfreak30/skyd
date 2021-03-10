@@ -10,16 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host"
-	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
-	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/host"
+	"gitlab.com/skynetlabs/skyd/modules/host/contractmanager"
+	"gitlab.com/skynetlabs/skyd/node"
+	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/skynetlabs/skyd/node/api/client"
+	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestHostGetPubKey confirms that the pubkey is returned through the API

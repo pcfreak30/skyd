@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 // TestRootSiacCmd tests root siac command for expected outputs. The test

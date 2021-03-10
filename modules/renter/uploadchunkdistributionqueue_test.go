@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // newOverloadedWorker will return a worker that is overloaded.

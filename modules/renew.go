@@ -1,7 +1,7 @@
 package modules
 
 import (
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // RenewBaseCosts is a helper to calculate the base costs for a renewed

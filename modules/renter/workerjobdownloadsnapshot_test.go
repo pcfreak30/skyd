@@ -3,8 +3,8 @@ package renter
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestCheckDownloadSnapshotGouging checks that the download snapshot price

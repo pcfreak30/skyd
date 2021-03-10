@@ -4,9 +4,9 @@ import (
 	"math"
 	"math/big"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/renter/proto"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 type utilityUpdateStatus int

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 // The following consts are the different types of severity levels available in

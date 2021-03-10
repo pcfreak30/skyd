@@ -3,8 +3,8 @@ package persist
 import (
 	"io"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/log"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 // Logger is a wrapper for log.Logger.

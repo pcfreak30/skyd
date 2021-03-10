@@ -6,8 +6,8 @@ import (
 
 	"gitlab.com/NebulousLabs/monitor"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // peerConn is a simple type that implements the modules.PeerConn interface.

@@ -4,8 +4,8 @@ import (
 	"encoding/base32"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/crypto"
 
 	"gitlab.com/NebulousLabs/fastrand"
 )

@@ -1,7 +1,7 @@
 package dependencies
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // DependencyUnsyncedConsensus makes the consensus set appear unsynced

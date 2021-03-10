@@ -3,8 +3,8 @@ package modules
 import (
 	"sort"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 var (

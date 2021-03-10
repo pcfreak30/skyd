@@ -5,7 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestPersistTransactionCreate test the callPersistTxnCreated method

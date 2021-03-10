@@ -7,9 +7,9 @@ import (
 	"os"
 	"sync"
 
-	siasync "gitlab.com/NebulousLabs/Sia/sync"
+	siasync "gitlab.com/skynetlabs/skyd/sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 
 	"gitlab.com/NebulousLabs/writeaheadlog"
 

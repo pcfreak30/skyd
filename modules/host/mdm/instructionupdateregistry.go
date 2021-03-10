@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/modules/host/registry"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // instructionUpdateRegistry defines an update to a value in the host's

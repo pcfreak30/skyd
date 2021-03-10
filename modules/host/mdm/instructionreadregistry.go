@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // instructionReadRegistry defines an instruction to read an entry from the

@@ -3,8 +3,8 @@ package consensus
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // TestBacktrackToCurrentPath probes the backtrackToCurrentPath method of the
