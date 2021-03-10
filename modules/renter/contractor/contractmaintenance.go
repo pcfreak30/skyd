@@ -52,6 +52,30 @@ type (
 	}
 )
 
+// initialContractFunding computes the amount of money to put into the first
+// contract formed with a host.
+func initialContractFunding(a modules.Allowance, host modules.HostDBEntry, txnFee, min, max types.Currency) types.Currency {
+	if a.PortalMode() {
+		return a.PaymentContractInitialFunding
+	}
+
+	// Calculate the contract funding with host
+	contractFunds := host.ContractPrice.Add(txnFee).Mul64(ContractFeeFundingMulFactor)
+
+	// Check that the contract funding is reasonable compared to the max and
+	// min initial funding. This is to protect against increases to
+	// allowances being used up to fast and not being able to spread the
+	// funds across new contracts properly, as well as protecting against
+	// contracts renewing too quickly
+	if contractFunds.Cmp(max) > 0 {
+		contractFunds = max
+	}
+	if contractFunds.Cmp(min) < 0 {
+		contractFunds = min
+	}
+	return contractFunds
+}
+
 // callNotifyDoubleSpend is used by the watchdog to alert the contractor
 // whenever a monitored file contract input is double-spent. This function
 // marks down the host score, and marks the contract as !GoodForRenew and
@@ -256,6 +280,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	minimum := allowance.Funds.MulFloat(fileContractMinimumFunding).Div64(allowance.Hosts)
 	if estimatedCost.Cmp(minimum) < 0 {
 		estimatedCost = minimum
+		c.log.Printf("Contract renew amount %v below minimum amount %v", estimatedCost, minimum)
 	}
 	return estimatedCost, nil
 }
@@ -1175,6 +1200,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			minimum := allowance.Funds.MulFloat(fileContractMinimumFunding).Div64(allowance.Hosts)
 			if refreshAmount.Cmp(minimum) < 0 {
 				refreshAmount = minimum
+				c.log.Printf("Contract refresh amount %v below minimum amount %v", refreshAmount, minimum)
 			}
 			refreshSet = append(refreshSet, fileContractRenewal{
 				id:         contract.ID,
@@ -1343,6 +1369,89 @@ func (c *Contractor) threadedContractMaintenance() {
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 	}
 
+	// Get Hosts for contract formation.
+	var hosts []modules.HostDBEntry
+	var neededContracts int
+	if allowance.PortalMode() {
+		neededContracts, hosts = c.managedHostsForPortalFormation(allowance)
+	} else {
+		neededContracts, hosts = c.managedHostsForRegularFormation(allowance)
+	}
+
+	// Form contracts.
+	lf, wl := c.managedFormContracts(fundsRemaining, hosts, neededContracts, allowance, endHeight)
+
+	// Register alerts if necessary.
+	registerLowFundsAlert = registerLowFundsAlert || lf
+	registerWalletLockedDuringMaintenance = registerWalletLockedDuringMaintenance || wl
+}
+
+// managedHostsForPortalFormation returns the hosts to form contracts with for a
+// portal.
+func (c *Contractor) managedHostsForPortalFormation(allowance modules.Allowance) (int, []modules.HostDBEntry) {
+	if !allowance.PortalMode() {
+		build.Critical("managedHostsForPortalFormation was called on a non-portal")
+		return 0, nil
+	}
+	// Get a full list of active hosts from the hostdb.
+	allHosts, err := c.hdb.ActiveHosts()
+	if err != nil {
+		c.log.Printf("Error fetching list of active hosts when attempting to form view contracts: %v", err)
+	}
+	// Get a list of all current contracts.
+	currentContracts := make(map[string]modules.RenterContract)
+	for _, contract := range c.staticContracts.ViewAll() {
+		currentContracts[contract.HostPublicKey.String()] = contract
+	}
+	// Get a map of hosts we have recoverable contracts with.
+	recoverable := make(map[string]struct{})
+	for _, contract := range c.RecoverableContracts() {
+		recoverable[contract.HostPublicKey.String()] = struct{}{}
+	}
+
+	var hosts []modules.HostDBEntry
+	for _, host := range allHosts {
+		// Check if there is already a contract with this host.
+		_, exists := currentContracts[host.PublicKey.String()]
+		if exists {
+			continue
+		}
+
+		// Skip host if it has a dead score.
+		sb, err := c.hdb.ScoreBreakdown(host)
+		if err != nil || sb.Score.Equals(types.NewCurrency64(1)) {
+			c.log.Debugf("skipping host %v due to dead or unknown score (%v)", host.PublicKey, err)
+			continue
+		}
+
+		// Skip host if we have a recoverable contract with it.
+		_, recoverableContract := recoverable[host.PublicKey.String()]
+		if recoverableContract {
+			c.log.Debugf("skipping host %v due to having a recoverable contract with it", host.PublicKey)
+			continue
+		}
+
+		// Check that the price settings of the host are acceptable.
+		hostSettings := host.HostExternalSettings
+		err = staticCheckFormPaymentContractGouging(allowance, hostSettings)
+		if err != nil {
+			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
+			continue
+		}
+
+		// Append host if it passed all checks.
+		hosts = append(hosts, host)
+	}
+	return len(hosts), hosts
+}
+
+// managedHostsForRegularFormation returns the number of hosts needed for
+// non-portal contract formation plus a set of hosts to use.
+func (c *Contractor) managedHostsForRegularFormation(allowance modules.Allowance) (int, []modules.HostDBEntry) {
+	if allowance.PortalMode() {
+		build.Critical("managedHostsForRegularFormation was called on a portal")
+		return 0, nil
+	}
 	// Count the number of contracts which are good for uploading, and then make
 	// more as needed to fill the gap.
 	uploadContracts := 0
@@ -1356,7 +1465,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.mu.RUnlock()
 	if neededContracts <= 0 && allowance.PaymentContractInitialFunding.IsZero() {
 		c.log.Debugln("do not seem to need more contracts")
-		return
+		return 0, nil
 	}
 	if neededContracts > 0 {
 		c.log.Println("need more contracts:", neededContracts)
@@ -1366,11 +1475,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	// already have contracts with and the second one includes all hosts we
 	// have active contracts with. Then select a new batch of hosts to attempt
 	// contract formation with.
-	allContracts := c.staticContracts.ViewAll()
-	c.mu.RLock()
 	var blacklist []types.SiaPublicKey
 	var addressBlacklist []types.SiaPublicKey
-	for _, contract := range allContracts {
+	for _, contract := range c.staticContracts.ViewAll() {
 		blacklist = append(blacklist, contract.HostPublicKey)
 		if !contract.Utility.Locked || contract.Utility.GoodForRenew || contract.Utility.GoodForUpload {
 			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)
@@ -1378,27 +1485,34 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	// Add the hosts we have recoverable contracts with to the blacklist to
 	// avoid losing existing data by forming a new/empty contract.
-	for _, contract := range c.recoverableContracts {
+	for _, contract := range c.RecoverableContracts() {
 		blacklist = append(blacklist, contract.HostPublicKey)
 	}
 
-	// Determine the max and min initial contract funding based on the allowance
-	// settings
-	maxInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Mul64(MaxInitialContractFundingMulFactor).Div64(MaxInitialContractFundingDivFactor)
-	minInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
-	c.mu.RUnlock()
-
-	// Get Hosts
 	hosts, err := c.hdb.RandomHosts(neededContracts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
-		return
+		return 0, nil
 	}
 	c.log.Debugln("trying to form contracts with hosts, pulled this many hosts from hostdb:", len(hosts))
+	return neededContracts, hosts
+}
 
+func (c *Contractor) managedFormContracts(budget types.Currency, hosts []modules.HostDBEntry, neededContracts int, allowance modules.Allowance, endHeight types.BlockHeight) (lowFunds, walletLocked bool) {
 	// Calculate the anticipated transaction fee.
 	_, maxFee := c.tpool.FeeEstimation()
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
+
+	// Determine the max and min initial contract funding based on the allowance
+	// settings
+	maxInitialContractFunds := allowance.Funds.Div64(allowance.Hosts).Mul64(MaxInitialContractFundingMulFactor).Div64(MaxInitialContractFundingDivFactor)
+	minInitialContractFunds := allowance.Funds.Div64(allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
+
+	// Get a list of all current contracts.
+	currentContracts := make(map[string]modules.RenterContract)
+	for _, contract := range c.staticContracts.ViewAll() {
+		currentContracts[contract.HostPublicKey.String()] = contract
+	}
 
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
@@ -1420,31 +1534,19 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Calculate the contract funding with host
-		contractFunds := host.ContractPrice.Add(txnFee).Mul64(ContractFeeFundingMulFactor)
-
-		// Check that the contract funding is reasonable compared to the max and
-		// min initial funding. This is to protect against increases to
-		// allowances being used up to fast and not being able to spread the
-		// funds across new contracts properly, as well as protecting against
-		// contracts renewing too quickly
-		if contractFunds.Cmp(maxInitialContractFunds) > 0 {
-			contractFunds = maxInitialContractFunds
-		}
-		if contractFunds.Cmp(minInitialContractFunds) < 0 {
-			contractFunds = minInitialContractFunds
-		}
+		contractFunds := initialContractFunding(allowance, host, txnFee, minInitialContractFunds, maxInitialContractFunds)
 
 		// Confirm the wallet is still unlocked
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
-			registerWalletLockedDuringMaintenance = true
+			walletLocked = true
 			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
 			return
 		}
 
 		// Determine if we have enough money to form a new contract.
-		if fundsRemaining.Cmp(contractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
-			registerLowFundsAlert = true
+		if budget.Cmp(contractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
+			lowFunds = true
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
 		}
@@ -1463,7 +1565,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
 			continue
 		}
-		fundsRemaining = fundsRemaining.Sub(fundsSpent)
+		budget = budget.Sub(fundsSpent)
 		neededContracts--
 
 		sb, err := c.hdb.ScoreBreakdown(host)
@@ -1498,93 +1600,5 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("Unable to save the contractor:", err)
 		}
 	}
-
-	// Portals will need to form additional contracts with any hosts that they
-	// do not currently have contracts with. All other nodes can exit here.
-	if !allowance.PortalMode() {
-		return
-	}
-
-	// Get a full list of active hosts from the hostdb.
-	allHosts, err := c.hdb.ActiveHosts()
-	if err != nil {
-		c.log.Printf("Error fetching list of active hosts when attempting to form view contracts: %v", err)
-	}
-	// Get a list of all current contracts.
-	allContracts = c.staticContracts.ViewAll()
-	currentContracts := make(map[string]modules.RenterContract)
-	for _, contract := range allContracts {
-		currentContracts[contract.HostPublicKey.String()] = contract
-	}
-	for _, host := range allHosts {
-		// Check if maintenance should be stopped.
-		select {
-		case <-c.tg.StopChan():
-			return
-		case <-c.interruptMaintenance:
-			return
-		default:
-		}
-
-		// Check if there is already a contract with this host.
-		_, exists := currentContracts[host.PublicKey.String()]
-		if exists {
-			continue
-		}
-
-		// Skip host if it has a dead score.
-		sb, err := c.hdb.ScoreBreakdown(host)
-		if err != nil || sb.Score.Equals(types.NewCurrency64(1)) {
-			c.log.Debugf("skipping host %v due to dead or unknown score (%v)", host.PublicKey, err)
-			continue
-		}
-
-		// Check that the price settings of the host are acceptable.
-		hostSettings := host.HostExternalSettings
-		err = staticCheckFormPaymentContractGouging(allowance, hostSettings)
-		if err != nil {
-			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
-			continue
-		}
-
-		// Check that the wallet is unlocked.
-		unlocked, err := c.wallet.Unlocked()
-		if !unlocked || err != nil {
-			registerWalletLockedDuringMaintenance = true
-			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
-			return
-		}
-
-		// Determine if there is enough money to form a new contract.
-		if fundsRemaining.Cmp(allowance.PaymentContractInitialFunding) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
-			registerLowFundsAlert = true
-			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
-			break
-		}
-
-		// If we are using a custom resolver we need to replace the domain name
-		// with 127.0.0.1 to be able to form contracts.
-		if c.staticDeps.Disrupt("customResolver") {
-			port := host.NetAddress.Port()
-			host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
-		}
-
-		// Attempt forming a contract with this host.
-		start := time.Now()
-		fundsSpent, newContract, err := c.managedNewContract(host, allowance.PaymentContractInitialFunding, endHeight)
-		if err != nil {
-			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
-			continue
-		}
-		fundsRemaining = fundsRemaining.Sub(fundsSpent)
-		c.log.Println("A view contract has been formed with a host:", newContract.ID)
-
-		// Add this contract to the contractor and save.
-		c.mu.Lock()
-		err = c.save()
-		c.mu.Unlock()
-		if err != nil {
-			c.log.Println("Unable to save the contractor:", err)
-		}
-	}
+	return
 }
