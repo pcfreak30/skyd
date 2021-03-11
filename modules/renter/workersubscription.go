@@ -19,7 +19,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/types"
 )
 
-// TODO: (f/u) testing for account deposits and withdrawals
 // TODO: (f/u) cooldown testing
 
 var (
