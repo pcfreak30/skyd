@@ -19,7 +19,7 @@ func TestSkykeyCommands(t *testing.T) {
 		t.SkipNow()
 	}
 
-	groupDir := siacTestDir(t.Name())
+	groupDir := skycTestDir(t.Name())
 
 	// Define subtests
 	subTests := []subTest{

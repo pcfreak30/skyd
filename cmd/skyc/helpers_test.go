@@ -25,18 +25,18 @@ type outputCatcher struct {
 	outC       chan string
 }
 
-// siacCmdSubTest is a helper struct for running siac Cobra commands subtests
+// skycCmdSubTest is a helper struct for running skyc Cobra commands subtests
 // when subtests need command to run and expected output
-type siacCmdSubTest struct {
+type skycCmdSubTest struct {
 	name               string
-	test               siacCmdTestFn
+	test               skycCmdTestFn
 	cmd                *cobra.Command
 	cmdStrs            []string
 	expectedOutPattern string
 }
 
-// siacCmdTestFn is a type of function to pass to siacCmdSubTest
-type siacCmdTestFn func(*testing.T, *cobra.Command, []string, string)
+// skycCmdTestFn is a type of function to pass to skycCmdSubTest
+type skycCmdTestFn func(*testing.T, *cobra.Command, []string, string)
 
 // subTest is a helper struct for running subtests when tests can use the same
 // test http client
@@ -55,8 +55,8 @@ func escapeRegexChars(s string) string {
 	return res
 }
 
-// executeSiacCommand is a pass-through function to execute siac cobra command
-func executeSiacCommand(root *cobra.Command, args ...string) (output string, err error) {
+// executeSkycCommand is a pass-through function to execute skyc cobra command
+func executeSkycCommand(root *cobra.Command, args ...string) (output string, err error) {
 	// Recover from expected die() panic, rethrow any not expected panic
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -67,12 +67,12 @@ func executeSiacCommand(root *cobra.Command, args ...string) (output string, err
 			}
 		}
 	}()
-	_, output, err = executeSiacCommandC(root, args...)
+	_, output, err = executeSkycCommandC(root, args...)
 	return output, err
 }
 
-// executeSiacCommandC executes cobra command
-func executeSiacCommandC(root *cobra.Command, args ...string) (c *cobra.Command, output string, err error) {
+// executeSkycCommandC executes cobra command
+func executeSkycCommandC(root *cobra.Command, args ...string) (c *cobra.Command, output string, err error) {
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetErr(buf)
@@ -83,13 +83,13 @@ func executeSiacCommandC(root *cobra.Command, args ...string) (c *cobra.Command,
 	return c, buf.String(), err
 }
 
-// getRootCmdForSiacCmdsTests creates and initializes a new instance of siac Cobra
+// getRootCmdForSkycCmdsTests creates and initializes a new instance of skyc Cobra
 // command
-func getRootCmdForSiacCmdsTests(dir string) *cobra.Command {
-	// create new instance of siac cobra command
+func getRootCmdForSkycCmdsTests(dir string) *cobra.Command {
+	// create new instance of skyc cobra command
 	root := initCmds()
 
-	// initialize a siac cobra command
+	// initialize a skyc cobra command
 	initClient(root, &verbose, &httpClient, &dir, &alertSuppress)
 
 	return root
@@ -134,9 +134,9 @@ func newTestNode(dir string) (*siatest.TestNode, error) {
 	return n, nil
 }
 
-// runSiacCmdSubTests is a helper function to run siac Cobra command subtests
+// runSkycCmdSubTests is a helper function to run skyc Cobra command subtests
 // when subtests need command to run and expected output
-func runSiacCmdSubTests(t *testing.T, tests []siacCmdSubTest) error {
+func runSkycCmdSubTests(t *testing.T, tests []skycCmdSubTest) error {
 	// Run subtests
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -168,11 +168,11 @@ func runSubTests(t *testing.T, directory string, tests []subTest) error {
 	return nil
 }
 
-// siacTestDir creates a temporary Sia testing directory for a cmd/siac test,
+// skycTestDir creates a temporary Sia testing directory for a cmd/skyc test,
 // removing any files or directories that previously existed at that location.
 // This should only every be called once per test. Otherwise it will delete the
 // directory again.
-func siacTestDir(testName string) string {
+func skycTestDir(testName string) string {
 	path := siatest.TestDir("cmd/skyc", testName)
 	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
@@ -180,9 +180,9 @@ func siacTestDir(testName string) string {
 	return path
 }
 
-// testGenericSiacCmd is a helper function to test siac cobra commands
+// testGenericSkycCmd is a helper function to test skyc cobra commands
 // specified in cmds for expected output regex pattern
-func testGenericSiacCmd(t *testing.T, root *cobra.Command, cmds []string, expOutPattern string) {
+func testGenericSkycCmd(t *testing.T, root *cobra.Command, cmds []string, expOutPattern string) {
 	// catch stdout and stderr
 	c, err := newOutputCatcher()
 	if err != nil {
@@ -190,7 +190,7 @@ func testGenericSiacCmd(t *testing.T, root *cobra.Command, cmds []string, expOut
 	}
 
 	// execute command
-	cobraOutput, _ := executeSiacCommand(root, cmds...)
+	cobraOutput, _ := executeSkycCommand(root, cmds...)
 
 	// stop catching stdout/stderr, get catched outputs
 	siaOutput, err := c.stop()
@@ -202,7 +202,7 @@ func testGenericSiacCmd(t *testing.T, root *cobra.Command, cmds []string, expOut
 	// There are 2 types of output:
 	// 1) Output generated by Cobra commands (e.g. when using -h) or Cobra
 	//    errors (e.g. unknown cobra commands or flags).
-	// 2) Output generated by siac to stdout and to stderr
+	// 2) Output generated by skyc to stdout and to stderr
 	var output string
 
 	if cobraOutput != "" {

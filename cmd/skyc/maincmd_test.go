@@ -8,16 +8,16 @@ import (
 	"gitlab.com/skynetlabs/skyd/build"
 )
 
-// TestRootSiacCmd tests root siac command for expected outputs. The test
+// TestRootSkycCmd tests root siac command for expected outputs. The test
 // runs its own node and requires no service running at port 5555.
-func TestRootSiacCmd(t *testing.T) {
+func TestRootSkycCmd(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
 	// Create a test node for this test group
-	groupDir := siacTestDir(t.Name())
+	groupDir := skycTestDir(t.Name())
 	n, err := newTestNode(groupDir)
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +29,7 @@ func TestRootSiacCmd(t *testing.T) {
 	}()
 
 	// Initialize siac root command with its subcommands and flags
-	root := getRootCmdForSiacCmdsTests(groupDir)
+	root := getRootCmdForSkycCmdsTests(groupDir)
 
 	// define test constants:
 	// Regular expressions to check siac output
@@ -83,59 +83,59 @@ Renter Rate limits:
 	// Define subtests
 	// We can't test siad on default address (port) when test node has
 	// dynamically allocated port, we have to use node address.
-	subTests := []siacCmdSubTest{
+	subTests := []skycCmdSubTest{
 		{
 			name:               "TestRootCmdWithShortAddressFlagIPv6",
-			test:               testGenericSiacCmd,
+			test:               testGenericSkycCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-a", IPv6addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithShortAddressFlagIPv4",
-			test:               testGenericSiacCmd,
+			test:               testGenericSkycCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-a", IPv4Addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithLongAddressFlagIPv6",
-			test:               testGenericSiacCmd,
+			test:               testGenericSkycCmd,
 			cmd:                root,
 			cmdStrs:            []string{"--addr", IPv6addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithLongAddressFlagIPv4",
-			test:               testGenericSiacCmd,
+			test:               testGenericSkycCmd,
 			cmd:                root,
 			cmdStrs:            []string{"--addr", IPv4Addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithVerboseFlag",
-			test:               testGenericSiacCmd,
+			test:               testGenericSkycCmd,
 			cmd:                root,
 			cmdStrs:            []string{"--addr", IPv4Addr, "-v"},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + rootCmdVerbosePartPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithInvalidFlag",
-			test:               testGenericSiacCmd,
+			test:               testGenericSkycCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-x"},
 			expectedOutPattern: begin + "Error: unknown shorthand flag: 'x' in -x" + nl + rootCmdUsagePattern + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithInvalidAddress",
-			test:               testGenericSiacCmd,
+			test:               testGenericSkycCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-a", "localhost:5555"},
 			expectedOutPattern: begin + connectionRefusedPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithHelpFlag",
-			test:               testGenericSiacCmd,
+			test:               testGenericSkycCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-h"},
 			expectedOutPattern: begin + siaClientVersionPattern + nl + nl + rootCmdUsagePattern + end,
@@ -143,7 +143,7 @@ Renter Rate limits:
 	}
 
 	// run tests
-	err = runSiacCmdSubTests(t, subTests)
+	err = runSkycCmdSubTests(t, subTests)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func getCmdUsage(t *testing.T, cmd *cobra.Command) string {
 `
 	usage = strings.ReplaceAll(usage, beforeHelpCommand, beforeHelpCommand+nl+helpCommand)
 	beforeHelpFlag := "the password for the API's http authentication"
-	helpFlag := `  -h, --help                   help for .*siac(\.test|)`
+	helpFlag := `  -h, --help                   help for .*skyc(\.test|)`
 	cmdUsagePattern := strings.ReplaceAll(usage, beforeHelpFlag, beforeHelpFlag+nl+helpFlag)
 
 	return cmdUsagePattern
