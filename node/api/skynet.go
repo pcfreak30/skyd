@@ -1037,6 +1037,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// build the upload parameters
 	sup := modules.SkyfileUploadParameters{
 		BaseChunkRedundancy: params.baseChunkRedundancy,
+		Batch:               params.batch,
 		DryRun:              params.dryRun,
 		Force:               params.force,
 		SiaPath:             params.siaPath,
@@ -1057,13 +1058,44 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// set the reader
 	var reader modules.SkyfileUploadReader
-	if isMultipartRequest(headers.mediaType) {
+	isMultiPart := isMultipartRequest(headers.mediaType)
+	if isMultiPart {
 		reader, err = modules.NewSkyfileMultipartReaderFromRequest(req, sup)
 	} else {
 		reader = modules.NewSkyfileReader(req.Body, sup)
 	}
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("unable to create multipart reader: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Check if this upload is intended to be batched
+	if params.batch {
+		// Batch upload
+		skylink, err := api.renter.BatchSkyfile(sup, reader)
+		if errors.Contains(err, renter.ErrSkylinkBlocked) {
+			WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+			return
+		} else if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to upload file in a batch to Skynet: %v", err)}, http.StatusInternalServerError)
+			return
+		}
+
+		// Update performance stats, assume a sector size because of batching
+		// a small skyfile.
+		skynetPerformanceStatsMu.Lock()
+		skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime), modules.SectorSize)
+		skynetPerformanceStatsMu.Unlock()
+
+		// Set the Skylink response header
+		w.Header().Set("Skynet-Skylink", skylink.String())
+
+		// Return success
+		WriteJSON(w, SkynetSkyfileHandlerPOST{
+			Skylink:    skylink.String(),
+			MerkleRoot: skylink.MerkleRoot(),
+			Bitfield:   skylink.Bitfield(),
+		})
 		return
 	}
 

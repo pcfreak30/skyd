@@ -28,6 +28,7 @@ type (
 	// string parameters on upload
 	skyfileUploadParams struct {
 		baseChunkRedundancy uint8
+		batch               bool
 		defaultPath         string
 		convertPath         string
 		disableDefaultPath  bool
@@ -144,6 +145,15 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &baseChunkRedundancy); err != nil {
 			return nil, nil, errors.AddContext(err, "unable to parse 'basechunkredundancy' parameter")
+		}
+	}
+
+	// parse 'batch' query parameter
+	var batch bool
+	if strBatch := queryForm.Get("batch"); strBatch != "" {
+		batch, err = strconv.ParseBool(strBatch)
+		if err != nil {
+			return nil, nil, errors.AddContext(err, "unable to parse 'batch' parameter")
 		}
 	}
 
@@ -271,9 +281,19 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		return nil, nil, errors.New("DefaultPath and DisableDefaultPath can only be set on multipart uploads")
 	}
 
+	// verify multipart uploads and batch are not combined
+	if !isMultipartRequest(mediaType) && batch {
+		return nil, nil, errors.New("cannot batch multipart uploads")
+	}
+
 	// verify convertpath and filename are not combined
 	if convertPath != "" && filename != "" {
 		return nil, nil, errors.New("cannot set both a 'convertpath' and a 'filename'")
+	}
+
+	// verify convertpath and batch are not combined
+	if convertPath != "" && batch {
+		return nil, nil, errors.New("cannot batch siafile conversion")
 	}
 
 	// verify skykeyname and skykeyid are not combined
@@ -288,6 +308,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	}
 	params := &skyfileUploadParams{
 		baseChunkRedundancy: baseChunkRedundancy,
+		batch:               batch,
 		convertPath:         convertPath,
 		defaultPath:         defaultPath,
 		disableDefaultPath:  disableDefaultPath,

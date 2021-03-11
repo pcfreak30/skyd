@@ -32,7 +32,7 @@ func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata [
 // using its Skylink. Returns the skylink, the parameters used for the upload
 // and potentially an error.
 func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata []byte, skykeyName string, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	return tn.UploadSkyfileBlockingCustom(filename, filedata, skykeyName, 2, force, nil)
+	return tn.UploadSkyfileBlockingCustom(filename, filedata, skykeyName, 2, force, false, nil)
 }
 
 // UploadNewSkyfileMonetizedBlocking attempts to upload a skyfile with given
@@ -40,12 +40,12 @@ func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata 
 // will verify the file can be downloaded using its Skylink. Returns the
 // skylink, the parameters used for the upload and potentially an error.
 func (tn *TestNode) UploadNewSkyfileMonetizedBlocking(filename string, filedata []byte, force bool, monetization *modules.Monetization) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	return tn.UploadSkyfileBlockingCustom(filename, filedata, "", 2, force, monetization)
+	return tn.UploadSkyfileBlockingCustom(filename, filedata, "", 2, force, false, monetization)
 }
 
 // UploadSkyfileCustom attempts to upload a skyfile. Returns the skylink, the
 // parameters used for the upload and potentially an error.
-func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force bool, monetization *modules.Monetization) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, rf *RemoteFile, err error) {
+func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force, batch bool, monetization *modules.Monetization) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, rf *RemoteFile, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -65,6 +65,7 @@ func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykey
 		Force:               force,
 		Root:                false,
 		SkykeyName:          skykeyName,
+		Batch:               batch,
 	}
 
 	// upload a skyfile
@@ -94,10 +95,10 @@ func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykey
 // successfully performed the upload, it will verify the file can be downloaded
 // using its Skylink. Returns the skylink, the parameters used for the upload
 // and potentially an error.
-func (tn *TestNode) UploadSkyfileBlockingCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force bool, monetizers *modules.Monetization) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+func (tn *TestNode) UploadSkyfileBlockingCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force, batch bool, monetizers *modules.Monetization) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// Upload the file
 	var rf *RemoteFile
-	skylink, sup, sshp, rf, err = tn.UploadSkyfileCustom(filename, filedata, skykeyName, baseChunkRedundancy, force, monetizers)
+	skylink, sup, sshp, rf, err = tn.UploadSkyfileCustom(filename, filedata, skykeyName, baseChunkRedundancy, force, batch, monetizers)
 	if err != nil {
 		err = errors.AddContext(err, "Skyfile upload failed")
 		return
