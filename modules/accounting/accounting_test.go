@@ -48,7 +48,7 @@ func testAccounting(t *testing.T) {
 	}
 
 	// Check accounting
-	ais, err := a.Accounting(0, 0)
+	ais, err := a.Accounting(0, DefaultEndRangeTime)
 	if err != nil {
 		t.Fatal(err)
 	}

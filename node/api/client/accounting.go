@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/skynetlabs/skyd/modules"
 )
 
 // AccountingGet requests the /accounting resource
