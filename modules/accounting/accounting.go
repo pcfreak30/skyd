@@ -1,16 +1,29 @@
 package accounting
 
 import (
+	"math"
+	"sort"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
+	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/persist"
 )
 
+const (
+	// DefaultEndRangeTime is the default end time used when one isn't provided
+	// by the user.
+	DefaultEndRangeTime = math.MaxInt64
+)
+
 var (
+	// ErrInvalidRange is the error returned if the end time is before the start
+	// time.
+	ErrInvalidRange = errors.New("invalid range, end must be after start")
+
 	// errNilDeps is the error returned when no dependencies are provided
 	errNilDeps = errors.New("dependencies cannot be nil")
 
@@ -19,20 +32,29 @@ var (
 
 	// errNilWallet is the error returned when the wallet is nil
 	errNilWallet = errors.New("wallet cannot be nil")
+
+	// errNoEntriesFound is the error returned when no entries are found for
+	// a given range
+	errNoEntriesFound = errors.New("no entries found for given range")
 )
 
 // Accounting contains the information needed for providing accounting
 // information about a Sia node.
 type Accounting struct {
-	// Modules whos accounting information is tracked
+	// Modules whose accounting information is tracked
 	staticFeeManager modules.FeeManager
 	staticHost       modules.Host
 	staticMiner      modules.Miner
 	staticRenter     modules.Renter
 	staticWallet     modules.Wallet
 
-	// Accounting module settings
-	persistence      persistence
+	// history is the entire persisted history of the accounting information
+	//
+	// NOTE: We only persist a small amount of data daily so this is OK and we are
+	// not concerned with this struct taking up much memory.
+	history []modules.AccountingInfo
+
+	// staticPersistDir is the accounting persist location on disk
 	staticPersistDir string
 
 	// Utilities
@@ -87,20 +109,33 @@ func NewCustomAccounting(fm modules.FeeManager, h modules.Host, m modules.Miner,
 }
 
 // Accounting returns the current accounting information
-func (a *Accounting) Accounting() (modules.AccountingInfo, error) {
+func (a *Accounting) Accounting(start, end int64) ([]modules.AccountingInfo, error) {
 	err := a.staticTG.Add()
 	if err != nil {
-		return modules.AccountingInfo{}, err
+		return nil, err
 	}
 	defer a.staticTG.Done()
+
+	// Check start and end range
+	if end < start {
+		return nil, ErrInvalidRange
+	}
 
 	// Update the accounting information
 	ai, err := a.callUpdateAccounting()
 	if err != nil {
-		return modules.AccountingInfo{}, errors.AddContext(err, "unable to update the accounting information")
+		return nil, errors.AddContext(err, "unable to update the accounting information")
 	}
 
-	return ai, nil
+	// Return the requested range
+	a.mu.Lock()
+	history := append(a.history, ai)
+	a.mu.Unlock()
+	ais := accountingRange(history, start, end)
+	if len(ais) == 0 {
+		return nil, errNoEntriesFound
+	}
+	return ais, nil
 }
 
 // Close closes the accounting module
@@ -111,9 +146,34 @@ func (a *Accounting) Close() error {
 	return a.staticTG.Stop()
 }
 
+// accountingRange returns a range of accounting information from a provided
+// history
+func accountingRange(history []modules.AccountingInfo, start, end int64) []modules.AccountingInfo {
+	// Sanity check
+	if end < start {
+		build.Critical(ErrInvalidRange)
+		return nil
+	}
+
+	// Find Start and end indexes
+	startIndex := sort.Search(len(history), func(i int) bool {
+		return history[i].Timestamp >= start
+	})
+	endIndex := sort.Search(len(history), func(i int) bool {
+		return history[i].Timestamp > end
+	})
+
+	// Return range
+	if endIndex == len(history) {
+		return history[startIndex:]
+	}
+	return history[startIndex:endIndex]
+}
+
 // callUpdateAccounting updates the accounting information
 func (a *Accounting) callUpdateAccounting() (modules.AccountingInfo, error) {
 	var ai modules.AccountingInfo
+	ai.Timestamp = time.Now().Unix()
 
 	// Get Renter information
 	//
@@ -136,16 +196,7 @@ func (a *Accounting) callUpdateAccounting() (modules.AccountingInfo, error) {
 		ai.Wallet.ConfirmedSiafundBalance = sf
 	}
 
-	// Update the Accounting state
-	err := errors.Compose(renterErr, walletErr)
-	if err == nil {
-		a.mu.Lock()
-		a.persistence.Renter = ai.Renter
-		a.persistence.Wallet = ai.Wallet
-		a.persistence.Timestamp = time.Now().Unix()
-		a.mu.Unlock()
-	}
-	return ai, err
+	return ai, errors.Compose(renterErr, walletErr)
 }
 
 // Enforce that Accounting satisfies the modules.Accounting interface.

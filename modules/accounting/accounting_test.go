@@ -1,6 +1,7 @@
 package accounting
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -10,6 +11,8 @@ import (
 
 // TestAccounting tests the basic functionality of the accounting package
 func TestAccounting(t *testing.T) {
+	t.Run("AccountingRange", testAccountingRange)
+
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -38,25 +41,18 @@ func testAccounting(t *testing.T) {
 
 	// Initial persistence should be empty
 	a.mu.Lock()
-	p := a.persistence
+	lenHistroy := len(a.history)
 	a.mu.Unlock()
-	if !reflect.DeepEqual(p, persistence{}) {
-		t.Error("initial persistence should be empty")
+	if lenHistroy != 0 {
+		t.Error("history should be empty")
 	}
 
 	// Check accounting
-	ai, err := a.Accounting()
+	ais, err := a.Accounting(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Check for a returned value
-	expected := modules.AccountingInfo{
-		Renter: ai.Renter,
-		Wallet: ai.Wallet,
-	}
-	if !reflect.DeepEqual(ai, expected) {
-		t.Error("accounting information is incorrect")
-	}
+	ai := ais[0]
 	// Check renter explicitly
 	if reflect.DeepEqual(ai.Renter, modules.RenterAccounting{}) {
 		t.Error("renter accounting information is empty")
@@ -65,26 +61,88 @@ func testAccounting(t *testing.T) {
 	if reflect.DeepEqual(ai.Wallet, modules.WalletAccounting{}) {
 		t.Error("wallet accounting information is empty")
 	}
+	// Check timestamp explicitly
+	if ai.Timestamp == 0 {
+		t.Error("timestamp not set")
+	}
 
-	// Persistence should have been updated
+	// The history should still be empty as a call to Accounting does not persist
+	// the update to disk.
 	a.mu.Lock()
-	p = a.persistence
+	lenHistroy = len(a.history)
 	a.mu.Unlock()
-	ep := persistence{
-		Renter: p.Renter,
-		Wallet: p.Wallet,
+	if lenHistroy != 0 {
+		t.Error("history should be empty")
+	}
+}
 
-		Timestamp: p.Timestamp,
+// testAccountingRange probes the accountingRange function
+func testAccountingRange(t *testing.T) {
+	// Create a history
+	var first, mid, last int64 = 2, 4, 10
+	history := []modules.AccountingInfo{
+		{Timestamp: first},
+		{Timestamp: 3},
+		{Timestamp: mid},
+		{Timestamp: mid},
+		{Timestamp: mid},
+		{Timestamp: last},
 	}
-	if !reflect.DeepEqual(p, ep) {
-		t.Error("persistence information is incorrect")
+	all := len(history)
+
+	// Create range tests
+	before := first - 1
+	after := last + 1
+	var rangeTests = []struct {
+		start      int64
+		end        int64
+		numEntries int
+	}{
+		// Conditions that should return all
+		{0, after, all},
+		{0, DefaultEndRangeTime, all},
+		{0, last, all},
+		{before, after, all},
+		{before, last, all},
+		{first, last, all},
+		{first, after, all},
+
+		// Conditions that should return none
+		{0, 0, 0},
+		{0, before, 0},
+		{before, before, 0},
+		{mid + 1, last - 1, 0},
+		{after, after, 0},
+
+		// Conditions that should return a set amount
+		{0, first, 1},
+		{first, first, 1},
+		{before, mid, 5},
+		{first, mid, 5},
+		{mid, mid, 3},
+		{mid, last, 4},
+		{mid, after, 4},
+		{last, last, 1},
 	}
-	if !reflect.DeepEqual(p.Renter, ai.Renter) {
-		t.Error("renter accounting persistence not updated")
+
+	// Run range tests
+	for _, rt := range rangeTests {
+		// Grab accounting information range
+		ais := accountingRange(history, rt.start, rt.end)
+		if len(ais) != rt.numEntries {
+			test := fmt.Sprintf("Testing start %v, end %v, expected %v", rt.start, rt.end, rt.numEntries)
+			t.Log(test)
+			t.Errorf("expected %v got %v", rt.numEntries, len(ais))
+		}
 	}
-	if !reflect.DeepEqual(p.Wallet, ai.Wallet) {
-		t.Error("wallet accounting persistence not updated")
-	}
+
+	// Test build.Critical for end < start
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected build.critical")
+		}
+	}()
+	accountingRange(nil, 1, 0)
 }
 
 // testNewCustomAccounting probes the NewCustomAccounting function
