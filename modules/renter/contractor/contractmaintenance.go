@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -52,6 +53,60 @@ type (
 	}
 )
 
+// hostsForPortalFormation returns the hosts to form contracts with for a
+// portal.
+func hostsForPortalFormation(allowance modules.Allowance, allContracts []modules.RenterContract, recoverableContracts []modules.RecoverableContract, activeHosts []modules.HostDBEntry, l *persist.Logger, scoreBreakdown func(modules.HostDBEntry) (modules.HostScoreBreakdown, error)) (int, []modules.HostDBEntry) {
+	if !allowance.PortalMode() {
+		build.Critical("managedHostsForPortalFormation was called on a non-portal")
+		return 0, nil
+	}
+	// Get a list of all current contracts.
+	currentContracts := make(map[string]modules.RenterContract)
+	for _, contract := range allContracts {
+		currentContracts[contract.HostPublicKey.String()] = contract
+	}
+	// Get a map of hosts we have recoverable contracts with.
+	recoverable := make(map[string]struct{})
+	for _, contract := range recoverableContracts {
+		recoverable[contract.HostPublicKey.String()] = struct{}{}
+	}
+
+	var hosts []modules.HostDBEntry
+	for _, host := range activeHosts {
+		// Check if there is already a contract with this host.
+		_, exists := currentContracts[host.PublicKey.String()]
+		if exists {
+			continue
+		}
+
+		// Skip host if it has a dead score.
+		sb, err := scoreBreakdown(host)
+		if err != nil || sb.Score.Cmp(types.NewCurrency64(1)) <= 0 {
+			l.Debugf("skipping host %v due to dead or unknown score (%v)", host.PublicKey, err)
+			continue
+		}
+
+		// Skip host if we have a recoverable contract with it.
+		_, recoverableContract := recoverable[host.PublicKey.String()]
+		if recoverableContract {
+			l.Debugf("skipping host %v due to having a recoverable contract with it", host.PublicKey)
+			continue
+		}
+
+		// Check that the price settings of the host are acceptable.
+		hostSettings := host.HostExternalSettings
+		err = staticCheckFormPaymentContractGouging(allowance, hostSettings)
+		if err != nil {
+			l.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
+			continue
+		}
+
+		// Append host if it passed all checks.
+		hosts = append(hosts, host)
+	}
+	return len(hosts), hosts
+}
+
 // initialContractFunding computes the amount of money to put into the first
 // contract formed with a host.
 func initialContractFunding(a modules.Allowance, host modules.HostDBEntry, txnFee, min, max types.Currency) types.Currency {
@@ -67,11 +122,14 @@ func initialContractFunding(a modules.Allowance, host modules.HostDBEntry, txnFe
 	// allowances being used up to fast and not being able to spread the
 	// funds across new contracts properly, as well as protecting against
 	// contracts renewing too quickly
+	if min.Cmp(max) > 0 {
+		build.Critical(fmt.Sprintf("WARN: initialContractFunding min > max (%v > %v)", min, max))
+	}
 	if contractFunds.Cmp(max) > 0 {
-		contractFunds = max
+		return max
 	}
 	if contractFunds.Cmp(min) < 0 {
-		contractFunds = min
+		return min
 	}
 	return contractFunds
 }
@@ -1410,60 +1468,12 @@ func (c *Contractor) threadedContractMaintenance() {
 // managedHostsForPortalFormation returns the hosts to form contracts with for a
 // portal.
 func (c *Contractor) managedHostsForPortalFormation(allowance modules.Allowance) (int, []modules.HostDBEntry) {
-	if !allowance.PortalMode() {
-		build.Critical("managedHostsForPortalFormation was called on a non-portal")
-		return 0, nil
-	}
-	// Get a full list of active hosts from the hostdb.
-	allHosts, err := c.hdb.ActiveHosts()
+	hosts, err := c.hdb.ActiveHosts()
 	if err != nil {
 		c.log.Printf("Error fetching list of active hosts when attempting to form view contracts: %v", err)
+		return 0, nil
 	}
-	// Get a list of all current contracts.
-	currentContracts := make(map[string]modules.RenterContract)
-	for _, contract := range c.staticContracts.ViewAll() {
-		currentContracts[contract.HostPublicKey.String()] = contract
-	}
-	// Get a map of hosts we have recoverable contracts with.
-	recoverable := make(map[string]struct{})
-	for _, contract := range c.RecoverableContracts() {
-		recoverable[contract.HostPublicKey.String()] = struct{}{}
-	}
-
-	var hosts []modules.HostDBEntry
-	for _, host := range allHosts {
-		// Check if there is already a contract with this host.
-		_, exists := currentContracts[host.PublicKey.String()]
-		if exists {
-			continue
-		}
-
-		// Skip host if it has a dead score.
-		sb, err := c.hdb.ScoreBreakdown(host)
-		if err != nil || sb.Score.Equals(types.NewCurrency64(1)) {
-			c.log.Debugf("skipping host %v due to dead or unknown score (%v)", host.PublicKey, err)
-			continue
-		}
-
-		// Skip host if we have a recoverable contract with it.
-		_, recoverableContract := recoverable[host.PublicKey.String()]
-		if recoverableContract {
-			c.log.Debugf("skipping host %v due to having a recoverable contract with it", host.PublicKey)
-			continue
-		}
-
-		// Check that the price settings of the host are acceptable.
-		hostSettings := host.HostExternalSettings
-		err = staticCheckFormPaymentContractGouging(allowance, hostSettings)
-		if err != nil {
-			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
-			continue
-		}
-
-		// Append host if it passed all checks.
-		hosts = append(hosts, host)
-	}
-	return len(hosts), hosts
+	return hostsForPortalFormation(allowance, c.staticContracts.ViewAll(), c.RecoverableContracts(), hosts, c.log, c.hdb.ScoreBreakdown)
 }
 
 // managedHostsForRegularFormation returns the number of hosts needed for

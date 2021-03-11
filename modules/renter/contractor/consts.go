@@ -57,7 +57,7 @@ var (
 	// 2,000 SC total for 20 contracts, etc.), then the minimum amount of funds
 	// that a contract would be allowed to have is fileContractMinimumFunding *
 	// 100SC.
-	fileContractMinimumFunding = float64(0.15)
+	fileContractMinimumFunding = float64(0.05)
 
 	// MinContractFundRenewalThreshold defines the ratio of remaining funds to
 	// total contract cost below which the contractor will prematurely renew a
