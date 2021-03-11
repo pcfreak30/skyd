@@ -222,6 +222,9 @@ type Renter struct {
 	// These values are cached to prevent recomputing them too often.
 	cachedUtilities cachedUtilities
 
+	// staticBatchManager manages batching skyfile uploads for the Renter.
+	staticBatchManager *skylinkBatchManager
+
 	// The renter's bandwidth ratelimit.
 	rl *ratelimit.RateLimit
 
@@ -1112,10 +1115,14 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		}
 		go r.threadedUpdateRenterHealth()
 	}
+
 	// We do not group the staticBubbleScheduler's background thread with the
 	// threads disabled by "DisableRepairAndHealthLoops" so that manual calls to
 	// for bubble updates are processed.
 	go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
+
+	// Initialize the batch manager
+	r.newSkylinkBatchManager()
 
 	// Unsubscribe on shutdown.
 	err = r.tg.OnStop(func() error {
