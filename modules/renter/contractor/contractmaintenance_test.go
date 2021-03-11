@@ -3,6 +3,7 @@ package contractor
 import (
 	"io/ioutil"
 	"math"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -222,6 +223,126 @@ func TestHostsForPortalFormation(t *testing.T) {
 	}
 	// needed is simply set to len(hosts) for portals.
 	if needed != len(hosts) {
+		t.Fatal("needed not set")
+	}
+}
+
+// TestHostsForRegularFormation is a unit test for hostsForRegularFormation.
+func TestHostsForRegularFormation(t *testing.T) {
+	a := modules.Allowance{
+		Hosts: 5,
+	}
+
+	// helpers
+	randomID := func() types.FileContractID {
+		var id types.FileContractID
+		fastrand.Read(id[:])
+		return id
+	}
+	randomPK := func() types.SiaPublicKey {
+		var spk types.SiaPublicKey
+		spk.Key = fastrand.Bytes(crypto.PublicKeySize)
+		return spk
+	}
+
+	// Create one active contract and one inactive contract for each reason.
+	allContracts := []modules.RenterContract{
+		// Active
+		{
+			ID:            randomID(),
+			HostPublicKey: randomPK(),
+		},
+		// Locked
+		{
+			ID:            randomID(),
+			HostPublicKey: randomPK(),
+			Utility: modules.ContractUtility{
+				Locked: true,
+			},
+		},
+		// Not good for renew.
+		{
+			ID:            randomID(),
+			HostPublicKey: randomPK(),
+			Utility: modules.ContractUtility{
+				GoodForRenew: true,
+			},
+		},
+		// Not good for upload.
+		{
+			ID:            randomID(),
+			HostPublicKey: randomPK(),
+			Utility: modules.ContractUtility{
+				GoodForUpload: true,
+			},
+		},
+	}
+	// Create one recoverable contracts.
+	recoverableContracts := []modules.RecoverableContract{
+		{
+			ID:            randomID(),
+			HostPublicKey: randomPK(),
+		},
+	}
+	l, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure random hosts is called with the right args.
+	var returnedHosts []modules.HostDBEntry
+	randomHosts := func(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
+		// Check the expected n. -1 comes from the one host we have in
+		// allContracts that's gfu.
+		expectedN := (a.Hosts-1)*4 + uint64(randomHostsBufferForScore)
+		if uint64(n) != expectedN {
+			t.Fatal("random host called with wrong n", n, expectedN)
+		}
+		// Compute expected blacklist.
+		var expectedBlacklist []types.SiaPublicKey
+		for _, c := range allContracts {
+			expectedBlacklist = append(expectedBlacklist, c.HostPublicKey)
+		}
+		expectedBlacklist = append(expectedBlacklist, recoverableContracts[0].HostPublicKey)
+
+		// Compute expected address blacklist.
+		var expectedAddressBlacklist []types.SiaPublicKey
+		for _, c := range allContracts {
+			u := c.Utility
+			if !u.Locked || u.GoodForRenew || u.GoodForUpload {
+				expectedAddressBlacklist = append(expectedAddressBlacklist, c.HostPublicKey)
+			}
+		}
+
+		// Compare them.
+		if !reflect.DeepEqual(blacklist, expectedBlacklist) {
+			t.Log(blacklist)
+			t.Log(expectedBlacklist)
+			t.Fatal("wrong blacklist")
+		}
+		if !reflect.DeepEqual(addressBlacklist, expectedAddressBlacklist) {
+			t.Log(addressBlacklist)
+			t.Log(expectedAddressBlacklist)
+			t.Fatal("wrong address blacklist")
+		}
+
+		// Return some random hosts and remember them for later.
+		var hosts []modules.HostDBEntry
+		for i := 0; i < n; i++ {
+			hosts = append(hosts, modules.HostDBEntry{
+				PublicKey: randomPK(),
+			})
+		}
+		returnedHosts = hosts
+		return hosts, nil
+	}
+
+	// Check returned hosts and needed hosts.
+	needed, hosts := hostsForRegularFormation(a, allContracts, recoverableContracts, randomHosts, l)
+	if !reflect.DeepEqual(hosts, returnedHosts) {
+		t.Fatal("wrong hosts returned")
+	}
+	if needed != int(a.Hosts)-1 {
 		t.Fatal("needed not set")
 	}
 }

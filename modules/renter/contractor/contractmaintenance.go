@@ -107,6 +107,57 @@ func hostsForPortalFormation(allowance modules.Allowance, allContracts []modules
 	return len(hosts), hosts
 }
 
+// hostsForRegularFormation returns the number of hosts needed for
+// non-portal contract formation plus a set of hosts to use.
+func hostsForRegularFormation(allowance modules.Allowance, allContracts []modules.RenterContract, recoverableContracts []modules.RecoverableContract, randomHosts func(_ int, _, _ []types.SiaPublicKey) ([]modules.HostDBEntry, error), l *persist.Logger) (int, []modules.HostDBEntry) {
+	if allowance.PortalMode() {
+		build.Critical("hostsForRegularFormation was called on a portal")
+		return 0, nil
+	}
+	// Count the number of contracts which are good for uploading, and then make
+	// more as needed to fill the gap.
+	uploadContracts := 0
+	for _, c := range allContracts {
+		if c.Utility.GoodForUpload {
+			uploadContracts++
+		}
+	}
+	neededContracts := int(allowance.Hosts) - uploadContracts
+	if neededContracts <= 0 {
+		l.Debugln("do not seem to need more contracts")
+		return 0, nil
+	}
+	if neededContracts > 0 {
+		l.Println("need more contracts:", neededContracts)
+	}
+
+	// Assemble two exclusion lists. The first one excludes all hosts that we
+	// already have contracts with and the second one excludes all hosts we have
+	// active contracts with. Then select a new batch of hosts to attempt
+	// contract formation with.
+	var blacklist []types.SiaPublicKey
+	var addressBlacklist []types.SiaPublicKey
+	for _, contract := range allContracts {
+		blacklist = append(blacklist, contract.HostPublicKey)
+		if !contract.Utility.Locked || contract.Utility.GoodForRenew || contract.Utility.GoodForUpload {
+			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)
+		}
+	}
+	// Add the hosts we have recoverable contracts with to the blacklist to
+	// avoid losing existing data by forming a new/empty contract.
+	for _, contract := range recoverableContracts {
+		blacklist = append(blacklist, contract.HostPublicKey)
+	}
+
+	hosts, err := randomHosts(neededContracts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
+	if err != nil {
+		l.Println("WARN: not forming new contracts:", err)
+		return 0, nil
+	}
+	l.Debugln("trying to form contracts with hosts, pulled this many hosts from hostdb:", len(hosts))
+	return neededContracts, hosts
+}
+
 // initialContractFunding computes the amount of money to put into the first
 // contract formed with a host.
 func initialContractFunding(a modules.Allowance, host modules.HostDBEntry, txnFee, min, max types.Currency) types.Currency {
@@ -1479,54 +1530,7 @@ func (c *Contractor) managedHostsForPortalFormation(allowance modules.Allowance)
 // managedHostsForRegularFormation returns the number of hosts needed for
 // non-portal contract formation plus a set of hosts to use.
 func (c *Contractor) managedHostsForRegularFormation(allowance modules.Allowance) (int, []modules.HostDBEntry) {
-	if allowance.PortalMode() {
-		build.Critical("managedHostsForRegularFormation was called on a portal")
-		return 0, nil
-	}
-	// Count the number of contracts which are good for uploading, and then make
-	// more as needed to fill the gap.
-	uploadContracts := 0
-	for _, id := range c.staticContracts.IDs() {
-		if cu, ok := c.managedContractUtility(id); ok && cu.GoodForUpload {
-			uploadContracts++
-		}
-	}
-	c.mu.RLock()
-	neededContracts := int(c.allowance.Hosts) - uploadContracts
-	c.mu.RUnlock()
-	if neededContracts <= 0 && allowance.PaymentContractInitialFunding.IsZero() {
-		c.log.Debugln("do not seem to need more contracts")
-		return 0, nil
-	}
-	if neededContracts > 0 {
-		c.log.Println("need more contracts:", neededContracts)
-	}
-
-	// Assemble two exclusion lists. The first one includes all hosts that we
-	// already have contracts with and the second one includes all hosts we
-	// have active contracts with. Then select a new batch of hosts to attempt
-	// contract formation with.
-	var blacklist []types.SiaPublicKey
-	var addressBlacklist []types.SiaPublicKey
-	for _, contract := range c.staticContracts.ViewAll() {
-		blacklist = append(blacklist, contract.HostPublicKey)
-		if !contract.Utility.Locked || contract.Utility.GoodForRenew || contract.Utility.GoodForUpload {
-			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)
-		}
-	}
-	// Add the hosts we have recoverable contracts with to the blacklist to
-	// avoid losing existing data by forming a new/empty contract.
-	for _, contract := range c.RecoverableContracts() {
-		blacklist = append(blacklist, contract.HostPublicKey)
-	}
-
-	hosts, err := c.hdb.RandomHosts(neededContracts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
-	if err != nil {
-		c.log.Println("WARN: not forming new contracts:", err)
-		return 0, nil
-	}
-	c.log.Debugln("trying to form contracts with hosts, pulled this many hosts from hostdb:", len(hosts))
-	return neededContracts, hosts
+	return hostsForRegularFormation(allowance, c.staticContracts.ViewAll(), c.RecoverableContracts(), c.hdb.RandomHosts, c.log)
 }
 
 func (c *Contractor) managedFormContracts(budget types.Currency, hosts []modules.HostDBEntry, neededContracts int, allowance modules.Allowance, endHeight types.BlockHeight) (lowFunds, walletLocked bool) {
