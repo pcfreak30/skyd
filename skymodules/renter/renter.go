@@ -43,6 +43,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skykey"
@@ -52,7 +53,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetblocklist"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetportals"
-	siasync "gitlab.com/skynetlabs/skyd/sync"
 )
 
 var (

@@ -62,7 +62,6 @@ pkgs = \
 	./siatest/transactionpool \
 	./siatest/wallet \
 	./skykey \
-	./sync \
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.

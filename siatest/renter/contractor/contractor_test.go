@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -22,7 +23,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/sync"
 )
 
 // test is a helper struct for running subtests when tests can use the same test

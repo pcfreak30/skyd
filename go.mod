@@ -14,7 +14,6 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/vbauerster/mpb/v5 v5.0.3
 	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210309112313-8ea0fee8e78b
-	gitlab.com/NebulousLabs/bolt v1.4.4
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
 	gitlab.com/NebulousLabs/errors v0.0.0-20200929122200-06c536cf6975
@@ -27,5 +26,3 @@ require (
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381
 )
-
-replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
