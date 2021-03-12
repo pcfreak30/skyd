@@ -2,9 +2,9 @@ package mdm
 
 import (
 	"gitlab.com/NebulousLabs/threadgroup"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // StorageObligation defines an interface the storage obligation must adhere to.

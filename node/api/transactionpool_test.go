@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestTransactionPoolRawHandler verifies that the transaction pools' raw

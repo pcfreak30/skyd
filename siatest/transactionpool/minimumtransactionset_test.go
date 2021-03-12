@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/types"
-	"gitlab.com/skynetlabs/skyd/types/typesutil"
 
 	"gitlab.com/NebulousLabs/errors"
 )

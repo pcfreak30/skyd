@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestUrlValuesFromSkynetUploadParams is a unit test that covers the helper

@@ -3,8 +3,8 @@ package consensus
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestIntegrationChangeLog does a general test of the changelog by creating a

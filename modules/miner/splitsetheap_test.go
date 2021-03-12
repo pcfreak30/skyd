@@ -5,7 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestMapHeapSimple test max-heap and min-heap versions of the MapHeap on the

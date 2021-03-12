@@ -3,8 +3,8 @@ package wallet
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestUpdate tests that the wallet processes consensus updates properly.

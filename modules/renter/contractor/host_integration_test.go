@@ -15,8 +15,9 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/consensus"
 	"gitlab.com/skynetlabs/skyd/modules/gateway"
@@ -26,7 +27,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
 	modWallet "gitlab.com/skynetlabs/skyd/modules/wallet"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // newTestingWallet is a helper function that creates a ready-to-use wallet

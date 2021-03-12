@@ -12,13 +12,13 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/node/api/server"
 	"gitlab.com/skynetlabs/skyd/persist"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 var (

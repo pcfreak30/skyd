@@ -6,9 +6,9 @@ import (
 	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // ProcessConsensusChange follows the most recent changes to the consensus set,

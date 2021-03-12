@@ -1,8 +1,8 @@
 package mdm
 
 import (
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 // instruction is the interface an instruction needs to implement to be part of

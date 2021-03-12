@@ -17,8 +17,9 @@ import (
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/threadgroup"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/consensus"
 	"gitlab.com/skynetlabs/skyd/modules/explorer"
@@ -32,7 +33,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
 	"gitlab.com/skynetlabs/skyd/modules/wallet"
 	"gitlab.com/skynetlabs/skyd/persist"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // A Server is a collection of siad modules that can be communicated with over

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/feemanager"
@@ -14,7 +15,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/modules/renter"
 	"gitlab.com/skynetlabs/skyd/modules/wallet"
 	"gitlab.com/skynetlabs/skyd/persist"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // accountingTestDir joins the provided directories and prefixes them with the

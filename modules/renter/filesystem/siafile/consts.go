@@ -3,7 +3,7 @@ package siafile
 import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 const (

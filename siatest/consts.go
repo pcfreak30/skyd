@@ -3,7 +3,7 @@ package siatest
 import (
 	"encoding/json"
 
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 )
 

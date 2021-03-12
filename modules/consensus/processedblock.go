@@ -6,10 +6,10 @@ import (
 	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // SurpassThreshold is a percentage that dictates how much heavier a competing

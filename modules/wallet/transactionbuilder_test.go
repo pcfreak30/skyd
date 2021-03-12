@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // addBlockNoPayout adds a block to the wallet tester that does not have any

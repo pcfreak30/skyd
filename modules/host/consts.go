@@ -1,8 +1,8 @@
 package host
 
 import (
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/types"
 
 	"time"
 )

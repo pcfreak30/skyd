@@ -75,15 +75,15 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/host/contractmanager"
 	"gitlab.com/skynetlabs/skyd/modules/host/mdm"
 	"gitlab.com/skynetlabs/skyd/modules/host/registry"
 	"gitlab.com/skynetlabs/skyd/persist"
 	siasync "gitlab.com/skynetlabs/skyd/sync"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 const (

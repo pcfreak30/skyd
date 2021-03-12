@@ -4,7 +4,7 @@ import (
 	"sort"
 
 	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // blockRuleHelper assists with block validity checks by calculating values

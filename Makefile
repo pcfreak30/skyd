@@ -29,7 +29,6 @@ pkgs = \
 	./cmd/skyd \
 	./cmd/skynet-benchmark \
 	./compatibility \
-	./crypto \
 	./modules \
 	./modules/accounting \
 	./modules/consensus \
@@ -76,8 +75,6 @@ pkgs = \
 	./siatest/wallet \
 	./skykey \
 	./sync \
-	./types \
-	./types/typesutil \
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.

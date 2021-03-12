@@ -3,8 +3,8 @@ package contractor
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestCheckFormContractGouging checks that the upload price gouging checker is

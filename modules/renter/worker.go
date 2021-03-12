@@ -20,8 +20,8 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/threadgroup"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )

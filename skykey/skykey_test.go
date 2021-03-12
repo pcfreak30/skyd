@@ -16,7 +16,7 @@ import (
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 // TestSkykeyManager tests the basic functionality of the skykeyManager.

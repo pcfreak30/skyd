@@ -40,8 +40,9 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
 	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
@@ -51,7 +52,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skykey"
 	siasync "gitlab.com/skynetlabs/skyd/sync"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 var (

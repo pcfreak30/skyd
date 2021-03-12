@@ -7,7 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // dbBlockHeight is a convenience function allowing blockHeight to be called

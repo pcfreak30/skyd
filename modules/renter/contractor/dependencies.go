@@ -1,8 +1,8 @@
 package contractor
 
 import (
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // These interfaces define the HostDB's dependencies. Using the smallest

@@ -7,7 +7,7 @@ import (
 
 	"gitlab.com/skynetlabs/skyd/modules"
 
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestClearDownloads tests all the edge cases of the ClearDownloadHistory Method

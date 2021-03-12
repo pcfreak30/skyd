@@ -1,8 +1,8 @@
 package renter
 
 import (
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TODO: The RPC client is used by the worker to interact with the host. It

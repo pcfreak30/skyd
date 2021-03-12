@@ -7,7 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/bolt"
 
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestChildTargetOak checks the childTargetOak function, especially for edge

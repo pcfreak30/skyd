@@ -4,9 +4,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // instructionReadOffset is an instruction which reads from an offset within the

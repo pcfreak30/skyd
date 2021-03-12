@@ -1,7 +1,7 @@
 package modules
 
 import (
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 const (

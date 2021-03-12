@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/consensus"
 	"gitlab.com/skynetlabs/skyd/modules/gateway"
 	"gitlab.com/skynetlabs/skyd/modules/miner"
 	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // A Wallet tester contains a ConsensusTester and has a bunch of helpful

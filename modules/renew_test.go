@@ -3,7 +3,7 @@ package modules
 import (
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestRenewBaseCost is a unit test for RenewBaseCosts.

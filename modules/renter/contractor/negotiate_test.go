@@ -5,8 +5,9 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/ratelimit"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/consensus"
 	"gitlab.com/skynetlabs/skyd/modules/gateway"
@@ -14,7 +15,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/modules/renter/hostdb"
 	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
 	modWallet "gitlab.com/skynetlabs/skyd/modules/wallet" // name conflicts with type
-	"gitlab.com/skynetlabs/skyd/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )

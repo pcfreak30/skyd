@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestCheckUploadGouging checks that the upload price gouging checker is

@@ -5,15 +5,15 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/consensus"
 	"gitlab.com/skynetlabs/skyd/modules/gateway"
 	"gitlab.com/skynetlabs/skyd/modules/miner"
 	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
 	"gitlab.com/skynetlabs/skyd/modules/wallet"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // Explorer tester struct is the helper object for explorer

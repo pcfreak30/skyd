@@ -3,9 +3,9 @@ package renter
 import (
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
 )
 
 // TestHasSectorJobExpectedBandwidth is a unit test that verifies our HS job
