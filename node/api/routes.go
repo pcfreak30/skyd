@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 
 	"gitlab.com/skynetlabs/skyd/build"
 )
@@ -48,32 +49,37 @@ func (api *API) buildHTTPRoutes() {
 
 	// Consensus API Calls
 	if api.cs != nil {
-		RegisterRoutesConsensus(router, api.cs)
+		siaapi.RegisterRoutesConsensus(router, api.cs)
 	}
 
 	// Explorer API Calls
 	if api.explorer != nil {
-		RegisterRoutesExplorer(router, api.explorer, api.cs)
+		siaapi.RegisterRoutesExplorer(router, api.explorer, api.cs)
 	}
 
 	// FeeManager API Calls
 	if api.feemanager != nil {
-		RegisterRoutesFeeManager(router, api.feemanager, requiredPassword)
+		siaapi.RegisterRoutesFeeManager(router, api.feemanager, requiredPassword)
 	}
 
 	// Gateway API Calls
 	if api.gateway != nil {
-		RegisterRoutesGateway(router, api.gateway, requiredPassword)
+		siaapi.RegisterRoutesGateway(router, api.gateway, requiredPassword)
 	}
 
 	// Host API Calls
 	if api.host != nil {
-		RegisterRoutesHost(router, api.host, api.renter, api.staticDeps, requiredPassword)
+		siaapi.RegisterRoutesHost(router, api.host, api.staticDeps, requiredPassword)
+
+		// Register estiamtescore separately since it depends on a renter.
+		router.GET("/host/estimatescore", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+			hostEstimateScoreGET(api.host, api.renter, w, req, ps)
+		})
 	}
 
 	// Miner API Calls
 	if api.miner != nil {
-		RegisterRoutesMiner(router, api.miner, requiredPassword)
+		siaapi.RegisterRoutesMiner(router, api.miner, requiredPassword)
 	}
 
 	// Renter API Calls
@@ -161,16 +167,12 @@ func (api *API) buildHTTPRoutes() {
 
 	// Transaction pool API Calls
 	if api.tpool != nil {
-		router.GET("/tpool/fee", api.tpoolFeeHandlerGET)
-		router.GET("/tpool/raw/:id", api.tpoolRawHandlerGET)
-		router.POST("/tpool/raw", api.tpoolRawHandlerPOST)
-		router.GET("/tpool/confirmed/:id", api.tpoolConfirmedGET)
-		router.GET("/tpool/transactions", api.tpoolTransactionsHandler)
+		siaapi.RegisterRoutesTransactionPool(router, api.tpool)
 	}
 
 	// Wallet API Calls
 	if api.wallet != nil {
-		RegisterRoutesWallet(router, api.wallet, requiredPassword)
+		siaapi.RegisterRoutesWallet(router, api.wallet, requiredPassword)
 	}
 
 	// Apply UserAgent middleware and return the Router

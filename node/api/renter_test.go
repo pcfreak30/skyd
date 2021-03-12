@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -1343,7 +1344,7 @@ func TestRenterPricesHandlerPricey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var hg HostGET
+	var hg api.HostGET
 	err = st.getAPI("/host", &hg)
 	if err != nil {
 		t.Fatal(err)
