@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -29,7 +30,7 @@ func segmentsForRecovery(chunkFetchOffset, chunkFetchLength uint64, rs skymodule
 	// sector.
 	segmentSize, supportsPartial := rs.SupportsPartialEncoding()
 	if !supportsPartial {
-		return 0, uint64(skymodules.SectorSize) / crypto.SegmentSize
+		return 0, uint64(modules.SectorSize) / crypto.SegmentSize
 	}
 	// Else we need to figure out what segments of the piece we need to
 	// download for the recovered data to contain the data we want.
@@ -60,9 +61,9 @@ func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs skymodu
 // size and assumes that data is actually being appended to the host. As the
 // worker gains more modification actions on the host, this check can be split
 // into different checks that vary based on the operation being performed.
-func checkDownloadGouging(allowance skymodules.Allowance, pt *skymodules.RPCPriceTable) error {
+func checkDownloadGouging(allowance skymodules.Allowance, pt *modules.RPCPriceTable) error {
 	// Check whether the base RPC price is too high.
-	rpcCost := skymodules.MDMReadCost(pt, skymodules.StreamDownloadSize)
+	rpcCost := modules.MDMReadCost(pt, skymodules.StreamDownloadSize)
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(rpcCost) < 0 {
 		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", rpcCost, allowance.MaxRPCPrice)
 		return errors.New(errStr)

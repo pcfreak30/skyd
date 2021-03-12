@@ -5,16 +5,17 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/feemanager"
+	"gitlab.com/NebulousLabs/Sia/modules/host"
+	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/feemanager"
-	"gitlab.com/skynetlabs/skyd/skymodules/host"
-	"gitlab.com/skynetlabs/skyd/skymodules/miner"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter"
-	"gitlab.com/skynetlabs/skyd/skymodules/wallet"
 )
 
 // accountingTestDir joins the provided directories and prefixes them with the
@@ -50,13 +51,13 @@ func randomCurrency() types.Currency {
 
 // testingParams returns the minimum required parameters for creating an
 // Accounting module for testing.
-func testingParams() (skymodules.FeeManager, skymodules.Host, skymodules.Miner, skymodules.Renter, skymodules.Wallet, skymodules.Dependencies) {
+func testingParams() (modules.FeeManager, modules.Host, modules.Miner, skymodules.Renter, modules.Wallet, modules.Dependencies) {
 	fm := &feemanager.FeeManager{}
 	h := &host.Host{}
 	m := &miner.Miner{}
 	r := &mockRenter{}
 	w := &mockWallet{}
-	deps := &skymodules.ProductionDependencies{}
+	deps := &modules.ProductionDependencies{}
 	return fm, h, m, r, w, deps
 }
 

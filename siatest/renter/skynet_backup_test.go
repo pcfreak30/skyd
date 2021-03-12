@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -83,7 +84,7 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	// Define common params
 	smallSize := 100
 	smallData := fastrand.Bytes(smallSize)
-	largeSize := 2*int(skymodules.SectorSize) + siatest.Fuzz()
+	largeSize := 2*int(modules.SectorSize) + siatest.Fuzz()
 	largeData := fastrand.Bytes(largeSize)
 
 	// Small Skyfile
@@ -144,7 +145,7 @@ func testSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	multiFileTest("singleFileMultiHTML_encryption", sk.Name, files)
 
 	// Large multipart
-	size := 2*int(skymodules.SectorSize) + siatest.Fuzz()
+	size := 2*int(modules.SectorSize) + siatest.Fuzz()
 	data = fastrand.Bytes(size)
 	files = []siatest.TestFile{{Name: "large.png", Data: data}}
 	multiFileTest("singleLargeFileMulti", "", files)
@@ -186,7 +187,7 @@ func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Basic Directory with Large Subfile
-	size := 2*int(skymodules.SectorSize) + siatest.Fuzz()
+	size := 2*int(modules.SectorSize) + siatest.Fuzz()
 	largeData := fastrand.Bytes(size)
 	files := []siatest.TestFile{
 		{Name: "index.html", Data: largeData},
@@ -315,7 +316,7 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 
 	// Define common params
 	smallSize := 100
-	largeSize := 2*int(skymodules.SectorSize) + siatest.Fuzz()
+	largeSize := 2*int(modules.SectorSize) + siatest.Fuzz()
 
 	// Small siafile
 	convertTest("smallSiafile", "", smallSize)

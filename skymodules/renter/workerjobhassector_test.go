@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestHasSectorJobExpectedBandwidth is a unit test that verifies our HS job
@@ -43,7 +43,7 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 		}
 
 		// build program
-		pb := skymodules.NewProgramBuilder(&pt, 0)
+		pb := modules.NewProgramBuilder(&pt, 0)
 		for _, sector := range sectors {
 			pb.AddHasSectorInstruction(sector)
 		}
@@ -56,7 +56,7 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 
 		// calculate cost
 		ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
-		bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+		bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 		cost = cost.Add(bandwidthCost)
 
 		// execute the program

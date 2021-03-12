@@ -3,8 +3,8 @@ package proto
 import (
 	"fmt"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // Dependencies.
@@ -18,7 +18,7 @@ type (
 		AddSiacoinInput(types.SiacoinInput) uint64
 		AddSiacoinOutput(types.SiacoinOutput) uint64
 		AddTransactionSignature(types.TransactionSignature) uint64
-		Copy() skymodules.TransactionBuilder
+		Copy() modules.TransactionBuilder
 		FundSiacoins(types.Currency) error
 		Sign(bool) ([]types.Transaction, error)
 		UnconfirmedParents() ([]types.Transaction, error)

@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -35,7 +35,7 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	w := j.staticQueue.staticWorker()
 	bh := w.staticCache().staticBlockHeight
 	pt := w.staticPriceTable().staticPriceTable
-	pb := skymodules.NewProgramBuilder(&pt, 0) // 0 duration since Read doesn't depend on it.
+	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since Read doesn't depend on it.
 	pb.AddRevisionInstruction()
 	pb.AddReadOffsetInstruction(j.staticLength, j.staticOffset, true)
 	program, programData := pb.Program()
@@ -43,7 +43,7 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// Read responses.
@@ -64,7 +64,7 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	}
 
 	// Unmarshal the revision response.
-	var revResp skymodules.MDMInstructionRevisionResponse
+	var revResp modules.MDMInstructionRevisionResponse
 	err = encoding.Unmarshal(revResponse.Output, &revResp)
 	if err != nil {
 		return nil, errors.AddContext(err, "jobReadOffset: failed to unmarshal revision")

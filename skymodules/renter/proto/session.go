@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -40,7 +41,7 @@ type Session struct {
 	conn        net.Conn
 	contractID  types.FileContractID
 	contractSet *ContractSet
-	deps        skymodules.Dependencies
+	deps        modules.Dependencies
 	hdb         hostDB
 	height      types.BlockHeight
 	host        skymodules.HostDBEntry
@@ -49,17 +50,17 @@ type Session struct {
 
 // writeRequest sends an encrypted RPC request to the host.
 func (s *Session) writeRequest(rpcID types.Specifier, req interface{}) error {
-	return skymodules.WriteRPCRequest(s.conn, s.aead, rpcID, req)
+	return modules.WriteRPCRequest(s.conn, s.aead, rpcID, req)
 }
 
 // writeResponse writes an encrypted RPC response to the host.
 func (s *Session) writeResponse(resp interface{}, err error) error {
-	return skymodules.WriteRPCResponse(s.conn, s.aead, resp, err)
+	return modules.WriteRPCResponse(s.conn, s.aead, resp, err)
 }
 
 // readResponse reads an encrypted RPC response from the host.
 func (s *Session) readResponse(resp interface{}, maxLen uint64) error {
-	return skymodules.ReadRPCResponse(s.conn, s.aead, resp, maxLen)
+	return modules.ReadRPCResponse(s.conn, s.aead, resp, maxLen)
 }
 
 // call is a helper method that calls writeRequest followed by readResponse.
@@ -73,17 +74,17 @@ func (s *Session) call(rpcID types.Specifier, req, resp interface{}, maxLen uint
 // Lock calls the Lock RPC, locking the supplied contract and returning its
 // most recent revision.
 func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (types.FileContractRevision, []types.TransactionSignature, error) {
-	sig := crypto.SignHash(crypto.HashAll(skymodules.RPCChallengePrefix, s.challenge), secretKey)
-	req := skymodules.LoopLockRequest{
+	sig := crypto.SignHash(crypto.HashAll(modules.RPCChallengePrefix, s.challenge), secretKey)
+	req := modules.LoopLockRequest{
 		ContractID: id,
 		Signature:  sig[:],
 		Timeout:    defaultContractLockTimeout,
 	}
 
 	timeoutDur := time.Duration(defaultContractLockTimeout) * time.Millisecond
-	extendDeadline(s.conn, skymodules.NegotiateSettingsTime+timeoutDur)
-	var resp skymodules.LoopLockResponse
-	if err := s.call(skymodules.RPCLoopLock, req, &resp, skymodules.RPCMinLen); err != nil {
+	extendDeadline(s.conn, modules.NegotiateSettingsTime+timeoutDur)
+	var resp modules.LoopLockResponse
+	if err := s.call(modules.RPCLoopLock, req, &resp, modules.RPCMinLen); err != nil {
 		return types.FileContractRevision{}, nil, errors.AddContext(err, "lock request on host session has failed")
 	}
 	// Unconditionally update the challenge.
@@ -106,7 +107,7 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 		return resp.Revision, resp.Signatures, errors.New("host's claimed revision has wrong unlock conditions")
 	}
 	// Verify the claimed signatures.
-	if err := skymodules.VerifyFileContractRevisionTransactionSignatures(resp.Revision, resp.Signatures, s.height); err != nil {
+	if err := modules.VerifyFileContractRevisionTransactionSignatures(resp.Revision, resp.Signatures, s.height); err != nil {
 		return resp.Revision, resp.Signatures, errors.AddContext(err, "unable to verify signatures on contract revision")
 	}
 	return resp.Revision, resp.Signatures, nil
@@ -117,25 +118,25 @@ func (s *Session) Unlock() error {
 	if s.contractID == (types.FileContractID{}) {
 		return errors.New("no contract locked")
 	}
-	extendDeadline(s.conn, skymodules.NegotiateSettingsTime)
-	return s.writeRequest(skymodules.RPCLoopUnlock, nil)
+	extendDeadline(s.conn, modules.NegotiateSettingsTime)
+	return s.writeRequest(modules.RPCLoopUnlock, nil)
 }
 
 // HostSettings returns the currently active host settings of the session.
-func (s *Session) HostSettings() skymodules.HostExternalSettings {
+func (s *Session) HostSettings() modules.HostExternalSettings {
 	return s.host.HostExternalSettings
 }
 
 // Settings calls the Settings RPC, returning the host's reported settings.
-func (s *Session) Settings() (skymodules.HostExternalSettings, error) {
-	extendDeadline(s.conn, skymodules.NegotiateSettingsTime)
-	var resp skymodules.LoopSettingsResponse
-	if err := s.call(skymodules.RPCLoopSettings, nil, &resp, skymodules.RPCMinLen); err != nil {
-		return skymodules.HostExternalSettings{}, err
+func (s *Session) Settings() (modules.HostExternalSettings, error) {
+	extendDeadline(s.conn, modules.NegotiateSettingsTime)
+	var resp modules.LoopSettingsResponse
+	if err := s.call(modules.RPCLoopSettings, nil, &resp, modules.RPCMinLen); err != nil {
+		return modules.HostExternalSettings{}, err
 	}
-	var hes skymodules.HostExternalSettings
+	var hes modules.HostExternalSettings
 	if err := json.Unmarshal(resp.Settings, &hes); err != nil {
-		return skymodules.HostExternalSettings{}, err
+		return modules.HostExternalSettings{}, err
 	}
 	s.host.HostExternalSettings = hes
 	return s.host.HostExternalSettings, nil
@@ -144,7 +145,7 @@ func (s *Session) Settings() (skymodules.HostExternalSettings, error) {
 // Append calls the Write RPC with a single Append action, returning the
 // updated contract and the Merkle root of the appended sector.
 func (s *Session) Append(data []byte) (_ skymodules.RenterContract, _ crypto.Hash, err error) {
-	rc, err := s.Write([]skymodules.LoopWriteAction{{Type: skymodules.WriteActionAppend, Data: data}})
+	rc, err := s.Write([]modules.LoopWriteAction{{Type: modules.WriteActionAppend, Data: data}})
 	return rc, crypto.MerkleRoot(data), err
 }
 
@@ -158,16 +159,16 @@ func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ skymodu
 	}
 	defer s.contractSet.Return(sc)
 	// get current number of sectors
-	numSectors := sc.header.LastRevision().NewFileSize / skymodules.SectorSize
-	actions := []skymodules.LoopWriteAction{
+	numSectors := sc.header.LastRevision().NewFileSize / modules.SectorSize
+	actions := []modules.LoopWriteAction{
 		// append the new sector
-		{Type: skymodules.WriteActionAppend, Data: data},
+		{Type: modules.WriteActionAppend, Data: data},
 		// swap the new sector with the old sector
-		{Type: skymodules.WriteActionSwap, A: 0, B: numSectors},
+		{Type: modules.WriteActionSwap, A: 0, B: numSectors},
 	}
 	if trim {
 		// delete the old sector
-		actions = append(actions, skymodules.LoopWriteAction{Type: skymodules.WriteActionTrim, A: 1})
+		actions = append(actions, modules.LoopWriteAction{Type: modules.WriteActionTrim, A: 1})
 	}
 
 	rc, err := s.write(sc, actions)
@@ -176,7 +177,7 @@ func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ skymodu
 
 // Write implements the Write RPC, except for ActionUpdate. A Merkle proof is
 // always requested.
-func (s *Session) Write(actions []skymodules.LoopWriteAction) (_ skymodules.RenterContract, err error) {
+func (s *Session) Write(actions []modules.LoopWriteAction) (_ skymodules.RenterContract, err error) {
 	sc, haveContract := s.contractSet.Acquire(s.contractID)
 	if !haveContract {
 		return skymodules.RenterContract{}, errors.New("contract not present in contract set")
@@ -185,12 +186,12 @@ func (s *Session) Write(actions []skymodules.LoopWriteAction) (_ skymodules.Rent
 	return s.write(sc, actions)
 }
 
-func (s *Session) write(sc *SafeContract, actions []skymodules.LoopWriteAction) (_ skymodules.RenterContract, err error) {
+func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ skymodules.RenterContract, err error) {
 	contract := sc.header // for convenience
 
 	// calculate price per sector
-	blockBytes := types.NewCurrency64(skymodules.SectorSize * uint64(contract.LastRevision().NewWindowEnd-s.height))
-	sectorBandwidthPrice := s.host.UploadBandwidthPrice.Mul64(skymodules.SectorSize)
+	blockBytes := types.NewCurrency64(modules.SectorSize * uint64(contract.LastRevision().NewWindowEnd-s.height))
+	sectorBandwidthPrice := s.host.UploadBandwidthPrice.Mul64(modules.SectorSize)
 	sectorStoragePrice := s.host.StoragePrice.Mul(blockBytes)
 	sectorCollateral := s.host.Collateral.Mul(blockBytes)
 
@@ -199,16 +200,16 @@ func (s *Session) write(sc *SafeContract, actions []skymodules.LoopWriteAction) 
 	newFileSize := contract.LastRevision().NewFileSize
 	for _, action := range actions {
 		switch action.Type {
-		case skymodules.WriteActionAppend:
+		case modules.WriteActionAppend:
 			bandwidthPrice = bandwidthPrice.Add(sectorBandwidthPrice)
-			newFileSize += skymodules.SectorSize
+			newFileSize += modules.SectorSize
 
-		case skymodules.WriteActionTrim:
-			newFileSize -= skymodules.SectorSize * action.A
+		case modules.WriteActionTrim:
+			newFileSize -= modules.SectorSize * action.A
 
-		case skymodules.WriteActionSwap:
+		case modules.WriteActionSwap:
 
-		case skymodules.WriteActionUpdate:
+		case modules.WriteActionUpdate:
 			return skymodules.RenterContract{}, errors.New("update not supported")
 
 		default:
@@ -217,7 +218,7 @@ func (s *Session) write(sc *SafeContract, actions []skymodules.LoopWriteAction) 
 	}
 
 	if newFileSize > contract.LastRevision().NewFileSize {
-		addedSectors := (newFileSize - contract.LastRevision().NewFileSize) / skymodules.SectorSize
+		addedSectors := (newFileSize - contract.LastRevision().NewFileSize) / modules.SectorSize
 		storagePrice = sectorStoragePrice.Mul64(addedSectors)
 		collateral = sectorCollateral.Mul64(addedSectors)
 	}
@@ -269,7 +270,7 @@ func (s *Session) write(sc *SafeContract, actions []skymodules.LoopWriteAction) 
 	rev.NewFileSize = newFileSize
 
 	// create the request
-	req := skymodules.LoopWriteRequest{
+	req := modules.LoopWriteRequest{
 		Actions:           actions,
 		MerkleProof:       true,
 		NewRevisionNumber: rev.NewRevisionNumber,
@@ -311,18 +312,18 @@ func (s *Session) write(sc *SafeContract, actions []skymodules.LoopWriteAction) 
 	}
 
 	// send Write RPC request
-	extendDeadline(s.conn, skymodules.NegotiateFileContractRevisionTime)
-	if err := s.writeRequest(skymodules.RPCLoopWrite, req); err != nil {
+	extendDeadline(s.conn, modules.NegotiateFileContractRevisionTime)
+	if err := s.writeRequest(modules.RPCLoopWrite, req); err != nil {
 		return skymodules.RenterContract{}, err
 	}
 
 	// read Merkle proof from host
-	var merkleResp skymodules.LoopWriteMerkleProof
-	if err := s.readResponse(&merkleResp, skymodules.RPCMinLen); err != nil {
+	var merkleResp modules.LoopWriteMerkleProof
+	if err := s.readResponse(&merkleResp, modules.RPCMinLen); err != nil {
 		return skymodules.RenterContract{}, err
 	}
 	// verify the proof, first by verifying the old Merkle root...
-	numSectors := contract.LastRevision().NewFileSize / skymodules.SectorSize
+	numSectors := contract.LastRevision().NewFileSize / modules.SectorSize
 	proofRanges := calculateProofRanges(actions, numSectors)
 	proofHashes := merkleResp.OldSubtreeHashes
 	leafHashes := merkleResp.OldLeafHashes
@@ -357,7 +358,7 @@ func (s *Session) write(sc *SafeContract, actions []skymodules.LoopWriteAction) 
 	}
 	sig := crypto.SignHash(txn.SigHash(0, s.height), contract.SecretKey)
 	txn.TransactionSignatures[0].Signature = sig[:]
-	renterSig := skymodules.LoopWriteResponse{
+	renterSig := modules.LoopWriteResponse{
 		Signature: sig[:],
 	}
 	if err := s.writeResponse(renterSig, nil); err != nil {
@@ -365,10 +366,10 @@ func (s *Session) write(sc *SafeContract, actions []skymodules.LoopWriteAction) 
 	}
 
 	// read the host's signature
-	var hostSig skymodules.LoopWriteResponse
-	if err := s.readResponse(&hostSig, skymodules.RPCMinLen); err != nil {
+	var hostSig modules.LoopWriteResponse
+	if err := s.readResponse(&hostSig, modules.RPCMinLen); err != nil {
 		// If the host was OOS, we update the contract utility.
-		if skymodules.IsOOSErr(err) {
+		if modules.IsOOSErr(err) {
 			u := sc.Utility()
 			u.GoodForUpload = false // Stop uploading to such a host immediately.
 			u.LastOOSErr = s.height
@@ -395,13 +396,13 @@ func (s *Session) write(sc *SafeContract, actions []skymodules.LoopWriteAction) 
 
 // Read calls the Read RPC, writing the requested data to w. The RPC can be
 // cancelled (with a granularity of one section) via the cancel channel.
-func (s *Session) Read(w io.Writer, req skymodules.LoopReadRequest, cancel <-chan struct{}) (_ skymodules.RenterContract, err error) {
+func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan struct{}) (_ skymodules.RenterContract, err error) {
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour)
 
 	// Sanity-check the request.
 	for _, sec := range req.Sections {
-		if uint64(sec.Offset)+uint64(sec.Length) > skymodules.SectorSize {
+		if uint64(sec.Offset)+uint64(sec.Length) > modules.SectorSize {
 			return skymodules.RenterContract{}, errors.New("illegal offset and/or length")
 		}
 		if req.MerkleProof {
@@ -428,12 +429,12 @@ func (s *Session) Read(w io.Writer, req skymodules.LoopReadRequest, cancel <-cha
 	if req.MerkleProof {
 		// use the worst-case proof size of 2*tree depth (this occurs when
 		// proving across the two leaves in the center of the tree)
-		estHashesPerProof := 2 * bits.Len64(skymodules.SectorSize/crypto.SegmentSize)
+		estHashesPerProof := 2 * bits.Len64(modules.SectorSize/crypto.SegmentSize)
 		estProofHashes = uint64(len(req.Sections) * estHashesPerProof)
 	}
 	estBandwidth := totalLength + estProofHashes*crypto.HashSize
-	if estBandwidth < skymodules.RPCMinLen {
-		estBandwidth = skymodules.RPCMinLen
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
 	}
 	// calculate sector accesses
 	sectorAccesses := make(map[crypto.Hash]struct{})
@@ -510,8 +511,8 @@ func (s *Session) Read(w io.Writer, req skymodules.LoopReadRequest, cancel <-cha
 	}
 
 	// send request
-	extendDeadline(s.conn, skymodules.NegotiateDownloadTime)
-	err = s.writeRequest(skymodules.RPCLoopRead, req)
+	extendDeadline(s.conn, modules.NegotiateDownloadTime)
+	err = s.writeRequest(modules.RPCLoopRead, req)
 	if err != nil {
 		return skymodules.RenterContract{}, err
 	}
@@ -523,7 +524,7 @@ func (s *Session) Read(w io.Writer, req skymodules.LoopReadRequest, cancel <-cha
 		case <-cancel:
 		case <-doneChan:
 		}
-		s.writeResponse(skymodules.RPCLoopReadStop, nil)
+		s.writeResponse(modules.RPCLoopReadStop, nil)
 	}()
 	// ensure we send RPCLoopReadStop before returning
 	defer close(doneChan)
@@ -531,8 +532,8 @@ func (s *Session) Read(w io.Writer, req skymodules.LoopReadRequest, cancel <-cha
 	// read responses
 	var hostSig []byte
 	for _, sec := range req.Sections {
-		var resp skymodules.LoopReadResponse
-		err = s.readResponse(&resp, skymodules.RPCMinLen+uint64(sec.Length))
+		var resp modules.LoopReadResponse
+		err = s.readResponse(&resp, modules.RPCMinLen+uint64(sec.Length))
 		if err != nil {
 			return skymodules.RenterContract{}, err
 		}
@@ -565,8 +566,8 @@ func (s *Session) Read(w io.Writer, req skymodules.LoopReadRequest, cancel <-cha
 		// the host is required to send a signature; if they haven't sent one
 		// yet, they should send an empty ReadResponse containing just the
 		// signature.
-		var resp skymodules.LoopReadResponse
-		err = s.readResponse(&resp, skymodules.RPCMinLen)
+		var resp modules.LoopReadResponse
+		err = s.readResponse(&resp, modules.RPCMinLen)
 		if err != nil {
 			return skymodules.RenterContract{}, err
 		}
@@ -590,8 +591,8 @@ func (s *Session) Read(w io.Writer, req skymodules.LoopReadRequest, cancel <-cha
 // ReadSection calls the Read RPC with a single section and returns the
 // requested data. A Merkle proof is always requested.
 func (s *Session) ReadSection(root crypto.Hash, offset, length uint32) (_ skymodules.RenterContract, _ []byte, err error) {
-	req := skymodules.LoopReadRequest{
-		Sections: []skymodules.LoopReadRequestSection{{
+	req := modules.LoopReadRequest{
+		Sections: []modules.LoopReadRequestSection{{
 			MerkleRoot: root,
 			Offset:     offset,
 			Length:     length,
@@ -607,7 +608,7 @@ func (s *Session) ReadSection(root crypto.Hash, offset, length uint32) (_ skymod
 // SectorRoots calls the contract roots download RPC and returns the requested sector roots. The
 // Revision and Signature fields of req are filled in automatically. If a
 // Merkle proof is requested, it is verified.
-func (s *Session) SectorRoots(req skymodules.LoopSectorRootsRequest) (_ skymodules.RenterContract, _ []crypto.Hash, err error) {
+func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ skymodules.RenterContract, _ []crypto.Hash, err error) {
 	// Reset deadline when finished.
 	defer extendDeadline(s.conn, time.Hour)
 
@@ -620,10 +621,10 @@ func (s *Session) SectorRoots(req skymodules.LoopSectorRootsRequest) (_ skymodul
 	contract := sc.header // for convenience
 
 	// calculate price
-	estProofHashes := bits.Len64(contract.LastRevision().NewFileSize / skymodules.SectorSize)
+	estProofHashes := bits.Len64(contract.LastRevision().NewFileSize / modules.SectorSize)
 	estBandwidth := (uint64(estProofHashes) + req.NumRoots) * crypto.HashSize
-	if estBandwidth < skymodules.RPCMinLen {
-		estBandwidth = skymodules.RPCMinLen
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
 	}
 	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(estBandwidth)
 	price := s.host.BaseRPCPrice.Add(bandwidthPrice)
@@ -689,9 +690,9 @@ func (s *Session) SectorRoots(req skymodules.LoopSectorRootsRequest) (_ skymodul
 	}()
 
 	// send SectorRoots RPC request
-	extendDeadline(s.conn, skymodules.NegotiateDownloadTime)
-	var resp skymodules.LoopSectorRootsResponse
-	err = s.call(skymodules.RPCLoopSectorRoots, req, &resp, skymodules.RPCMinLen+(req.NumRoots*crypto.HashSize))
+	extendDeadline(s.conn, modules.NegotiateDownloadTime)
+	var resp modules.LoopSectorRootsResponse
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMinLen+(req.NumRoots*crypto.HashSize))
 	if err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
@@ -720,12 +721,12 @@ func (s *Session) SectorRoots(req skymodules.LoopSectorRootsRequest) (_ skymodul
 // Merkle proof is requested, it is verified.
 func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk crypto.SecretKey) (_ types.Transaction, _ []crypto.Hash, err error) {
 	// Calculate total roots we need to fetch.
-	numRoots := lastRev.NewFileSize / skymodules.SectorSize
-	if lastRev.NewFileSize%skymodules.SectorSize != 0 {
+	numRoots := lastRev.NewFileSize / modules.SectorSize
+	if lastRev.NewFileSize%modules.SectorSize != 0 {
 		numRoots++
 	}
 	// Create the request.
-	req := skymodules.LoopSectorRootsRequest{
+	req := modules.LoopSectorRootsRequest{
 		RootOffset: 0,
 		NumRoots:   numRoots,
 	}
@@ -733,10 +734,10 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	defer extendDeadline(s.conn, time.Hour)
 
 	// calculate price
-	estProofHashes := bits.Len64(lastRev.NewFileSize / skymodules.SectorSize)
+	estProofHashes := bits.Len64(lastRev.NewFileSize / modules.SectorSize)
 	estBandwidth := (uint64(estProofHashes) + req.NumRoots) * crypto.HashSize
-	if estBandwidth < skymodules.RPCMinLen {
-		estBandwidth = skymodules.RPCMinLen
+	if estBandwidth < modules.RPCMinLen {
+		estBandwidth = modules.RPCMinLen
 	}
 	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(estBandwidth)
 	price := s.host.BaseRPCPrice.Add(bandwidthPrice)
@@ -794,9 +795,9 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	}()
 
 	// send SectorRoots RPC request
-	extendDeadline(s.conn, skymodules.NegotiateDownloadTime)
-	var resp skymodules.LoopSectorRootsResponse
-	err = s.call(skymodules.RPCLoopSectorRoots, req, &resp, skymodules.RPCMinLen+(req.NumRoots*crypto.HashSize))
+	extendDeadline(s.conn, modules.NegotiateDownloadTime)
+	var resp modules.LoopSectorRootsResponse
+	err = s.call(modules.RPCLoopSectorRoots, req, &resp, modules.RPCMinLen+(req.NumRoots*crypto.HashSize))
 	if err != nil {
 		return types.Transaction{}, nil, err
 	}
@@ -817,9 +818,9 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 // shutdown terminates the revision loop and signals the goroutine spawned in
 // NewSession to return.
 func (s *Session) shutdown() {
-	extendDeadline(s.conn, skymodules.NegotiateSettingsTime)
+	extendDeadline(s.conn, modules.NegotiateSettingsTime)
 	// don't care about this error
-	_ = s.writeRequest(skymodules.RPCLoopExit, nil)
+	_ = s.writeRequest(modules.RPCLoopExit, nil)
 	close(s.closeChan)
 }
 
@@ -882,7 +883,7 @@ func (cs *ContractSet) managedNewSession(host skymodules.HostDBEntry, currentHei
 	// with 127.0.0.1 to be able to dial the host.
 	if cs.staticDeps.Disrupt("customResolver") {
 		port := host.NetAddress.Port()
-		host.NetAddress = skymodules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+		host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
 	}
 
 	c, err := (&net.Dialer{
@@ -929,24 +930,24 @@ func (cs *ContractSet) managedNewSession(host skymodules.HostDBEntry, currentHei
 
 // calculateProofRanges returns the proof ranges that should be used to verify a
 // pre-modification Merkle diff proof for the specified actions.
-func calculateProofRanges(actions []skymodules.LoopWriteAction, oldNumSectors uint64) []crypto.ProofRange {
+func calculateProofRanges(actions []modules.LoopWriteAction, oldNumSectors uint64) []crypto.ProofRange {
 	newNumSectors := oldNumSectors
 	sectorsChanged := make(map[uint64]struct{})
 	for _, action := range actions {
 		switch action.Type {
-		case skymodules.WriteActionAppend:
+		case modules.WriteActionAppend:
 			sectorsChanged[newNumSectors] = struct{}{}
 			newNumSectors++
 
-		case skymodules.WriteActionTrim:
+		case modules.WriteActionTrim:
 			newNumSectors--
 			sectorsChanged[newNumSectors] = struct{}{}
 
-		case skymodules.WriteActionSwap:
+		case modules.WriteActionSwap:
 			sectorsChanged[action.A] = struct{}{}
 			sectorsChanged[action.B] = struct{}{}
 
-		case skymodules.WriteActionUpdate:
+		case modules.WriteActionUpdate:
 			panic("update not supported")
 		}
 	}
@@ -969,17 +970,17 @@ func calculateProofRanges(actions []skymodules.LoopWriteAction, oldNumSectors ui
 
 // modifyProofRanges modifies the proof ranges produced by calculateProofRanges
 // to verify a post-modification Merkle diff proof for the specified actions.
-func modifyProofRanges(proofRanges []crypto.ProofRange, actions []skymodules.LoopWriteAction, numSectors uint64) []crypto.ProofRange {
+func modifyProofRanges(proofRanges []crypto.ProofRange, actions []modules.LoopWriteAction, numSectors uint64) []crypto.ProofRange {
 	for _, action := range actions {
 		switch action.Type {
-		case skymodules.WriteActionAppend:
+		case modules.WriteActionAppend:
 			proofRanges = append(proofRanges, crypto.ProofRange{
 				Start: numSectors,
 				End:   numSectors + 1,
 			})
 			numSectors++
 
-		case skymodules.WriteActionTrim:
+		case modules.WriteActionTrim:
 			proofRanges = proofRanges[:uint64(len(proofRanges))-action.A]
 			numSectors--
 		}
@@ -989,20 +990,20 @@ func modifyProofRanges(proofRanges []crypto.ProofRange, actions []skymodules.Loo
 
 // modifyLeaves modifies the leaf hashes of a Merkle diff proof to verify a
 // post-modification Merkle diff proof for the specified actions.
-func modifyLeaves(leafHashes []crypto.Hash, actions []skymodules.LoopWriteAction, numSectors uint64) []crypto.Hash {
+func modifyLeaves(leafHashes []crypto.Hash, actions []modules.LoopWriteAction, numSectors uint64) []crypto.Hash {
 	// determine which sector index corresponds to each leaf hash
 	var indices []uint64
 	for _, action := range actions {
 		switch action.Type {
-		case skymodules.WriteActionAppend:
+		case modules.WriteActionAppend:
 			indices = append(indices, numSectors)
 			numSectors++
-		case skymodules.WriteActionTrim:
+		case modules.WriteActionTrim:
 			for j := uint64(0); j < action.A; j++ {
 				indices = append(indices, numSectors)
 				numSectors--
 			}
-		case skymodules.WriteActionSwap:
+		case modules.WriteActionSwap:
 			indices = append(indices, action.A, action.B)
 		}
 	}
@@ -1019,17 +1020,17 @@ func modifyLeaves(leafHashes []crypto.Hash, actions []skymodules.LoopWriteAction
 
 	for _, action := range actions {
 		switch action.Type {
-		case skymodules.WriteActionAppend:
+		case modules.WriteActionAppend:
 			leafHashes = append(leafHashes, crypto.MerkleRoot(action.Data))
 
-		case skymodules.WriteActionTrim:
+		case modules.WriteActionTrim:
 			leafHashes = leafHashes[:uint64(len(leafHashes))-action.A]
 
-		case skymodules.WriteActionSwap:
+		case modules.WriteActionSwap:
 			i, j := indexMap[action.A], indexMap[action.B]
 			leafHashes[i], leafHashes[j] = leafHashes[j], leafHashes[i]
 
-		case skymodules.WriteActionUpdate:
+		case modules.WriteActionUpdate:
 			panic("update not supported")
 		}
 	}

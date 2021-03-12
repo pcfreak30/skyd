@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -109,15 +110,15 @@ type (
 	// to access their methods.
 	API struct {
 		accounting          skymodules.Accounting
-		cs                  skymodules.ConsensusSet
-		explorer            skymodules.Explorer
-		feemanager          skymodules.FeeManager
-		gateway             skymodules.Gateway
-		host                skymodules.Host
-		miner               skymodules.Miner
+		cs                  modules.ConsensusSet
+		explorer            modules.Explorer
+		feemanager          modules.FeeManager
+		gateway             modules.Gateway
+		host                modules.Host
+		miner               modules.Miner
 		renter              skymodules.Renter
-		tpool               skymodules.TransactionPool
-		wallet              skymodules.Wallet
+		tpool               modules.TransactionPool
+		wallet              modules.Wallet
 		staticConfigModules configModules
 		modulesSet          bool
 
@@ -133,7 +134,7 @@ type (
 
 		staticStartTime time.Time
 
-		staticDeps skymodules.Dependencies
+		staticDeps modules.Dependencies
 	}
 
 	// configModules contains booleans that indicate if a module was part of the
@@ -160,7 +161,7 @@ func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // SetModules allows for replacing the modules in the API at runtime.
-func (api *API) SetModules(acc skymodules.Accounting, cs skymodules.ConsensusSet, e skymodules.Explorer, fm skymodules.FeeManager, g skymodules.Gateway, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, tp skymodules.TransactionPool, w skymodules.Wallet) {
+func (api *API) SetModules(acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet) {
 	if api.modulesSet {
 		build.Critical("can't call SetModules more than once")
 	}
@@ -198,8 +199,8 @@ func (api *API) StartTime() time.Time {
 // New creates a new Sia API from the provided skymodules. The API will require
 // authentication using HTTP basic auth for certain endpoints of the supplied
 // password is not the empty string.  Usernames are ignored for authentication.
-func New(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs skymodules.ConsensusSet, e skymodules.Explorer, fm skymodules.FeeManager, g skymodules.Gateway, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, tp skymodules.TransactionPool, w skymodules.Wallet) *API {
-	return NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, skymodules.ProdDependencies)
+func New(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet) *API {
+	return NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, modules.ProdDependencies)
 }
 
 // NewCustom creates a new Sia API from the provided skymodules. The API will
@@ -207,7 +208,7 @@ func New(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword 
 // supplied password is not the empty string. Usernames are ignored for
 // authentication. It is custom because it allows to inject custom dependencies
 // into the API.
-func NewCustom(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs skymodules.ConsensusSet, e skymodules.Explorer, fm skymodules.FeeManager, g skymodules.Gateway, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, tp skymodules.TransactionPool, w skymodules.Wallet, deps skymodules.Dependencies) *API {
+func NewCustom(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet, deps modules.Dependencies) *API {
 	api := &API{
 		accounting:        acc,
 		cs:                cs,

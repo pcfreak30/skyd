@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
@@ -40,16 +41,16 @@ var (
 // programResponse is a helper struct that wraps the RPCExecuteProgramResponse
 // alongside the data output
 type programResponse struct {
-	skymodules.RPCExecuteProgramResponse
+	modules.RPCExecuteProgramResponse
 	Output []byte
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p skymodules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// Defer a function that schedules a price table update in case we received
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
-		if skymodules.IsPriceTableInvalidErr(err) {
+		if modules.IsPriceTableInvalidErr(err) {
 			w.staticTryForcePriceTableUpdate()
 		}
 	}()
@@ -80,14 +81,14 @@ func (w *worker) managedExecuteProgram(p skymodules.Program, data []byte, fcid t
 	buffer := bytes.NewBuffer(nil)
 
 	// write the specifier
-	err = skymodules.RPCWrite(buffer, skymodules.RPCExecuteProgram)
+	err = modules.RPCWrite(buffer, modules.RPCExecuteProgram)
 	if err != nil {
 		return
 	}
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
-	err = skymodules.RPCWrite(buffer, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		return
 	}
@@ -98,14 +99,14 @@ func (w *worker) managedExecuteProgram(p skymodules.Program, data []byte, fcid t
 	err = w.staticAccount.ProvidePayment(buffer, cost, bh)
 
 	// prepare the request.
-	epr := skymodules.RPCExecuteProgramRequest{
+	epr := modules.RPCExecuteProgramRequest{
 		FileContractID:    fcid,
 		Program:           p,
 		ProgramDataLength: uint64(len(data)),
 	}
 
 	// send the execute program request.
-	err = skymodules.RPCWrite(buffer, epr)
+	err = modules.RPCWrite(buffer, epr)
 	if err != nil {
 		return
 	}
@@ -123,8 +124,8 @@ func (w *worker) managedExecuteProgram(p skymodules.Program, data []byte, fcid t
 	}
 
 	// read the cancellation token.
-	var ct skymodules.MDMCancellationToken
-	err = skymodules.RPCRead(stream, &ct)
+	var ct modules.MDMCancellationToken
+	err = modules.RPCRead(stream, &ct)
 	if err != nil {
 		return
 	}
@@ -133,7 +134,7 @@ func (w *worker) managedExecuteProgram(p skymodules.Program, data []byte, fcid t
 	responses = make([]programResponse, 0, len(epr.Program))
 	for i := 0; i < len(epr.Program); i++ {
 		var response programResponse
-		err = skymodules.RPCRead(stream, &response)
+		err = modules.RPCRead(stream, &response)
 		if err != nil {
 			return
 		}
@@ -168,7 +169,7 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	}
 
 	// Create a stream with a reasonable dial up timeout.
-	stream, err := w.renter.staticMux.NewStreamTimeout(skymodules.HostSiaMuxSubscriberName, w.staticCache().staticHostMuxAddress, timeout, skymodules.SiaPKToMuxPK(w.staticHostPubKey))
+	stream, err := w.renter.staticMux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, w.staticCache().staticHostMuxAddress, timeout, modules.SiaPKToMuxPK(w.staticHostPubKey))
 	if err != nil {
 		return nil, err
 	}
@@ -189,11 +190,11 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 }
 
 // managedRenew renews the contract with the worker's host.
-func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.ContractParams, txnBuilder skymodules.TransactionBuilder) (_ skymodules.RenterContract, _ []types.Transaction, err error) {
+func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.ContractParams, txnBuilder modules.TransactionBuilder) (_ skymodules.RenterContract, _ []types.Transaction, err error) {
 	// Defer a function that schedules a price table update in case we received
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
-		if skymodules.IsPriceTableInvalidErr(err) {
+		if modules.IsPriceTableInvalidErr(err) {
 			w.staticTryForcePriceTableUpdate()
 		}
 	}()
@@ -210,23 +211,23 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 	}()
 
 	// write the specifier.
-	err = skymodules.RPCWrite(stream, skymodules.RPCRenewContract)
+	err = modules.RPCWrite(stream, modules.RPCRenewContract)
 	if err != nil {
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: failed to write RPC specifier")
 	}
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
-	err = skymodules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: failed to write price table uid")
 	}
 
 	// if the price table we sent contained a zero uid, we receive a temporary
 	// one.
-	if pt.UID == (skymodules.UniqueID{}) {
-		var ptr skymodules.RPCUpdatePriceTableResponse
-		err = skymodules.RPCRead(stream, &ptr)
+	if pt.UID == (modules.UniqueID{}) {
+		var ptr modules.RPCUpdatePriceTableResponse
+		err = modules.RPCRead(stream, &ptr)
 		if err != nil {
 			return skymodules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: failed to fetch temporary price table")
 		}
@@ -238,8 +239,8 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 
 	// price table gouging check. The cost for renewing the price table is
 	// currently hardcoded in the host. So we simply check for that value.
-	if pt.RenewContractCost.Cmp(skymodules.DefaultBaseRPCPrice) > 0 {
-		return skymodules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table renew contract cost gouging %v > %v", pt.RenewContractCost, skymodules.DefaultBaseRPCPrice)
+	if pt.RenewContractCost.Cmp(modules.DefaultBaseRPCPrice) > 0 {
+		return skymodules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table renew contract cost gouging %v > %v", pt.RenewContractCost, modules.DefaultBaseRPCPrice)
 	}
 	// For the txn fee estimate take we use a constant multiple of our own
 	// expectation.

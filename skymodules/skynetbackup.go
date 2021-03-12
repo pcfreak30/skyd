@@ -11,9 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/persist"
 )
 
 const (
@@ -157,7 +158,7 @@ func readBackupHeader(r io.Reader) (string, error) {
 // readBaseSector reads the baseSector from the backup
 func readBaseSector(r io.Reader) ([]byte, error) {
 	// Read the header
-	baseSector := make([]byte, SectorSize)
+	baseSector := make([]byte, modules.SectorSize)
 	_, err := io.ReadFull(r, baseSector)
 	if err != nil && !(errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF)) {
 		return nil, errors.AddContext(err, "unable to read baseSector")

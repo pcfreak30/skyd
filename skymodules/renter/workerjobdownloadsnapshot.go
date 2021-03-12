@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -42,7 +43,7 @@ type (
 // checkDownloadSnapshotGouging looks at the current renter allowance and the
 // active settings for a host and determines whether a snapshot upload should be
 // halted due to price gouging.
-func checkDownloadSnapshotGouging(allowance skymodules.Allowance, pt skymodules.RPCPriceTable) error {
+func checkDownloadSnapshotGouging(allowance skymodules.Allowance, pt modules.RPCPriceTable) error {
 	// Check whether the download bandwidth price is too high.
 	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
 		errStr := fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
@@ -63,8 +64,8 @@ func checkDownloadSnapshotGouging(allowance skymodules.Allowance, pt skymodules.
 	// is determined on a case-by-case basis. If the host is too expensive to
 	// even satisfy a faction of the user's total desired resource consumption,
 	// the action will be blocked for price gouging.
-	expectedDL := skymodules.SectorSize
-	rpcCost := skymodules.MDMInitCost(&pt, 48, 1).Add(skymodules.MDMReadCost(&pt, expectedDL)) // 48 bytes is the length of a single instruction read program
+	expectedDL := modules.SectorSize
+	rpcCost := modules.MDMInitCost(&pt, 48, 1).Add(modules.MDMReadCost(&pt, expectedDL)) // 48 bytes is the length of a single instruction read program
 	bandwidthCost := pt.DownloadBandwidthCost.Mul64(expectedDL)
 	fullCostPerByte := rpcCost.Add(bandwidthCost).Div64(expectedDL)
 	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)

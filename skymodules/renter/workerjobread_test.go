@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestJobExpectedJobTime is a small unit test that verifies the result of
@@ -78,7 +78,7 @@ func TestJobReadMetadata(t *testing.T) {
 	}
 
 	// add sector data to the host
-	sectorData := fastrand.Bytes(int(skymodules.SectorSize))
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
 	err = wt.host.AddSector(sectorRoot, sectorData)
 	if err != nil {
@@ -92,7 +92,7 @@ func TestJobReadMetadata(t *testing.T) {
 	jrs := &jobReadSector{
 		jobRead: jobRead{
 			staticResponseChan: responseChan,
-			staticLength:       skymodules.SectorSize,
+			staticLength:       modules.SectorSize,
 
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,

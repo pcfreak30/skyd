@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -18,7 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // dummyCloser is a helper type that counts the number of times Close is called.
@@ -39,18 +39,18 @@ func (dc *dummyCloser) staticCount() uint64 {
 
 // randomRegistryValue is a helper to create a signed registry value for
 // testing.
-func randomRegistryValue() (skymodules.SignedRegistryValue, types.SiaPublicKey, crypto.SecretKey) {
+func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, crypto.SecretKey) {
 	// Create a registry value.
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(skymodules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := fastrand.Uint64n(1000)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := skymodules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	return rv, spk, sk
 }
 
@@ -96,14 +96,14 @@ func TestSubscriptionHelpersWithWorker(t *testing.T) {
 	}
 
 	// Begin subscription. Compute deadline.
-	deadline := time.Now().Add(skymodules.SubscriptionPeriod)
+	deadline := time.Now().Add(modules.SubscriptionPeriod)
 	stream, err := wt.managedBeginSubscription(initialSubscriptionBudget, wt.staticAccount.staticID, subscriber)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Subscribe to all three values.
-	initialValues, err := skymodules.RPCSubscribeToRVs(stream, []skymodules.RPCRegistrySubscriptionRequest{
+	initialValues, err := modules.RPCSubscribeToRVs(stream, []modules.RPCRegistrySubscriptionRequest{
 		{
 			PubKey: spk1,
 			Tweak:  srv1.Tweak,
@@ -145,13 +145,13 @@ func TestSubscriptionHelpersWithWorker(t *testing.T) {
 	}
 
 	// Extend the subscription.
-	err = skymodules.RPCExtendSubscription(stream, pt)
+	err = modules.RPCExtendSubscription(stream, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Unsubscribe from the values again.
-	err = skymodules.RPCUnsubscribeFromRVs(stream, []skymodules.RPCRegistrySubscriptionRequest{
+	err = modules.RPCUnsubscribeFromRVs(stream, []modules.RPCRegistrySubscriptionRequest{
 		{
 			PubKey: spk1,
 			Tweak:  srv1.Tweak,
@@ -170,10 +170,10 @@ func TestSubscriptionHelpersWithWorker(t *testing.T) {
 	}
 
 	// Sleep until the first deadline + half way through the second period.
-	time.Sleep(time.Until(deadline.Add(skymodules.SubscriptionPeriod / 2)))
+	time.Sleep(time.Until(deadline.Add(modules.SubscriptionPeriod / 2)))
 
 	// Graceful shutdown.
-	err = skymodules.RPCStopSubscription(stream)
+	err = modules.RPCStopSubscription(stream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestPriceTableForSubscription(t *testing.T) {
 	t.Parallel()
 
 	// Create a worker that's not running its worker loop.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,19 +200,19 @@ func TestPriceTableForSubscription(t *testing.T) {
 
 	// Create a unique price table for testing.
 	wptInvalid := &workerPriceTable{
-		staticExpiryTime: time.Now().Add(skymodules.SubscriptionPeriod).Add(-time.Microsecond), // Won't cover the period
-		staticUpdateTime: time.Now().Add(time.Hour),                                            // 1 hour from now
+		staticExpiryTime: time.Now().Add(modules.SubscriptionPeriod).Add(-time.Microsecond), // Won't cover the period
+		staticUpdateTime: time.Now().Add(time.Hour),                                         // 1 hour from now
 	}
 	fastrand.Read(wptInvalid.staticPriceTable.UID[:])
 	wt.staticSetPriceTable(wptInvalid)
 
 	// Try to fetch a price table in a different goroutine. This should block
 	// since we don't have a valid price table.
-	var pt *skymodules.RPCPriceTable
+	var pt *modules.RPCPriceTable
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		pt = wt.managedPriceTableForSubscription(skymodules.SubscriptionPeriod)
+		pt = wt.managedPriceTableForSubscription(modules.SubscriptionPeriod)
 	}()
 
 	// Wait for 1 second. The goroutine shouldn't finish.
@@ -234,7 +234,7 @@ func TestPriceTableForSubscription(t *testing.T) {
 	// Create a new, valid price table and set it to simulate a price table
 	// update.
 	wptValid := &workerPriceTable{
-		staticExpiryTime: time.Now().Add(skymodules.SubscriptionPeriod).Add(priceTableRetryInterval).Add(time.Second),
+		staticExpiryTime: time.Now().Add(modules.SubscriptionPeriod).Add(priceTableRetryInterval).Add(time.Second),
 		staticUpdateTime: time.Now().Add(time.Hour), // 1 hour from now
 	}
 	fastrand.Read(wptValid.staticPriceTable.UID[:])
@@ -264,7 +264,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	t.Parallel()
 
 	// Create a worker that's not running its worker loop.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,18 +285,18 @@ func TestSubscriptionLoop(t *testing.T) {
 
 	// The fresh price table should be valid for the subscription.
 	wpt := wt.staticPriceTable()
-	if !wpt.staticValidFor(skymodules.SubscriptionPeriod) {
+	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
 		t.Fatal("price table not valid for long enough")
 	}
 	pt := &wpt.staticPriceTable
 
 	// Compute the expected deadline.
-	deadline := time.Now().Add(skymodules.SubscriptionPeriod)
+	deadline := time.Now().Add(modules.SubscriptionPeriod)
 
 	// Set the initial budget to half the budget that the loop should maintain.
 	expectedBudget := initialSubscriptionBudget
 	initialBudget := expectedBudget.Div64(2)
-	budget := skymodules.NewBudget(initialBudget)
+	budget := modules.NewBudget(initialBudget)
 
 	// Prepare a unique handler for the host to subscribe to.
 	var subscriber types.Specifier
@@ -399,8 +399,8 @@ func TestSubscriptionLoop(t *testing.T) {
 	}
 	// Add 2 random rvs to subscription map.
 	srv1, spk1, _ := randomRegistryValue()
-	subInfo.subscriptions[skymodules.RegistrySubscriptionID(spk1, srv1.Tweak)] = &subscription{
-		staticRequest: &skymodules.RPCRegistrySubscriptionRequest{
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk1, srv1.Tweak)] = &subscription{
+		staticRequest: &modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk1,
 			Tweak:  srv1.Tweak,
 		},
@@ -409,8 +409,8 @@ func TestSubscriptionLoop(t *testing.T) {
 	}
 
 	srv2, spk2, _ := randomRegistryValue()
-	subInfo.subscriptions[skymodules.RegistrySubscriptionID(spk2, srv2.Tweak)] = &subscription{
-		staticRequest: &skymodules.RPCRegistrySubscriptionRequest{
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = &subscription{
+		staticRequest: &modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk2,
 			Tweak:  srv2.Tweak,
 		},
@@ -467,21 +467,21 @@ func TestSubscriptionLoop(t *testing.T) {
 
 	// Remove the second subscription.
 	subInfo.mu.Lock()
-	subInfo.subscriptions[skymodules.RegistrySubscriptionID(spk2, srv2.Tweak)].subscribe = false
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)].subscribe = false
 
 	// Add a third subscription which should be removed automatically since
 	// "subscribe" is set to false from the beginning. Make sure the channel is
 	// closed.
 	srv3, spk3, _ := randomRegistryValue()
 	sub3 := &subscription{
-		staticRequest: &skymodules.RPCRegistrySubscriptionRequest{
+		staticRequest: &modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk3,
 			Tweak:  srv3.Tweak,
 		},
 		subscribed: make(chan struct{}),
 		subscribe:  false,
 	}
-	subInfo.subscriptions[skymodules.RegistrySubscriptionID(spk2, srv2.Tweak)] = sub3
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = sub3
 	subInfo.mu.Unlock()
 
 	// After a bit of time we should be successfully unsubscribed.
@@ -545,14 +545,14 @@ func TestSubscriptionLoop(t *testing.T) {
 
 		// Compute subscription cost. Subscribed to 2 entries of which 0
 		// existed.
-		subscriptionCost := skymodules.MDMSubscribeCost(pt, 0, 2)
+		subscriptionCost := modules.MDMSubscribeCost(pt, 0, 2)
 
 		// Compute notification cost. There should not have been any.
 		notificationCost := types.ZeroCurrency
 
 		// Compute extension cost. We extended twice with 2 active subscriptions.
 		nExtensions := atomic.LoadUint64(&subInfo.atomicExtensions)
-		extensionCost := skymodules.MDMSubscriptionMemoryCost(pt, 2).Mul64(nExtensions)
+		extensionCost := modules.MDMSubscriptionMemoryCost(pt, 2).Mul64(nExtensions)
 
 		// Compute the total cost.
 		totalCost := bandwidthCost.Add(subscriptionCost).Add(notificationCost).Add(extensionCost)
@@ -579,7 +579,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 	t.Parallel()
 
 	// Create a worker that's not running its worker loop.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +602,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 
 	// Prepare a helper to update an entry on a deactivated worker without
 	// affecting the cache.
-	update := func(spk types.SiaPublicKey, rv skymodules.SignedRegistryValue) error {
+	update := func(spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
 		c := make(chan *jobUpdateRegistryResponse, 1)
 		j := wt.newJobUpdateRegistry(context.Background(), c, spk, rv)
 		_, err = j.managedUpdateRegistry()
@@ -626,17 +626,17 @@ func TestSubscriptionNotifications(t *testing.T) {
 
 	// The fresh price table should be valid for the subscription.
 	wpt := wt.staticPriceTable()
-	if !wpt.staticValidFor(skymodules.SubscriptionPeriod) {
+	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
 		t.Fatal("price table not valid for long enough")
 	}
 
 	// Compute the expected deadline.
-	deadline := time.Now().Add(skymodules.SubscriptionPeriod)
+	deadline := time.Now().Add(modules.SubscriptionPeriod)
 
 	// Set the initial budget.
 	expectedBudget := initialSubscriptionBudget
 	initialBudget := expectedBudget
-	budget := skymodules.NewBudget(initialBudget)
+	budget := modules.NewBudget(initialBudget)
 	pt := &wpt.staticPriceTable
 
 	// Begin the subscription.
@@ -660,7 +660,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 	// Subscribe to both entries.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	rvs, err := wt.Subscribe(ctx, []skymodules.RPCRegistrySubscriptionRequest{
+	rvs, err := wt.Subscribe(ctx, []modules.RPCRegistrySubscriptionRequest{
 		{
 			PubKey: spk1,
 			Tweak:  rv1.Tweak,
@@ -705,7 +705,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 	subInfo.mu.Unlock()
 
 	// Unsubscribe from rv1.
-	wt.Unsubscribe([]skymodules.RPCRegistrySubscriptionRequest{
+	wt.Unsubscribe([]modules.RPCRegistrySubscriptionRequest{
 		{
 			PubKey: spk1,
 			Tweak:  rv1.Tweak,
@@ -762,7 +762,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 
 	// The worker should also have updated the subscription.
 	subInfo.mu.Lock()
-	sub, exists := subInfo.subscriptions[skymodules.RegistrySubscriptionID(spk2, rv2a.Tweak)]
+	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, rv2a.Tweak)]
 	if !exists {
 		t.Fatal("rv2's subscription doesn't exist")
 	}
@@ -800,7 +800,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 
 		// Compute subscription cost. Subscribed to 2 entries of which 1
 		// existed.
-		subscriptionCost := skymodules.MDMSubscribeCost(pt, 1, 2)
+		subscriptionCost := modules.MDMSubscribeCost(pt, 1, 2)
 
 		// Compute notification cost.
 		notificationCost := pt.SubscriptionNotificationCost
@@ -831,7 +831,7 @@ func TestHandleNotification(t *testing.T) {
 	t.Parallel()
 
 	// Create a worker that's not running its worker loop.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -864,8 +864,8 @@ func TestHandleNotification(t *testing.T) {
 	}
 
 	// Register it.
-	budget := skymodules.NewBudget(types.SiacoinPrecision.Mul64(1000))
-	limit := skymodules.NewBudgetLimit(budget, downloadBandwidthCost, uploadBandwidthCost)
+	budget := modules.NewBudget(types.SiacoinPrecision.Mul64(1000))
+	limit := modules.NewBudgetLimit(budget, downloadBandwidthCost, uploadBandwidthCost)
 	err = wt.renter.staticMux.NewListener(subscriberStr, func(stream siamux.Stream) {
 		nh.managedHandleNotification(stream, budget, limit)
 	})
@@ -889,24 +889,24 @@ func TestHandleNotification(t *testing.T) {
 	sendSuccessNotification := func() {
 		stream := hostStream()
 		defer stream.Close()
-		err := skymodules.RPCWrite(stream, skymodules.RPCRegistrySubscriptionNotificationType{
-			Type: skymodules.SubscriptionResponseSubscriptionSuccess,
+		err := modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{
+			Type: modules.SubscriptionResponseSubscriptionSuccess,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 	// helper to send a new "registry value" notification.
-	sendRegistryValue := func(spk types.SiaPublicKey, srv skymodules.SignedRegistryValue) {
+	sendRegistryValue := func(spk types.SiaPublicKey, srv modules.SignedRegistryValue) {
 		stream := hostStream()
 		defer stream.Close()
-		err := skymodules.RPCWrite(stream, skymodules.RPCRegistrySubscriptionNotificationType{
-			Type: skymodules.SubscriptionResponseRegistryValue,
+		err := modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{
+			Type: modules.SubscriptionResponseRegistryValue,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = skymodules.RPCWrite(stream, skymodules.RPCRegistrySubscriptionNotificationEntryUpdate{
+		err = modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
 			Entry:  srv,
 			PubKey: spk,
 		})
@@ -946,8 +946,8 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Subscribe to a random registry value.
 		rv, spk, _ := randomRegistryValue()
-		sid := skymodules.RegistrySubscriptionID(spk, rv.Tweak)
-		subInfo.subscriptions[sid] = newSubscription(&skymodules.RPCRegistrySubscriptionRequest{
+		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk,
 			Tweak:  rv.Tweak,
 		})
@@ -982,8 +982,8 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Subscribe to a random registry value.
 		rv, spk, sk := randomRegistryValue()
-		sid := skymodules.RegistrySubscriptionID(spk, rv.Tweak)
-		subInfo.subscriptions[sid] = newSubscription(&skymodules.RPCRegistrySubscriptionRequest{
+		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk,
 			Tweak:  rv.Tweak,
 		})
@@ -1024,8 +1024,8 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Subscribe to a random registry value.
 		rv, spk, _ := randomRegistryValue()
-		sid := skymodules.RegistrySubscriptionID(spk, rv.Tweak)
-		subInfo.subscriptions[sid] = newSubscription(&skymodules.RPCRegistrySubscriptionRequest{
+		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk,
 			Tweak:  rv.Tweak,
 		})
@@ -1061,7 +1061,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Create a random registry entry.
 		rv, spk, _ := randomRegistryValue()
-		sid := skymodules.RegistrySubscriptionID(spk, rv.Tweak)
+		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
 		// Send rv.
 		sendRegistryValue(spk, rv)
 		// Check fields.
@@ -1093,7 +1093,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Push a new price table.
 		// It contains double of the previous specified costs.
-		pt := skymodules.RPCPriceTable{
+		pt := modules.RPCPriceTable{
 			SubscriptionNotificationCost: notificationCost.Mul64(2),
 			DownloadBandwidthCost:        downloadBandwidthCost.Mul64(2),
 			UploadBandwidthCost:          uploadBandwidthCost.Mul64(2),
@@ -1130,7 +1130,7 @@ func TestHandleNotification(t *testing.T) {
 		// Send the invalid notification.
 		stream := hostStream()
 		defer stream.Close()
-		err := skymodules.RPCWrite(stream, skymodules.RPCRegistrySubscriptionNotificationType{})
+		err := modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1174,7 +1174,7 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	}
 
 	// Subscribe to that entry.
-	req := skymodules.RPCRegistrySubscriptionRequest{
+	req := modules.RPCRegistrySubscriptionRequest{
 		PubKey: spk,
 		Tweak:  rv.Tweak,
 	}
@@ -1286,7 +1286,7 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 		downloadCost := pt.DownloadBandwidthCost.Mul64(4380)
 		uploadCost := pt.UploadBandwidthCost.Mul64(7300)
 		bandwidthCost := downloadCost.Add(uploadCost)
-		subCost := skymodules.MDMSubscribeCost(&pt, 1, 1)
+		subCost := modules.MDMSubscribeCost(&pt, 1, 1)
 		notificationCost := pt.SubscriptionNotificationCost
 		cost := bandwidthCost.Add(notificationCost).Add(subCost)
 		if !cost.Equals(spending) {

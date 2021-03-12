@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skykey"
@@ -109,7 +110,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 	}
 
 	// Determine how large each chunk is.
-	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * skymodules.SectorSize
+	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
 
 	// Prepare an array of download chans on which we'll receive the data.
 	numChunks := fetchSize / chunkSize

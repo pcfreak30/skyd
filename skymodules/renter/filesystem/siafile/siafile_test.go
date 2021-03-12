@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -109,7 +110,7 @@ func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error 
 // TestFileNumChunks checks the numChunks method of the file type.
 func TestFileNumChunks(t *testing.T) {
 	fileSize := func(numSectors uint64) uint64 {
-		return numSectors*skymodules.SectorSize + uint64(fastrand.Intn(int(skymodules.SectorSize)))
+		return numSectors*modules.SectorSize + uint64(fastrand.Intn(int(modules.SectorSize)))
 	}
 	// Since the pieceSize is 'random' now we test a variety of random inputs.
 	tests := []struct {
@@ -142,7 +143,7 @@ func TestFileNumChunks(t *testing.T) {
 		siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
 		f, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, test.fileSize, -1, fileMode)
 		// Make sure the file reports the correct pieceSize.
-		if f.PieceSize() != skymodules.SectorSize-f.MasterKey().Type().Overhead() {
+		if f.PieceSize() != modules.SectorSize-f.MasterKey().Type().Overhead() {
 			t.Fatal("file has wrong pieceSize for its encryption type")
 		}
 		// Check that the number of chunks matches the expected number.
@@ -358,7 +359,7 @@ func TestFileHealth(t *testing.T) {
 	if stuckHealth != float64(0) {
 		t.Errorf("Stuck Health of file not as expected, got %v expected 0", stuckHealth)
 	}
-	expected := uint64(rsc.NumPieces()) * skymodules.SectorSize
+	expected := uint64(rsc.NumPieces()) * modules.SectorSize
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
 	}
@@ -393,7 +394,7 @@ func TestFileHealth(t *testing.T) {
 	if health != 1.45 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.45", health)
 	}
-	expected = uint64(rsc.NumPieces()-1) * skymodules.SectorSize
+	expected = uint64(rsc.NumPieces()-1) * modules.SectorSize
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
 	}
@@ -412,7 +413,7 @@ func TestFileHealth(t *testing.T) {
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
-	expected = uint64(rsc.NumPieces()-2) * skymodules.SectorSize
+	expected = uint64(rsc.NumPieces()-2) * modules.SectorSize
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
 	}
@@ -431,7 +432,7 @@ func TestFileHealth(t *testing.T) {
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
-	expected = uint64(rsc.NumPieces()-2) * skymodules.SectorSize
+	expected = uint64(rsc.NumPieces()-2) * modules.SectorSize
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
 	}
@@ -457,7 +458,7 @@ func TestFileHealth(t *testing.T) {
 	if numStuckChunks != 1 {
 		t.Fatalf("Expected 1 stuck chunk but found %v", numStuckChunks)
 	}
-	expected = uint64(rsc.NumPieces()-2) * skymodules.SectorSize
+	expected = uint64(rsc.NumPieces()-2) * modules.SectorSize
 	if repairBytes != 0 {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, 0)
 	}
@@ -494,7 +495,7 @@ func TestFileHealth(t *testing.T) {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, 0)
 	}
 	// There should be stuck bytes
-	expected = uint64(rsc.NumPieces()-thresholdPieces) * skymodules.SectorSize
+	expected = uint64(rsc.NumPieces()-thresholdPieces) * modules.SectorSize
 	if stuckBytes != expected {
 		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, expected)
 	}
@@ -544,8 +545,8 @@ func TestFileHealth(t *testing.T) {
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
-	firstRepair := uint64(rsc.NumPieces()) * skymodules.SectorSize
-	secondRepair := uint64(rsc.NumPieces()) * skymodules.SectorSize
+	firstRepair := uint64(rsc.NumPieces()) * modules.SectorSize
+	secondRepair := uint64(rsc.NumPieces()) * modules.SectorSize
 	expected = firstRepair + secondRepair
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
@@ -570,8 +571,8 @@ func TestFileHealth(t *testing.T) {
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
-	firstRepair = uint64(rsc.NumPieces()-2) * skymodules.SectorSize
-	secondRepair = uint64(rsc.NumPieces()) * skymodules.SectorSize
+	firstRepair = uint64(rsc.NumPieces()-2) * modules.SectorSize
+	secondRepair = uint64(rsc.NumPieces()) * modules.SectorSize
 	expected = firstRepair + secondRepair
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
@@ -597,8 +598,8 @@ func TestFileHealth(t *testing.T) {
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
-	firstRepair = uint64(rsc.NumPieces()-2) * skymodules.SectorSize
-	secondRepair = uint64(rsc.NumPieces()-2) * skymodules.SectorSize
+	firstRepair = uint64(rsc.NumPieces()-2) * modules.SectorSize
+	secondRepair = uint64(rsc.NumPieces()-2) * modules.SectorSize
 	expected = firstRepair + secondRepair
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
@@ -627,8 +628,8 @@ func TestFileHealth(t *testing.T) {
 	if err := ensureMetadataValid(f.Metadata()); err != nil {
 		t.Fatal(err)
 	}
-	firstRepair = uint64(rsc.NumPieces()-2) * skymodules.SectorSize
-	secondRepair = uint64(rsc.NumPieces()-2) * skymodules.SectorSize
+	firstRepair = uint64(rsc.NumPieces()-2) * modules.SectorSize
+	secondRepair = uint64(rsc.NumPieces()-2) * modules.SectorSize
 	if repairBytes != firstRepair {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, firstRepair)
 	}
@@ -968,7 +969,7 @@ func TestChunkHealth(t *testing.T) {
 	if fileHealth != initHealth {
 		t.Fatalf("Expected file to be %v, got %v", initHealth, fileHealth)
 	}
-	expectedChunkRepairBytes := uint64(rc.NumPieces()) * skymodules.SectorSize
+	expectedChunkRepairBytes := uint64(rc.NumPieces()) * modules.SectorSize
 	expectedFileRepairBytes := sf.NumChunks() * expectedChunkRepairBytes
 	if repairBytes != expectedFileRepairBytes {
 		t.Errorf("Expected repairBytes to be %v, got %v", expectedFileRepairBytes, repairBytes)
@@ -1022,7 +1023,7 @@ func TestChunkHealth(t *testing.T) {
 	if ch != newHealth {
 		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, ch)
 	}
-	expectedChunkRepairBytes = uint64(rc.NumPieces()-1) * skymodules.SectorSize
+	expectedChunkRepairBytes = uint64(rc.NumPieces()-1) * modules.SectorSize
 	if repairBytes != expectedChunkRepairBytes {
 		t.Errorf("Expected repairBytes to be %v, got %v", expectedChunkRepairBytes, repairBytes)
 	}
@@ -1039,7 +1040,7 @@ func TestChunkHealth(t *testing.T) {
 	if ch != fileHealth {
 		t.Fatalf("Expected chunk health to be %v, got %v", fileHealth, ch)
 	}
-	expectedChunkRepairBytes = uint64(rc.NumPieces()) * skymodules.SectorSize
+	expectedChunkRepairBytes = uint64(rc.NumPieces()) * modules.SectorSize
 	if repairBytes != expectedChunkRepairBytes {
 		t.Errorf("Expected repairBytes to be %v, got %v", expectedChunkRepairBytes, repairBytes)
 	}
@@ -1064,7 +1065,7 @@ func TestChunkHealth(t *testing.T) {
 	if ch != newHealth {
 		t.Fatalf("Expected chunk health to be %v, got %v", newHealth, ch)
 	}
-	expectedChunkRepairBytes = uint64(rc.NumPieces()-1) * skymodules.SectorSize
+	expectedChunkRepairBytes = uint64(rc.NumPieces()-1) * modules.SectorSize
 	if repairBytes != expectedChunkRepairBytes {
 		t.Errorf("Expected repairBytes to be %v, got %v", expectedChunkRepairBytes, repairBytes)
 	}
@@ -1184,11 +1185,11 @@ func TestUploadedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if totalBytes != 4*skymodules.SectorSize {
-		t.Errorf("expected totalBytes to be %v, got %v", 4*skymodules.SectorSize, totalBytes)
+	if totalBytes != 4*modules.SectorSize {
+		t.Errorf("expected totalBytes to be %v, got %v", 4*modules.SectorSize, totalBytes)
 	}
-	if uniqueBytes != skymodules.SectorSize {
-		t.Errorf("expected uniqueBytes to be %v, got %v", skymodules.SectorSize, uniqueBytes)
+	if uniqueBytes != modules.SectorSize {
+		t.Errorf("expected uniqueBytes to be %v, got %v", modules.SectorSize, uniqueBytes)
 	}
 	if err := ensureMetadataValid(f.Metadata()); err != nil {
 		t.Fatal(err)

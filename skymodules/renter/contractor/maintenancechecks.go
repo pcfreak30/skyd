@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/big"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
@@ -263,10 +264,10 @@ func (c *Contractor) sufficientFundsCheck(contract skymodules.RenterContract, ho
 
 	// Contract should not be used for uploading if the contract does
 	// not have enough money remaining to perform the upload.
-	blockBytes := types.NewCurrency64(skymodules.SectorSize * uint64(period))
+	blockBytes := types.NewCurrency64(modules.SectorSize * uint64(period))
 	sectorStoragePrice := host.StoragePrice.Mul(blockBytes)
-	sectorUploadBandwidthPrice := host.UploadBandwidthPrice.Mul64(skymodules.SectorSize)
-	sectorDownloadBandwidthPrice := host.DownloadBandwidthPrice.Mul64(skymodules.SectorSize)
+	sectorUploadBandwidthPrice := host.UploadBandwidthPrice.Mul64(modules.SectorSize)
+	sectorDownloadBandwidthPrice := host.DownloadBandwidthPrice.Mul64(modules.SectorSize)
 	sectorBandwidthPrice := sectorUploadBandwidthPrice.Add(sectorDownloadBandwidthPrice)
 	sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
 	percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()

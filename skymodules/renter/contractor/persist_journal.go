@@ -25,10 +25,11 @@ import (
 	"os"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
@@ -44,7 +45,7 @@ type journalPersist struct {
 	CachedRevisions map[string]proto.V130CachedRevision `json:"cachedrevisions"`
 	Contracts       map[string]proto.V130Contract       `json:"contracts"`
 	CurrentPeriod   types.BlockHeight                   `json:"currentperiod"`
-	LastChange      skymodules.ConsensusChangeID        `json:"lastchange"`
+	LastChange      modules.ConsensusChangeID           `json:"lastchange"`
 	OldContracts    []proto.V130Contract                `json:"oldcontracts"`
 	RenewedIDs      map[string]string                   `json:"renewedids"`
 }

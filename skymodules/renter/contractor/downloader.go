@@ -6,9 +6,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
 
@@ -27,7 +27,7 @@ type Downloader interface {
 
 	// HostSettings returns the settings that are active in the current
 	// downloader session.
-	HostSettings() skymodules.HostExternalSettings
+	HostSettings() modules.HostExternalSettings
 
 	// Close terminates the connection to the host.
 	Close() error
@@ -41,7 +41,7 @@ type hostDownloader struct {
 	contractID   types.FileContractID
 	contractor   *Contractor
 	downloader   *proto.Downloader
-	hostSettings skymodules.HostExternalSettings
+	hostSettings modules.HostExternalSettings
 	invalid      bool // true if invalidate has been called
 	mu           sync.Mutex
 }
@@ -82,7 +82,7 @@ func (hd *hostDownloader) Close() error {
 
 // HostSettings returns the settings of the host that the downloader connects
 // to.
-func (hd *hostDownloader) HostSettings() skymodules.HostExternalSettings {
+func (hd *hostDownloader) HostSettings() modules.HostExternalSettings {
 	hd.mu.Lock()
 	defer hd.mu.Unlock()
 	return hd.hostSettings

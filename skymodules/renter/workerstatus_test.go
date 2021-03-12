@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestWorkerAccountStatus is a small unit test that verifies the output of the
@@ -24,7 +24,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 	}
 	t.Parallel()
 
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestWorkerReadJobStatus(t *testing.T) {
 
 	jhs := &jobReadSector{
 		jobRead: jobRead{
-			staticLength:       skymodules.SectorSize,
+			staticLength:       modules.SectorSize,
 			staticResponseChan: rc,
 
 			jobGeneric: &jobGeneric{
@@ -436,7 +436,7 @@ func TestWorkerRegistryJobStatus(t *testing.T) {
 	rrc := make(chan *jobReadRegistryResponse)
 	urc := make(chan *jobUpdateRegistryResponse)
 	jrr := w.newJobReadRegistry(ctx, rrc, types.SiaPublicKey{}, crypto.Hash{})
-	jur := w.newJobUpdateRegistry(ctx, urc, types.SiaPublicKey{}, skymodules.SignedRegistryValue{})
+	jur := w.newJobUpdateRegistry(ctx, urc, types.SiaPublicKey{}, modules.SignedRegistryValue{})
 	if !w.staticJobReadRegistryQueue.callAdd(jrr) {
 		t.Fatal("Could not add job to queue")
 	}

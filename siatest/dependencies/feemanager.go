@@ -3,14 +3,14 @@ package dependencies
 import (
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // DependencyCustomNebulousAddress will use a custom address for the Nebulous
 // address when processing a fee.
 type DependencyCustomNebulousAddress struct {
-	skymodules.ProductionDependencies
+	modules.ProductionDependencies
 
 	address types.UnlockHash
 	mu      sync.Mutex

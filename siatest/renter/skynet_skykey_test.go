@@ -6,10 +6,11 @@ import (
 	"net/url"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/skykey"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -594,7 +595,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 	encKeyName := "large-file-encryption-test-key-" + skykeyType.ToString()
 
 	// Create some data to upload as a skyfile.
-	data := fastrand.Bytes(5 * int(skymodules.SectorSize))
+	data := fastrand.Bytes(5 * int(modules.SectorSize))
 	// Call the upload skyfile client call.
 	filename := "testEncryptLarge-" + skykeyType.ToString()
 

@@ -6,15 +6,16 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // newBenchmarkRenterWithDependency creates a renter to be used for benchmarks
 // on renter methods
-func newBenchmarkRenterWithDependency(name string, deps skymodules.Dependencies) (*Renter, error) {
+func newBenchmarkRenterWithDependency(name string, deps modules.Dependencies) (*Renter, error) {
 	testdir := build.TempDir("renter", name)
 	rt, err := newRenterTesterNoRenter(testdir)
 	if err != nil {

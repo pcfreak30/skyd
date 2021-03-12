@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -476,14 +477,14 @@ func getPieceOffsetAndLen(ec skymodules.ErasureCoder, offset, length uint64) (pi
 	pieceSegmentSize, partialsSupported := ec.SupportsPartialEncoding()
 	if !partialsSupported {
 		// If partials are not supported, the full piece needs to be downloaded.
-		pieceSegmentSize = skymodules.SectorSize
+		pieceSegmentSize = modules.SectorSize
 	}
 
 	// Consistency check some of the erasure coder values. If the check fails,
 	// return that the whole piece must be downloaded.
 	if pieceSegmentSize == 0 {
 		build.Critical("pcws has a bad erasure coder")
-		return 0, skymodules.SectorSize
+		return 0, modules.SectorSize
 	}
 
 	// Determine the download offset within a single piece. We get this by

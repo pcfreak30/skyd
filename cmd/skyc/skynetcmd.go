@@ -21,6 +21,7 @@ import (
 	"github.com/vbauerster/mpb/v5/decor"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter"
@@ -485,7 +486,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Print totals.
-	totalStoredStr := skymodules.FilesizeUnits(sizePerDir[root.dir.SiaPath])
+	totalStoredStr := modules.FilesizeUnits(sizePerDir[root.dir.SiaPath])
 	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Print dirs.
@@ -500,7 +501,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		for _, subDir := range dir.subDirs {
 			subDirName := subDir.SiaPath.Name() + "/"
-			sizeUnits := skymodules.FilesizeUnits(sizePerDir[subDir.SiaPath])
+			sizeUnits := modules.FilesizeUnits(sizePerDir[subDir.SiaPath])
 			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, sizeUnits)
 		}
 
@@ -508,7 +509,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
 			firstSkylink := file.Skylinks[0]
-			size := skymodules.FilesizeUnits(file.Filesize)
+			size := modules.FilesizeUnits(file.Filesize)
 			fmt.Fprintf(w, "  %v\t%v\t%9v\n", name, firstSkylink, size)
 			for _, skylink := range file.Skylinks[1:] {
 				fmt.Fprintf(w, "\t%v\t\n", skylink)
@@ -772,7 +773,7 @@ func skynetportalsgetcmd() {
 // skynetportalsaddcmd adds a Skynet portal as either public or private
 func skynetportalsaddcmd(portalURL string) {
 	addition := skymodules.SkynetPortal{
-		Address: skymodules.NetAddress(portalURL),
+		Address: modules.NetAddress(portalURL),
 		Public:  skynetPortalPublic,
 	}
 
@@ -784,9 +785,9 @@ func skynetportalsaddcmd(portalURL string) {
 
 // skynetportalsremovecmd removes a Skynet portal
 func skynetportalsremovecmd(portalUrl string) {
-	removal := skymodules.NetAddress(portalUrl)
+	removal := modules.NetAddress(portalUrl)
 
-	err := httpClient.SkynetPortalsPost(nil, []skymodules.NetAddress{removal})
+	err := httpClient.SkynetPortalsPost(nil, []modules.NetAddress{removal})
 	if err != nil {
 		die("Could not remove portal:", err)
 	}

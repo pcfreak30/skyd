@@ -24,12 +24,12 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 const (
@@ -68,7 +68,7 @@ type (
 		// Utils. The file is global to all accounts, each account looks at a
 		// specific offset within the file.
 		mu           sync.Mutex
-		staticFile   skymodules.File
+		staticFile   modules.File
 		staticRenter *Renter
 	}
 
@@ -82,7 +82,7 @@ type (
 	// accountPersistence is the account's persistence object which holds all
 	// data that gets persisted for a single account.
 	accountPersistence struct {
-		AccountID skymodules.AccountID
+		AccountID modules.AccountID
 		HostKey   types.SiaPublicKey
 		SecretKey crypto.SecretKey
 
@@ -108,7 +108,7 @@ type (
 	// accountPersistenceV150 is how the account persistence struct looked
 	// before adding the spending details in v156
 	accountPersistenceV150 struct {
-		AccountID skymodules.AccountID
+		AccountID modules.AccountID
 		Balance   types.Currency
 		HostKey   types.SiaPublicKey
 		SecretKey crypto.SecretKey
@@ -226,7 +226,7 @@ func (am *accountManager) managedOpenAccount(hostKey types.SiaPublicKey) (acc *a
 	}
 	// Open a new account.
 	offset := accountsOffset + len(am.accounts)*accountSize
-	aid, sk := skymodules.NewAccountID()
+	aid, sk := modules.NewAccountID()
 	acc = &account{
 		staticID:        aid,
 		staticHostKey:   hostKey,
@@ -497,7 +497,7 @@ func (am *accountManager) openFile() (bool, error) {
 // openAccountsFile is a helper function that will open an accounts file with
 // given filename. If the accounts file does not exist prior to calling this
 // function, it will be created and provided with the metadata header.
-func (am *accountManager) openAccountsFile(filename string) (skymodules.File, error) {
+func (am *accountManager) openAccountsFile(filename string) (modules.File, error) {
 	r := am.staticRenter
 
 	// check whether the file exists
@@ -636,7 +636,7 @@ func (am *accountManager) upgradeFromV150ToV156() error {
 // file into the accounts file. This is a separate method as this function is
 // called during the happy flow, but it is also potentially the steps required
 // when trying to recover from a failed initial update attempt.
-func (am *accountManager) upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile skymodules.File) (err error) {
+func (am *accountManager) upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile modules.File) (err error) {
 	// convenience variables
 	r := am.staticRenter
 	tmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
@@ -672,7 +672,7 @@ func (am *accountManager) updateMetadata(meta accountsMetadata) error {
 // compatV150ReadAccounts is a helper function that reads the accounts from the
 // accounts file assuming they are persisted using the v150 persistence object
 // and parameters. Extracted to keep the compat code clean.
-func compatV150ReadAccounts(log *persist.Logger, accountsFile skymodules.File, tmpFile skymodules.File) []*account {
+func compatV150ReadAccounts(log *persist.Logger, accountsFile modules.File, tmpFile modules.File) []*account {
 	// the offset needs to be the new accountsOffset
 	newOffset := int64(accountsOffset)
 
@@ -729,7 +729,7 @@ func fileExists(path string) (bool, error) {
 
 // readAccountsMetadata is a small helper function that tries to read the
 // metadata object from the given file.
-func readAccountsMetadata(file skymodules.File) (*accountsMetadata, error) {
+func readAccountsMetadata(file modules.File) (*accountsMetadata, error) {
 	// Seek to the beginning of the file
 	_, err := file.Seek(0, io.SeekStart)
 	if err != nil {

@@ -12,10 +12,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
@@ -62,7 +63,7 @@ type file struct {
 // Chunk/Piece metadata is used to split the raw contract data appropriately.
 type fileContract struct {
 	ID     types.FileContractID
-	IP     skymodules.NetAddress
+	IP     modules.NetAddress
 	Pieces []pieceData
 
 	WindowStart types.BlockHeight

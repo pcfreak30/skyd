@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 var (
@@ -92,7 +92,7 @@ func (testFilterIPv6Resolver) LookupIP(host string) ([]net.IP, error) {
 func TestTooManyAddresses(t *testing.T) {
 	// Check that returning more than 2 addresses causes a host to be filtered.
 	filter := NewFilter(testTooManyAddressesResolver{})
-	host := skymodules.NetAddress("any.address:1234")
+	host := modules.NetAddress("any.address:1234")
 
 	// Add host to filter.
 	filter.Add(host)
@@ -110,10 +110,10 @@ func TestTwoAddresses(t *testing.T) {
 	filter := NewFilter(testTwoAddressesResolver{})
 
 	// Create a few hosts for testing.
-	hostValid1 := skymodules.NetAddress("ipv4.ipv6:1234")
-	hostValid2 := skymodules.NetAddress("ipv6.ipv4:1234")
-	hostInvalid1 := skymodules.NetAddress("ipv4.ipv4:1234")
-	hostInvalid2 := skymodules.NetAddress("ipv6.ipv6:1234")
+	hostValid1 := modules.NetAddress("ipv4.ipv6:1234")
+	hostValid2 := modules.NetAddress("ipv6.ipv4:1234")
+	hostInvalid1 := modules.NetAddress("ipv4.ipv4:1234")
+	hostInvalid2 := modules.NetAddress("ipv6.ipv6:1234")
 
 	// Check hosts.
 	if filter.Filtered(hostValid1) || filter.Filtered(hostValid2) {
@@ -128,12 +128,12 @@ func TestTwoAddresses(t *testing.T) {
 func TestFilterIPv4(t *testing.T) {
 	filter := NewFilter(testFilterIPv4Resolver{})
 
-	host1 := skymodules.NetAddress("host1:1234")
-	host2 := skymodules.NetAddress("host2:1234")
-	host3 := skymodules.NetAddress("host3:1234")
-	host4 := skymodules.NetAddress("host4:1234")
-	host5 := skymodules.NetAddress("host5:1234")
-	host6 := skymodules.NetAddress("host6:1234")
+	host1 := modules.NetAddress("host1:1234")
+	host2 := modules.NetAddress("host2:1234")
+	host3 := modules.NetAddress("host3:1234")
+	host4 := modules.NetAddress("host4:1234")
+	host5 := modules.NetAddress("host5:1234")
+	host6 := modules.NetAddress("host6:1234")
 
 	// Host1 shouldn't be filtered.
 	if filter.Filtered(host1) {
@@ -174,15 +174,15 @@ func TestFilterIPv4(t *testing.T) {
 func TestFilterIPv6(t *testing.T) {
 	filter := NewFilter(testFilterIPv6Resolver{})
 
-	host1 := skymodules.NetAddress("host1:1234")
-	host2 := skymodules.NetAddress("host2:1234")
-	host3 := skymodules.NetAddress("host3:1234")
-	host4 := skymodules.NetAddress("host4:1234")
-	host5 := skymodules.NetAddress("host5:1234")
-	host6 := skymodules.NetAddress("host6:1234")
-	host7 := skymodules.NetAddress("host7:1234")
-	host8 := skymodules.NetAddress("host8:1234")
-	host9 := skymodules.NetAddress("host9:1234")
+	host1 := modules.NetAddress("host1:1234")
+	host2 := modules.NetAddress("host2:1234")
+	host3 := modules.NetAddress("host3:1234")
+	host4 := modules.NetAddress("host4:1234")
+	host5 := modules.NetAddress("host5:1234")
+	host6 := modules.NetAddress("host6:1234")
+	host7 := modules.NetAddress("host7:1234")
+	host8 := modules.NetAddress("host8:1234")
+	host9 := modules.NetAddress("host9:1234")
 
 	// Host1 shouldn't be filtered.
 	if filter.Filtered(host1) {

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -21,7 +22,7 @@ import (
 // dependencyInterruptContractInsertion will interrupt inserting a contract
 // after writing the header but before writing the roots.
 type dependencyInterruptContractInsertion struct {
-	skymodules.ProductionDependencies
+	modules.ProductionDependencies
 }
 
 // Disrupt returns true if the correct string is provided.
@@ -158,7 +159,7 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 	// create contract set with one contract
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 	if err := cs.Close(); err != nil {
 		t.Fatal(err)
 	}
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +238,7 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 	if err := cs.Close(); err != nil {
 		t.Fatal(err)
 	}
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +260,7 @@ func TestContractIncompleteWrite(t *testing.T) {
 	// create contract set with one contract
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +339,7 @@ func TestContractIncompleteWrite(t *testing.T) {
 	if err := cs.Close(); err != nil {
 		t.Fatal(err)
 	}
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +365,7 @@ func TestContractLargeHeader(t *testing.T) {
 	// create contract set with one contract
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +430,7 @@ func TestContractSetInsertInterrupted(t *testing.T) {
 	}
 
 	// Reload the contract set. The contract should be there.
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +465,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	// create contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -571,7 +572,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	}, false)
 
 	// reload the contract set
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,7 +610,7 @@ func TestContractRefCounter(t *testing.T) {
 	// create a contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -716,7 +717,7 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 	// create contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +773,7 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 
 	// don't commit the download. Instead simulate a crash by reloading the
 	// contract set.
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -804,7 +805,7 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 	}
 
 	// restart again. We still expect 0 unapplied txns.
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -831,7 +832,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 	// create contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -890,7 +891,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 
 	// don't commit the download. Instead simulate a crash by reloading the
 	// contract set.
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -922,7 +923,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 	}
 
 	// restart again. We still expect 0 unapplied txns.
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -949,7 +950,7 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 	// create contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1011,7 +1012,7 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 
 	// don't commit the download. Instead simulate a crash by reloading the
 	// contract set.
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1043,7 +1044,7 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 	}
 
 	// restart again. We still expect 0 unapplied txns.
-	cs, err = NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1076,7 +1077,7 @@ func TestPanicOnOverwritingNewerRevision(t *testing.T) {
 	// create contract set with one contract
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := NewContractSet(dir, rl, skymodules.ProdDependencies)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}

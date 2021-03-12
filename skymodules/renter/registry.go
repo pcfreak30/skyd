@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/host/registry"
 )
 
 var (
@@ -229,7 +230,7 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 // jobs have 'timeout' amount of time to finish their jobs and return a
 // response. Otherwise the response with the highest revision number will be
 // used.
-func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (skymodules.SignedRegistryValue, error) {
+func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error) {
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
 	ctx := r.tg.StopCtx()
@@ -243,7 +244,7 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
 	if !r.registryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
-		return skymodules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
+		return modules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
 	}
 	defer r.registryMemoryManager.Return(readRegistryMemory)
 
@@ -257,7 +258,7 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 
 // UpdateRegistry updates the registries on all workers with the given
 // registry value.
-func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv skymodules.SignedRegistryValue, timeout time.Duration) error {
+func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, timeout time.Duration) error {
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
 	ctx := r.tg.StopCtx()
@@ -287,7 +288,7 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv skymodules.SignedReg
 // jobs have 'timeout' amount of time to finish their jobs and return a
 // response. Otherwise the response with the highest revision number will be
 // used.
-func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (skymodules.SignedRegistryValue, error) {
+func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
 	// Specify a sane timeout for jobs that is independent of the user specified
 	// timeout. It is the maximum time that we let a job execute in the
 	// background before cancelling it.
@@ -332,7 +333,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
 		backgroundCancel()
-		return skymodules.SignedRegistryValue{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
+		return modules.SignedRegistryValue{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
 	numWorkers := len(workers)
 
@@ -365,7 +366,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// the highest rev number and return the highest one we have so far.
 	var useHighestRevCtx context.Context
 
-	var srv *skymodules.SignedRegistryValue
+	var srv *modules.SignedRegistryValue
 	responses := 0
 	for responseSet.responsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
@@ -409,13 +410,13 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// If we don't have a successful response and also not a response for every
 	// worker, we timed out.
 	if srv == nil && responses < len(workers) {
-		return skymodules.SignedRegistryValue{}, ErrRegistryLookupTimeout
+		return modules.SignedRegistryValue{}, ErrRegistryLookupTimeout
 	}
 
 	// If we don't have a successful response but received a response from every
 	// worker, we were unable to look up the entry.
 	if srv == nil {
-		return skymodules.SignedRegistryValue{}, ErrRegistryEntryNotFound
+		return modules.SignedRegistryValue{}, ErrRegistryEntryNotFound
 	}
 	return *srv, nil
 }
@@ -425,7 +426,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 // NOTE: the input ctx only unblocks the call if it fails to hit the threshold
 // before the timeout. It doesn't stop the update jobs. That's because we want
 // to always make sure we update as many hosts as possble.
-func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv skymodules.SignedRegistryValue) (err error) {
+func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) (err error) {
 	// Verify the signature before updating the hosts.
 	if err := srv.Verify(spk.ToPublicKey()); err != nil {
 		return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")

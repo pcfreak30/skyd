@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/skynetlabs/skyd/skymodules"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -82,7 +83,7 @@ type (
 		mu         sync.Mutex
 
 		// utility fields
-		staticDeps skymodules.Dependencies
+		staticDeps modules.Dependencies
 
 		refCounterUpdateControl
 	}
@@ -147,7 +148,7 @@ func loadRefCounter(path string, wal *writeaheadlog.WAL) (_ *refCounter, err err
 		filepath:         path,
 		numSectors:       numSectors,
 		staticWal:        wal,
-		staticDeps:       skymodules.ProdDependencies,
+		staticDeps:       modules.ProdDependencies,
 		refCounterUpdateControl: refCounterUpdateControl{
 			newSectorCounts: make(map[uint64]uint16),
 		},
@@ -156,7 +157,7 @@ func loadRefCounter(path string, wal *writeaheadlog.WAL) (_ *refCounter, err err
 
 // newCustomRefCounter creates a new sector reference counter file to accompany
 // a contract file and allows setting custom dependencies
-func newCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps skymodules.Dependencies) (*refCounter, error) {
+func newCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps modules.Dependencies) (*refCounter, error) {
 	h := refCounterHeader{
 		Version: refCounterVersion,
 	}
@@ -184,7 +185,7 @@ func newCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, dep
 // newRefCounter creates a new sector reference counter file to accompany
 // a contract file
 func newRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*refCounter, error) {
-	return newCustomRefCounter(path, numSec, wal, skymodules.ProdDependencies)
+	return newCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
 }
 
 // callAppend appends one counter to the end of the refcounter file and
@@ -471,7 +472,7 @@ func (rc *refCounter) readCount(secIdx uint64) (_ uint16, err error) {
 }
 
 // applyUpdates takes a list of WAL updates and applies them.
-func applyUpdates(f skymodules.File, updates ...writeaheadlog.Update) (err error) {
+func applyUpdates(f modules.File, updates ...writeaheadlog.Update) (err error) {
 	for _, update := range updates {
 		switch update.Name {
 		case updateNameRCDelete:
@@ -524,7 +525,7 @@ func createTruncateUpdate(path string, newNumSec uint64) writeaheadlog.Update {
 }
 
 // applyTruncateUpdate parses and applies a Truncate update.
-func applyTruncateUpdate(f skymodules.File, u writeaheadlog.Update) error {
+func applyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
 	if u.Name != updateNameRCTruncate {
 		return fmt.Errorf("applyAppendTruncate called on update of type %v", u.Name)
 	}
@@ -551,7 +552,7 @@ func createWriteAtUpdate(path string, secIdx uint64, value uint16) writeaheadlog
 }
 
 // applyWriteAtUpdate parses and applies a WriteAt update.
-func applyWriteAtUpdate(f skymodules.File, u writeaheadlog.Update) error {
+func applyWriteAtUpdate(f modules.File, u writeaheadlog.Update) error {
 	if u.Name != updateNameRCWriteAt {
 		return fmt.Errorf("applyAppendWriteAt called on update of type %v", u.Name)
 	}

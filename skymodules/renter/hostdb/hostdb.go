@@ -18,9 +18,10 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb/hosttree"
 )
@@ -50,15 +51,15 @@ type contractInfo struct {
 // for uploading files.
 type HostDB struct {
 	// dependencies
-	cs          skymodules.ConsensusSet
-	staticDeps  skymodules.Dependencies
-	gateway     skymodules.Gateway
+	cs          modules.ConsensusSet
+	staticDeps  modules.Dependencies
+	gateway     modules.Gateway
 	staticMux   *siamux.SiaMux
-	staticTpool skymodules.TransactionPool
+	staticTpool modules.TransactionPool
 
 	staticLog     *persist.Logger
 	mu            sync.RWMutex
-	staticAlerter *skymodules.GenericAlerter
+	staticAlerter *modules.GenericAlerter
 	persistDir    string
 	tg            threadgroup.ThreadGroup
 
@@ -104,7 +105,7 @@ type HostDB struct {
 	filterMode         skymodules.FilterMode
 
 	blockHeight types.BlockHeight
-	lastChange  skymodules.ConsensusChangeID
+	lastChange  modules.ConsensusChangeID
 }
 
 // Enforce that HostDB satisfies the skymodules.HostDB interface.
@@ -205,7 +206,7 @@ func (hdb *HostDB) updateContracts(contracts []skymodules.RenterContract) {
 }
 
 // hostdbBlockingStartup handles the blocking portion of NewCustomHostDB.
-func hostdbBlockingStartup(g skymodules.Gateway, cs skymodules.ConsensusSet, tpool skymodules.TransactionPool, siamux *siamux.SiaMux, persistDir string, deps skymodules.Dependencies) (*HostDB, error) {
+func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, siamux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*HostDB, error) {
 	// Check for nil inputs.
 	if g == nil {
 		return nil, errNilGateway
@@ -232,7 +233,7 @@ func hostdbBlockingStartup(g skymodules.Gateway, cs skymodules.ConsensusSet, tpo
 		filteredHosts:  make(map[string]types.SiaPublicKey),
 		knownContracts: make(map[string]contractInfo),
 		scanMap:        make(map[string]struct{}),
-		staticAlerter:  skymodules.NewAlerter("hostdb"),
+		staticAlerter:  modules.NewAlerter("hostdb"),
 	}
 
 	// Set the allowance, txnFees and hostweight function.
@@ -326,7 +327,7 @@ func hostdbBlockingStartup(g skymodules.Gateway, cs skymodules.ConsensusSet, tpo
 	// to pick up any hosts that it has incorrectly dropped in the past.
 	hdb.mu.Lock()
 	if hdb.blockHeight == 0 || compatV147ForceRescan {
-		hdb.lastChange = skymodules.ConsensusChangeBeginning
+		hdb.lastChange = modules.ConsensusChangeBeginning
 		hdb.blockHeight = 0
 	}
 	hdb.mu.Unlock()
@@ -350,7 +351,7 @@ func hostdbBlockingStartup(g skymodules.Gateway, cs skymodules.ConsensusSet, tpo
 }
 
 // hostdbAsyncStartup handles the async portion of NewCustomHostDB.
-func hostdbAsyncStartup(hdb *HostDB, cs skymodules.ConsensusSet) error {
+func hostdbAsyncStartup(hdb *HostDB, cs modules.ConsensusSet) error {
 	if hdb.staticDeps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
@@ -358,12 +359,12 @@ func hostdbAsyncStartup(hdb *HostDB, cs skymodules.ConsensusSet) error {
 	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 		return err
 	}
-	if errors.Contains(err, skymodules.ErrInvalidConsensusChangeID) {
+	if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		// Subscribe again using the new ID. This will cause a triggered scan
 		// on all of the hosts, but that should be acceptable.
 		hdb.mu.Lock()
 		hdb.blockHeight = 0
-		hdb.lastChange = skymodules.ConsensusChangeBeginning
+		hdb.lastChange = modules.ConsensusChangeBeginning
 		hdb.mu.Unlock()
 		err = cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
 	}
@@ -377,15 +378,15 @@ func hostdbAsyncStartup(hdb *HostDB, cs skymodules.ConsensusSet) error {
 }
 
 // New returns a new HostDB.
-func New(g skymodules.Gateway, cs skymodules.ConsensusSet, tpool skymodules.TransactionPool, siamux *siamux.SiaMux, persistDir string) (*HostDB, <-chan error) {
+func New(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, siamux *siamux.SiaMux, persistDir string) (*HostDB, <-chan error) {
 	// Create HostDB using production dependencies.
-	return NewCustomHostDB(g, cs, tpool, siamux, persistDir, skymodules.ProdDependencies)
+	return NewCustomHostDB(g, cs, tpool, siamux, persistDir, modules.ProdDependencies)
 }
 
 // NewCustomHostDB creates a HostDB using the provided dependencies. It loads the old
 // persistence data, spawns the HostDB's scanning threads, and subscribes it to
 // the consensusSet.
-func NewCustomHostDB(g skymodules.Gateway, cs skymodules.ConsensusSet, tpool skymodules.TransactionPool, siamux *siamux.SiaMux, persistDir string, deps skymodules.Dependencies) (*HostDB, <-chan error) {
+func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, siamux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*HostDB, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Blocking startup.
@@ -590,7 +591,7 @@ func (hdb *HostDB) SetFilterMode(fm skymodules.FilterMode, hosts []types.SiaPubl
 	}
 
 	// Create filtered HostTree
-	hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, skymodules.ProdDependencies.Resolver())
+	hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
 
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)

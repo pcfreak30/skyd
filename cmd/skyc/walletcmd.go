@@ -16,13 +16,13 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/wallet"
 )
 
 var (
@@ -545,7 +545,7 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 	} else {
 		// if siad is running, but the wallet is locked, assume the user
 		// wanted to sign with siad
-		if strings.Contains(err.Error(), skymodules.ErrLockedWallet.Error()) {
+		if strings.Contains(err.Error(), modules.ErrLockedWallet.Error()) {
 			die("Signing via API failed: siad is running, but the wallet is locked.")
 		}
 
@@ -572,7 +572,7 @@ func walletsigncmdoffline(txn *types.Transaction, toSign []crypto.Hash) {
 	if err != nil {
 		die("Reading seed failed:", err)
 	}
-	seed, err := skymodules.StringToSeed(seedString, mnemonics.English)
+	seed, err := modules.StringToSeed(seedString, mnemonics.English)
 	if err != nil {
 		die("Invalid seed:", err)
 	}

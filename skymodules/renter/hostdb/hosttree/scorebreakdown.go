@@ -51,7 +51,7 @@ func conversionRate(score, totalScore types.Currency) float64 {
 }
 
 // HostScoreBreakdown converts a HostAdjustments object into a
-// skymodules.HostScoreBreakdown.
+// modules.HostScoreBreakdown.
 func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge, ignoreDuration, ignoreUptime bool) skymodules.HostScoreBreakdown {
 	// Set the ignored fields to 1.
 	if ignoreAge {

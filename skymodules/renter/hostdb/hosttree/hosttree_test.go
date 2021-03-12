@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -116,7 +117,7 @@ func makeHostDBEntry() skymodules.HostDBEntry {
 func TestHostTree(t *testing.T) {
 	tree := New(func(hdbe skymodules.HostDBEntry) ScoreBreakdown {
 		return newCustomScoreBreakdown(types.NewCurrency64(20))
-	}, skymodules.ProductionResolver{})
+	}, modules.ProductionResolver{})
 
 	// Create a bunch of host entries of equal weight.
 	firstInsertions := 64
@@ -175,7 +176,7 @@ func TestHostTreeParallel(t *testing.T) {
 
 	tree := New(func(dbe skymodules.HostDBEntry) ScoreBreakdown {
 		return newCustomScoreBreakdown(types.NewCurrency64(10))
-	}, skymodules.ProductionResolver{})
+	}, modules.ProductionResolver{})
 
 	// spin up 100 goroutines all randomly inserting, removing, modifying, and
 	// fetching nodes from the tree.
@@ -276,7 +277,7 @@ func TestHostTreeParallel(t *testing.T) {
 func TestHostTreeModify(t *testing.T) {
 	tree := New(func(dbe skymodules.HostDBEntry) ScoreBreakdown {
 		return newCustomScoreBreakdown(types.NewCurrency64(10))
-	}, skymodules.ProductionResolver{})
+	}, modules.ProductionResolver{})
 
 	treeSize := 100
 	var keys []types.SiaPublicKey
@@ -326,7 +327,7 @@ func TestVariedWeights(t *testing.T) {
 
 	tree := New(func(dbe skymodules.HostDBEntry) ScoreBreakdown {
 		return newCustomScoreBreakdown(types.NewCurrency64(uint64(i)))
-	}, skymodules.ProductionResolver{})
+	}, modules.ProductionResolver{})
 
 	hostCount := 5
 	expectedPerWeight := int(10e3)
@@ -381,7 +382,7 @@ func TestRepeatInsert(t *testing.T) {
 
 	tree := New(func(dbe skymodules.HostDBEntry) ScoreBreakdown {
 		return newCustomScoreBreakdown(types.NewCurrency64(10))
-	}, skymodules.ProductionResolver{})
+	}, modules.ProductionResolver{})
 
 	entry1 := makeHostDBEntry()
 	entry2 := entry1
@@ -405,7 +406,7 @@ func TestNodeAtWeight(t *testing.T) {
 	// create hostTree
 	tree := New(func(dbe skymodules.HostDBEntry) ScoreBreakdown {
 		return newCustomScoreBreakdown(weight)
-	}, skymodules.ProductionResolver{})
+	}, modules.ProductionResolver{})
 
 	entry := makeHostDBEntry()
 	err := tree.Insert(entry)
@@ -424,7 +425,7 @@ func TestRandomHosts(t *testing.T) {
 	// Create the tree.
 	tree := New(func(dbe skymodules.HostDBEntry) ScoreBreakdown {
 		return newCustomScoreBreakdown(dbe.StoragePrice)
-	}, skymodules.ProductionResolver{})
+	}, modules.ProductionResolver{})
 
 	// Empty.
 	hosts := tree.SelectRandom(1, nil, nil)

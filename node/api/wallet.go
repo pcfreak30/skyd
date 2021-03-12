@@ -14,8 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -97,22 +97,22 @@ type (
 	// WalletTransactionGETid contains the transaction returned by a call to
 	// /wallet/transaction/:id
 	WalletTransactionGETid struct {
-		Transaction skymodules.ProcessedTransaction `json:"transaction"`
+		Transaction modules.ProcessedTransaction `json:"transaction"`
 	}
 
 	// WalletTransactionsGET contains the specified set of confirmed and
 	// unconfirmed transactions.
 	WalletTransactionsGET struct {
-		ConfirmedTransactions   []skymodules.ProcessedTransaction `json:"confirmedtransactions"`
-		UnconfirmedTransactions []skymodules.ProcessedTransaction `json:"unconfirmedtransactions"`
+		ConfirmedTransactions   []modules.ProcessedTransaction `json:"confirmedtransactions"`
+		UnconfirmedTransactions []modules.ProcessedTransaction `json:"unconfirmedtransactions"`
 	}
 
 	// WalletTransactionsGETaddr contains the set of wallet transactions
 	// relevant to the input address provided in the call to
 	// /wallet/transaction/:addr
 	WalletTransactionsGETaddr struct {
-		ConfirmedTransactions   []skymodules.ProcessedTransaction `json:"confirmedtransactions"`
-		UnconfirmedTransactions []skymodules.ProcessedTransaction `json:"unconfirmedtransactions"`
+		ConfirmedTransactions   []modules.ProcessedTransaction `json:"confirmedtransactions"`
+		UnconfirmedTransactions []modules.ProcessedTransaction `json:"unconfirmedtransactions"`
 	}
 
 	// WalletUnlockConditionsGET contains a set of unlock conditions.
@@ -129,7 +129,7 @@ type (
 	// The MaturityHeight field of each output indicates the height of the
 	// block that the output appeared in.
 	WalletUnspentGET struct {
-		Outputs []skymodules.UnspentOutput `json:"outputs"`
+		Outputs []modules.UnspentOutput `json:"outputs"`
 	}
 
 	// WalletVerifyAddressGET contains a bool indicating if the address passed to
@@ -161,7 +161,7 @@ type (
 )
 
 // RegisterRoutesWallet is a helper function to register all wallet routes.
-func RegisterRoutesWallet(router *httprouter.Router, wallet skymodules.Wallet, requiredPassword string) {
+func RegisterRoutesWallet(router *httprouter.Router, wallet modules.Wallet, requiredPassword string) {
 	router.GET("/wallet", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		walletHandler(wallet, w, req, ps)
 	})
@@ -250,10 +250,10 @@ func RegisterRoutesWallet(router *httprouter.Router, wallet skymodules.Wallet, r
 
 // encryptionKeys enumerates the possible encryption keys that can be derived
 // from an input string.
-func encryptionKeys(seedStr string) (validKeys []crypto.CipherKey, seeds []skymodules.Seed) {
+func encryptionKeys(seedStr string) (validKeys []crypto.CipherKey, seeds []modules.Seed) {
 	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
 	for _, dict := range dicts {
-		seed, err := skymodules.StringToSeed(seedStr, dict)
+		seed, err := modules.StringToSeed(seedStr, dict)
 		if err != nil {
 			continue
 		}
@@ -265,7 +265,7 @@ func encryptionKeys(seedStr string) (validKeys []crypto.CipherKey, seeds []skymo
 }
 
 // walletHander handles API calls to /wallet.
-func walletHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func walletHandler(wallet modules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	siacoinBal, siafundBal, siaclaimBal, err := wallet.ConfirmedBalance()
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("Error when calling /wallet: %v", err)}, http.StatusBadRequest)
@@ -319,7 +319,7 @@ func walletHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Requ
 }
 
 // wallet033xHandler handles API calls to /wallet/033x.
-func wallet033xHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func wallet033xHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	source := req.FormValue("source")
 	// Check that source is an absolute paths.
 	if !filepath.IsAbs(source) {
@@ -333,16 +333,16 @@ func wallet033xHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *htt
 			WriteSuccess(w)
 			return
 		}
-		if !errors.Contains(err, skymodules.ErrBadEncryptionKey) {
+		if !errors.Contains(err, modules.ErrBadEncryptionKey) {
 			WriteError(w, Error{"error when calling /wallet/033x: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
-	WriteError(w, Error{skymodules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)
+	WriteError(w, Error{modules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)
 }
 
 // walletAddressHandler handles API calls to /wallet/address.
-func walletAddressHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func walletAddressHandler(wallet modules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	unlockConditions, err := wallet.NextAddress()
 	if err != nil {
 		WriteError(w, Error{"error when calling /wallet/addresses: " + err.Error()}, http.StatusBadRequest)
@@ -354,7 +354,7 @@ func walletAddressHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *ht
 }
 
 // walletSeedAddressesHandler handles the requests to /wallet/seedaddrs.
-func walletSeedAddressesHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletSeedAddressesHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the count argument. If it isn't specified we return as many
 	// addresses as possible.
 	count := uint64(math.MaxUint64)
@@ -379,7 +379,7 @@ func walletSeedAddressesHandler(wallet skymodules.Wallet, w http.ResponseWriter,
 }
 
 // walletAddressHandler handles API calls to /wallet/addresses.
-func walletAddressesHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func walletAddressesHandler(wallet modules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	addresses, err := wallet.AllAddresses()
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("Error when calling /wallet/addresses: %v", err)}, http.StatusBadRequest)
@@ -391,7 +391,7 @@ func walletAddressesHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *
 }
 
 // walletBackupHandler handles API calls to /wallet/backup.
-func walletBackupHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletBackupHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	destination := req.FormValue("destination")
 	// Check that the destination is absolute.
 	if !filepath.IsAbs(destination) {
@@ -407,7 +407,7 @@ func walletBackupHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *h
 }
 
 // walletInitHandler handles API calls to /wallet/init.
-func walletInitHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletInitHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var encryptionKey crypto.CipherKey
 	if req.FormValue("encryptionpassword") != "" {
 		encryptionKey = crypto.NewWalletKey(crypto.HashObject(req.FormValue("encryptionpassword")))
@@ -430,7 +430,7 @@ func walletInitHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *htt
 	if dictID == "" {
 		dictID = "english"
 	}
-	seedStr, err := skymodules.SeedToString(seed, dictID)
+	seedStr, err := modules.SeedToString(seed, dictID)
 	if err != nil {
 		WriteError(w, Error{"error when calling /wallet/init: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -441,7 +441,7 @@ func walletInitHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *htt
 }
 
 // walletInitSeedHandler handles API calls to /wallet/init/seed.
-func walletInitSeedHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletInitSeedHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var encryptionKey crypto.CipherKey
 	if req.FormValue("encryptionpassword") != "" {
 		encryptionKey = crypto.NewWalletKey(crypto.HashObject(req.FormValue("encryptionpassword")))
@@ -450,7 +450,7 @@ func walletInitSeedHandler(wallet skymodules.Wallet, w http.ResponseWriter, req 
 	if dictID == "" {
 		dictID = "english"
 	}
-	seed, err := skymodules.StringToSeed(req.FormValue("seed"), dictID)
+	seed, err := modules.StringToSeed(req.FormValue("seed"), dictID)
 	if err != nil {
 		WriteError(w, Error{"error when calling /wallet/init/seed: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -473,13 +473,13 @@ func walletInitSeedHandler(wallet skymodules.Wallet, w http.ResponseWriter, req 
 }
 
 // walletSeedHandler handles API calls to /wallet/seed.
-func walletSeedHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletSeedHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get the seed using the dictionary + phrase
 	dictID := mnemonics.DictionaryID(req.FormValue("dictionary"))
 	if dictID == "" {
 		dictID = "english"
 	}
-	seed, err := skymodules.StringToSeed(req.FormValue("seed"), dictID)
+	seed, err := modules.StringToSeed(req.FormValue("seed"), dictID)
 	if err != nil {
 		WriteError(w, Error{"error when calling /wallet/seed: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -492,16 +492,16 @@ func walletSeedHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *htt
 			WriteSuccess(w)
 			return
 		}
-		if !errors.Contains(err, skymodules.ErrBadEncryptionKey) {
+		if !errors.Contains(err, modules.ErrBadEncryptionKey) {
 			WriteError(w, Error{"error when calling /wallet/seed: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
-	WriteError(w, Error{"error when calling /wallet/seed: " + skymodules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)
+	WriteError(w, Error{"error when calling /wallet/seed: " + modules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)
 }
 
 // walletSiagkeyHandler handles API calls to /wallet/siagkey.
-func walletSiagkeyHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletSiagkeyHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Fetch the list of keyfiles from the post body.
 	keyfiles := strings.Split(req.FormValue("keyfiles"), ",")
 	potentialKeys, _ := encryptionKeys(req.FormValue("encryptionpassword"))
@@ -520,16 +520,16 @@ func walletSiagkeyHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *
 			WriteSuccess(w)
 			return
 		}
-		if !errors.Contains(err, skymodules.ErrBadEncryptionKey) {
+		if !errors.Contains(err, modules.ErrBadEncryptionKey) {
 			WriteError(w, Error{"error when calling /wallet/siagkey: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
-	WriteError(w, Error{"error when calling /wallet/siagkey: " + skymodules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)
+	WriteError(w, Error{"error when calling /wallet/siagkey: " + modules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)
 }
 
 // walletLockHandler handles API calls to /wallet/lock.
-func walletLockHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func walletLockHandler(wallet modules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	err := wallet.Lock()
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -539,7 +539,7 @@ func walletLockHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.
 }
 
 // walletSeedsHandler handles API calls to /wallet/seeds.
-func walletSeedsHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletSeedsHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	dictionary := mnemonics.DictionaryID(req.FormValue("dictionary"))
 	if dictionary == "" {
 		dictionary = mnemonics.English
@@ -551,7 +551,7 @@ func walletSeedsHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *ht
 		WriteError(w, Error{"error when calling /wallet/seeds: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	primarySeedStr, err := skymodules.SeedToString(primarySeed, dictionary)
+	primarySeedStr, err := modules.SeedToString(primarySeed, dictionary)
 	if err != nil {
 		WriteError(w, Error{"error when calling /wallet/seeds: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -565,7 +565,7 @@ func walletSeedsHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *ht
 	}
 	var allSeedsStrs []string
 	for _, seed := range allSeeds {
-		str, err := skymodules.SeedToString(seed, dictionary)
+		str, err := modules.SeedToString(seed, dictionary)
 		if err != nil {
 			WriteError(w, Error{"error when calling /wallet/seeds: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -580,7 +580,7 @@ func walletSeedsHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *ht
 }
 
 // walletSiacoinsHandler handles API calls to /wallet/siacoins.
-func walletSiacoinsHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletSiacoinsHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var txns []types.Transaction
 	if req.FormValue("outputs") != "" {
 		// multiple amounts + destinations
@@ -640,7 +640,7 @@ func walletSiacoinsHandler(wallet skymodules.Wallet, w http.ResponseWriter, req 
 }
 
 // walletSiafundsHandler handles API calls to /wallet/siafunds.
-func walletSiafundsHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletSiafundsHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	amount, ok := scanAmount(req.FormValue("amount"))
 	if !ok {
 		WriteError(w, Error{"could not read 'amount' from POST call to /wallet/siafunds"}, http.StatusBadRequest)
@@ -668,13 +668,13 @@ func walletSiafundsHandler(wallet skymodules.Wallet, w http.ResponseWriter, req 
 }
 
 // walletSweepSeedHandler handles API calls to /wallet/sweep/seed.
-func walletSweepSeedHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletSweepSeedHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get the seed using the dictionary + phrase
 	dictID := mnemonics.DictionaryID(req.FormValue("dictionary"))
 	if dictID == "" {
 		dictID = "english"
 	}
-	seed, err := skymodules.StringToSeed(req.FormValue("seed"), dictID)
+	seed, err := modules.StringToSeed(req.FormValue("seed"), dictID)
 	if err != nil {
 		WriteError(w, Error{"error when calling /wallet/sweep/seed: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -692,7 +692,7 @@ func walletSweepSeedHandler(wallet skymodules.Wallet, w http.ResponseWriter, req
 }
 
 // walletTransactionHandler handles API calls to /wallet/transaction/:id.
-func walletTransactionHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+func walletTransactionHandler(wallet modules.Wallet, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Parse the id from the url.
 	var id types.TransactionID
 	jsonID := "\"" + ps.ByName("id") + "\""
@@ -717,7 +717,7 @@ func walletTransactionHandler(wallet skymodules.Wallet, w http.ResponseWriter, _
 }
 
 // walletTransactionsHandler handles API calls to /wallet/transactions.
-func walletTransactionsHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletTransactionsHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	startheightStr, endheightStr := req.FormValue("startheight"), req.FormValue("endheight")
 	if startheightStr == "" || endheightStr == "" {
 		WriteError(w, Error{"startheight and endheight must be provided to a /wallet/transactions call."}, http.StatusBadRequest)
@@ -760,7 +760,7 @@ func walletTransactionsHandler(wallet skymodules.Wallet, w http.ResponseWriter, 
 
 // walletTransactionsAddrHandler handles API calls to
 // /wallet/transactions/:addr.
-func walletTransactionsAddrHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+func walletTransactionsAddrHandler(wallet modules.Wallet, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Parse the address being input.
 	jsonAddr := "\"" + ps.ByName("addr") + "\""
 	var addr types.UnlockHash
@@ -787,7 +787,7 @@ func walletTransactionsAddrHandler(wallet skymodules.Wallet, w http.ResponseWrit
 }
 
 // walletUnlockHandler handles API calls to /wallet/unlock.
-func walletUnlockHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletUnlockHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	potentialKeys, _ := encryptionKeys(req.FormValue("encryptionpassword"))
 	var err error
 	for _, key := range potentialKeys {
@@ -807,7 +807,7 @@ func walletUnlockHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *h
 }
 
 // walletChangePasswordHandler handles API calls to /wallet/changepassword
-func walletChangePasswordHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletChangePasswordHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var newKey crypto.CipherKey
 	newPassword := req.FormValue("newpassword")
 	if newPassword == "" {
@@ -839,7 +839,7 @@ func walletChangePasswordHandler(wallet skymodules.Wallet, w http.ResponseWriter
 }
 
 // walletVerifyPasswordHandler handles API calls to /wallet/verifypassword
-func walletVerifyPasswordHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletVerifyPasswordHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	originalKeys, _ := encryptionKeys(req.FormValue("password"))
 	var err error
 	for _, key := range originalKeys {
@@ -864,7 +864,7 @@ func walletVerifyAddressHandler(w http.ResponseWriter, _ *http.Request, ps httpr
 }
 
 // walletUnlockConditionsHandlerGET handles GET calls to /wallet/unlockconditions.
-func walletUnlockConditionsHandlerGET(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+func walletUnlockConditionsHandlerGET(wallet modules.Wallet, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	var addr types.UnlockHash
 	err := addr.LoadString(ps.ByName("addr"))
 	if err != nil {
@@ -882,7 +882,7 @@ func walletUnlockConditionsHandlerGET(wallet skymodules.Wallet, w http.ResponseW
 }
 
 // walletUnlockConditionsHandlerPOST handles POST calls to /wallet/unlockconditions.
-func walletUnlockConditionsHandlerPOST(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletUnlockConditionsHandlerPOST(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var params WalletUnlockConditionsPOSTParams
 	err := json.NewDecoder(req.Body).Decode(&params)
 	if err != nil {
@@ -898,7 +898,7 @@ func walletUnlockConditionsHandlerPOST(wallet skymodules.Wallet, w http.Response
 }
 
 // walletUnspentHandler handles API calls to /wallet/unspent.
-func walletUnspentHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func walletUnspentHandler(wallet modules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	outputs, err := wallet.UnspentOutputs()
 	if err != nil {
 		WriteError(w, Error{"error when calling /wallet/unspent: " + err.Error()}, http.StatusInternalServerError)
@@ -910,7 +910,7 @@ func walletUnspentHandler(wallet skymodules.Wallet, w http.ResponseWriter, _ *ht
 }
 
 // walletSignHandler handles API calls to /wallet/sign.
-func walletSignHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletSignHandler(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var params WalletSignPOSTParams
 	err := json.NewDecoder(req.Body).Decode(&params)
 	if err != nil {
@@ -928,7 +928,7 @@ func walletSignHandler(wallet skymodules.Wallet, w http.ResponseWriter, req *htt
 }
 
 // walletWatchHandlerGET handles GET calls to /wallet/watch.
-func walletWatchHandlerGET(wallet skymodules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func walletWatchHandlerGET(wallet modules.Wallet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	addrs, err := wallet.WatchAddresses()
 	if err != nil {
 		WriteError(w, Error{"failed to get watch addresses: " + err.Error()}, http.StatusBadRequest)
@@ -940,7 +940,7 @@ func walletWatchHandlerGET(wallet skymodules.Wallet, w http.ResponseWriter, _ *h
 }
 
 // walletWatchHandlerPOST handles POST calls to /wallet/watch.
-func walletWatchHandlerPOST(wallet skymodules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func walletWatchHandlerPOST(wallet modules.Wallet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var wwpp WalletWatchPOST
 	err := json.NewDecoder(req.Body).Decode(&wwpp)
 	if err != nil {

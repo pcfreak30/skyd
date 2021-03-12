@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skykey"
@@ -40,7 +41,7 @@ type WorkerPool interface {
 // Worker is a minimal interface for a single worker. It's used to be able to
 // use workers within the contractor.
 type Worker interface {
-	RenewContract(ctx context.Context, fcid types.FileContractID, params ContractParams, txnBuilder TransactionBuilder) (RenterContract, []types.Transaction, error)
+	RenewContract(ctx context.Context, fcid types.FileContractID, params ContractParams, txnBuilder modules.TransactionBuilder) (RenterContract, []types.Transaction, error)
 }
 
 var (
@@ -117,7 +118,7 @@ type RenterStats struct {
 	Name string `json:"name"`
 
 	// Any alerts that are in place for this renter.
-	Alerts []Alert `json:"alerts"`
+	Alerts []modules.Alert `json:"alerts"`
 
 	// Performance and throughput information related to the API.
 	SkynetPerformance SkynetPerformanceStats `json:"skynetperformance"`
@@ -517,7 +518,7 @@ func (f FileInfo) Sys() interface{} { return nil }
 // A HostDBEntry represents one host entry in the Renter's host DB. It
 // aggregates the host's external settings and metrics with its public key.
 type HostDBEntry struct {
-	HostExternalSettings
+	modules.HostExternalSettings
 
 	// FirstSeen is the last block height at which this host was announced.
 	FirstSeen types.BlockHeight `json:"firstseen"`
@@ -1030,7 +1031,7 @@ type (
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
-	Alerter
+	modules.Alerter
 
 	// ActiveHosts provides the list of hosts that the renter is selecting,
 	// sorted by preference.
@@ -1193,7 +1194,7 @@ type Renter interface {
 	// jobs have 'timeout' amount of time to finish their jobs and return a
 	// response. Otherwise the response with the highest revision number will be
 	// used.
-	ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (SignedRegistryValue, error)
+	ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
@@ -1211,7 +1212,7 @@ type Renter interface {
 
 	// UpdateRegistry updates the registries on all workers with the given
 	// registry value.
-	UpdateRegistry(spk types.SiaPublicKey, srv SignedRegistryValue, timeout time.Duration) error
+	UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, timeout time.Duration) error
 
 	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
 	// duration
@@ -1329,7 +1330,7 @@ type Renter interface {
 	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
-	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
+	UpdateSkynetPortals(additions []SkynetPortal, removals []modules.NetAddress) error
 
 	// WorkerPoolStatus returns the current status of the Renter's worker pool
 	WorkerPoolStatus() (WorkerPoolStatus, error)
@@ -1403,7 +1404,7 @@ func NeedsRepair(health float64) bool {
 // A HostDB is a database of hosts that the renter can use for figuring out who
 // to upload to, and download from.
 type HostDB interface {
-	Alerter
+	modules.Alerter
 
 	// ActiveHosts returns the list of hosts that are actively being selected
 	// from.
@@ -1475,4 +1476,43 @@ type HostDB interface {
 	// UpdateContracts rebuilds the knownContracts of the HostBD using the provided
 	// contracts.
 	UpdateContracts([]RenterContract) error
+}
+
+// RenterPayoutsPreTax calculates the renterPayout before tax and the hostPayout
+// given a host, the available renter funding, the expected txnFee for the
+// transaction and an optional basePrice in case this helper is used for a
+// renewal. It also returns the hostCollateral.
+func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseCollateral types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency, err error) {
+	// Divide by zero check.
+	if host.StoragePrice.IsZero() {
+		host.StoragePrice = types.NewCurrency64(1)
+	}
+	// Underflow check.
+	if funding.Cmp(host.ContractPrice.Add(txnFee).Add(basePrice)) <= 0 {
+		err = fmt.Errorf("contract price (%v) plus transaction fee (%v) plus base price (%v) exceeds funding (%v)",
+			host.ContractPrice.HumanString(), txnFee.HumanString(), basePrice.HumanString(), funding.HumanString())
+		return
+	}
+	// Calculate renterPayout.
+	renterPayout = funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice)
+	// Calculate hostCollateral by calculating the maximum amount of storage
+	// the renter can afford with 'funding' and calculating how much collateral
+	// the host wouldl have to put into the contract for that. We also add a
+	// potential baseCollateral.
+	maxStorageSizeTime := renterPayout.Div(host.StoragePrice)
+	hostCollateral = maxStorageSizeTime.Mul(host.Collateral).Add(baseCollateral)
+	// Don't add more collateral than 10x the collateral for the expected
+	// storage to save on fees.
+	maxRenterCollateral := host.Collateral.Mul64(uint64(period)).Mul64(expectedStorage).Mul64(5)
+	if hostCollateral.Cmp(maxRenterCollateral) > 0 {
+		hostCollateral = maxRenterCollateral
+	}
+	// Don't add more collateral than the host is willing to put into a single
+	// contract.
+	if hostCollateral.Cmp(host.MaxCollateral) > 0 {
+		hostCollateral = host.MaxCollateral
+	}
+	// Calculate hostPayout.
+	hostPayout = hostCollateral.Add(host.ContractPrice).Add(basePrice)
+	return
 }

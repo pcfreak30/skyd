@@ -12,12 +12,13 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/node/api/server"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
@@ -145,7 +146,7 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 	if asyncSync {
 		var errChan <-chan error
 		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams, time.Now())
-		err = skymodules.PeekErr(errChan)
+		err = modules.PeekErr(errChan)
 	} else {
 		s, err = server.New(":0", userAgent, password, nodeParams, time.Now())
 	}
@@ -207,7 +208,7 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 }
 
 // IsAlertRegistered returns an error if the given alert is not found
-func (tn *TestNode) IsAlertRegistered(a skymodules.Alert) error {
+func (tn *TestNode) IsAlertRegistered(a modules.Alert) error {
 	return build.Retry(10, 100*time.Millisecond, func() error {
 		dag, err := tn.DaemonAlertsGet()
 		if err != nil {
@@ -223,7 +224,7 @@ func (tn *TestNode) IsAlertRegistered(a skymodules.Alert) error {
 }
 
 // IsAlertUnregistered returns an error if the given alert is still found
-func (tn *TestNode) IsAlertUnregistered(a skymodules.Alert) error {
+func (tn *TestNode) IsAlertUnregistered(a modules.Alert) error {
 	return build.Retry(10, 100*time.Millisecond, func() error {
 		dag, err := tn.DaemonAlertsGet()
 		if err != nil {

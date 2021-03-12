@@ -3,6 +3,7 @@ package hostdb
 import (
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -16,7 +17,7 @@ func findHostAnnouncements(b types.Block) (announcements []skymodules.HostDBEntr
 		// the HostAnnouncement must be prefaced by the standard host
 		// announcement string
 		for _, arb := range t.ArbitraryData {
-			addr, pubKey, err := skymodules.DecodeAnnouncement(arb)
+			addr, pubKey, err := modules.DecodeAnnouncement(arb)
 			if err != nil {
 				continue
 			}
@@ -86,7 +87,7 @@ func (hdb *HostDB) insertBlockchainHost(host skymodules.HostDBEntry) {
 
 // ProcessConsensusChange will be called by the consensus set every time there
 // is a change in the blockchain. Updates will always be called in order.
-func (hdb *HostDB) ProcessConsensusChange(cc skymodules.ConsensusChange) {
+func (hdb *HostDB) ProcessConsensusChange(cc modules.ConsensusChange) {
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 

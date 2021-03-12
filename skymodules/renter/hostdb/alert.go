@@ -1,9 +1,9 @@
 package hostdb
 
-import "gitlab.com/skynetlabs/skyd/skymodules"
+import "gitlab.com/NebulousLabs/Sia/modules"
 
-// Alerts implements the skymodules.Alerter interface for the hostdb. It returns
+// Alerts implements the modules.Alerter interface for the hostdb. It returns
 // all alerts of the hostdb.
-func (hdb *HostDB) Alerts() (crit, err, warn []skymodules.Alert) {
+func (hdb *HostDB) Alerts() (crit, err, warn []modules.Alert) {
 	return hdb.staticAlerter.Alerts()
 }

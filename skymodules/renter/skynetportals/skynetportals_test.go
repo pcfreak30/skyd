@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
@@ -61,7 +62,7 @@ func TestPersist(t *testing.T) {
 		Public:  true,
 	}
 	add := []skymodules.SkynetPortal{portal}
-	remove := []skymodules.NetAddress{portal.Address}
+	remove := []modules.NetAddress{portal.Address}
 	err = pl.UpdatePortals(add, remove)
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +81,7 @@ func TestPersist(t *testing.T) {
 	}
 
 	// Add the portal again
-	err = pl.UpdatePortals(add, []skymodules.NetAddress{})
+	err = pl.UpdatePortals(add, []modules.NetAddress{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestPersist(t *testing.T) {
 	}
 
 	// Add the portal again
-	err = pl2.UpdatePortals(add, []skymodules.NetAddress{})
+	err = pl2.UpdatePortals(add, []modules.NetAddress{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +221,7 @@ func TestPersistCorruption(t *testing.T) {
 		Public:  true,
 	}
 	add := []skymodules.SkynetPortal{portal}
-	remove := []skymodules.NetAddress{portal.Address}
+	remove := []modules.NetAddress{portal.Address}
 	err = pl.UpdatePortals(add, remove)
 	if err != nil {
 		t.Fatal(err)
@@ -244,7 +245,7 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// Add the portal again
-	err = pl.UpdatePortals(add, []skymodules.NetAddress{})
+	err = pl.UpdatePortals(add, []modules.NetAddress{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +282,7 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// Add the portal again
-	err = pl2.UpdatePortals(add, []skymodules.NetAddress{})
+	err = pl2.UpdatePortals(add, []modules.NetAddress{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +336,7 @@ func TestPersistCorruption(t *testing.T) {
 func TestMarshalSia(t *testing.T) {
 	// Test MarshalSia
 	portal := skymodules.SkynetPortal{
-		Address: skymodules.NetAddress("localhost:9980"),
+		Address: modules.NetAddress("localhost:9980"),
 		Public:  true,
 	}
 	var buf bytes.Buffer

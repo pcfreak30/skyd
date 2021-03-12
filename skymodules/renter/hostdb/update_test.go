@@ -4,19 +4,19 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // makeSignedAnnouncement creates a []byte that contains an encoded and signed
 // host announcement for the given net address.
-func makeSignedAnnouncement(na skymodules.NetAddress) ([]byte, error) {
+func makeSignedAnnouncement(na modules.NetAddress) ([]byte, error) {
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	return skymodules.CreateAnnouncement(na, spk, sk)
+	return modules.CreateAnnouncement(na, spk, sk)
 }
 
 // TestFindHostAnnouncements probes the findHostAnnouncements function

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
@@ -51,7 +52,7 @@ var (
 func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	// Apply updates.
 	for _, u := range updates {
-		err := applyUpdate(skymodules.ProdDependencies, u)
+		err := applyUpdate(modules.ProdDependencies, u)
 		if err != nil {
 			return errors.AddContext(err, "failed to apply update")
 		}
@@ -124,7 +125,7 @@ func New(fullPath, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*
 	// Create SiaDir
 	sd := &SiaDir{
 		metadata: md,
-		deps:     skymodules.ProdDependencies,
+		deps:     modules.ProdDependencies,
 		path:     fullPath,
 		wal:      wal,
 	}
@@ -133,13 +134,13 @@ func New(fullPath, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*
 }
 
 // LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(path string, deps skymodules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
+func LoadSiaDir(path string, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
 	sd = &SiaDir{
 		deps: deps,
 		path: path,
 		wal:  wal,
 	}
-	sd.metadata, err = callLoadSiaDirMetadata(filepath.Join(path, skymodules.SiaDirExtension), skymodules.ProdDependencies)
+	sd.metadata, err = callLoadSiaDirMetadata(filepath.Join(path, skymodules.SiaDirExtension), modules.ProdDependencies)
 	return sd, err
 }
 
@@ -214,7 +215,7 @@ func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode) ([]writeah
 }
 
 // callLoadSiaDirMetadata loads the directory metadata from disk.
-func callLoadSiaDirMetadata(path string, deps skymodules.Dependencies) (md Metadata, err error) {
+func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
 	// Open the file.
 	file, err := deps.Open(path)
 	if err != nil {

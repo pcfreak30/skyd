@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -56,7 +57,7 @@ type watchdog struct {
 	blockHeight types.BlockHeight
 
 	tpool      transactionPool
-	staticDeps skymodules.Dependencies
+	staticDeps modules.Dependencies
 	contractor *Contractor
 
 	mu sync.Mutex
@@ -203,7 +204,7 @@ func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 
 // callScanConsensusChange scans applied and reverted blocks, updating the
 // watchdog's state with all information relevant to monitored contracts.
-func (w *watchdog) callScanConsensusChange(cc skymodules.ConsensusChange) {
+func (w *watchdog) callScanConsensusChange(cc modules.ConsensusChange) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, block := range cc.RevertedBlocks {
@@ -241,7 +242,7 @@ func (w *watchdog) sendTxnSet(txnSet []types.Transaction, reason string) {
 		defer w.contractor.tg.Done()
 
 		err = w.tpool.AcceptTransactionSet(txnSet)
-		if err != nil && !errors.Contains(err, skymodules.ErrDuplicateTransactionSet) {
+		if err != nil && !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 			w.contractor.log.Println("watchdog send transaction error: "+reason, err)
 		}
 	}()
@@ -708,11 +709,11 @@ func (w *watchdog) checkUnconfirmedContract(fcID types.FileContractID, contractD
 	for _, txn := range contractData.formationTxnSet {
 		setSize += txn.MarshalSiaSize()
 	}
-	if setSize > skymodules.TransactionSetSizeLimit {
+	if setSize > modules.TransactionSetSizeLimit {
 		w.contractor.log.Println("UpdatedFormationTxnSet beyond set size limit", fcID)
 	}
 
-	if (w.blockHeight >= contractData.formationSweepHeight) || (setSize > skymodules.TransactionSetSizeLimit) {
+	if (w.blockHeight >= contractData.formationSweepHeight) || (setSize > modules.TransactionSetSizeLimit) {
 		w.contractor.log.Println("Sweeping inputs: ", w.blockHeight, contractData.formationSweepHeight)
 		// TODO: Add parent transactions if the renter's own dependencies are
 		// causing this to be triggered.

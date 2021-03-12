@@ -3,6 +3,7 @@ package contractor
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -24,7 +25,7 @@ func TestCheckFormContractGouging(t *testing.T) {
 	//
 	// The cost is set to be exactly equal to the price gouging limit, such that
 	// slightly decreasing any of the values evades the price gouging detector.
-	minHostSettings := skymodules.HostExternalSettings{
+	minHostSettings := modules.HostExternalSettings{
 		BaseRPCPrice:  types.SiacoinPrecision,
 		ContractPrice: types.SiacoinPrecision,
 	}

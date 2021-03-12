@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // ConsensusGet requests the /consensus api resource
@@ -36,7 +36,7 @@ func (c *Client) ConsensusBlocksHeightGet(height types.BlockHeight) (cbg api.Con
 // /consensus/subscribe endpoint to the provided subscriber. Multiple calls may
 // be required before the subscriber is fully caught up. It returns the latest
 // change ID; if no changes were sent, this will be the same as the input ID.
-func (c *Client) ConsensusSubscribeSingle(subscriber skymodules.ConsensusSetSubscriber, ccid skymodules.ConsensusChangeID, cancel <-chan struct{}) (skymodules.ConsensusChangeID, error) {
+func (c *Client) ConsensusSubscribeSingle(subscriber modules.ConsensusSetSubscriber, ccid modules.ConsensusChangeID, cancel <-chan struct{}) (modules.ConsensusChangeID, error) {
 	// We need to cancel the request when the cancel chan closes, so we have to
 	// construct it manually.
 	req, err := c.NewRequest("GET", fmt.Sprintf("/consensus/subscribe/%s", ccid), nil)
@@ -60,7 +60,7 @@ func (c *Client) ConsensusSubscribeSingle(subscriber skymodules.ConsensusSetSubs
 		default:
 		}
 		dec := encoding.NewDecoder(resp.Body, 100e6) // consensus changes can be arbitrarily large
-		var cc skymodules.ConsensusChange
+		var cc modules.ConsensusChange
 		if err := dec.Decode(&cc); errors.Is(err, io.EOF) {
 			return ccid, nil
 		} else if err != nil {
@@ -79,7 +79,7 @@ func (c *Client) ConsensusSubscribeSingle(subscriber skymodules.ConsensusSetSubs
 // should always wait for the first error before proceeding with initialization.
 // Subsequent errors may be handled asynchronously. It also returns a function
 // that can be called to unsubscribe from further changes.
-func (c *Client) ConsensusSetSubscribe(subscriber skymodules.ConsensusSetSubscriber, ccid skymodules.ConsensusChangeID, cancel <-chan struct{}) (<-chan error, func()) {
+func (c *Client) ConsensusSetSubscribe(subscriber modules.ConsensusSetSubscriber, ccid modules.ConsensusChangeID, cancel <-chan struct{}) (<-chan error, func()) {
 	ch := make(chan error, 2)
 	cancelMux := make(chan struct{})
 	unsub := make(chan struct{})

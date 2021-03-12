@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 
@@ -13,7 +14,7 @@ type (
 	// jobRenew contains information about a Renew query.
 	jobRenew struct {
 		staticResponseChan       chan *jobRenewResponse
-		staticTransactionBuilder skymodules.TransactionBuilder
+		staticTransactionBuilder modules.TransactionBuilder
 		staticParams             skymodules.ContractParams
 		staticFCID               types.FileContractID
 
@@ -125,7 +126,7 @@ func (w *worker) initJobRenewQueue() {
 }
 
 // RenewContract renews the contract with the worker's host.
-func (w *worker) RenewContract(ctx context.Context, fcid types.FileContractID, params skymodules.ContractParams, txnBuilder skymodules.TransactionBuilder) (skymodules.RenterContract, []types.Transaction, error) {
+func (w *worker) RenewContract(ctx context.Context, fcid types.FileContractID, params skymodules.ContractParams, txnBuilder modules.TransactionBuilder) (skymodules.RenterContract, []types.Transaction, error) {
 	renewResponseChan := make(chan *jobRenewResponse)
 	jro := &jobRenew{
 		staticFCID:               fcid,

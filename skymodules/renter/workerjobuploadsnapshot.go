@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -50,7 +51,7 @@ type (
 // checkUploadSnapshotGouging looks at the current renter allowance and the
 // active settings for a host and determines whether a snapshot upload should be
 // halted due to price gouging.
-func checkUploadSnapshotGouging(allowance skymodules.Allowance, hostSettings skymodules.HostExternalSettings) error {
+func checkUploadSnapshotGouging(allowance skymodules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the base RPC price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
 		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
@@ -81,8 +82,8 @@ func checkUploadSnapshotGouging(allowance skymodules.Allowance, hostSettings sky
 	// is determined on a case-by-case basis. If the host is too expensive to
 	// even satisfy a faction of the user's total desired resource consumption,
 	// the action will be blocked for price gouging.
-	singleUploadCost := hostSettings.BaseRPCPrice.Add(hostSettings.UploadBandwidthPrice.Mul64(skymodules.StreamDownloadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(skymodules.SectorSize))
-	fullCostPerByte := singleUploadCost.Div64(skymodules.SectorSize)
+	singleUploadCost := hostSettings.BaseRPCPrice.Add(hostSettings.UploadBandwidthPrice.Mul64(skymodules.StreamDownloadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(modules.SectorSize))
+	fullCostPerByte := singleUploadCost.Div64(modules.SectorSize)
 	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
 	reducedCost := allowanceStorageCost.Div64(snapshotUploadGougingFractionDenom)
 	if reducedCost.Cmp(allowance.Funds) > 0 {
@@ -226,7 +227,7 @@ func (r *Renter) managedUploadSnapshotHost(meta skymodules.UploadedBackup, dotSi
 	// split the snapshot .sia file into sectors
 	var sectors [][]byte
 	for buf := bytes.NewBuffer(dotSia); buf.Len() > 0; {
-		sector := make([]byte, skymodules.SectorSize)
+		sector := make([]byte, modules.SectorSize)
 		copy(sector, buf.Next(len(sector)))
 		sectors = append(sectors, sector)
 	}
@@ -275,12 +276,12 @@ func (r *Renter) managedUploadSnapshotHost(meta skymodules.UploadedBackup, dotSi
 	})
 	r.mu.Unlock(id)
 	c, _ := crypto.NewSiaKey(crypto.TypeThreefish, secret[:])
-	for len(encoding.Marshal(entryTable)) > int(skymodules.SectorSize) {
+	for len(encoding.Marshal(entryTable)) > int(modules.SectorSize) {
 		entryTable = entryTable[:len(entryTable)-1]
 	}
 
 	// encode and encrypt the table
-	newTable := make([]byte, skymodules.SectorSize)
+	newTable := make([]byte, modules.SectorSize)
 	copy(newTable[:16], snapshotTableSpecifier[:])
 	copy(newTable[16:], encoding.Marshal(entryTable))
 	tableSector := c.EncryptBytes(newTable)

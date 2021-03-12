@@ -3,12 +3,13 @@ package skymodules
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestRenewBaseCost is a unit test for RenewBaseCosts.
 func TestRenewBaseCost(t *testing.T) {
-	var pt RPCPriceTable
+	var pt modules.RPCPriceTable
 	pt.WriteStoreCost = types.SiacoinPrecision
 	pt.CollateralCost = types.SiacoinPrecision.Mul64(2)
 	pt.RenewContractCost = types.SiacoinPrecision

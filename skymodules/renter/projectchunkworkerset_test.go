@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -45,7 +46,7 @@ func TestPCWS(t *testing.T) {
 // for a single sector.
 func testBasic(t *testing.T, wt *workerTester) {
 	// create a random sector
-	sectorData := fastrand.Bytes(int(skymodules.SectorSize))
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
 
 	// create a passthrough EC and a passhtrough cipher key
@@ -139,9 +140,9 @@ func testBasic(t *testing.T, wt *workerTester) {
 func testMultiple(t *testing.T, wt *workerTester) {
 	// create a helper function that adds a host
 	numHosts := 0
-	addHost := func() skymodules.Host {
+	addHost := func() modules.Host {
 		testdir := filepath.Join(wt.rt.dir, fmt.Sprintf("host%d", numHosts))
-		host, err := wt.rt.addCustomHost(testdir, skymodules.ProdDependencies)
+		host, err := wt.rt.addCustomHost(testdir, modules.ProdDependencies)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,9 +151,9 @@ func testMultiple(t *testing.T, wt *workerTester) {
 	}
 
 	// create a helper function that adds a random sector on a given host
-	addSector := func(h skymodules.Host) crypto.Hash {
+	addSector := func(h modules.Host) crypto.Hash {
 		// create a random sector
-		sectorData := fastrand.Bytes(int(skymodules.SectorSize))
+		sectorData := fastrand.Bytes(int(modules.SectorSize))
 		sectorRoot := crypto.MerkleRoot(sectorData)
 
 		// add the sector to the host
@@ -200,7 +201,7 @@ func testMultiple(t *testing.T, wt *workerTester) {
 	r2 := addSector(h1)
 	r3 := addSector(h2)
 	r4 := addSector(h3)
-	r5 := crypto.MerkleRoot(fastrand.Bytes(int(skymodules.SectorSize)))
+	r5 := crypto.MerkleRoot(fastrand.Bytes(int(modules.SectorSize)))
 	roots := []crypto.Hash{r1, r2, r3, r4, r5}
 
 	// create an EC and a passhtrough cipher key
@@ -359,7 +360,7 @@ func testGouging(t *testing.T) {
 	//
 	// 100 workers and 1e9 expected download means ~2e6 HasSector queries will
 	// be performed.
-	pt := skymodules.RPCPriceTable{
+	pt := modules.RPCPriceTable{
 		InitBaseCost:          types.NewCurrency64(1e3),
 		DownloadBandwidthCost: types.NewCurrency64(1e3),
 		UploadBandwidthCost:   types.NewCurrency64(1e3),

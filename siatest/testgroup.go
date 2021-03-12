@@ -10,13 +10,14 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/host/contractmanager"
 )
 
 type (
@@ -55,11 +56,11 @@ var (
 		Period:      50,
 		RenewWindow: 24,
 
-		ExpectedStorage:    skymodules.SectorSize * 5e3,
-		ExpectedUpload:     skymodules.SectorSize * 500,
-		ExpectedDownload:   skymodules.SectorSize * 500,
+		ExpectedStorage:    modules.SectorSize * 5e3,
+		ExpectedUpload:     modules.SectorSize * 500,
+		ExpectedDownload:   modules.SectorSize * 500,
 		ExpectedRedundancy: 5.0,
-		MaxPeriodChurn:     skymodules.SectorSize * 500,
+		MaxPeriodChurn:     modules.SectorSize * 500,
 	}
 
 	// DefaultPaymentContractInitialFunding is the value used for turning renter
@@ -267,7 +268,7 @@ func addStorageFolderToHosts(hosts map[*TestNode]struct{}) error {
 	for host := range hosts {
 		wg.Add(1)
 		go func(i int, host *TestNode) {
-			storage := 4 * contractmanager.MinimumSectorsPerStorageFolder * skymodules.SectorSize
+			storage := 4 * contractmanager.MinimumSectorsPerStorageFolder * modules.SectorSize
 			if host.params.HostStorage > 0 {
 				storage = host.params.HostStorage
 			}

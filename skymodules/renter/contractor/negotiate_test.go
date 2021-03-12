@@ -5,27 +5,28 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus"
+	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
+	modWallet "gitlab.com/NebulousLabs/Sia/modules/wallet" // name conflicts with type
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/consensus"
-	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
-	"gitlab.com/skynetlabs/skyd/skymodules/miner"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
-	"gitlab.com/skynetlabs/skyd/skymodules/transactionpool"
-	modWallet "gitlab.com/skynetlabs/skyd/skymodules/wallet" // name conflicts with type
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
 // contractorTester contains all of the modules that are used while testing the contractor.
 type contractorTester struct {
-	cs      skymodules.ConsensusSet
-	gateway skymodules.Gateway
-	miner   skymodules.TestMiner
-	tpool   skymodules.TransactionPool
-	wallet  skymodules.Wallet
+	cs      modules.ConsensusSet
+	gateway modules.Gateway
+	miner   modules.TestMiner
+	tpool   modules.TransactionPool
+	wallet  modules.Wallet
 	hdb     hostDB
 
 	contractor *Contractor
@@ -48,19 +49,19 @@ func (rt *contractorTester) Close() error {
 func newContractorTester(name string) (*contractorTester, closeFn, error) {
 	// Create the skymodules.
 	testdir := build.TempDir("contractor", name)
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
 		return nil, nil, err
 	}
-	w, err := modWallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
+	w, err := modWallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -73,8 +74,8 @@ func newContractorTester(name string) (*contractorTester, closeFn, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -82,7 +83,7 @@ func newContractorTester(name string) (*contractorTester, closeFn, error) {
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}
-	m, err := miner.New(cs, tp, w, filepath.Join(testdir, skymodules.MinerDir))
+	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
 		return nil, nil, err
 	}

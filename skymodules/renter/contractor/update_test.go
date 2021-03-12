@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
@@ -78,7 +79,7 @@ func TestIntegrationAutoRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data := fastrand.Bytes(int(skymodules.SectorSize))
+	data := fastrand.Bytes(int(modules.SectorSize))
 	// insert the sector
 	_, err = editor.Upload(data)
 	if err != nil {
@@ -173,7 +174,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := fastrand.Bytes(int(skymodules.SectorSize))
+	data := fastrand.Bytes(int(modules.SectorSize))
 	// insert the sector
 	_, err = editor.Upload(data)
 	if err != nil {
@@ -203,7 +204,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 	c.mu.Unlock()
 
 	// editor should have been invalidated
-	_, err = editor.Upload(make([]byte, skymodules.SectorSize))
+	_, err = editor.Upload(make([]byte, modules.SectorSize))
 	if !errors.Contains(err, errInvalidEditor) && !errors.Contains(err, errInvalidSession) {
 		t.Error("expected invalid editor error; got", err)
 	}

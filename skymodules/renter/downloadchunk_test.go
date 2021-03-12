@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
@@ -85,7 +86,7 @@ func TestBytesToRecover(t *testing.T) {
 
 	// Define a function for easier testing.
 	assert := func(offset, length, expectedNumBytes uint64) {
-		numBytes := bytesToRecover(offset, length, uint64(rsc.MinPieces())*skymodules.SectorSize, rsc)
+		numBytes := bytesToRecover(offset, length, uint64(rsc.MinPieces())*modules.SectorSize, rsc)
 		if numBytes != expectedNumBytes {
 			t.Fatalf("wrong numBytes: expected %v but was %v", expectedNumBytes, numBytes)
 		}

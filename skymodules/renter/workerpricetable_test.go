@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -153,7 +154,7 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	deps.Disable()
 
 	// create a new worker tester
-	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,19 +206,19 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	deps.Enable()
 
 	// create a dummy program
-	pb := skymodules.NewProgramBuilder(&pt.staticPriceTable, 0)
+	pb := modules.NewProgramBuilder(&pt.staticPriceTable, 0)
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
 	jhs := new(jobHasSector)
 	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
 	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
-	bandwidthCost := skymodules.MDMBandwidthCost(pt.staticPriceTable, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt.staticPriceTable, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
 	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
-	if !skymodules.IsPriceTableInvalidErr(err) {
+	if !modules.IsPriceTableInvalidErr(err) {
 		t.Fatal("unexpected")
 	}
 
@@ -300,10 +301,10 @@ func TestHostBlockHeightWithinTolerance(t *testing.T) {
 
 // newDefaultPriceTable is a helper function that returns a price table with
 // default prices for all fields
-func newDefaultPriceTable() skymodules.RPCPriceTable {
-	hes := skymodules.DefaultHostExternalSettings()
+func newDefaultPriceTable() modules.RPCPriceTable {
+	hes := modules.DefaultHostExternalSettings()
 	oneCurrency := types.NewCurrency64(1)
-	return skymodules.RPCPriceTable{
+	return modules.RPCPriceTable{
 		Validity:             time.Minute,
 		FundAccountCost:      oneCurrency,
 		UpdatePriceTableCost: oneCurrency,

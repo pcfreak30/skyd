@@ -19,9 +19,10 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
@@ -112,7 +113,7 @@ type (
 		// balance.
 		MaintenanceSpending skymodules.MaintenanceSpending `json:"maintenancespending"`
 		// Address of the host the file contract was formed with.
-		NetAddress skymodules.NetAddress `json:"netaddress"`
+		NetAddress modules.NetAddress `json:"netaddress"`
 		// Remaining funds left for the renter to spend on uploads & downloads.
 		RenterFunds types.Currency `json:"renterfunds"`
 		// Size of the file contract, which is typically equal to the number of
@@ -1112,7 +1113,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 	currentBlockHeight := api.cs.Height()
 	for _, c := range api.renter.Contracts() {
 		// Fetch host address
-		var netAddress skymodules.NetAddress
+		var netAddress modules.NetAddress
 		hdbe, exists, _ := api.renter.Host(c.HostPublicKey)
 		if exists {
 			netAddress = hdbe.NetAddress
@@ -1178,7 +1179,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 		}
 
 		// Fetch host address
-		var netAddress skymodules.NetAddress
+		var netAddress modules.NetAddress
 		hdbe, exists, _ := api.renter.Host(c.HostPublicKey)
 		if exists {
 			netAddress = hdbe.NetAddress

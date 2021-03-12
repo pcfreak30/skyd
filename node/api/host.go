@@ -9,6 +9,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -39,26 +40,26 @@ type (
 	// ContractInfoGET contains the information that is returned after a GET request
 	// to /host/contracts - information for the host about stored obligations.
 	ContractInfoGET struct {
-		Contracts []skymodules.StorageObligation `json:"contracts"`
+		Contracts []modules.StorageObligation `json:"contracts"`
 	}
 
 	// HostContractGET contains information about the storage contract returned
 	// by a GET request to /host/contracts/:id
 	HostContractGET struct {
-		Contract skymodules.StorageObligation `json:"contract"`
+		Contract modules.StorageObligation `json:"contract"`
 	}
 
 	// HostGET contains the information that is returned after a GET request to
 	// /host - a bunch of information about the status of the host.
 	HostGET struct {
-		ConnectabilityStatus skymodules.HostConnectabilityStatus `json:"connectabilitystatus"`
-		ExternalSettings     skymodules.HostExternalSettings     `json:"externalsettings"`
-		FinancialMetrics     skymodules.HostFinancialMetrics     `json:"financialmetrics"`
-		InternalSettings     skymodules.HostInternalSettings     `json:"internalsettings"`
-		NetworkMetrics       skymodules.HostNetworkMetrics       `json:"networkmetrics"`
-		PriceTable           skymodules.RPCPriceTable            `json:"pricetable"`
-		PublicKey            types.SiaPublicKey                  `json:"publickey"`
-		WorkingStatus        skymodules.HostWorkingStatus        `json:"workingstatus"`
+		ConnectabilityStatus modules.HostConnectabilityStatus `json:"connectabilitystatus"`
+		ExternalSettings     modules.HostExternalSettings     `json:"externalsettings"`
+		FinancialMetrics     modules.HostFinancialMetrics     `json:"financialmetrics"`
+		InternalSettings     modules.HostInternalSettings     `json:"internalsettings"`
+		NetworkMetrics       modules.HostNetworkMetrics       `json:"networkmetrics"`
+		PriceTable           modules.RPCPriceTable            `json:"pricetable"`
+		PublicKey            types.SiaPublicKey               `json:"publickey"`
+		WorkingStatus        modules.HostWorkingStatus        `json:"workingstatus"`
 	}
 
 	// HostEstimateScoreGET contains the information that is returned from a
@@ -72,12 +73,12 @@ type (
 	// to /host/storage - a bunch of information about the status of storage
 	// management on the host.
 	StorageGET struct {
-		Folders []skymodules.StorageFolderMetadata `json:"folders"`
+		Folders []modules.StorageFolderMetadata `json:"folders"`
 	}
 )
 
 // RegisterRoutesHost is a helper function to register all host routes.
-func RegisterRoutesHost(router *httprouter.Router, h skymodules.Host, r skymodules.Renter, deps skymodules.Dependencies, requiredPassword string) {
+func RegisterRoutesHost(router *httprouter.Router, h modules.Host, r skymodules.Renter, deps modules.Dependencies, requiredPassword string) {
 	// Calls directly pertaining to the host.
 	router.GET("/host", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		hostHandlerGET(h, w, deps, req, ps)
@@ -121,7 +122,7 @@ func RegisterRoutesHost(router *httprouter.Router, h skymodules.Host, r skymodul
 
 // folderIndex determines the index of the storage folder with the provided
 // path.
-func folderIndex(folderPath string, storageFolders []skymodules.StorageFolderMetadata) (int, error) {
+func folderIndex(folderPath string, storageFolders []modules.StorageFolderMetadata) (int, error) {
 	for _, sf := range storageFolders {
 		if sf.Path == folderPath {
 			return int(sf.Index), nil
@@ -131,7 +132,7 @@ func folderIndex(folderPath string, storageFolders []skymodules.StorageFolderMet
 }
 
 // hostContractGetHandler handles the API call to get information about a contract.
-func hostContractGetHandler(host skymodules.Host, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+func hostContractGetHandler(host modules.Host, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	var obligationID types.FileContractID
 	contractIDStr := ps.ByName("contractID")
 
@@ -156,7 +157,7 @@ func hostContractGetHandler(host skymodules.Host, w http.ResponseWriter, _ *http
 
 // hostContractInfoHandler handles the API call to get the contract information of the host.
 // Information is retrieved via the storage obligations from the host database.
-func hostContractInfoHandler(host skymodules.Host, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func hostContractInfoHandler(host modules.Host, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	cg := ContractInfoGET{
 		Contracts: host.StorageObligations(),
 	}
@@ -165,7 +166,7 @@ func hostContractInfoHandler(host skymodules.Host, w http.ResponseWriter, _ *htt
 
 // hostHandlerGET handles GET requests to the /host API endpoint, returning key
 // information about the host.
-func hostHandlerGET(host skymodules.Host, w http.ResponseWriter, deps skymodules.Dependencies, _ *http.Request, _ httprouter.Params) {
+func hostHandlerGET(host modules.Host, w http.ResponseWriter, deps modules.Dependencies, _ *http.Request, _ httprouter.Params) {
 	es := host.ExternalSettings()
 	fm := host.FinancialMetrics()
 	is := host.InternalSettings()
@@ -194,7 +195,7 @@ func hostHandlerGET(host skymodules.Host, w http.ResponseWriter, deps skymodules
 
 // hostsBandwidthHandlerGET handles GET requests to the /host/bandwidth API endpoint,
 // returning bandwidth usage data from the host module
-func hostBandwidthHandlerGET(host skymodules.Host, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func hostBandwidthHandlerGET(host modules.Host, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	sent, receive, startTime, err := host.BandwidthCounters()
 	if err != nil {
 		WriteError(w, Error{"failed to get hosts's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
@@ -208,16 +209,16 @@ func hostBandwidthHandlerGET(host skymodules.Host, w http.ResponseWriter, _ *htt
 }
 
 // parseHostSettings a request's query strings and returns a
-// skymodules.HostInternalSettings configured with the request's query string
+// modules.HostInternalSettings configured with the request's query string
 // parameters.
-func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.HostInternalSettings, error) {
+func parseHostSettings(host modules.Host, req *http.Request) (modules.HostInternalSettings, error) {
 	settings := host.InternalSettings()
 
 	if req.FormValue("acceptingcontracts") != "" {
 		var x bool
 		_, err := fmt.Sscan(req.FormValue("acceptingcontracts"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.AcceptingContracts = x
 	}
@@ -225,7 +226,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x uint64
 		_, err := fmt.Sscan(req.FormValue("maxdownloadbatchsize"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MaxDownloadBatchSize = x
 	}
@@ -233,7 +234,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.BlockHeight
 		_, err := fmt.Sscan(req.FormValue("maxduration"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MaxDuration = x
 	}
@@ -241,15 +242,15 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x uint64
 		_, err := fmt.Sscan(req.FormValue("maxrevisebatchsize"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MaxReviseBatchSize = x
 	}
 	if req.FormValue("netaddress") != "" {
-		var x skymodules.NetAddress
+		var x modules.NetAddress
 		_, err := fmt.Sscan(req.FormValue("netaddress"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.NetAddress = x
 	}
@@ -257,7 +258,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.BlockHeight
 		_, err := fmt.Sscan(req.FormValue("windowsize"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.WindowSize = x
 	}
@@ -266,7 +267,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("collateral"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.Collateral = x
 	}
@@ -274,7 +275,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("collateralbudget"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.CollateralBudget = x
 	}
@@ -282,7 +283,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("maxcollateral"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MaxCollateral = x
 	}
@@ -291,7 +292,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("minbaserpcprice"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MinBaseRPCPrice = x
 	}
@@ -299,7 +300,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("mincontractprice"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MinContractPrice = x
 	}
@@ -307,7 +308,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("mindownloadbandwidthprice"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MinDownloadBandwidthPrice = x
 	}
@@ -315,7 +316,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("minsectoraccessprice"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MinSectorAccessPrice = x
 	}
@@ -323,7 +324,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("minstorageprice"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MinStoragePrice = x
 	}
@@ -331,7 +332,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("minuploadbandwidthprice"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MinUploadBandwidthPrice = x
 	}
@@ -339,7 +340,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x uint64
 		_, err := fmt.Sscan(req.FormValue("ephemeralaccountexpiry"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.EphemeralAccountExpiry = time.Duration(x) * time.Second
 	}
@@ -347,7 +348,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("maxephemeralaccountbalance"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MaxEphemeralAccountBalance = x
 	}
@@ -355,7 +356,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("maxephemeralaccountrisk"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.MaxEphemeralAccountRisk = x
 	}
@@ -363,7 +364,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 		var x uint64
 		_, err := fmt.Sscan(req.FormValue("registrysize"), &x)
 		if err != nil {
-			return skymodules.HostInternalSettings{}, err
+			return modules.HostInternalSettings{}, err
 		}
 		settings.RegistrySize = x
 	}
@@ -375,12 +376,12 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 	minBaseRPCPrice := settings.MinBaseRPCPrice
 	maxBaseRPCPrice := settings.MaxBaseRPCPrice()
 	if minBaseRPCPrice.Cmp(maxBaseRPCPrice) > 0 {
-		return skymodules.HostInternalSettings{}, ErrInvalidRPCDownloadRatio
+		return modules.HostInternalSettings{}, ErrInvalidRPCDownloadRatio
 	}
 	minSectorAccessPrice := settings.MinSectorAccessPrice
 	maxSectorAccessPrice := settings.MaxSectorAccessPrice()
 	if minSectorAccessPrice.Cmp(maxSectorAccessPrice) > 0 {
-		return skymodules.HostInternalSettings{}, ErrInvalidSectorAccessDownloadRatio
+		return modules.HostInternalSettings{}, ErrInvalidSectorAccessDownloadRatio
 	}
 
 	return settings, nil
@@ -388,7 +389,7 @@ func parseHostSettings(host skymodules.Host, req *http.Request) (skymodules.Host
 
 // hostEstimateScoreGET handles the POST request to /host/estimatescore and
 // computes an estimated HostDB score for the provided settings.
-func hostEstimateScoreGET(host skymodules.Host, renter skymodules.Renter, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func hostEstimateScoreGET(host modules.Host, renter skymodules.Renter, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// This call requires a renter, check that it is present.
 	if renter == nil {
 		WriteError(w, Error{"cannot call /host/estimatescore without the renter module"}, http.StatusBadRequest)
@@ -405,13 +406,13 @@ func hostEstimateScoreGET(host skymodules.Host, renter skymodules.Renter, w http
 		totalStorage += sf.Capacity
 		remainingStorage += sf.CapacityRemaining
 	}
-	mergedSettings := skymodules.HostExternalSettings{
+	mergedSettings := modules.HostExternalSettings{
 		AcceptingContracts:   settings.AcceptingContracts,
 		MaxDownloadBatchSize: settings.MaxDownloadBatchSize,
 		MaxDuration:          settings.MaxDuration,
 		MaxReviseBatchSize:   settings.MaxReviseBatchSize,
 		RemainingStorage:     remainingStorage,
-		SectorSize:           skymodules.SectorSize,
+		SectorSize:           modules.SectorSize,
 		TotalStorage:         totalStorage,
 		WindowSize:           settings.WindowSize,
 
@@ -447,7 +448,7 @@ func hostEstimateScoreGET(host skymodules.Host, renter skymodules.Renter, w http
 
 // hostHandlerPOST handles POST request to the /host API endpoint, which sets
 // the internal settings of the host.
-func hostHandlerPOST(host skymodules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func hostHandlerPOST(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	settings, err := parseHostSettings(host, req)
 	if err != nil {
 		WriteError(w, Error{"error parsing host settings: " + err.Error()}, http.StatusBadRequest)
@@ -464,10 +465,10 @@ func hostHandlerPOST(host skymodules.Host, w http.ResponseWriter, req *http.Requ
 
 // hostAnnounceHandler handles the API call to get the host to announce itself
 // to the network.
-func hostAnnounceHandler(host skymodules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func hostAnnounceHandler(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var err error
 	if addr := req.FormValue("netaddress"); addr != "" {
-		err = host.AnnounceAddress(skymodules.NetAddress(addr))
+		err = host.AnnounceAddress(modules.NetAddress(addr))
 	} else {
 		err = host.Announce()
 	}
@@ -480,14 +481,14 @@ func hostAnnounceHandler(host skymodules.Host, w http.ResponseWriter, req *http.
 
 // storageHandler returns a bunch of information about storage management on
 // the host.
-func storageHandler(host skymodules.Host, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func storageHandler(host modules.Host, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	WriteJSON(w, StorageGET{
 		Folders: host.StorageFolders(),
 	})
 }
 
 // storageFoldersAddHandler adds a storage folder to the storage manager.
-func storageFoldersAddHandler(host skymodules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func storageFoldersAddHandler(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	folderPath := req.FormValue("path")
 	var folderSize uint64
 	_, err := fmt.Sscan(req.FormValue("size"), &folderSize)
@@ -504,7 +505,7 @@ func storageFoldersAddHandler(host skymodules.Host, w http.ResponseWriter, req *
 }
 
 // storageFoldersResizeHandler resizes a storage folder in the storage manager.
-func storageFoldersResizeHandler(host skymodules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func storageFoldersResizeHandler(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	folderPath := req.FormValue("path")
 	if folderPath == "" {
 		WriteError(w, Error{"path parameter is required"}, http.StatusBadRequest)
@@ -534,7 +535,7 @@ func storageFoldersResizeHandler(host skymodules.Host, w http.ResponseWriter, re
 
 // storageFoldersRemoveHandler removes a storage folder from the storage
 // manager.
-func storageFoldersRemoveHandler(host skymodules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func storageFoldersRemoveHandler(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	folderPath := req.FormValue("path")
 	if folderPath == "" {
 		WriteError(w, Error{"path parameter is required"}, http.StatusBadRequest)
@@ -559,7 +560,7 @@ func storageFoldersRemoveHandler(host skymodules.Host, w http.ResponseWriter, re
 
 // storageSectorsDeleteHandler handles the call to delete a sector from the
 // storage manager.
-func storageSectorsDeleteHandler(host skymodules.Host, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+func storageSectorsDeleteHandler(host modules.Host, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	sectorRoot, err := scanHash(ps.ByName("merkleroot"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 // ChunkSize is a helper method to calculate the size of a chunk depending on
 // the minimum number of pieces required to restore the chunk.
 func ChunkSize(minPieces uint64, ct crypto.CipherType) uint64 {
-	return (skymodules.SectorSize - ct.Overhead()) * minPieces
+	return (modules.SectorSize - ct.Overhead()) * minPieces
 }
 
 // PrintJSON is a helper function that wraps the jsonMarshalIndent function

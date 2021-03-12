@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -31,7 +32,7 @@ type Editor struct {
 	contractSet *ContractSet
 	conn        net.Conn
 	closeChan   chan struct{}
-	deps        skymodules.Dependencies
+	deps        modules.Dependencies
 	hdb         hostDB
 	host        skymodules.HostDBEntry
 	once        sync.Once
@@ -42,10 +43,10 @@ type Editor struct {
 // shutdown terminates the revision loop and signals the goroutine spawned in
 // NewEditor to return.
 func (he *Editor) shutdown() {
-	extendDeadline(he.conn, skymodules.NegotiateSettingsTime)
+	extendDeadline(he.conn, modules.NegotiateSettingsTime)
 	// don't care about these errors
 	_, _ = verifySettings(he.conn, he.host)
-	_ = skymodules.WriteNegotiationStop(he.conn)
+	_ = modules.WriteNegotiationStop(he.conn)
 	close(he.closeChan)
 }
 
@@ -58,7 +59,7 @@ func (he *Editor) Close() error {
 }
 
 // HostSettings returns the settings that are active in the current session.
-func (he *Editor) HostSettings() skymodules.HostExternalSettings {
+func (he *Editor) HostSettings() modules.HostExternalSettings {
 	return he.host.HostExternalSettings
 }
 
@@ -74,9 +75,9 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 
 	// calculate price
 	// TODO: height is never updated, so we'll wind up overpaying on long-running uploads
-	blockBytes := types.NewCurrency64(skymodules.SectorSize * uint64(contract.LastRevision().NewWindowEnd-he.height))
+	blockBytes := types.NewCurrency64(modules.SectorSize * uint64(contract.LastRevision().NewWindowEnd-he.height))
 	sectorStoragePrice := he.host.StoragePrice.Mul(blockBytes)
-	sectorBandwidthPrice := he.host.UploadBandwidthPrice.Mul64(skymodules.SectorSize)
+	sectorBandwidthPrice := he.host.UploadBandwidthPrice.Mul64(modules.SectorSize)
 	sectorCollateral := he.host.Collateral.Mul(blockBytes)
 
 	// to mitigate small errors (e.g. differing block heights), fudge the
@@ -101,8 +102,8 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 	merkleRoot := sc.merkleRoots.checkNewRoot(sectorRoot)
 
 	// create the action and revision
-	actions := []skymodules.RevisionAction{{
-		Type:        skymodules.ActionInsert,
+	actions := []modules.RevisionAction{{
+		Type:        modules.ActionInsert,
 		SectorIndex: uint64(sc.merkleRoots.len()),
 		Data:        data,
 	}}
@@ -116,7 +117,7 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 		// Increase Successful/Failed interactions accordingly
 		if err != nil {
 			// If the host was OOS, we update the contract utility.
-			if skymodules.IsOOSErr(err) {
+			if modules.IsOOSErr(err) {
 				u := sc.Utility()
 				u.GoodForUpload = false // Stop uploading to such a host immediately.
 				u.LastOOSErr = he.height
@@ -133,7 +134,7 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 	}()
 
 	// initiate revision
-	extendDeadline(he.conn, skymodules.NegotiateSettingsTime)
+	extendDeadline(he.conn, modules.NegotiateSettingsTime)
 	if err := startRevision(he.conn, he.host); err != nil {
 		return skymodules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -147,7 +148,7 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 	}
 
 	// send actions
-	extendDeadline(he.conn, skymodules.NegotiateFileContractRevisionTime)
+	extendDeadline(he.conn, modules.NegotiateFileContractRevisionTime)
 	if err := encoding.WriteObject(he.conn, actions); err != nil {
 		return skymodules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -161,7 +162,7 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 	// send revision to host and exchange signatures
 	extendDeadline(he.conn, connTimeout)
 	signedTxn, err := negotiateRevision(he.conn, rev, contract.SecretKey, he.height)
-	if errors.Contains(err, skymodules.ErrStopResponse) {
+	if errors.Contains(err, modules.ErrStopResponse) {
 		// if host gracefully closed, close our connection as well; this will
 		// cause the next operation to fail
 		he.conn.Close()
@@ -205,7 +206,7 @@ func (cs *ContractSet) NewEditor(host skymodules.HostDBEntry, id types.FileContr
 		}
 	}()
 
-	conn, closeChan, err := initiateRevisionLoop(host, sc, skymodules.RPCReviseContract, cancel, cs.staticRL)
+	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCReviseContract, cancel, cs.staticRL)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to initiate revision loop")
 	}
@@ -253,7 +254,7 @@ func initiateRevisionLoop(host skymodules.HostDBEntry, contract *SafeContract, r
 	}()
 
 	// allot 2 minutes for RPC request + revision exchange
-	extendDeadline(conn, skymodules.NegotiateRecentRevisionTime)
+	extendDeadline(conn, modules.NegotiateRecentRevisionTime)
 	defer extendDeadline(conn, time.Hour)
 	if err := encoding.WriteObject(conn, rpc); err != nil {
 		conn.Close()

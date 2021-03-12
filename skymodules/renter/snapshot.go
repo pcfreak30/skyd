@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -289,7 +290,7 @@ func (r *Renter) managedSaveSnapshot(meta skymodules.UploadedBackup) error {
 	// snapshot. We check the size by encoding a slice of snapshotEntrys and
 	// removing elements from the slice until the encoded size fits on the host.
 	entryTable := make([]snapshotEntry, len(r.persist.UploadedBackups))
-	for len(encoding.Marshal(entryTable)) > int(skymodules.SectorSize) {
+	for len(encoding.Marshal(entryTable)) > int(modules.SectorSize) {
 		entryTable = entryTable[1:]
 	}
 	// Sort by CreationDate (youngest-to-oldest) and remove excess elements from
@@ -333,7 +334,7 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 	}
 
 	// Download the table of snapshots that the host is storing.
-	tableSector, err := host.ReadOffset(r.tg.StopCtx(), 0, skymodules.SectorSize)
+	tableSector, err := host.ReadOffset(r.tg.StopCtx(), 0, modules.SectorSize)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to perform a download by index on this contract")
 	}
@@ -503,7 +504,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub skymodules.UploadedBa
 			// download the entry
 			dotSia = nil
 			for _, root := range entry.DataSectors {
-				data, err := w.ReadSector(r.tg.StopCtx(), root, 0, skymodules.SectorSize)
+				data, err := w.ReadSector(r.tg.StopCtx(), root, 0, modules.SectorSize)
 				if err != nil {
 					return err
 				}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -334,7 +335,7 @@ func TestProjectDownloadGouging(t *testing.T) {
 	t.Parallel()
 
 	// allowance contains only the fields necessary to test the price gouging
-	hes := skymodules.DefaultHostExternalSettings()
+	hes := modules.DefaultHostExternalSettings()
 	allowance := skymodules.Allowance{
 		Funds:                     types.SiacoinPrecision.Mul64(1e3),
 		MaxDownloadBandwidthPrice: hes.DownloadBandwidthPrice.Mul64(10),

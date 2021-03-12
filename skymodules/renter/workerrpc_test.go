@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestUseHostBlockHeight verifies we use the host's blockheight.
@@ -34,7 +34,7 @@ func TestUseHostBlockHeight(t *testing.T) {
 	// manually corrupt the price table's host blockheight
 	wpt := w.staticPriceTable()
 	hbh := wpt.staticPriceTable.HostBlockHeight // save host blockheight
-	var pt skymodules.RPCPriceTable
+	var pt modules.RPCPriceTable
 	err = encoding.Unmarshal(encoding.Marshal(wpt.staticPriceTable), &pt)
 	if err != nil {
 		t.Fatal(err)
@@ -48,14 +48,14 @@ func TestUseHostBlockHeight(t *testing.T) {
 	w.staticSetPriceTable(wptc)
 
 	// create a dummy program
-	pb := skymodules.NewProgramBuilder(&pt, 0)
+	pb := modules.NewProgramBuilder(&pt, 0)
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
 	jhs := new(jobHasSector)
 	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
 	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute the program
@@ -121,7 +121,7 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 
 	// create a dummy program
 	pt := wt.staticPriceTable().staticPriceTable
-	pb := skymodules.NewProgramBuilder(&pt, 0)
+	pb := modules.NewProgramBuilder(&pt, 0)
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
@@ -130,7 +130,7 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
 	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
 
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
@@ -159,7 +159,7 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	w := wt.worker
 
-	sectorData := fastrand.Bytes(int(skymodules.SectorSize))
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
 	err := wt.host.AddSector(sectorRoot, sectorData)
 	if err != nil {
@@ -168,15 +168,15 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 
 	// create a dummy program
 	pt := wt.staticPriceTable().staticPriceTable
-	pb := skymodules.NewProgramBuilder(&pt, 0)
-	pb.AddReadSectorInstruction(skymodules.SectorSize, 0, sectorRoot, true)
+	pb := modules.NewProgramBuilder(&pt, 0)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
 	jrs := new(jobReadSector)
-	jrs.staticLength = skymodules.SectorSize
+	jrs.staticLength = modules.SectorSize
 	ulBandwidth, dlBandwidth := jrs.callExpectedBandwidth()
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute it

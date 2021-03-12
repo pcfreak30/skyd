@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -44,14 +45,14 @@ func (c *Contractor) newRecoveryScanner(rs skymodules.RenterSeed) *recoveryScann
 // filecontracts belonging to the wallet's seed. Once done, all recoverable
 // contracts should be known to the contractor after which it will periodically
 // try to recover them.
-func (rs *recoveryScanner) threadedScan(cs skymodules.ConsensusSet, scanStart skymodules.ConsensusChangeID, cancel <-chan struct{}) error {
+func (rs *recoveryScanner) threadedScan(cs modules.ConsensusSet, scanStart modules.ConsensusChangeID, cancel <-chan struct{}) error {
 	if err := rs.c.tg.Add(); err != nil {
 		return err
 	}
 	defer rs.c.tg.Done()
 	// Check that the scanStart matches the recently missed change id.
 	rs.c.mu.RLock()
-	if scanStart != rs.c.recentRecoveryChange && scanStart != skymodules.ConsensusChangeBeginning {
+	if scanStart != rs.c.recentRecoveryChange && scanStart != modules.ConsensusChangeBeginning {
 		rs.c.mu.RUnlock()
 		return errors.New("scanStart doesn't match recentRecoveryChange")
 	}
@@ -77,7 +78,7 @@ func (rs *recoveryScanner) threadedScan(cs skymodules.ConsensusSet, scanStart sk
 
 // ProcessConsensusChange scans the blockchain for information relevant to the
 // recoveryScanner.
-func (rs *recoveryScanner) ProcessConsensusChange(cc skymodules.ConsensusChange) {
+func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
 	for _, block := range cc.AppliedBlocks {
 		// Find lost contracts for recovery.
 		rs.c.mu.Lock()

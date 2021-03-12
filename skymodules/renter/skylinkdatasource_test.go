@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -53,7 +54,7 @@ func TestSkylinkDataSource(t *testing.T) {
 // testSkylinkDataSourceSmallFile verifies we can read from a datasource for a
 // small skyfile.
 func testSkylinkDataSourceSmallFile(t *testing.T) {
-	data := fastrand.Bytes(int(skymodules.SectorSize))
+	data := fastrand.Bytes(int(modules.SectorSize))
 	datasize := uint64(len(data))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -99,7 +100,7 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 	}
 
 	// verify invalid offset and length
-	responseChan := sds.ReadStream(context.Background(), 1, skymodules.SectorSize, types.ZeroCurrency)
+	responseChan := sds.ReadStream(context.Background(), 1, modules.SectorSize, types.ZeroCurrency)
 	select {
 	case resp := <-responseChan:
 		if resp == nil || resp.staticErr == nil {
@@ -145,8 +146,8 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 // testSkylinkDataSourceLargeFile verifies we can read from a datasource for a
 // large skyfile.
 func testSkylinkDataSourceLargeFile(t *testing.T) {
-	fanoutChunk1 := fastrand.Bytes(int(skymodules.SectorSize))
-	fanoutChunk2 := fastrand.Bytes(int(skymodules.SectorSize) / 2)
+	fanoutChunk1 := fastrand.Bytes(int(modules.SectorSize))
+	fanoutChunk2 := fastrand.Bytes(int(modules.SectorSize) / 2)
 	allData := append(fanoutChunk1, fanoutChunk2...)
 	datasize := uint64(len(allData))
 

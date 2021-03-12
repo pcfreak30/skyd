@@ -20,8 +20,8 @@ import (
 const (
 	// SkylinkMaxFetchSize defines the maximum fetch size that is supported by
 	// the skylink format. This is intentionally the same number as
-	// skymodules.SectorSize on the release build. We could not use
-	// skymodules.SectorSize directly because during testing that value is too
+	// modules.SectorSize on the release build. We could not use
+	// modules.SectorSize directly because during testing that value is too
 	// small to properly test the link format.
 	SkylinkMaxFetchSize = 1 << 22
 

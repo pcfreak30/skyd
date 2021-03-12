@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/node"
@@ -771,7 +772,7 @@ func TestSkynetSlowDownload(t *testing.T) {
 	// in such a way that the overall time to download this file exceeds the
 	// default request timeout of 30s. Keeping in mind that every read from a
 	// slow host takes at least 1 second due to our dependency.
-	sector := int(skymodules.SectorSize)
+	sector := int(modules.SectorSize)
 	files := []siatest.TestFile{
 		{Name: "song1.flac", Data: fastrand.Bytes(sector * 3)},
 		{Name: "song2.flac", Data: fastrand.Bytes(sector * 3)},

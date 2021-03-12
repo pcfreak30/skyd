@@ -15,24 +15,25 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus"
+	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/modules/host"
+	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
+	modWallet "gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/consensus"
-	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
-	"gitlab.com/skynetlabs/skyd/skymodules/host"
-	"gitlab.com/skynetlabs/skyd/skymodules/miner"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
-	"gitlab.com/skynetlabs/skyd/skymodules/transactionpool"
-	modWallet "gitlab.com/skynetlabs/skyd/skymodules/wallet"
 )
 
 // newTestingWallet is a helper function that creates a ready-to-use wallet
 // and mines some coins into it.
-func newTestingWallet(testdir string, cs skymodules.ConsensusSet, tp skymodules.TransactionPool) (skymodules.Wallet, closeFn, error) {
-	w, err := modWallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
+func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool) (modules.Wallet, closeFn, error) {
+	w, err := modWallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,7 +53,7 @@ func newTestingWallet(testdir string, cs skymodules.ConsensusSet, tp skymodules.
 		return nil, nil, err
 	}
 	// give it some money
-	m, err := miner.New(cs, tp, w, filepath.Join(testdir, skymodules.MinerDir))
+	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -70,8 +71,8 @@ func newTestingWallet(testdir string, cs skymodules.ConsensusSet, tp skymodules.
 }
 
 // newCustomTestingHost is a helper function that creates a ready-to-use host.
-func newCustomTestingHost(testdir string, cs skymodules.ConsensusSet, tp skymodules.TransactionPool, mux *siamux.SiaMux, deps skymodules.Dependencies) (skymodules.Host, closeFn, error) {
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
+func newCustomTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux, deps modules.Dependencies) (modules.Host, closeFn, error) {
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -79,7 +80,7 @@ func newCustomTestingHost(testdir string, cs skymodules.ConsensusSet, tp skymodu
 	if err != nil {
 		return nil, nil, err
 	}
-	h, err := host.NewCustomHost(deps, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, skymodules.HostDir))
+	h, err := host.NewCustomHost(deps, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -98,7 +99,7 @@ func newCustomTestingHost(testdir string, cs skymodules.ConsensusSet, tp skymodu
 	if err != nil {
 		return nil, nil, err
 	}
-	err = h.AddStorageFolder(storageFolder, skymodules.SectorSize*64)
+	err = h.AddStorageFolder(storageFolder, modules.SectorSize*64)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -110,19 +111,19 @@ func newCustomTestingHost(testdir string, cs skymodules.ConsensusSet, tp skymodu
 }
 
 // newTestingHost is a helper function that creates a ready-to-use host.
-func newTestingHost(testdir string, cs skymodules.ConsensusSet, tp skymodules.TransactionPool, mux *siamux.SiaMux) (skymodules.Host, closeFn, error) {
-	return newCustomTestingHost(testdir, cs, tp, mux, skymodules.ProdDependencies)
+func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, closeFn, error) {
+	return newCustomTestingHost(testdir, cs, tp, mux, modules.ProdDependencies)
 }
 
 // newTestingContractor is a helper function that creates a ready-to-use
 // contractor.
-func newTestingContractor(testdir string, g skymodules.Gateway, cs skymodules.ConsensusSet, tp skymodules.TransactionPool, rl *ratelimit.RateLimit, deps skymodules.Dependencies) (*Contractor, closeFn, error) {
+func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool, rl *ratelimit.RateLimit, deps modules.Dependencies) (*Contractor, closeFn, error) {
 	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
 		return nil, nil, err
 	}
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -143,44 +144,44 @@ func newTestingContractor(testdir string, g skymodules.Gateway, cs skymodules.Co
 
 // newTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions.
-func newTestingTrio(name string) (skymodules.Host, *Contractor, skymodules.TestMiner, closeFn, error) {
-	return newTestingTrioWithContractorDeps(name, skymodules.ProdDependencies)
+func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
+	return newTestingTrioWithContractorDeps(name, modules.ProdDependencies)
 }
 
 // newTestingTrioWithContractorDeps creates a Host, Contractor, and TestMiner
 // that can be used for testing host/renter interactions.
-func newTestingTrioWithContractorDeps(name string, deps skymodules.Dependencies) (skymodules.Host, *Contractor, skymodules.TestMiner, closeFn, error) {
+func newTestingTrioWithContractorDeps(name string, deps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create mux
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	return newCustomTestingTrio(name, mux, skymodules.ProdDependencies, deps)
+	return newCustomTestingTrio(name, mux, modules.ProdDependencies, deps)
 }
 
 // newCustomTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions. It allows to pass a custom siamux.
-func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps, cdeps skymodules.Dependencies) (skymodules.Host, *Contractor, skymodules.TestMiner, closeFn, error) {
+func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps, cdeps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create miner
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		return nil, nil, nil, nil, err
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	w, err := modWallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
+	w, err := modWallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -199,7 +200,7 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps, cdeps skymodul
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	m, err := miner.New(cs, tp, w, filepath.Join(testdir, skymodules.MinerDir))
+	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -378,7 +379,7 @@ func TestIntegrationReviseContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := fastrand.Bytes(int(skymodules.SectorSize))
+	data := fastrand.Bytes(int(modules.SectorSize))
 	_, err = editor.Upload(data)
 	if err != nil {
 		t.Fatal(err)
@@ -429,7 +430,7 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := fastrand.Bytes(int(skymodules.SectorSize))
+	data := fastrand.Bytes(int(modules.SectorSize))
 	root, err := editor.Upload(data)
 	if err != nil {
 		t.Fatal(err)
@@ -444,7 +445,7 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	retrieved, err := downloader.Download(root, 0, uint32(skymodules.SectorSize))
+	retrieved, err := downloader.Download(root, 0, uint32(modules.SectorSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +512,7 @@ func TestIntegrationRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := fastrand.Bytes(int(skymodules.SectorSize))
+	data := fastrand.Bytes(int(modules.SectorSize))
 	// insert the sector
 	root, err := editor.Upload(data)
 	if err != nil {
@@ -545,7 +546,7 @@ func TestIntegrationRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	retrieved, err := downloader.Download(root, 0, uint32(skymodules.SectorSize))
+	retrieved, err := downloader.Download(root, 0, uint32(modules.SectorSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,7 +576,7 @@ func TestIntegrationRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data = fastrand.Bytes(int(skymodules.SectorSize))
+	data = fastrand.Bytes(int(modules.SectorSize))
 	// insert the sector
 	_, err = editor.Upload(data)
 	if err != nil {
@@ -857,7 +858,7 @@ func TestContractPresenceLeak(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Couldn't dial tpc connection with host @ %v: %v.", string(hostEntry.NetAddress), err)
 		}
-		if err := encoding.WriteObject(conn, skymodules.RPCDownload); err != nil {
+		if err := encoding.WriteObject(conn, modules.RPCDownload); err != nil {
 			t.Fatalf("Couldn't initiate RPC: %v.", err)
 		}
 		if err := encoding.WriteObject(conn, fcid); err != nil {
@@ -869,7 +870,7 @@ func TestContractPresenceLeak(t *testing.T) {
 		if err := encoding.WriteObject(conn, signature); err != nil {
 			t.Fatalf("Couldn't send signature: %v.", err)
 		}
-		err = skymodules.ReadNegotiationAcceptance(conn)
+		err = modules.ReadNegotiationAcceptance(conn)
 		if err == nil {
 			t.Fatal("Expected an error, got success.")
 		}

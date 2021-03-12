@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -139,11 +140,11 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			// for the file.
 			uid := string(fileMetadata.UID)
 			if maxHealth := math.Max(fileMetadata.Health, fileMetadata.StuckHealth); maxHealth >= AlertSiafileLowRedundancyThreshold {
-				r.staticAlerter.RegisterAlert(skymodules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
+				r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
 					AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth, fileMetadata.Redundancy),
-					skymodules.SeverityWarning)
+					modules.SeverityWarning)
 			} else {
-				r.staticAlerter.UnregisterAlert(skymodules.AlertIDSiafileLowRedundancy(uid))
+				r.staticAlerter.UnregisterAlert(modules.AlertIDSiafileLowRedundancy(uid))
 			}
 
 			// If the file's LastHealthCheckTime is still zero, set it as now since it

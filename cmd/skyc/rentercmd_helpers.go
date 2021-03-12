@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -252,7 +253,7 @@ func downloadProgress(tfs []trackedFile) []api.DownloadInfo {
 			elapsed := time.Since(d.StartTime)
 			elapsed -= elapsed % time.Second // round to nearest second
 
-			progressLine := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, skymodules.FilesizeUnits(d.Filesize), elapsed, speed)
+			progressLine := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, modules.FilesizeUnits(d.Filesize), elapsed, speed)
 			if tfIdx < len(tfs)-1 {
 				progressStr += fmt.Sprintln(progressLine)
 			} else {
@@ -402,7 +403,7 @@ Contract %v
 				currencyUnits(rc.FundAccountSpending),
 				currencyUnits(rc.MaintenanceSpending.Sum()),
 				currencyUnits(rc.RenterFunds),
-				skymodules.FilesizeUnits(rc.Size))
+				modules.FilesizeUnits(rc.Size))
 
 			printScoreBreakdown(&hostInfo)
 			return nil
@@ -490,10 +491,10 @@ func renterFilesAndContractSummary() error {
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "  Files:\t%v\n", rf.Directories[0].AggregateNumFiles)
-	fmt.Fprintf(w, "  Total Stored:\t%v\n", skymodules.FilesizeUnits(rf.Directories[0].AggregateSize))
-	fmt.Fprintf(w, "  Total Renewing Data:\t%v\n", skymodules.FilesizeUnits(activeSize+passiveSize))
-	fmt.Fprintf(w, "  Repair Data Remaining:\t%v\n", skymodules.FilesizeUnits(rf.Directories[0].AggregateRepairSize))
-	fmt.Fprintf(w, "  Stuck Repair Remaining:\t%v\n", skymodules.FilesizeUnits(rf.Directories[0].AggregateStuckSize))
+	fmt.Fprintf(w, "  Total Stored:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateSize))
+	fmt.Fprintf(w, "  Total Renewing Data:\t%v\n", modules.FilesizeUnits(activeSize+passiveSize))
+	fmt.Fprintf(w, "  Repair Data Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateRepairSize))
+	fmt.Fprintf(w, "  Stuck Repair Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateStuckSize))
 	fmt.Fprintf(w, "  Min Redundancy:\t%v\n", redundancyStr)
 	fmt.Fprintf(w, "  Active Contracts:\t%v\n", len(rc.ActiveContracts))
 	fmt.Fprintf(w, "  Passive Contracts:\t%v\n", len(rc.PassiveContracts))
@@ -550,7 +551,7 @@ func renterFilesDownload(path, destination string) {
 	if len(failedDownloads) > 0 {
 		die("\nDownload could not be completed:", failedDownloads[0].Error)
 	}
-	fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), skymodules.FilesizeUnits(file.File.Filesize), time.Since(start).Round(time.Millisecond))
+	fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), modules.FilesizeUnits(file.File.Filesize), time.Since(start).Round(time.Millisecond))
 }
 
 // renterFileHealthSummary prints out a summary of the status of all the files
@@ -604,7 +605,7 @@ func writeContracts(contracts []api.RenterContract) {
 			currencyUnits(c.RenterFunds),
 			currencyUnits(contractTotalSpent),
 			currencyUnits(c.Fees),
-			skymodules.FilesizeUnits(c.Size),
+			modules.FilesizeUnits(c.Size),
 			c.EndHeight,
 			c.ID,
 			c.GoodForUpload,

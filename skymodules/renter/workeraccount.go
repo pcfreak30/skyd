@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -83,7 +84,7 @@ type (
 	// account represents a renter's ephemeral account on a host.
 	account struct {
 		// Information related to host communications.
-		staticID        skymodules.AccountID
+		staticID        modules.AccountID
 		staticHostKey   types.SiaPublicKey
 		staticSecretKey crypto.SecretKey
 
@@ -133,7 +134,7 @@ type (
 		// Utils. The offset refers to the offset within the file that the
 		// account uses.
 		mu           sync.Mutex
-		staticFile   skymodules.File
+		staticFile   modules.File
 		staticOffset int64
 		staticRenter *Renter
 	}
@@ -176,13 +177,13 @@ func (a *account) ProvidePayment(stream io.ReadWriter, amount types.Currency, bl
 	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)
 
 	// send PaymentRequest
-	err := skymodules.RPCWrite(stream, skymodules.PaymentRequest{Type: skymodules.PayByEphemeralAccount})
+	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
 		return err
 	}
 
 	// send PayByEphemeralAccountRequest
-	err = skymodules.RPCWrite(stream, skymodules.PayByEphemeralAccountRequest{
+	err = modules.RPCWrite(stream, modules.PayByEphemeralAccountRequest{
 		Message:   msg,
 		Signature: sig,
 	})
@@ -415,11 +416,11 @@ func (a *account) resetBalance(balance types.Currency) {
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and
 // a returns a new WithdrawalMessage.
-func newWithdrawalMessage(id skymodules.AccountID, amount types.Currency, blockHeight types.BlockHeight) skymodules.WithdrawalMessage {
+func newWithdrawalMessage(id modules.AccountID, amount types.Currency, blockHeight types.BlockHeight) modules.WithdrawalMessage {
 	expiry := blockHeight + withdrawalValidityPeriod
-	var nonce [skymodules.WithdrawalNonceSize]byte
+	var nonce [modules.WithdrawalNonceSize]byte
 	fastrand.Read(nonce[:])
-	return skymodules.WithdrawalMessage{
+	return modules.WithdrawalMessage{
 		Account: id,
 		Expiry:  expiry,
 		Amount:  amount,
@@ -618,7 +619,7 @@ func (w *worker) managedRefillAccount() {
 	// Defer a function that schedules a price table update in case we received
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
-		if skymodules.IsPriceTableInvalidErr(err) {
+		if modules.IsPriceTableInvalidErr(err) {
 			w.staticTryForcePriceTableUpdate()
 		}
 	}()
@@ -641,21 +642,21 @@ func (w *worker) managedRefillAccount() {
 	buffer := bytes.NewBuffer(nil)
 
 	// write the specifier
-	err = skymodules.RPCWrite(buffer, skymodules.RPCFundAccount)
+	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
 	if err != nil {
 		err = errors.AddContext(err, "could not write fund account specifier")
 		return
 	}
 
 	// send price table uid
-	err = skymodules.RPCWrite(buffer, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		err = errors.AddContext(err, "could not write price table uid")
 		return
 	}
 
 	// send fund account request
-	err = skymodules.RPCWrite(buffer, skymodules.FundAccountRequest{Account: w.staticAccount.staticID})
+	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: w.staticAccount.staticID})
 	if err != nil {
 		err = errors.AddContext(err, "could not write the fund account request")
 		return
@@ -672,7 +673,7 @@ func (w *worker) managedRefillAccount() {
 	details := contractor.PaymentDetails{
 		Host:          w.staticHostPubKey,
 		Amount:        amount.Add(pt.FundAccountCost),
-		RefundAccount: skymodules.ZeroAccountID,
+		RefundAccount: modules.ZeroAccountID,
 		SpendingDetails: skymodules.SpendingDetails{
 			FundAccountSpending: amount,
 			MaintenanceSpending: skymodules.MaintenanceSpending{
@@ -709,8 +710,8 @@ func (w *worker) managedRefillAccount() {
 	// signature, which is useful for places where accountability is required,
 	// but no accountability is required in this case, so we ignore the
 	// response.
-	var resp skymodules.FundAccountResponse
-	err = skymodules.RPCRead(stream, &resp)
+	var resp modules.FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
 	if err != nil {
 		err = errors.AddContext(err, "could not read the account response")
 	}
@@ -733,7 +734,7 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	// Defer a function that schedules a price table update in case we received
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
-		if skymodules.IsPriceTableInvalidErr(err) {
+		if modules.IsPriceTableInvalidErr(err) {
 			w.staticTryForcePriceTableUpdate()
 		}
 	}()
@@ -750,14 +751,14 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	}()
 
 	// write the specifier
-	err = skymodules.RPCWrite(stream, skymodules.RPCAccountBalance)
+	err = modules.RPCWrite(stream, modules.RPCAccountBalance)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
-	err = skymodules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
@@ -787,15 +788,15 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	}
 
 	// prepare the request.
-	abr := skymodules.AccountBalanceRequest{Account: w.staticAccount.staticID}
-	err = skymodules.RPCWrite(stream, abr)
+	abr := modules.AccountBalanceRequest{Account: w.staticAccount.staticID}
+	err = modules.RPCWrite(stream, abr)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
 
 	// read the response
-	var resp skymodules.AccountBalanceResponse
-	err = skymodules.RPCRead(stream, &resp)
+	var resp modules.AccountBalanceResponse
+	err = modules.RPCRead(stream, &resp)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
@@ -805,7 +806,7 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 // checkFundAccountGouging verifies the cost of funding an ephemeral account on
 // the host is reasonable, if deemed unreasonable we will block the refill and
 // the worker will eventually be put into cooldown.
-func checkFundAccountGouging(pt skymodules.RPCPriceTable, allowance skymodules.Allowance, targetBalance types.Currency) error {
+func checkFundAccountGouging(pt modules.RPCPriceTable, allowance skymodules.Allowance, targetBalance types.Currency) error {
 	// If there is no allowance, price gouging checks have to be disabled,
 	// because there is no baseline for understanding what might count as price
 	// gouging.

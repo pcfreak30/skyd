@@ -10,10 +10,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // ConsensusGET contains general information about the consensus set, with tags
@@ -116,7 +116,7 @@ type ConsensusBlocksGetSiafundOutput struct {
 }
 
 // RegisterRoutesConsensus is a helper function to register all consensus routes.
-func RegisterRoutesConsensus(router *httprouter.Router, cs skymodules.ConsensusSet) {
+func RegisterRoutesConsensus(router *httprouter.Router, cs modules.ConsensusSet) {
 	router.GET("/consensus", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		consensusHandler(cs, w, req, ps)
 	})
@@ -216,7 +216,7 @@ func consensusBlocksGetFromBlock(b types.Block, h types.BlockHeight, d types.Cur
 }
 
 // consensusHandler handles the API calls to /consensus.
-func consensusHandler(cs skymodules.ConsensusSet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func consensusHandler(cs modules.ConsensusSet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	height := cs.Height()
 	b, found := cs.BlockAtHeight(height)
 	if !found {
@@ -260,7 +260,7 @@ func consensusHandler(cs skymodules.ConsensusSet, w http.ResponseWriter, _ *http
 
 // consensusBlocksIDHandler handles the API calls to /consensus/blocks
 // endpoint.
-func consensusBlocksHandler(cs skymodules.ConsensusSet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func consensusBlocksHandler(cs modules.ConsensusSet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get query params and check them.
 	id, height := req.FormValue("id"), req.FormValue("height")
 	if id != "" && height != "" {
@@ -308,7 +308,7 @@ func consensusBlocksHandler(cs skymodules.ConsensusSet, w http.ResponseWriter, r
 
 // consensusValidateTransactionsetHandler handles the API calls to
 // /consensus/validate/transactionset.
-func consensusValidateTransactionsetHandler(cs skymodules.ConsensusSet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func consensusValidateTransactionsetHandler(cs modules.ConsensusSet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var txnset []types.Transaction
 	err := json.NewDecoder(req.Body).Decode(&txnset)
 	if err != nil {
@@ -325,8 +325,8 @@ func consensusValidateTransactionsetHandler(cs skymodules.ConsensusSet, w http.R
 
 // consensusSubscribeHandler handles the API calls to the /consensus/subscribe
 // endpoint.
-func consensusSubscribeHandler(cs skymodules.ConsensusSet, w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	var ccid skymodules.ConsensusChangeID
+func consensusSubscribeHandler(cs modules.ConsensusSet, w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	var ccid modules.ConsensusChangeID
 	if err := (*crypto.Hash)(&ccid).LoadString(ps.ByName("id")); err != nil {
 		WriteError(w, Error{"could not decode ID: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -350,7 +350,7 @@ type consensusChangeStreamer struct {
 	e *encoding.Encoder
 }
 
-func (ccs consensusChangeStreamer) ProcessConsensusChange(cc skymodules.ConsensusChange) {
+func (ccs consensusChangeStreamer) ProcessConsensusChange(cc modules.ConsensusChange) {
 	ccs.e.Encode(cc)
 }
 

@@ -3,6 +3,7 @@ package renter
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -10,7 +11,7 @@ import (
 // TestCheckDownloadSnapshotGouging checks that the download snapshot price
 // gouging checker is correctly detecting price gouging from a host.
 func TestCheckDownloadSnapshotGouging(t *testing.T) {
-	hes := skymodules.DefaultHostExternalSettings()
+	hes := modules.DefaultHostExternalSettings()
 
 	allowance := skymodules.DefaultAllowance
 	allowance.Funds = types.SiacoinPrecision.Mul64(1e3)
@@ -18,7 +19,7 @@ func TestCheckDownloadSnapshotGouging(t *testing.T) {
 	allowance.MaxUploadBandwidthPrice = hes.UploadBandwidthPrice.Mul64(2)
 	allowance.ExpectedDownload = 1 << 30 // 1GiB
 
-	priceTable := skymodules.RPCPriceTable{
+	priceTable := modules.RPCPriceTable{
 		ReadBaseCost:          hes.SectorAccessPrice,
 		ReadLengthCost:        types.NewCurrency64(1),
 		InitBaseCost:          hes.BaseRPCPrice,

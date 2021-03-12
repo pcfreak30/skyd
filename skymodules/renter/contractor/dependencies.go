@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -9,18 +10,18 @@ import (
 // interface possible makes it easier to mock these dependencies in testing.
 type (
 	consensusSet interface {
-		ConsensusSetSubscribe(skymodules.ConsensusSetSubscriber, skymodules.ConsensusChangeID, <-chan struct{}) error
+		ConsensusSetSubscribe(modules.ConsensusSetSubscriber, modules.ConsensusChangeID, <-chan struct{}) error
 		Synced() bool
-		Unsubscribe(skymodules.ConsensusSetSubscriber)
+		Unsubscribe(modules.ConsensusSetSubscriber)
 	}
-	// In order to restrict the skymodules.TransactionBuilder interface, we must
-	// provide a shim to bridge the gap between skymodules.Wallet and
+	// In order to restrict the modules.TransactionBuilder interface, we must
+	// provide a shim to bridge the gap between modules.Wallet and
 	// transactionBuilder.
 	walletShim interface {
 		NextAddress() (types.UnlockConditions, error)
-		PrimarySeed() (skymodules.Seed, uint64, error)
-		StartTransaction() (skymodules.TransactionBuilder, error)
-		RegisterTransaction(types.Transaction, []types.Transaction) (skymodules.TransactionBuilder, error)
+		PrimarySeed() (modules.Seed, uint64, error)
+		StartTransaction() (modules.TransactionBuilder, error)
+		RegisterTransaction(types.Transaction, []types.Transaction) (modules.TransactionBuilder, error)
 		Unlocked() (bool, error)
 	}
 	transactionBuilder interface {
@@ -33,7 +34,7 @@ type (
 		AddSiacoinOutput(types.SiacoinOutput) uint64
 		ReplaceSiacoinOutput(uint64, types.SiacoinOutput) error
 		AddTransactionSignature(types.TransactionSignature) uint64
-		Copy() skymodules.TransactionBuilder
+		Copy() modules.TransactionBuilder
 		Drop()
 		FundSiacoins(types.Currency) error
 		MarkWalletInputs() bool
@@ -70,7 +71,7 @@ type (
 )
 
 // WalletBridge is a bridge for the wallet because wallet is not directly
-// compatible with skymodules.Wallet (wrong type signature for StartTransaction),
+// compatible with modules.Wallet (wrong type signature for StartTransaction),
 // we must provide a bridge type.
 type WalletBridge struct {
 	W walletShim
@@ -80,7 +81,7 @@ type WalletBridge struct {
 func (ws *WalletBridge) NextAddress() (types.UnlockConditions, error) { return ws.W.NextAddress() }
 
 // PrimarySeed returns the primary wallet seed.
-func (ws *WalletBridge) PrimarySeed() (skymodules.Seed, uint64, error) { return ws.W.PrimarySeed() }
+func (ws *WalletBridge) PrimarySeed() (modules.Seed, uint64, error) { return ws.W.PrimarySeed() }
 
 // StartTransaction creates a new transactionBuilder that can be used to create
 // and sign a transaction.

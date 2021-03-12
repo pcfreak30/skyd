@@ -4,9 +4,9 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -56,7 +56,7 @@ func (rc *registryRevisionCache) Get(pubKey types.SiaPublicKey, tweak crypto.Has
 
 // Set sets an entry in the registry. When 'force' is false, settings a lower
 // revision number will be a no-op.
-func (rc *registryRevisionCache) Set(pubKey types.SiaPublicKey, rv skymodules.SignedRegistryValue, force bool) {
+func (rc *registryRevisionCache) Set(pubKey types.SiaPublicKey, rv modules.SignedRegistryValue, force bool) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 

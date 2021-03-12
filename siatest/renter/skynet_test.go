@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -29,12 +32,10 @@ import (
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skykey"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/host/registry"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
@@ -402,7 +403,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Upload another skyfile, this time ensure that the skyfile is more than
 	// one sector.
-	largeData := fastrand.Bytes(int(skymodules.SectorSize*2) + siatest.Fuzz())
+	largeData := fastrand.Bytes(int(modules.SectorSize*2) + siatest.Fuzz())
 	largeReader := bytes.NewReader(largeData)
 	largeFilename := "testLarge"
 	largeSiaPath, err := skymodules.NewSiaPath("testLargePath")
@@ -615,7 +616,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a siafile that will then be converted to a skyfile.
 	//
 	// Set 2 as the datapieces to check for N-of-M redundancy conversions
-	filesize := int(skymodules.SectorSize) + siatest.Fuzz()
+	filesize := int(modules.SectorSize) + siatest.Fuzz()
 	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
 	if err != nil {
 		t.Fatal(err)
@@ -866,7 +867,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// Add a small file at root level and a large nested file
 	rootFile = siatest.TestFile{Name: "smallFile1.txt", Data: []byte("File1Contents")}
-	largeData := fastrand.Bytes(2 * int(skymodules.SectorSize))
+	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
 	nestedFile = siatest.TestFile{Name: "nested/largefile2.txt", Data: largeData}
 	files = []siatest.TestFile{rootFile, nestedFile}
 	fileName = "TestFolderUploadLarge"
@@ -917,7 +918,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// create two test files with sizes below and above the sector size
 	files := make(map[string]uint64)
 	files["statfile1"] = 2033
-	files["statfile2"] = 2*skymodules.SectorSize + 123
+	files["statfile2"] = 2*modules.SectorSize + 123
 
 	// upload the files and keep track of their expected impact on the stats
 	var uploadedFilesSize, uploadedFilesCount uint64
@@ -934,12 +935,12 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		sps = append(sps, sp)
 
 		uploadedFilesCount++
-		if size < skymodules.SectorSize {
+		if size < modules.SectorSize {
 			// small files get padded up to a full sector
-			uploadedFilesSize += skymodules.SectorSize
+			uploadedFilesSize += modules.SectorSize
 		} else {
 			// large files have an extra sector with header data
-			uploadedFilesSize += size + skymodules.SectorSize
+			uploadedFilesSize += size + modules.SectorSize
 		}
 	}
 
@@ -963,7 +964,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	uploadedFilesCount++
 	// Increment the file size for the basesector that is uploaded during the
 	// conversion as well as the file size of the siafile.
-	uploadedFilesSize += skymodules.SectorSize
+	uploadedFilesSize += modules.SectorSize
 	uploadedFilesSize += uint64(size)
 
 	// Check that the right stats were returned.
@@ -1505,7 +1506,7 @@ func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 
 	// generate file params
 	name := t.Name() + persist.RandomSuffix()
-	size := uint64(4 * int(skymodules.SectorSize))
+	size := uint64(4 * int(modules.SectorSize))
 	data := fastrand.Bytes(int(size))
 
 	// upload a large encrypted skyfile to ensure we have a fanout
@@ -1516,7 +1517,7 @@ func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 
 	// calculate random range parameters
 	segment := uint64(crypto.SegmentSize)
-	offset := fastrand.Uint64n(size-skymodules.SectorSize) + 1
+	offset := fastrand.Uint64n(size-modules.SectorSize) + 1
 	length := fastrand.Uint64n(size-offset-segment) + 1
 
 	// fetch the data at given range
@@ -1624,7 +1625,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 
 	// Verify DownloadByRoot gives the same information
-	rootSectorReader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, skymodules.SectorSize, -1)
+	rootSectorReader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1735,7 +1736,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 
 	// Upload a skyfile that will have a fanout
 	filename := "byRootLargeFile" + persist.RandomSuffix()
-	size := 2*int(skymodules.SectorSize) + siatest.Fuzz()
+	size := 2*int(modules.SectorSize) + siatest.Fuzz()
 	fileData := fastrand.Bytes(size)
 	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(filename, fileData, skykeyName, false)
 	if err != nil {
@@ -1743,7 +1744,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Download the base sector
-	reader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, skymodules.SectorSize, -1)
+	reader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1836,7 +1837,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 		t.Fatal(err)
 	}
 
-	chunkSize := (skymodules.SectorSize - layout.CipherType.Overhead()) * uint64(layout.FanoutDataPieces)
+	chunkSize := (modules.SectorSize - layout.CipherType.Overhead()) * uint64(layout.FanoutDataPieces)
 	// Create list of chunk roots
 	chunkRoots := make([][]crypto.Hash, 0, numChunks)
 	for i := uint64(0); i < numChunks; i++ {
@@ -1861,7 +1862,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 			}
 
 			// Download the sector
-			reader, err := r.SkynetDownloadByRootGet(chunkRoots[i][j], 0, skymodules.SectorSize, -1)
+			reader, err := r.SkynetDownloadByRootGet(chunkRoots[i][j], 0, modules.SectorSize, -1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1937,7 +1938,7 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a file with a large number of parity pieces to we can be reasonable
 	// confident that the upload will not fully complete before the fanout needs
 	// to be generated.
-	size := 2*int(skymodules.SectorSize) + siatest.Fuzz()
+	size := 2*int(modules.SectorSize) + siatest.Fuzz()
 	data := fastrand.Bytes(size)
 	skylink, _, _, _, err := r.UploadSkyfileCustom("regression", data, sk.Name, 20, false, nil)
 	if err != nil {
@@ -2202,7 +2203,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 
 	// Create skyfile upload params, data should be larger than a sector size to
 	// test large file uploads and the deletion of their extended data.
-	size := skymodules.SectorSize + uint64(100+siatest.Fuzz())
+	size := modules.SectorSize + uint64(100+siatest.Fuzz())
 	skylink, sup, sshp, err := r.UploadNewSkyfileBlocking(t.Name(), size, false)
 	if err != nil {
 		t.Fatal(err)
@@ -2287,7 +2288,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	}
 
 	// Try to download the BaseSector by Root
-	_, err = r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, skymodules.SectorSize, -1)
+	_, err = r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
 	if err == nil {
 		t.Fatal("DownloadByRoot request should have failed")
 	}
@@ -2651,7 +2652,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	portal1 := skymodules.SkynetPortal{
-		Address: skymodules.NetAddress("siasky.net:9980"),
+		Address: modules.NetAddress("siasky.net:9980"),
 		Public:  true,
 	}
 	// loopback address
@@ -2661,13 +2662,13 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// address without a port
 	portal3 := skymodules.SkynetPortal{
-		Address: skymodules.NetAddress("siasky.net"),
+		Address: modules.NetAddress("siasky.net"),
 		Public:  true,
 	}
 
 	// Add portal.
 	add := []skymodules.SkynetPortal{portal1}
-	remove := []skymodules.NetAddress{}
+	remove := []modules.NetAddress{}
 	err := r.SkynetPortalsPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
@@ -2687,7 +2688,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 
 	// Remove the portal.
 	add = []skymodules.SkynetPortal{}
-	remove = []skymodules.NetAddress{portal1.Address}
+	remove = []modules.NetAddress{portal1.Address}
 	err = r.SkynetPortalsPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
@@ -2704,7 +2705,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try removing a portal that's not there.
 	add = []skymodules.SkynetPortal{}
-	remove = []skymodules.NetAddress{portal1.Address}
+	remove = []modules.NetAddress{portal1.Address}
 	err = r.SkynetPortalsPost(add, remove)
 	if err == nil || !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
 		t.Fatal("portal should fail to be removed")
@@ -2712,7 +2713,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try to add and remove a portal at the same time.
 	add = []skymodules.SkynetPortal{portal2}
-	remove = []skymodules.NetAddress{portal2.Address}
+	remove = []modules.NetAddress{portal2.Address}
 	err = r.SkynetPortalsPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
@@ -2730,7 +2731,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	// Test updating a portal's public status.
 	portal1.Public = false
 	add = []skymodules.SkynetPortal{portal1}
-	remove = []skymodules.NetAddress{}
+	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
@@ -2749,7 +2750,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 
 	portal1.Public = true
 	add = []skymodules.SkynetPortal{portal1}
-	remove = []skymodules.NetAddress{}
+	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
@@ -2768,7 +2769,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 
 	// Test an invalid network address.
 	add = []skymodules.SkynetPortal{portal3}
-	remove = []skymodules.NetAddress{}
+	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
 	if err == nil || !strings.Contains(err.Error(), "missing port in address") {
 		t.Fatal("expected 'missing port' error")
@@ -2776,9 +2777,9 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 
 	// Test adding an existing portal with an uppercase address.
 	portalUpper := portal1
-	portalUpper.Address = skymodules.NetAddress(strings.ToUpper(string(portalUpper.Address)))
+	portalUpper.Address = modules.NetAddress(strings.ToUpper(string(portalUpper.Address)))
 	add = []skymodules.SkynetPortal{portalUpper}
-	remove = []skymodules.NetAddress{}
+	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
 	// This does not currently return an error.
 	if err != nil {
@@ -3108,7 +3109,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		BaseChunkRedundancy: 2,
 		Filename:            "testSkynetDryRunUploadLarge",
 		Mode:                0640,
-	}, int(skymodules.SectorSize*2)+siatest.Fuzz())
+	}, int(modules.SectorSize*2)+siatest.Fuzz())
 }
 
 // testSkynetRequestTimeout verifies that the Skylink routes timeout when a
@@ -3220,7 +3221,7 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 
 	// Prepare a filename that's greater than a sector. That's the easiest way
 	// to force the metadata to be larger than a sector.
-	filename := hex.EncodeToString(fastrand.Bytes(int(skymodules.SectorSize + 1)))
+	filename := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize + 1)))
 	filedata := fastrand.Bytes(int(100 + siatest.Fuzz()))
 	files := []siatest.TestFile{{Name: filename, Data: filedata}}
 
@@ -3791,7 +3792,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	skylink, _, _, err := r.UploadNewSkyfileBlocking("testSkynetSingleFileNoSubfiles", skymodules.SectorSize, false)
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("testSkynetSingleFileNoSubfiles", modules.SectorSize, false)
 	if err != nil {
 		t.Fatal("Failed to upload a single file.", err)
 	}
@@ -3828,7 +3829,7 @@ func BenchmarkSkynetSingleSector(b *testing.B) {
 
 	// Upload a file that is a single sector big.
 	r := tg.Renters()[0]
-	skylink, _, _, err := r.UploadNewSkyfileBlocking("foo", skymodules.SectorSize, false)
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("foo", modules.SectorSize, false)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -3838,7 +3839,7 @@ func BenchmarkSkynetSingleSector(b *testing.B) {
 
 	// Reset the timer once the setup is done.
 	b.ResetTimer()
-	b.SetBytes(int64(b.N) * int64(skymodules.SectorSize))
+	b.SetBytes(int64(b.N) * int64(modules.SectorSize))
 
 	// Download the file.
 	for i := 0; i < b.N; i++ {
@@ -4054,9 +4055,9 @@ func TestRegistryUpdateRead(t *testing.T) {
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
 	data3 := skylink3.Bytes()
-	srv1 := skymodules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
-	srv2 := skymodules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
-	srv3 := skymodules.NewRegistryValue(dataKey, data3, 0).Sign(sk) // rev 0
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
+	srv3 := modules.NewRegistryValue(dataKey, data3, 0).Sign(sk) // rev 0
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -4212,7 +4213,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 
 	// Upload a large file
-	ss := skymodules.SectorSize
+	ss := modules.SectorSize
 	_, large, _, err := r.UploadNewSkyfileBlocking("largefile", ss*2, false)
 	if !uploadFailed(err) {
 		t.Fatal("unexpected")
@@ -4292,7 +4293,7 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Test regular large file.
-	skylink, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularLarge", fastrand.Bytes(int(skymodules.SectorSize)+1), false, monetization)
+	skylink, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularLarge", fastrand.Bytes(int(modules.SectorSize)+1), false, monetization)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4345,7 +4346,7 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Test converted file.
-	filesize := int(skymodules.SectorSize) + siatest.Fuzz()
+	filesize := int(modules.SectorSize) + siatest.Fuzz()
 	_, rf, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
 	if err != nil {
 		t.Fatal(err)

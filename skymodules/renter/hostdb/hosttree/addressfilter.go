@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 const (
@@ -20,11 +20,11 @@ const (
 // avoid selecting hosts from the same region.
 type Filter struct {
 	filter   map[string]struct{}
-	resolver skymodules.Resolver
+	resolver modules.Resolver
 }
 
 // NewFilter creates a new addressFilter object.
-func NewFilter(resolver skymodules.Resolver) *Filter {
+func NewFilter(resolver modules.Resolver) *Filter {
 	return &Filter{
 		filter:   make(map[string]struct{}),
 		resolver: resolver,
@@ -36,7 +36,7 @@ func NewFilter(resolver skymodules.Resolver) *Filter {
 // add the subnets to the filter. Add doesn't return an error, but if the
 // addresses of a host can't be resolved it will be handled as if the host
 // had no addresses associated with it.
-func (af *Filter) Add(host skymodules.NetAddress) {
+func (af *Filter) Add(host modules.NetAddress) {
 	// Translate the hostname to one or multiple IPs. If the argument is an IP
 	// address LookupIP will just return that IP.
 	addresses, err := af.resolver.LookupIP(host.Host())
@@ -66,7 +66,7 @@ func (af *Filter) Add(host skymodules.NetAddress) {
 // that was previously added to the filter. If it is in use, or if the host is
 // associated with 2 addresses of the same type (e.g. IPv4 and IPv4) or if it
 // is associated with more than 2 addresses, Filtered will return 'true'.
-func (af *Filter) Filtered(host skymodules.NetAddress) bool {
+func (af *Filter) Filtered(host modules.NetAddress) bool {
 	// Translate the hostname to one or multiple IPs. If the argument is an IP
 	// address LookupIP will just return that IP.
 	addresses, err := af.resolver.LookupIP(host.Host())

@@ -1,8 +1,8 @@
 package renter
 
 import (
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TODO: The RPC client is used by the worker to interact with the host. It
@@ -16,14 +16,14 @@ type RPCClient interface {
 	// UpdatePriceTable updates the price table.
 	UpdatePriceTable() error
 	// FundEphemeralAccount funds the given ephemeral account by given amount.
-	FundEphemeralAccount(id skymodules.AccountID, amount types.Currency) error
+	FundEphemeralAccount(id modules.AccountID, amount types.Currency) error
 }
 
 // MockRPCClient mocks the RPC Client
 type MockRPCClient struct{}
 
 // FundEphemeralAccount funds the given ephemeral account by given amount.
-func (m *MockRPCClient) FundEphemeralAccount(id skymodules.AccountID, amount types.Currency) error {
+func (m *MockRPCClient) FundEphemeralAccount(id modules.AccountID, amount types.Currency) error {
 	return nil
 }
 

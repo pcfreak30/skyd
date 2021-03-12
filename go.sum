@@ -124,8 +124,8 @@ github.com/vbauerster/mpb/v5 v5.0.3 h1:Ldt/azOkbThTk2loi6FrBd/3fhxGFQ24MxFAS88Po
 github.com/vbauerster/mpb/v5 v5.0.3/go.mod h1:h3YxU5CSr8rZP4Q3xZPVB3jJLhWPou63lHEdr9ytH4Y=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
-gitlab.com/NebulousLabs/Sia v1.5.5 h1:5RGlv9j6OaBGT0Sjmo8TuLhXSFnZZz/TmDCT7VHZaDI=
-gitlab.com/NebulousLabs/Sia v1.5.5/go.mod h1:0BkJD0dJVZ2+nixqKic6vt5SBBF6vs8f4inst1+RuLI=
+gitlab.com/NebulousLabs/Sia v1.5.6-0.20210309112313-8ea0fee8e78b h1:tQgqQErSjFt09QLfkSM+eSwi9Ax7yURfTiKTgVg0H30=
+gitlab.com/NebulousLabs/Sia v1.5.6-0.20210309112313-8ea0fee8e78b/go.mod h1:0BkJD0dJVZ2+nixqKic6vt5SBBF6vs8f4inst1+RuLI=
 gitlab.com/NebulousLabs/bolt v1.4.4 h1:3UhpR2qtHs87dJBE3CIzhw48GYSoUUNByJmic0cbu1w=
 gitlab.com/NebulousLabs/bolt v1.4.4/go.mod h1:ZL02cwhpLNif6aruxvUMqu/Bdy0/lFY21jMFfNAA+O8=
 gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40 h1:IbucNi8u1a1ErgVFVgg8pERhSyzYe5l+o8krDMnNjWA=

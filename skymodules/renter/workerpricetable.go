@@ -7,6 +7,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -73,7 +74,7 @@ type (
 	// extending this struct.
 	workerPriceTable struct {
 		// The actual price table.
-		staticPriceTable skymodules.RPCPriceTable
+		staticPriceTable modules.RPCPriceTable
 
 		// The time at which the price table expires.
 		staticExpiryTime time.Time
@@ -283,15 +284,15 @@ func (w *worker) staticUpdatePriceTable() {
 
 	// write the specifier
 	start := time.Now()
-	err = skymodules.RPCWrite(stream, skymodules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		err = errors.AddContext(err, "unable to write price table specifier")
 		return
 	}
 
 	// receive the price table
-	var uptr skymodules.RPCUpdatePriceTableResponse
-	err = skymodules.RPCRead(stream, &uptr)
+	var uptr modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &uptr)
 	if err != nil {
 		err = errors.AddContext(err, "unable to read price table response")
 		return
@@ -299,7 +300,7 @@ func (w *worker) staticUpdatePriceTable() {
 	elapsed = time.Since(start)
 
 	// decode the JSON
-	var pt skymodules.RPCPriceTable
+	var pt modules.RPCPriceTable
 	err = json.Unmarshal(uptr.PriceTableJSON, &pt)
 	if err != nil {
 		err = errors.AddContext(err, "unable to unmarshal price table")
@@ -345,8 +346,8 @@ func (w *worker) staticUpdatePriceTable() {
 	// The price table will not become valid until the host has received and
 	// confirmed our payment. The host will signal this by sending an empty
 	// response object we need to read.
-	var tracked skymodules.RPCTrackedPriceTableResponse
-	err = skymodules.RPCRead(stream, &tracked)
+	var tracked modules.RPCTrackedPriceTableResponse
+	err = modules.RPCRead(stream, &tracked)
 	if err != nil {
 		err = errors.AddContext(err, "unable to read tracked response")
 		return
@@ -377,7 +378,7 @@ func (w *worker) staticUpdatePriceTable() {
 // checkUpdatePriceTableGouging verifies the cost of updating the price table is
 // reasonable, if deemed unreasonable we will reject it and this worker will be
 // put into cooldown.
-func checkUpdatePriceTableGouging(pt skymodules.RPCPriceTable, allowance skymodules.Allowance) error {
+func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance skymodules.Allowance) error {
 	// If there is no allowance, price gouging checks have to be disabled,
 	// because there is no baseline for understanding what might count as price
 	// gouging.

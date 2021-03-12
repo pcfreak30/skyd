@@ -4,6 +4,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -20,8 +21,8 @@ func hasFCIdentifier(txn types.Transaction) (skymodules.ContractSignedIdentifier
 	// Verify the prefix.
 	var prefix types.Specifier
 	copy(prefix[:], txn.ArbitraryData[0])
-	if prefix != skymodules.PrefixFileContractIdentifier &&
-		prefix != skymodules.PrefixNonSia {
+	if prefix != modules.PrefixFileContractIdentifier &&
+		prefix != modules.PrefixNonSia {
 		return skymodules.ContractSignedIdentifier{}, nil, false
 	}
 	// We found an identifier.
@@ -73,7 +74,7 @@ func (c *Contractor) managedArchiveContracts() {
 
 // ProcessConsensusChange will be called by the consensus set every time there
 // is a change in the blockchain. Updates will always be called in order.
-func (c *Contractor) ProcessConsensusChange(cc skymodules.ConsensusChange) {
+func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Get the wallet's seed for contract recovery.
 	haveSeed := true
 	missedRecovery := false

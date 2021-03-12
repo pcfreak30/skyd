@@ -9,6 +9,7 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -27,7 +28,7 @@ const (
 // size and assumes that data is actually being appended to the host. As the
 // worker gains more modification actions on the host, this check can be split
 // into different checks that vary based on the operation being performed.
-func checkUploadGouging(allowance skymodules.Allowance, hostSettings skymodules.HostExternalSettings) error {
+func checkUploadGouging(allowance skymodules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the base RPC price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
 		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
@@ -207,7 +208,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// Ignore the error if it's a ErrMaxVirtualSectors coming from a pre-1.5.5
 	// host.
 	root, err := e.Upload(uc.physicalChunkData[pieceIndex])
-	ignoreErr := build.VersionCmp(hostSettings.Version, "1.5.5") < 0 && err != nil && strings.Contains(err.Error(), skymodules.ErrMaxVirtualSectors.Error())
+	ignoreErr := build.VersionCmp(hostSettings.Version, "1.5.5") < 0 && err != nil && strings.Contains(err.Error(), modules.ErrMaxVirtualSectors.Error())
 	if err != nil && !ignoreErr {
 		failureErr := fmt.Errorf("Worker failed to upload root %v via the editor: %v", root, err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
@@ -207,7 +208,7 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	sk := crypto.GenerateSiaKey(crypto.TypeThreefish)
-	fileSize := uint64(skymodules.SectorSize)
+	fileSize := uint64(modules.SectorSize)
 	fileMode := os.FileMode(0600)
 	f1, err := siafile.New(siaPath1.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil, true)
 	if err != nil {

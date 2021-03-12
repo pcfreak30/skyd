@@ -12,10 +12,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -499,7 +500,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				return
 			}
 			// 30% chance for the file to be a 0-byte file.
-			size := int(skymodules.SectorSize) + siatest.Fuzz()
+			size := int(modules.SectorSize) + siatest.Fuzz()
 			if fastrand.Intn(3) == 0 {
 				size = 0
 			}
@@ -545,7 +546,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			// 30% chance for the file to be a 0-byte file.
-			size := int(skymodules.SectorSize) + siatest.Fuzz()
+			size := int(modules.SectorSize) + siatest.Fuzz()
 			if fastrand.Intn(3) == 0 {
 				size = 0
 			}
@@ -600,7 +601,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// 50% chance to replace renamed file with new one.
 			if fastrand.Intn(2) == 0 {
-				lf, err := r.FilesDir().NewFile(int(skymodules.SectorSize) + siatest.Fuzz())
+				lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
 				if err != nil {
 					t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName)))
 					return
@@ -805,7 +806,7 @@ func TestUploadStreamFailAndRepair(t *testing.T) {
 	renter := nodes[0]
 
 	// Use upload streaming to upload a file. This should fail in the middle.
-	data := fastrand.Bytes(int(10 * skymodules.SectorSize))
+	data := fastrand.Bytes(int(10 * modules.SectorSize))
 	sp := skymodules.RandomSiaPath()
 	deps.Fail()
 	err = renter.RenterUploadStreamPost(bytes.NewReader(data), sp, 1, 1, false)

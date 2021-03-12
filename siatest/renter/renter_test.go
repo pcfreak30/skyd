@@ -20,16 +20,17 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/host/contractmanager"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
@@ -330,7 +331,7 @@ func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a file.
 	dataPieces := uint64(3)
 	parityPieces := uint64(1)
-	fileSize := int(skymodules.SectorSize)
+	fileSize := int(modules.SectorSize)
 	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -800,9 +801,9 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 	// fileSize is the size of the downloaded file.
 	fileSize := siatest.Fuzz()
 	if build.VLONG {
-		fileSize += int(50 * skymodules.SectorSize)
+		fileSize += int(50 * modules.SectorSize)
 	} else {
-		fileSize += int(10 * skymodules.SectorSize)
+		fileSize += int(10 * modules.SectorSize)
 	}
 	// set download limits and reset them after test.
 	// uniqueRemoteFiles is the number of files that will be uploaded to the
@@ -878,7 +879,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(skymodules.SectorSize)
+	fileSize := int(modules.SectorSize)
 	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -979,7 +980,7 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	renterNode := tg.Renters()[0]
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(skymodules.SectorSize) + siatest.Fuzz()
+	fileSize := int(modules.SectorSize) + siatest.Fuzz()
 	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -1188,14 +1189,14 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Choose a filesize for the upload. To hit a wide range of cases,
 	// siatest.Fuzz is used.
 	fuzz := siatest.Fuzz()
-	fileSize := int(skymodules.SectorSize) + fuzz
+	fileSize := int(modules.SectorSize) + fuzz
 	// One out of three times, add an extra sector.
 	if siatest.Fuzz() == 0 {
-		fileSize += int(skymodules.SectorSize)
+		fileSize += int(modules.SectorSize)
 	}
 	// One out of three times, add a random amount of extra data.
 	if siatest.Fuzz() == 0 {
-		fileSize += fastrand.Intn(int(skymodules.SectorSize))
+		fileSize += fastrand.Intn(int(modules.SectorSize))
 	}
 	t.Log("testRemoteRepair fileSize choice:", fileSize)
 
@@ -1350,13 +1351,13 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := 10 * skymodules.SectorSize
+	fileSize := 10 * modules.SectorSize
 	_, remoteFile, err := renter.UploadNewFileBlocking(int(fileSize), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	// Set a ratelimit that only allows for downloading a sector every second.
-	if err := renter.RenterRateLimitPost(int64(skymodules.SectorSize), 0); err != nil {
+	if err := renter.RenterRateLimitPost(int64(modules.SectorSize), 0); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -1413,7 +1414,7 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := fastrand.Intn(2*int(skymodules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -3197,7 +3198,7 @@ func TestSetFileTrackingPath(t *testing.T) {
 		t.Fatal("This test requires at least 2 hosts")
 	}
 	// Set fileSize and redundancy for upload
-	fileSize := int(skymodules.SectorSize)
+	fileSize := int(modules.SectorSize)
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -3360,7 +3361,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var fcTxns []skymodules.ProcessedTransaction
+	var fcTxns []modules.ProcessedTransaction
 	tries := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		if tries%10 == 0 {
@@ -3377,7 +3378,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		}
 
 		// Filter out transactions without file contracts.
-		fcTxns = make([]skymodules.ProcessedTransaction, 0)
+		fcTxns = make([]modules.ProcessedTransaction, 0)
 		for _, txn := range txns.ConfirmedTransactions {
 			if len(txn.Transaction.FileContracts) > 0 {
 				fcTxns = append(fcTxns, txn)
@@ -3400,7 +3401,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seed, err := skymodules.StringToSeed(wsg.PrimarySeed, "english")
+	seed, err := modules.StringToSeed(wsg.PrimarySeed, "english")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3473,7 +3474,7 @@ func TestUploadAfterDelete(t *testing.T) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(skymodules.SectorSize)
+	fileSize := int(modules.SectorSize)
 	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -3735,7 +3736,7 @@ func testFileAvailableAndRecoverable(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(skymodules.SectorSize)
+	fileSize := int(modules.SectorSize)
 	dataPieces := uint64(4)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -3834,7 +3835,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		// Set fileSize and redundancy for upload
 		dataPieces := uint64(len(tg.Hosts()) - 1)
 		parityPieces := uint64(len(tg.Hosts())) - dataPieces
-		fileSize := int(dataPieces * skymodules.SectorSize)
+		fileSize := int(dataPieces * modules.SectorSize)
 
 		// Upload file
 		_, _, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
@@ -4076,7 +4077,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 	}()
 	// Prepare a host that offers the minimum storage possible.
 	hostTemplate := node.Host(filepath.Join(testDir, "host1"))
-	hostTemplate.HostStorage = skymodules.SectorSize * contractmanager.MinimumSectorsPerStorageFolder
+	hostTemplate.HostStorage = modules.SectorSize * contractmanager.MinimumSectorsPerStorageFolder
 
 	// Prepare a renter that expects to upload 1 Sector of data to 2 hosts at a
 	// 2x redundancy. We set the ExpectedStorage lower than the available
@@ -4086,7 +4087,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 	parityPieces := uint64(1)
 	allowance := siatest.DefaultAllowance
 	allowance.ExpectedRedundancy = float64(dataPieces+parityPieces) / float64(dataPieces)
-	allowance.ExpectedStorage = skymodules.SectorSize // 4 KiB
+	allowance.ExpectedStorage = modules.SectorSize // 4 KiB
 	allowance.Hosts = 3
 	renterTemplate.Allowance = allowance
 
@@ -4113,7 +4114,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal("Expected remaining storage to be 0 but was", hg.ExternalSettings.RemainingStorage)
 	}
 	// Start uploading another file in the background to trigger the OOS error.
-	_, rf, err := renter.UploadNewFile(int(2*skymodules.SectorSize), dataPieces, parityPieces, false)
+	_, rf, err := renter.UploadNewFile(int(2*modules.SectorSize), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4661,7 +4662,7 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := fastrand.Intn(2*int(skymodules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 
 	dirSP, err := skymodules.NewSiaPath("dir")
 	if err != nil {
@@ -5570,7 +5571,7 @@ func TestRenterRepairSize(t *testing.T) {
 	}
 
 	// Since the file is marked as stuck it should register that stuck repair
-	expected := skymodules.SectorSize
+	expected := modules.SectorSize
 	if err := checkDirRepairSize(dirSiaPath, 0, expected); err != nil {
 		t.Error(err)
 	}
@@ -5607,7 +5608,7 @@ func TestRenterRepairSize(t *testing.T) {
 		}
 
 		// Check that the aggregate repair size increases.
-		expected += skymodules.SectorSize
+		expected += modules.SectorSize
 		if err := checkDirRepairSize(dirSiaPath, expected, 0); err != nil {
 			t.Log("Dir: Host loop failed", i)
 			t.Error(err)

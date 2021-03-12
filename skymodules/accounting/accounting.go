@@ -4,9 +4,10 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
@@ -25,11 +26,11 @@ var (
 // information about a Sia node.
 type Accounting struct {
 	// Modules whos accounting information is tracked
-	staticFeeManager skymodules.FeeManager
-	staticHost       skymodules.Host
-	staticMiner      skymodules.Miner
+	staticFeeManager modules.FeeManager
+	staticHost       modules.Host
+	staticMiner      modules.Miner
 	staticRenter     skymodules.Renter
-	staticWallet     skymodules.Wallet
+	staticWallet     modules.Wallet
 
 	// Accounting module settings
 	persistence      persistence
@@ -37,7 +38,7 @@ type Accounting struct {
 
 	// Utilities
 	staticAOP  *persist.AppendOnlyPersist
-	staticDeps skymodules.Dependencies
+	staticDeps modules.Dependencies
 	staticLog  *persist.Logger
 	staticTG   threadgroup.ThreadGroup
 
@@ -46,7 +47,7 @@ type Accounting struct {
 
 // NewCustomAccounting initializes the accounting module with custom
 // dependencies
-func NewCustomAccounting(fm skymodules.FeeManager, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, w skymodules.Wallet, persistDir string, deps skymodules.Dependencies) (*Accounting, error) {
+func NewCustomAccounting(fm modules.FeeManager, h modules.Host, m modules.Miner, r skymodules.Renter, w modules.Wallet, persistDir string, deps modules.Dependencies) (*Accounting, error) {
 	// Check that at least the wallet is not nil
 	if w == nil {
 		return nil, errNilWallet

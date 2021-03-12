@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -24,7 +25,7 @@ import (
 type ContractSet struct {
 	contracts  map[types.FileContractID]*SafeContract
 	pubKeys    map[string]types.FileContractID
-	staticDeps skymodules.Dependencies
+	staticDeps modules.Dependencies
 	staticDir  string
 	mu         sync.Mutex
 	staticRL   *ratelimit.RateLimit
@@ -186,7 +187,7 @@ func (cs *ContractSet) Close() error {
 
 // NewContractSet returns a ContractSet storing its contracts in the specified
 // dir.
-func NewContractSet(dir string, rl *ratelimit.RateLimit, deps skymodules.Dependencies) (*ContractSet, error) {
+func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*ContractSet, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}

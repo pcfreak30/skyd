@@ -13,9 +13,10 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
@@ -26,7 +27,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	t.Parallel()
 
 	// create data
-	originalData := fastrand.Bytes(int(skymodules.SectorSize))
+	originalData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(originalData)
 
 	// create an EC and a passhtrough cipher key
@@ -37,7 +38,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	}
 
 	// RS encode the data
-	data := make([]byte, skymodules.SectorSize)
+	data := make([]byte, modules.SectorSize)
 	copy(data, originalData)
 	pieces, err := ec.Encode(data)
 	if err != nil {
@@ -57,7 +58,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 
 	// download a random amount of data at random offset
 	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
-	offset := fastrand.Uint64n(skymodules.SectorSize - length)
+	offset := fastrand.Uint64n(modules.SectorSize - length)
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
 	sliced := make([][]byte, len(pieces))
@@ -233,7 +234,7 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data := fastrand.Bytes(int(skymodules.SectorSize))
+	data := fastrand.Bytes(int(modules.SectorSize))
 	pieces, err := ec.Encode(data)
 	if err != nil {
 		t.Fatal(err)
@@ -457,14 +458,14 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 // TestGetPieceOffsetAndLen is a unit test that probes the helper function
 // getPieceOffsetAndLength
 func TestGetPieceOffsetAndLen(t *testing.T) {
-	randOff := fastrand.Uint64n(skymodules.SectorSize)
-	randLen := fastrand.Uint64n(skymodules.SectorSize)
+	randOff := fastrand.Uint64n(modules.SectorSize)
+	randLen := fastrand.Uint64n(modules.SectorSize)
 
 	// verify an EC that does not support partials, defaults to a segemnt size
 	// that is equal to the sectorsize
 	ec := skymodules.NewRSCodeDefault()
 	pieceOff, pieceLen := getPieceOffsetAndLen(ec, randOff, randLen)
-	if pieceOff != 0 || pieceLen%skymodules.SectorSize != 0 {
+	if pieceOff != 0 || pieceLen%modules.SectorSize != 0 {
 		t.Fatal("unexpected", pieceOff, pieceLen)
 	}
 
@@ -508,14 +509,14 @@ func TestGetPieceOffsetAndLenWithRecover(t *testing.T) {
 
 	// create data
 	cntr := 0
-	originalData := make([]byte, skymodules.SectorSize)
-	for i := 0; i < int(skymodules.SectorSize); i += 2 {
+	originalData := make([]byte, modules.SectorSize)
+	for i := 0; i < int(modules.SectorSize); i += 2 {
 		binary.BigEndian.PutUint16(originalData[i:], uint16(cntr))
 		cntr += 1
 	}
 
 	// RS encode the data
-	data := make([]byte, skymodules.SectorSize)
+	data := make([]byte, modules.SectorSize)
 	copy(data, originalData)
 	ec := skymodules.NewRSSubCodeDefault()
 	pieces, err := ec.Encode(data)
@@ -571,7 +572,7 @@ func TestGetPieceOffsetAndLenWithRecover(t *testing.T) {
 	for rounds := 0; rounds < 100; rounds++ {
 		// random length and offset
 		length := (fastrand.Uint64n(5*crypto.SegmentSize) + 1)
-		offset := fastrand.Uint64n(skymodules.SectorSize - length)
+		offset := fastrand.Uint64n(modules.SectorSize - length)
 		run(offset, length)
 	}
 }

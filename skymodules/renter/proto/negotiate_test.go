@@ -7,9 +7,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestNegotiateRevisionStopResponse tests that when the host sends
@@ -29,11 +29,11 @@ func TestNegotiateRevisionStopResponse(t *testing.T) {
 		// read revision
 		encoding.ReadObject(hConn, new(types.FileContractRevision), 1<<22)
 		// write acceptance
-		skymodules.WriteNegotiationAcceptance(hConn)
+		modules.WriteNegotiationAcceptance(hConn)
 		// read txn signature
 		encoding.ReadObject(hConn, new(types.TransactionSignature), 1<<22)
 		// write StopResponse
-		skymodules.WriteNegotiationStop(hConn)
+		modules.WriteNegotiationStop(hConn)
 		// write txn signature
 		encoding.WriteObject(hConn, types.TransactionSignature{})
 	}(hConn)
@@ -58,10 +58,10 @@ func TestNegotiateRevisionStopResponse(t *testing.T) {
 			}
 		}()
 		encoding.ReadObject(hConn, new(types.FileContractRevision), 1<<22)
-		skymodules.WriteNegotiationAcceptance(hConn)
+		modules.WriteNegotiationAcceptance(hConn)
 		encoding.ReadObject(hConn, new(types.TransactionSignature), 1<<22)
 		// write a sentinel error
-		skymodules.WriteNegotiationRejection(hConn, errors.New("sentinel"))
+		modules.WriteNegotiationRejection(hConn, errors.New("sentinel"))
 		encoding.WriteObject(hConn, types.TransactionSignature{})
 	}(hConn)
 	expectedErr := "host did not accept transaction signature: sentinel"

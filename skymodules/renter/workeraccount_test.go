@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -198,7 +199,7 @@ func testAccountSyncBalance(t *testing.T) {
 	t.Parallel()
 
 	// create a mock of the accounts file
-	deps := skymodules.ProductionDependencies{}
+	deps := modules.ProductionDependencies{}
 	f, err := deps.OpenFile(filepath.Join(t.TempDir(), accountsFilename), os.O_RDWR|os.O_CREATE, defaultFilePerm)
 	if err != nil {
 		t.Fatal(err)
@@ -447,7 +448,7 @@ func testWorkerAccountSyncAccountBalanceToHostCritical(t *testing.T, wt *workerT
 func TestNewWithdrawalMessage(t *testing.T) {
 	t.Parallel()
 	// create a withdrawal message using random parameters
-	aid, _ := skymodules.NewAccountID()
+	aid, _ := modules.NewAccountID()
 	amount := types.NewCurrency64(fastrand.Uint64n(100))
 	blockHeight := types.BlockHeight(fastrand.Intn(100))
 	msg := newWithdrawalMessage(aid, amount, blockHeight)
@@ -462,10 +463,10 @@ func TestNewWithdrawalMessage(t *testing.T) {
 	if msg.Expiry != blockHeight+withdrawalValidityPeriod {
 		t.Fatal("Unexpected expiry")
 	}
-	if len(msg.Nonce) != skymodules.WithdrawalNonceSize {
+	if len(msg.Nonce) != modules.WithdrawalNonceSize {
 		t.Fatal("Unexpected nonce length")
 	}
-	var nonce [skymodules.WithdrawalNonceSize]byte
+	var nonce [modules.WithdrawalNonceSize]byte
 	if bytes.Equal(msg.Nonce[:], nonce[:]) {
 		t.Fatal("Uninitialized nonce")
 	}

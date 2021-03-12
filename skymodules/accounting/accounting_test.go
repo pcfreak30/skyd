@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -62,7 +63,7 @@ func testAccounting(t *testing.T) {
 		t.Error("renter accounting information is empty")
 	}
 	// Check wallet explicitly
-	if reflect.DeepEqual(ai.Wallet, skymodules.WalletAccounting{}) {
+	if reflect.DeepEqual(ai.Wallet, modules.WalletAccounting{}) {
 		t.Error("wallet accounting information is empty")
 	}
 
@@ -90,7 +91,7 @@ func testAccounting(t *testing.T) {
 // testNewCustomAccounting probes the NewCustomAccounting function
 func testNewCustomAccounting(t *testing.T) {
 	// checkNew is a helper function to check NewCustomAccounting
-	checkNew := func(fm skymodules.FeeManager, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, w skymodules.Wallet, dir string, deps skymodules.Dependencies, expectedErr error) {
+	checkNew := func(fm modules.FeeManager, h modules.Host, m modules.Miner, r skymodules.Renter, w modules.Wallet, dir string, deps modules.Dependencies, expectedErr error) {
 		a, err := NewCustomAccounting(fm, h, m, r, w, dir, deps)
 		if err != expectedErr {
 			t.Errorf("Expected %v, got %v", expectedErr, err)

@@ -6,8 +6,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
 
@@ -19,7 +19,7 @@ var errInvalidSession = errors.New("session has been invalidated because its con
 // and from hosts.
 type Session interface {
 	// Address returns the address of the host.
-	Address() skymodules.NetAddress
+	Address() modules.NetAddress
 
 	// Close terminates the connection to the host.
 	Close() error
@@ -45,10 +45,10 @@ type Session interface {
 	// HostSettings will return the currently active host settings for a
 	// session, which allows the workers to check for price gouging and
 	// determine whether or not an operation should continue.
-	HostSettings() skymodules.HostExternalSettings
+	HostSettings() modules.HostExternalSettings
 
 	// Settings calls the Session RPC and updates the active host settings.
-	Settings() (skymodules.HostExternalSettings, error)
+	Settings() (modules.HostExternalSettings, error)
 
 	// Upload revises the underlying contract to store the new data. It
 	// returns the Merkle root of the data.
@@ -65,7 +65,7 @@ type hostSession struct {
 	endHeight  types.BlockHeight
 	id         types.FileContractID
 	invalid    bool // true if invalidate has been called
-	netAddress skymodules.NetAddress
+	netAddress modules.NetAddress
 
 	mu sync.Mutex
 }
@@ -88,7 +88,7 @@ func (hs *hostSession) invalidate() {
 }
 
 // Address returns the NetAddress of the host.
-func (hs *hostSession) Address() skymodules.NetAddress { return hs.netAddress }
+func (hs *hostSession) Address() modules.NetAddress { return hs.netAddress }
 
 // Close cleanly terminates the revision loop with the host and closes the
 // connection.
@@ -139,7 +139,7 @@ func (hs *hostSession) DownloadIndex(index uint64, offset, length uint32) ([]byt
 	}
 
 	// Retrieve the Merkle root for the index.
-	_, roots, err := hs.session.SectorRoots(skymodules.LoopSectorRootsRequest{
+	_, roots, err := hs.session.SectorRoots(modules.LoopSectorRootsRequest{
 		RootOffset: index,
 		NumRoots:   1,
 	})
@@ -193,12 +193,12 @@ func (hs *hostSession) Replace(data []byte, sectorIndex uint64, trim bool) (cryp
 }
 
 // HostSettings returns the currently active host settings for the session.
-func (hs *hostSession) HostSettings() skymodules.HostExternalSettings {
+func (hs *hostSession) HostSettings() modules.HostExternalSettings {
 	return hs.session.HostSettings()
 }
 
 // Settings calls the Session RPC and updates the active host settings.
-func (hs *hostSession) Settings() (skymodules.HostExternalSettings, error) {
+func (hs *hostSession) Settings() (modules.HostExternalSettings, error) {
 	return hs.session.Settings()
 }
 
@@ -249,7 +249,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 
 	// Create the session.
 	s, err := c.staticContracts.NewSession(host, id, height, c.hdb, c.log.Logger, cancel)
-	if skymodules.IsContractNotRecognizedErr(err) {
+	if modules.IsContractNotRecognizedErr(err) {
 		err = errors.Compose(err, c.MarkContractBad(id))
 	}
 	if err != nil {

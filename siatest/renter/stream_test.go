@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/siatest"
@@ -227,7 +228,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(5*skymodules.SectorSize) + siatest.Fuzz()
+	fileSize := int(5*modules.SectorSize) + siatest.Fuzz()
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -297,7 +298,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Test requires at least 1 renter")
 	}
 	// Create some random data to write.
-	fileSize := fastrand.Intn(2*int(skymodules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 	data := fastrand.Bytes(fileSize)
 	d := bytes.NewReader(data)
 
@@ -364,7 +365,7 @@ func testUploadStreamingWithBadDeps(t *testing.T, tg *siatest.TestGroup) {
 	}()
 
 	// Create some random data to write.
-	fileSize := fastrand.Intn(2*int(skymodules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 	data := fastrand.Bytes(fileSize)
 	d := bytes.NewReader(data)
 

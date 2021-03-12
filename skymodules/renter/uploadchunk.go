@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
@@ -247,7 +248,7 @@ func padAndEncryptPiece(chunkIndex, pieceIndex uint64, logicalChunkData [][]byte
 	//
 	// This has the extra benefit of making the result deterministic, which is
 	// important when checking the integrity of a local file later on.
-	short := int(skymodules.SectorSize) - len(logicalChunkData[pieceIndex])
+	short := int(modules.SectorSize) - len(logicalChunkData[pieceIndex])
 	if short > 0 {
 		// The form `append(obj, make([]T, n))` will be optimized by the
 		// compiler to eliminate unneeded allocations starting go 1.11.
@@ -370,7 +371,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	var pieceCompletedMemory uint64
 	for i := 0; i < len(chunk.pieceUsage); i++ {
 		if chunk.pieceUsage[i] {
-			pieceCompletedMemory += skymodules.SectorSize
+			pieceCompletedMemory += modules.SectorSize
 		}
 	}
 
@@ -612,7 +613,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		// will prefer releasing later pieces, which improves computational
 		// complexity for erasure coding.
 		if piecesAvailable >= uc.workersRemaining {
-			memoryReleased += skymodules.SectorSize
+			memoryReleased += modules.SectorSize
 			uc.physicalChunkData[i] = nil
 			// Mark this piece as taken so that we don't double release memory.
 			uc.pieceUsage[i] = true

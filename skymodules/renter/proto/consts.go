@@ -6,8 +6,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 const (
@@ -68,10 +68,10 @@ var (
 	}).(float64)
 
 	// sectorHeight is the height of a Merkle tree that covers a single
-	// sector. It is log2(skymodules.SectorSize / crypto.SegmentSize)
+	// sector. It is log2(modules.SectorSize / crypto.SegmentSize)
 	sectorHeight = func() uint64 {
 		height := uint64(0)
-		for 1<<height < (skymodules.SectorSize / crypto.SegmentSize) {
+		for 1<<height < (modules.SectorSize / crypto.SegmentSize) {
 			height++
 		}
 		return height

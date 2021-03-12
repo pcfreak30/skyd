@@ -15,9 +15,10 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 	siasync "gitlab.com/skynetlabs/skyd/sync"
@@ -50,16 +51,16 @@ func (emptyWorkerPool) Worker(_ types.SiaPublicKey) (skymodules.Worker, error) {
 // contracts.
 type Contractor struct {
 	// dependencies
-	cs            skymodules.ConsensusSet
+	cs            modules.ConsensusSet
 	hdb           skymodules.HostDB
 	log           *persist.Logger
 	mu            sync.RWMutex
 	persistDir    string
-	staticAlerter *skymodules.GenericAlerter
-	staticDeps    skymodules.Dependencies
+	staticAlerter *modules.GenericAlerter
+	staticDeps    modules.Dependencies
 	tg            threadgroup.ThreadGroup
-	tpool         skymodules.TransactionPool
-	wallet        skymodules.Wallet
+	tpool         modules.TransactionPool
+	wallet        modules.Wallet
 	workerPool    skymodules.WorkerPool
 
 	// Only one thread should be performing contract maintenance at a time.
@@ -75,13 +76,13 @@ type Contractor struct {
 	blockHeight   types.BlockHeight
 	synced        chan struct{}
 	currentPeriod types.BlockHeight
-	lastChange    skymodules.ConsensusChangeID
+	lastChange    modules.ConsensusChangeID
 
 	// recentRecoveryChange is the first ConsensusChange that was missed while
 	// trying to find recoverable contracts. This is where we need to start
 	// rescanning the blockchain for recoverable contracts the next time the wallet
 	// is unlocked.
-	recentRecoveryChange skymodules.ConsensusChangeID
+	recentRecoveryChange modules.ConsensusChangeID
 
 	downloaders     map[types.FileContractID]*hostDownloader
 	editors         map[types.FileContractID]*hostEditor
@@ -119,7 +120,7 @@ type PaymentDetails struct {
 
 	// payment details
 	Amount        types.Currency
-	RefundAccount skymodules.AccountID
+	RefundAccount modules.AccountID
 
 	// spending details
 	SpendingDetails skymodules.SpendingDetails
@@ -151,7 +152,7 @@ func (c *Contractor) InitRecoveryScan() (err error) {
 		return err
 	}
 	defer c.tg.Done()
-	return c.callInitRecoveryScan(skymodules.ConsensusChangeBeginning)
+	return c.callInitRecoveryScan(modules.ConsensusChangeBeginning)
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
@@ -254,7 +255,7 @@ func (c *Contractor) UpdateWorkerPool(wp skymodules.WorkerPool) {
 // ProvidePayment takes a stream and a set of payment details and handles
 // the payment for an RPC by sending and processing payment request and
 // response objects to the host. It returns an error in case of failure.
-func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *skymodules.RPCPriceTable, details PaymentDetails) error {
+func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details PaymentDetails) error {
 	// convenience variables
 	host := details.Host
 	refundAccount := details.RefundAccount
@@ -296,13 +297,13 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *skymodules.RPCPric
 	buffer := bytes.NewBuffer(nil)
 
 	// send PaymentRequest
-	err = skymodules.RPCWrite(buffer, skymodules.PaymentRequest{Type: skymodules.PayByContract})
+	err = modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByContract})
 	if err != nil {
 		return errors.AddContext(err, "unable to write payment request to host")
 	}
 
 	// send PayByContractRequest
-	err = skymodules.RPCWrite(buffer, newPayByContractRequest(rev, sig, refundAccount))
+	err = modules.RPCWrite(buffer, newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		return errors.AddContext(err, "unable to write the pay by contract request")
 	}
@@ -314,8 +315,8 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *skymodules.RPCPric
 	}
 
 	// receive PayByContractResponse
-	var payByResponse skymodules.PayByContractResponse
-	if err := skymodules.RPCRead(stream, &payByResponse); err != nil {
+	var payByResponse modules.PayByContractResponse
+	if err := modules.RPCRead(stream, &payByResponse); err != nil {
 		if strings.Contains(err.Error(), "storage obligation not found") {
 			c.log.Printf("Marking contract %v as bad because host %v did not recognize it: %v", contract.ID, host, err)
 			mbcErr := c.managedMarkContractBad(sc)
@@ -410,7 +411,7 @@ func (c *Contractor) Close() error {
 }
 
 // newWithDeps returns a new Contractor.
-func newWithDeps(cs skymodules.ConsensusSet, wallet skymodules.Wallet, tpool skymodules.TransactionPool, hdb skymodules.HostDB, rl *ratelimit.RateLimit, persistDir string, deps skymodules.Dependencies) (*Contractor, <-chan error) {
+func newWithDeps(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb skymodules.HostDB, rl *ratelimit.RateLimit, persistDir string, deps modules.Dependencies) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// Check for nil inputs.
@@ -445,7 +446,7 @@ func newWithDeps(cs skymodules.ConsensusSet, wallet skymodules.Wallet, tpool sky
 	}
 
 	// Create the contract set.
-	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), rl, skymodules.ProdDependencies)
+	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), rl, modules.ProdDependencies)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -462,15 +463,15 @@ func newWithDeps(cs skymodules.ConsensusSet, wallet skymodules.Wallet, tpool sky
 }
 
 // New returns a new Contractor.
-func New(cs skymodules.ConsensusSet, wallet skymodules.Wallet, tpool skymodules.TransactionPool, hdb skymodules.HostDB, rl *ratelimit.RateLimit, persistDir string) (*Contractor, <-chan error) {
-	return newWithDeps(cs, wallet, tpool, hdb, rl, persistDir, skymodules.ProdDependencies)
+func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb skymodules.HostDB, rl *ratelimit.RateLimit, persistDir string) (*Contractor, <-chan error) {
+	return newWithDeps(cs, wallet, tpool, hdb, rl, persistDir, modules.ProdDependencies)
 }
 
 // contractorBlockingStartup handles the blocking portion of NewCustomContractor.
-func contractorBlockingStartup(cs skymodules.ConsensusSet, w skymodules.Wallet, tp skymodules.TransactionPool, hdb skymodules.HostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps skymodules.Dependencies) (*Contractor, error) {
+func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp modules.TransactionPool, hdb skymodules.HostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
 	// Create the Contractor object.
 	c := &Contractor{
-		staticAlerter: skymodules.NewAlerter("contractor"),
+		staticAlerter: modules.NewAlerter("contractor"),
 		cs:            cs,
 		staticDeps:    deps,
 		hdb:           hdb,
@@ -548,16 +549,16 @@ func contractorBlockingStartup(cs skymodules.ConsensusSet, w skymodules.Wallet, 
 }
 
 // contractorAsyncStartup handles the async portion of NewCustomContractor.
-func contractorAsyncStartup(c *Contractor, cs skymodules.ConsensusSet) error {
+func contractorAsyncStartup(c *Contractor, cs modules.ConsensusSet) error {
 	if c.staticDeps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
 	err := cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
-	if errors.Contains(err, skymodules.ErrInvalidConsensusChangeID) {
+	if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		// Reset the contractor consensus variables and try rescanning.
 		c.blockHeight = 0
-		c.lastChange = skymodules.ConsensusChangeBeginning
-		c.recentRecoveryChange = skymodules.ConsensusChangeBeginning
+		c.lastChange = modules.ConsensusChangeBeginning
+		c.recentRecoveryChange = modules.ConsensusChangeBeginning
 		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
 	}
 	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
@@ -570,7 +571,7 @@ func contractorAsyncStartup(c *Contractor, cs skymodules.ConsensusSet) error {
 }
 
 // NewCustomContractor creates a Contractor using the provided dependencies.
-func NewCustomContractor(cs skymodules.ConsensusSet, w skymodules.Wallet, tp skymodules.TransactionPool, hdb skymodules.HostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps skymodules.Dependencies) (*Contractor, <-chan error) {
+func NewCustomContractor(cs modules.ConsensusSet, w modules.Wallet, tp modules.TransactionPool, hdb skymodules.HostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Handle blocking startup.
@@ -599,7 +600,7 @@ func NewCustomContractor(cs skymodules.ConsensusSet, w skymodules.Wallet, tp sky
 
 // callInitRecoveryScan starts scanning the whole blockchain at a certain
 // ChangeID for recoverable contracts within a separate thread.
-func (c *Contractor) callInitRecoveryScan(scanStart skymodules.ConsensusChangeID) (err error) {
+func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
 	// Check if we are already scanning the blockchain.
 	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
 		return errors.New("scan for recoverable contracts is already in progress")
@@ -663,8 +664,8 @@ func (c *Contractor) managedSynced() bool {
 
 // newPayByContractRequest is a helper function that takes a revision,
 // signature and refund account and creates a PayByContractRequest object.
-func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount skymodules.AccountID) skymodules.PayByContractRequest {
-	req := skymodules.PayByContractRequest{
+func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
+	req := modules.PayByContractRequest{
 		ContractID:           rev.ID(),
 		NewRevisionNumber:    rev.NewRevisionNumber,
 		NewValidProofValues:  make([]types.Currency, len(rev.NewValidProofOutputs)),
@@ -683,7 +684,7 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (c *Contractor) RenewContract(conn net.Conn, fcid types.FileContractID, params skymodules.ContractParams, txnBuilder skymodules.TransactionBuilder, tpool skymodules.TransactionPool, hdb skymodules.HostDB, pt *skymodules.RPCPriceTable) (skymodules.RenterContract, []types.Transaction, error) {
+func (c *Contractor) RenewContract(conn net.Conn, fcid types.FileContractID, params skymodules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb skymodules.HostDB, pt *modules.RPCPriceTable) (skymodules.RenterContract, []types.Transaction, error) {
 	newContract, txnSet, err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb, pt)
 	if err != nil {
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "RenewContract: failed to renew contract")

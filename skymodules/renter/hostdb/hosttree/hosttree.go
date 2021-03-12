@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -38,7 +39,7 @@ type (
 
 		// resolver is the Resolver that is used by the hosttree to resolve
 		// hostnames to IP addresses.
-		resolver skymodules.Resolver
+		resolver modules.Resolver
 
 		// weightFn calculates the weight of a hostEntry
 		weightFn WeightFunc
@@ -80,7 +81,7 @@ func createNode(parent *node, entry *hostEntry) *node {
 
 // New creates a new HostTree given a weight function and a resolver
 // for hostnames.
-func New(wf WeightFunc, resolver skymodules.Resolver) *HostTree {
+func New(wf WeightFunc, resolver modules.Resolver) *HostTree {
 	return &HostTree{
 		hosts: make(map[string]*node),
 		root: &node{

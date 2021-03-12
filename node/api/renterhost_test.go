@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -172,7 +173,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	t.Parallel()
 	// Inject a dependency that forces legacy contract renewal without clearing
 	// the contract.
-	pd := skymodules.ProdDependencies
+	pd := modules.ProdDependencies
 	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, pd, pd)
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +289,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 
 	// On a second connection, upload another file.
 	path2 := filepath.Join(st.dir, "test2.dat")
-	test2Size := skymodules.SectorSize*2 + 1
+	test2Size := modules.SectorSize*2 + 1
 	err = createRandFile(path2, int(test2Size))
 	if err != nil {
 		t.Fatal(err)
@@ -853,7 +854,7 @@ func TestRenterUploadDownload(t *testing.T) {
 
 	// In parallel, upload another file and download the first file.
 	path2 := filepath.Join(st.dir, "test2.dat")
-	test2Size := skymodules.SectorSize*2 + 1
+	test2Size := modules.SectorSize*2 + 1
 	err = createRandFile(path2, int(test2Size))
 	if err != nil {
 		t.Fatal(err)
@@ -1692,7 +1693,7 @@ func TestUploadedBytesReporting(t *testing.T) {
 	}
 
 	// Create a file to upload.
-	filesize := int(skymodules.SectorSize * 2)
+	filesize := int(modules.SectorSize * 2)
 	path := filepath.Join(st.dir, "test.dat")
 	err = createRandFile(path, filesize)
 	if err != nil {
@@ -1717,13 +1718,13 @@ func TestUploadedBytesReporting(t *testing.T) {
 		if err := ct.FromString(cipherType); err != nil {
 			t.Fatal(err)
 		}
-		pieceSize := skymodules.SectorSize - ct.Overhead()
+		pieceSize := modules.SectorSize - ct.Overhead()
 		chunkSize := pieceSize * uint64(dataPieces)
 		numChunks := uint64(filesize) / chunkSize
 		if uint64(filesize)%chunkSize != 0 {
 			numChunks++
 		}
-		return skymodules.SectorSize * uint64(dataPieces+parityPieces) * uint64(numChunks)
+		return modules.SectorSize * uint64(dataPieces+parityPieces) * uint64(numChunks)
 	}
 
 	// Monitor the file as it uploads. Ensure that the UploadProgress times

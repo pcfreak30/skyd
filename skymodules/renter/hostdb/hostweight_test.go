@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -29,20 +30,20 @@ var (
 
 	// The default entry to use when performing scoring.
 	DefaultHostDBEntry = skymodules.HostDBEntry{
-		HostExternalSettings: skymodules.HostExternalSettings{
+		HostExternalSettings: modules.HostExternalSettings{
 			AcceptingContracts: true,
 			MaxDuration:        26e3,
 			RemainingStorage:   250e9,
 			WindowSize:         144,
 
-			Collateral:    types.NewCurrency64(250).Mul(types.SiacoinPrecision).Div(skymodules.BlockBytesPerMonthTerabyte),
+			Collateral:    types.NewCurrency64(250).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte),
 			MaxCollateral: types.NewCurrency64(750).Mul(types.SiacoinPrecision),
 
 			BaseRPCPrice:           types.SiacoinPrecision.Mul64(100).Div64(1e9),
 			ContractPrice:          types.NewCurrency64(5).Mul(types.SiacoinPrecision),
 			DownloadBandwidthPrice: types.SiacoinPrecision.Mul64(100).Div64(1e12),
 			SectorAccessPrice:      types.SiacoinPrecision.Mul64(2).Div64(1e6),
-			StoragePrice:           types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(skymodules.BlockBytesPerMonthTerabyte),
+			StoragePrice:           types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte),
 
 			Version: build.Version,
 		},
@@ -60,8 +61,8 @@ func calculateWeightFromUInt64Price(price, collateral uint64) (weight types.Curr
 	hdb.blockHeight = 0
 
 	entry := DefaultHostDBEntry
-	entry.StoragePrice = types.NewCurrency64(price).Mul(types.SiacoinPrecision).Div(skymodules.BlockBytesPerMonthTerabyte)
-	entry.Collateral = types.NewCurrency64(collateral).Mul(types.SiacoinPrecision).Div(skymodules.BlockBytesPerMonthTerabyte)
+	entry.StoragePrice = types.NewCurrency64(price).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
+	entry.Collateral = types.NewCurrency64(collateral).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 
 	return hdb.weightFunc(entry).Score(), nil
 }
@@ -100,12 +101,12 @@ func TestHostDBBasePriceAdjustment(t *testing.T) {
 
 	// Confirm a lower DownloadBandwidthPrice results in an almost zero score.
 	// Check by adjusting the price with both constants
-	entry.DownloadBandwidthPrice = DefaultHostDBEntry.DownloadBandwidthPrice.Div64(skymodules.MaxBaseRPCPriceVsBandwidth)
+	entry.DownloadBandwidthPrice = DefaultHostDBEntry.DownloadBandwidthPrice.Div64(modules.MaxBaseRPCPriceVsBandwidth)
 	bpa = hdb.basePriceAdjustments(entry)
 	if bpa != math.SmallestNonzeroFloat64 {
 		t.Errorf("BasePriceAdjustment should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)
 	}
-	entry.DownloadBandwidthPrice = DefaultHostDBEntry.DownloadBandwidthPrice.Div64(skymodules.MaxSectorAccessPriceVsBandwidth)
+	entry.DownloadBandwidthPrice = DefaultHostDBEntry.DownloadBandwidthPrice.Div64(modules.MaxSectorAccessPriceVsBandwidth)
 	bpa = hdb.basePriceAdjustments(entry)
 	if bpa != math.SmallestNonzeroFloat64 {
 		t.Errorf("BasePriceAdjustment should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)

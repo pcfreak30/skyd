@@ -6,9 +6,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
 
@@ -23,7 +23,7 @@ type Editor interface {
 	Upload(data []byte) (root crypto.Hash, err error)
 
 	// Address returns the address of the host.
-	Address() skymodules.NetAddress
+	Address() modules.NetAddress
 
 	// ContractID returns the FileContractID of the contract.
 	ContractID() types.FileContractID
@@ -36,7 +36,7 @@ type Editor interface {
 
 	// HostSettings returns the host settings that are currently active for the
 	// underlying session.
-	HostSettings() skymodules.HostExternalSettings
+	HostSettings() modules.HostExternalSettings
 }
 
 // A hostEditor modifies a Contract by calling the revise RPC on a host. It
@@ -49,7 +49,7 @@ type hostEditor struct {
 	endHeight  types.BlockHeight
 	id         types.FileContractID
 	invalid    bool // true if invalidate has been called
-	netAddress skymodules.NetAddress
+	netAddress modules.NetAddress
 
 	mu sync.Mutex
 }
@@ -71,7 +71,7 @@ func (he *hostEditor) invalidate() {
 }
 
 // Address returns the NetAddress of the host.
-func (he *hostEditor) Address() skymodules.NetAddress { return he.netAddress }
+func (he *hostEditor) Address() modules.NetAddress { return he.netAddress }
 
 // ContractID returns the id of the contract being revised.
 func (he *hostEditor) ContractID() types.FileContractID { return he.id }
@@ -100,7 +100,7 @@ func (he *hostEditor) Close() error {
 
 // HostSettings returns the host settings that are currently active for the
 // underlying session.
-func (he *hostEditor) HostSettings() skymodules.HostExternalSettings {
+func (he *hostEditor) HostSettings() modules.HostExternalSettings {
 	return he.editor.HostSettings()
 }
 

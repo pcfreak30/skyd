@@ -8,8 +8,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
@@ -30,8 +31,8 @@ type contractorPersist struct {
 	Allowance            skymodules.Allowance             `json:"allowance"`
 	BlockHeight          types.BlockHeight                `json:"blockheight"`
 	CurrentPeriod        types.BlockHeight                `json:"currentperiod"`
-	LastChange           skymodules.ConsensusChangeID     `json:"lastchange"`
-	RecentRecoveryChange skymodules.ConsensusChangeID     `json:"recentrecoverychange"`
+	LastChange           modules.ConsensusChangeID        `json:"lastchange"`
+	RecentRecoveryChange modules.ConsensusChangeID        `json:"recentrecoverychange"`
 	OldContracts         []skymodules.RenterContract      `json:"oldcontracts"`
 	DoubleSpentContracts map[string]types.BlockHeight     `json:"doublespentcontracts"`
 	RecoverableContracts []skymodules.RecoverableContract `json:"recoverablecontracts"`
@@ -220,7 +221,7 @@ func convertPersist(dir string, rl *ratelimit.RateLimit) (err error) {
 	}
 
 	// create the contracts directory if it does not yet exist
-	cs, err := proto.NewContractSet(filepath.Join(dir, "contracts"), rl, skymodules.ProdDependencies)
+	cs, err := proto.NewContractSet(filepath.Join(dir, "contracts"), rl, modules.ProdDependencies)
 	if err != nil {
 		return err
 	}

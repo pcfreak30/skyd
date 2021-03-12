@@ -5,29 +5,29 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 func TestCalculateProofRanges(t *testing.T) {
 	tests := []struct {
 		desc       string
 		numSectors uint64
-		actions    []skymodules.LoopWriteAction
+		actions    []modules.LoopWriteAction
 		exp        []crypto.ProofRange
 	}{
 		{
 			desc:       "Append",
 			numSectors: 2,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionAppend, Data: []byte{1, 2, 3}},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
 			},
 			exp: []crypto.ProofRange{},
 		},
 		{
 			desc:       "Swap",
 			numSectors: 3,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionSwap, A: 1, B: 2},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionSwap, A: 1, B: 2},
 			},
 			exp: []crypto.ProofRange{
 				{Start: 1, End: 2},
@@ -37,8 +37,8 @@ func TestCalculateProofRanges(t *testing.T) {
 		{
 			desc:       "Trim",
 			numSectors: 3,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionTrim, A: 1},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionTrim, A: 1},
 			},
 			exp: []crypto.ProofRange{
 				{Start: 2, End: 3},
@@ -47,10 +47,10 @@ func TestCalculateProofRanges(t *testing.T) {
 		{
 			desc:       "AppendSwapTrim",
 			numSectors: 12,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionAppend, Data: []byte{1, 2, 3}},
-				{Type: skymodules.WriteActionSwap, A: 5, B: 12},
-				{Type: skymodules.WriteActionTrim, A: 1},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
+				{Type: modules.WriteActionSwap, A: 5, B: 12},
+				{Type: modules.WriteActionTrim, A: 1},
 			},
 			exp: []crypto.ProofRange{
 				{Start: 5, End: 6},
@@ -59,12 +59,12 @@ func TestCalculateProofRanges(t *testing.T) {
 		{
 			desc:       "SwapTrimSwapAppendAppend",
 			numSectors: 12,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionSwap, A: 6, B: 11},
-				{Type: skymodules.WriteActionTrim, A: 1},
-				{Type: skymodules.WriteActionSwap, A: 7, B: 10},
-				{Type: skymodules.WriteActionAppend, Data: []byte{1, 2, 3}},
-				{Type: skymodules.WriteActionAppend, Data: []byte{4, 5, 6}},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionSwap, A: 6, B: 11},
+				{Type: modules.WriteActionTrim, A: 1},
+				{Type: modules.WriteActionSwap, A: 7, B: 10},
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
+				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
 			},
 			exp: []crypto.ProofRange{
 				{Start: 6, End: 7},
@@ -88,15 +88,15 @@ func TestModifyProofRanges(t *testing.T) {
 	tests := []struct {
 		desc        string
 		numSectors  uint64
-		actions     []skymodules.LoopWriteAction
+		actions     []modules.LoopWriteAction
 		proofRanges []crypto.ProofRange
 		exp         []crypto.ProofRange
 	}{
 		{
 			desc:       "Append",
 			numSectors: 2,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionAppend, Data: []byte{1, 2, 3}},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
 			},
 			proofRanges: nil,
 			exp: []crypto.ProofRange{
@@ -106,8 +106,8 @@ func TestModifyProofRanges(t *testing.T) {
 		{
 			desc:       "Swap",
 			numSectors: 3,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionSwap, A: 1, B: 2},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionSwap, A: 1, B: 2},
 			},
 			proofRanges: []crypto.ProofRange{
 				{Start: 1, End: 2},
@@ -121,8 +121,8 @@ func TestModifyProofRanges(t *testing.T) {
 		{
 			desc:       "Trim",
 			numSectors: 3,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionTrim, A: 1},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionTrim, A: 1},
 			},
 			proofRanges: []crypto.ProofRange{
 				{Start: 2, End: 3},
@@ -132,10 +132,10 @@ func TestModifyProofRanges(t *testing.T) {
 		{
 			desc:       "AppendSwapTrim",
 			numSectors: 12,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionAppend, Data: []byte{1, 2, 3}},
-				{Type: skymodules.WriteActionSwap, A: 5, B: 12},
-				{Type: skymodules.WriteActionTrim, A: 1},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
+				{Type: modules.WriteActionSwap, A: 5, B: 12},
+				{Type: modules.WriteActionTrim, A: 1},
 			},
 			proofRanges: []crypto.ProofRange{
 				{Start: 5, End: 6},
@@ -147,12 +147,12 @@ func TestModifyProofRanges(t *testing.T) {
 		{
 			desc:       "SwapTrimSwapAppendAppend",
 			numSectors: 12,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionSwap, A: 6, B: 11},
-				{Type: skymodules.WriteActionTrim, A: 1},
-				{Type: skymodules.WriteActionSwap, A: 7, B: 10},
-				{Type: skymodules.WriteActionAppend, Data: []byte{1, 2, 3}},
-				{Type: skymodules.WriteActionAppend, Data: []byte{4, 5, 6}},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionSwap, A: 6, B: 11},
+				{Type: modules.WriteActionTrim, A: 1},
+				{Type: modules.WriteActionSwap, A: 7, B: 10},
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
+				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
 			},
 			proofRanges: []crypto.ProofRange{
 				{Start: 6, End: 7},
@@ -183,15 +183,15 @@ func TestModifyLeafHashes(t *testing.T) {
 	tests := []struct {
 		desc       string
 		numSectors uint64
-		actions    []skymodules.LoopWriteAction
+		actions    []modules.LoopWriteAction
 		leaves     []crypto.Hash
 		exp        []crypto.Hash
 	}{
 		{
 			desc:       "Append",
 			numSectors: 2,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionAppend, Data: []byte{1, 2, 3}},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
 			},
 			leaves: nil,
 			exp:    []crypto.Hash{crypto.MerkleRoot([]byte{1, 2, 3})},
@@ -199,8 +199,8 @@ func TestModifyLeafHashes(t *testing.T) {
 		{
 			desc:       "Swap",
 			numSectors: 3,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionSwap, A: 1, B: 2},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionSwap, A: 1, B: 2},
 			},
 			leaves: []crypto.Hash{{1}, {2}},
 			exp:    []crypto.Hash{{2}, {1}},
@@ -208,8 +208,8 @@ func TestModifyLeafHashes(t *testing.T) {
 		{
 			desc:       "Trim",
 			numSectors: 3,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionTrim, A: 1},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionTrim, A: 1},
 			},
 			leaves: []crypto.Hash{{1}},
 			exp:    []crypto.Hash{},
@@ -217,10 +217,10 @@ func TestModifyLeafHashes(t *testing.T) {
 		{
 			desc:       "AppendSwapTrim",
 			numSectors: 12,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionAppend, Data: []byte{1, 2, 3}},
-				{Type: skymodules.WriteActionSwap, A: 5, B: 12},
-				{Type: skymodules.WriteActionTrim, A: 1},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
+				{Type: modules.WriteActionSwap, A: 5, B: 12},
+				{Type: modules.WriteActionTrim, A: 1},
 			},
 			leaves: []crypto.Hash{{1}},
 			exp:    []crypto.Hash{crypto.MerkleRoot([]byte{1, 2, 3})},
@@ -228,12 +228,12 @@ func TestModifyLeafHashes(t *testing.T) {
 		{
 			desc:       "SwapTrimSwapAppendAppend",
 			numSectors: 12,
-			actions: []skymodules.LoopWriteAction{
-				{Type: skymodules.WriteActionSwap, A: 6, B: 11},
-				{Type: skymodules.WriteActionTrim, A: 1},
-				{Type: skymodules.WriteActionSwap, A: 7, B: 10},
-				{Type: skymodules.WriteActionAppend, Data: []byte{1, 2, 3}},
-				{Type: skymodules.WriteActionAppend, Data: []byte{4, 5, 6}},
+			actions: []modules.LoopWriteAction{
+				{Type: modules.WriteActionSwap, A: 6, B: 11},
+				{Type: modules.WriteActionTrim, A: 1},
+				{Type: modules.WriteActionSwap, A: 7, B: 10},
+				{Type: modules.WriteActionAppend, Data: []byte{1, 2, 3}},
+				{Type: modules.WriteActionAppend, Data: []byte{4, 5, 6}},
 			},
 			leaves: []crypto.Hash{{1}, {2}, {3}, {4}},
 			exp:    []crypto.Hash{{4}, {3}, {2}, crypto.MerkleRoot([]byte{1, 2, 3}), crypto.MerkleRoot([]byte{4, 5, 6})},

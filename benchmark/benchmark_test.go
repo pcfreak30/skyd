@@ -14,10 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -116,11 +117,11 @@ func TestSiaUploadsDownloads(t *testing.T) {
 	log.Println()
 
 	// Print overview
-	totalData := skymodules.FilesizeUnits(uint64(nFiles * actualFileSize))
-	fileSizeStr := skymodules.FilesizeUnits(uint64(actualFileSize))
+	totalData := modules.FilesizeUnits(uint64(nFiles * actualFileSize))
+	fileSizeStr := modules.FilesizeUnits(uint64(actualFileSize))
 	log.Printf("Upload total of %s data in %d files per %s\n", totalData, nFiles, fileSizeStr)
 
-	totalData = skymodules.FilesizeUnits(uint64(nTotalDownloads * actualFileSize))
+	totalData = modules.FilesizeUnits(uint64(nTotalDownloads * actualFileSize))
 	log.Printf("Download total of %s data in %d downloads per %s\n", totalData, nTotalDownloads, fileSizeStr)
 	log.Println()
 
@@ -215,7 +216,7 @@ func averages(durations []time.Duration) (time.Duration, string) {
 
 	// Calculate and format average speed
 	averageSpeedFloat := float64(actualFileSize) / float64(averageDuration) * float64(time.Second)
-	averageSpeedString := skymodules.FilesizeUnits(uint64(averageSpeedFloat)) + "/s"
+	averageSpeedString := modules.FilesizeUnits(uint64(averageSpeedFloat)) + "/s"
 
 	return averageDuration, averageSpeedString
 }
@@ -353,7 +354,7 @@ func initDirs(t *testing.T) {
 // sector size if filesize is set to 0
 func initFileSize() {
 	if fileSize == 0 {
-		actualFileSize = int(skymodules.SectorSize)
+		actualFileSize = int(modules.SectorSize)
 	} else {
 		actualFileSize = fileSize
 	}
@@ -408,7 +409,7 @@ func threadedCreateAndUploadFiles(timestamp string, workerIndex int) {
 			break
 		}
 		fileIndexStr := fmt.Sprintf("%03d", fileIndex)
-		sizeStr := skymodules.FilesizeUnits(uint64(actualFileSize))
+		sizeStr := modules.FilesizeUnits(uint64(actualFileSize))
 		filename := "Randfile" + fileIndexStr + "_" + sizeStr + "_" + timestamp
 		filename = strings.ReplaceAll(filename, " ", "")
 

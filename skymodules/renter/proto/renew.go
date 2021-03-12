@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -20,7 +21,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params skymodules.Contra
 	// Check that the host version is high enough as belt-and-suspenders. This
 	// should never happen, because hosts with old versions should be blacklisted
 	// by the contractor.
-	if build.VersionCmp(params.Host.Version, skymodules.MinimumSupportedRenterHostProtocolVersion) < 0 {
+	if build.VersionCmp(params.Host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
 		return skymodules.RenterContract{}, nil, ErrBadHostVersion
 	}
 	// Choose the appropriate protocol depending on the host version.
@@ -98,17 +99,17 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params skymodu
 	}
 
 	// Send the RenewContract request.
-	req := skymodules.LoopRenewContractRequest{
+	req := modules.LoopRenewContractRequest{
 		Transactions: txnSet,
 		RenterKey:    types.Ed25519PublicKey(ourPKNew),
 	}
-	if err := s.writeRequest(skymodules.RPCLoopRenewContract, req); err != nil {
+	if err := s.writeRequest(modules.RPCLoopRenewContract, req); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
 
 	// Read the host's response.
-	var resp skymodules.LoopContractAdditions
-	if err := s.readResponse(&resp, skymodules.RPCMinLen); err != nil {
+	var resp modules.LoopContractAdditions
+	if err := s.readResponse(&resp, modules.RPCMinLen); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
 
@@ -138,17 +139,17 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params skymodu
 	revisionTxn := prepareInitRevisionTxn(lastRev, uc, fc, startHeight, ourSKNew, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
 
 	// Send acceptance and signatures
-	renterSigs := skymodules.LoopContractSignatures{
+	renterSigs := modules.LoopContractSignatures{
 		ContractSignatures: addedSignatures,
 		RevisionSignature:  revisionTxn.TransactionSignatures[0],
 	}
-	if err := skymodules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
+	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
 
 	// Read the host acceptance and signatures.
-	var hostSigs skymodules.LoopContractSignatures
-	if err := s.readResponse(&hostSigs, skymodules.RPCMinLen); err != nil {
+	var hostSigs modules.LoopContractSignatures
+	if err := s.readResponse(&hostSigs, modules.RPCMinLen); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {
@@ -164,7 +165,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params skymodu
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
-	if errors.Contains(err, skymodules.ErrDuplicateTransactionSet) {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}
@@ -279,7 +280,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	}
 
 	// Create the RenewContract request.
-	req := skymodules.LoopRenewAndClearContractRequest{
+	req := modules.LoopRenewAndClearContractRequest{
 		Transactions: txnSet,
 		RenterKey:    types.Ed25519PublicKey(ourPKNew),
 	}
@@ -291,7 +292,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	}
 
 	// Send the request.
-	if err := s.writeRequest(skymodules.RPCLoopRenewClearContract, req); err != nil {
+	if err := s.writeRequest(modules.RPCLoopRenewClearContract, req); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
 
@@ -302,8 +303,8 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	}
 
 	// Read the host's response.
-	var resp skymodules.LoopContractAdditions
-	if err := s.readResponse(&resp, skymodules.RPCMinLen); err != nil {
+	var resp modules.LoopContractAdditions
+	if err := s.readResponse(&resp, modules.RPCMinLen); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
 
@@ -341,7 +342,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	signedTxnSet, err := txnBuilder.Sign(true)
 	if err != nil {
 		err = errors.New("failed to sign transaction: " + err.Error())
-		skymodules.WriteRPCResponse(s.conn, s.aead, nil, err)
+		modules.WriteRPCResponse(s.conn, s.aead, nil, err)
 		return skymodules.RenterContract{}, nil, err
 	}
 
@@ -356,19 +357,19 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	revisionTxn := prepareInitRevisionTxn(lastRev, uc, fc, startHeight, ourSKNew, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
 
 	// Send acceptance and signatures
-	renterSigs := skymodules.LoopRenewAndClearContractSignatures{
+	renterSigs := modules.LoopRenewAndClearContractSignatures{
 		ContractSignatures: addedSignatures,
 		RevisionSignature:  revisionTxn.TransactionSignatures[0],
 
 		FinalRevisionSignature: finalRevSig[:],
 	}
-	if err := skymodules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
+	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
 
 	// Read the host acceptance and signatures.
-	var hostSigs skymodules.LoopRenewAndClearContractSignatures
-	if err := s.readResponse(&hostSigs, skymodules.RPCMinLen); err != nil {
+	var hostSigs modules.LoopRenewAndClearContractSignatures
+	if err := s.readResponse(&hostSigs, modules.RPCMinLen); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {
@@ -385,7 +386,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
-	if errors.Contains(err, skymodules.ErrDuplicateTransactionSet) {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}
@@ -393,7 +394,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 		return skymodules.RenterContract{}, nil, err
 	}
 	err = tpool.AcceptTransactionSet([]types.Transaction{finalRevTxn})
-	if errors.Contains(err, skymodules.ErrDuplicateTransactionSet) {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}
@@ -565,7 +566,7 @@ func createRenewedContract(lastRev types.FileContractRevision, uh types.UnlockHa
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params skymodules.ContractParams, txnBuilder skymodules.TransactionBuilder, tpool skymodules.TransactionPool, hdb hostDB, pt *skymodules.RPCPriceTable) (_ skymodules.RenterContract, _ []types.Transaction, err error) {
+func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params skymodules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb hostDB, pt *modules.RPCPriceTable) (_ skymodules.RenterContract, _ []types.Transaction, err error) {
 	// Fetch the contract.
 	oldSC, ok := cs.Acquire(fcid)
 	if !ok {
@@ -658,7 +659,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	finalRevRenterSigRaw := crypto.SignHash(finalRevTxn.SigHash(0, pt.HostBlockHeight), ourSKOld)
 	finalRevRenterSig.Signature = finalRevRenterSigRaw[:]
 	// Write the request.
-	err = skymodules.RPCWrite(conn, skymodules.RPCRenewContractRequest{
+	err = modules.RPCWrite(conn, modules.RPCRenewContractRequest{
 		TSet:        txnSet,
 		RenterPK:    types.Ed25519PublicKey(ourPKNew),
 		FinalRevSig: finalRevRenterSigRaw,
@@ -669,8 +670,8 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 
 	// Read the response. It contains the host's final revision sig and any
 	// additions it made.
-	var resp skymodules.RPCRenewContractCollateralResponse
-	err = skymodules.RPCReadMaxLen(conn, &resp, skymodules.RenewDecodeMaxLen)
+	var resp modules.RPCRenewContractCollateralResponse
+	err = modules.RPCReadMaxLen(conn, &resp, modules.RenewDecodeMaxLen)
 	if err != nil {
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "failed to read RPCRenewContractCollateralResponse")
 	}
@@ -714,7 +715,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// Create initial (no-op) revision, transaction, and signature
 	noOpRevTxn := prepareInitRevisionTxn(oldRev, uc, fc, startHeight, ourSKNew, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
 	// Send transaction signatures and no-op revision signature to host.
-	err = skymodules.RPCWrite(conn, skymodules.RPCRenewContractRenterSignatures{
+	err = modules.RPCWrite(conn, modules.RPCRenewContractRenterSignatures{
 		RenterNoOpRevisionSig: noOpRevTxn.RenterSignature(),
 		RenterTxnSigs:         addedSignatures,
 	})
@@ -723,8 +724,8 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	}
 
 	// Read the host's signatures and add them to the transactions.
-	var hostSignatureResp skymodules.RPCRenewContractHostSignatures
-	err = skymodules.RPCReadMaxLen(conn, &hostSignatureResp, skymodules.RenewDecodeMaxLen)
+	var hostSignatureResp modules.RPCRenewContractHostSignatures
+	err = modules.RPCReadMaxLen(conn, &hostSignatureResp, modules.RenewDecodeMaxLen)
 	if err != nil {
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "failed to read RPCRenewContractHostSignatures from host")
 	}
@@ -741,7 +742,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 
 	// Submit the txn set with the final revision and new contract to the blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
-	if err == skymodules.ErrDuplicateTransactionSet {
+	if err == modules.ErrDuplicateTransactionSet {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}

@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -27,7 +28,7 @@ func newRandomAccountPersistence() accountPersistence {
 		return types.NewCurrency64(fastrand.Uint64n(max))
 	}
 
-	aid, sk := skymodules.NewAccountID()
+	aid, sk := modules.NewAccountID()
 	return accountPersistence{
 		AccountID: aid,
 		HostKey:   types.SiaPublicKey{},
@@ -308,7 +309,7 @@ func testAccountCompatV150Basic(t *testing.T, rt *renterTester) {
 	}
 
 	// create a renter
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &skymodules.ProductionDependencies{})
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &modules.ProductionDependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +403,7 @@ func testAccountCompatV150_TmpFileExistsWithClean(t *testing.T, rt *renterTester
 	}
 
 	// create a renter
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &skymodules.ProductionDependencies{})
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &modules.ProductionDependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}

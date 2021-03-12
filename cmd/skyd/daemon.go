@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node/api/server"
 	"gitlab.com/skynetlabs/skyd/profile"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // passwordPrompt securely reads a password from stdin.
@@ -34,7 +34,7 @@ func verifyAPISecurity(config Config) error {
 	// Make sure that only the loopback address is allowed unless the
 	// --disable-api-security flag has been used.
 	if !config.Siad.AllowAPIBind {
-		addr := skymodules.NetAddress(config.Siad.APIaddr)
+		addr := modules.NetAddress(config.Siad.APIaddr)
 		if !addr.IsLoopback() {
 			if addr.Host() == "" {
 				return fmt.Errorf("a blank host will listen on all interfaces, did you mean localhost:%v?\nyou must pass --disable-api-security to bind Siad to a non-localhost address", addr.Port())

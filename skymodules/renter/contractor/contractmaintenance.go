@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -559,7 +560,7 @@ func (c *Contractor) managedLimitGFUHosts() {
 // staticCheckFormPaymentContractGouging will check whether the pricing from the
 // host for forming a payment contract is too high to justify forming a contract
 // with this host.
-func staticCheckFormPaymentContractGouging(allowance skymodules.Allowance, hostSettings skymodules.HostExternalSettings) error {
+func staticCheckFormPaymentContractGouging(allowance skymodules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
 		return errors.New("rpc base price of host is too high - extortion protection enabled")
@@ -584,7 +585,7 @@ func staticCheckFormPaymentContractGouging(allowance skymodules.Allowance, hostS
 
 // checkFormContractGouging will check whether the pricing for forming
 // this contract triggers any price gouging warnings.
-func checkFormContractGouging(allowance skymodules.Allowance, hostSettings skymodules.HostExternalSettings) error {
+func checkFormContractGouging(allowance skymodules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
 		return errors.New("rpc base price of host is too high - price gouging protection enabled")
@@ -600,7 +601,7 @@ func checkFormContractGouging(allowance skymodules.Allowance, hostSettings skymo
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
-func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKey, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings skymodules.HostExternalSettings) (_ skymodules.RenterContract, err error) {
+func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKey, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (_ skymodules.RenterContract, err error) {
 	// Fetch the host associated with this contract.
 	host, ok, err := c.hdb.Host(hpk)
 	if err != nil {
@@ -611,7 +612,7 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 
 	if c.staticDeps.Disrupt("DefaultRenewSettings") {
 		c.log.Debugln("Using default host settings")
-		host.HostExternalSettings = skymodules.DefaultHostExternalSettings()
+		host.HostExternalSettings = modules.DefaultHostExternalSettings()
 		// Reset some specific settings, not available through the default.
 		host.HostExternalSettings.NetAddress = hostSettings.NetAddress
 		host.HostExternalSettings.RemainingStorage = hostSettings.RemainingStorage
@@ -797,7 +798,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 
 	// Wait for any active editors/downloaders/sessions to finish for this
 	// contract, and then grab the latest host settings.
-	var hostSettings skymodules.HostExternalSettings
+	var hostSettings modules.HostExternalSettings
 	c.mu.RLock()
 	e, eok := c.editors[id]
 	d, dok := c.downloaders[id]
@@ -1034,9 +1035,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	var registerWalletLockedDuringMaintenance bool
 	defer func() {
 		if registerWalletLockedDuringMaintenance {
-			c.staticAlerter.RegisterAlert(skymodules.AlertIDWalletLockedDuringMaintenance, AlertMSGWalletLockedDuringMaintenance, skymodules.ErrLockedWallet.Error(), skymodules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDWalletLockedDuringMaintenance, AlertMSGWalletLockedDuringMaintenance, modules.ErrLockedWallet.Error(), modules.SeverityWarning)
 		} else {
-			c.staticAlerter.UnregisterAlert(skymodules.AlertIDWalletLockedDuringMaintenance)
+			c.staticAlerter.UnregisterAlert(modules.AlertIDWalletLockedDuringMaintenance)
 		}
 	}()
 
@@ -1111,7 +1112,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			continue
 		}
 		// Skip hosts that can't use the current renter-host protocol.
-		if build.VersionCmp(host.Version, skymodules.MinimumSupportedRenterHostProtocolVersion) < 0 {
+		if build.VersionCmp(host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
 			c.log.Debugln("Contract skipped because host is using an outdated version", host.Version)
 			continue
 		}
@@ -1150,10 +1151,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		// if less than 'minContractFundRenewalThreshold' funds are remaining
 		// (3% at time of writing), or if there is less than 3 sectors worth of
 		// storage+upload+download remaining.
-		blockBytes := types.NewCurrency64(skymodules.SectorSize * uint64(allowance.Period))
+		blockBytes := types.NewCurrency64(modules.SectorSize * uint64(allowance.Period))
 		sectorStoragePrice := host.StoragePrice.Mul(blockBytes)
-		sectorUploadBandwidthPrice := host.UploadBandwidthPrice.Mul64(skymodules.SectorSize)
-		sectorDownloadBandwidthPrice := host.DownloadBandwidthPrice.Mul64(skymodules.SectorSize)
+		sectorUploadBandwidthPrice := host.UploadBandwidthPrice.Mul64(modules.SectorSize)
+		sectorDownloadBandwidthPrice := host.DownloadBandwidthPrice.Mul64(modules.SectorSize)
 		sectorBandwidthPrice := sectorUploadBandwidthPrice.Add(sectorDownloadBandwidthPrice)
 		sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
 		percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
@@ -1235,23 +1236,23 @@ func (c *Contractor) threadedContractMaintenance() {
 	var renewErr error
 	defer func() {
 		if registerLowFundsAlert {
-			c.staticAlerter.RegisterAlert(skymodules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, AlertCauseInsufficientAllowanceFunds, skymodules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, AlertCauseInsufficientAllowanceFunds, modules.SeverityWarning)
 		} else {
-			c.staticAlerter.UnregisterAlert(skymodules.AlertIDRenterAllowanceLowFunds)
+			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterAllowanceLowFunds)
 		}
 
-		alertSeverity := skymodules.SeverityError
+		alertSeverity := modules.SeverityError
 		// Increase the alert severity for renewal fails to critical if the number of
 		// contracts which failed to renew is more than 20% of the number of hosts.
 		if float64(numRenewFails) > math.Ceil(float64(allowance.Hosts)*MaxCriticalRenewFailThreshold) {
-			alertSeverity = skymodules.SeverityCritical
+			alertSeverity = modules.SeverityCritical
 		}
 		if renewErr != nil {
 			c.log.Debugln("SEVERE", numRenewFails, float64(allowance.Hosts)*MaxCriticalRenewFailThreshold)
 			c.log.Debugln("alert err: ", renewErr)
-			c.staticAlerter.RegisterAlert(skymodules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), skymodules.AlertSeverity(alertSeverity))
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.AlertSeverity(alertSeverity))
 		} else {
-			c.staticAlerter.UnregisterAlert(skymodules.AlertIDRenterContractRenewalError)
+			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterContractRenewalError)
 		}
 	}()
 	// Go through the contracts we've assembled for renewal. Any contracts that
@@ -1453,7 +1454,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// with 127.0.0.1 to be able to form contracts.
 		if c.staticDeps.Disrupt("customResolver") {
 			port := host.NetAddress.Port()
-			host.NetAddress = skymodules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+			host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
 		}
 
 		// Attempt forming a contract with this host.
@@ -1566,7 +1567,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// with 127.0.0.1 to be able to form contracts.
 		if c.staticDeps.Disrupt("customResolver") {
 			port := host.NetAddress.Port()
-			host.NetAddress = skymodules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+			host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
 		}
 
 		// Attempt forming a contract with this host.

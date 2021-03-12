@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -22,18 +23,18 @@ import (
 // communicates with that host.
 type workerTester struct {
 	rt   *renterTester
-	host skymodules.Host
+	host modules.Host
 	*worker
 }
 
 // newWorkerTester creates a new worker for testing.
 func newWorkerTester(name string) (*workerTester, error) {
-	return newWorkerTesterCustomDependency(name, skymodules.ProdDependencies, skymodules.ProdDependencies)
+	return newWorkerTesterCustomDependency(name, modules.ProdDependencies, modules.ProdDependencies)
 }
 
 // newWorkerTesterCustomDependency creates a new worker for testing with a
 // custom depency.
-func newWorkerTesterCustomDependency(name string, renterDeps skymodules.Dependencies, hostDeps skymodules.Dependencies) (*workerTester, error) {
+func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencies, hostDeps modules.Dependencies) (*workerTester, error) {
 	// Create the renter.
 	rt, err := newRenterTesterWithDependency(filepath.Join(name, "renter"), renterDeps)
 	if err != nil {
@@ -133,7 +134,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	t.Parallel()
 
 	deps := dependencies.NewDependencyCorruptMDMOutput()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,11 +158,11 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	}
 	// Download the first sector partially and then fully since both actions
 	// require different proofs.
-	_, err = wt.ReadOffset(context.Background(), 0, skymodules.SectorSize/2)
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.ReadOffset(context.Background(), 0, skymodules.SectorSize)
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +170,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	// Do it again but this time corrupt the output to make sure the proof
 	// doesn't match.
 	deps.Fail()
-	_, err = wt.ReadOffset(context.Background(), 0, skymodules.SectorSize/2)
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)
 	if err == nil || !strings.Contains(err.Error(), "verifying proof failed") {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	// Retry since the worker might be on a cooldown.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		deps.Fail()
-		_, err = wt.ReadOffset(context.Background(), 0, skymodules.SectorSize)
+		_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
 		if err == nil || !strings.Contains(err.Error(), "verifying proof failed") {
 			return fmt.Errorf("unexpected error %v", err)
 		}
@@ -267,7 +268,7 @@ func TestWorkerSpending(t *testing.T) {
 	t.Parallel()
 
 	// Create a worker that's not running its worker loop.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}

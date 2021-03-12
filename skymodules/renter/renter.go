@@ -41,9 +41,10 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skykey"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
@@ -66,7 +67,7 @@ var (
 // A hostContractor negotiates, revises, renews, and provides access to file
 // contracts.
 type hostContractor interface {
-	skymodules.Alerter
+	modules.Alerter
 
 	// SetAllowance sets the amount of money the contractor is allowed to
 	// spend on contracts over a given time period, divided among the number
@@ -119,7 +120,7 @@ type hostContractor interface {
 	// ProvidePayment takes a stream and a set of payment details and handles
 	// the payment for an RPC by sending and processing payment request and
 	// response objects to the host. It returns an error in case of failure.
-	ProvidePayment(stream io.ReadWriter, pt *skymodules.RPCPriceTable, details contractor.PaymentDetails) error
+	ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details contractor.PaymentDetails) error
 
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []skymodules.RenterContract
@@ -153,7 +154,7 @@ type hostContractor interface {
 
 	// RenewContract takes an established connection to a host and renews the
 	// given contract with that host.
-	RenewContract(conn net.Conn, fcid types.FileContractID, params skymodules.ContractParams, txnBuilder skymodules.TransactionBuilder, tpool skymodules.TransactionPool, hdb skymodules.HostDB, pt *skymodules.RPCPriceTable) (skymodules.RenterContract, []types.Transaction, error)
+	RenewContract(conn net.Conn, fcid types.FileContractID, params skymodules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb skymodules.HostDB, pt *modules.RPCPriceTable) (skymodules.RenterContract, []types.Transaction, error)
 
 	// Synced returns a channel that is closed when the contractor is fully
 	// synced with the peer-to-peer network.
@@ -250,10 +251,10 @@ type Renter struct {
 	repairMemoryManager       *memoryManager
 
 	// Utilities.
-	cs                                 skymodules.ConsensusSet
-	deps                               skymodules.Dependencies
-	g                                  skymodules.Gateway
-	w                                  skymodules.Wallet
+	cs                                 modules.ConsensusSet
+	deps                               modules.Dependencies
+	g                                  modules.Gateway
+	w                                  modules.Wallet
 	hostContractor                     hostContractor
 	hostDB                             skymodules.HostDB
 	log                                *persist.Logger
@@ -262,13 +263,13 @@ type Renter struct {
 	mu                                 *siasync.RWMutex
 	repairLog                          *persist.Logger
 	staticAccountManager               *accountManager
-	staticAlerter                      *skymodules.GenericAlerter
+	staticAlerter                      *modules.GenericAlerter
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
 	staticSkykeyManager                *skykey.SkykeyManager
 	staticStreamBufferSet              *streamBufferSet
 	tg                                 threadgroup.ThreadGroup
-	tpool                              skymodules.TransactionPool
+	tpool                              modules.TransactionPool
 	wal                                *writeaheadlog.WAL
 	staticWorkerPool                   *workerPool
 	staticMux                          *siamux.SiaMux
@@ -413,9 +414,9 @@ func (r *Renter) PriceEstimation(allowance skymodules.Allowance) (skymodules.Ren
 	}
 
 	// Convert values to being human-scale.
-	totalDownloadCost = totalDownloadCost.Mul(skymodules.BytesPerTerabyte)
-	totalStorageCost = totalStorageCost.Mul(skymodules.BlockBytesPerMonthTerabyte)
-	totalUploadCost = totalUploadCost.Mul(skymodules.BytesPerTerabyte)
+	totalDownloadCost = totalDownloadCost.Mul(modules.BytesPerTerabyte)
+	totalStorageCost = totalStorageCost.Mul(modules.BlockBytesPerMonthTerabyte)
+	totalUploadCost = totalUploadCost.Mul(modules.BytesPerTerabyte)
 
 	// Factor in redundancy.
 	totalStorageCost = totalStorageCost.Mul64(3) // TODO: follow file settings?
@@ -838,7 +839,7 @@ func (r *Renter) Settings() (skymodules.RenterSettings, error) {
 }
 
 // ProcessConsensusChange returns the process consensus change
-func (r *Renter) ProcessConsensusChange(cc skymodules.ConsensusChange) {
+func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []skymodules.HostDBEntry{}
 	r.mu.Unlock(id)
@@ -952,7 +953,7 @@ func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
 var _ skymodules.Renter = (*Renter)(nil)
 
 // renterBlockingStartup handles the blocking portion of NewCustomRenter.
-func renterBlockingStartup(g skymodules.Gateway, cs skymodules.ConsensusSet, tpool skymodules.TransactionPool, hdb skymodules.HostDB, w skymodules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps skymodules.Dependencies) (*Renter, error) {
+func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*Renter, error) {
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -1007,9 +1008,9 @@ func renterBlockingStartup(g skymodules.Gateway, cs skymodules.ConsensusSet, tpo
 		hostContractor: hc,
 		persistDir:     persistDir,
 		rl:             rl,
-		staticAlerter:  skymodules.NewAlerter("renter"),
+		staticAlerter:  modules.NewAlerter("renter"),
 		staticMux:      mux,
-		mu:             siasync.New(skymodules.SafeMutexDelay, 1),
+		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
 	}
 	r.staticBubbleScheduler = newBubbleScheduler(r)
@@ -1129,14 +1130,14 @@ func renterBlockingStartup(g skymodules.Gateway, cs skymodules.ConsensusSet, tpo
 }
 
 // renterAsyncStartup handles the non-blocking portion of NewCustomRenter.
-func renterAsyncStartup(r *Renter, cs skymodules.ConsensusSet) error {
+func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
 	if r.deps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
 	// Subscribe to the consensus set in a separate goroutine.
 	done := make(chan struct{})
 	defer close(done)
-	err := cs.ConsensusSetSubscribe(r, skymodules.ConsensusChangeRecent, r.tg.StopChan())
+	err := cs.ConsensusSetSubscribe(r, modules.ConsensusChangeRecent, r.tg.StopChan())
 	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 		return err
 	}
@@ -1177,7 +1178,7 @@ func (r *Renter) threadedUpdateRenterContractsAndUtilities() {
 }
 
 // NewCustomRenter initializes a renter and returns it.
-func NewCustomRenter(g skymodules.Gateway, cs skymodules.ConsensusSet, tpool skymodules.TransactionPool, hdb skymodules.HostDB, w skymodules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps skymodules.Dependencies) (*Renter, <-chan error) {
+func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Blocking startup.
@@ -1204,20 +1205,20 @@ func NewCustomRenter(g skymodules.Gateway, cs skymodules.ConsensusSet, tpool sky
 }
 
 // New returns an initialized renter.
-func New(g skymodules.Gateway, cs skymodules.ConsensusSet, wallet skymodules.Wallet, tpool skymodules.TransactionPool, mux *siamux.SiaMux, rl *ratelimit.RateLimit, persistDir string) (*Renter, <-chan error) {
+func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, rl *ratelimit.RateLimit, persistDir string) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 	hdb, errChanHDB := hostdb.New(g, cs, tpool, mux, persistDir)
-	if err := skymodules.PeekErr(errChanHDB); err != nil {
+	if err := modules.PeekErr(errChanHDB); err != nil {
 		errChan <- err
 		return nil, errChan
 	}
 	hc, errChanContractor := contractor.New(cs, wallet, tpool, hdb, rl, persistDir)
-	if err := skymodules.PeekErr(errChanContractor); err != nil {
+	if err := modules.PeekErr(errChanContractor); err != nil {
 		errChan <- err
 		return nil, errChan
 	}
-	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, skymodules.ProdDependencies)
-	if err := skymodules.PeekErr(errChanRenter); err != nil {
+	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, modules.ProdDependencies)
+	if err := modules.PeekErr(errChanRenter); err != nil {
 		errChan <- err
 		return nil, errChan
 	}

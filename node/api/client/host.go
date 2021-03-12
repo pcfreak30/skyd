@@ -6,9 +6,9 @@ import (
 	"strconv"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // HostParam is a parameter in the host's settings that can be changed via the
@@ -79,7 +79,7 @@ func (c *Client) HostAnnouncePost() (err error) {
 
 // HostAnnounceAddrPost uses the /host/anounce endpoint to announce the host to
 // the network using the provided address.
-func (c *Client) HostAnnounceAddrPost(address skymodules.NetAddress) (err error) {
+func (c *Client) HostAnnounceAddrPost(address modules.NetAddress) (err error) {
 	err = c.post("/host/announce", "netaddress="+string(address), nil)
 	return
 }

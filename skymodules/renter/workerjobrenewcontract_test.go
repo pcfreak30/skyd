@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -302,7 +303,7 @@ func TestRenewContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.ReadOffset(context.Background(), 0, skymodules.SectorSize)
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +379,7 @@ func TestRenewContractEmptyPriceTableUID(t *testing.T) {
 
 	// Overwrite the UID of the price table.
 	wpt := wt.staticPriceTable()
-	wpt.staticPriceTable.UID = skymodules.UniqueID{}
+	wpt.staticPriceTable.UID = modules.UniqueID{}
 	wt.staticSetPriceTable(wpt)
 
 	// Renew the contract. This should work without error.

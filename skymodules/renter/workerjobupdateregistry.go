@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/host/registry"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -33,7 +33,7 @@ type (
 	// jobUpdateRegistry contains information about a UpdateRegistry query.
 	jobUpdateRegistry struct {
 		staticSiaPublicKey        types.SiaPublicKey
-		staticSignedRegistryValue skymodules.SignedRegistryValue
+		staticSignedRegistryValue modules.SignedRegistryValue
 
 		staticResponseChan chan *jobUpdateRegistryResponse // Channel to send a response down
 
@@ -52,13 +52,13 @@ type (
 
 	// jobUpdateRegistryResponse contains the result of a UpdateRegistry query.
 	jobUpdateRegistryResponse struct {
-		srv       *skymodules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
+		srv       *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
 		staticErr error
 	}
 )
 
 // newJobUpdateRegistry is a helper method to create a new UpdateRegistry job.
-func (w *worker) newJobUpdateRegistry(ctx context.Context, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, srv skymodules.SignedRegistryValue) *jobUpdateRegistry {
+func (w *worker) newJobUpdateRegistry(ctx context.Context, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, srv modules.SignedRegistryValue) *jobUpdateRegistry {
 	return &jobUpdateRegistry{
 		staticSiaPublicKey:        spk,
 		staticSignedRegistryValue: srv,
@@ -92,7 +92,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	w := j.staticQueue.staticWorker()
 
 	// Prepare a method to send a response asynchronously.
-	sendResponse := func(srv *skymodules.SignedRegistryValue, err error) {
+	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.renter.tg.Launch(func() {
 			response := &jobUpdateRegistryResponse{
 				srv:       srv,
@@ -173,11 +173,11 @@ func (j *jobUpdateRegistry) callExpectedBandwidth() (ul, dl uint64) {
 // managedUpdateRegistry updates a registry entry on a host. If the error is
 // ErrLowerRevNum or ErrSameRevNum, a signed registry value should be returned
 // as proof.
-func (j *jobUpdateRegistry) managedUpdateRegistry() (skymodules.SignedRegistryValue, error) {
+func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue, error) {
 	w := j.staticQueue.staticWorker()
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
-	pb := skymodules.NewProgramBuilder(&pt, 0) // 0 duration since UpdateRegistry doesn't depend on it.
+	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since UpdateRegistry doesn't depend on it.
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
 		pb.V154AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	} else {
@@ -188,14 +188,14 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (skymodules.SignedRegistryVa
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
 	var responses []programResponse
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
-		return skymodules.SignedRegistryValue{}, errors.AddContext(err, "Unable to execute program")
+		return modules.SignedRegistryValue{}, errors.AddContext(err, "Unable to execute program")
 	}
 	for _, resp := range responses {
 		// If a revision related error was returned, we try to parse the
@@ -214,14 +214,14 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (skymodules.SignedRegistryVa
 			return rv, errors.Compose(err, parseErr)
 		}
 		if err != nil {
-			return skymodules.SignedRegistryValue{}, errors.AddContext(resp.Error, "Output error")
+			return modules.SignedRegistryValue{}, errors.AddContext(resp.Error, "Output error")
 		}
 		break
 	}
 	if len(responses) != len(program) {
-		return skymodules.SignedRegistryValue{}, errors.New("received invalid number of responses but no error")
+		return modules.SignedRegistryValue{}, errors.New("received invalid number of responses but no error")
 	}
-	return skymodules.SignedRegistryValue{}, nil
+	return modules.SignedRegistryValue{}, nil
 }
 
 // initJobUpdateRegistryQueue will init the queue for the UpdateRegistry jobs.
@@ -238,7 +238,7 @@ func (w *worker) initJobUpdateRegistryQueue() {
 }
 
 // UpdateRegistry is a helper method to run a UpdateRegistry job on a worker.
-func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv skymodules.SignedRegistryValue) error {
+func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
 	updateRegistryRespChan := make(chan *jobUpdateRegistryResponse)
 	jur := w.newJobUpdateRegistry(ctx, updateRegistryRespChan, spk, rv)
 

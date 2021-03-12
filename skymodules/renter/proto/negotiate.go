@@ -9,6 +9,7 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -26,7 +27,7 @@ func startRevision(conn net.Conn, host skymodules.HostDBEntry) error {
 	if err != nil {
 		return err
 	}
-	return skymodules.WriteNegotiationAcceptance(conn)
+	return modules.WriteNegotiationAcceptance(conn)
 }
 
 // startDownload is run at the beginning of each download iteration. It reads
@@ -37,7 +38,7 @@ func startDownload(conn net.Conn, host skymodules.HostDBEntry) error {
 	if err != nil {
 		return err
 	}
-	return skymodules.WriteNegotiationAcceptance(conn)
+	return modules.WriteNegotiationAcceptance(conn)
 }
 
 // verifySettings reads a signed HostSettings object from conn, validates the
@@ -54,8 +55,8 @@ func verifySettings(conn net.Conn, host skymodules.HostDBEntry) (skymodules.Host
 	copy(pk[:], host.PublicKey.Key)
 
 	// read signed host settings
-	var recvSettings skymodules.HostOldExternalSettings
-	if err := crypto.ReadSignedObject(conn, &recvSettings, skymodules.NegotiateMaxHostExternalSettingsLen, pk); err != nil {
+	var recvSettings modules.HostOldExternalSettings
+	if err := crypto.ReadSignedObject(conn, &recvSettings, modules.NegotiateMaxHostExternalSettingsLen, pk); err != nil {
 		return skymodules.HostDBEntry{}, errors.New("couldn't read host's settings: " + err.Error())
 	}
 	// TODO: check recvSettings against host.HostExternalSettings. If there is
@@ -65,7 +66,7 @@ func verifySettings(conn net.Conn, host skymodules.HostDBEntry) (skymodules.Host
 		// host.NetAddress works (it was the one we dialed to get conn)
 		recvSettings.NetAddress = host.NetAddress
 	}
-	host.HostExternalSettings = skymodules.HostExternalSettings{
+	host.HostExternalSettings = modules.HostExternalSettings{
 		AcceptingContracts:     recvSettings.AcceptingContracts,
 		MaxDownloadBatchSize:   recvSettings.MaxDownloadBatchSize,
 		MaxDuration:            recvSettings.MaxDuration,
@@ -109,7 +110,7 @@ func verifyRecentRevision(conn net.Conn, contract *SafeContract, hostVersion str
 		return errors.New("couldn't send challenge response: " + err.Error())
 	}
 	// read acceptance
-	if err := skymodules.ReadNegotiationAcceptance(conn); err != nil {
+	if err := modules.ReadNegotiationAcceptance(conn); err != nil {
 		return errors.New("host did not accept revision request: " + err.Error())
 	}
 	// read last revision and signatures
@@ -140,7 +141,7 @@ func verifyRecentRevision(conn net.Conn, contract *SafeContract, hostVersion str
 	// NOTE: we can fake the blockheight here because it doesn't affect
 	// verification; it just needs to be above the fork height and below the
 	// contract expiration (which was checked earlier).
-	return skymodules.VerifyFileContractRevisionTransactionSignatures(lastRevision, hostSignatures, contract.header.EndHeight()-1)
+	return modules.VerifyFileContractRevisionTransactionSignatures(lastRevision, hostSignatures, contract.header.EndHeight()-1)
 }
 
 // negotiateRevision sends a revision and actions to the host for approval,
@@ -164,7 +165,7 @@ func negotiateRevision(conn net.Conn, rev types.FileContractRevision, secretKey 
 		return types.Transaction{}, errors.New("couldn't send revision: " + err.Error())
 	}
 	// read acceptance
-	if err := skymodules.ReadNegotiationAcceptance(conn); err != nil {
+	if err := modules.ReadNegotiationAcceptance(conn); err != nil {
 		return types.Transaction{}, errors.New("host did not accept revision: " + err.Error())
 	}
 
@@ -175,8 +176,8 @@ func negotiateRevision(conn net.Conn, rev types.FileContractRevision, secretKey 
 	// read the host's acceptance and transaction signature
 	// NOTE: if the host sends ErrStopResponse, we should continue processing
 	// the revision, but return the error anyway.
-	responseErr := skymodules.ReadNegotiationAcceptance(conn)
-	if responseErr != nil && !errors.Contains(responseErr, skymodules.ErrStopResponse) {
+	responseErr := modules.ReadNegotiationAcceptance(conn)
+	if responseErr != nil && !errors.Contains(responseErr, modules.ErrStopResponse) {
 		return types.Transaction{}, errors.New("host did not accept transaction signature: " + responseErr.Error())
 	}
 	var hostSig types.TransactionSignature
@@ -229,7 +230,7 @@ func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Has
 	}
 
 	// set new filesize and Merkle root
-	rev.NewFileSize += skymodules.SectorSize
+	rev.NewFileSize += modules.SectorSize
 	rev.NewFileMerkleRoot = merkleRoot
 	return rev, nil
 }
@@ -238,23 +239,23 @@ func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Has
 // renter-host protocol. During the handshake, a shared secret is established,
 // which is used to initialize an AEAD cipher. This cipher must be used to
 // encrypt subsequent RPCs.
-func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (cipher.AEAD, skymodules.LoopChallengeRequest, error) {
+func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (cipher.AEAD, modules.LoopChallengeRequest, error) {
 	// generate a session key
 	xsk, xpk := crypto.GenerateX25519KeyPair()
 
 	// send our half of the key exchange
-	req := skymodules.LoopKeyExchangeRequest{
+	req := modules.LoopKeyExchangeRequest{
 		PublicKey: xpk,
-		Ciphers:   []types.Specifier{skymodules.CipherChaCha20Poly1305},
+		Ciphers:   []types.Specifier{modules.CipherChaCha20Poly1305},
 	}
-	extendDeadline(conn, skymodules.NegotiateSettingsTime)
-	if err := encoding.NewEncoder(conn).EncodeAll(skymodules.RPCLoopEnter, req); err != nil {
-		return nil, skymodules.LoopChallengeRequest{}, err
+	extendDeadline(conn, modules.NegotiateSettingsTime)
+	if err := encoding.NewEncoder(conn).EncodeAll(modules.RPCLoopEnter, req); err != nil {
+		return nil, modules.LoopChallengeRequest{}, err
 	}
 	// read host's half of the key exchange
-	var resp skymodules.LoopKeyExchangeResponse
+	var resp modules.LoopKeyExchangeResponse
 	if err := encoding.NewDecoder(conn, encoding.DefaultAllocLimit).Decode(&resp); err != nil {
-		return nil, skymodules.LoopChallengeRequest{}, err
+		return nil, modules.LoopChallengeRequest{}, err
 	}
 	// validate the signature before doing anything else; don't want to punish
 	// the "host" if we're talking to an imposter
@@ -263,11 +264,11 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (c
 	var sig crypto.Signature
 	copy(sig[:], resp.Signature)
 	if err := crypto.VerifyHash(crypto.HashAll(req.PublicKey, resp.PublicKey), hpk, sig); err != nil {
-		return nil, skymodules.LoopChallengeRequest{}, err
+		return nil, modules.LoopChallengeRequest{}, err
 	}
 	// check for compatible cipher
-	if resp.Cipher != skymodules.CipherChaCha20Poly1305 {
-		return nil, skymodules.LoopChallengeRequest{}, errors.New("host selected unsupported cipher")
+	if resp.Cipher != modules.CipherChaCha20Poly1305 {
+		return nil, modules.LoopChallengeRequest{}, errors.New("host selected unsupported cipher")
 	}
 	// derive shared secret, which we'll use as an encryption key
 	cipherKey := crypto.DeriveSharedSecret(xsk, resp.PublicKey)
@@ -276,13 +277,13 @@ func performSessionHandshake(conn net.Conn, hostPublicKey types.SiaPublicKey) (c
 	aead, err := chacha20poly1305.New(cipherKey[:])
 	if err != nil {
 		build.Critical("could not create cipher")
-		return nil, skymodules.LoopChallengeRequest{}, err
+		return nil, modules.LoopChallengeRequest{}, err
 	}
 
 	// read host's challenge
-	var challengeReq skymodules.LoopChallengeRequest
-	if err := skymodules.ReadRPCMessage(conn, aead, &challengeReq, skymodules.RPCMinLen); err != nil {
-		return nil, skymodules.LoopChallengeRequest{}, err
+	var challengeReq modules.LoopChallengeRequest
+	if err := modules.ReadRPCMessage(conn, aead, &challengeReq, modules.RPCMinLen); err != nil {
+		return nil, modules.LoopChallengeRequest{}, err
 	}
 	return aead, challengeReq, nil
 }

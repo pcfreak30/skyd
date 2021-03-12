@@ -10,13 +10,13 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TODO: (f/u) cooldown testing
@@ -25,7 +25,7 @@ var (
 	// initialSubscriptionBudget is the initial budget withdrawn for a
 	// subscription. After using up 50% of it, the worker refills the budget
 	// again to match the initial budget.
-	initialSubscriptionBudget = skymodules.DefaultMaxEphemeralAccountBalance.Div64(10) // 10% of the max
+	initialSubscriptionBudget = modules.DefaultMaxEphemeralAccountBalance.Div64(10) // 10% of the max
 
 	// subscriptionCooldownResetInterval is the time after which we consider an
 	// ongoing subscription to be healthy enough to reset the consecutive
@@ -38,7 +38,7 @@ var (
 
 	// subscriptionExtensionWindow is the time before the subscription period
 	// ends when the workers starts trying to extend the subscription.
-	subscriptionExtensionWindow = skymodules.SubscriptionPeriod / 2 // 50% of period
+	subscriptionExtensionWindow = modules.SubscriptionPeriod / 2 // 50% of period
 
 	// subscriptionLoopInterval is the interval after which the subscription
 	// loop checks for work when it's idle. Idle means the staticWakeChan isn't
@@ -74,7 +74,7 @@ type (
 		// soon as possible.
 		// The worker will also try to unsubscribe from all subscriptions that
 		// it currently has which it is not supposed to be subscribed to.
-		subscriptions map[skymodules.SubscriptionID]*subscription
+		subscriptions map[modules.SubscriptionID]*subscription
 
 		// staticWakeChan is a channel to tell the subscription loop that more
 		// work is available.
@@ -94,7 +94,7 @@ type (
 	// subscription is a struct that provides additional information around a
 	// subscription.
 	subscription struct {
-		staticRequest *skymodules.RPCRegistrySubscriptionRequest
+		staticRequest *modules.RPCRegistrySubscriptionRequest
 
 		// subscribe indicates whether the subscription should be kept active.
 		// If it is 'true', the worker will try to resubscribe if the session is
@@ -112,7 +112,7 @@ type (
 		// closed. It may be 'nil' even though a subscription is active in case
 		// the host doesn't know the subscribed entry. If the host does know,
 		// the initial value should be set before closing 'subscribed'.
-		latestRV *skymodules.SignedRegistryValue
+		latestRV *modules.SignedRegistryValue
 	}
 
 	// notificationHandler is a helper type that contains some information
@@ -130,7 +130,7 @@ type (
 )
 
 // newSubscription creates a new subscription.
-func newSubscription(request *skymodules.RPCRegistrySubscriptionRequest) *subscription {
+func newSubscription(request *modules.RPCRegistrySubscriptionRequest) *subscription {
 	return &subscription{
 		staticRequest: request,
 		subscribed:    make(chan struct{}),
@@ -151,7 +151,7 @@ func (sub *subscription) active() bool {
 
 // managedHandleRegistryEntry is called by managedHandleNotification to handle a
 // notification about an updated registry entry.
-func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, budget *skymodules.RPCBudget, limit *skymodules.BudgetLimit) (err error) {
+func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, budget *modules.RPCBudget, limit *modules.BudgetLimit) (err error) {
 	w := nh.staticWorker
 	subInfo := w.staticSubscriptionInfo
 
@@ -170,8 +170,8 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	}
 
 	// Read the update.
-	var sneu skymodules.RPCRegistrySubscriptionNotificationEntryUpdate
-	err = skymodules.RPCRead(stream, &sneu)
+	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
+	err = modules.RPCRead(stream, &sneu)
 	if err != nil {
 		return errors.AddContext(err, "failed to read entry update")
 	}
@@ -204,7 +204,7 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	// we are not interested in simply to have us pay for bandwidth.
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
-	sub, exists := subInfo.subscriptions[skymodules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
+	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
 	if !exists || (sub.latestRV != nil && sub.latestRV.Revision >= sneu.Entry.Revision) {
 		if exists && sub.latestRV != nil {
 			return fmt.Errorf("host sent an outdated revision %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
@@ -219,7 +219,7 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 
 // managedHandleSubscriptionSuccess is called by managedHandleNotification to
 // handle a subscription success notification.
-func (nh *notificationHandler) managedHandleSubscriptionSuccess(stream siamux.Stream, limit *skymodules.BudgetLimit) error {
+func (nh *notificationHandler) managedHandleSubscriptionSuccess(stream siamux.Stream, limit *modules.BudgetLimit) error {
 	// Tell the subscription thread to update the limits using the new price
 	// table.
 	select {
@@ -246,7 +246,7 @@ func (nh *notificationHandler) managedHandleSubscriptionSuccess(stream siamux.St
 // verifies notifications and updates the worker's internal state accordingly.
 // Since it's registered as a handle which is called in a separate goroutine it
 // doesn't return an error.
-func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, budget *skymodules.RPCBudget, limit *skymodules.BudgetLimit) {
+func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, budget *modules.RPCBudget, limit *modules.BudgetLimit) {
 	w := nh.staticWorker
 	// Close the stream when done.
 	defer func() {
@@ -263,8 +263,8 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 	}
 
 	// Read the notification type.
-	var snt skymodules.RPCRegistrySubscriptionNotificationType
-	err = skymodules.RPCRead(stream, &snt)
+	var snt modules.RPCRegistrySubscriptionNotificationType
+	err = modules.RPCRead(stream, &snt)
 	if err != nil {
 		w.renter.log.Print("managedHandleNotification: failed to read notification type: ", err)
 		return
@@ -272,12 +272,12 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 
 	// Handle the notification.
 	switch snt.Type {
-	case skymodules.SubscriptionResponseSubscriptionSuccess:
+	case modules.SubscriptionResponseSubscriptionSuccess:
 		if err := nh.managedHandleSubscriptionSuccess(stream, limit); err != nil {
 			w.renter.log.Print("managedHAndleSubscriptionSuccess:", err)
 		}
 		return
-	case skymodules.SubscriptionResponseRegistryValue:
+	case modules.SubscriptionResponseRegistryValue:
 		if err := nh.managedHandleRegistryEntry(stream, budget, limit); err != nil {
 			w.renter.log.Print("managedHandleRegistryEntry:", err)
 		}
@@ -336,7 +336,7 @@ func (subInfo *subscriptionInfos) managedOnCooldown() (time.Duration, bool) {
 // subscriptions and the active subscriptions. It also returns a slice of
 // channels which need to be closed when the corresponding desired subscription
 // was established.
-func (subInfo *subscriptionInfos) managedSubscriptionDiff() (toSubscribe, toUnsubscribe []skymodules.RPCRegistrySubscriptionRequest, subChans []chan struct{}) {
+func (subInfo *subscriptionInfos) managedSubscriptionDiff() (toSubscribe, toUnsubscribe []modules.RPCRegistrySubscriptionRequest, subChans []chan struct{}) {
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	for sid, sub := range subInfo.subscriptions {
@@ -360,15 +360,15 @@ func (subInfo *subscriptionInfos) managedSubscriptionDiff() (toSubscribe, toUnsu
 
 // managedExtendSubscriptionPeriod extends the ongoing subscription with a host
 // and adjusts the deadline on the stream.
-func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *skymodules.RPCBudget, limit *skymodules.BudgetLimit, oldDeadline time.Time, oldPT *skymodules.RPCPriceTable, nh *notificationHandler) (*skymodules.RPCPriceTable, time.Time, error) {
+func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *modules.RPCBudget, limit *modules.BudgetLimit, oldDeadline time.Time, oldPT *modules.RPCPriceTable, nh *notificationHandler) (*modules.RPCPriceTable, time.Time, error) {
 	subInfo := w.staticSubscriptionInfo
 
 	// Get a pricetable that is valid until the new deadline.
-	newDeadline := oldDeadline.Add(skymodules.SubscriptionPeriod)
+	newDeadline := oldDeadline.Add(modules.SubscriptionPeriod)
 	newPT := w.managedPriceTableForSubscription(time.Until(newDeadline))
 
 	// Try extending the subscription.
-	err := skymodules.RPCExtendSubscription(stream, newPT)
+	err := modules.RPCExtendSubscription(stream, newPT)
 	if err != nil {
 		return nil, time.Time{}, errors.AddContext(err, "failed to extend subscription")
 	}
@@ -406,7 +406,7 @@ func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *s
 	}
 
 	// Withdraw from budget.
-	if !budget.Withdraw(skymodules.MDMSubscriptionMemoryCost(newPT, nSubs)) {
+	if !budget.Withdraw(modules.MDMSubscriptionMemoryCost(newPT, nSubs)) {
 		return nil, time.Time{}, errors.New("failed to withdraw subscription extension cost from budget")
 	}
 
@@ -422,7 +422,7 @@ func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *s
 }
 
 // managedRefillSubscription refills the subscription up until expectedBudget.
-func (w *worker) managedRefillSubscription(stream siamux.Stream, pt *skymodules.RPCPriceTable, expectedBudget types.Currency, budget *skymodules.RPCBudget) error {
+func (w *worker) managedRefillSubscription(stream siamux.Stream, pt *modules.RPCPriceTable, expectedBudget types.Currency, budget *modules.RPCBudget) error {
 	fundAmt := expectedBudget.Sub(budget.Remaining())
 
 	// Track the withdrawal.
@@ -449,7 +449,7 @@ func (w *worker) managedSubscriptionCleanup(stream siamux.Stream, subscriber str
 	subInfo := w.staticSubscriptionInfo
 
 	// Close the stream gracefully.
-	err = skymodules.RPCStopSubscription(stream)
+	err = modules.RPCStopSubscription(stream)
 
 	// After signalling to shut down the subscription, we wait for a short
 	// grace period to allow for incoming streams which were already read by
@@ -469,10 +469,10 @@ func (w *worker) managedSubscriptionCleanup(stream siamux.Stream, subscriber str
 
 // managedUnsubscribeFromRVs unsubscribes the worker from multiple ongoing
 // subscriptions.
-func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe []skymodules.RPCRegistrySubscriptionRequest) error {
+func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe []modules.RPCRegistrySubscriptionRequest) error {
 	subInfo := w.staticSubscriptionInfo
 	// Unsubscribe.
-	err := skymodules.RPCUnsubscribeFromRVs(stream, toUnsubscribe)
+	err := modules.RPCUnsubscribeFromRVs(stream, toUnsubscribe)
 	if err != nil {
 		return errors.AddContext(err, "failed to unsubscribe from registry values")
 	}
@@ -481,7 +481,7 @@ func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe [
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	for _, req := range toUnsubscribe {
-		sid := skymodules.RegistrySubscriptionID(req.PubKey, req.Tweak)
+		sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
 		sub, exists := subInfo.subscriptions[sid]
 		if !exists {
 			err = errors.New("managedSubscriptionLoop: missing subscription - subscriptions should only be deleted in this thread so this shouldn't be the case")
@@ -494,10 +494,10 @@ func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe [
 }
 
 // managedSubscribeToRVs subscribes the workers to multiple registry values.
-func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []skymodules.RPCRegistrySubscriptionRequest, subChans []chan struct{}, budget *skymodules.RPCBudget, pt *skymodules.RPCPriceTable) error {
+func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []modules.RPCRegistrySubscriptionRequest, subChans []chan struct{}, budget *modules.RPCBudget, pt *modules.RPCPriceTable) error {
 	subInfo := w.staticSubscriptionInfo
 	// Subscribe.
-	rvs, err := skymodules.RPCSubscribeToRVs(stream, toSubscribe)
+	rvs, err := modules.RPCSubscribeToRVs(stream, toSubscribe)
 	if err != nil {
 		return errors.AddContext(err, "failed to subscribe to registry values")
 	}
@@ -510,14 +510,14 @@ func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []skymo
 		w.staticRegistryCache.Set(rv.PubKey, rv.Entry, false)
 	}
 	// Withdraw from budget.
-	if !budget.Withdraw(skymodules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(toSubscribe)))) {
+	if !budget.Withdraw(modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(toSubscribe)))) {
 		return errors.New("failed to withdraw subscription payment from budget")
 	}
 	// Update the subscriptions with the received values.
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	for _, rv := range rvs {
-		subInfo.subscriptions[skymodules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)].latestRV = &rv.Entry
+		subInfo.subscriptions[modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)].latestRV = &rv.Entry
 	}
 	// Close the channels to signal that the subscription is done.
 	for _, c := range subChans {
@@ -529,9 +529,9 @@ func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []skymo
 // managedSubscriptionLoop handles an existing subscription session. It will add
 // subscriptions, remove subscriptions, fund the subscription and extend it
 // indefinitely.
-func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *skymodules.RPCPriceTable, deadline time.Time, budget *skymodules.RPCBudget, expectedBudget types.Currency, subscriber string) (err error) {
+func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPriceTable, deadline time.Time, budget *modules.RPCBudget, expectedBudget types.Currency, subscriber string) (err error) {
 	// Set the bandwidth limiter on the stream.
-	limit := skymodules.NewBudgetLimit(budget, pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
+	limit := modules.NewBudgetLimit(budget, pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
 	err = stream.SetLimit(limit)
 	if err != nil {
 		return errors.AddContext(err, "failed to set bandwidth limiter on the stream")
@@ -574,7 +574,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *skymodules.RP
 		}
 
 		// If the subscription period is halfway over, extend it.
-		if time.Until(deadline) < skymodules.SubscriptionPeriod/2 {
+		if time.Until(deadline) < modules.SubscriptionPeriod/2 {
 			pt, deadline, err = w.managedExtendSubscriptionPeriod(stream, budget, limit, deadline, pt, nh)
 			if err != nil {
 				return err
@@ -621,7 +621,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *skymodules.RP
 // managedPriceTableForSubscription will fetch a price table that is valid for
 // the provided duration. If the current price table of the worker isn't valid
 // for that long, it will change its update time to trigger an update.
-func (w *worker) managedPriceTableForSubscription(duration time.Duration) *skymodules.RPCPriceTable {
+func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modules.RPCPriceTable {
 	for {
 		// Get most recent price table.
 		pt := w.staticPriceTable()
@@ -668,7 +668,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *skymo
 
 // managedBeginSubscription begins a subscription on a new stream and returns
 // it.
-func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc skymodules.AccountID, subscriber types.Specifier) (_ siamux.Stream, err error) {
+func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc modules.AccountID, subscriber types.Specifier) (_ siamux.Stream, err error) {
 	stream, err := w.staticNewStream()
 	if err != nil {
 		return nil, errors.AddContext(err, "managedBeginSubscription: failed to create stream")
@@ -678,12 +678,12 @@ func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc 
 			err = errors.Compose(err, stream.Close())
 		}
 	}()
-	return stream, skymodules.RPCBeginSubscription(stream, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, w.staticAccount.staticID, w.staticAccount.staticSecretKey, initialBudget, w.staticCache().staticBlockHeight, subscriber)
+	return stream, modules.RPCBeginSubscription(stream, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, w.staticAccount.staticID, w.staticAccount.staticSecretKey, initialBudget, w.staticCache().staticBlockHeight, subscriber)
 }
 
 // managedFundSubscription pays the host to increase the subscription budget.
-func (w *worker) managedFundSubscription(stream siamux.Stream, pt *skymodules.RPCPriceTable, fundAmt types.Currency) error {
-	return skymodules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount.staticID, w.staticAccount.staticSecretKey, pt.HostBlockHeight, fundAmt)
+func (w *worker) managedFundSubscription(stream siamux.Stream, pt *modules.RPCPriceTable, fundAmt types.Currency) error {
+	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount.staticID, w.staticAccount.staticSecretKey, pt.HostBlockHeight, fundAmt)
 }
 
 // threadedSubscriptionLoop is the main subscription loop. It opens a
@@ -746,14 +746,14 @@ func (w *worker) threadedSubscriptionLoop() {
 		}
 
 		// Get a valid price table.
-		pt := w.managedPriceTableForSubscription(skymodules.SubscriptionPeriod)
+		pt := w.managedPriceTableForSubscription(modules.SubscriptionPeriod)
 
 		// Compute the initial deadline.
-		deadline := time.Now().Add(skymodules.SubscriptionPeriod)
+		deadline := time.Now().Add(modules.SubscriptionPeriod)
 
 		// Set the initial budget.
 		initialBudget := initialSubscriptionBudget
-		budget := skymodules.NewBudget(initialBudget)
+		budget := modules.NewBudget(initialBudget)
 
 		// Track the withdrawal.
 		w.staticAccount.managedTrackWithdrawal(initialBudget)
@@ -801,13 +801,13 @@ func (w *worker) threadedSubscriptionLoop() {
 
 // Unsubscribe marks the provided entries as not subscribed to and notifies the
 // worker of the change.
-func (w *worker) Unsubscribe(requests ...skymodules.RPCRegistrySubscriptionRequest) {
+func (w *worker) Unsubscribe(requests ...modules.RPCRegistrySubscriptionRequest) {
 	subInfo := w.staticSubscriptionInfo
 
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	for _, req := range requests {
-		sid := skymodules.RegistrySubscriptionID(req.PubKey, req.Tweak)
+		sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
 		sub, exists := subInfo.subscriptions[sid]
 		if !exists || !sub.subscribe {
 			continue // nothing to do
@@ -826,7 +826,7 @@ func (w *worker) Unsubscribe(requests ...skymodules.RPCRegistrySubscriptionReque
 // Subscribe marks the provided entries as subscribed and waits for the
 // subscription to be done, returning potential initial values returend by the
 // host.
-func (w *worker) Subscribe(ctx context.Context, requests ...skymodules.RPCRegistrySubscriptionRequest) ([]skymodules.RPCRegistrySubscriptionNotificationEntryUpdate, error) {
+func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistrySubscriptionRequest) ([]modules.RPCRegistrySubscriptionNotificationEntryUpdate, error) {
 	subInfo := w.staticSubscriptionInfo
 
 	// Add one subscription for every request that we are not yet subscribed to.
@@ -834,7 +834,7 @@ func (w *worker) Subscribe(ctx context.Context, requests ...skymodules.RPCRegist
 	var subs []*subscription
 	var subChans []chan struct{}
 	for i, req := range requests {
-		sid := skymodules.RegistrySubscriptionID(req.PubKey, req.Tweak)
+		sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
 		sub, exists := subInfo.subscriptions[sid]
 		if !exists {
 			sub = newSubscription(&requests[i])
@@ -865,14 +865,14 @@ func (w *worker) Subscribe(ctx context.Context, requests ...skymodules.RPCRegist
 	// Collect the values.
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
-	var notifications []skymodules.RPCRegistrySubscriptionNotificationEntryUpdate
+	var notifications []modules.RPCRegistrySubscriptionNotificationEntryUpdate
 	for _, sub := range subs {
 		if sub.latestRV == nil {
 			// The value was subscribed to, but it doesn't exist on the host
 			// yet.
 			continue
 		}
-		notifications = append(notifications, skymodules.RPCRegistrySubscriptionNotificationEntryUpdate{
+		notifications = append(notifications, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
 			Entry:  *sub.latestRV,
 			PubKey: sub.staticRequest.PubKey,
 		})

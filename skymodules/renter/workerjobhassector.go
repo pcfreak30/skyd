@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -136,7 +136,7 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	w := j.staticQueue.staticWorker()
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
-	pb := skymodules.NewProgramBuilder(&pt, 0) // 0 duration since HasSector doesn't depend on it.
+	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since HasSector doesn't depend on it.
 	for _, sector := range j.staticSectors {
 		pb.AddHasSectorInstruction(sector)
 	}
@@ -145,7 +145,7 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.

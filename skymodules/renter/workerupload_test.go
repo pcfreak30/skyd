@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -33,7 +34,7 @@ func TestCheckUploadGouging(t *testing.T) {
 	//
 	// The cost is set to be exactly equal to the price gouging limit, such that
 	// slightly decreasing any of the values evades the price gouging detector.
-	minHostSettings := skymodules.HostExternalSettings{
+	minHostSettings := modules.HostExternalSettings{
 		BaseRPCPrice:         types.SiacoinPrecision,
 		SectorAccessPrice:    types.SiacoinPrecision,
 		UploadBandwidthPrice: types.SiacoinPrecision.Div64(skymodules.StreamUploadSize),
@@ -126,7 +127,7 @@ func testProcessUploadChunkBasic(t *testing.T, chunk func(wt *workerTester) *unf
 	t.Parallel()
 
 	// create worker.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +146,7 @@ func testProcessUploadChunkBasic(t *testing.T, chunk func(wt *workerTester) *unf
 	uuc.mu.Lock()
 	uuc.pieceUsage[0] = true // mark first piece as used
 	uuc.mu.Unlock()
-	_ = wt.renter.repairMemoryManager.Request(context.Background(), skymodules.SectorSize*uint64(uuc.staticPiecesNeeded-1), true)
+	_ = wt.renter.repairMemoryManager.Request(context.Background(), modules.SectorSize*uint64(uuc.staticPiecesNeeded-1), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc == nil {
 		t.Error("next chunk shouldn't be nil")
@@ -183,7 +184,7 @@ func testProcessUploadChunkNoHelpNeeded(t *testing.T, chunk func(wt *workerTeste
 	t.Parallel()
 
 	// create worker.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,8 +202,8 @@ func testProcessUploadChunkNoHelpNeeded(t *testing.T, chunk func(wt *workerTeste
 	uuc.mu.Lock()
 	uuc.piecesRegistered = uuc.staticPiecesNeeded
 	uuc.mu.Unlock()
-	println("request", skymodules.SectorSize*uint64(pieces))
-	_ = uuc.staticMemoryManager.Request(context.Background(), skymodules.SectorSize*uint64(pieces), true)
+	println("request", modules.SectorSize*uint64(pieces))
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -244,7 +245,7 @@ func testProcessUploadChunkNotACandidate(t *testing.T, chunk func(wt *workerTest
 	t.Parallel()
 
 	// create worker.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +265,7 @@ func testProcessUploadChunkNotACandidate(t *testing.T, chunk func(wt *workerTest
 	uuc.mu.Lock()
 	uuc.unusedHosts = make(map[string]struct{})
 	uuc.mu.Unlock()
-	_ = uuc.staticMemoryManager.Request(context.Background(), skymodules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -306,7 +307,7 @@ func testProcessUploadChunkCompleted(t *testing.T, chunk func(wt *workerTester) 
 	t.Parallel()
 
 	// create worker.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +327,7 @@ func testProcessUploadChunkCompleted(t *testing.T, chunk func(wt *workerTester) 
 	uuc.mu.Lock()
 	uuc.piecesCompleted = uuc.staticPiecesNeeded
 	uuc.mu.Unlock()
-	_ = uuc.staticMemoryManager.Request(context.Background(), skymodules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -369,7 +370,7 @@ func testProcessUploadChunk_NotACandidateCooldown(t *testing.T, chunk func(wt *w
 	t.Parallel()
 
 	// create worker.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +392,7 @@ func testProcessUploadChunk_NotACandidateCooldown(t *testing.T, chunk func(wt *w
 	uuc.mu.Lock()
 	uuc.unusedHosts = make(map[string]struct{})
 	uuc.mu.Unlock()
-	_ = uuc.staticMemoryManager.Request(context.Background(), skymodules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -433,7 +434,7 @@ func testProcessUploadChunkCompletedCooldown(t *testing.T, chunk func(wt *worker
 	t.Parallel()
 
 	// create worker.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +456,7 @@ func testProcessUploadChunkCompletedCooldown(t *testing.T, chunk func(wt *worker
 	uuc.mu.Lock()
 	uuc.piecesCompleted = uuc.staticPiecesNeeded
 	uuc.mu.Unlock()
-	_ = uuc.staticMemoryManager.Request(context.Background(), skymodules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -497,7 +498,7 @@ func testProcessUploadChunkNotGoodForUpload(t *testing.T, chunk func(wt *workerT
 	t.Parallel()
 
 	// create worker.
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +522,7 @@ func testProcessUploadChunkNotGoodForUpload(t *testing.T, chunk func(wt *workerT
 		t.Fatal(err)
 	}
 	wt.managedUpdateCache()
-	_ = uuc.staticMemoryManager.Request(context.Background(), skymodules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -582,7 +583,7 @@ func TestProcessUploadChunk(t *testing.T) {
 			logicalChunkData:          make([][]byte, pieces),
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
-			staticMemoryNeeded:        uint64(pieces) * skymodules.SectorSize,
+			staticMemoryNeeded:        uint64(pieces) * modules.SectorSize,
 			staticMemoryManager:       wt.renter.repairMemoryManager,
 		}
 	}

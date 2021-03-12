@@ -12,28 +12,29 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus"
+	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/modules/host"
+	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/consensus"
-	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
-	"gitlab.com/skynetlabs/skyd/skymodules/host"
-	"gitlab.com/skynetlabs/skyd/skymodules/miner"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
-	"gitlab.com/skynetlabs/skyd/skymodules/transactionpool"
-	"gitlab.com/skynetlabs/skyd/skymodules/wallet"
 )
 
 // renterTester contains all of the modules that are used while testing the renter.
 type renterTester struct {
-	cs      skymodules.ConsensusSet
-	gateway skymodules.Gateway
-	miner   skymodules.TestMiner
-	tpool   skymodules.TransactionPool
-	wallet  skymodules.Wallet
+	cs      modules.ConsensusSet
+	gateway modules.Gateway
+	miner   modules.TestMiner
+	tpool   modules.TransactionPool
+	wallet  modules.Wallet
 
 	mux *siamux.SiaMux
 
@@ -54,15 +55,15 @@ func (rt *renterTester) Close() error {
 }
 
 // addCustomHost adds a host to the test group so that it appears in the host db
-func (rt *renterTester) addCustomHost(testdir string, deps skymodules.Dependencies) (skymodules.Host, error) {
+func (rt *renterTester) addCustomHost(testdir string, deps modules.Dependencies) (modules.Host, error) {
 	// create a siamux for this particular host
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
 
-	h, err := host.NewCustomHost(deps, rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, skymodules.HostDir))
+	h, err := host.NewCustomHost(deps, rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +71,7 @@ func (rt *renterTester) addCustomHost(testdir string, deps skymodules.Dependenci
 	// configure host to accept contracts and to have a registry.
 	settings := h.InternalSettings()
 	settings.AcceptingContracts = true
-	settings.RegistrySize = 640 * skymodules.RegistryEntrySize
+	settings.RegistrySize = 640 * modules.RegistryEntrySize
 	err = h.SetInternalSettings(settings)
 	if err != nil {
 		return nil, err
@@ -82,7 +83,7 @@ func (rt *renterTester) addCustomHost(testdir string, deps skymodules.Dependenci
 	if err != nil {
 		return nil, err
 	}
-	err = h.AddStorageFolder(storageFolder, skymodules.SectorSize*64)
+	err = h.AddStorageFolder(storageFolder, modules.SectorSize*64)
 	if err != nil {
 		return nil, err
 	}
@@ -119,8 +120,8 @@ func (rt *renterTester) addCustomHost(testdir string, deps skymodules.Dependenci
 }
 
 // addHost adds a host to the test group so that it appears in the host db
-func (rt *renterTester) addHost(name string) (skymodules.Host, error) {
-	return rt.addCustomHost(filepath.Join(rt.dir, name), skymodules.ProdDependencies)
+func (rt *renterTester) addHost(name string) (modules.Host, error) {
+	return rt.addCustomHost(filepath.Join(rt.dir, name), modules.ProdDependencies)
 }
 
 // addRenter adds a renter to the renter tester and then make sure there is
@@ -157,7 +158,7 @@ func (rt *renterTester) reloadRenter(r *Renter) (*Renter, error) {
 // reloadRenterWithDependency closes the given renter and recreates it using the
 // given dependency, it then re-adds the renter on the renter tester effectively
 // reloading it.
-func (rt *renterTester) reloadRenterWithDependency(r *Renter, deps skymodules.Dependencies) (*Renter, error) {
+func (rt *renterTester) reloadRenterWithDependency(r *Renter, deps modules.Dependencies) (*Renter, error) {
 	err := r.Close()
 	if err != nil {
 		return nil, err
@@ -201,26 +202,26 @@ func newRenterTester(name string) (*renterTester, error) {
 // the wallet.
 func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	// Create the siamux
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
 
 	// Create the skymodules.
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
 		return nil, err
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
+	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +234,7 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	m, err := miner.New(cs, tp, w, filepath.Join(testdir, skymodules.MinerDir))
+	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +255,7 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 
 // newRenterTesterWithDependency creates a ready-to-use renter tester with money
 // in the wallet.
-func newRenterTesterWithDependency(name string, deps skymodules.Dependencies) (*renterTester, error) {
+func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*renterTester, error) {
 	testdir := build.TempDir("renter", name)
 	rt, err := newRenterTesterNoRenter(testdir)
 	if err != nil {
@@ -262,8 +263,8 @@ func newRenterTesterWithDependency(name string, deps skymodules.Dependencies) (*
 	}
 
 	// Create the siamux
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -280,13 +281,13 @@ func newRenterTesterWithDependency(name string, deps skymodules.Dependencies) (*
 }
 
 // newRenterWithDependency creates a Renter with custom dependency
-func newRenterWithDependency(g skymodules.Gateway, cs skymodules.ConsensusSet, wallet skymodules.Wallet, tpool skymodules.TransactionPool, mux *siamux.SiaMux, persistDir string, deps skymodules.Dependencies) (*Renter, error) {
+func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
 	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tpool, mux, persistDir, deps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), rl, skymodules.ProdDependencies)
+	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), rl, modules.ProdDependencies)
 	if err != nil {
 		return nil, err
 	}
@@ -336,11 +337,11 @@ func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
 		t.Fatal("Expected the newly added host to be found in the hostDB")
 	}
 
-	if hostEntry.EphemeralAccountExpiry != skymodules.DefaultEphemeralAccountExpiry {
+	if hostEntry.EphemeralAccountExpiry != modules.DefaultEphemeralAccountExpiry {
 		t.Fatal("Unexpected account expiry")
 	}
 
-	if !hostEntry.MaxEphemeralAccountBalance.Equals(skymodules.DefaultMaxEphemeralAccountBalance) {
+	if !hostEntry.MaxEphemeralAccountBalance.Equals(modules.DefaultMaxEphemeralAccountBalance) {
 		t.Fatal("Unexpected max account balance")
 	}
 }

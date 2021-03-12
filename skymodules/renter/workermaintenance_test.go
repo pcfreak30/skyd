@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestWorkerMaintenanceCoolDown verifies the functionality of the worker's
@@ -22,7 +22,7 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 	}
 	t.Parallel()
 
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestWorkerMaintenanceRefillLowContractFunds(t *testing.T) {
 	t.Parallel()
 
 	deps := &dependencies.DependencyDisableWorker{}
-	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, skymodules.ProdDependencies)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}

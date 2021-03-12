@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
@@ -69,7 +70,7 @@ func NewFromLegacyData(fd FileData, siaFilePath string, wal *writeaheadlog.WAL) 
 			StaticPieceSize:         fd.PieceSize,
 			UniqueID:                SiafileUID(fd.UID),
 		},
-		deps:        skymodules.ProdDependencies,
+		deps:        modules.ProdDependencies,
 		deleted:     fd.Deleted,
 		numChunks:   len(fd.Chunks),
 		siaFilePath: siaFilePath,

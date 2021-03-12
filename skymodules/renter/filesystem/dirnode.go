@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
@@ -421,7 +422,7 @@ func (n *DirNode) siaDir() (*siadir.SiaDir, error) {
 	if *n.lazySiaDir != nil {
 		return *n.lazySiaDir, nil
 	}
-	sd, err := siadir.LoadSiaDir(n.absPath(), skymodules.ProdDependencies, n.staticWal)
+	sd, err := siadir.LoadSiaDir(n.absPath(), modules.ProdDependencies, n.staticWal)
 	if os.IsNotExist(err) {
 		return nil, ErrNotExist
 	}

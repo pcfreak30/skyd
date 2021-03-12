@@ -1,12 +1,10 @@
 package dependencies
 
-import (
-	"gitlab.com/skynetlabs/skyd/skymodules"
-)
+import "gitlab.com/NebulousLabs/Sia/modules"
 
 // DependencyDoNotAcceptTxnSet will not accept a transaction set.
 type DependencyDoNotAcceptTxnSet struct {
-	skymodules.ProductionDependencies
+	modules.ProductionDependencies
 }
 
 // Disrupt returns true if the correct string is provided.

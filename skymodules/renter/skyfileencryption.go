@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skykey"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -44,10 +45,10 @@ func (r *Renter) checkSkyfileEncryptionIDMatch(encryptionIdentifier []byte, nonc
 // Skykey, it will decrypt the baseSector in-place. It returns the file-specific
 // skykey to be used for decrypting the rest of the associated skyfile.
 func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
-	// Sanity check - baseSector should not be more than skymodules.SectorSize.
+	// Sanity check - baseSector should not be more than modules.SectorSize.
 	// Note that the base sector may be smaller in the event of a packed
 	// skyfile.
-	if uint64(len(baseSector)) > skymodules.SectorSize {
+	if uint64(len(baseSector)) > modules.SectorSize {
 		build.Critical("decryptBaseSector given a baseSector that is too large")
 		return skykey.Skykey{}, errors.New("baseSector too large")
 	}

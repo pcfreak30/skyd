@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -16,7 +18,6 @@ import (
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -152,10 +153,10 @@ func testContractorIncompleteMaintenanceAlert(t *testing.T, tg *siatest.TestGrou
 	}
 	// The renter should have 1 alert once we have mined enough blocks to trigger a
 	// renewal.
-	expectedAlert := skymodules.Alert{
-		Severity: skymodules.SeverityWarning,
+	expectedAlert := modules.Alert{
+		Severity: modules.SeverityWarning,
 		Msg:      contractor.AlertMSGWalletLockedDuringMaintenance,
-		Cause:    skymodules.ErrLockedWallet.Error(),
+		Cause:    modules.ErrLockedWallet.Error(),
 		Module:   "contractor",
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -657,7 +658,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 	// Upload a file to the renter.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(10 * skymodules.SectorSize)
+	fileSize := int(10 * modules.SectorSize)
 	_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -818,7 +819,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	// Upload a file to the renter.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(10 * skymodules.SectorSize)
+	fileSize := int(10 * modules.SectorSize)
 	_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -1008,7 +1009,7 @@ func TestRenterContractRecovery(t *testing.T) {
 	// Upload a file to the renter.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(10 * skymodules.SectorSize)
+	fileSize := int(10 * modules.SectorSize)
 	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -1233,11 +1234,11 @@ func TestLowAllowanceAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
-	lowFundsAlert := skymodules.Alert{
+	lowFundsAlert := modules.Alert{
 		Cause:    contractor.AlertCauseInsufficientAllowanceFunds,
 		Msg:      contractor.AlertMSGAllowanceLowFunds,
 		Module:   "contractor",
-		Severity: skymodules.SeverityWarning,
+		Severity: modules.SeverityWarning,
 	}
 	// Mine blocks and wait for the alert to be registered.
 	numRetries := 0
@@ -1754,7 +1755,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 
 	miner := tg.Miners()[0]
 
-	maxPeriodChurn := uint64(skymodules.SectorSize)
+	maxPeriodChurn := uint64(modules.SectorSize)
 	newRenterDir := filepath.Join(testDir, "renter")
 	renterParams := node.Renter(newRenterDir)
 	minScoreDep := &dependencies.DependencyHighMinHostScore{}
@@ -2070,7 +2071,7 @@ func TestContractorHostRemoval(t *testing.T) {
 		}
 
 		for _, contract := range rc.ActiveContracts {
-			if contract.Size != skymodules.SectorSize {
+			if contract.Size != modules.SectorSize {
 				return fmt.Errorf("Each contrat should have 1 sector: %v - %v", contract.Size, contract.ID)
 			}
 		}
@@ -2270,8 +2271,8 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	}
 
 	// Check for alert
-	expectedAlert := skymodules.Alert{
-		Severity: skymodules.SeverityCritical,
+	expectedAlert := modules.Alert{
+		Severity: modules.SeverityCritical,
 		Cause:    "Renew failure due to dependency",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
@@ -2757,8 +2758,8 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 	}
 
 	// Check for alert
-	expectedAlert := skymodules.Alert{
-		Severity: skymodules.SeverityError,
+	expectedAlert := modules.Alert{
+		Severity: modules.SeverityError,
 		Cause:    "rejected for low paying host valid output",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",

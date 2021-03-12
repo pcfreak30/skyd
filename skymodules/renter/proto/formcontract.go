@@ -4,6 +4,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -17,7 +18,7 @@ func (cs *ContractSet) FormContract(params skymodules.ContractParams, txnBuilder
 	// Check that the host version is high enough. This should never happen
 	// because hosts with old versions should be filtered / blocked by the
 	// contractor anyway.
-	if build.VersionCmp(params.Host.Version, skymodules.MinimumSupportedRenterHostProtocolVersion) < 0 {
+	if build.VersionCmp(params.Host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
 		return skymodules.RenterContract{}, nil, types.Transaction{}, nil, ErrBadHostVersion
 	}
 
@@ -134,17 +135,17 @@ func (cs *ContractSet) FormContract(params skymodules.ContractParams, txnBuilder
 	}()
 
 	// Send the FormContract request.
-	req := skymodules.LoopFormContractRequest{
+	req := modules.LoopFormContractRequest{
 		Transactions: txnSet,
 		RenterKey:    uc.PublicKeys[0],
 	}
-	if err := s.writeRequest(skymodules.RPCLoopFormContract, req); err != nil {
+	if err := s.writeRequest(modules.RPCLoopFormContract, req); err != nil {
 		return skymodules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Read the host's response.
-	var resp skymodules.LoopContractAdditions
-	if err := s.readResponse(&resp, skymodules.RPCMinLen); err != nil {
+	var resp modules.LoopContractAdditions
+	if err := s.readResponse(&resp, modules.RPCMinLen); err != nil {
 		return skymodules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
@@ -161,7 +162,7 @@ func (cs *ContractSet) FormContract(params skymodules.ContractParams, txnBuilder
 	signedTxnSet, err := txnBuilder.Sign(true)
 	if err != nil {
 		err = errors.New("failed to sign transaction: " + err.Error())
-		skymodules.WriteRPCResponse(s.conn, s.aead, nil, err)
+		modules.WriteRPCResponse(s.conn, s.aead, nil, err)
 		return skymodules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
@@ -201,17 +202,17 @@ func (cs *ContractSet) FormContract(params skymodules.ContractParams, txnBuilder
 	revisionTxn.TransactionSignatures[0].Signature = encodedSig[:]
 
 	// Send acceptance and signatures.
-	renterSigs := skymodules.LoopContractSignatures{
+	renterSigs := modules.LoopContractSignatures{
 		ContractSignatures: addedSignatures,
 		RevisionSignature:  revisionTxn.TransactionSignatures[0],
 	}
-	if err := skymodules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
+	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
 		return skymodules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Read the host acceptance and signatures.
-	var hostSigs skymodules.LoopContractSignatures
-	if err := s.readResponse(&hostSigs, skymodules.RPCMinLen); err != nil {
+	var hostSigs modules.LoopContractSignatures
+	if err := s.readResponse(&hostSigs, modules.RPCMinLen); err != nil {
 		return skymodules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {
@@ -228,7 +229,7 @@ func (cs *ContractSet) FormContract(params skymodules.ContractParams, txnBuilder
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(minSet)
-	if errors.Contains(err, skymodules.ErrDuplicateTransactionSet) {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}

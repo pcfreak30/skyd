@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -21,7 +22,7 @@ type (
 
 		// Utility fields
 		deleted bool
-		deps    skymodules.Dependencies
+		deps    modules.Dependencies
 		mu      sync.Mutex
 		wal     *writeaheadlog.WAL
 	}

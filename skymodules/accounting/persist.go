@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
@@ -47,8 +47,8 @@ var (
 type persistence struct {
 	// Not implemented yet
 	//
-	// FeeManager skymodules.FeeManagerAccounting `json:"feemanager"`
-	// Host       skymodules.HostAccounting       `json:"host"`
+	// FeeManager modules.FeeManagerAccounting `json:"feemanager"`
+	// Host       modules.HostAccounting       `json:"host"`
 	// Miner      skymodules.MinerAccounting      `json:"miner"`
 
 	Renter skymodules.RenterAccounting `json:"renter"`

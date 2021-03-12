@@ -10,9 +10,10 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
@@ -340,7 +341,7 @@ func TestConvertPersist(t *testing.T) {
 	}
 
 	// load the contracts
-	cs, err := proto.NewContractSet(filepath.Join(dir, "contracts"), ratelimit.NewRateLimit(0, 0, 0), skymodules.ProdDependencies)
+	cs, err := proto.NewContractSet(filepath.Join(dir, "contracts"), ratelimit.NewRateLimit(0, 0, 0), modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}

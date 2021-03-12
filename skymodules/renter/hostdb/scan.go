@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -334,7 +335,7 @@ func (hdb *HostDB) updateEntry(entry skymodules.HostDBEntry, netErr error) {
 // the host. In case of an error we return nil. We don't really care about the
 // error because we don't update host entries if we are offline anyway. So if we
 // fail to resolve a hostname, the problem is not related to us.
-func (hdb *HostDB) staticLookupIPNets(address skymodules.NetAddress) (ipNets []string, err error) {
+func (hdb *HostDB) staticLookupIPNets(address modules.NetAddress) (ipNets []string, err error) {
 	// Lookup the IP addresses of the host.
 	addresses, err := hdb.staticDeps.Resolver().LookupIP(address.Host())
 	if err != nil {
@@ -373,7 +374,7 @@ func (hdb *HostDB) managedScanHost(entry skymodules.HostDBEntry) {
 	// with 127.0.0.1. Otherwise the scan will fail.
 	if hdb.staticDeps.Disrupt("customResolver") {
 		port := netAddr.Port()
-		netAddr = skymodules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+		netAddr = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
 	}
 
 	// Resolve the host's used subnets and update the timestamp if they
@@ -393,7 +394,7 @@ func (hdb *HostDB) managedScanHost(entry skymodules.HostDBEntry) {
 	updateHostHistoricInteractions(&entry, hdb.blockHeight)
 	hdb.mu.Unlock()
 
-	var settings skymodules.HostExternalSettings
+	var settings modules.HostExternalSettings
 	var latency time.Duration
 	err = func() error {
 		timeout := hostRequestTimeout
@@ -440,15 +441,15 @@ func (hdb *HostDB) managedScanHost(entry skymodules.HostDBEntry) {
 
 		// Try to talk to the host using RHP2. If the host does not respond to
 		// the RHP2 request, consider the scan a failure.
-		s, _, err := skymodules.NewRenterSession(conn, pubKey)
+		s, _, err := modules.NewRenterSession(conn, pubKey)
 		if err != nil {
 			return errors.AddContext(err, "could not open RHP2 session")
 		}
-		defer s.WriteRequest(skymodules.RPCLoopExit, nil) // make sure we close cleanly
-		if err := s.WriteRequest(skymodules.RPCLoopSettings, nil); err != nil {
+		defer s.WriteRequest(modules.RPCLoopExit, nil) // make sure we close cleanly
+		if err := s.WriteRequest(modules.RPCLoopSettings, nil); err != nil {
 			return errors.AddContext(err, "could not write the loop settings request in the RHP2 check")
 		}
-		var resp skymodules.LoopSettingsResponse
+		var resp modules.LoopSettingsResponse
 		if err := s.ReadResponse(&resp, maxSettingsLen); err != nil {
 			return errors.AddContext(err, "could not read the settings response")
 		}
@@ -462,20 +463,20 @@ func (hdb *HostDB) managedScanHost(entry skymodules.HostDBEntry) {
 		// ensure these hosts are not penalized by renters running the
 		// latest software.
 		if build.VersionCmp(settings.Version, "1.4.12") < 0 {
-			settings.EphemeralAccountExpiry = skymodules.CompatV1412DefaultEphemeralAccountExpiry
-			settings.MaxEphemeralAccountBalance = skymodules.CompatV1412DefaultMaxEphemeralAccountBalance
+			settings.EphemeralAccountExpiry = modules.CompatV1412DefaultEphemeralAccountExpiry
+			settings.MaxEphemeralAccountBalance = modules.CompatV1412DefaultMaxEphemeralAccountBalance
 		}
 
 		// Need to apply the custom resolver to the siamux address.
 		siamuxAddr := settings.SiaMuxAddress()
 		if hdb.staticDeps.Disrupt("customResolver") {
-			port := skymodules.NetAddress(siamuxAddr).Port()
+			port := modules.NetAddress(siamuxAddr).Port()
 			siamuxAddr = fmt.Sprintf("127.0.0.1:%s", port)
 		}
 
 		// Try opening a connection to the siamux, this is a very lightweight
 		// way of checking that RHP3 is supported.
-		_, err = fetchPriceTable(hdb.staticMux, siamuxAddr, timeout, skymodules.SiaPKToMuxPK(entry.PublicKey))
+		_, err = fetchPriceTable(hdb.staticMux, siamuxAddr, timeout, modules.SiaPKToMuxPK(entry.PublicKey))
 		if err != nil {
 			hdb.staticLog.Debugf("%v siamux ping not successful: %v\n", entry.PublicKey, err)
 			return err
@@ -677,8 +678,8 @@ func (hdb *HostDB) threadedScan() {
 // uses an ephemeral stream which is a special type of stream that doesn't leak
 // TCP connections. Otherwise we would end up with one TCP connection for every
 // host in the network after scanning the whole network.
-func fetchPriceTable(siamux *siamux.SiaMux, hostAddr string, timeout time.Duration, hpk mux.ED25519PublicKey) (_ *skymodules.RPCPriceTable, err error) {
-	stream, err := siamux.NewEphemeralStream(skymodules.HostSiaMuxSubscriberName, hostAddr, timeout, hpk)
+func fetchPriceTable(siamux *siamux.SiaMux, hostAddr string, timeout time.Duration, hpk mux.ED25519PublicKey) (_ *modules.RPCPriceTable, err error) {
+	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, hostAddr, timeout, hpk)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create ephemeral stream")
 	}
@@ -693,20 +694,20 @@ func fetchPriceTable(siamux *siamux.SiaMux, hostAddr string, timeout time.Durati
 	}
 
 	// initiate the RPC
-	err = skymodules.RPCWrite(stream, skymodules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to write price table RPC specifier")
 	}
 
 	// receive the price table response
-	var update skymodules.RPCUpdatePriceTableResponse
-	err = skymodules.RPCRead(stream, &update)
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to read price table response")
 	}
 
 	// unmarshal the price table
-	var pt skymodules.RPCPriceTable
+	var pt modules.RPCPriceTable
 	err = json.Unmarshal(update.PriceTableJSON, &pt)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to unmarshal price table")

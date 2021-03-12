@@ -20,6 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -529,7 +530,7 @@ func renteruploadscmd() {
 	}
 	fmt.Println("Uploading", len(filteredFiles), "files:")
 	for _, file := range filteredFiles {
-		fmt.Printf("%13s  %s (uploading, %0.2f%%)\n", skymodules.FilesizeUnits(file.Filesize), file.SiaPath, file.UploadProgress)
+		fmt.Printf("%13s  %s (uploading, %0.2f%%)\n", modules.FilesizeUnits(file.Filesize), file.SiaPath, file.UploadProgress)
 	}
 }
 
@@ -615,16 +616,16 @@ Price Protections:
   MaxUploadBandwidthPrice:   %v per TB
 `, currencyUnitsWithExchangeRate(allowance.Funds, rate), allowance.Period, allowance.RenewWindow,
 		allowance.Hosts, currencyUnitsWithExchangeRate(allowance.PaymentContractInitialFunding, rate),
-		skymodules.FilesizeUnits(allowance.ExpectedStorage),
-		skymodules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
-		skymodules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
+		modules.FilesizeUnits(allowance.ExpectedStorage),
+		modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
+		modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
 		allowance.ExpectedRedundancy,
 		currencyUnits(allowance.MaxRPCPrice.Mul64(1e6)),
 		currencyUnits(allowance.MaxContractPrice),
-		currencyUnits(allowance.MaxDownloadBandwidthPrice.Mul(skymodules.BytesPerTerabyte)),
+		currencyUnits(allowance.MaxDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
 		currencyUnits(allowance.MaxSectorAccessPrice.Mul64(1e6)),
-		currencyUnits(allowance.MaxStoragePrice.Mul(skymodules.BlockBytesPerMonthTerabyte)),
-		currencyUnits(allowance.MaxUploadBandwidthPrice.Mul(skymodules.BytesPerTerabyte)))
+		currencyUnits(allowance.MaxStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
+		currencyUnits(allowance.MaxUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)))
 
 	// Show detailed current Period spending metrics
 	renterallowancespending(rg)
@@ -829,7 +830,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 		if err != nil {
 			die("Could not read max download bandwidth price:", err)
 		}
-		price = price.Div(skymodules.BytesPerTerabyte)
+		price = price.Div(modules.BytesPerTerabyte)
 		req = req.WithMaxDownloadBandwidthPrice(price)
 		changedFields++
 	}
@@ -859,7 +860,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 		if err != nil {
 			die("Could not read max storage price:", err)
 		}
-		price = price.Div(skymodules.BlockBytesPerMonthTerabyte)
+		price = price.Div(modules.BlockBytesPerMonthTerabyte)
 		req = req.WithMaxStoragePrice(price)
 		changedFields++
 	}
@@ -874,7 +875,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 		if err != nil {
 			die("Could not read max upload bandwidth price:", err)
 		}
-		price = price.Div(skymodules.BytesPerTerabyte)
+		price = price.Div(modules.BytesPerTerabyte)
 		req = req.WithMaxUploadBandwidthPrice(price)
 		changedFields++
 	}
@@ -1153,8 +1154,8 @@ The following units can be used to set the expected storage:`)
 	fmt.Println()
 	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
-	fmt.Println("Current value:", skymodules.FilesizeUnits(allowance.ExpectedStorage))
-	fmt.Println("Default value:", skymodules.FilesizeUnits(skymodules.DefaultAllowance.ExpectedStorage))
+	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedStorage))
+	fmt.Println("Default value:", modules.FilesizeUnits(skymodules.DefaultAllowance.ExpectedStorage))
 
 	var expectedStorage uint64
 	if allowance.ExpectedStorage == 0 {
@@ -1203,8 +1204,8 @@ The following units can be used to set the expected upload:`)
 	fmt.Println()
 	euCurrentPeriod := allowance.ExpectedUpload * uint64(allowance.Period)
 	euDefaultPeriod := skymodules.DefaultAllowance.ExpectedUpload * uint64(skymodules.DefaultAllowance.Period)
-	fmt.Println("Current value:", skymodules.FilesizeUnits(euCurrentPeriod))
-	fmt.Println("Default value:", skymodules.FilesizeUnits(euDefaultPeriod))
+	fmt.Println("Current value:", modules.FilesizeUnits(euCurrentPeriod))
+	fmt.Println("Default value:", modules.FilesizeUnits(euDefaultPeriod))
 
 	if allowance.ExpectedUpload == 0 {
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -1260,8 +1261,8 @@ The following units can be used to set the expected download:`)
 	fmt.Println()
 	edCurrentPeriod := allowance.ExpectedDownload * uint64(allowance.Period)
 	edDefaultPeriod := skymodules.DefaultAllowance.ExpectedDownload * uint64(skymodules.DefaultAllowance.Period)
-	fmt.Println("Current value:", skymodules.FilesizeUnits(edCurrentPeriod))
-	fmt.Println("Default value:", skymodules.FilesizeUnits(edDefaultPeriod))
+	fmt.Println("Current value:", modules.FilesizeUnits(edCurrentPeriod))
+	fmt.Println("Default value:", modules.FilesizeUnits(edDefaultPeriod))
 
 	if allowance.ExpectedDownload == 0 {
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -1444,7 +1445,7 @@ func rentercontractscmd() {
   Total Spent:        %v
   Total Fees:         %v
 
-`, skymodules.FilesizeUnits(totalStored), skymodules.FilesizeUnits(totalWasted), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
+`, modules.FilesizeUnits(totalStored), modules.FilesizeUnits(totalWasted), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
 
 	// List out contracts
 	fmt.Println("Active Contracts:")
@@ -1501,7 +1502,7 @@ func rentercontractscmd() {
   Total Spent:         %v
   Total Fees:          %v
 
-`, skymodules.FilesizeUnits(totalStored), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
+`, modules.FilesizeUnits(totalStored), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
 		fmt.Println("\nExpired Contracts:")
 		if len(rce.ExpiredContracts) == 0 {
 			fmt.Println("  No expired contracts.")
@@ -1573,7 +1574,7 @@ func renterdirdownload(path, destination string) {
 	}
 	// Handle potential errors.
 	if len(failedDownloads) == 0 {
-		fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), skymodules.FilesizeUnits(totalSize), time.Since(start).Round(time.Millisecond))
+		fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), modules.FilesizeUnits(totalSize), time.Since(start).Round(time.Millisecond))
 		return
 	}
 	// Print errors.
@@ -1778,7 +1779,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Print totals for both verbose and not verbose output.
-	totalStoredStr := skymodules.FilesizeUnits(totalStored)
+	totalStoredStr := modules.FilesizeUnits(totalStored)
 	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Handle the non verbose output.
@@ -1788,13 +1789,13 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			for _, subDir := range dir.subDirs {
 				name := subDir.SiaPath.Name() + "/"
-				size := skymodules.FilesizeUnits(subDir.AggregateSize)
+				size := modules.FilesizeUnits(subDir.AggregateSize)
 				fmt.Fprintf(w, "  %v\t%9v\n", name, size)
 			}
 
 			for _, file := range dir.files {
 				name := file.SiaPath.Name()
-				size := skymodules.FilesizeUnits(file.Filesize)
+				size := modules.FilesizeUnits(file.Filesize)
 				fmt.Fprintf(w, "  %v\t%9v\n", name, size)
 			}
 			if err := w.Flush(); err != nil {
@@ -1812,7 +1813,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
 		for _, subDir := range dir.subDirs {
 			name := subDir.SiaPath.Name() + "/"
-			size := skymodules.FilesizeUnits(subDir.AggregateSize)
+			size := modules.FilesizeUnits(subDir.AggregateSize)
 			redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
 			if subDir.AggregateMinRedundancy == -1 {
 				redundancyStr = "-"
@@ -1825,9 +1826,9 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
-			size := skymodules.FilesizeUnits(file.Filesize)
+			size := modules.FilesizeUnits(file.Filesize)
 			availStr := yesNo(file.Available)
-			bytesUploaded := skymodules.FilesizeUnits(file.UploadedBytes)
+			bytesUploaded := modules.FilesizeUnits(file.UploadedBytes)
 			uploadStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
 			if file.UploadProgress == -1 {
 				uploadStr = "-"

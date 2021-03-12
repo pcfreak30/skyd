@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -22,7 +23,7 @@ func TestSegmentsForRecovery(t *testing.T) {
 	offset := fastrand.Intn(100)
 	length := fastrand.Intn(100)
 	startSeg, numSeg := segmentsForRecovery(uint64(offset), uint64(length), rscOld)
-	if startSeg != 0 || numSeg != skymodules.SectorSize/crypto.SegmentSize {
+	if startSeg != 0 || numSeg != modules.SectorSize/crypto.SegmentSize {
 		t.Fatal("segmentsForRecovery failed for legacy erasure coder")
 	}
 
@@ -79,7 +80,7 @@ func TestSectorOffsetAndLength(t *testing.T) {
 	offset := fastrand.Intn(100)
 	length := fastrand.Intn(100)
 	startSeg, numSeg := sectorOffsetAndLength(uint64(offset), uint64(length), rscOld)
-	if startSeg != 0 || numSeg != skymodules.SectorSize {
+	if startSeg != 0 || numSeg != modules.SectorSize {
 		t.Fatal("sectorOffsetAndLength failed for legacy erasure coder")
 	}
 
@@ -147,7 +148,7 @@ func TestCheckDownloadGouging(t *testing.T) {
 	//
 	// The cost is set to be exactly equal to the price gouging limit, such that
 	// slightly decreasing any of the values evades the price gouging detector.
-	minPriceTable := &skymodules.RPCPriceTable{
+	minPriceTable := &modules.RPCPriceTable{
 		ReadBaseCost:          types.SiacoinPrecision,
 		ReadLengthCost:        types.SiacoinPrecision.Div64(skymodules.StreamDownloadSize),
 		DownloadBandwidthCost: types.SiacoinPrecision.Div64(skymodules.StreamDownloadSize),
@@ -182,7 +183,7 @@ func TestCheckDownloadGouging(t *testing.T) {
 	// acceptable.
 	maxAllowance := minAllowance
 	maxAllowance.Funds = maxAllowance.Funds.Add(oneCurrency)
-	maxAllowance.MaxRPCPrice = skymodules.MDMReadCost(minPriceTable, skymodules.StreamDownloadSize).Add(oneCurrency)
+	maxAllowance.MaxRPCPrice = modules.MDMReadCost(minPriceTable, skymodules.StreamDownloadSize).Add(oneCurrency)
 	maxAllowance.MaxContractPrice = oneCurrency
 	maxAllowance.MaxDownloadBandwidthPrice = minPriceTable.DownloadBandwidthCost.Add(oneCurrency)
 	maxAllowance.MaxStoragePrice = oneCurrency

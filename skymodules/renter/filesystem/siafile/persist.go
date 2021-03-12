@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
@@ -28,20 +29,20 @@ var (
 // ApplyUpdates is a wrapper for applyUpdates that uses the production
 // dependencies.
 func ApplyUpdates(updates ...writeaheadlog.Update) error {
-	return applyUpdates(skymodules.ProdDependencies, updates...)
+	return applyUpdates(modules.ProdDependencies, updates...)
 }
 
 // LoadSiaFile is a wrapper for loadSiaFile that uses the production
 // dependencies.
 func LoadSiaFile(path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
-	return loadSiaFile(path, wal, skymodules.ProdDependencies)
+	return loadSiaFile(path, wal, modules.ProdDependencies)
 }
 
 // LoadSiaFileFromReader allows loading a SiaFile from a different location that
 // directly from disk as long as the source satisfies the SiaFileSource
 // interface.
 func LoadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL) (*SiaFile, error) {
-	return loadSiaFileFromReader(r, path, wal, skymodules.ProdDependencies)
+	return loadSiaFileFromReader(r, path, wal, modules.ProdDependencies)
 }
 
 // LoadSiaFileFromReaderWithChunks does not only read the header of the Siafile
@@ -73,7 +74,7 @@ func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeahe
 // LoadSiaFileMetadata is a wrapper for loadSiaFileMetadata that uses the
 // production dependencies.
 func LoadSiaFileMetadata(path string) (Metadata, error) {
-	return loadSiaFileMetadata(path, skymodules.ProdDependencies)
+	return loadSiaFileMetadata(path, modules.ProdDependencies)
 }
 
 // SetPartialChunks informs the SiaFile about a partial chunk that has been
@@ -176,7 +177,7 @@ func (sf *SiaFile) SetSiaFilePath(path string) {
 // SiaFile. This method can apply updates from different SiaFiles and should
 // only be run before the SiaFiles are loaded from disk right after the startup
 // of siad. Otherwise we might run into concurrency issues.
-func applyUpdates(deps skymodules.Dependencies, updates ...writeaheadlog.Update) error {
+func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := func() error {
 			switch u.Name {
@@ -224,7 +225,7 @@ func createDeletePartialUpdate(path string) writeaheadlog.Update {
 }
 
 // loadSiaFile loads a SiaFile from disk.
-func loadSiaFile(path string, wal *writeaheadlog.WAL, deps skymodules.Dependencies) (*SiaFile, error) {
+func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
 	// Open the file.
 	f, err := deps.Open(path)
 	if err != nil {
@@ -237,7 +238,7 @@ func loadSiaFile(path string, wal *writeaheadlog.WAL, deps skymodules.Dependenci
 // loadSiaFileFromReader allows loading a SiaFile from a different location that
 // directly from disk as long as the source satisfies the SiaFileSource
 // interface.
-func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL, deps skymodules.Dependencies) (*SiaFile, error) {
+func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
 	// Create the SiaFile
 	sf := &SiaFile{
 		deps:        deps,
@@ -313,7 +314,7 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 }
 
 // loadSiaFileMetadata loads only the metadata of a SiaFile from disk.
-func loadSiaFileMetadata(path string, deps skymodules.Dependencies) (md Metadata, err error) {
+func loadSiaFileMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
 	// Open the file.
 	f, err := deps.Open(path)
 	if err != nil {
@@ -337,7 +338,7 @@ func loadSiaFileMetadata(path string, deps skymodules.Dependencies) (md Metadata
 
 // readAndApplyDeleteUpdate reads the delete update and applies it. This helper
 // assumes that the file is not open
-func readAndApplyDeleteUpdate(deps skymodules.Dependencies, update writeaheadlog.Update) error {
+func readAndApplyDeleteUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
 	err := deps.RemoveFile(readDeleteUpdate(update))
 	if os.IsNotExist(err) {
 		return nil
@@ -348,7 +349,7 @@ func readAndApplyDeleteUpdate(deps skymodules.Dependencies, update writeaheadlog
 // readAndApplyInsertUpdate reads the insert update and applies it. This helper
 // assumes that the file is not open and so should only be called on start up
 // before any siafiles are loaded from disk
-func readAndApplyInsertUpdate(deps skymodules.Dependencies, update writeaheadlog.Update) (err error) {
+func readAndApplyInsertUpdate(deps modules.Dependencies, update writeaheadlog.Update) (err error) {
 	// Decode update.
 	path, index, data, err := readInsertUpdate(update)
 	if err != nil {
@@ -722,7 +723,7 @@ func (sf *SiaFile) createInsertUpdate(index int64, data []byte) writeaheadlog.Up
 
 // readAndApplyInsertUpdate reads the insert update for a SiaFile and then
 // applies it
-func (sf *SiaFile) readAndApplyInsertUpdate(f skymodules.File, update writeaheadlog.Update) error {
+func (sf *SiaFile) readAndApplyInsertUpdate(f modules.File, update writeaheadlog.Update) error {
 	// Decode update.
 	path, index, data, err := readInsertUpdate(update)
 	if err != nil {
@@ -745,7 +746,7 @@ func (sf *SiaFile) readAndApplyInsertUpdate(f skymodules.File, update writeahead
 }
 
 // ApplyTruncateUpdate parses and applies a truncate update.
-func (sf *SiaFile) readAndApplyTruncateUpdate(f skymodules.File, u writeaheadlog.Update) error {
+func (sf *SiaFile) readAndApplyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
 	if u.Name != writeaheadlog.NameTruncateUpdate {
 		return fmt.Errorf("applyTruncateUpdate called on update of type %v", u.Name)
 	}

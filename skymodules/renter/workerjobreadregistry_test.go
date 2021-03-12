@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestReadRegistryJob tests running a ReadRegistry job on a host.
@@ -35,13 +35,13 @@ func TestReadRegistryJob(t *testing.T) {
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(skymodules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := fastrand.Uint64n(1000)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := skymodules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -74,7 +74,7 @@ func TestReadRegistryInvalidCached(t *testing.T) {
 
 	deps := dependencies.NewDependencyRegistryUpdateNoOp()
 	deps.Disable()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,13 +88,13 @@ func TestReadRegistryInvalidCached(t *testing.T) {
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(skymodules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := fastrand.Uint64n(1000) + 1
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := skymodules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -141,7 +141,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 
 	deps := dependencies.NewDependencyRegistryUpdateNoOp()
 	deps.Disable()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,13 +155,13 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(skymodules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := fastrand.Uint64n(1000) + 1
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := skymodules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)

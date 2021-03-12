@@ -23,6 +23,7 @@ import (
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -68,10 +69,10 @@ type (
 	// DaemonAlertsGet contains information about currently registered alerts
 	// across all loaded skymodules.
 	DaemonAlertsGet struct {
-		Alerts         []skymodules.Alert `json:"alerts"`
-		CriticalAlerts []skymodules.Alert `json:"criticalalerts"`
-		ErrorAlerts    []skymodules.Alert `json:"erroralerts"`
-		WarningAlerts  []skymodules.Alert `json:"warningalerts"`
+		Alerts         []modules.Alert `json:"alerts"`
+		CriticalAlerts []modules.Alert `json:"criticalalerts"`
+		ErrorAlerts    []modules.Alert `json:"erroralerts"`
+		WarningAlerts  []modules.Alert `json:"warningalerts"`
 	}
 
 	// DaemonVersionGet contains information about the running daemon's version.
@@ -320,9 +321,9 @@ func updateToRelease(version string) (err error) {
 // loaded skymodules.
 func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// initialize slices to avoid "null" in response.
-	crit := make([]skymodules.Alert, 0, 6)
-	err := make([]skymodules.Alert, 0, 6)
-	warn := make([]skymodules.Alert, 0, 6)
+	crit := make([]modules.Alert, 0, 6)
+	err := make([]modules.Alert, 0, 6)
+	warn := make([]modules.Alert, 0, 6)
 	if api.gateway != nil {
 		c, e, w := api.gateway.Alerts()
 		crit = append(crit, c...)

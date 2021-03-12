@@ -13,18 +13,19 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/host/contractmanager"
 )
 
 var (
 	// Various folder sizes for testing host storage folder resizing.
 	// Must be provided as strings to the API call.
-	tooSmallFolderString   = strconv.FormatUint(skymodules.SectorSize*(contractmanager.MinimumSectorsPerStorageFolder-1), 10)
-	tooLargeFolderString   = strconv.FormatUint(skymodules.SectorSize*(contractmanager.MaximumSectorsPerStorageFolder+1), 10)
-	mediumSizeFolderString = strconv.FormatUint(skymodules.SectorSize*contractmanager.MinimumSectorsPerStorageFolder*3, 10)
+	tooSmallFolderString   = strconv.FormatUint(modules.SectorSize*(contractmanager.MinimumSectorsPerStorageFolder-1), 10)
+	tooLargeFolderString   = strconv.FormatUint(modules.SectorSize*(contractmanager.MaximumSectorsPerStorageFolder+1), 10)
+	mediumSizeFolderString = strconv.FormatUint(modules.SectorSize*contractmanager.MinimumSectorsPerStorageFolder*3, 10)
 
 	// Test cases for resizing a host's storage folder.
 	// Running all the invalid cases before the valid ones simplifies some
@@ -37,17 +38,17 @@ var (
 		// invalid sizes
 		{"", 0, io.EOF},
 		{"0", 0, contractmanager.ErrSmallStorageFolder},
-		{tooSmallFolderString, skymodules.SectorSize * (contractmanager.MinimumSectorsPerStorageFolder - 1), contractmanager.ErrSmallStorageFolder},
-		{tooLargeFolderString, skymodules.SectorSize * (contractmanager.MaximumSectorsPerStorageFolder + 1), contractmanager.ErrLargeStorageFolder},
+		{tooSmallFolderString, modules.SectorSize * (contractmanager.MinimumSectorsPerStorageFolder - 1), contractmanager.ErrSmallStorageFolder},
+		{tooLargeFolderString, modules.SectorSize * (contractmanager.MaximumSectorsPerStorageFolder + 1), contractmanager.ErrLargeStorageFolder},
 
 		// valid sizes
 		//
 		// TODO: Re-enable these when the host can support resizing into the
 		// same folder.
 		//
-		// {minFolderSizeString, contractmanager.MinimumSectorsPerStorageFolder * skymodules.SectorSize, nil},
-		// {maxFolderSizeString, contractmanager.MaximumSectorsPerStorageFolder * skymodules.SectorSize, nil},
-		// {mediumSizeFolderString, 3 * contractmanager.MinimumSectorsPerStorageFolder * skymodules.SectorSize, nil},
+		// {minFolderSizeString, contractmanager.MinimumSectorsPerStorageFolder * modules.SectorSize, nil},
+		// {maxFolderSizeString, contractmanager.MaximumSectorsPerStorageFolder * modules.SectorSize, nil},
+		// {mediumSizeFolderString, 3 * contractmanager.MinimumSectorsPerStorageFolder * modules.SectorSize, nil},
 	}
 )
 
@@ -265,7 +266,7 @@ func TestWorkingStatus(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if hg.WorkingStatus != skymodules.HostWorkingStatusWorking {
+		if hg.WorkingStatus != modules.HostWorkingStatusWorking {
 			return errors.New("expected host to be working")
 		}
 		return nil
@@ -301,7 +302,7 @@ func TestConnectabilityStatus(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if hg.ConnectabilityStatus != skymodules.HostConnectabilityStatusConnectable {
+		if hg.ConnectabilityStatus != modules.HostConnectabilityStatusConnectable {
 			return errors.New("expected host to be connectable")
 		}
 		return nil
@@ -398,8 +399,8 @@ func TestStorageHandler(t *testing.T) {
 	if sg.Folders[0].SuccessfulWrites != 1 {
 		t.Fatalf("expected 1 successful write, got %v", sg.Folders[0].SuccessfulWrites)
 	}
-	if used := sg.Folders[0].Capacity - sg.Folders[0].CapacityRemaining; used != skymodules.SectorSize {
-		t.Fatalf("expected used capacity to be the size of one sector (%v bytes), got %v bytes", skymodules.SectorSize, used)
+	if used := sg.Folders[0].Capacity - sg.Folders[0].CapacityRemaining; used != modules.SectorSize {
+		t.Fatalf("expected used capacity to be the size of one sector (%v bytes), got %v bytes", modules.SectorSize, used)
 	}
 }
 
@@ -683,8 +684,8 @@ func TestResizeNonemptyStorageFolder(t *testing.T) {
 			}
 			// Since one sector has been uploaded, the available capacity
 			// should be one sector size smaller than the total capacity.
-			if used := test.size - sg.Folders[0].CapacityRemaining; used != skymodules.SectorSize {
-				t.Fatalf("used capacity (%v) != the size of 1 sector (%v)", used, skymodules.SectorSize)
+			if used := test.size - sg.Folders[0].CapacityRemaining; used != modules.SectorSize {
+				t.Fatalf("used capacity (%v) != the size of 1 sector (%v)", used, modules.SectorSize)
 			}
 		} else {
 			// If the test size is invalid, the folder should not have been

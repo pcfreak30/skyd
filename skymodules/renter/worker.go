@@ -19,9 +19,9 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -239,7 +239,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticRegistryCache: newRegistryCache(registryCacheSize),
 
 		staticSubscriptionInfo: &subscriptionInfos{
-			subscriptions:  make(map[skymodules.SubscriptionID]*subscription),
+			subscriptions:  make(map[modules.SubscriptionID]*subscription),
 			staticWakeChan: make(chan struct{}, 1),
 		},
 

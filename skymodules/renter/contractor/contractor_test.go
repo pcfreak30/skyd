@@ -11,15 +11,16 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus"
+	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/consensus"
-	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
-	"gitlab.com/skynetlabs/skyd/skymodules/transactionpool"
-	"gitlab.com/skynetlabs/skyd/skymodules/wallet"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -39,25 +40,25 @@ func tryClose(cf closeFn, t *testing.T) {
 }
 
 // newModules initializes the modules needed to test creating a new contractor
-func newModules(testdir string) (skymodules.ConsensusSet, skymodules.Wallet, skymodules.TransactionPool, *siamux.SiaMux, skymodules.HostDB, closeFn, error) {
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
+func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, *siamux.SiaMux, skymodules.HostDB, closeFn, error) {
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
+	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
@@ -73,11 +74,11 @@ func newModules(testdir string) (skymodules.ConsensusSet, skymodules.Wallet, sky
 
 // newStream is a helper to get a ready-to-use stream that is connected to a
 // host.
-func newStream(mux *siamux.SiaMux, h skymodules.Host) (siamux.Stream, error) {
+func newStream(mux *siamux.SiaMux, h modules.Host) (siamux.Stream, error) {
 	hes := h.ExternalSettings()
 	muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
-	muxPK := skymodules.SiaPKToMuxPK(h.PublicKey())
-	return mux.NewStream(skymodules.HostSiaMuxSubscriberName, muxAddress, muxPK)
+	muxPK := modules.SiaPKToMuxPK(h.PublicKey())
+	return mux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, muxPK)
 }
 
 // TestNew tests the New function.
@@ -156,8 +157,8 @@ func TestIntegrationSetAllowance(t *testing.T) {
 
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +172,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	defer tryClose(cf, t)
 
 	// this test requires two hosts: create another one
-	h, hostCF, err := newTestingHost(build.TempDir("hostdata", ""), c.cs.(skymodules.ConsensusSet), c.tpool.(skymodules.TransactionPool), mux)
+	h, hostCF, err := newTestingHost(build.TempDir("hostdata", ""), c.cs.(modules.ConsensusSet), c.tpool.(modules.TransactionPool), mux)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,23 +502,23 @@ func TestPayment(t *testing.T) {
 
 	// newStream is a helper to get a ready-to-use stream that is connected to a
 	// host.
-	newStream := func(mux *siamux.SiaMux, h skymodules.Host) (siamux.Stream, error) {
+	newStream := func(mux *siamux.SiaMux, h modules.Host) (siamux.Stream, error) {
 		hes := h.ExternalSettings()
 		muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
-		muxPK := skymodules.SiaPKToMuxPK(h.PublicKey())
-		return mux.NewStream(skymodules.HostSiaMuxSubscriberName, muxAddress, muxPK)
+		muxPK := modules.SiaPKToMuxPK(h.PublicKey())
+		return mux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, muxPK)
 	}
 
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create a testing trio with our mux injected
-	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, skymodules.ProdDependencies, skymodules.ProdDependencies)
+	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, modules.ProdDependencies, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +532,7 @@ func TestPayment(t *testing.T) {
 	}
 
 	// create a refund account
-	aid, _ := skymodules.NewAccountID()
+	aid, _ := modules.NewAccountID()
 
 	// Fetch the contracts, there's a race condition between contract creation
 	// and the contractor knowing the contract exists, so do this in a retry.
@@ -561,20 +562,20 @@ func TestPayment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = skymodules.RPCWrite(stream, skymodules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// read the updated response
-	var update skymodules.RPCUpdatePriceTableResponse
-	err = skymodules.RPCRead(stream, &update)
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// unmarshal the JSON into a price table
-	var pt skymodules.RPCPriceTable
+	var pt modules.RPCPriceTable
 	err = json.Unmarshal(update.PriceTableJSON, &pt)
 	if err != nil {
 		t.Fatal(err)
@@ -599,8 +600,8 @@ func TestPayment(t *testing.T) {
 	}
 
 	// await the track response
-	var tracked skymodules.RPCTrackedPriceTableResponse
-	err = skymodules.RPCRead(stream, &tracked)
+	var tracked modules.RPCTrackedPriceTableResponse
+	err = modules.RPCRead(stream, &tracked)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,19 +628,19 @@ func TestPayment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = skymodules.RPCWrite(buffer, skymodules.RPCFundAccount)
+	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// write the price table uid
-	err = skymodules.RPCWrite(buffer, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// send fund account request (re-use the refund account)
-	err = skymodules.RPCWrite(buffer, skymodules.FundAccountRequest{Account: aid})
+	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: aid})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -660,7 +661,7 @@ func TestPayment(t *testing.T) {
 	details = PaymentDetails{
 		Host:          hpk,
 		Amount:        funding.Add(pt.FundAccountCost),
-		RefundAccount: skymodules.ZeroAccountID,
+		RefundAccount: modules.ZeroAccountID,
 		SpendingDetails: skymodules.SpendingDetails{
 			FundAccountSpending: funding,
 			MaintenanceSpending: skymodules.MaintenanceSpending{
@@ -674,8 +675,8 @@ func TestPayment(t *testing.T) {
 	}
 
 	// receive response
-	var resp skymodules.FundAccountResponse
-	err = skymodules.RPCRead(stream, &resp)
+	var resp modules.FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -827,15 +828,15 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
-	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
-	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create a testing trio with our mux injected
 	deps := &dependencies.DependencyStorageObligationNotFound{}
-	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, deps, skymodules.ProdDependencies)
+	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, deps, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -849,7 +850,7 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 	}
 
 	// create a refund account
-	aid, _ := skymodules.NewAccountID()
+	aid, _ := modules.NewAccountID()
 
 	// Fetch the contracts, there's a race condition between contract creation
 	// and the contractor knowing the contract exists, so do this in a retry.
@@ -872,20 +873,20 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// write the rpc id
-	err = skymodules.RPCWrite(stream, skymodules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// read the updated response
-	var update skymodules.RPCUpdatePriceTableResponse
-	err = skymodules.RPCRead(stream, &update)
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// unmarshal the JSON into a price table
-	var pt skymodules.RPCPriceTable
+	var pt modules.RPCPriceTable
 	err = json.Unmarshal(update.PriceTableJSON, &pt)
 	if err != nil {
 		t.Fatal(err)

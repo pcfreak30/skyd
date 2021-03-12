@@ -1,12 +1,10 @@
 package renter
 
-import (
-	"gitlab.com/skynetlabs/skyd/skymodules"
-)
+import "gitlab.com/NebulousLabs/Sia/modules"
 
-// Alerts implements the skymodules.Alerter interface for the renter. It returns
+// Alerts implements the modules.Alerter interface for the renter. It returns
 // all alerts of the renter and its subskymodules.
-func (r *Renter) Alerts() (crit, err, warn []skymodules.Alert) {
+func (r *Renter) Alerts() (crit, err, warn []modules.Alert) {
 	renterCrit, renterErr, renterWarn := r.staticAlerter.Alerts()
 	contractorCrit, contractorErr, contractorWarn := r.hostContractor.Alerts()
 	hostdbCrit, hostdbErr, hostdbWarn := r.hostDB.Alerts()

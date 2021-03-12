@@ -15,6 +15,7 @@ import (
 
 	"github.com/aead/chacha20/chacha"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skykey"
@@ -65,7 +66,7 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
 	// Sanity Check
 	totalSize := len(layoutBytes) + len(fanoutBytes) + len(metadataBytes) + len(fileBytes)
-	if uint64(totalSize) > SectorSize {
+	if uint64(totalSize) > modules.SectorSize {
 		err := fmt.Errorf("inputs too large for baseSector: totalSize %v, layoutBytes %v, fanoutBytes %v, metadataBytes %v, fileBytes %v",
 			totalSize, len(layoutBytes), len(fanoutBytes), len(metadataBytes), len(fileBytes))
 		build.Critical(err)
@@ -73,7 +74,7 @@ func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) 
 	}
 
 	// Build baseSector
-	baseSector := make([]byte, SectorSize)
+	baseSector := make([]byte, modules.SectorSize)
 	offset := 0
 	copy(baseSector[offset:], layoutBytes)
 	offset += len(layoutBytes)
@@ -113,10 +114,10 @@ func DecodeFanout(sl SkyfileLayout, fanoutBytes []byte) (piecesPerChunk, chunkRo
 // Skykey, it will decrypt the baseSector in-place.It returns the file-specific
 // skykey to be used for decrypting the rest of the associated skyfile.
 func DecryptBaseSector(baseSector []byte, sk skykey.Skykey) (skykey.Skykey, error) {
-	// Sanity check - baseSector should not be more than SectorSize.
+	// Sanity check - baseSector should not be more than modules.SectorSize.
 	// Note that the base sector may be smaller in the event of a packed
 	// skyfile.
-	if uint64(len(baseSector)) > SectorSize {
+	if uint64(len(baseSector)) > modules.SectorSize {
 		build.Critical("decryptBaseSector given a baseSector that is too large")
 		return skykey.Skykey{}, errors.New("baseSector too large")
 	}
@@ -230,10 +231,10 @@ func IsEncryptedLayout(sl SkyfileLayout) bool {
 // ParseSkyfileMetadata will pull the metadata (including layout and fanout) out
 // of a skyfile.
 func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, baseSectorPayload []byte, err error) {
-	// Sanity check - baseSector should not be more than SectorSize.
+	// Sanity check - baseSector should not be more than modules.SectorSize.
 	// Note that the base sector may be smaller in the event of a packed
 	// skyfile.
-	if uint64(len(baseSector)) > SectorSize {
+	if uint64(len(baseSector)) > modules.SectorSize {
 		build.Critical("parseSkyfileMetadata given a baseSector that is too large")
 	}
 
@@ -249,7 +250,7 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 
 	// Currently there is no support for skyfiles with fanout + metadata that
 	// exceeds the base sector.
-	if offset+sl.FanoutSize+sl.MetadataSize > uint64(len(baseSector)) || sl.FanoutSize > SectorSize || sl.MetadataSize > SectorSize {
+	if offset+sl.FanoutSize+sl.MetadataSize > uint64(len(baseSector)) || sl.FanoutSize > modules.SectorSize || sl.MetadataSize > modules.SectorSize {
 		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, errors.New("this version of siad does not support skyfiles with large fanouts and metadata")
 	}
 

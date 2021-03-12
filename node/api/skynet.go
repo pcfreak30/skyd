@@ -16,6 +16,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -104,7 +105,7 @@ type (
 	// POST endpoint to be called.
 	SkynetPortalsPOST struct {
 		Add    []skymodules.SkynetPortal `json:"add"`
-		Remove []skymodules.NetAddress   `json:"remove"`
+		Remove []modules.NetAddress      `json:"remove"`
 	}
 
 	// SkynetRestorePOST is the response that the api returns after the
@@ -1419,13 +1420,13 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 
 	// Check data length here to be able to offer a better and faster error
 	// message than when the hosts return it.
-	if len(rhp.Data) > skymodules.RegistryDataSize {
-		WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(rhp.Data), skymodules.RegistryDataSize)}, http.StatusBadRequest)
+	if len(rhp.Data) > modules.RegistryDataSize {
+		WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(rhp.Data), modules.RegistryDataSize)}, http.StatusBadRequest)
 		return
 	}
 
 	// Update the registry.
-	srv := skymodules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
+	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
 	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
 		skynetPerformanceStatsMu.Lock()

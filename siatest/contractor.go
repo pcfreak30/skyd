@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -290,7 +291,7 @@ func DrainContractsByUploading(renter *TestNode, tg *TestGroup) (startingUploadS
 
 	// Renew contracts by running out of funds
 	// Set upload price to max price
-	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(skymodules.BlockBytesPerMonthTerabyte)
+	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
 	maxUploadPrice := maxStoragePrice.Mul64(100 * uint64(types.BlocksPerMonth))
 	hosts := tg.Hosts()
 	for _, h := range hosts {

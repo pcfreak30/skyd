@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -47,7 +47,7 @@ type (
 
 	// jobReadRegistryResponse contains the result of a ReadRegistry query.
 	jobReadRegistryResponse struct {
-		staticSignedRegistryValue *skymodules.SignedRegistryValue
+		staticSignedRegistryValue *modules.SignedRegistryValue
 		staticErr                 error
 		staticCompleteTime        time.Time
 	}
@@ -55,22 +55,22 @@ type (
 
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
-func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash) (skymodules.SignedRegistryValue, error) {
+func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
 	if len(resp) < crypto.SignatureSize+8 {
-		return skymodules.SignedRegistryValue{}, errors.New("failed to parse response due to invalid size")
+		return modules.SignedRegistryValue{}, errors.New("failed to parse response due to invalid size")
 	}
 	var sig crypto.Signature
 	copy(sig[:], resp[:crypto.SignatureSize])
 	rev := binary.LittleEndian.Uint64(resp[crypto.SignatureSize:])
 	data := resp[crypto.SignatureSize+8:]
-	return skymodules.NewSignedRegistryValue(tweak, data, rev, sig), nil
+	return modules.NewSignedRegistryValue(tweak, data, rev, sig), nil
 }
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
-func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*skymodules.SignedRegistryValue, error) {
+func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
-	pb := skymodules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
+	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
 	var refund types.Currency
 	var err error
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
@@ -86,7 +86,7 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*skym
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := readRegistryJobExpectedBandwidth()
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
@@ -161,7 +161,7 @@ func (j *jobReadRegistry) callExecute() {
 	w := j.staticQueue.staticWorker()
 
 	// Prepare a method to send a response asynchronously.
-	sendResponse := func(srv *skymodules.SignedRegistryValue, err error) {
+	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.renter.tg.Launch(func() {
 			response := &jobReadRegistryResponse{
 				staticCompleteTime:        time.Now(),
@@ -236,7 +236,7 @@ func (w *worker) initJobReadRegistryQueue() {
 }
 
 // ReadRegistry is a helper method to run a ReadRegistry job on a worker.
-func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (*skymodules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
 	jur := w.newJobReadRegistry(ctx, readRegistryRespChan, spk, tweak)
 

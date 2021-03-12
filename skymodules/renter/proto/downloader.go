@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -21,7 +22,7 @@ type Downloader struct {
 	conn        net.Conn
 	contractID  types.FileContractID
 	contractSet *ContractSet
-	deps        skymodules.Dependencies
+	deps        modules.Dependencies
 	hdb         hostDB
 	host        skymodules.HostDBEntry
 	once        sync.Once
@@ -35,7 +36,7 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ skymo
 	// Reset deadline when finished.
 	defer extendDeadline(hd.conn, time.Hour) // TODO: Constant.
 
-	if uint64(offset)+uint64(length) > skymodules.SectorSize {
+	if uint64(offset)+uint64(length) > modules.SectorSize {
 		return skymodules.RenterContract{}, nil, errors.New("illegal offset and/or length")
 	}
 
@@ -49,7 +50,7 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ skymo
 	contract := sc.header // for convenience
 
 	// calculate price
-	sectorPrice := hd.host.DownloadBandwidthPrice.Mul64(skymodules.SectorSize)
+	sectorPrice := hd.host.DownloadBandwidthPrice.Mul64(modules.SectorSize)
 	if contract.RenterFunds().Cmp(sectorPrice) < 0 {
 		return skymodules.RenterContract{}, nil, errors.New("contract has insufficient funds to support download")
 	}
@@ -64,7 +65,7 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ skymo
 	}
 
 	// initiate download by confirming host settings
-	extendDeadline(hd.conn, skymodules.NegotiateSettingsTime)
+	extendDeadline(hd.conn, modules.NegotiateSettingsTime)
 	if err := startDownload(hd.conn, hd.host); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
@@ -79,10 +80,10 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ skymo
 
 	// send download action
 	extendDeadline(hd.conn, 2*time.Minute) // TODO: Constant.
-	err = encoding.WriteObject(hd.conn, []skymodules.DownloadAction{{
+	err = encoding.WriteObject(hd.conn, []modules.DownloadAction{{
 		MerkleRoot: root,
 		Offset:     0,
-		Length:     skymodules.SectorSize,
+		Length:     modules.SectorSize,
 	}})
 	if err != nil {
 		return skymodules.RenterContract{}, nil, err
@@ -92,7 +93,7 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ skymo
 	defer func() {
 		// Ignore ErrStopResponse and closed network connecton errors since
 		// they are not considered a failed interaction with the host.
-		if err != nil && !errors.Contains(err, skymodules.ErrStopResponse) && !strings.Contains(err.Error(), "use of closed network connection") {
+		if err != nil && !errors.Contains(err, modules.ErrStopResponse) && !strings.Contains(err.Error(), "use of closed network connection") {
 			hd.hdb.IncrementFailedInteractions(contract.HostPublicKey())
 			err = errors.Extend(err, skymodules.ErrHostFault)
 		} else {
@@ -109,7 +110,7 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ skymo
 	// send the revision to the host for approval
 	extendDeadline(hd.conn, connTimeout)
 	signedTxn, err := negotiateRevision(hd.conn, rev, contract.SecretKey, hd.height)
-	if errors.Contains(err, skymodules.ErrStopResponse) {
+	if errors.Contains(err, modules.ErrStopResponse) {
 		// If the host wants to stop communicating after this iteration, close
 		// our connection; this will cause the next download to fail. However,
 		// we must delay closing until we've finished downloading the sector.
@@ -127,15 +128,15 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ skymo
 	}
 
 	// read sector data, completing one iteration of the download loop
-	extendDeadline(hd.conn, skymodules.NegotiateDownloadTime)
+	extendDeadline(hd.conn, modules.NegotiateDownloadTime)
 	var sectors [][]byte
-	if err := encoding.ReadObject(hd.conn, &sectors, skymodules.SectorSize+16); err != nil {
+	if err := encoding.ReadObject(hd.conn, &sectors, modules.SectorSize+16); err != nil {
 		return skymodules.RenterContract{}, nil, err
 	} else if len(sectors) != 1 {
 		return skymodules.RenterContract{}, nil, errors.New("host did not send enough sectors")
 	}
 	sector := sectors[0]
-	if uint64(len(sector)) != skymodules.SectorSize {
+	if uint64(len(sector)) != modules.SectorSize {
 		return skymodules.RenterContract{}, nil, errors.New("host did not send enough sector data")
 	} else if crypto.MerkleRoot(sector) != root {
 		return skymodules.RenterContract{}, nil, errors.New("host sent bad sector data")
@@ -153,10 +154,10 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ skymo
 // shutdown terminates the revision loop and signals the goroutine spawned in
 // NewDownloader to return.
 func (hd *Downloader) shutdown() {
-	extendDeadline(hd.conn, skymodules.NegotiateSettingsTime)
+	extendDeadline(hd.conn, modules.NegotiateSettingsTime)
 	// don't care about these errors
 	_, _ = verifySettings(hd.conn, hd.host)
-	_ = skymodules.WriteNegotiationStop(hd.conn)
+	_ = modules.WriteNegotiationStop(hd.conn)
 	close(hd.closeChan)
 }
 
@@ -179,7 +180,7 @@ func (cs *ContractSet) NewDownloader(host skymodules.HostDBEntry, id types.FileC
 	contract := sc.header
 
 	// check that contract has enough value to support a download
-	sectorPrice := host.DownloadBandwidthPrice.Mul64(skymodules.SectorSize)
+	sectorPrice := host.DownloadBandwidthPrice.Mul64(modules.SectorSize)
 	if contract.RenterFunds().Cmp(sectorPrice) < 0 {
 		return nil, errors.New("contract has insufficient funds to support download")
 	}
@@ -195,7 +196,7 @@ func (cs *ContractSet) NewDownloader(host skymodules.HostDBEntry, id types.FileC
 		}
 	}()
 
-	conn, closeChan, err := initiateRevisionLoop(host, sc, skymodules.RPCDownload, cancel, cs.staticRL)
+	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCDownload, cancel, cs.staticRL)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to initiate revision loop")
 	}

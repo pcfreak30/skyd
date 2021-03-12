@@ -11,11 +11,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -177,7 +177,7 @@ func hostcmd() {
 	}
 
 	// convert price from bytes/block to TB/Month
-	price := currencyUnits(is.MinStoragePrice.Mul(skymodules.BlockBytesPerMonthTerabyte))
+	price := currencyUnits(is.MinStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte))
 	// calculate total revenue
 	totalRevenue := fm.ContractCompensation.
 		Add(fm.StorageRevenue).
@@ -269,27 +269,27 @@ RPC Stats:
 			es.Version,
 
 			yesNo(is.AcceptingContracts),
-			skymodules.FilesizeUnits(is.MaxDownloadBatchSize),
+			modules.FilesizeUnits(is.MaxDownloadBatchSize),
 			periodUnits(is.MaxDuration),
-			skymodules.FilesizeUnits(is.MaxReviseBatchSize),
+			modules.FilesizeUnits(is.MaxReviseBatchSize),
 			netaddr,
 			is.WindowSize/6,
 
-			currencyUnits(is.Collateral.Mul(skymodules.BlockBytesPerMonthTerabyte)),
+			currencyUnits(is.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)),
 			currencyUnits(is.CollateralBudget),
 			currencyUnits(is.MaxCollateral),
 
 			currencyUnits(is.MinBaseRPCPrice),
 			currencyUnits(is.MinContractPrice),
-			currencyUnits(is.MinDownloadBandwidthPrice.Mul(skymodules.BytesPerTerabyte)),
+			currencyUnits(is.MinDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
 			currencyUnits(is.MinSectorAccessPrice),
-			currencyUnits(is.MinStoragePrice.Mul(skymodules.BlockBytesPerMonthTerabyte)),
-			currencyUnits(is.MinUploadBandwidthPrice.Mul(skymodules.BytesPerTerabyte)),
+			currencyUnits(is.MinStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
+			currencyUnits(is.MinUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
 
 			is.EphemeralAccountExpiry.Seconds(),
 			currencyUnits(is.MaxEphemeralAccountBalance),
 			currencyUnits(is.MaxEphemeralAccountRisk),
-			skymodules.FilesizeUnits(is.RegistrySize),
+			modules.FilesizeUnits(is.RegistrySize),
 			is.CustomRegistryPath,
 
 			fm.ContractCount, currencyUnits(fm.ContractCompensation),
@@ -326,8 +326,8 @@ RPC Stats:
 `,
 			connectabilityString,
 
-			skymodules.FilesizeUnits(totalstorage),
-			skymodules.FilesizeUnits(totalstorage-storageremaining), price,
+			modules.FilesizeUnits(totalstorage),
+			modules.FilesizeUnits(totalstorage-storageremaining), price,
 			periodUnits(is.MaxDuration),
 
 			yesNo(is.AcceptingContracts), currencyUnits(totalPotentialRevenue),
@@ -359,7 +359,7 @@ RPC Stats:
 	for _, folder := range sg.Folders {
 		curSize := int64(folder.Capacity - folder.CapacityRemaining)
 		pctUsed := 100 * (float64(curSize) / float64(folder.Capacity))
-		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", skymodules.FilesizeUnits(uint64(curSize)), skymodules.FilesizeUnits(folder.Capacity), pctUsed, folder.Path)
+		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", modules.FilesizeUnits(uint64(curSize)), modules.FilesizeUnits(folder.Capacity), pctUsed, folder.Path)
 	}
 	if err := w.Flush(); err != nil {
 		die("failed to flush writer")
@@ -385,7 +385,7 @@ func hostconfigcmd(param, value string) {
 			die("Could not parse "+param+":", err)
 		}
 		i, _ := new(big.Int).SetString(hastings, 10)
-		c := types.NewCurrency(i).Div(skymodules.BytesPerTerabyte)
+		c := types.NewCurrency(i).Div(modules.BytesPerTerabyte)
 		value = c.String()
 
 	// currency/TB/month (convert to hastings/byte/block)
@@ -395,7 +395,7 @@ func hostconfigcmd(param, value string) {
 			die("Could not parse "+param+":", err)
 		}
 		i, _ := new(big.Int).SetString(hastings, 10)
-		c := types.NewCurrency(i).Div(skymodules.BlockBytesPerMonthTerabyte)
+		c := types.NewCurrency(i).Div(modules.BlockBytesPerMonthTerabyte)
 		value = c.String()
 
 	// bool (allow "yes" and "no")
@@ -492,7 +492,7 @@ func hostannouncecmd(cmd *cobra.Command, args []string) {
 	case 0:
 		err = httpClient.HostAnnouncePost()
 	case 1:
-		err = httpClient.HostAnnounceAddrPost(skymodules.NetAddress(args[0]))
+		err = httpClient.HostAnnounceAddrPost(modules.NetAddress(args[0]))
 	default:
 		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
@@ -521,8 +521,8 @@ func hostfolderaddcmd(path, size string) {
 	// round size down to nearest multiple of 256MiB
 	var sizeUint64 uint64
 	fmt.Sscan(size, &sizeUint64)
-	sizeUint64 /= 64 * skymodules.SectorSize
-	sizeUint64 *= 64 * skymodules.SectorSize
+	sizeUint64 /= 64 * modules.SectorSize
+	sizeUint64 *= 64 * modules.SectorSize
 
 	err = httpClient.HostStorageFoldersAddPost(abs(path), sizeUint64)
 	if err != nil {
@@ -559,8 +559,8 @@ func hostfolderresizecmd(path, newsize string) {
 	// round size down to nearest multiple of 256MiB
 	var sizeUint64 uint64
 	fmt.Sscan(newsize, &sizeUint64)
-	sizeUint64 /= 64 * skymodules.SectorSize
-	sizeUint64 *= 64 * skymodules.SectorSize
+	sizeUint64 /= 64 * modules.SectorSize
+	sizeUint64 *= 64 * modules.SectorSize
 
 	err = httpClient.HostStorageFoldersResizePost(abs(path), sizeUint64)
 	if err != nil {

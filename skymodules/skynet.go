@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -207,8 +208,8 @@ type (
 
 	// SkynetPortal contains information identifying a Skynet portal.
 	SkynetPortal struct {
-		Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
-		Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
+		Address modules.NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
+		Public  bool               `json:"public"`  // indicates whether the portal can be accessed publicly or not
 
 	}
 
@@ -544,12 +545,12 @@ func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
 }
 
 // PayMonetizers is a helper method for paying out monetizers.
-func PayMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency) error {
+func PayMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency) error {
 	return payMonetizers(w, monetization, downloadedData, totalData, conversionRates, monetizationBase, fastrand.Reader)
 }
 
 // payMonetizers is a helper method for paying out monetizers.
-func payMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency, rand io.Reader) error {
+func payMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency, rand io.Reader) error {
 	// If there is no monetization, there is nothing for us to do.
 	if monetization == nil {
 		return nil

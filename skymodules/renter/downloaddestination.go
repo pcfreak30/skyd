@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -115,7 +116,7 @@ func (dw *downloadDestinationBuffer) WritePieces(_ skymodules.ErasureCoder, piec
 
 // downloadDestinationFile wraps an os.File into a downloadDestination.
 type downloadDestinationFile struct {
-	deps            skymodules.Dependencies
+	deps            modules.Dependencies
 	f               *os.File
 	staticChunkSize int64
 }

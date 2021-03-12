@@ -318,7 +318,7 @@ log repo.
 ## Mar 25, 2020:
 ### v1.4.6
 **Bugs Fixed**
-- Fix panic when metadata of skyfile upload exceeds skymodules.SectorSize
+- Fix panic when metadata of skyfile upload exceeds modules.SectorSize
 - Fix curl example for `/skynet/skyfile/` post
 
 ## Mar 24, 2020:

@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -35,14 +35,14 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	// create the program
 	w := j.staticQueue.staticWorker()
 	pt := w.staticPriceTable().staticPriceTable
-	pb := skymodules.NewProgramBuilder(&pt, 0) // 0 duration since ReadSector doesn't depend on it.
+	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadSector doesn't depend on it.
 	pb.AddReadSectorInstruction(j.staticLength, j.staticOffset, j.staticSector, true)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	responses, err := j.jobRead.managedRead(w, program, programData, cost)

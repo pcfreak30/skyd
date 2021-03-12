@@ -6,16 +6,16 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // Delete deltes an entry from the cache without replacing it. Should only be
 // used in testing.
-func (rc *registryRevisionCache) Delete(pubKey types.SiaPublicKey, rv skymodules.SignedRegistryValue) {
+func (rc *registryRevisionCache) Delete(pubKey types.SiaPublicKey, rv modules.SignedRegistryValue) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	mapKey := crypto.HashAll(pubKey, rv.Tweak)
@@ -53,10 +53,10 @@ func TestRegistryCache(t *testing.T) {
 	}
 
 	// Declare a helper to create registry values.
-	registryValue := func(tweak, revNum uint64) skymodules.SignedRegistryValue {
+	registryValue := func(tweak, revNum uint64) modules.SignedRegistryValue {
 		var t crypto.Hash
 		binary.LittleEndian.PutUint64(t[:], tweak)
-		return skymodules.NewSignedRegistryValue(t, []byte{}, revNum, crypto.Signature{})
+		return modules.NewSignedRegistryValue(t, []byte{}, revNum, crypto.Signature{})
 	}
 
 	// Set an entry.

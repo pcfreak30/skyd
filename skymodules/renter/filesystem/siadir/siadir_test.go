@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
@@ -142,7 +143,7 @@ func TestNewSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Get SiaDir
-	topSiaDir, err := LoadSiaDir(topDir, skymodules.ProdDependencies, wal)
+	topSiaDir, err := LoadSiaDir(topDir, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +156,7 @@ func TestNewSiaDir(t *testing.T) {
 	// Check Root Directory
 	//
 	// Get SiaDir
-	rootSiaDir, err := LoadSiaDir(testDir, skymodules.ProdDependencies, wal)
+	rootSiaDir, err := LoadSiaDir(testDir, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +205,7 @@ func TestUpdateMetadata(t *testing.T) {
 	if err = checkMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
-	siaDir, err = LoadSiaDir(siaDirSysPath, skymodules.ProdDependencies, wal)
+	siaDir, err = LoadSiaDir(siaDirSysPath, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +228,7 @@ func TestUpdateMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaDir, err = LoadSiaDir(siaDirSysPath, skymodules.ProdDependencies, wal)
+	siaDir, err = LoadSiaDir(siaDirSysPath, modules.ProdDependencies, wal)
 	if err != nil {
 		t.Fatal(err)
 	}

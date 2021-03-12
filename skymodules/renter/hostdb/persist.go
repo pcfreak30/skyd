@@ -4,8 +4,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb/hosttree"
 )
@@ -29,7 +30,7 @@ type hdbPersist struct {
 	BlockHeight              types.BlockHeight
 	DisableIPViolationsCheck bool
 	KnownContracts           map[string]contractInfo
-	LastChange               skymodules.ConsensusChangeID
+	LastChange               modules.ConsensusChangeID
 	FilteredHosts            map[string]types.SiaPublicKey
 	FilterMode               skymodules.FilterMode
 }
@@ -70,7 +71,7 @@ func (hdb *HostDB) load() error {
 	hdb.filterMode = data.FilterMode
 
 	if len(hdb.filteredHosts) > 0 {
-		hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, skymodules.ProdDependencies.Resolver())
+		hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
 	}
 
 	// Load each of the hosts into the host trees.

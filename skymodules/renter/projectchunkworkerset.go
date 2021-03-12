@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -191,7 +192,7 @@ func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS type
 // frequently open large movies without watching the full movie), or
 // significantly more than one download per pcws (for multi-user nodes where
 // users most commonly are using the same file over and over).
-func checkPCWSGouging(pt skymodules.RPCPriceTable, allowance skymodules.Allowance, numWorkers int, numRoots int) error {
+func checkPCWSGouging(pt modules.RPCPriceTable, allowance skymodules.Allowance, numWorkers int, numRoots int) error {
 	// Check whether the download bandwidth price is too high.
 	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
 		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
@@ -208,13 +209,13 @@ func checkPCWSGouging(pt skymodules.RPCPriceTable, allowance skymodules.Allowanc
 	}
 
 	// Calculate the cost of a has sector job.
-	pb := skymodules.NewProgramBuilder(&pt, 0)
+	pb := modules.NewProgramBuilder(&pt, 0)
 	for i := 0; i < numRoots; i++ {
 		pb.AddHasSectorInstruction(crypto.Hash{})
 	}
 	programCost, _, _ := pb.Cost(true)
 	ulbw, dlbw := hasSectorJobExpectedBandwidth(numRoots)
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulbw, dlbw)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
 	costHasSectorJob := programCost.Add(bandwidthCost)
 
 	// Determine based on the allowance the number of HasSector jobs that would
@@ -535,7 +536,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// to be downloaded as full sectors. This feels reasonable because smaller
 	// sectors were not supported when encryption schemes with overhead were
 	// being suggested.
-	if pcws.staticMasterKey.Type().Overhead() != 0 && (offset != 0 || length != skymodules.SectorSize*uint64(ec.MinPieces())) {
+	if pcws.staticMasterKey.Type().Overhead() != 0 && (offset != 0 || length != modules.SectorSize*uint64(ec.MinPieces())) {
 		return nil, errors.New("invalid request performed - this chunk has encryption overhead and therefore the full chunk must be downloaded")
 	}
 

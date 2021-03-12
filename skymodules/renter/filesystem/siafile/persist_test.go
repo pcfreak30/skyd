@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -207,7 +208,7 @@ func newTestFileParams(minChunks int, partialChunk bool) (string, skymodules.Sia
 func newTestFileParamsWithRC(minChunks int, partialChunk bool, rc skymodules.ErasureCoder) (string, skymodules.SiaPath, string, skymodules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
 	// Create arguments for new file.
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
-	pieceSize := skymodules.SectorSize - sk.Type().Overhead()
+	pieceSize := modules.SectorSize - sk.Type().Overhead()
 	siaPath := skymodules.RandomSiaPath()
 	numChunks := fastrand.Intn(10) + minChunks
 	chunkSize := pieceSize * uint64(rc.MinPieces())
@@ -527,7 +528,7 @@ func TestZeroByteFileCompat(t *testing.T) {
 	if err := sf.SaveMetadata(); err != nil {
 		t.Fatal(err)
 	}
-	sf, err := loadSiaFile(siaFilePath, wal, skymodules.ProdDependencies)
+	sf, err := loadSiaFile(siaFilePath, wal, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}

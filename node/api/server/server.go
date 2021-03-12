@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node"
@@ -85,7 +86,7 @@ func (srv *Server) APIAddress() string {
 }
 
 // GatewayAddress returns the underlying node's gateway address
-func (srv *Server) GatewayAddress() skymodules.NetAddress {
+func (srv *Server) GatewayAddress() modules.NetAddress {
 	return srv.node.Gateway.Address()
 }
 
@@ -135,7 +136,7 @@ func (srv *Server) Unlock(password string) error {
 	var validKeys []crypto.CipherKey
 	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
 	for _, dict := range dicts {
-		seed, err := skymodules.StringToSeed(password, dict)
+		seed, err := modules.StringToSeed(password, dict)
 		if err != nil {
 			continue
 		}
@@ -147,7 +148,7 @@ func (srv *Server) Unlock(password string) error {
 			return nil
 		}
 	}
-	return skymodules.ErrBadEncryptionKey
+	return modules.ErrBadEncryptionKey
 }
 
 // NewAsync creates a new API server from the provided skymodules. The API will
@@ -217,7 +218,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 
 		// Create the Sia node for the server after the server was started.
 		n, errChan = node.New(nodeParams, loadStartTime)
-		if err := skymodules.PeekErr(errChan); err != nil {
+		if err := modules.PeekErr(errChan); err != nil {
 			if isAddrInUseErr(err) {
 				return nil, fmt.Errorf("%v; are you running another instance of siad?", err.Error())
 			}

@@ -18,6 +18,7 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/siatest"
@@ -271,7 +272,7 @@ func utilsverifyseedcmd() {
 		die("Could not read seed")
 	}
 
-	_, err = skymodules.StringToSeed(seed, mnemonics.DictionaryID(strings.ToLower(dictionaryLanguage)))
+	_, err = modules.StringToSeed(seed, mnemonics.DictionaryID(strings.ToLower(dictionaryLanguage)))
 	if err != nil {
 		die(err)
 	}
@@ -310,11 +311,11 @@ func utilsbruteforceseedcmd() {
 			allWords[i] = word
 			s := strings.Join(allWords, " ")
 			checksumSeedBytes, _ := mnemonics.FromString(s, did)
-			var seed skymodules.Seed
+			var seed modules.Seed
 			copy(seed[:], checksumSeedBytes)
 			fullChecksum := crypto.HashObject(seed)
-			if len(checksumSeedBytes) == crypto.EntropySize+skymodules.SeedChecksumSize && bytes.Equal(fullChecksum[:skymodules.SeedChecksumSize], checksumSeedBytes[crypto.EntropySize:]) {
-				if _, err := skymodules.StringToSeed(s, mnemonics.English); err == nil {
+			if len(checksumSeedBytes) == crypto.EntropySize+modules.SeedChecksumSize && bytes.Equal(fullChecksum[:modules.SeedChecksumSize], checksumSeedBytes[crypto.EntropySize:]) {
+				if _, err := modules.StringToSeed(s, mnemonics.English); err == nil {
 					fmt.Printf("\nFound valid seed! The missing word was %q\n", word)
 					fmt.Println(s)
 					return
@@ -380,11 +381,11 @@ func utilsuploadedsizecmd(path string) {
 Lost space: %v
     +%v%% empty space used for scaling every file up to %v
 `,
-		skymodules.FilesizeUnits(diskSize),
-		skymodules.FilesizeUnits(siaSize),
-		skymodules.FilesizeUnits(siaSize-diskSize),
+		modules.FilesizeUnits(diskSize),
+		modules.FilesizeUnits(siaSize),
+		modules.FilesizeUnits(siaSize-diskSize),
 		lostPercent,
-		skymodules.FilesizeUnits(minFileSize))
+		modules.FilesizeUnits(minFileSize))
 
 	if verbose { // print only if -v or --verbose used
 		fmt.Printf(`
@@ -393,7 +394,7 @@ Files: %v
     Median: %v
 `,
 			len(fileSizes),
-			skymodules.FilesizeUnits(calculateAverageUint64(fileSizes)),
-			skymodules.FilesizeUnits(calculateMedianUint64(fileSizes)))
+			modules.FilesizeUnits(calculateAverageUint64(fileSizes)),
+			modules.FilesizeUnits(calculateMedianUint64(fileSizes)))
 	}
 }

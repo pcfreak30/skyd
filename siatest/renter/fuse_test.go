@@ -15,11 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -330,7 +331,7 @@ func TestFuse(t *testing.T) {
 
 	// Create a file in the new directory. The file in the new directory is
 	// sized to take multiple sectors.
-	localfd1f1, err := localfd1.NewFile(int(skymodules.SectorSize + 250))
+	localfd1f1, err := localfd1.NewFile(int(modules.SectorSize + 250))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +397,7 @@ func TestFuse(t *testing.T) {
 	}
 
 	// Upload another, larger file.
-	localfd1f2, err := localfd1.NewFile((int(skymodules.SectorSize*4) + siatest.Fuzz()))
+	localfd1f2, err := localfd1.NewFile((int(modules.SectorSize*4) + siatest.Fuzz()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +511,7 @@ func TestFuse(t *testing.T) {
 
 	// Create a file in the new directory. The file in the new directory is
 	// sized to take multiple sectors.
-	localfd2f1, err := localfd2.NewFile(int(skymodules.SectorSize + 250))
+	localfd2f1, err := localfd2.NewFile(int(modules.SectorSize + 250))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -832,7 +833,7 @@ func TestFuse(t *testing.T) {
 
 			// Upload a file to the home directory, include the thread's unique
 			// id in the filesize to help with debugging.
-			_, err := home.NewFile(int(skymodules.SectorSize*3) + 100*id)
+			_, err := home.NewFile(int(modules.SectorSize*3) + 100*id)
 			if err != nil {
 				err = errors.AddContext(err, "unable to create a file in thread home")
 				errMu.Lock()

@@ -40,6 +40,7 @@ import (
 	"gitlab.com/skynetlabs/skyd/fixtures"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skykey"
@@ -210,8 +211,8 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to encode the fanout of the siafile")
 	}
 	headerSize := uint64(skymodules.SkyfileLayoutSize + len(metadataBytes) + len(fanoutBytes))
-	if headerSize > skymodules.SectorSize {
-		return skymodules.Skylink{}, errors.AddContext(ErrMetadataTooBig, fmt.Sprintf("skyfile does not fit in leading chunk - metadata size plus fanout size must be less than %v bytes, metadata size is %v bytes and fanout size is %v bytes", skymodules.SectorSize-skymodules.SkyfileLayoutSize, len(metadataBytes), len(fanoutBytes)))
+	if headerSize > modules.SectorSize {
+		return skymodules.Skylink{}, errors.AddContext(ErrMetadataTooBig, fmt.Sprintf("skyfile does not fit in leading chunk - metadata size plus fanout size must be less than %v bytes, metadata size is %v bytes and fanout size is %v bytes", modules.SectorSize-skymodules.SkyfileLayoutSize, len(metadataBytes), len(fanoutBytes)))
 	}
 
 	// Assemble the first chunk of the skyfile.
@@ -367,7 +368,7 @@ func (r *Renter) Portals() ([]skymodules.SkynetPortal, error) {
 }
 
 // UpdateSkynetPortals updates the list of known Skynet portals that are listed.
-func (r *Renter) UpdateSkynetPortals(additions []skymodules.SkynetPortal, removals []skymodules.NetAddress) error {
+func (r *Renter) UpdateSkynetPortals(additions []skymodules.SkynetPortal, removals []modules.NetAddress) error {
 	err := r.tg.Add()
 	if err != nil {
 		return err
@@ -406,7 +407,7 @@ func (r *Renter) managedUploadBaseSector(sup skymodules.SkyfileUploadParameters,
 // not it was a large file.
 func (r *Renter) managedUploadSkyfile(sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skymodules.Skylink, error) {
 	// see if we can fit the entire upload in a single chunk
-	buf := make([]byte, skymodules.SectorSize)
+	buf := make([]byte, modules.SectorSize)
 	numBytes, err := io.ReadFull(reader, buf)
 	buf = buf[:numBytes] // truncate the buffer
 
@@ -433,7 +434,7 @@ func (r *Renter) managedUploadSkyfile(sup skymodules.SkyfileUploadParameters, re
 
 		// verify if it fits in a single chunk
 		headerSize := uint64(skymodules.SkyfileLayoutSize + len(metadataBytes))
-		if uint64(numBytes)+headerSize <= skymodules.SectorSize {
+		if uint64(numBytes)+headerSize <= modules.SectorSize {
 			return r.managedUploadSkyfileSmallFile(sup, metadataBytes, buf)
 		}
 	}
@@ -673,11 +674,11 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, skymodules.SectorSize, timeout, pricePerMS)
+	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout, pricePerMS)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch base sector of skylink")
 	}
-	if uint64(len(baseSector)) != skymodules.SectorSize {
+	if uint64(len(baseSector)) != modules.SectorSize {
 		return errors.New("download did not fetch enough data, file cannot be re-pinned")
 	}
 

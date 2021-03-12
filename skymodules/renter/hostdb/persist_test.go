@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -16,7 +17,7 @@ import (
 
 // quitAfterLoadDeps will quit startup in newHostDB
 type quitAfterLoadDeps struct {
-	skymodules.ProductionDependencies
+	modules.ProductionDependencies
 }
 
 // Send a disrupt signal to the quitAfterLoad codebreak.
@@ -74,7 +75,7 @@ func TestSaveLoad(t *testing.T) {
 
 	// Save, close, and reload.
 	hdbt.hdb.mu.Lock()
-	hdbt.hdb.lastChange = skymodules.ConsensusChangeID{1, 2, 3}
+	hdbt.hdb.lastChange = modules.ConsensusChangeID{1, 2, 3}
 	hdbt.hdb.disableIPViolationCheck = true
 	stashedLC := hdbt.hdb.lastChange
 	hdbt.hdb.filteredHosts = filteredHosts

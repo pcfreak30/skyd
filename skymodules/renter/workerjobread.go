@@ -4,9 +4,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -149,7 +149,7 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 
 // managedRead returns the sector data for the given read program and the merkle
 // proof.
-func (j *jobRead) managedRead(w *worker, program skymodules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
+func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
 	// execute it
 	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	if err != nil {
@@ -231,13 +231,13 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 	// create a dummy read program to get at the estimated cost
 	w := jq.staticWorker()
 	pt := w.staticPriceTable().staticPriceTable
-	pb := skymodules.NewProgramBuilder(&pt, 0)
+	pb := modules.NewProgramBuilder(&pt, 0)
 	pb.AddReadSectorInstruction(length, 0, crypto.Hash{}, true)
 	cost, _, _ := pb.Cost(true)
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	return cost.Add(bandwidthCost)
 }
 

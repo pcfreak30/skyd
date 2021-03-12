@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
@@ -280,7 +281,7 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		data := fastrand.Bytes(int(skymodules.SectorSize))
+		data := fastrand.Bytes(int(modules.SectorSize))
 		_, err = editor.Upload(data)
 		if err != nil {
 			t.Fatal(err)
@@ -421,7 +422,7 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 	}
 	c.staticWatchdog.mu.Unlock()
 
-	revertedCC := skymodules.ConsensusChange{
+	revertedCC := modules.ConsensusChange{
 		RevertedBlocks: []types.Block{revertedBlock},
 	}
 	c.staticWatchdog.callScanConsensusChange(revertedCC)
@@ -763,7 +764,7 @@ func TestWatchdogPruning(t *testing.T) {
 			},
 		}
 
-		newBlockCC := skymodules.ConsensusChange{
+		newBlockCC := modules.ConsensusChange{
 			AppliedBlocks: []types.Block{block},
 		}
 		c.staticWatchdog.callScanConsensusChange(newBlockCC)
@@ -790,7 +791,7 @@ func TestWatchdogPruning(t *testing.T) {
 			subRootTx,
 		},
 	}
-	newBlockCC := skymodules.ConsensusChange{
+	newBlockCC := modules.ConsensusChange{
 		AppliedBlocks: []types.Block{block},
 	}
 	c.staticWatchdog.callScanConsensusChange(newBlockCC)
@@ -891,7 +892,7 @@ func TestWatchdogDependencyAdding(t *testing.T) {
 	block1 := types.Block{
 		Transactions: txnSet[1:txnLength],
 	}
-	revertCC1 := skymodules.ConsensusChange{
+	revertCC1 := modules.ConsensusChange{
 		RevertedBlocks: []types.Block{block1},
 	}
 	c.staticWatchdog.callScanConsensusChange(revertCC1)
@@ -916,7 +917,7 @@ func TestWatchdogDependencyAdding(t *testing.T) {
 			subRootTx,
 		},
 	}
-	revertCC := skymodules.ConsensusChange{
+	revertCC := modules.ConsensusChange{
 		RevertedBlocks: []types.Block{block},
 	}
 	c.staticWatchdog.callScanConsensusChange(revertCC)

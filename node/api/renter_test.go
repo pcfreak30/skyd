@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -274,7 +275,7 @@ func TestValidDownloads(t *testing.T) {
 	}
 	t.Parallel()
 
-	sectorSize := int64(skymodules.SectorSize)
+	sectorSize := int64(modules.SectorSize)
 
 	testParams := []struct {
 		filesize,
@@ -1467,7 +1468,7 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 
 	// upload a file
 	path := filepath.Join(st.dir, "randUploadFile")
-	size := int(skymodules.SectorSize * 50)
+	size := int(modules.SectorSize * 50)
 	err = createRandFile(path, size)
 	if err != nil {
 		t.Fatal(err)

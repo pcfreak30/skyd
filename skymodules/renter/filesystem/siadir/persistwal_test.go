@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // TestReadAndApplyMetadataUpdateMissingDir probes the edge case of a directory
@@ -30,7 +30,7 @@ func TestReadAndApplyMetadataUpdateMissingDir(t *testing.T) {
 	}
 
 	// Apply it.
-	err = readAndApplyMetadataUpdate(skymodules.ProdDependencies, update)
+	err = readAndApplyMetadataUpdate(modules.ProdDependencies, update)
 	if err != nil {
 		t.Fatal(err)
 	}

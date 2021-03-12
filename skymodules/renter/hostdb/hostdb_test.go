@@ -10,29 +10,30 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus"
+	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/consensus"
-	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
-	"gitlab.com/skynetlabs/skyd/skymodules/miner"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb/hosttree"
-	"gitlab.com/skynetlabs/skyd/skymodules/transactionpool"
-	"gitlab.com/skynetlabs/skyd/skymodules/wallet"
 
 	"gitlab.com/NebulousLabs/siamux"
 )
 
 // hdbTester contains a hostdb and all dependencies.
 type hdbTester struct {
-	cs        skymodules.ConsensusSet
-	gateway   skymodules.Gateway
-	miner     skymodules.TestMiner
-	tpool     skymodules.TransactionPool
+	cs        modules.ConsensusSet
+	gateway   modules.Gateway
+	miner     modules.TestMiner
+	tpool     modules.TransactionPool
 	mux       *siamux.SiaMux
-	wallet    skymodules.Wallet
+	wallet    modules.Wallet
 	walletKey crypto.CipherKey
 
 	hdb *HostDB
@@ -53,8 +54,8 @@ func bareHostDB() *HostDB {
 		knownContracts: make(map[string]contractInfo),
 	}
 	hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
-	hdb.staticHostTree = hosttree.New(hdb.weightFunc, &skymodules.ProductionResolver{})
-	hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, &skymodules.ProductionResolver{})
+	hdb.staticHostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
+	hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	return hdb
 }
 
@@ -74,38 +75,38 @@ func makeHostDBEntry() skymodules.HostDBEntry {
 // newHDBTester returns a tester object wrapping a HostDB and some extra
 // information for testing.
 func newHDBTester(name string) (*hdbTester, error) {
-	return newHDBTesterDeps(name, skymodules.ProdDependencies)
+	return newHDBTesterDeps(name, modules.ProdDependencies)
 }
 
 // newHDBTesterDeps returns a tester object wrapping a HostDB and some extra
 // information for testing, using the provided dependencies for the hostdb.
-func newHDBTesterDeps(name string, deps skymodules.Dependencies) (*hdbTester, error) {
+func newHDBTesterDeps(name string, deps modules.Dependencies) (*hdbTester, error) {
 	if testing.Short() {
 		panic("should not be calling newHDBTester during short tests")
 	}
 	testDir := build.TempDir("HostDB", name)
 
-	g, err := gateway.New("localhost:0", false, filepath.Join(testDir, skymodules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testDir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testDir, skymodules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testDir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testDir, skymodules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testDir, modules.TransactionPoolDir))
 	if err != nil {
 		return nil, err
 	}
-	mux, err := skymodules.NewSiaMux(filepath.Join(testDir, skymodules.SiaMuxDir), testDir, "localhost:0", "localhost:0")
+	mux, err := modules.NewSiaMux(filepath.Join(testDir, modules.SiaMuxDir), testDir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testDir, skymodules.WalletDir))
+	w, err := wallet.New(cs, tp, filepath.Join(testDir, modules.WalletDir))
 	if err != nil {
 		return nil, err
 	}
-	m, err := miner.New(cs, tp, w, filepath.Join(testDir, skymodules.MinerDir))
+	m, err := miner.New(cs, tp, w, filepath.Join(testDir, modules.MinerDir))
 	if err != nil {
 		return nil, err
 	}
@@ -156,19 +157,19 @@ func TestNew(t *testing.T) {
 	}
 	t.Parallel()
 	testDir := build.TempDir("HostDB", t.Name())
-	g, err := gateway.New("localhost:0", false, filepath.Join(testDir, skymodules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testDir, modules.GatewayDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testDir, skymodules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testDir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testDir, skymodules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testDir, modules.TransactionPoolDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	mux, err := skymodules.NewSiaMux(filepath.Join(testDir, skymodules.SiaMuxDir), testDir, "localhost:0", "localhost:0")
+	mux, err := modules.NewSiaMux(filepath.Join(testDir, modules.SiaMuxDir), testDir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +206,7 @@ func TestNew(t *testing.T) {
 
 // quitAfterLoadDeps will quit startup in newHostDB
 type disableScanLoopDeps struct {
-	skymodules.ProductionDependencies
+	modules.ProductionDependencies
 }
 
 // Send a disrupt signal to the quitAfterLoad codebreak.
@@ -629,7 +630,7 @@ type testCheckForIPViolationsDeps struct {
 }
 
 // Resolver returns a testCheckForIPViolationsResolver.
-func (*testCheckForIPViolationsDeps) Resolver() skymodules.Resolver {
+func (*testCheckForIPViolationsDeps) Resolver() modules.Resolver {
 	return &testCheckForIPViolationsResolver{}
 }
 

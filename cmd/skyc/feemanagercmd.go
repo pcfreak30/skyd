@@ -7,8 +7,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -31,8 +31,8 @@ var (
 //
 // NOTE: fields are exported so that json.MarshalIndent can be used
 type feeInfo struct {
-	AppUID      skymodules.AppUID
-	Fees        []skymodules.AppFee
+	AppUID      modules.AppUID
+	Fees        []modules.AppFee
 	TotalAmount types.Currency
 }
 
@@ -119,7 +119,7 @@ func feemanagercmd() {
 
 // feemanagercancelfeecmd cancels a fee
 func feemanagercancelfeecmd(feeUIDStr string) {
-	feeUID := skymodules.FeeUID(feeUIDStr)
+	feeUID := modules.FeeUID(feeUIDStr)
 	err := httpClient.FeeManagerCancelPost(feeUID)
 	if err != nil {
 		die(err)
@@ -129,8 +129,8 @@ func feemanagercancelfeecmd(feeUIDStr string) {
 
 // parseFees takes a slice of AppFess and returns a slice of feeInfos sorted by
 // total amount by AppUID and amount per fee
-func parseFees(fees []skymodules.AppFee) ([]feeInfo, types.Currency) {
-	appToFeesMap := make(map[skymodules.AppUID]feeInfo)
+func parseFees(fees []modules.AppFee) ([]feeInfo, types.Currency) {
+	appToFeesMap := make(map[modules.AppUID]feeInfo)
 	var totalAmount types.Currency
 
 	// Create a map of the fees by AppUID

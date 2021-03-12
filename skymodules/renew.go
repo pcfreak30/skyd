@@ -1,6 +1,7 @@
 package skymodules
 
 import (
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -12,7 +13,7 @@ import (
 // the amount of collateral advertised by the host. If the renter would rather
 // have lower collateral and pay fewer siafund fees, they have the full freedom
 // within the protocol to do that. It is strictly advantageous for the host.
-func RenewBaseCosts(lastRev types.FileContractRevision, pt *RPCPriceTable, endHeight types.BlockHeight) (basePrice, baseCollateral types.Currency) {
+func RenewBaseCosts(lastRev types.FileContractRevision, pt *modules.RPCPriceTable, endHeight types.BlockHeight) (basePrice, baseCollateral types.Currency) {
 	// Get the height until which the storage is already paid for, the height
 	// until which we want to pay for storage and the amount of storage that
 	// needs to be covered.

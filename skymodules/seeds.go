@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -42,16 +43,16 @@ var (
 // Declaration of individual seed types for additional type safety.
 type (
 	// identifierSeed is the seed used to derive identifiers for file contracts.
-	identifierSeed Seed
+	identifierSeed modules.Seed
 	// identifierSigningSeed is the seed used to derive a signing key for the
 	// identifier.
-	identifierSigningSeed Seed
+	identifierSigningSeed modules.Seed
 	// secretKeySeed is the seed used to derive the secret key for file
 	// contracts.
-	secretKeySeed Seed
+	secretKeySeed modules.Seed
 	// RenterSeed is the master seed of the renter which is used to derive
 	// other seeds.
-	RenterSeed Seed
+	RenterSeed modules.Seed
 	// EphemeralRenterSeed is a renter seed derived from the master renter
 	// seed. The master seed should never be used directly.
 	EphemeralRenterSeed RenterSeed
@@ -148,7 +149,7 @@ func GenerateContractKeyPairWithOutputID(renterSeed EphemeralRenterSeed, inputPa
 // DeriveRenterSeed creates a renterSeed for creating file contracts.
 // NOTE: The seed returned by this function should be wiped once it's no longer
 // in use.
-func DeriveRenterSeed(walletSeed Seed) RenterSeed {
+func DeriveRenterSeed(walletSeed modules.Seed) RenterSeed {
 	var renterSeed RenterSeed
 	rs := crypto.HashAll(walletSeed, renterSeedSpecifier)
 	copy(renterSeed[:], rs[:])
@@ -194,7 +195,7 @@ func PrefixedSignedIdentifier(renterSeed EphemeralRenterSeed, txn types.Transact
 	encryptedKey := sk.EncryptBytes(append(marshaledKey, make([]byte, padding)...))
 	// Create the signed identifier object.
 	var csi ContractSignedIdentifier
-	copy(csi[:16], PrefixNonSia[:])
+	copy(csi[:16], modules.PrefixNonSia[:])
 	copy(csi[16:48], identifier[:])
 	copy(csi[48:80], signature[:])
 	return csi, encryptedKey

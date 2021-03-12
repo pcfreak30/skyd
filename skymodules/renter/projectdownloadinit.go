@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -531,7 +532,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 // checkProjectDownloadGouging verifies the cost of executing the jobs performed
 // by the project download are reasonable in relation to the user's allowance
 // and the amount of data they intend to download
-func checkProjectDownloadGouging(pt skymodules.RPCPriceTable, allowance skymodules.Allowance) error {
+func checkProjectDownloadGouging(pt modules.RPCPriceTable, allowance skymodules.Allowance) error {
 	// Check whether the download bandwidth price is too high.
 	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
 		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
@@ -557,22 +558,22 @@ func checkProjectDownloadGouging(pt skymodules.RPCPriceTable, allowance skymodul
 	// intends to download does not exceed its allowance.
 
 	// Calculate the cost of a has sector job
-	pb := skymodules.NewProgramBuilder(&pt, 0)
+	pb := modules.NewProgramBuilder(&pt, 0)
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	programCost, _, _ := pb.Cost(true)
 
 	ulbw, dlbw := hasSectorJobExpectedBandwidth(1)
-	bandwidthCost := skymodules.MDMBandwidthCost(pt, ulbw, dlbw)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
 	costHasSectorJob := programCost.Add(bandwidthCost)
 
 	// Calculate the cost of a read sector job, we use StreamDownloadSize as an
 	// average download size here which is 64 KiB.
-	pb = skymodules.NewProgramBuilder(&pt, 0)
+	pb = modules.NewProgramBuilder(&pt, 0)
 	pb.AddReadSectorInstruction(skymodules.StreamDownloadSize, 0, crypto.Hash{}, true)
 	programCost, _, _ = pb.Cost(true)
 
 	ulbw, dlbw = readSectorJobExpectedBandwidth(skymodules.StreamDownloadSize)
-	bandwidthCost = skymodules.MDMBandwidthCost(pt, ulbw, dlbw)
+	bandwidthCost = modules.MDMBandwidthCost(pt, ulbw, dlbw)
 	costReadSectorJob := programCost.Add(bandwidthCost)
 
 	// Calculate the cost of a project

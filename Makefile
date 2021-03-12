@@ -31,15 +31,6 @@ pkgs = \
 	./compatibility \
 	./skymodules \
 	./skymodules/accounting \
-	./skymodules/consensus \
-	./skymodules/explorer \
-	./skymodules/feemanager \
-	./skymodules/gateway \
-	./skymodules/host \
-	./skymodules/host/contractmanager \
-	./skymodules/host/mdm \
-	./skymodules/host/registry \
-	./skymodules/miner \
 	./skymodules/renter \
 	./skymodules/renter/contractor \
 	./skymodules/renter/filesystem \
@@ -50,13 +41,10 @@ pkgs = \
 	./skymodules/renter/proto \
 	./skymodules/renter/skynetblocklist \
 	./skymodules/renter/skynetportals \
-	./skymodules/transactionpool \
-	./skymodules/wallet \
 	./node \
 	./node/api \
 	./node/api/server \
 	./node/api/client \
-	./persist \
 	./profile \
 	./siatest \
 	./siatest/accounting \
@@ -93,8 +81,6 @@ lockcheckpkgs = \
 	./node/api/client \
 	./node/api/server \
 	./skymodules/accounting \
-	./skymodules/host/mdm \
-	./skymodules/host/registry \
 	./skymodules/renter/hostdb \
 	./skymodules/renter/skynetblocklist \
 	./siatest/accounting \

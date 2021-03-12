@@ -9,9 +9,10 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/persist"
 )
 
 const (
@@ -66,7 +67,7 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 	// Create baseSector
 	baseSector, _ = BuildBaseSector(layoutBytes, fanoutBytes, smBytes, nil)
 	// Backup and Restore test
-	size := 2 * int(SectorSize)
+	size := 2 * int(modules.SectorSize)
 	fileData = fastrand.Bytes(size)
 	backupReader = bytes.NewReader(fileData)
 	testBackupAndRestore(t, baseSector, fileData, backupReader)

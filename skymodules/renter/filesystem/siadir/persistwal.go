@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -14,7 +15,7 @@ import (
 )
 
 // applyUpdate applies the wal update
-func applyUpdate(deps skymodules.Dependencies, update writeaheadlog.Update) error {
+func applyUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
 	switch update.Name {
 	case updateDeleteName:
 		return readAndApplyDeleteUpdate(update)
@@ -60,7 +61,7 @@ func readAndApplyDeleteUpdate(update writeaheadlog.Update) error {
 // readAndApplyMetadataUpdate reads the metadata update and then applies it.
 // This helper assumes that the file is not currently open and so should only be
 // called on startup before any siadir is loaded from disk
-func readAndApplyMetadataUpdate(deps skymodules.Dependencies, update writeaheadlog.Update) (err error) {
+func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.Update) (err error) {
 	if !IsSiaDirUpdate(update) {
 		err := errors.New("readAndApplyMetadataUpdate can't read non-SiaDir update")
 		build.Critical(err)
@@ -227,7 +228,7 @@ func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 // applies it.
 //
 // NOTE: This method does not fsync after the write.
-func (sd *SiaDir) readAndApplyMetadataUpdate(file skymodules.File, update writeaheadlog.Update) error {
+func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeaheadlog.Update) error {
 	// Decode update.
 	data, path, err := readMetadataUpdate(update)
 	if err != nil {

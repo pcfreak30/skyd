@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -54,7 +55,7 @@ type (
 
 		// utility fields. These are not persisted.
 		deleted bool
-		deps    skymodules.Dependencies
+		deps    modules.Dependencies
 		mu      sync.RWMutex
 		wal     *writeaheadlog.WAL // the wal that is used for SiaFiles
 
@@ -223,10 +224,10 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 			StaticErasureCodeType:   ecType,
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
-			StaticPieceSize:         skymodules.SectorSize - masterKey.Type().Overhead(),
+			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
 			UniqueID:                uniqueID(),
 		},
-		deps:            skymodules.ProdDependencies,
+		deps:            modules.ProdDependencies,
 		partialsSiaFile: partialsSiaFile,
 		siaFilePath:     siaFilePath,
 		wal:             wal,
@@ -473,7 +474,7 @@ func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForR
 		goodPieces = 0
 	}
 	// Determine repairBytesRemaining
-	repairBytes := (uint64(numPieces) - goodPieces) * skymodules.SectorSize
+	repairBytes := (uint64(numPieces) - goodPieces) * modules.SectorSize
 	return chunkHealth, chunkHealth, repairBytes, nil
 }
 
@@ -1452,7 +1453,7 @@ func (sf *SiaFile) uploadProgressAndBytes() (float64, uint64, error) {
 		sf.staticMetadata.CachedUploadProgress = 100
 		return 100, uploaded, nil
 	}
-	desired := uint64(sf.numChunks) * skymodules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
+	desired := uint64(sf.numChunks) * modules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
 	// Update cache.
 	sf.staticMetadata.CachedUploadProgress = math.Min(100*(float64(uploaded)/float64(desired)), 100)
 	return sf.staticMetadata.CachedUploadProgress, uploaded, nil
@@ -1478,9 +1479,9 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 			// from TwoFish encryption
 			//
 			// Sum the total bytes uploaded
-			total += uint64(len(pieceSet)) * skymodules.SectorSize
+			total += uint64(len(pieceSet)) * modules.SectorSize
 			// Sum the unique bytes uploaded
-			unique += skymodules.SectorSize
+			unique += modules.SectorSize
 		}
 		return nil
 	})

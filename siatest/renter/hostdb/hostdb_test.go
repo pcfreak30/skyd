@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node"
@@ -202,17 +203,17 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 	// Reannounce the hosts with custom hostnames which match the hostnames
 	// from the custom resolver method. We announce host1 first and host3 last
 	// to make sure host1 is the 'oldest' and host3 the 'youngest'.
-	err1 = allHosts[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
+	err1 = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host1")
 	}
-	err1 = allHosts[1].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
+	err1 = allHosts[1].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host2")
 	}
-	err1 = allHosts[2].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
+	err1 = allHosts[2].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host3")
@@ -285,7 +286,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 
 	// Reannounce host1 as host4 which creates a violation with host3 and
 	// causes host4 to be the 'youngest'.
-	err = allHosts[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
+	err = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
 	if err != nil {
 		t.Fatal("Failed to reannonce host 1")
 	}
@@ -395,7 +396,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 	hostPort := hg.ExternalSettings.NetAddress.Port()
 
 	// Reannounce the hosts with custom hostnames which match the hostnames from the custom resolver method.
-	err = tg.Hosts()[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host1.com:%s", hostPort)))
+	err = tg.Hosts()[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host1.com:%s", hostPort)))
 	if err != nil {
 		t.Fatal("Failed to reannounce at least one of the hosts", err)
 	}
@@ -470,7 +471,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 	}
 	hostPort = hg.ExternalSettings.NetAddress.Port()
 	err1 := newHost[0].HostModifySettingPost(client.HostParamAcceptingContracts, true)
-	err2 := newHost[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host2.com:%s", hostPort)))
+	err2 := newHost[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", hostPort)))
 	err = errors.Compose(err1, err2)
 	if err != nil {
 		t.Fatal("Failed to announce the new host", err)
@@ -558,17 +559,17 @@ func TestDisableIPViolationCheck(t *testing.T) {
 	// Reannounce the hosts with custom hostnames which match the hostnames
 	// from the custom resolver method. We announce host1 first and host3 last
 	// to make sure host1 is the 'oldest' and host3 the 'youngest'.
-	err1 = allHosts[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
+	err1 = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host1")
 	}
-	err1 = allHosts[1].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
+	err1 = allHosts[1].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host2")
 	}
-	err1 = allHosts[2].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
+	err1 = allHosts[2].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host3")
@@ -622,7 +623,7 @@ func TestDisableIPViolationCheck(t *testing.T) {
 
 	// Reannounce host1 as host4 which creates a violation with host3 and
 	// causes host1 to be the 'youngest'.
-	err = allHosts[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
+	err = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
 	if err != nil {
 		t.Fatal("Failed to reannonce host 1")
 	}
