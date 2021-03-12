@@ -29,8 +29,8 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/persist"
 	siasync "gitlab.com/skynetlabs/skyd/sync"

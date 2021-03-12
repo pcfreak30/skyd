@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/consensus"
 	"gitlab.com/skynetlabs/skyd/modules/gateway"

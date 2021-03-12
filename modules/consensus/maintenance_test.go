@@ -3,9 +3,9 @@ package consensus
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/modules"
 )
 

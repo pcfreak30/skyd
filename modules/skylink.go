@@ -11,8 +11,8 @@ import (
 	"math/bits"
 	"strings"
 
-	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/skynetlabs/skyd/build"
 
 	"gitlab.com/NebulousLabs/errors"
 )

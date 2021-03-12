@@ -6,8 +6,8 @@ import (
 
 	"gitlab.com/NebulousLabs/bolt"
 
-	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/persist"
 )

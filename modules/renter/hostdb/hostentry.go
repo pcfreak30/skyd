@@ -3,8 +3,8 @@ package hostdb
 import (
 	"math"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/modules"
 )
 

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"sort"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
 

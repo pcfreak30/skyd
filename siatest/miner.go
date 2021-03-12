@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 // emptyBlockForWork creates an empty block without any transactions.

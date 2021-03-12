@@ -99,8 +99,6 @@ lockcheckpkgs = \
 	./modules/renter/skynetblocklist \
 	./siatest/accounting \
 	./skykey \
-	./types \
-	./types/typesutil \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .

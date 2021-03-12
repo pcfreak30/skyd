@@ -5,9 +5,9 @@ import (
 	"math/big"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestParseFileSize probes the parseFilesize function

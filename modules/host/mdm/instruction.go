@@ -1,8 +1,8 @@
 package mdm
 
 import (
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // instruction is the interface an instruction needs to implement to be part of

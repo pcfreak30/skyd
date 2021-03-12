@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TODO: Better handling of time.After

@@ -50,7 +50,6 @@ variables:
     ./persist
     ./sync
     ./skykey
-    ./types
   siatest_pkgs: >-
     ./siatest
     ./siatest/accounting

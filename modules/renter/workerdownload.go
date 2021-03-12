@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/modules"
 )
 

@@ -24,10 +24,10 @@ import (
 	"io"
 	"os"
 
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/modules/renter/proto"
 	"gitlab.com/skynetlabs/skyd/persist"

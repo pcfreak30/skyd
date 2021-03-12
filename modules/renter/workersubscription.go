@@ -10,11 +10,11 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/modules"
 )

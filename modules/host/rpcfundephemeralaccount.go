@@ -3,9 +3,9 @@ package host
 import (
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/modules"
 )
 

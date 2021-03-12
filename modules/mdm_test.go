@@ -3,8 +3,8 @@ package modules
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestBudget tests the RPCBudget helper type.

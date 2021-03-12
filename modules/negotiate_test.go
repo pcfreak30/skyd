@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestAnnouncementHandling checks that CreateAnnouncement and

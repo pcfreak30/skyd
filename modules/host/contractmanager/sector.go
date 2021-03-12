@@ -6,8 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/modules"
 )
 

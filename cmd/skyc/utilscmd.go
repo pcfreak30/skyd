@@ -17,9 +17,9 @@ import (
 	"github.com/spf13/cobra/doc"
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 
-	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/siatest"
 )

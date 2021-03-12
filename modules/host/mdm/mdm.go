@@ -1,9 +1,9 @@
 package mdm
 
 import (
-	"gitlab.com/NebulousLabs/threadgroup"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/skynetlabs/skyd/modules"
 )
 

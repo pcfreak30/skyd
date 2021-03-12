@@ -19,9 +19,9 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 // testWAL is the WAL instance we're going to use across this test. This would

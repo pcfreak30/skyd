@@ -19,8 +19,8 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/skynetlabs/skyd/modules"
 
 	"gitlab.com/NebulousLabs/errors"
