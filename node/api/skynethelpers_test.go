@@ -11,8 +11,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestSkynetHelpers is a convenience function that wraps all of the Skynet
@@ -30,8 +30,8 @@ func testBuildETag(t *testing.T) {
 
 	// base case
 	path := "/"
-	format := modules.SkyfileFormatNotSpecified
-	var skylink modules.Skylink
+	format := skymodules.SkyfileFormatNotSpecified
+	var skylink skymodules.Skylink
 	err := skylink.LoadString("AACogzrAimYPG42tDOKhS3lXZD8YvlF8Q8R17afe95iV2Q")
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +50,7 @@ func testBuildETag(t *testing.T) {
 	}
 
 	// adjust query and expect different hash value
-	format = modules.SkyfileFormatZip
+	format = skymodules.SkyfileFormatZip
 	eTag3 := buildETag(skylink, "GET", path, format)
 	if eTag3 == "" || eTag3 == eTag2 {
 		t.Fatal("unexpected output")
@@ -166,7 +166,7 @@ func testParseSkylinkURL(t *testing.T) {
 			skylink:              "",
 			skylinkStringNoQuery: "",
 			path:                 "",
-			errMsg:               modules.ErrSkylinkIncorrectSize.Error(),
+			errMsg:               skymodules.ErrSkylinkIncorrectSize.Error(),
 		},
 		{
 			name:                 "empty input",
@@ -174,7 +174,7 @@ func testParseSkylinkURL(t *testing.T) {
 			skylink:              "",
 			skylinkStringNoQuery: "",
 			path:                 "",
-			errMsg:               modules.ErrSkylinkIncorrectSize.Error(),
+			errMsg:               skymodules.ErrSkylinkIncorrectSize.Error(),
 		},
 	}
 
@@ -210,7 +210,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	t.Parallel()
 
 	// create a siapath
-	siapath, err := modules.NewSiaPath(t.Name())
+	siapath, err := skymodules.NewSiaPath(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +374,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	// verify 'siapath' (no root)
 	req = buildRequest(url.Values{}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	expected, err := modules.SkynetFolder.Join(siapath.String())
+	expected, err := skymodules.SkynetFolder.Join(siapath.String())
 	if err != nil || params.siaPath != expected {
 		t.Fatal("Unexpected", err)
 	}

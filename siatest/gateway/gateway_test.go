@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/gateway"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
 )
 
 // TestGatewayRatelimit makes sure that we can set the gateway's ratelimits
@@ -230,7 +230,7 @@ func TestGatewayOfflineAlert(t *testing.T) {
 		}
 		for _, alert := range dag.Alerts {
 			if alert.Module == "gateway" && alert.Cause == "" &&
-				alert.Msg == gateway.AlertMSGGatewayOffline && alert.Severity == modules.SeverityWarning {
+				alert.Msg == gateway.AlertMSGGatewayOffline && alert.Severity == skymodules.SeverityWarning {
 				return nil
 			}
 		}
@@ -260,7 +260,7 @@ func TestGatewayOfflineAlert(t *testing.T) {
 		}
 		for _, alert := range dag.Alerts {
 			if alert.Module == "gateway" && alert.Cause == "" &&
-				alert.Msg == gateway.AlertMSGGatewayOffline && alert.Severity == modules.SeverityWarning {
+				alert.Msg == gateway.AlertMSGGatewayOffline && alert.Severity == skymodules.SeverityWarning {
 				return errors.New("alert is still registered")
 			}
 		}

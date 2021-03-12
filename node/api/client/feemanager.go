@@ -5,8 +5,8 @@ import (
 	"net/url"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // FeeManagerGet uses the /feemanager GET endpoint to return information about
@@ -18,7 +18,7 @@ func (c *Client) FeeManagerGet() (fmg api.FeeManagerGET, err error) {
 
 // FeeManagerAddPost use the /feemanager/add POST endpoint to add a fee for the
 // FeeManager to manage
-func (c *Client) FeeManagerAddPost(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (fmap api.FeeManagerAddFeePOST, err error) {
+func (c *Client) FeeManagerAddPost(address types.UnlockHash, amount types.Currency, appUID skymodules.AppUID, recurring bool) (fmap api.FeeManagerAddFeePOST, err error) {
 	values := url.Values{}
 	values.Set("address", address.String())
 	values.Set("amount", amount.String())
@@ -30,7 +30,7 @@ func (c *Client) FeeManagerAddPost(address types.UnlockHash, amount types.Curren
 
 // FeeManagerCancelPost uses the /feemanager/cancel POST endpoint to cancel a
 // fee being managed by the FeeManager
-func (c *Client) FeeManagerCancelPost(feeUID modules.FeeUID) (err error) {
+func (c *Client) FeeManagerCancelPost(feeUID skymodules.FeeUID) (err error) {
 	values := url.Values{}
 	values.Set("feeuid", string(feeUID))
 	err = c.post("/feemanager/cancel", values.Encode(), nil)

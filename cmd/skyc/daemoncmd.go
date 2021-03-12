@@ -8,7 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -118,7 +118,7 @@ func alertscmd() {
 	if alertsToPrint > len(al.ErrorAlerts) {
 		alertsToPrint = len(al.ErrorAlerts)
 	}
-	printAlerts(al.ErrorAlerts[:alertsToPrint], modules.SeverityError)
+	printAlerts(al.ErrorAlerts[:alertsToPrint], skymodules.SeverityError)
 
 	// Print Warning alerts
 	remainingAlerts -= len(al.ErrorAlerts)
@@ -130,7 +130,7 @@ func alertscmd() {
 	if alertsToPrint > len(al.WarningAlerts) {
 		alertsToPrint = len(al.WarningAlerts)
 	}
-	printAlerts(al.WarningAlerts[:alertsToPrint], modules.SeverityWarning)
+	printAlerts(al.WarningAlerts[:alertsToPrint], skymodules.SeverityWarning)
 
 	// Print max alerts message
 	if len(al.CriticalAlerts)+len(al.ErrorAlerts)+len(al.WarningAlerts) > maxAlerts {
@@ -295,7 +295,7 @@ func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 
 // printAlerts is a helper function to print details of a slice of alerts
 // with given severity description to command line
-func printAlerts(alerts []modules.Alert, as modules.AlertSeverity) {
+func printAlerts(alerts []skymodules.Alert, as skymodules.AlertSeverity) {
 	fmt.Printf("\n  There are %v %s alerts\n", len(alerts), as.String())
 	for _, a := range alerts {
 		fmt.Printf(`

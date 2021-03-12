@@ -13,14 +13,14 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/skynetlabs/skyd/sync"
 )
 
@@ -103,8 +103,8 @@ func testContractFunding(t *testing.T, tg *siatest.TestGroup) {
 	// Get Contract Price from host and determine contract funding based on the
 	// transaction fees
 	contractPrice := hg.ExternalSettings.ContractPrice
-	tpoolMaxFee := contractPrice.Div64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
-	txnFee := tpoolMaxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
+	tpoolMaxFee := contractPrice.Div64(skymodules.EstimatedFileContractRevisionAndProofTransactionSetSize)
+	txnFee := tpoolMaxFee.Mul64(skymodules.EstimatedFileContractTransactionSetSize)
 	contractFunding := contractPrice.Add(txnFee).Mul64(contractor.ContractFeeFundingMulFactor)
 
 	// Sanity checks on funding
@@ -152,10 +152,10 @@ func testContractorIncompleteMaintenanceAlert(t *testing.T, tg *siatest.TestGrou
 	}
 	// The renter should have 1 alert once we have mined enough blocks to trigger a
 	// renewal.
-	expectedAlert := modules.Alert{
-		Severity: modules.SeverityWarning,
+	expectedAlert := skymodules.Alert{
+		Severity: skymodules.SeverityWarning,
 		Msg:      contractor.AlertMSGWalletLockedDuringMaintenance,
-		Cause:    modules.ErrLockedWallet.Error(),
+		Cause:    skymodules.ErrLockedWallet.Error(),
 		Module:   "contractor",
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -657,7 +657,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 	// Upload a file to the renter.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(10 * modules.SectorSize)
+	fileSize := int(10 * skymodules.SectorSize)
 	_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -685,7 +685,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 	}
 
 	// Delete the contracts.
-	if err := os.RemoveAll(filepath.Join(r.Dir, modules.RenterDir, "contracts")); err != nil {
+	if err := os.RemoveAll(filepath.Join(r.Dir, skymodules.RenterDir, "contracts")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -818,7 +818,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	// Upload a file to the renter.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(10 * modules.SectorSize)
+	fileSize := int(10 * skymodules.SectorSize)
 	_, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -846,7 +846,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	}
 
 	// Delete the contracts.
-	if err := os.RemoveAll(filepath.Join(r.Dir, modules.RenterDir, "contracts")); err != nil {
+	if err := os.RemoveAll(filepath.Join(r.Dir, skymodules.RenterDir, "contracts")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1008,7 +1008,7 @@ func TestRenterContractRecovery(t *testing.T) {
 	// Upload a file to the renter.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(10 * modules.SectorSize)
+	fileSize := int(10 * skymodules.SectorSize)
 	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -1030,13 +1030,13 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 
 	// Copy the siafile to the new location.
-	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), lf.FileName()+modules.SiaFileExtension)
+	oldPath := filepath.Join(r.Dir, skymodules.RenterDir, skymodules.FileSystemRoot, skymodules.UserFolder.String(), lf.FileName()+skymodules.SiaFileExtension)
 	siaFile, err := ioutil.ReadFile(oldPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newRenterDir := filepath.Join(testDir, "renter")
-	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), lf.FileName()+modules.SiaFileExtension)
+	newPath := filepath.Join(newRenterDir, skymodules.RenterDir, skymodules.FileSystemRoot, skymodules.UserFolder.String(), lf.FileName()+skymodules.SiaFileExtension)
 	if err := os.MkdirAll(filepath.Dir(newPath), persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
@@ -1233,11 +1233,11 @@ func TestLowAllowanceAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
-	lowFundsAlert := modules.Alert{
+	lowFundsAlert := skymodules.Alert{
 		Cause:    contractor.AlertCauseInsufficientAllowanceFunds,
 		Msg:      contractor.AlertMSGAllowanceLowFunds,
 		Module:   "contractor",
-		Severity: modules.SeverityWarning,
+		Severity: skymodules.SeverityWarning,
 	}
 	// Mine blocks and wait for the alert to be registered.
 	numRetries := 0
@@ -1655,7 +1655,7 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 	// Save the window end height, and a copy of the contract status to test
 	// contract archival in the watchdog.
 	var windowEnd types.BlockHeight
-	var contractStatus modules.ContractWatchStatus
+	var contractStatus skymodules.ContractWatchStatus
 
 	// Let the watchdog send transactions now.
 	toggleDep.DisableWatchdogBroadcast(false)
@@ -1754,7 +1754,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 
 	miner := tg.Miners()[0]
 
-	maxPeriodChurn := uint64(modules.SectorSize)
+	maxPeriodChurn := uint64(skymodules.SectorSize)
 	newRenterDir := filepath.Join(testDir, "renter")
 	renterParams := node.Renter(newRenterDir)
 	minScoreDep := &dependencies.DependencyHighMinHostScore{}
@@ -2070,7 +2070,7 @@ func TestContractorHostRemoval(t *testing.T) {
 		}
 
 		for _, contract := range rc.ActiveContracts {
-			if contract.Size != modules.SectorSize {
+			if contract.Size != skymodules.SectorSize {
 				return fmt.Errorf("Each contrat should have 1 sector: %v - %v", contract.Size, contract.ID)
 			}
 		}
@@ -2178,7 +2178,7 @@ func TestWatchdogExtraDependencyRegression(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fee := feeGet.Maximum.Mul64(modules.EstimatedFileContractTransactionSetSize)
+	fee := feeGet.Maximum.Mul64(skymodules.EstimatedFileContractTransactionSetSize)
 	_, err = renter.WalletSiacoinsPost(balance.Sub(fee), addressGet.Address, false)
 	if err != nil {
 		t.Fatal(err)
@@ -2270,8 +2270,8 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	}
 
 	// Check for alert
-	expectedAlert := modules.Alert{
-		Severity: modules.SeverityCritical,
+	expectedAlert := skymodules.Alert{
+		Severity: skymodules.SeverityCritical,
 		Cause:    "Renew failure due to dependency",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
@@ -2757,8 +2757,8 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 	}
 
 	// Check for alert
-	expectedAlert := modules.Alert{
-		Severity: modules.SeverityError,
+	expectedAlert := skymodules.Alert{
+		Severity: skymodules.SeverityError,
 		Cause:    "rejected for low paying host valid output",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",

@@ -1,5 +1,5 @@
 // Package node provides tooling for creating a Sia node. Sia nodes consist of a
-// collection of modules. The node package gives you tools to easily assemble
+// collection of skymodules. The node package gives you tools to easily assemble
 // various combinations of modules with varying dependencies and settings,
 // including templates for assembling sane no-hassle Sia nodes.
 package node
@@ -16,21 +16,21 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/accounting"
-	"gitlab.com/skynetlabs/skyd/modules/consensus"
-	"gitlab.com/skynetlabs/skyd/modules/explorer"
-	"gitlab.com/skynetlabs/skyd/modules/feemanager"
-	"gitlab.com/skynetlabs/skyd/modules/gateway"
-	"gitlab.com/skynetlabs/skyd/modules/host"
-	"gitlab.com/skynetlabs/skyd/modules/miner"
-	"gitlab.com/skynetlabs/skyd/modules/renter"
-	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/modules/renter/hostdb"
-	"gitlab.com/skynetlabs/skyd/modules/renter/proto"
-	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
-	"gitlab.com/skynetlabs/skyd/modules/wallet"
 	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/accounting"
+	"gitlab.com/skynetlabs/skyd/skymodules/consensus"
+	"gitlab.com/skynetlabs/skyd/skymodules/explorer"
+	"gitlab.com/skynetlabs/skyd/skymodules/feemanager"
+	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
+	"gitlab.com/skynetlabs/skyd/skymodules/host"
+	"gitlab.com/skynetlabs/skyd/skymodules/miner"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
+	"gitlab.com/skynetlabs/skyd/skymodules/transactionpool"
+	"gitlab.com/skynetlabs/skyd/skymodules/wallet"
 )
 
 // NodeParams contains a bunch of parameters for creating a new test node. As
@@ -73,39 +73,39 @@ type NodeParams struct {
 	// module will be used instead of creating a new one. If a custom module is
 	// provided, the 'omit' flag for that module must be set to false (which is
 	// the default setting).
-	Accounting      modules.Accounting
-	ConsensusSet    modules.ConsensusSet
-	Explorer        modules.Explorer
-	FeeManager      modules.FeeManager
-	Gateway         modules.Gateway
-	Host            modules.Host
-	Miner           modules.TestMiner
-	Renter          modules.Renter
-	TransactionPool modules.TransactionPool
-	Wallet          modules.Wallet
+	Accounting      skymodules.Accounting
+	ConsensusSet    skymodules.ConsensusSet
+	Explorer        skymodules.Explorer
+	FeeManager      skymodules.FeeManager
+	Gateway         skymodules.Gateway
+	Host            skymodules.Host
+	Miner           skymodules.TestMiner
+	Renter          skymodules.Renter
+	TransactionPool skymodules.TransactionPool
+	Wallet          skymodules.Wallet
 
 	// Dependencies for each module supporting dependency injection.
-	AccountingDeps   modules.Dependencies
-	ConsensusSetDeps modules.Dependencies
-	ContractorDeps   modules.Dependencies
-	ContractSetDeps  modules.Dependencies
-	GatewayDeps      modules.Dependencies
-	FeeManagerDeps   modules.Dependencies
-	HostDeps         modules.Dependencies
-	HostDBDeps       modules.Dependencies
-	RenterDeps       modules.Dependencies
-	TPoolDeps        modules.Dependencies
-	WalletDeps       modules.Dependencies
+	AccountingDeps   skymodules.Dependencies
+	ConsensusSetDeps skymodules.Dependencies
+	ContractorDeps   skymodules.Dependencies
+	ContractSetDeps  skymodules.Dependencies
+	GatewayDeps      skymodules.Dependencies
+	FeeManagerDeps   skymodules.Dependencies
+	HostDeps         skymodules.Dependencies
+	HostDBDeps       skymodules.Dependencies
+	RenterDeps       skymodules.Dependencies
+	TPoolDeps        skymodules.Dependencies
+	WalletDeps       skymodules.Dependencies
 
 	// Dependencies for storage monitor supporting dependency injection.
-	StorageManagerDeps modules.Dependencies
+	StorageManagerDeps skymodules.Dependencies
 
 	// Custom settings for siamux
 	SiaMuxTCPAddress string
 	SiaMuxWSAddress  string
 
 	// Custom settings for modules
-	Allowance   modules.Allowance
+	Allowance   skymodules.Allowance
 	Bootstrap   bool
 	HostAddress string
 	HostStorage uint64
@@ -125,7 +125,7 @@ type NodeParams struct {
 	CreatePortal bool
 
 	// The high level directory where all the persistence gets stored for the
-	// modules.
+	// skymodules.
 	Dir string
 }
 
@@ -135,19 +135,19 @@ type Node struct {
 	Mux *siamux.SiaMux
 
 	// The modules of the node. Modules that are not initialized will be nil.
-	Accounting      modules.Accounting
-	ConsensusSet    modules.ConsensusSet
-	Explorer        modules.Explorer
-	FeeManager      modules.FeeManager
-	Gateway         modules.Gateway
-	Host            modules.Host
-	Miner           modules.TestMiner
-	Renter          modules.Renter
-	TransactionPool modules.TransactionPool
-	Wallet          modules.Wallet
+	Accounting      skymodules.Accounting
+	ConsensusSet    skymodules.ConsensusSet
+	Explorer        skymodules.Explorer
+	FeeManager      skymodules.FeeManager
+	Gateway         skymodules.Gateway
+	Host            skymodules.Host
+	Miner           skymodules.TestMiner
+	Renter          skymodules.Renter
+	TransactionPool skymodules.TransactionPool
+	Wallet          skymodules.Wallet
 
 	// The high level directory where all the persistence gets stored for the
-	// modules.
+	// skymodules.
 	Dir string
 }
 
@@ -266,7 +266,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Create the siamux.
-	mux, err := modules.NewSiaMux(filepath.Join(dir, modules.SiaMuxDir), dir, params.SiaMuxTCPAddress, params.SiaMuxWSAddress)
+	mux, err := skymodules.NewSiaMux(filepath.Join(dir, skymodules.SiaMuxDir), dir, params.SiaMuxTCPAddress, params.SiaMuxWSAddress)
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create siamux"))
 		return nil, errChan
@@ -277,7 +277,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	i := 1
 	printfRelease("(%d/%d) Loading siad...\n", i, numModules)
 	// Gateway.
-	g, err := func() (modules.Gateway, error) {
+	g, err := func() (skymodules.Gateway, error) {
 		if params.CreateGateway && params.Gateway != nil {
 			return nil, errors.New("cannot both create a gateway and use a passed in gateway")
 		}
@@ -292,11 +292,11 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		gatewayDeps := params.GatewayDeps
 		if gatewayDeps == nil {
-			gatewayDeps = modules.ProdDependencies
+			gatewayDeps = skymodules.ProdDependencies
 		}
 		i++
 		printfRelease("(%d/%d) Loading gateway...\n", i, numModules)
-		return gateway.NewCustomGateway(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir), gatewayDeps)
+		return gateway.NewCustomGateway(params.RPCAddress, params.Bootstrap, filepath.Join(dir, skymodules.GatewayDir), gatewayDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create gateway"))
@@ -304,7 +304,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Consensus.
-	cs, errChanCS := func() (modules.ConsensusSet, <-chan error) {
+	cs, errChanCS := func() (skymodules.ConsensusSet, <-chan error) {
 		c := make(chan error, 1)
 		defer close(c)
 		if params.CreateConsensusSet && params.ConsensusSet != nil {
@@ -321,17 +321,17 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		printfRelease("(%d/%d) Loading consensus...\n", i, numModules)
 		consensusSetDeps := params.ConsensusSetDeps
 		if consensusSetDeps == nil {
-			consensusSetDeps = modules.ProdDependencies
+			consensusSetDeps = skymodules.ProdDependencies
 		}
-		return consensus.NewCustomConsensusSet(g, params.Bootstrap, filepath.Join(dir, modules.ConsensusDir), consensusSetDeps)
+		return consensus.NewCustomConsensusSet(g, params.Bootstrap, filepath.Join(dir, skymodules.ConsensusDir), consensusSetDeps)
 	}()
-	if err := modules.PeekErr(errChanCS); err != nil {
+	if err := skymodules.PeekErr(errChanCS); err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create consensus set"))
 		return nil, errChan
 	}
 
 	// Explorer.
-	e, err := func() (modules.Explorer, error) {
+	e, err := func() (skymodules.Explorer, error) {
 		if !params.CreateExplorer && params.Explorer != nil {
 			return nil, errors.New("cannot create explorer and also use custom explorer")
 		}
@@ -341,7 +341,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		if !params.CreateExplorer {
 			return nil, nil
 		}
-		e, err := explorer.New(cs, filepath.Join(dir, modules.ExplorerDir))
+		e, err := explorer.New(cs, filepath.Join(dir, skymodules.ExplorerDir))
 		if err != nil {
 			return nil, err
 		}
@@ -355,7 +355,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Transaction Pool.
-	tp, err := func() (modules.TransactionPool, error) {
+	tp, err := func() (skymodules.TransactionPool, error) {
 		if params.CreateTransactionPool && params.TransactionPool != nil {
 			return nil, errors.New("cannot create transaction pool and also use custom transaction pool")
 		}
@@ -367,11 +367,11 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		tpoolDeps := params.TPoolDeps
 		if tpoolDeps == nil {
-			tpoolDeps = modules.ProdDependencies
+			tpoolDeps = skymodules.ProdDependencies
 		}
 		i++
 		printfRelease("(%d/%d) Loading transaction pool...\n", i, numModules)
-		return transactionpool.NewCustomTPool(cs, g, filepath.Join(dir, modules.TransactionPoolDir), tpoolDeps)
+		return transactionpool.NewCustomTPool(cs, g, filepath.Join(dir, skymodules.TransactionPoolDir), tpoolDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create transaction pool"))
@@ -379,7 +379,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Wallet.
-	w, err := func() (modules.Wallet, error) {
+	w, err := func() (skymodules.Wallet, error) {
 		if params.CreateWallet && params.Wallet != nil {
 			return nil, errors.New("cannot create wallet and use custom wallet")
 		}
@@ -391,11 +391,11 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		walletDeps := params.WalletDeps
 		if walletDeps == nil {
-			walletDeps = modules.ProdDependencies
+			walletDeps = skymodules.ProdDependencies
 		}
 		i++
 		printfRelease("(%d/%d) Loading wallet...\n", i, numModules)
-		return wallet.NewCustomWallet(cs, tp, filepath.Join(dir, modules.WalletDir), walletDeps)
+		return wallet.NewCustomWallet(cs, tp, filepath.Join(dir, skymodules.WalletDir), walletDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create wallet"))
@@ -403,7 +403,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// FeeManager.
-	fm, err := func() (modules.FeeManager, error) {
+	fm, err := func() (skymodules.FeeManager, error) {
 		if !params.CreateFeeManager && params.FeeManager != nil {
 			return nil, errors.New("cannot create feemanager and also use custom feemanager")
 		}
@@ -415,11 +415,11 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		feeManagerDeps := params.FeeManagerDeps
 		if feeManagerDeps == nil {
-			feeManagerDeps = modules.ProdDependencies
+			feeManagerDeps = skymodules.ProdDependencies
 		}
 		i++
 		printfRelease("(%d/%d) Loading feemanager...\n", i, numModules)
-		return feemanager.NewCustomFeeManager(cs, tp, w, filepath.Join(dir, modules.FeeManagerDir), feeManagerDeps)
+		return feemanager.NewCustomFeeManager(cs, tp, w, filepath.Join(dir, skymodules.FeeManagerDir), feeManagerDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create feemanager"))
@@ -427,7 +427,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Miner.
-	m, err := func() (modules.TestMiner, error) {
+	m, err := func() (skymodules.TestMiner, error) {
 		if params.CreateMiner && params.Miner != nil {
 			return nil, errors.New("cannot create miner and also use custom miner")
 		}
@@ -439,7 +439,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		i++
 		printfRelease("(%d/%d) Loading miner...\n", i, numModules)
-		m, err := miner.New(cs, tp, w, filepath.Join(dir, modules.MinerDir))
+		m, err := miner.New(cs, tp, w, filepath.Join(dir, skymodules.MinerDir))
 		if err != nil {
 			return nil, err
 		}
@@ -451,7 +451,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Host.
-	h, err := func() (modules.Host, error) {
+	h, err := func() (skymodules.Host, error) {
 		if params.CreateHost && params.Host != nil {
 			return nil, errors.New("cannot create host and use custom host")
 		}
@@ -466,15 +466,15 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		hostDeps := params.HostDeps
 		if hostDeps == nil {
-			hostDeps = modules.ProdDependencies
+			hostDeps = skymodules.ProdDependencies
 		}
 		smDeps := params.StorageManagerDeps
 		if smDeps == nil {
-			smDeps = new(modules.ProductionDependencies)
+			smDeps = new(skymodules.ProductionDependencies)
 		}
 		i++
 		printfRelease("(%d/%d) Loading host...\n", i, numModules)
-		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, mux, params.HostAddress, filepath.Join(dir, modules.HostDir))
+		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, mux, params.HostAddress, filepath.Join(dir, skymodules.HostDir))
 		return host, err
 	}()
 	if err != nil {
@@ -483,7 +483,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Renter.
-	r, errChanRenter := func() (modules.Renter, <-chan error) {
+	r, errChanRenter := func() (skymodules.Renter, <-chan error) {
 		c := make(chan error, 1)
 		if params.CreateRenter && params.Renter != nil {
 			c <- errors.New("cannot create renter and also use custom renter")
@@ -500,28 +500,28 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		contractorDeps := params.ContractorDeps
 		if contractorDeps == nil {
-			contractorDeps = modules.ProdDependencies
+			contractorDeps = skymodules.ProdDependencies
 		}
 		contractSetDeps := params.ContractSetDeps
 		if contractSetDeps == nil {
-			contractSetDeps = modules.ProdDependencies
+			contractSetDeps = skymodules.ProdDependencies
 		}
 		hostDBDeps := params.HostDBDeps
 		if hostDBDeps == nil {
-			hostDBDeps = modules.ProdDependencies
+			hostDBDeps = skymodules.ProdDependencies
 		}
 		renterDeps := params.RenterDeps
 		if renterDeps == nil {
-			renterDeps = modules.ProdDependencies
+			renterDeps = skymodules.ProdDependencies
 		}
-		persistDir := filepath.Join(dir, modules.RenterDir)
+		persistDir := filepath.Join(dir, skymodules.RenterDir)
 
 		i++
 		printfRelease("(%d/%d) Loading renter...\n", i, numModules)
 
 		// HostDB
 		hdb, errChanHDB := hostdb.NewCustomHostDB(g, cs, tp, mux, persistDir, hostDBDeps)
-		if err := modules.PeekErr(errChanHDB); err != nil {
+		if err := skymodules.PeekErr(errChanHDB); err != nil {
 			c <- err
 			close(c)
 			return nil, c
@@ -542,13 +542,13 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			return nil, c
 		}
 		hc, errChanContractor := contractor.NewCustomContractor(cs, w, tp, hdb, persistDir, contractSet, logger, contractorDeps)
-		if err := modules.PeekErr(errChanContractor); err != nil {
+		if err := skymodules.PeekErr(errChanContractor); err != nil {
 			c <- err
 			close(c)
 			return nil, c
 		}
 		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, persistDir, renterRateLimit, renterDeps)
-		if err := modules.PeekErr(errChanRenter); err != nil {
+		if err := skymodules.PeekErr(errChanRenter); err != nil {
 			c <- err
 			close(c)
 			return nil, c
@@ -559,13 +559,13 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}()
 		return renter, c
 	}()
-	if err := modules.PeekErr(errChanRenter); err != nil {
+	if err := skymodules.PeekErr(errChanRenter); err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create renter"))
 		return nil, errChan
 	}
 
 	// Accounting.
-	acc, err := func() (modules.Accounting, error) {
+	acc, err := func() (skymodules.Accounting, error) {
 		if params.CreateAccounting && params.Accounting != nil {
 			return nil, errors.New("cannot create accounting and also use custom accounting")
 		}
@@ -577,9 +577,9 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		accoutingDeps := params.AccountingDeps
 		if accoutingDeps == nil {
-			accoutingDeps = modules.ProdDependencies
+			accoutingDeps = skymodules.ProdDependencies
 		}
-		persistDir := filepath.Join(dir, modules.AccountingDir)
+		persistDir := filepath.Join(dir, skymodules.AccountingDir)
 
 		i++
 		printfRelease("(%d/%d) Loading accounting...\n", i, numModules)

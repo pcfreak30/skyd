@@ -19,7 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestHostObligationAcceptingContracts verifies that the host will complete
@@ -172,7 +172,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	t.Parallel()
 	// Inject a dependency that forces legacy contract renewal without clearing
 	// the contract.
-	pd := modules.ProdDependencies
+	pd := skymodules.ProdDependencies
 	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, pd, pd)
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +202,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", renewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 
 	// On a second connection, upload another file.
 	path2 := filepath.Join(st.dir, "test2.dat")
-	test2Size := modules.SectorSize*2 + 1
+	test2Size := skymodules.SectorSize*2 + 1
 	err = createRandFile(path2, int(test2Size))
 	if err != nil {
 		t.Fatal(err)
@@ -791,7 +791,7 @@ func TestRenterUploadDownload(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -853,7 +853,7 @@ func TestRenterUploadDownload(t *testing.T) {
 
 	// In parallel, upload another file and download the first file.
 	path2 := filepath.Join(st.dir, "test2.dat")
-	test2Size := modules.SectorSize*2 + 1
+	test2Size := skymodules.SectorSize*2 + 1
 	err = createRandFile(path2, int(test2Size))
 	if err != nil {
 		t.Fatal(err)
@@ -942,7 +942,7 @@ func TestRenterParallelDelete(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -1079,7 +1079,7 @@ func TestRenterRenew(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", strconv.Itoa(testPeriod))
 	allowanceValues.Set("renewwindow", strconv.Itoa(testPeriod/2))
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -1337,7 +1337,7 @@ func TestHostAndRentReload(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -1692,7 +1692,7 @@ func TestUploadedBytesReporting(t *testing.T) {
 	}
 
 	// Create a file to upload.
-	filesize := int(modules.SectorSize * 2)
+	filesize := int(skymodules.SectorSize * 2)
 	path := filepath.Join(st.dir, "test.dat")
 	err = createRandFile(path, filesize)
 	if err != nil {
@@ -1717,13 +1717,13 @@ func TestUploadedBytesReporting(t *testing.T) {
 		if err := ct.FromString(cipherType); err != nil {
 			t.Fatal(err)
 		}
-		pieceSize := modules.SectorSize - ct.Overhead()
+		pieceSize := skymodules.SectorSize - ct.Overhead()
 		chunkSize := pieceSize * uint64(dataPieces)
 		numChunks := uint64(filesize) / chunkSize
 		if uint64(filesize)%chunkSize != 0 {
 			numChunks++
 		}
-		return modules.SectorSize * uint64(dataPieces+parityPieces) * uint64(numChunks)
+		return skymodules.SectorSize * uint64(dataPieces+parityPieces) * uint64(numChunks)
 	}
 
 	// Monitor the file as it uploads. Ensure that the UploadProgress times

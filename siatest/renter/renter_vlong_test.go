@@ -14,13 +14,13 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem/siafile"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 // TestRenterSpendingReporting checks the accuracy for the reported
@@ -499,7 +499,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				return
 			}
 			// 30% chance for the file to be a 0-byte file.
-			size := int(modules.SectorSize) + siatest.Fuzz()
+			size := int(skymodules.SectorSize) + siatest.Fuzz()
 			if fastrand.Intn(3) == 0 {
 				size = 0
 			}
@@ -545,7 +545,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			// 30% chance for the file to be a 0-byte file.
-			size := int(modules.SectorSize) + siatest.Fuzz()
+			size := int(skymodules.SectorSize) + siatest.Fuzz()
 			if fastrand.Intn(3) == 0 {
 				size = 0
 			}
@@ -593,14 +593,14 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
-			err = r.RenterRenamePost(sp, modules.RandomSiaPath(), false)
+			err = r.RenterRenamePost(sp, skymodules.RandomSiaPath(), false)
 			if isErr(err) {
 				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error renaming file", threadName)))
 				return
 			}
 			// 50% chance to replace renamed file with new one.
 			if fastrand.Intn(2) == 0 {
-				lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
+				lf, err := r.FilesDir().NewFile(int(skymodules.SectorSize) + siatest.Fuzz())
 				if err != nil {
 					t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName)))
 					return
@@ -702,7 +702,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
 			// Make sure that dir isn't the root.
-			if dir.Equals(modules.RootSiaPath()) {
+			if dir.Equals(skymodules.RootSiaPath()) {
 				continue
 			}
 			if fastrand.Intn(2) == 0 {
@@ -805,8 +805,8 @@ func TestUploadStreamFailAndRepair(t *testing.T) {
 	renter := nodes[0]
 
 	// Use upload streaming to upload a file. This should fail in the middle.
-	data := fastrand.Bytes(int(10 * modules.SectorSize))
-	sp := modules.RandomSiaPath()
+	data := fastrand.Bytes(int(10 * skymodules.SectorSize))
+	sp := skymodules.RandomSiaPath()
 	deps.Fail()
 	err = renter.RenterUploadStreamPost(bytes.NewReader(data), sp, 1, 1, false)
 	deps.Disable()

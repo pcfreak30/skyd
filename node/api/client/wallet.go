@@ -10,8 +10,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // WalletAddressGet requests a new address from the /wallet/address endpoint
@@ -39,8 +39,8 @@ func (c *Client) WalletChangePasswordPost(currentPassword, newPassword string) (
 
 // WalletChangePasswordWithSeedPost uses the /wallet/changepassword endpoint to
 // change the password used to encrypt the wallet.
-func (c *Client) WalletChangePasswordWithSeedPost(seed modules.Seed, newPassword string) (err error) {
-	seedStr, err := modules.SeedToString(seed, mnemonics.DictionaryID("english"))
+func (c *Client) WalletChangePasswordWithSeedPost(seed skymodules.Seed, newPassword string) (err error) {
+	seedStr, err := skymodules.SeedToString(seed, mnemonics.DictionaryID("english"))
 	if err != nil {
 		return err
 	}
@@ -58,10 +58,10 @@ func (c *Client) WalletVerifyPasswordGet(password string) (wvpg api.WalletVerify
 
 // WalletVerifyPasswordSeedGet takes a seed and generates a seed string to
 // submit to the /wallet/verifypassword endpoint
-func (c *Client) WalletVerifyPasswordSeedGet(seed modules.Seed) (wvpg api.WalletVerifyPasswordGET, err error) {
+func (c *Client) WalletVerifyPasswordSeedGet(seed skymodules.Seed) (wvpg api.WalletVerifyPasswordGET, err error) {
 	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
 	for _, dict := range dicts {
-		seedStr, seedErr := modules.SeedToString(seed, mnemonics.DictionaryID(dict))
+		seedStr, seedErr := skymodules.SeedToString(seed, mnemonics.DictionaryID(dict))
 		if err == nil {
 			return c.WalletVerifyPasswordGet(seedStr)
 		}

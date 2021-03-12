@@ -15,16 +15,16 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/host/contractmanager"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/host/contractmanager"
 )
 
 var (
 	// Various folder sizes for testing host storage folder resizing.
 	// Must be provided as strings to the API call.
-	tooSmallFolderString   = strconv.FormatUint(modules.SectorSize*(contractmanager.MinimumSectorsPerStorageFolder-1), 10)
-	tooLargeFolderString   = strconv.FormatUint(modules.SectorSize*(contractmanager.MaximumSectorsPerStorageFolder+1), 10)
-	mediumSizeFolderString = strconv.FormatUint(modules.SectorSize*contractmanager.MinimumSectorsPerStorageFolder*3, 10)
+	tooSmallFolderString   = strconv.FormatUint(skymodules.SectorSize*(contractmanager.MinimumSectorsPerStorageFolder-1), 10)
+	tooLargeFolderString   = strconv.FormatUint(skymodules.SectorSize*(contractmanager.MaximumSectorsPerStorageFolder+1), 10)
+	mediumSizeFolderString = strconv.FormatUint(skymodules.SectorSize*contractmanager.MinimumSectorsPerStorageFolder*3, 10)
 
 	// Test cases for resizing a host's storage folder.
 	// Running all the invalid cases before the valid ones simplifies some
@@ -37,17 +37,17 @@ var (
 		// invalid sizes
 		{"", 0, io.EOF},
 		{"0", 0, contractmanager.ErrSmallStorageFolder},
-		{tooSmallFolderString, modules.SectorSize * (contractmanager.MinimumSectorsPerStorageFolder - 1), contractmanager.ErrSmallStorageFolder},
-		{tooLargeFolderString, modules.SectorSize * (contractmanager.MaximumSectorsPerStorageFolder + 1), contractmanager.ErrLargeStorageFolder},
+		{tooSmallFolderString, skymodules.SectorSize * (contractmanager.MinimumSectorsPerStorageFolder - 1), contractmanager.ErrSmallStorageFolder},
+		{tooLargeFolderString, skymodules.SectorSize * (contractmanager.MaximumSectorsPerStorageFolder + 1), contractmanager.ErrLargeStorageFolder},
 
 		// valid sizes
 		//
 		// TODO: Re-enable these when the host can support resizing into the
 		// same folder.
 		//
-		// {minFolderSizeString, contractmanager.MinimumSectorsPerStorageFolder * modules.SectorSize, nil},
-		// {maxFolderSizeString, contractmanager.MaximumSectorsPerStorageFolder * modules.SectorSize, nil},
-		// {mediumSizeFolderString, 3 * contractmanager.MinimumSectorsPerStorageFolder * modules.SectorSize, nil},
+		// {minFolderSizeString, contractmanager.MinimumSectorsPerStorageFolder * skymodules.SectorSize, nil},
+		// {maxFolderSizeString, contractmanager.MaximumSectorsPerStorageFolder * skymodules.SectorSize, nil},
+		// {mediumSizeFolderString, 3 * contractmanager.MinimumSectorsPerStorageFolder * skymodules.SectorSize, nil},
 	}
 )
 
@@ -209,7 +209,7 @@ func TestWorkingStatus(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestWorkingStatus(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if hg.WorkingStatus != modules.HostWorkingStatusWorking {
+		if hg.WorkingStatus != skymodules.HostWorkingStatusWorking {
 			return errors.New("expected host to be working")
 		}
 		return nil
@@ -301,7 +301,7 @@ func TestConnectabilityStatus(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if hg.ConnectabilityStatus != modules.HostConnectabilityStatusConnectable {
+		if hg.ConnectabilityStatus != skymodules.HostConnectabilityStatusConnectable {
 			return errors.New("expected host to be connectable")
 		}
 		return nil
@@ -339,7 +339,7 @@ func TestStorageHandler(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -398,8 +398,8 @@ func TestStorageHandler(t *testing.T) {
 	if sg.Folders[0].SuccessfulWrites != 1 {
 		t.Fatalf("expected 1 successful write, got %v", sg.Folders[0].SuccessfulWrites)
 	}
-	if used := sg.Folders[0].Capacity - sg.Folders[0].CapacityRemaining; used != modules.SectorSize {
-		t.Fatalf("expected used capacity to be the size of one sector (%v bytes), got %v bytes", modules.SectorSize, used)
+	if used := sg.Folders[0].Capacity - sg.Folders[0].CapacityRemaining; used != skymodules.SectorSize {
+		t.Fatalf("expected used capacity to be the size of one sector (%v bytes), got %v bytes", skymodules.SectorSize, used)
 	}
 }
 
@@ -592,7 +592,7 @@ func TestResizeNonemptyStorageFolder(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -683,8 +683,8 @@ func TestResizeNonemptyStorageFolder(t *testing.T) {
 			}
 			// Since one sector has been uploaded, the available capacity
 			// should be one sector size smaller than the total capacity.
-			if used := test.size - sg.Folders[0].CapacityRemaining; used != modules.SectorSize {
-				t.Fatalf("used capacity (%v) != the size of 1 sector (%v)", used, modules.SectorSize)
+			if used := test.size - sg.Folders[0].CapacityRemaining; used != skymodules.SectorSize {
+				t.Fatalf("used capacity (%v) != the size of 1 sector (%v)", used, skymodules.SectorSize)
 			}
 		} else {
 			// If the test size is invalid, the folder should not have been
@@ -963,7 +963,7 @@ func TestRemoveStorageFolderForced(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}

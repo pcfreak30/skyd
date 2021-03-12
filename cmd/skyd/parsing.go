@@ -10,7 +10,7 @@ import (
 // node params for the server.
 func parseModules(config Config) node.NodeParams {
 	params := node.NodeParams{}
-	// Parse the modules.
+	// Parse the skymodules.
 	if strings.Contains(config.Siad.Modules, "a") {
 		params.CreateAccounting = true
 	}

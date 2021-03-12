@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -13,114 +13,114 @@ type (
 	// making it think that it got one more worker than it actually has.
 	// Therefore, waiting for a response that never comes.
 	DependencyReadRegistryBlocking struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 	// DependencyLegacyRenew forces the contractor to use the legacy behavior
 	// when renewing a contract. This is useful for unit testing since it
 	// doesn't require a renter, workers etc.
 	DependencyLegacyRenew struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 	// DependencyNoSnapshotSync prevents the renter from syncing snapshots.
 	DependencyNoSnapshotSync struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 	// DependencyInvalidateStatsCache invalidates the
 	// threadeInvalidateStatsCache loop.
 	DependencyInvalidateStatsCache struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 	// DependencyRegistryUpdateLyingHost causes RegistryUpdate to return the
 	// most recent known value for a lookup together with a ErrSameRevNum error.
 	DependencyRegistryUpdateLyingHost struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 	// DependencyRenewFail causes the renewal to fail on the host side.
 	DependencyRenewFail struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 	// DependencyDisableWorker will disable the worker's work loop, the health
 	// loop, the repair loop and the snapshot loop.
 	DependencyDisableWorker struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 	// DependencyDisableHostSiamux will disable siamux in the host.
 	DependencyDisableHostSiamux struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 	// DependencyStorageObligationNotFound will cause the host to return that it
 	// wasn't able to find a storage obligation in managedPayByContract.
 	DependencyStorageObligationNotFound struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyPreventEARefill prevents EAs from being refilled automatically.
 	DependencyPreventEARefill struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyLowFundsFormationFail will cause contract formation to fail due
 	// to low funds in the allowance.
 	DependencyLowFundsFormationFail struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyLowFundsRenewalFail will cause contract renewal to fail due to
 	// low funds in the allowance.
 	DependencyLowFundsRenewalFail struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyLowFundsRefreshFail will cause contract renewal to fail due to
 	// low funds in the allowance.
 	DependencyLowFundsRefreshFail struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyDisableAsyncStartup prevents the async part of a module's
 	// creation from being executed.
 	DependencyDisableAsyncStartup struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyDisableCriticalOnMaxBalance prevents a build.Critical to be
 	// thrown when we encounter a `MaxBalanceExceeded` error on the host
 	DependencyDisableCriticalOnMaxBalance struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyDisableStreamClose prevents the stream from being closed.
 	DependencyDisableStreamClose struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyDisableContractRecovery prevents recoverable contracts from
 	// being recovered in threadedContractMaintenance.
 	DependencyDisableContractRecovery struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyDisableRecoveryStatusReset prevents the fields scanInProgress
 	// and atomicRecoveryScanHeight from being reset after the scan is done.
 	DependencyDisableRecoveryStatusReset struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyDisableRenewal prevents contracts from being renewed.
 	DependencyDisableRenewal struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencySkipDeleteContractAfterRenewal prevents the old contract from
 	// being deleted after a renewal.
 	DependencySkipDeleteContractAfterRenewal struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyTimeoutOnHostGET times out when the client performs the HTTP
 	// call to GET /host.
 	DependencyTimeoutOnHostGET struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyInterruptCountOccurrences is a generic dependency that
@@ -128,7 +128,7 @@ type (
 	// equals str and it keeps track of how many times this happened.
 	DependencyInterruptCountOccurrences struct {
 		occurrences uint64 // indicates how many times this interrupt occurred
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 		mu  sync.Mutex
 		str string
 	}
@@ -138,7 +138,7 @@ type (
 	// if f was set to true by calling Fail.
 	DependencyInterruptOnceOnKeyword struct {
 		f bool // indicates if the next download should fail
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 		mu  sync.Mutex
 		str string
 	}
@@ -157,20 +157,20 @@ type (
 	// method between calling Seek and Recover as a regression test for randomly
 	// corrupting downloads.
 	DependencyPostponeWritePiecesRecovery struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyInterruptAccountSaveOnShutdown will interrupt the account save
 	// when the renter shuts down.
 	DependencyInterruptAccountSaveOnShutdown struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown will interrupt the
 	// account save when the renter shuts down and also disable the snapshot
 	// syncing thread.
 	DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyBlockResumeJobDownloadUntilTimeout blocks in
@@ -184,13 +184,13 @@ type (
 	// DependencyDisableRotateFingerprintBuckets prevents rotation of the
 	// fingerprint buckets on disk.
 	DependencyDisableRotateFingerprintBuckets struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 
 	// DependencyDefaultRenewSettings causes the contractor to use default
 	// settings when renewing a contract.
 	DependencyDefaultRenewSettings struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 		enabled bool
 		mu      sync.Mutex
 	}
@@ -198,7 +198,7 @@ type (
 	// DependencyResolveSkylinkToFixture will disable downloading skylinks and
 	// will replace it with fetching from a set of predefined fixtures.
 	DependencyResolveSkylinkToFixture struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 	}
 )
 
@@ -222,7 +222,7 @@ func NewDependencyCorruptReadSector() *DependencyWithDisableAndEnable {
 // NewDependencyBlockResumeJobDownloadUntilTimeout blocks in
 // managedResumeJobDownloadByRoot until the timeout for the download project is
 // reached.
-func NewDependencyBlockResumeJobDownloadUntilTimeout() modules.Dependencies {
+func NewDependencyBlockResumeJobDownloadUntilTimeout() skymodules.Dependencies {
 	return &DependencyBlockResumeJobDownloadUntilTimeout{
 		c: make(chan struct{}),
 	}
@@ -243,7 +243,7 @@ func NewDependencySkyfileUploadFail() *DependencyWithDisableAndEnable {
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
 // method which returns a custom resolver that uses the specified lookupIP
 // method to resolve hostnames.
-func NewDependencyCustomResolver(lookupIP func(string) ([]net.IP, error)) modules.Dependencies {
+func NewDependencyCustomResolver(lookupIP func(string) ([]net.IP, error)) skymodules.Dependencies {
 	return &dependencyCustomResolver{lookupIP: lookupIP}
 }
 
@@ -580,12 +580,12 @@ type (
 	// dependencyCustomResolver is a dependency which overrides the Resolver
 	// method to return a custom resolver with a specific lookupIP method.
 	dependencyCustomResolver struct {
-		modules.ProductionDependencies
+		skymodules.ProductionDependencies
 		lookupIP func(string) ([]net.IP, error)
 	}
 )
 
-// LookupIP implements the modules.Resolver interface.
+// LookupIP implements the skymodules.Resolver interface.
 func (cr customResolver) LookupIP(host string) ([]net.IP, error) {
 	return cr.lookupIP(host)
 }
@@ -597,7 +597,7 @@ func (d *dependencyCustomResolver) Disrupt(s string) bool {
 }
 
 // Resolver creates a new custom resolver.
-func (d *dependencyCustomResolver) Resolver() modules.Resolver {
+func (d *dependencyCustomResolver) Resolver() skymodules.Resolver {
 	return customResolver{d.lookupIP}
 }
 
@@ -606,7 +606,7 @@ func (d *dependencyCustomResolver) Resolver() modules.Resolver {
 type DependencyAddLatency struct {
 	str      string
 	duration time.Duration
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // newDependencyAddLatency creates a new DependencyAddLatency from a given
@@ -659,7 +659,7 @@ func (d *DependencyResolveSkylinkToFixture) Disrupt(s string) bool {
 // DependencyWithDisableAndEnable adds the ability to disable the dependency
 type DependencyWithDisableAndEnable struct {
 	disabled bool
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 	mu  sync.Mutex
 	str string
 }

@@ -5,7 +5,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -19,27 +19,27 @@ type (
 	// request to /feemanager/add
 	FeeManagerAddFeePOST struct {
 		// FeeUID is the UID of the Fee that was just added to the FeeManager
-		FeeUID modules.FeeUID `json:"feeuid"`
+		FeeUID skymodules.FeeUID `json:"feeuid"`
 	}
 
 	// FeeManagerPaidFeesGET is the object returned as a response to a GET
 	// request to /feemanager/paidfees
 	FeeManagerPaidFeesGET struct {
 		// This is a full historical list of Fees that have been Paid
-		PaidFees []modules.AppFee `json:"paidfees"`
+		PaidFees []skymodules.AppFee `json:"paidfees"`
 	}
 
 	// FeeManagerPendingFeesGET is the object returned as a response to a GET
 	// request to /feemanager/pendingfees
 	FeeManagerPendingFeesGET struct {
 		// This is the list of current pending Fees
-		PendingFees []modules.AppFee `json:"pendingfees"`
+		PendingFees []skymodules.AppFee `json:"pendingfees"`
 	}
 )
 
 // RegisterRoutesFeeManager is a helper function to register all feemanager
 // routes.
-func RegisterRoutesFeeManager(router *httprouter.Router, fm modules.FeeManager, requiredPassword string) {
+func RegisterRoutesFeeManager(router *httprouter.Router, fm skymodules.FeeManager, requiredPassword string) {
 	router.GET("/feemanager", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		feemanagerHandlerGET(fm, w, req, ps)
 	})
@@ -58,7 +58,7 @@ func RegisterRoutesFeeManager(router *httprouter.Router, fm modules.FeeManager, 
 }
 
 // feemanagerHandlerGET handles API calls to /feemanager
-func feemanagerHandlerGET(feemanager modules.FeeManager, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func feemanagerHandlerGET(feemanager skymodules.FeeManager, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	payoutheight, err := feemanager.PayoutHeight()
 	if err != nil {
 		WriteError(w, Error{"could not get the payoutHeight of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
@@ -70,7 +70,7 @@ func feemanagerHandlerGET(feemanager modules.FeeManager, w http.ResponseWriter, 
 }
 
 // feemanagerAddHandlerPOST handles API calls to /feemanager/add
-func feemanagerAddHandlerPOST(feemanager modules.FeeManager, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func feemanagerAddHandlerPOST(feemanager skymodules.FeeManager, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Scan for amount - REQUIRED
 	if req.FormValue("amount") == "" {
 		WriteError(w, Error{"amount cannot be blank"}, http.StatusBadRequest)
@@ -111,7 +111,7 @@ func feemanagerAddHandlerPOST(feemanager modules.FeeManager, w http.ResponseWrit
 	}
 
 	// Add the fee
-	feeUID, err := feemanager.AddFee(address, amount, modules.AppUID(appUIDstr), recurring)
+	feeUID, err := feemanager.AddFee(address, amount, skymodules.AppUID(appUIDstr), recurring)
 	if err != nil {
 		WriteError(w, Error{"could not set the fee: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -124,7 +124,7 @@ func feemanagerAddHandlerPOST(feemanager modules.FeeManager, w http.ResponseWrit
 }
 
 // feemanagerCancelHandlerPOST handles API calls to /feemanager/cancel
-func feemanagerCancelHandlerPOST(feemanager modules.FeeManager, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func feemanagerCancelHandlerPOST(feemanager skymodules.FeeManager, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Scan for feeuid - REQUIRED
 	feeUID := req.FormValue("feeuid")
 	if feeUID == "" {
@@ -133,7 +133,7 @@ func feemanagerCancelHandlerPOST(feemanager modules.FeeManager, w http.ResponseW
 	}
 
 	// Cancel the fee
-	err := feemanager.CancelFee(modules.FeeUID(feeUID))
+	err := feemanager.CancelFee(skymodules.FeeUID(feeUID))
 	if err != nil {
 		WriteError(w, Error{"could not cancel the fee: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -144,7 +144,7 @@ func feemanagerCancelHandlerPOST(feemanager modules.FeeManager, w http.ResponseW
 }
 
 // feemanagerPaidFeesHandlerGET handles API calls to /feemanager/paidfees
-func feemanagerPaidFeesHandlerGET(feemanager modules.FeeManager, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func feemanagerPaidFeesHandlerGET(feemanager skymodules.FeeManager, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	paidFees, err := feemanager.PaidFees()
 	if err != nil {
 		WriteError(w, Error{"could not get the paid fees of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
@@ -156,7 +156,7 @@ func feemanagerPaidFeesHandlerGET(feemanager modules.FeeManager, w http.Response
 }
 
 // feemanagerPendingFeesHandlerGET handles API calls to /feemanager/pendingfees
-func feemanagerPendingFeesHandlerGET(feemanager modules.FeeManager, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func feemanagerPendingFeesHandlerGET(feemanager skymodules.FeeManager, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	pendingFees, err := feemanager.PendingFees()
 	if err != nil {
 		WriteError(w, Error{"could not get the pending fees of the FeeManager: " + err.Error()}, http.StatusInternalServerError)

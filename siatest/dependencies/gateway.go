@@ -1,14 +1,14 @@
 package dependencies
 
 import (
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // DependencyDisableAutoOnline will disable the gateway always being online
 // during testing and dev builds and instead apply the same rules which are used
 // in production builds.
 type DependencyDisableAutoOnline struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt returns true if the correct string is provided.

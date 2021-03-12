@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -37,7 +37,7 @@ func scrambleData(d []byte) []byte {
 
 // DependencyFaultyDisk implements dependencies that simulate a faulty disk.
 type DependencyFaultyDisk struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 	// failDenominator determines how likely it is that a write will fail,
 	// defined as 1/failDenominator. Each write call increments
 	// failDenominator, and it starts at 2. This means that the more calls to
@@ -99,7 +99,7 @@ func (d *DependencyFaultyDisk) tryFail() bool {
 }
 
 // newFaultyFile creates a new faulty file around the provided file handle.
-func (d *DependencyFaultyDisk) newFaultyFile(f *os.File) modules.File {
+func (d *DependencyFaultyDisk) newFaultyFile(f *os.File) skymodules.File {
 	return &FaultyFile{d: d, file: f}
 }
 
@@ -126,12 +126,12 @@ func (d *DependencyFaultyDisk) Reset() {
 }
 
 // Open is an os.Open replacement
-func (d *DependencyFaultyDisk) Open(path string) (modules.File, error) {
+func (d *DependencyFaultyDisk) Open(path string) (skymodules.File, error) {
 	return d.OpenFile(path, os.O_RDONLY, 0)
 }
 
 // OpenFile is an os.OpenFile replacement
-func (d *DependencyFaultyDisk) OpenFile(path string, flag int, perm os.FileMode) (modules.File, error) {
+func (d *DependencyFaultyDisk) OpenFile(path string, flag int, perm os.FileMode) (skymodules.File, error) {
 	f, err := os.OpenFile(path, flag, perm)
 	if err != nil {
 		return nil, err

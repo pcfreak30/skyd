@@ -19,8 +19,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -35,9 +35,9 @@ type (
 		filename            string
 		force               bool
 		mode                os.FileMode
-		monetization        *modules.Monetization
+		monetization        *skymodules.Monetization
 		root                bool
-		siaPath             modules.SiaPath
+		siaPath             skymodules.SiaPath
 		skyKeyID            skykey.SkykeyID
 		skyKeyName          string
 	}
@@ -51,7 +51,7 @@ type (
 )
 
 // buildETag is a helper function that returns an ETag.
-func buildETag(skylink modules.Skylink, method, path string, format modules.SkyfileFormat) string {
+func buildETag(skylink skymodules.Skylink, method, path string, format skymodules.SkyfileFormat) string {
 	return crypto.HashAll(
 		skylink.String(),
 		method,
@@ -71,7 +71,7 @@ func isMultipartRequest(mediaType string) bool {
 // a path. The input skylink URL should not have been URL-decoded. The path is
 // URL-decoded before returning as it is for us to parse and use, while the
 // other components remain encoded for the skapp.
-func parseSkylinkURL(skylinkURL, apiRoute string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+func parseSkylinkURL(skylinkURL, apiRoute string) (skylink skymodules.Skylink, skylinkStringNoQuery, path string, err error) {
 	s := strings.TrimPrefix(skylinkURL, apiRoute)
 	s = strings.TrimPrefix(s, "/")
 	// Parse out optional path to a subfile
@@ -81,7 +81,7 @@ func parseSkylinkURL(skylinkURL, apiRoute string) (skylink modules.Skylink, skyl
 	splits = strings.SplitN(skylinkStringNoQuery, "/", 2)
 	// Check if a path is passed.
 	if len(splits) > 1 && len(splits[1]) > 0 {
-		path = modules.EnsurePrefix(splits[1], "/")
+		path = skymodules.EnsurePrefix(splits[1], "/")
 	}
 	// Decode the path as it may contain URL-encoded characters.
 	path, err = url.QueryUnescape(path)
@@ -153,7 +153,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	// parse 'defaultpath' query parameter
 	defaultPath := queryForm.Get("defaultpath")
 	if defaultPath != "" {
-		defaultPath = modules.EnsurePrefix(defaultPath, "/")
+		defaultPath = skymodules.EnsurePrefix(defaultPath, "/")
 	}
 
 	// parse 'disabledefaultpath' query parameter
@@ -210,12 +210,12 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	}
 
 	// parse 'siapath' query parameter
-	var siaPath modules.SiaPath
+	var siaPath skymodules.SiaPath
 	siaPathStr := ps.ByName("siapath")
 	if root {
-		siaPath, err = modules.NewSiaPath(siaPathStr)
+		siaPath, err = skymodules.NewSiaPath(siaPathStr)
 	} else {
-		siaPath, err = modules.SkynetFolder.Join(siaPathStr)
+		siaPath, err = skymodules.SkynetFolder.Join(siaPathStr)
 	}
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "unable to parse 'siapath' parameter")
@@ -235,15 +235,15 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	}
 
 	// parse 'monetization'.
-	var monetization *modules.Monetization
+	var monetization *skymodules.Monetization
 	monetizationStr := queryForm.Get("monetization")
 	if monetizationStr != "" {
-		var m modules.Monetization
+		var m skymodules.Monetization
 		err = json.Unmarshal([]byte(monetizationStr), &m)
 		if err != nil {
 			return nil, nil, errors.AddContext(err, "unable to parse 'monetizers'")
 		}
-		if err := modules.ValidateMonetization(m); err != nil {
+		if err := skymodules.ValidateMonetization(m); err != nil {
 			return nil, nil, err
 		}
 		monetization = &m
@@ -263,7 +263,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 	// verify disabledefaultpath and defaultpath are not combined
 	if disableDefaultPath && defaultPath != "" {
-		return nil, nil, errors.AddContext(modules.ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together")
+		return nil, nil, errors.AddContext(skymodules.ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together")
 	}
 
 	// verify default path params are not set if it's not a multipart upload
@@ -306,9 +306,9 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 // serveArchive serves skyfiles as an archive by reading them from r and writing
 // the archive to dst using the given archiveFunc.
-func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, archiveFunc archiveFunc) error {
+func serveArchive(dst io.Writer, src io.ReadSeeker, md skymodules.SkyfileMetadata, archiveFunc archiveFunc) error {
 	// Get the files to archive.
-	var files []modules.SkyfileSubfileMetadata
+	var files []skymodules.SkyfileSubfileMetadata
 	for _, file := range md.Subfiles {
 		files = append(files, file)
 	}
@@ -338,7 +338,7 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 			length = uint64(seekLen)
 		}
 		// Construct the SkyfileSubfileMetadata.
-		files = append(files, modules.SkyfileSubfileMetadata{
+		files = append(files, skymodules.SkyfileSubfileMetadata{
 			FileMode: md.Mode,
 			Filename: md.Filename,
 			Offset:   0,
@@ -350,7 +350,7 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 
 // serveTar is an archiveFunc that implements serving the files from src to dst
 // as a tar.
-func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
+func serveTar(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata) error {
 	tw := tar.NewWriter(dst)
 	for _, file := range files {
 		// Create header.
@@ -374,7 +374,7 @@ func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetada
 
 // serveZip is an archiveFunc that implements serving the files from src to dst
 // as a zip.
-func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
+func serveZip(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata) error {
 	zw := zip.NewWriter(dst)
 	for _, file := range files {
 		f, err := zw.Create(file.Filename)

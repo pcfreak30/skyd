@@ -12,14 +12,14 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/host"
-	"gitlab.com/skynetlabs/skyd/modules/host/contractmanager"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/host"
+	"gitlab.com/skynetlabs/skyd/skymodules/host/contractmanager"
 )
 
 // TestHostGetPubKey confirms that the pubkey is returned through the API
@@ -78,11 +78,11 @@ func TestHostAlertDiskTrouble(t *testing.T) {
 		Miners: 1,
 	}
 
-	alert := modules.Alert{
+	alert := skymodules.Alert{
 		Cause:    "",
 		Module:   "contractmanager",
 		Msg:      contractmanager.AlertMSGHostDiskTrouble,
-		Severity: modules.SeverityCritical,
+		Severity: skymodules.SeverityCritical,
 	}
 
 	testDir := hostTestDir(t.Name())
@@ -182,11 +182,11 @@ func TestHostAlertInsufficientCollateral(t *testing.T) {
 	}
 
 	// Test that host registered alert.
-	alert := modules.Alert{
+	alert := skymodules.Alert{
 		Cause:    "",
 		Module:   "host",
 		Msg:      host.AlertMSGHostInsufficientCollateral,
-		Severity: modules.SeverityWarning,
+		Severity: skymodules.SeverityWarning,
 	}
 
 	if err = h.IsAlertRegistered(alert); err != nil {
@@ -459,7 +459,7 @@ func TestHostContract(t *testing.T) {
 
 	prevValidPayout := hcg.Contract.ValidProofOutputs[1].Value
 	prevMissPayout := hcg.Contract.MissedProofOutputs[1].Value
-	_, _, err = renterNode.UploadNewFileBlocking(int(modules.SectorSize), 1, 1, true)
+	_, _, err = renterNode.UploadNewFileBlocking(int(skymodules.SectorSize), 1, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +469,7 @@ func TestHostContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if hcg.Contract.DataSize != modules.SectorSize {
+	if hcg.Contract.DataSize != skymodules.SectorSize {
 		t.Fatal("contract should have 1 sector uploaded")
 	}
 
@@ -544,20 +544,20 @@ func TestHostExternalSettingsEphemeralAccountFields(t *testing.T) {
 	}
 
 	// verify settings exist and are set to their defaults
-	if hg.ExternalSettings.EphemeralAccountExpiry != modules.DefaultEphemeralAccountExpiry {
+	if hg.ExternalSettings.EphemeralAccountExpiry != skymodules.DefaultEphemeralAccountExpiry {
 		t.Fatalf("Expected EphemeralAccountExpiry to be set, and to equal the default, instead it was %v", hg.ExternalSettings.EphemeralAccountExpiry)
 	}
-	if !hg.ExternalSettings.MaxEphemeralAccountBalance.Equals(modules.DefaultMaxEphemeralAccountBalance) {
+	if !hg.ExternalSettings.MaxEphemeralAccountBalance.Equals(skymodules.DefaultMaxEphemeralAccountBalance) {
 		t.Fatalf("Expected MaxEphemeralAccountBalance to be set, and to equal the default, instead it was %v", hg.ExternalSettings.MaxEphemeralAccountBalance)
 	}
 
 	// modify them
-	updatedExpiry := int64(modules.DefaultEphemeralAccountExpiry.Seconds()) + 1
+	updatedExpiry := int64(skymodules.DefaultEphemeralAccountExpiry.Seconds()) + 1
 	err = host.HostModifySettingPost(client.HostParamEphemeralAccountExpiry, updatedExpiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updatedMaxBalance := modules.DefaultMaxEphemeralAccountBalance.Mul64(2)
+	updatedMaxBalance := skymodules.DefaultMaxEphemeralAccountBalance.Mul64(2)
 	err = host.HostModifySettingPost(client.HostParamMaxEphemeralAccountBalance, updatedMaxBalance)
 	if err != nil {
 		t.Fatal(err)
@@ -605,14 +605,14 @@ func TestHostValidPrices(t *testing.T) {
 	}
 
 	// Verify that setting an invalid RPC price will return an error
-	rpcPrice := hg.InternalSettings.MaxBaseRPCPrice().Mul64(modules.MaxBaseRPCPriceVsBandwidth)
+	rpcPrice := hg.InternalSettings.MaxBaseRPCPrice().Mul64(skymodules.MaxBaseRPCPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, rpcPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidRPCDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidRPCDownloadRatio, err)
 	}
 
 	// Verify that setting an invalid Sector price will return an error
-	sectorPrice := hg.InternalSettings.MaxSectorAccessPrice().Mul64(modules.MaxSectorAccessPriceVsBandwidth)
+	sectorPrice := hg.InternalSettings.MaxSectorAccessPrice().Mul64(skymodules.MaxSectorAccessPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinSectorAccessPrice, sectorPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidSectorAccessDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidSectorAccessDownloadRatio, err)
@@ -620,7 +620,7 @@ func TestHostValidPrices(t *testing.T) {
 
 	// Verify that setting an invalid download price will return an error. Error
 	// should be the RPC error since that is the first check
-	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Div64(modules.MaxBaseRPCPriceVsBandwidth)
+	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Div64(skymodules.MaxBaseRPCPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinDownloadBandwidthPrice, downloadPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidRPCDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidRPCDownloadRatio, err)
@@ -798,7 +798,7 @@ func TestHostGetPriceTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reflect.DeepEqual(hg.PriceTable, modules.RPCPriceTable{}) {
+	if reflect.DeepEqual(hg.PriceTable, skymodules.RPCPriceTable{}) {
 		t.Fatal("HostGet contains empty price table")
 	}
 

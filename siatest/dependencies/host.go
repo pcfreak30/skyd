@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // HostRejectAllSessionLocks is a dependency injection for the host that will
@@ -13,7 +13,7 @@ type HostRejectAllSessionLocks struct {
 	started bool
 	mu      sync.Mutex
 
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will interpret a signal from the host and tell the host to pretend it
@@ -38,7 +38,7 @@ func (d *HostRejectAllSessionLocks) StartRejectingLocks() {
 // HostSlowDownload is a dependency injection for the host that will insert a
 // sleep on every read adding a latency to downloads.
 type HostSlowDownload struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt returns true if the correct string is provided.
@@ -49,13 +49,13 @@ func (d *HostSlowDownload) Disrupt(s string) bool {
 // HostExpireEphemeralAccounts is a dependency injection for the host that will
 // expire ephemeral accounts as soon as they get pruned
 type HostExpireEphemeralAccounts struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // HostMDMProgramDelayedWrite is a dependency injection for the host that will
 // ensure the response of an instruction is written after the set latency.
 type HostMDMProgramDelayedWrite struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will interpret a signal from the host and tell the host to force
@@ -68,7 +68,7 @@ func (d *HostExpireEphemeralAccounts) Disrupt(s string) bool {
 // deposit amount substantially lower. This allows us to verify the renter has
 // synced its account balance with the host's balance after an unclean shutdown.
 type HostLowerDeposit struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt returns true if the correct string is provided.
@@ -85,7 +85,7 @@ func NewDependencyHostDiskTrouble() *DependencyInterruptOnceOnKeyword {
 // NewHostMaxEphemeralAccountRiskReached is a dependency injection for the host
 // that will ensure the ephemeral account max saved delta is reached by
 // persisting with a set latency.
-func NewHostMaxEphemeralAccountRiskReached(duration time.Duration) modules.Dependencies {
+func NewHostMaxEphemeralAccountRiskReached(duration time.Duration) skymodules.Dependencies {
 	return newDependencyAddLatency("errMaxRiskReached", duration)
 }
 

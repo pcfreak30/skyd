@@ -16,12 +16,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/consensus"
-	"gitlab.com/skynetlabs/skyd/modules/gateway"
-	"gitlab.com/skynetlabs/skyd/modules/miner"
-	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
-	"gitlab.com/skynetlabs/skyd/modules/wallet"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/consensus"
+	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
+	"gitlab.com/skynetlabs/skyd/skymodules/miner"
+	"gitlab.com/skynetlabs/skyd/skymodules/transactionpool"
+	"gitlab.com/skynetlabs/skyd/skymodules/wallet"
 )
 
 // TestWalletGETEncrypted probes the GET call to /wallet when the
@@ -33,19 +33,19 @@ func TestWalletGETEncrypted(t *testing.T) {
 	t.Parallel()
 	// Check a wallet that has never been encrypted.
 	testdir := build.TempDir("api", t.Name())
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
 	if err != nil {
 		t.Fatal("Failed to create gateway:", err)
 	}
-	cs, errChanCS := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	cs, errChanCS := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
 	if err := <-errChanCS; err != nil {
 		t.Fatal("Failed to create consensus set:", err)
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir))
 	if err != nil {
 		t.Fatal("Failed to create tpool:", err)
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
+	w, err := wallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
 	if err != nil {
 		t.Fatal("Failed to create wallet:", err)
 	}
@@ -172,19 +172,19 @@ func TestWalletBlankEncrypt(t *testing.T) {
 	t.Parallel()
 	// Create a server object without encrypting or unlocking the wallet.
 	testdir := build.TempDir("api", t.Name())
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
+	w, err := wallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,19 +240,19 @@ func TestIntegrationWalletInitSeed(t *testing.T) {
 	}
 	// Create a server object without encrypting or unlocking the wallet.
 	testdir := build.TempDir("api", "TestIntegrationWalletInitSeed")
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
+	w, err := wallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,9 +286,9 @@ func TestIntegrationWalletInitSeed(t *testing.T) {
 
 	// Make a call to /wallet/init/seed. Provide no encryption key so that the
 	// encryption key is the seed.
-	var seed modules.Seed
+	var seed skymodules.Seed
 	fastrand.Read(seed[:])
-	seedStr, _ := modules.SeedToString(seed, "english")
+	seedStr, _ := skymodules.SeedToString(seed, "english")
 	qs.Set("seed", seedStr)
 	err = st.stdPostAPI("/wallet/init/seed", qs)
 	if err != nil {
@@ -457,7 +457,7 @@ func TestIntegrationWalletSweepSeedPOST(t *testing.T) {
 	}
 
 	seed, _, _ := w.PrimarySeed()
-	seedStr, _ := modules.SeedToString(seed, "english")
+	seedStr, _ := skymodules.SeedToString(seed, "english")
 
 	// Sweep the coins we sent
 	var wsp WalletSweepPOST
@@ -553,7 +553,7 @@ func TestIntegrationWalletLoadSeedPOST(t *testing.T) {
 
 	// Load the second wallet's seed into the first wallet
 	seed, _, _ := w2.PrimarySeed()
-	seedStr, _ := modules.SeedToString(seed, "english")
+	seedStr, _ := skymodules.SeedToString(seed, "english")
 	qs := url.Values{}
 	qs.Set("seed", seedStr)
 	qs.Set("encryptionpassword", "password")
@@ -1217,7 +1217,7 @@ func TestWalletSiafunds(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -1676,7 +1676,7 @@ func TestWalletManyTransactions(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Disable defrag for the wallet
-	st.wallet.SetSettings(modules.WalletSettings{
+	st.wallet.SetSettings(skymodules.WalletSettings{
 		NoDefrag: true,
 	})
 

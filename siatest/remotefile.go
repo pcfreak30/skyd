@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -12,7 +12,7 @@ type (
 	// network.
 	RemoteFile struct {
 		checksum crypto.Hash
-		siaPath  modules.SiaPath
+		siaPath  skymodules.SiaPath
 		root     bool
 		mu       sync.Mutex
 	}
@@ -33,7 +33,7 @@ func (rf *RemoteFile) Root() bool {
 }
 
 // SiaPath returns the siaPath of a remote file.
-func (rf *RemoteFile) SiaPath() modules.SiaPath {
+func (rf *RemoteFile) SiaPath() skymodules.SiaPath {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	return rf.siaPath

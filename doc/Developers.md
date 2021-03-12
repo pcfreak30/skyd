@@ -91,7 +91,7 @@ if agent != "SiaAgent" && agent != "" {
 ```
 
 ### Module READMEs
-Below is the standard format for the README files for the modules.
+Below is the standard format for the README files for the skymodules.
 
 ># Modules Name
 >Module overview.

@@ -18,10 +18,10 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem/siafile"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 const (
@@ -65,7 +65,7 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", renewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 // parameters, verifying that the parameters are applied correctly and the file
 // is downloaded successfully.
 func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp bool, testName string) error {
-	ulSiaPath, err := modules.NewSiaPath(testName + ".dat")
+	ulSiaPath, err := skymodules.NewSiaPath(testName + ".dat")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestValidDownloads(t *testing.T) {
 	}
 	t.Parallel()
 
-	sectorSize := int64(modules.SectorSize)
+	sectorSize := int64(skymodules.SectorSize)
 
 	testParams := []struct {
 		filesize,
@@ -675,11 +675,11 @@ func TestRenterHandlerContracts(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
-	allowanceValues.Set("expectedstorage", fmt.Sprint(modules.DefaultAllowance.ExpectedStorage))
-	allowanceValues.Set("expectedupload", fmt.Sprint(modules.DefaultAllowance.ExpectedStorage))
-	allowanceValues.Set("expecteddownload", fmt.Sprint(modules.DefaultAllowance.ExpectedStorage))
-	allowanceValues.Set("expectedredundancy", fmt.Sprint(modules.DefaultAllowance.ExpectedRedundancy))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
+	allowanceValues.Set("expectedstorage", fmt.Sprint(skymodules.DefaultAllowance.ExpectedStorage))
+	allowanceValues.Set("expectedupload", fmt.Sprint(skymodules.DefaultAllowance.ExpectedStorage))
+	allowanceValues.Set("expecteddownload", fmt.Sprint(skymodules.DefaultAllowance.ExpectedStorage))
+	allowanceValues.Set("expectedredundancy", fmt.Sprint(skymodules.DefaultAllowance.ExpectedRedundancy))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -758,7 +758,7 @@ func TestRenterHandlerGetAndPost(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -846,7 +846,7 @@ func TestRenterLoadNonexistent(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -915,7 +915,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -952,8 +952,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to an empty string.
 	renameValues.Set("newsiapath", "")
 	err = st.stdPostAPI("/renter/rename/test1", renameValues)
-	if err == nil || !strings.Contains(err.Error(), modules.ErrEmptyPath.Error()) {
-		t.Fatalf("expected error to contain %v; got %v", modules.ErrEmptyPath, err)
+	if err == nil || !strings.Contains(err.Error(), skymodules.ErrEmptyPath.Error()) {
+		t.Fatalf("expected error to contain %v; got %v", skymodules.ErrEmptyPath, err)
 	}
 
 	// Rename the file.
@@ -1026,7 +1026,7 @@ func TestRenterHandlerDelete(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -1094,7 +1094,7 @@ func TestRenterRelativePathErrorUpload(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -1157,7 +1157,7 @@ func TestRenterRelativePathErrorDownload(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}
@@ -1228,7 +1228,7 @@ func TestRenterPricesHandler(t *testing.T) {
 
 	// Announce the host and then get the calculated prices for when there is a
 	// single host.
-	var rpeSingle modules.RenterPriceEstimation
+	var rpeSingle skymodules.RenterPriceEstimation
 	if err := st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
@@ -1278,7 +1278,7 @@ func TestRenterPricesHandler(t *testing.T) {
 
 	// Grab the price estimates for when there are a bunch of hosts with the
 	// same stats.
-	var rpeMulti modules.RenterPriceEstimation
+	var rpeMulti skymodules.RenterPriceEstimation
 	if err = st.getAPI("/renter/prices", &rpeMulti); err != nil {
 		t.Fatal(err)
 	}
@@ -1315,7 +1315,7 @@ func TestRenterPricesHandlerPricey(t *testing.T) {
 
 	// Announce the host and then get the calculated prices for when there is a
 	// single host.
-	var rpeSingle modules.RenterPriceEstimation
+	var rpeSingle skymodules.RenterPriceEstimation
 	if err := st.setHostStorage(); err != nil {
 		t.Fatal(err)
 	}
@@ -1385,7 +1385,7 @@ func TestRenterPricesHandlerPricey(t *testing.T) {
 
 	// Grab the price estimates for when there are a bunch of hosts with the
 	// same stats.
-	var rpeMulti modules.RenterPriceEstimation
+	var rpeMulti skymodules.RenterPriceEstimation
 	if err = st.getAPI("/renter/prices", &rpeMulti); err != nil {
 		t.Fatal(err)
 	}
@@ -1467,7 +1467,7 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 
 	// upload a file
 	path := filepath.Join(st.dir, "randUploadFile")
-	size := int(modules.SectorSize * 50)
+	size := int(skymodules.SectorSize * 50)
 	err = createRandFile(path, size)
 	if err != nil {
 		t.Fatal(err)
@@ -1488,7 +1488,7 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 			t.Fatal(err)
 		}
 		available := true
-		err := st.renter.FileList(modules.RootSiaPath(), true, false, func(fi modules.FileInfo) {
+		err := st.renter.FileList(skymodules.RootSiaPath(), true, false, func(fi skymodules.FileInfo) {
 			if !fi.Available {
 				available = false
 			}
@@ -1577,7 +1577,7 @@ func TestHealthLoop(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	if err = st1.stdPostAPI("/renter", allowanceValues); err != nil {
 		t.Fatal(err)
 	}

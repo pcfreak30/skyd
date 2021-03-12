@@ -12,11 +12,11 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestSiamuxRequired checks that the hostdb will count a host as offline if the
@@ -202,17 +202,17 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 	// Reannounce the hosts with custom hostnames which match the hostnames
 	// from the custom resolver method. We announce host1 first and host3 last
 	// to make sure host1 is the 'oldest' and host3 the 'youngest'.
-	err1 = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
+	err1 = allHosts[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host1")
 	}
-	err1 = allHosts[1].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
+	err1 = allHosts[1].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host2")
 	}
-	err1 = allHosts[2].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
+	err1 = allHosts[2].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host3")
@@ -285,7 +285,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 
 	// Reannounce host1 as host4 which creates a violation with host3 and
 	// causes host4 to be the 'youngest'.
-	err = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
+	err = allHosts[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
 	if err != nil {
 		t.Fatal("Failed to reannonce host 1")
 	}
@@ -395,7 +395,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 	hostPort := hg.ExternalSettings.NetAddress.Port()
 
 	// Reannounce the hosts with custom hostnames which match the hostnames from the custom resolver method.
-	err = tg.Hosts()[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host1.com:%s", hostPort)))
+	err = tg.Hosts()[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host1.com:%s", hostPort)))
 	if err != nil {
 		t.Fatal("Failed to reannounce at least one of the hosts", err)
 	}
@@ -470,7 +470,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 	}
 	hostPort = hg.ExternalSettings.NetAddress.Port()
 	err1 := newHost[0].HostModifySettingPost(client.HostParamAcceptingContracts, true)
-	err2 := newHost[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", hostPort)))
+	err2 := newHost[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host2.com:%s", hostPort)))
 	err = errors.Compose(err1, err2)
 	if err != nil {
 		t.Fatal("Failed to announce the new host", err)
@@ -558,17 +558,17 @@ func TestDisableIPViolationCheck(t *testing.T) {
 	// Reannounce the hosts with custom hostnames which match the hostnames
 	// from the custom resolver method. We announce host1 first and host3 last
 	// to make sure host1 is the 'oldest' and host3 the 'youngest'.
-	err1 = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
+	err1 = allHosts[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host1.com:%s", host1Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host1")
 	}
-	err1 = allHosts[1].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
+	err1 = allHosts[1].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host2.com:%s", host2Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host2")
 	}
-	err1 = allHosts[2].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
+	err1 = allHosts[2].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host3.com:%s", host3Port)))
 	err2 = tg.Miners()[0].MineBlock()
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal("failed to announce host3")
@@ -622,7 +622,7 @@ func TestDisableIPViolationCheck(t *testing.T) {
 
 	// Reannounce host1 as host4 which creates a violation with host3 and
 	// causes host1 to be the 'youngest'.
-	err = allHosts[0].HostAnnounceAddrPost(modules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
+	err = allHosts[0].HostAnnounceAddrPost(skymodules.NetAddress(fmt.Sprintf("host4.com:%s", host1Port)))
 	if err != nil {
 		t.Fatal("Failed to reannonce host 1")
 	}
@@ -709,17 +709,17 @@ func TestFilterMode(t *testing.T) {
 	}
 	renter := nodes[0]
 
-	if err := testFilterMode(tg, renter, modules.HostDBActivateBlacklist); err != nil {
+	if err := testFilterMode(tg, renter, skymodules.HostDBActivateBlacklist); err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
-	if err := testFilterMode(tg, renter, modules.HostDBActiveWhitelist); err != nil {
+	if err := testFilterMode(tg, renter, skymodules.HostDBActiveWhitelist); err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
 
-func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.FilterMode) error {
+func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodules.FilterMode) error {
 	// Grab all host pks
 	var hosts []types.SiaPublicKey
 	for _, h := range tg.Hosts() {
@@ -793,7 +793,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	}
 	var filteredHosts []types.SiaPublicKey
 	numHosts := 0
-	isWhitelist := fm == modules.HostDBActiveWhitelist
+	isWhitelist := fm == skymodules.HostDBActiveWhitelist
 	for _, pk := range hosts {
 		_, ok := contractHosts[pk.String()]
 		if isWhitelist != ok {
@@ -918,7 +918,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 
 	// Disable FilterMode and confirm all hosts are active again
 	var nullList []types.SiaPublicKey
-	if err = renter.HostDbFilterModePost(modules.HostDBDisableFilter, nullList); err != nil {
+	if err = renter.HostDbFilterModePost(skymodules.HostDBDisableFilter, nullList); err != nil {
 		return err
 	}
 	hdbActive, err = renter.HostDbActiveGet()

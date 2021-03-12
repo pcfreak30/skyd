@@ -11,7 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -115,7 +115,7 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	txnSet := append(parents, txn)
 	api.tpool.Broadcast(txnSet)
 	err := api.tpool.AcceptTransactionSet(txnSet)
-	if err != nil && !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
+	if err != nil && !errors.Contains(err, skymodules.ErrDuplicateTransactionSet) {
 		WriteError(w, Error{"error accepting transaction set: " + err.Error()}, http.StatusBadRequest)
 		return
 	}

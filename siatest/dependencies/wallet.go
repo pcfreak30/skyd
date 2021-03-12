@@ -1,12 +1,12 @@
 package dependencies
 
 import (
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // DependencyUnsyncedConsensus makes the consensus set appear unsynced
 type DependencyUnsyncedConsensus struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will prevent the consensus set from appearing synced
@@ -17,7 +17,7 @@ func (d *DependencyUnsyncedConsensus) Disrupt(s string) bool {
 // DependencyDisableAsyncUnlock will prevent the wallet to catch up to consensus
 // after unlocking it.
 type DependencyDisableAsyncUnlock struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will prevent the wallet to catch up to consensus after unlocking it.

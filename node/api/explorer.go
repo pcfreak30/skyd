@@ -9,7 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
@@ -21,7 +21,7 @@ type (
 		Transactions   []ExplorerTransaction   `json:"transactions"`
 		RawBlock       types.Block             `json:"rawblock"`
 
-		modules.BlockFacts
+		skymodules.BlockFacts
 	}
 
 	// ExplorerTransaction is a transcation with some extra information such as
@@ -50,7 +50,7 @@ type (
 	// ExplorerGET is the object returned as a response to a GET request to
 	// /explorer.
 	ExplorerGET struct {
-		modules.BlockFacts
+		skymodules.BlockFacts
 	}
 
 	// ExplorerBlockGET is the object returned by a GET request to
@@ -77,7 +77,7 @@ type (
 )
 
 // RegisterRoutesExplorer is a helper function to register all explorer routes.
-func RegisterRoutesExplorer(router *httprouter.Router, e modules.Explorer, cs modules.ConsensusSet) {
+func RegisterRoutesExplorer(router *httprouter.Router, e skymodules.Explorer, cs skymodules.ConsensusSet) {
 	router.GET("/explorer", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		explorerHandler(e, w, req, ps)
 	})
@@ -91,7 +91,7 @@ func RegisterRoutesExplorer(router *httprouter.Router, e modules.Explorer, cs mo
 
 // buildExplorerTransaction takes a transaction and the height + id of the
 // block it appears in an uses that to build an explorer transaction.
-func buildExplorerTransaction(explorer modules.Explorer, height types.BlockHeight, parent types.BlockID, txn types.Transaction) (et ExplorerTransaction) {
+func buildExplorerTransaction(explorer skymodules.Explorer, height types.BlockHeight, parent types.BlockID, txn types.Transaction) (et ExplorerTransaction) {
 	// Get the header information for the transaction.
 	et.ID = txn.ID()
 	et.Height = height
@@ -185,7 +185,7 @@ func buildExplorerTransaction(explorer modules.Explorer, height types.BlockHeigh
 
 // buildExplorerBlock takes a block and its height and uses it to construct an
 // explorer block.
-func buildExplorerBlock(explorer modules.Explorer, height types.BlockHeight, block types.Block) ExplorerBlock {
+func buildExplorerBlock(explorer skymodules.Explorer, height types.BlockHeight, block types.Block) ExplorerBlock {
 	var mpoids []types.SiacoinOutputID
 	for i := range block.MinerPayouts {
 		mpoids = append(mpoids, block.MinerPayoutID(uint64(i)))
@@ -211,7 +211,7 @@ func buildExplorerBlock(explorer modules.Explorer, height types.BlockHeight, blo
 }
 
 // explorerHandler handles API calls to /explorer/blocks/:height.
-func explorerBlocksHandler(e modules.Explorer, cs modules.ConsensusSet, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+func explorerBlocksHandler(e skymodules.Explorer, cs skymodules.ConsensusSet, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Parse the height that's being requested.
 	var height types.BlockHeight
 	_, err := fmt.Sscan(ps.ByName("height"), &height)
@@ -233,7 +233,7 @@ func explorerBlocksHandler(e modules.Explorer, cs modules.ConsensusSet, w http.R
 
 // buildTransactionSet returns the blocks and transactions that are associated
 // with a set of transaction ids.
-func buildTransactionSet(explorer modules.Explorer, txids []types.TransactionID) (txns []ExplorerTransaction, blocks []ExplorerBlock) {
+func buildTransactionSet(explorer skymodules.Explorer, txids []types.TransactionID) (txns []ExplorerTransaction, blocks []ExplorerBlock) {
 	for _, txid := range txids {
 		// Get the block containing the transaction - in the case of miner
 		// payouts, the block might be the transaction.
@@ -259,7 +259,7 @@ func buildTransactionSet(explorer modules.Explorer, txids []types.TransactionID)
 }
 
 // explorerHashHandler handles GET requests to /explorer/hash/:hash.
-func explorerHashHandler(explorer modules.Explorer, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+func explorerHashHandler(explorer skymodules.Explorer, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Scan the hash as a hash. If that fails, try scanning the hash as an
 	// address.
 	hash, err := scanHash(ps.ByName("hash"))
@@ -365,7 +365,7 @@ func explorerHashHandler(explorer modules.Explorer, w http.ResponseWriter, _ *ht
 }
 
 // explorerHandler handles API calls to /explorer
-func explorerHandler(explorer modules.Explorer, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func explorerHandler(explorer skymodules.Explorer, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	facts := explorer.LatestBlockFacts()
 	WriteJSON(w, ExplorerGET{
 		BlockFacts: facts,

@@ -12,11 +12,11 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/profile"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestDaemonAPIPassword makes sure that the daemon rejects requests with the
@@ -228,7 +228,7 @@ func TestAlertFields(t *testing.T) {
 
 	// Check criticalalerts field severity and total count
 	for _, a := range dag.CriticalAlerts {
-		if a.Severity != modules.SeverityCritical {
+		if a.Severity != skymodules.SeverityCritical {
 			t.Fatal("criticalalerts field contains alert which has not critical severity")
 		}
 	}
@@ -238,7 +238,7 @@ func TestAlertFields(t *testing.T) {
 
 	// Check erroralerts field severity and total count
 	for _, a := range dag.ErrorAlerts {
-		if a.Severity != modules.SeverityError {
+		if a.Severity != skymodules.SeverityError {
 			t.Fatal("erroralerts field contains alert which has not error severity")
 		}
 	}
@@ -248,7 +248,7 @@ func TestAlertFields(t *testing.T) {
 
 	// Check warningalerts field severity and total count
 	for _, a := range dag.WarningAlerts {
-		if a.Severity != modules.SeverityWarning {
+		if a.Severity != skymodules.SeverityWarning {
 			t.Fatal("warningalerts field contains alert which has not warning severity")
 		}
 	}

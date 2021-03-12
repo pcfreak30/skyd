@@ -1,11 +1,11 @@
 package dependencies
 
-import "gitlab.com/skynetlabs/skyd/modules"
+import "gitlab.com/skynetlabs/skyd/skymodules"
 
 // AccountingDisablePersistLoop is a dependency that disables the background
 // loop from updating and persisting the accounting information.
 type AccountingDisablePersistLoop struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will prevent the Accounting module from launching the background

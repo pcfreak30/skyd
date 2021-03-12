@@ -7,21 +7,21 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestParseFees tests the parseFees function to ensure expected return values
 func TestParseFees(t *testing.T) {
 	// Create AppUIDs
-	cheapApp := modules.AppUID("cheapApp")
-	expensiveApp := modules.AppUID("expensiveApp")
+	cheapApp := skymodules.AppUID("cheapApp")
+	expensiveApp := skymodules.AppUID("expensiveApp")
 
 	// Create FeeUIDs
-	feeUID1 := modules.FeeUID("fee1")
-	feeUID2 := modules.FeeUID("fee2")
-	feeUID3 := modules.FeeUID("fee3")
-	feeUID4 := modules.FeeUID("fee4")
+	feeUID1 := skymodules.FeeUID("fee1")
+	feeUID2 := skymodules.FeeUID("fee2")
+	feeUID3 := skymodules.FeeUID("fee3")
+	feeUID4 := skymodules.FeeUID("fee4")
 
 	// Create Fee Amounts
 	feeAmount1 := types.NewCurrency64(fastrand.Uint64n(1000))
@@ -29,51 +29,51 @@ func TestParseFees(t *testing.T) {
 	feeAmount3 := feeAmount2.Add(types.NewCurrency64(fastrand.Uint64n(1000)))
 
 	// Create Fees
-	cheapFee1 := modules.AppFee{
+	cheapFee1 := skymodules.AppFee{
 		Amount: feeAmount1,
 		AppUID: cheapApp,
 		FeeUID: feeUID1,
 	}
-	cheapFee2 := modules.AppFee{
+	cheapFee2 := skymodules.AppFee{
 		Amount: feeAmount2,
 		AppUID: cheapApp,
 		FeeUID: feeUID2,
 	}
-	expensiveFee1 := modules.AppFee{
+	expensiveFee1 := skymodules.AppFee{
 		Amount: feeAmount1,
 		AppUID: expensiveApp,
 		FeeUID: feeUID1,
 	}
-	expensiveFee2 := modules.AppFee{
+	expensiveFee2 := skymodules.AppFee{
 		Amount:       feeAmount2,
 		AppUID:       expensiveApp,
 		FeeUID:       feeUID2,
 		PayoutHeight: 100,
 	}
-	expensiveFee3 := modules.AppFee{
+	expensiveFee3 := skymodules.AppFee{
 		Amount: feeAmount2,
 		AppUID: expensiveApp,
 		FeeUID: feeUID3,
 	}
-	expensiveFee4 := modules.AppFee{
+	expensiveFee4 := skymodules.AppFee{
 		Amount: feeAmount3,
 		AppUID: expensiveApp,
 		FeeUID: feeUID4,
 	}
 
 	// Create unsorted list
-	fees := []modules.AppFee{cheapFee1, cheapFee2, expensiveFee1, expensiveFee2, expensiveFee3, expensiveFee4}
+	fees := []skymodules.AppFee{cheapFee1, cheapFee2, expensiveFee1, expensiveFee2, expensiveFee3, expensiveFee4}
 	// Create expected sorted list
 	expectedOrder := []feeInfo{
 		{
 			AppUID:      expensiveApp,
-			Fees:        []modules.AppFee{expensiveFee4, expensiveFee3, expensiveFee2, expensiveFee1},
+			Fees:        []skymodules.AppFee{expensiveFee4, expensiveFee3, expensiveFee2, expensiveFee1},
 			TotalAmount: feeAmount1.Add(feeAmount2.Add(feeAmount2.Add(feeAmount3))),
 		},
 		{
 
 			AppUID:      cheapApp,
-			Fees:        []modules.AppFee{cheapFee2, cheapFee1},
+			Fees:        []skymodules.AppFee{cheapFee2, cheapFee1},
 			TotalAmount: feeAmount1.Add(feeAmount2),
 		},
 	}

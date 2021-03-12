@@ -22,17 +22,17 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/host/contractmanager"
-	"gitlab.com/skynetlabs/skyd/modules/renter"
-	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem/siadir"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/host/contractmanager"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
 )
 
 // TestRenterOne executes a number of subtests using the same TestGroup to save
@@ -191,7 +191,7 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	// Get the time before renaming.
 	beforeRenameTime := time.Now()
 
-	newSiaPath, err := modules.NewSiaPath("newsiapath")
+	newSiaPath, err := skymodules.NewSiaPath("newsiapath")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
 	// Upload a file.
 	dataPieces := uint64(3)
 	parityPieces := uint64(1)
-	fileSize := int(modules.SectorSize)
+	fileSize := int(skymodules.SectorSize)
 	lf, rf, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -378,7 +378,7 @@ func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
 	if !d.SiaPath.Equals(rf.SiaPath()) {
 		t.Fatal(d.SiaPath.String(), rf.SiaPath().String())
 	}
-	sp, err := rf.SiaPath().Rebase(modules.RootSiaPath(), modules.UserFolder)
+	sp, err := rf.SiaPath().Rebase(skymodules.RootSiaPath(), skymodules.UserFolder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -622,11 +622,11 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Test renaming subdirectory
-	subDir1, err := modules.NewSiaPath("subDir1")
+	subDir1, err := skymodules.NewSiaPath("subDir1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	newSiaPath := modules.RandomSiaPath()
+	newSiaPath := skymodules.RandomSiaPath()
 	if err = r.RenterDirRenamePost(subDir1, newSiaPath); err != nil {
 		t.Fatal(err)
 	}
@@ -718,14 +718,14 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Test deleting a file by its root path
-	rf2RootPath, err := modules.NewSiaPath("/home/user/" + rf2.SiaPath().Path)
+	rf2RootPath, err := skymodules.NewSiaPath("/home/user/" + rf2.SiaPath().Path)
 	err = r.RenterFileDeleteRootPost(rf2RootPath)
 	if err != nil {
 		t.Fatal(fmt.Errorf(err.Error() + " => " + rf2RootPath.Path))
 	}
 
 	// Test deleting directory by its root path
-	rd2RootPath, err := modules.NewSiaPath("/home/user/" + rd2.SiaPath().Path)
+	rd2RootPath, err := skymodules.NewSiaPath("/home/user/" + rd2.SiaPath().Path)
 	if err = r.RenterDirDeleteRootPost(rd2RootPath); err != nil {
 		t.Fatal(fmt.Errorf(err.Error() + " => " + rd2RootPath.Path))
 	}
@@ -800,9 +800,9 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 	// fileSize is the size of the downloaded file.
 	fileSize := siatest.Fuzz()
 	if build.VLONG {
-		fileSize += int(50 * modules.SectorSize)
+		fileSize += int(50 * skymodules.SectorSize)
 	} else {
-		fileSize += int(10 * modules.SectorSize)
+		fileSize += int(10 * skymodules.SectorSize)
 	}
 	// set download limits and reset them after test.
 	// uniqueRemoteFiles is the number of files that will be uploaded to the
@@ -878,7 +878,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
+	fileSize := int(skymodules.SectorSize)
 	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -979,7 +979,7 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	renterNode := tg.Renters()[0]
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize) + siatest.Fuzz()
+	fileSize := int(skymodules.SectorSize) + siatest.Fuzz()
 	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -1111,7 +1111,7 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 			return err
 		}
 
-		var ws *modules.WorkerStatus
+		var ws *skymodules.WorkerStatus
 		for i := range rwg.Workers {
 			worker := rwg.Workers[i]
 			if worker.HostPubKey.Equals(host) {
@@ -1149,7 +1149,7 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 			return err
 		}
 
-		var ws *modules.WorkerStatus
+		var ws *skymodules.WorkerStatus
 		for i := range rwg.Workers {
 			worker := rwg.Workers[i]
 			if worker.HostPubKey.Equals(host) {
@@ -1188,14 +1188,14 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Choose a filesize for the upload. To hit a wide range of cases,
 	// siatest.Fuzz is used.
 	fuzz := siatest.Fuzz()
-	fileSize := int(modules.SectorSize) + fuzz
+	fileSize := int(skymodules.SectorSize) + fuzz
 	// One out of three times, add an extra sector.
 	if siatest.Fuzz() == 0 {
-		fileSize += int(modules.SectorSize)
+		fileSize += int(skymodules.SectorSize)
 	}
 	// One out of three times, add a random amount of extra data.
 	if siatest.Fuzz() == 0 {
-		fileSize += fastrand.Intn(int(modules.SectorSize))
+		fileSize += fastrand.Intn(int(skymodules.SectorSize))
 	}
 	t.Log("testRemoteRepair fileSize choice:", fileSize)
 
@@ -1350,13 +1350,13 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := 10 * modules.SectorSize
+	fileSize := 10 * skymodules.SectorSize
 	_, remoteFile, err := renter.UploadNewFileBlocking(int(fileSize), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	// Set a ratelimit that only allows for downloading a sector every second.
-	if err := renter.RenterRateLimitPost(int64(modules.SectorSize), 0); err != nil {
+	if err := renter.RenterRateLimitPost(int64(skymodules.SectorSize), 0); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -1400,7 +1400,7 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	if di.Received >= fileSize {
 		t.Fatal("the download finished successfully")
 	}
-	if di.Error != modules.ErrDownloadCancelled.Error() {
+	if di.Error != skymodules.ErrDownloadCancelled.Error() {
 		t.Fatal("error message doesn't match ErrDownloadCancelled")
 	}
 }
@@ -1413,7 +1413,7 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	fileSize := fastrand.Intn(2*int(skymodules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -1451,7 +1451,7 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 	// Download the file again with root set.
-	rootPath, err := remoteFile.SiaPath().Rebase(modules.RootSiaPath(), modules.UserFolder)
+	rootPath, err := remoteFile.SiaPath().Rebase(skymodules.RootSiaPath(), skymodules.UserFolder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2972,7 +2972,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	oneByteFile := 1
 
 	// Define helper function
-	checkFileInfo := func(actualRF, expectedRF modules.FileInfo) {
+	checkFileInfo := func(actualRF, expectedRF skymodules.FileInfo) {
 		// Check redundancy and upload progress
 		if expectedRF.Redundancy != actualRF.Redundancy {
 			t.Errorf("Expected Redundancy to be %v, got %v", expectedRF.Redundancy, actualRF.Redundancy)
@@ -3021,7 +3021,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedRF := modules.FileInfo{
+	expectedRF := skymodules.FileInfo{
 		Redundancy:       redundancy,
 		UploadProgress:   100,
 		Health:           0,
@@ -3039,7 +3039,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var rf2 modules.FileInfo
+	var rf2 skymodules.FileInfo
 	var found bool
 	for _, file := range rfs {
 		if file.SiaPath.Equals(rf.SiaPath) {
@@ -3197,7 +3197,7 @@ func TestSetFileTrackingPath(t *testing.T) {
 		t.Fatal("This test requires at least 2 hosts")
 	}
 	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
+	fileSize := int(skymodules.SectorSize)
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -3360,7 +3360,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var fcTxns []modules.ProcessedTransaction
+	var fcTxns []skymodules.ProcessedTransaction
 	tries := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		if tries%10 == 0 {
@@ -3377,7 +3377,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		}
 
 		// Filter out transactions without file contracts.
-		fcTxns = make([]modules.ProcessedTransaction, 0)
+		fcTxns = make([]skymodules.ProcessedTransaction, 0)
 		for _, txn := range txns.ConfirmedTransactions {
 			if len(txn.Transaction.FileContracts) > 0 {
 				fcTxns = append(fcTxns, txn)
@@ -3400,11 +3400,11 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seed, err := modules.StringToSeed(wsg.PrimarySeed, "english")
+	seed, err := skymodules.StringToSeed(wsg.PrimarySeed, "english")
 	if err != nil {
 		t.Fatal(err)
 	}
-	renterSeed := modules.DeriveRenterSeed(seed)
+	renterSeed := skymodules.DeriveRenterSeed(seed)
 	defer fastrand.Read(renterSeed[:])
 
 	// Check the arbitrary data of each transaction and contract.
@@ -3415,7 +3415,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			if len(txn.ArbitraryData) != 1 {
 				t.Fatal("arbitrary data has wrong length")
 			}
-			csi := modules.ContractSignedIdentifier{}
+			csi := skymodules.ContractSignedIdentifier{}
 			n := copy(csi[:], txn.ArbitraryData[0])
 			encryptedHostKey := txn.ArbitraryData[0][n:]
 			// Calculate the renter seed given the WindowStart of the contract.
@@ -3473,7 +3473,7 @@ func TestUploadAfterDelete(t *testing.T) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := int(modules.SectorSize)
+	fileSize := int(skymodules.SectorSize)
 	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -3494,7 +3494,7 @@ func TestUploadAfterDelete(t *testing.T) {
 	// Create an empty directory on the renter called 'dir.sia'. This triggers
 	// an edge case where calling /renter/delete on that directory in an old
 	// version of the code would cause the directory to be deleted.
-	sp, err := modules.NewSiaPath("dir.sia")
+	sp, err := skymodules.NewSiaPath("dir.sia")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3527,7 +3527,7 @@ func TestSiafileCompatCodeV137(t *testing.T) {
 	testDir := renterTestDir(t.Name())
 
 	// The siapath stored in the legacy file.
-	expectedSiaPath, err := modules.NewSiaPath("sub1/sub2/testfile")
+	expectedSiaPath, err := skymodules.NewSiaPath("sub1/sub2/testfile")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3574,7 +3574,7 @@ func TestSiafileCompatCodeV137(t *testing.T) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the siafile is exactly where we would expect it.
-	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.UserFolder.String(), "sub1", "sub2", "testfile.sia")
+	expectedLocation := filepath.Join(renterDir, skymodules.FileSystemRoot, skymodules.UserFolder.String(), "sub1", "sub2", "testfile.sia")
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
@@ -3712,11 +3712,11 @@ func TestSiafileCompatCodeV140(t *testing.T) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the files are where we would expect them.
-	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.UserFolder.String(), dummySiafile)
+	expectedLocation := filepath.Join(renterDir, skymodules.FileSystemRoot, skymodules.UserFolder.String(), dummySiafile)
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
-	expectedLocation = filepath.Join(renterDir, modules.FileSystemRoot, modules.BackupFolder.String(), dummySnapshot)
+	expectedLocation = filepath.Join(renterDir, skymodules.FileSystemRoot, skymodules.BackupFolder.String(), dummySnapshot)
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
@@ -3735,7 +3735,7 @@ func testFileAvailableAndRecoverable(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
+	fileSize := int(skymodules.SectorSize)
 	dataPieces := uint64(4)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -3834,7 +3834,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		// Set fileSize and redundancy for upload
 		dataPieces := uint64(len(tg.Hosts()) - 1)
 		parityPieces := uint64(len(tg.Hosts())) - dataPieces
-		fileSize := int(dataPieces * modules.SectorSize)
+		fileSize := int(dataPieces * skymodules.SectorSize)
 
 		// Upload file
 		_, _, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
@@ -3873,7 +3873,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Stuck field should be %v but was %v", f.Stuck, fi.File.Stuck)
 	}
 	// Set stuck back once more using the root flag.
-	rebased, err := f.SiaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+	rebased, err := f.SiaPath.Rebase(skymodules.RootSiaPath(), skymodules.UserFolder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3941,7 +3941,7 @@ func testEscapeSiaPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	for _, s := range names {
 		// Create SiaPath
-		siaPath, err := modules.NewSiaPath(s)
+		siaPath, err := skymodules.NewSiaPath(s)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -4076,7 +4076,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 	}()
 	// Prepare a host that offers the minimum storage possible.
 	hostTemplate := node.Host(filepath.Join(testDir, "host1"))
-	hostTemplate.HostStorage = modules.SectorSize * contractmanager.MinimumSectorsPerStorageFolder
+	hostTemplate.HostStorage = skymodules.SectorSize * contractmanager.MinimumSectorsPerStorageFolder
 
 	// Prepare a renter that expects to upload 1 Sector of data to 2 hosts at a
 	// 2x redundancy. We set the ExpectedStorage lower than the available
@@ -4086,7 +4086,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 	parityPieces := uint64(1)
 	allowance := siatest.DefaultAllowance
 	allowance.ExpectedRedundancy = float64(dataPieces+parityPieces) / float64(dataPieces)
-	allowance.ExpectedStorage = modules.SectorSize // 4 KiB
+	allowance.ExpectedStorage = skymodules.SectorSize // 4 KiB
 	allowance.Hosts = 3
 	renterTemplate.Allowance = allowance
 
@@ -4113,7 +4113,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal("Expected remaining storage to be 0 but was", hg.ExternalSettings.RemainingStorage)
 	}
 	// Start uploading another file in the background to trigger the OOS error.
-	_, rf, err := renter.UploadNewFile(int(2*modules.SectorSize), dataPieces, parityPieces, false)
+	_, rf, err := renter.UploadNewFile(int(2*skymodules.SectorSize), dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4210,7 +4210,7 @@ func TestAsyncStartupRace(t *testing.T) {
 
 	testDir := renterTestDir(t.Name())
 	np := node.AllModules(testDir)
-	// Disable the async startup part of the modules.
+	// Disable the async startup part of the skymodules.
 	deps := &dependencies.DependencyDisableAsyncStartup{}
 	np.ConsensusSetDeps = deps
 	np.ContractorDeps = deps
@@ -4306,7 +4306,7 @@ func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 
 	// Set the allowance with only the required fields, confirm all other fields
 	// are set to defaults
-	allowance = modules.DefaultAllowance
+	allowance = skymodules.DefaultAllowance
 	values := url.Values{}
 	values.Set("funds", allowance.Funds.String())
 	values.Set("period", fmt.Sprint(allowance.Period))
@@ -4345,7 +4345,7 @@ func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Test zeroing out individual fields of the allowance
-	allowance = modules.Allowance{}
+	allowance = skymodules.Allowance{}
 	var paramstests = []struct {
 		key   string
 		value string
@@ -4422,7 +4422,7 @@ func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reflect.DeepEqual(rg.Settings.Allowance, modules.Allowance{}) {
+	if reflect.DeepEqual(rg.Settings.Allowance, skymodules.Allowance{}) {
 		t.Fatal("test only is valid if the allowance is set")
 	}
 
@@ -4661,9 +4661,9 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	fileSize := fastrand.Intn(2*int(skymodules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
 
-	dirSP, err := modules.NewSiaPath("dir")
+	dirSP, err := skymodules.NewSiaPath("dir")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4694,7 +4694,7 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Expected folder permissions to be %v but was %v", fi.Mode(), di.DirMode)
 	}
 	// Test creating dir using endpoint.
-	dir2SP := modules.RandomSiaPath()
+	dir2SP := skymodules.RandomSiaPath()
 	if err := renter.RenterDirCreatePost(dir2SP); err != nil {
 		t.Fatal(err)
 	}
@@ -4704,10 +4704,10 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	}
 	di = rd.Directories[0]
 	// The created dir should have the default permissions.
-	if di.DirMode != modules.DefaultDirPerm {
-		t.Fatalf("Expected folder permissions to be %v but was %v", modules.DefaultDirPerm, di.DirMode)
+	if di.DirMode != skymodules.DefaultDirPerm {
+		t.Fatalf("Expected folder permissions to be %v but was %v", skymodules.DefaultDirPerm, di.DirMode)
 	}
-	dir3SP := modules.RandomSiaPath()
+	dir3SP := skymodules.RandomSiaPath()
 	mode := os.FileMode(0777)
 	if err := renter.RenterDirCreateWithModePost(dir3SP, mode); err != nil {
 		t.Fatal(err)
@@ -4973,13 +4973,13 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 
 	// create a function that filters worker statuses to return the status of
 	// our custom host
-	worker := func(w []modules.WorkerStatus) (modules.WorkerStatus, bool) {
+	worker := func(w []skymodules.WorkerStatus) (skymodules.WorkerStatus, bool) {
 		for _, worker := range w {
 			if worker.HostPubKey.Equals(hpk) {
 				return worker, true
 			}
 		}
-		return modules.WorkerStatus{}, false
+		return skymodules.WorkerStatus{}, false
 	}
 
 	// allow some time for the worker to be added to the worker pool and fund
@@ -5156,7 +5156,7 @@ func TestRenterPricesVolatility(t *testing.T) {
 	// create a testgroup with PriceEstimationScope hosts.
 	groupParams := siatest.GroupParams{
 		Miners:  1,
-		Hosts:   modules.PriceEstimationScope,
+		Hosts:   skymodules.PriceEstimationScope,
 		Renters: 1,
 	}
 
@@ -5175,7 +5175,7 @@ func TestRenterPricesVolatility(t *testing.T) {
 	host := tg.Hosts()[0]
 
 	// Get initial estimate.
-	allowance := modules.Allowance{}
+	allowance := skymodules.Allowance{}
 	rpg, err := renter.RenterPricesGet(allowance)
 	if err != nil {
 		t.Fatal(err)
@@ -5360,7 +5360,7 @@ func TestRenterClean(t *testing.T) {
 		}
 
 		// Check for the expected SiaFiles
-		rds, err := r.RenterDirRootGet(modules.UserFolder)
+		rds, err := r.RenterDirRootGet(skymodules.UserFolder)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -5369,7 +5369,7 @@ func TestRenterClean(t *testing.T) {
 		}
 		// The file should be the 2nd siafile uploaded.
 		siaPath := rds.Files[0].SiaPath
-		expected, err := modules.UserFolder.Join(rf2.SiaPath().String())
+		expected, err := skymodules.UserFolder.Join(rf2.SiaPath().String())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -5378,7 +5378,7 @@ func TestRenterClean(t *testing.T) {
 		}
 
 		// Check for the expected SkyFiles
-		rds, err = r.RenterDirRootGet(modules.SkynetFolder)
+		rds, err = r.RenterDirRootGet(skymodules.SkynetFolder)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -5444,7 +5444,7 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// Define helper
 	m := tg.Miners()[0]
-	checkDirRepairSize := func(dirSiaPath modules.SiaPath, repairExpected, stuckExpected uint64) error {
+	checkDirRepairSize := func(dirSiaPath skymodules.SiaPath, repairExpected, stuckExpected uint64) error {
 		return build.Retry(15, time.Second, func() error {
 			// Make sure the directory is being updated
 			err := r.RenterBubblePost(dirSiaPath, true, true)
@@ -5456,7 +5456,7 @@ func TestRenterRepairSize(t *testing.T) {
 				return err
 			}
 			// Grab renter's root directory
-			dis, err := r.RenterDirRootGet(modules.RootSiaPath())
+			dis, err := r.RenterDirRootGet(skymodules.RootSiaPath())
 			if err != nil {
 				return err
 			}
@@ -5530,7 +5530,7 @@ func TestRenterRepairSize(t *testing.T) {
 	}
 
 	// Renter root directory should show 0 repair bytes needed
-	if err := checkDirRepairSize(modules.RootSiaPath(), 0, 0); err != nil {
+	if err := checkDirRepairSize(skymodules.RootSiaPath(), 0, 0); err != nil {
 		t.Error(err)
 	}
 
@@ -5570,7 +5570,7 @@ func TestRenterRepairSize(t *testing.T) {
 	}
 
 	// Since the file is marked as stuck it should register that stuck repair
-	expected := modules.SectorSize
+	expected := skymodules.SectorSize
 	if err := checkDirRepairSize(dirSiaPath, 0, expected); err != nil {
 		t.Error(err)
 	}
@@ -5607,7 +5607,7 @@ func TestRenterRepairSize(t *testing.T) {
 		}
 
 		// Check that the aggregate repair size increases.
-		expected += modules.SectorSize
+		expected += skymodules.SectorSize
 		if err := checkDirRepairSize(dirSiaPath, expected, 0); err != nil {
 			t.Log("Dir: Host loop failed", i)
 			t.Error(err)
@@ -5651,7 +5651,7 @@ func TestMemoryStatus(t *testing.T) {
 		}
 	}()
 
-	ud := modules.MemoryManagerStatus{
+	ud := skymodules.MemoryManagerStatus{
 		Available: 1 << 17, // 128 KiB
 		Base:      1 << 17, // 128 KiB
 		Requested: 0,
@@ -5661,7 +5661,7 @@ func TestMemoryStatus(t *testing.T) {
 		PriorityRequested: 0,
 		PriorityReserve:   0,
 	}
-	uu := modules.MemoryManagerStatus{
+	uu := skymodules.MemoryManagerStatus{
 		Available: 1 << 17, // 128 KiB
 		Base:      1 << 17, // 128 KiB
 		Requested: 0,
@@ -5671,7 +5671,7 @@ func TestMemoryStatus(t *testing.T) {
 		PriorityRequested: 0,
 		PriorityReserve:   0,
 	}
-	reg := modules.MemoryManagerStatus{
+	reg := skymodules.MemoryManagerStatus{
 		Available: 1 << 17, // 128 KiB
 		Base:      1 << 17, // 128 KiB
 		Requested: 0,
@@ -5681,7 +5681,7 @@ func TestMemoryStatus(t *testing.T) {
 		PriorityRequested: 0,
 		PriorityReserve:   0,
 	}
-	sys := modules.MemoryManagerStatus{
+	sys := skymodules.MemoryManagerStatus{
 		Available: 3 << 15, // 96 KiB
 		Base:      3 << 15, // 96 KiB
 		Requested: 0,
@@ -5748,7 +5748,7 @@ func TestRenterBubble(t *testing.T) {
 	}()
 
 	// Declare DirectoryInfo check function
-	checkDirInfo := func(found, expected modules.DirectoryInfo) error {
+	checkDirInfo := func(found, expected skymodules.DirectoryInfo) error {
 		var dirInfoErrs error
 		// Check time fields for initialization as the actual values will vary based
 		// on when bubble was executed
@@ -5800,7 +5800,7 @@ func TestRenterBubble(t *testing.T) {
 	}
 
 	// Renter filesystem should have metadata that isn't updated
-	initDirInfo := modules.DirectoryInfo{
+	initDirInfo := skymodules.DirectoryInfo{
 		AggregateHealth:              siadir.DefaultDirHealth,
 		AggregateMaxHealth:           siadir.DefaultDirHealth,
 		AggregateMaxHealthPercentage: 100,
@@ -5813,22 +5813,22 @@ func TestRenterBubble(t *testing.T) {
 		MaxHealth:           siadir.DefaultDirHealth,
 		MaxHealthPercentage: 100,
 		MinRedundancy:       siadir.DefaultDirRedundancy,
-		DirMode:             modules.DefaultDirPerm,
+		DirMode:             skymodules.DefaultDirPerm,
 		// The exact time is not important, just needs to be initialized
 		MostRecentModTime: time.Now(),
 		StuckHealth:       siadir.DefaultDirHealth,
 	}
 	// Check the filesystem
 	var tests = []struct {
-		siaPath  modules.SiaPath
-		expected modules.DirectoryInfo
+		siaPath  skymodules.SiaPath
+		expected skymodules.DirectoryInfo
 	}{
-		{modules.RootSiaPath(), initDirInfo},
-		{modules.HomeFolder, initDirInfo},
-		{modules.UserFolder, initDirInfo},
-		{modules.BackupFolder, initDirInfo},
-		{modules.VarFolder, initDirInfo},
-		{modules.SkynetFolder, initDirInfo},
+		{skymodules.RootSiaPath(), initDirInfo},
+		{skymodules.HomeFolder, initDirInfo},
+		{skymodules.UserFolder, initDirInfo},
+		{skymodules.BackupFolder, initDirInfo},
+		{skymodules.VarFolder, initDirInfo},
+		{skymodules.SkynetFolder, initDirInfo},
 	}
 	// Initial checks are not pending any bubbles so should not need a build retry
 	// loop
@@ -5845,7 +5845,7 @@ func TestRenterBubble(t *testing.T) {
 
 	// Call bubble on root
 	var force, recursive bool
-	err = r.RenterBubblePost(modules.RootSiaPath(), force, recursive)
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5859,15 +5859,15 @@ func TestRenterBubble(t *testing.T) {
 
 	// Check the filesystem
 	tests = []struct {
-		siaPath  modules.SiaPath
-		expected modules.DirectoryInfo
+		siaPath  skymodules.SiaPath
+		expected skymodules.DirectoryInfo
 	}{
-		{modules.RootSiaPath(), rootDirInfo},
-		{modules.HomeFolder, initDirInfo},
-		{modules.UserFolder, initDirInfo},
-		{modules.BackupFolder, initDirInfo},
-		{modules.VarFolder, initDirInfo},
-		{modules.SkynetFolder, initDirInfo},
+		{skymodules.RootSiaPath(), rootDirInfo},
+		{skymodules.HomeFolder, initDirInfo},
+		{skymodules.UserFolder, initDirInfo},
+		{skymodules.BackupFolder, initDirInfo},
+		{skymodules.VarFolder, initDirInfo},
+		{skymodules.SkynetFolder, initDirInfo},
 	}
 	for _, test := range tests {
 		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
@@ -5886,7 +5886,7 @@ func TestRenterBubble(t *testing.T) {
 	// Call bubble on root recursively
 	force = true
 	recursive = true
-	err = r.RenterBubblePost(modules.RootSiaPath(), force, recursive)
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5915,15 +5915,15 @@ func TestRenterBubble(t *testing.T) {
 
 	// Check the filesystem
 	tests = []struct {
-		siaPath  modules.SiaPath
-		expected modules.DirectoryInfo
+		siaPath  skymodules.SiaPath
+		expected skymodules.DirectoryInfo
 	}{
-		{modules.RootSiaPath(), rootDirInfo},
-		{modules.HomeFolder, homeDirInfo},
-		{modules.UserFolder, userDirInfo},
-		{modules.BackupFolder, backupDirInfo},
-		{modules.VarFolder, varDirInfo},
-		{modules.SkynetFolder, skynetDirInfo},
+		{skymodules.RootSiaPath(), rootDirInfo},
+		{skymodules.HomeFolder, homeDirInfo},
+		{skymodules.UserFolder, userDirInfo},
+		{skymodules.BackupFolder, backupDirInfo},
+		{skymodules.VarFolder, varDirInfo},
+		{skymodules.SkynetFolder, skynetDirInfo},
 	}
 	for _, test := range tests {
 		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
@@ -5944,7 +5944,7 @@ func TestRenterBubble(t *testing.T) {
 	checkTime := time.Now()
 	force = false
 	recursive = true
-	err = r.RenterBubblePost(modules.RootSiaPath(), force, recursive)
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
 	if err != nil {
 		t.Fatal(err)
 	}

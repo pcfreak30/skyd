@@ -17,7 +17,7 @@ count = 1
 # cpkg determines which package is the target when running 'make fullcover'.
 # 'make fullcover' can only provide full coverage statistics on a single package
 # at a time, unfortunately.
-cpkg = ./modules/renter
+cpkg = ./skymodules/renter
 
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
@@ -29,29 +29,29 @@ pkgs = \
 	./cmd/skyd \
 	./cmd/skynet-benchmark \
 	./compatibility \
-	./modules \
-	./modules/accounting \
-	./modules/consensus \
-	./modules/explorer \
-	./modules/feemanager \
-	./modules/gateway \
-	./modules/host \
-	./modules/host/contractmanager \
-	./modules/host/mdm \
-	./modules/host/registry \
-	./modules/miner \
-	./modules/renter \
-	./modules/renter/contractor \
-	./modules/renter/filesystem \
-	./modules/renter/filesystem/siadir \
-	./modules/renter/filesystem/siafile \
-	./modules/renter/hostdb \
-	./modules/renter/hostdb/hosttree \
-	./modules/renter/proto \
-	./modules/renter/skynetblocklist \
-	./modules/renter/skynetportals \
-	./modules/transactionpool \
-	./modules/wallet \
+	./skymodules \
+	./skymodules/accounting \
+	./skymodules/consensus \
+	./skymodules/explorer \
+	./skymodules/feemanager \
+	./skymodules/gateway \
+	./skymodules/host \
+	./skymodules/host/contractmanager \
+	./skymodules/host/mdm \
+	./skymodules/host/registry \
+	./skymodules/miner \
+	./skymodules/renter \
+	./skymodules/renter/contractor \
+	./skymodules/renter/filesystem \
+	./skymodules/renter/filesystem/siadir \
+	./skymodules/renter/filesystem/siafile \
+	./skymodules/renter/hostdb \
+	./skymodules/renter/hostdb/hosttree \
+	./skymodules/renter/proto \
+	./skymodules/renter/skynetblocklist \
+	./skymodules/renter/skynetportals \
+	./skymodules/transactionpool \
+	./skymodules/wallet \
 	./node \
 	./node/api \
 	./node/api/server \
@@ -92,11 +92,11 @@ lockcheckpkgs = \
 	./node/api \
 	./node/api/client \
 	./node/api/server \
-	./modules/accounting \
-	./modules/host/mdm \
-	./modules/host/registry \
-	./modules/renter/hostdb \
-	./modules/renter/skynetblocklist \
+	./skymodules/accounting \
+	./skymodules/host/mdm \
+	./skymodules/host/registry \
+	./skymodules/renter/hostdb \
+	./skymodules/renter/skynetblocklist \
 	./siatest/accounting \
 	./skykey \
 

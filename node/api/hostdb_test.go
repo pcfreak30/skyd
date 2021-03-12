@@ -13,14 +13,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/consensus"
-	"gitlab.com/skynetlabs/skyd/modules/gateway"
-	"gitlab.com/skynetlabs/skyd/modules/host"
-	"gitlab.com/skynetlabs/skyd/modules/miner"
-	"gitlab.com/skynetlabs/skyd/modules/renter"
-	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
-	"gitlab.com/skynetlabs/skyd/modules/wallet"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/consensus"
+	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
+	"gitlab.com/skynetlabs/skyd/skymodules/host"
+	"gitlab.com/skynetlabs/skyd/skymodules/miner"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
+	"gitlab.com/skynetlabs/skyd/skymodules/transactionpool"
+	"gitlab.com/skynetlabs/skyd/skymodules/wallet"
 )
 
 // TestHostDBHostsActiveHandler checks the behavior of the call to
@@ -270,26 +270,26 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	}
 
 	// Create the siamux
-	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
+	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the modules.
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	// Create the skymodules.
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir))
 	if err != nil {
 		return nil, err
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
+	w, err := wallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
 	if err != nil {
 		return nil, err
 	}
@@ -307,16 +307,16 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	if err != nil {
 		return nil, err
 	}
-	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
+	m, err := miner.New(cs, tp, w, filepath.Join(testdir, skymodules.MinerDir))
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, mux, hostHostname, filepath.Join(testdir, modules.HostDir))
+	h, err := host.New(cs, g, tp, w, mux, hostHostname, filepath.Join(testdir, skymodules.HostDir))
 	if err != nil {
 		return nil, err
 	}
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	r, errChan := renter.New(g, cs, w, tp, mux, rl, filepath.Join(testdir, modules.RenterDir))
+	r, errChan := renter.New(g, cs, w, tp, mux, rl, filepath.Join(testdir, skymodules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -839,7 +839,7 @@ func TestHostDBAndRenterUploadDynamicIPs(t *testing.T) {
 
 	// Try uploading a second file.
 	path2 := filepath.Join(st.dir, "test2.dat")
-	test2Size := modules.SectorSize*2 + 1
+	test2Size := skymodules.SectorSize*2 + 1
 	err = createRandFile(path2, int(test2Size))
 	if err != nil {
 		t.Fatal(err)

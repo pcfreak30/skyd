@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // HostDbGet requests the /hostdb endpoint's resources.
@@ -33,7 +33,7 @@ func (c *Client) HostDbFilterModeGet() (hdfmg api.HostdbFilterModeGET, err error
 }
 
 // HostDbFilterModePost requests the /hostdb/filtermode POST endpoint
-func (c *Client) HostDbFilterModePost(fm modules.FilterMode, hosts []types.SiaPublicKey) (err error) {
+func (c *Client) HostDbFilterModePost(fm skymodules.FilterMode, hosts []types.SiaPublicKey) (err error) {
 	filterMode := fm.String()
 	hdblp := api.HostdbFilterModePOST{
 		FilterMode: filterMode,

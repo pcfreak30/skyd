@@ -10,8 +10,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
 )
 
 const (
@@ -108,32 +108,32 @@ type (
 	// API encapsulates a collection of modules and implements a http.Handler
 	// to access their methods.
 	API struct {
-		accounting          modules.Accounting
-		cs                  modules.ConsensusSet
-		explorer            modules.Explorer
-		feemanager          modules.FeeManager
-		gateway             modules.Gateway
-		host                modules.Host
-		miner               modules.Miner
-		renter              modules.Renter
-		tpool               modules.TransactionPool
-		wallet              modules.Wallet
+		accounting          skymodules.Accounting
+		cs                  skymodules.ConsensusSet
+		explorer            skymodules.Explorer
+		feemanager          skymodules.FeeManager
+		gateway             skymodules.Gateway
+		host                skymodules.Host
+		miner               skymodules.Miner
+		renter              skymodules.Renter
+		tpool               skymodules.TransactionPool
+		wallet              skymodules.Wallet
 		staticConfigModules configModules
 		modulesSet          bool
 
 		downloadMu sync.Mutex
-		downloads  map[modules.DownloadID]func()
+		downloads  map[skymodules.DownloadID]func()
 		router     http.Handler
 		routerMu   sync.RWMutex
 
 		requiredUserAgent string
 		requiredPassword  string
 		Shutdown          func() error
-		siadConfig        *modules.SiadConfig
+		siadConfig        *skymodules.SiadConfig
 
 		staticStartTime time.Time
 
-		staticDeps modules.Dependencies
+		staticDeps skymodules.Dependencies
 	}
 
 	// configModules contains booleans that indicate if a module was part of the
@@ -160,7 +160,7 @@ func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // SetModules allows for replacing the modules in the API at runtime.
-func (api *API) SetModules(acc modules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) {
+func (api *API) SetModules(acc skymodules.Accounting, cs skymodules.ConsensusSet, e skymodules.Explorer, fm skymodules.FeeManager, g skymodules.Gateway, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, tp skymodules.TransactionPool, w skymodules.Wallet) {
 	if api.modulesSet {
 		build.Critical("can't call SetModules more than once")
 	}
@@ -195,19 +195,19 @@ func (api *API) StartTime() time.Time {
 	return api.staticStartTime
 }
 
-// New creates a new Sia API from the provided modules. The API will require
+// New creates a new Sia API from the provided skymodules. The API will require
 // authentication using HTTP basic auth for certain endpoints of the supplied
 // password is not the empty string.  Usernames are ignored for authentication.
-func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword string, acc modules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) *API {
-	return NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, modules.ProdDependencies)
+func New(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs skymodules.ConsensusSet, e skymodules.Explorer, fm skymodules.FeeManager, g skymodules.Gateway, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, tp skymodules.TransactionPool, w skymodules.Wallet) *API {
+	return NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, skymodules.ProdDependencies)
 }
 
-// NewCustom creates a new Sia API from the provided modules. The API will
+// NewCustom creates a new Sia API from the provided skymodules. The API will
 // require authentication using HTTP basic auth for certain endpoints of the
 // supplied password is not the empty string. Usernames are ignored for
 // authentication. It is custom because it allows to inject custom dependencies
 // into the API.
-func NewCustom(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword string, acc modules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet, deps modules.Dependencies) *API {
+func NewCustom(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs skymodules.ConsensusSet, e skymodules.Explorer, fm skymodules.FeeManager, g skymodules.Gateway, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, tp skymodules.TransactionPool, w skymodules.Wallet, deps skymodules.Dependencies) *API {
 	api := &API{
 		accounting:        acc,
 		cs:                cs,
@@ -219,7 +219,7 @@ func NewCustom(cfg *modules.SiadConfig, requiredUserAgent string, requiredPasswo
 		renter:            r,
 		tpool:             tp,
 		wallet:            w,
-		downloads:         make(map[modules.DownloadID]func()),
+		downloads:         make(map[skymodules.DownloadID]func()),
 		requiredUserAgent: requiredUserAgent,
 		requiredPassword:  requiredPassword,
 		siadConfig:        cfg,
@@ -234,7 +234,7 @@ func NewCustom(cfg *modules.SiadConfig, requiredUserAgent string, requiredPasswo
 	return api
 }
 
-// UnrecognizedCallHandler handles calls to disabled/not-loaded modules.
+// UnrecognizedCallHandler handles calls to disabled/not-loaded skymodules.
 func (api *API) UnrecognizedCallHandler(w http.ResponseWriter, _ *http.Request) {
 	var errStr string
 	if api.modulesSet {

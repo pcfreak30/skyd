@@ -20,19 +20,19 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/consensus"
-	"gitlab.com/skynetlabs/skyd/modules/explorer"
-	"gitlab.com/skynetlabs/skyd/modules/gateway"
-	"gitlab.com/skynetlabs/skyd/modules/host"
-	"gitlab.com/skynetlabs/skyd/modules/miner"
-	"gitlab.com/skynetlabs/skyd/modules/renter"
-	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/modules/renter/hostdb"
-	"gitlab.com/skynetlabs/skyd/modules/renter/proto"
-	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
-	"gitlab.com/skynetlabs/skyd/modules/wallet"
 	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/consensus"
+	"gitlab.com/skynetlabs/skyd/skymodules/explorer"
+	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
+	"gitlab.com/skynetlabs/skyd/skymodules/host"
+	"gitlab.com/skynetlabs/skyd/skymodules/miner"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
+	"gitlab.com/skynetlabs/skyd/skymodules/transactionpool"
+	"gitlab.com/skynetlabs/skyd/skymodules/wallet"
 )
 
 // A Server is a collection of siad modules that can be communicated with over
@@ -102,29 +102,29 @@ func (srv *Server) Serve() error {
 	return nil
 }
 
-// NewServer creates a new API server from the provided modules. The API will
+// NewServer creates a new API server from the provided skymodules. The API will
 // require authentication using HTTP basic auth if the supplied password is not
 // the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be
 // used if the APIaddr is localhost.
-func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc modules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) (*Server, error) {
-	return NewCustomServer(dir, APIaddr, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, &modules.ProductionDependencies{})
+func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs skymodules.ConsensusSet, e skymodules.Explorer, fm skymodules.FeeManager, g skymodules.Gateway, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, tp skymodules.TransactionPool, w skymodules.Wallet) (*Server, error) {
+	return NewCustomServer(dir, APIaddr, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, &skymodules.ProductionDependencies{})
 }
 
-// NewCustomServer creates a new API server from the provided modules. The API
+// NewCustomServer creates a new API server from the provided skymodules. The API
 // will require authentication using HTTP basic auth if the supplied password is
 // not the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be used
 // if the APIaddr is localhost. It is custom because it allows injecting custom
 // API dependencies.
-func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc modules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet, apiDeps modules.Dependencies) (*Server, error) {
+func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs skymodules.ConsensusSet, e skymodules.Explorer, fm skymodules.FeeManager, g skymodules.Gateway, h skymodules.Host, m skymodules.Miner, r skymodules.Renter, tp skymodules.TransactionPool, w skymodules.Wallet, apiDeps skymodules.Dependencies) (*Server, error) {
 	listener, err := net.Listen("tcp", APIaddr)
 	if err != nil {
 		return nil, err
 	}
 
 	// Load the config file.
-	cfg, err := modules.NewConfig(filepath.Join(dir, modules.ConfigName))
+	cfg, err := skymodules.NewConfig(filepath.Join(dir, skymodules.ConfigName))
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load siad config")
 	}
@@ -144,14 +144,14 @@ func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requi
 // serverTester contains a server and a set of channels for keeping all of the
 // modules synchronized during testing.
 type serverTester struct {
-	cs        modules.ConsensusSet
-	explorer  modules.Explorer
-	gateway   modules.Gateway
-	host      modules.Host
-	miner     modules.TestMiner
-	renter    modules.Renter
-	tpool     modules.TransactionPool
-	wallet    modules.Wallet
+	cs        skymodules.ConsensusSet
+	explorer  skymodules.Explorer
+	gateway   skymodules.Gateway
+	host      skymodules.Host
+	miner     skymodules.TestMiner
+	renter    skymodules.Renter
+	tpool     skymodules.TransactionPool
+	wallet    skymodules.Wallet
 	walletKey crypto.CipherKey
 
 	server *Server
@@ -162,7 +162,7 @@ type serverTester struct {
 // assembleServerTesterWithDeps creates a bunch of modules with injected
 // dependencies and assembles them into a server tester, without creating any
 // directories or mining any blocks.
-func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
+func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps, apiDeps skymodules.Dependencies) (*serverTester, error) {
 	// assembleServerTester should not get called during short tests, as it
 	// takes a long time to run.
 	if testing.Short() {
@@ -170,26 +170,26 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 	}
 
 	// Create the siamux
-	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
+	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the modules.
-	g, err := gateway.NewCustomGateway("localhost:0", false, filepath.Join(testdir, modules.GatewayDir), gDeps)
+	// Create the skymodules.
+	g, err := gateway.NewCustomGateway("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir), gDeps)
 	if err != nil {
 		return nil, err
 	}
-	cs, errChan := consensus.NewCustomConsensusSet(g, false, filepath.Join(testdir, modules.ConsensusDir), cDeps)
+	cs, errChan := consensus.NewCustomConsensusSet(g, false, filepath.Join(testdir, skymodules.ConsensusDir), cDeps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	tp, err := transactionpool.NewCustomTPool(cs, g, filepath.Join(testdir, modules.TransactionPoolDir), tDeps)
+	tp, err := transactionpool.NewCustomTPool(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir), tDeps)
 	if err != nil {
 		return nil, err
 	}
-	w, err := wallet.NewCustomWallet(cs, tp, filepath.Join(testdir, modules.WalletDir), wDeps)
+	w, err := wallet.NewCustomWallet(cs, tp, filepath.Join(testdir, skymodules.WalletDir), wDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -207,15 +207,15 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 	if err != nil {
 		return nil, err
 	}
-	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
+	m, err := miner.New(cs, tp, w, filepath.Join(testdir, skymodules.MinerDir))
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.NewCustomHost(hDeps, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(hDeps, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, skymodules.HostDir))
 	if err != nil {
 		return nil, err
 	}
-	renterPersistDir := filepath.Join(testdir, modules.RenterDir)
+	renterPersistDir := filepath.Join(testdir, skymodules.RenterDir)
 	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tp, mux, renterPersistDir, hdbDeps)
 	if err := <-errChan; err != nil {
 		return nil, err
@@ -271,7 +271,7 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 // assembleServerTester creates a bunch of modules and assembles them into a
 // server tester, without creating any directories or mining any blocks.
 func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, error) {
-	return assembleServerTesterWithDeps(key, testdir, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
+	return assembleServerTesterWithDeps(key, testdir, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies)
 }
 
 // assembleAuthenticatedServerTester creates a bunch of modules and assembles
@@ -285,26 +285,26 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	}
 
 	// Create the siamux.
-	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	siaMuxDir := filepath.Join(testdir, skymodules.SiaMuxDir)
+	mux, err := skymodules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the modules.
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	// Create the skymodules.
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
+	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, skymodules.TransactionPoolDir))
 	if err != nil {
 		return nil, err
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
+	w, err := wallet.New(cs, tp, filepath.Join(testdir, skymodules.WalletDir))
 	if err != nil {
 		return nil, err
 	}
@@ -322,16 +322,16 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	if err != nil {
 		return nil, err
 	}
-	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
+	m, err := miner.New(cs, tp, w, filepath.Join(testdir, skymodules.MinerDir))
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.New(cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, skymodules.HostDir))
 	if err != nil {
 		return nil, err
 	}
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	r, errChan := renter.New(g, cs, w, tp, mux, rl, filepath.Join(testdir, modules.RenterDir))
+	r, errChan := renter.New(g, cs, w, tp, mux, rl, filepath.Join(testdir, skymodules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -376,16 +376,16 @@ func assembleExplorerServerTester(testdir string) (*serverTester, error) {
 		panic("assembleServerTester called during short tests")
 	}
 
-	// Create the modules.
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	// Create the skymodules.
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, skymodules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, skymodules.ConsensusDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	e, err := explorer.New(cs, filepath.Join(testdir, modules.ExplorerDir))
+	e, err := explorer.New(cs, filepath.Join(testdir, skymodules.ExplorerDir))
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +437,7 @@ func blankServerTester(name string) (*serverTester, error) {
 // createServerTesterWithDeps creates a server tester object with injected
 // dependencies that is ready for testing, including money in the wallet and all
 // modules initialized.
-func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
+func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps, apiDeps skymodules.Dependencies) (*serverTester, error) {
 	// createServerTester is expensive, and therefore should not be called
 	// during short tests.
 	if testing.Short() {
@@ -472,7 +472,7 @@ func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, 
 // createServerTester creates a server tester object that is ready for testing,
 // including money in the wallet and all modules initialized.
 func createServerTester(name string) (*serverTester, error) {
-	return createServerTesterWithDeps(name, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
+	return createServerTesterWithDeps(name, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies)
 }
 
 // createAuthenticatedServerTester creates an authenticated server tester
@@ -582,7 +582,7 @@ func (st *serverTester) announceHost() error {
 	if err != nil {
 		return err
 	}
-	initialHosts := make(map[modules.NetAddress]struct{})
+	initialHosts := make(map[skymodules.NetAddress]struct{})
 	// Create map of initialHosts
 	for _, h := range hosts.Hosts {
 		initialHosts[h.NetAddress] = struct{}{}

@@ -13,10 +13,10 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/proto"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
 
 type stubHostDB struct{}
@@ -49,7 +49,7 @@ func TestSession(t *testing.T) {
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(skymodules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// upload a sector
-	sector := fastrand.Bytes(int(modules.SectorSize))
+	sector := fastrand.Bytes(int(skymodules.SectorSize))
 	_, root, err := s.Append(sector)
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// download the sector root
-	_, droots, err := s.SectorRoots(modules.LoopSectorRootsRequest{
+	_, droots, err := s.SectorRoots(skymodules.LoopSectorRootsRequest{
 		RootOffset: 0,
 		NumRoots:   1,
 	})
@@ -113,17 +113,17 @@ func TestSession(t *testing.T) {
 	}
 
 	// perform a more complex modification: append+swap+trim
-	sector2 := fastrand.Bytes(int(modules.SectorSize))
-	_, err = s.Write([]modules.LoopWriteAction{
-		{Type: modules.WriteActionAppend, Data: sector2},
-		{Type: modules.WriteActionSwap, A: 0, B: 2},
-		{Type: modules.WriteActionTrim, A: 1},
+	sector2 := fastrand.Bytes(int(skymodules.SectorSize))
+	_, err = s.Write([]skymodules.LoopWriteAction{
+		{Type: skymodules.WriteActionAppend, Data: sector2},
+		{Type: skymodules.WriteActionSwap, A: 0, B: 2},
+		{Type: skymodules.WriteActionTrim, A: 1},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// check that the write was applied correctly
-	_, droots, err = s.SectorRoots(modules.LoopSectorRootsRequest{
+	_, droots, err = s.SectorRoots(skymodules.LoopSectorRootsRequest{
 		RootOffset: 0,
 		NumRoots:   1,
 	})
@@ -186,7 +186,7 @@ func TestHostLockTimeout(t *testing.T) {
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(skymodules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,11 +236,11 @@ func TestHostLockTimeout(t *testing.T) {
 	// unlock, allowing the other session to acquire the lock. When it does, it
 	// should see the modified contract.
 	errCh := make(chan error)
-	var lockedContract modules.RenterContract
+	var lockedContract skymodules.RenterContract
 	go func() {
 		// NOTE: the ContractSet uses a local mutex to serialize RPCs, so this
 		// test requires a separate ContractSet.
-		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(skymodules.ProductionDependencies))
 		if err != nil {
 			errCh <- err
 			return
@@ -260,7 +260,7 @@ func TestHostLockTimeout(t *testing.T) {
 		errCh <- nil
 	}()
 	time.Sleep(3 * time.Second) // wait for goroutine to start acquiring lock
-	contract, _, err = s2.Append(make([]byte, modules.SectorSize))
+	contract, _, err = s2.Append(make([]byte, skymodules.SectorSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +307,7 @@ func TestHostBaseRPCPrice(t *testing.T) {
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(skymodules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestHostBaseRPCPrice(t *testing.T) {
 	}
 
 	// Upload a sector.
-	sector := fastrand.Bytes(int(modules.SectorSize))
+	sector := fastrand.Bytes(int(skymodules.SectorSize))
 	_, _, err = s.Append(sector)
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +342,7 @@ func TestHostBaseRPCPrice(t *testing.T) {
 		t.Fatal(err)
 	}
 	minDownloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice
-	maxRPCPrice := minDownloadPrice.Mul64(modules.MaxBaseRPCPriceVsBandwidth)
+	maxRPCPrice := minDownloadPrice.Mul64(skymodules.MaxBaseRPCPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, maxRPCPrice)
 	if err != nil {
 		t.Fatal(err)
@@ -377,7 +377,7 @@ func TestMultiRead(t *testing.T) {
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(skymodules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +399,7 @@ func TestMultiRead(t *testing.T) {
 	}
 
 	// upload a sector
-	sector := fastrand.Bytes(int(modules.SectorSize))
+	sector := fastrand.Bytes(int(skymodules.SectorSize))
 	_, root, err := s.Append(sector)
 	if err != nil {
 		t.Fatal(err)
@@ -407,11 +407,11 @@ func TestMultiRead(t *testing.T) {
 
 	// download a single section without interrupting.
 	var buf bytes.Buffer
-	req := modules.LoopReadRequest{
-		Sections: []modules.LoopReadRequestSection{{
+	req := skymodules.LoopReadRequest{
+		Sections: []skymodules.LoopReadRequestSection{{
 			MerkleRoot: root,
 			Offset:     0,
-			Length:     uint32(modules.SectorSize),
+			Length:     uint32(skymodules.SectorSize),
 		}},
 		MerkleProof: true,
 	}
@@ -426,9 +426,9 @@ func TestMultiRead(t *testing.T) {
 	// download multiple sections, but interrupt immediately; we should not
 	// receive all the sections
 	buf.Reset()
-	req.Sections = []modules.LoopReadRequestSection{
-		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
-		{MerkleRoot: root, Offset: 0, Length: uint32(modules.SectorSize)},
+	req.Sections = []skymodules.LoopReadRequestSection{
+		{MerkleRoot: root, Offset: 0, Length: uint32(skymodules.SectorSize)},
+		{MerkleRoot: root, Offset: 0, Length: uint32(skymodules.SectorSize)},
 	}
 	cancel := make(chan struct{}, 1)
 	cancel <- struct{}{}

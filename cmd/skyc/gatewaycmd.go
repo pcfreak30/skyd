@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -117,7 +117,7 @@ Set them to 0 for no limit.`,
 // gatewayconnectcmd is the handler for the command `skyc gateway add [address]`.
 // Adds a new peer to the peer list.
 func gatewayconnectcmd(addr string) {
-	err := httpClient.GatewayConnectPost(modules.NetAddress(addr))
+	err := httpClient.GatewayConnectPost(skymodules.NetAddress(addr))
 	if err != nil {
 		die("Could not add peer:", err)
 	}
@@ -127,7 +127,7 @@ func gatewayconnectcmd(addr string) {
 // gatewaydisconnectcmd is the handler for the command `skyc gateway remove [address]`.
 // Removes a peer from the peer list.
 func gatewaydisconnectcmd(addr string) {
-	err := httpClient.GatewayDisconnectPost(modules.NetAddress(addr))
+	err := httpClient.GatewayDisconnectPost(skymodules.NetAddress(addr))
 	if err != nil {
 		die("Could not remove peer:", err)
 	}
@@ -155,7 +155,7 @@ func gatewaybandwidthcmd() {
 	fmt.Printf(`Download: %v 
 Upload:   %v 
 Duration: %v 
-`, modules.FilesizeUnits(bandwidth.Download), modules.FilesizeUnits(bandwidth.Upload), fmtDuration(time.Since(bandwidth.StartTime)))
+`, skymodules.FilesizeUnits(bandwidth.Download), skymodules.FilesizeUnits(bandwidth.Upload), fmtDuration(time.Since(bandwidth.StartTime)))
 }
 
 // gatewaycmd is the handler for the command `skyc gateway`.

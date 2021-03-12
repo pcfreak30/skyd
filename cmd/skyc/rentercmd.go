@@ -23,10 +23,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 const (
@@ -488,7 +488,7 @@ func rentercmd() {
 // renterlostcmd is the handler for displaying the renter's lost files.
 func renterlostcmd() {
 	// Print out the lost files of the renter
-	dirs := getDir(modules.RootSiaPath(), true, true)
+	dirs := getDir(skymodules.RootSiaPath(), true, true)
 	_, _, err := fileHealthBreakdown(dirs, true)
 	if err != nil {
 		die("Unable to display lost files:", err)
@@ -499,7 +499,7 @@ func renterlostcmd() {
 // summary for uploaded files.
 func renterhealthsummarycmd() {
 	// Print out file health summary for the renter
-	dirs := getDir(modules.RootSiaPath(), true, true)
+	dirs := getDir(skymodules.RootSiaPath(), true, true)
 	renterFileHealthSummary(dirs)
 }
 
@@ -517,7 +517,7 @@ func renteruploadscmd() {
 	//       not just files you've uploaded.
 
 	// Filter out files that have been uploaded.
-	var filteredFiles []modules.FileInfo
+	var filteredFiles []skymodules.FileInfo
 	for _, fi := range rf.Files {
 		if !fi.Available {
 			filteredFiles = append(filteredFiles, fi)
@@ -529,7 +529,7 @@ func renteruploadscmd() {
 	}
 	fmt.Println("Uploading", len(filteredFiles), "files:")
 	for _, file := range filteredFiles {
-		fmt.Printf("%13s  %s (uploading, %0.2f%%)\n", modules.FilesizeUnits(file.Filesize), file.SiaPath, file.UploadProgress)
+		fmt.Printf("%13s  %s (uploading, %0.2f%%)\n", skymodules.FilesizeUnits(file.Filesize), file.SiaPath, file.UploadProgress)
 	}
 }
 
@@ -615,16 +615,16 @@ Price Protections:
   MaxUploadBandwidthPrice:   %v per TB
 `, currencyUnitsWithExchangeRate(allowance.Funds, rate), allowance.Period, allowance.RenewWindow,
 		allowance.Hosts, currencyUnitsWithExchangeRate(allowance.PaymentContractInitialFunding, rate),
-		modules.FilesizeUnits(allowance.ExpectedStorage),
-		modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
-		modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
+		skymodules.FilesizeUnits(allowance.ExpectedStorage),
+		skymodules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
+		skymodules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
 		allowance.ExpectedRedundancy,
 		currencyUnits(allowance.MaxRPCPrice.Mul64(1e6)),
 		currencyUnits(allowance.MaxContractPrice),
-		currencyUnits(allowance.MaxDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
+		currencyUnits(allowance.MaxDownloadBandwidthPrice.Mul(skymodules.BytesPerTerabyte)),
 		currencyUnits(allowance.MaxSectorAccessPrice.Mul64(1e6)),
-		currencyUnits(allowance.MaxStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
-		currencyUnits(allowance.MaxUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)))
+		currencyUnits(allowance.MaxStoragePrice.Mul(skymodules.BlockBytesPerMonthTerabyte)),
+		currencyUnits(allowance.MaxUploadBandwidthPrice.Mul(skymodules.BytesPerTerabyte)))
 
 	// Show detailed current Period spending metrics
 	renterallowancespending(rg)
@@ -829,7 +829,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 		if err != nil {
 			die("Could not read max download bandwidth price:", err)
 		}
-		price = price.Div(modules.BytesPerTerabyte)
+		price = price.Div(skymodules.BytesPerTerabyte)
 		req = req.WithMaxDownloadBandwidthPrice(price)
 		changedFields++
 	}
@@ -859,7 +859,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 		if err != nil {
 			die("Could not read max storage price:", err)
 		}
-		price = price.Div(modules.BlockBytesPerMonthTerabyte)
+		price = price.Div(skymodules.BlockBytesPerMonthTerabyte)
 		req = req.WithMaxStoragePrice(price)
 		changedFields++
 	}
@@ -874,7 +874,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 		if err != nil {
 			die("Could not read max upload bandwidth price:", err)
 		}
-		price = price.Div(modules.BytesPerTerabyte)
+		price = price.Div(skymodules.BytesPerTerabyte)
 		req = req.WithMaxUploadBandwidthPrice(price)
 		changedFields++
 	}
@@ -906,7 +906,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 
 // rentersetallowancecmdInteractive is the interactive handler for `skyc renter
 // setallowance`.
-func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowance modules.Allowance) *client.AllowanceRequestPost {
+func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowance skymodules.Allowance) *client.AllowanceRequestPost {
 	br := bufio.NewReader(os.Stdin)
 	readString := func() string {
 		str, _ := br.ReadString('\n')
@@ -943,11 +943,11 @@ The following units can be used to set the allowance:
     KS (1000 siacoins per KS)`)
 	fmt.Println()
 	fmt.Println("Current value:", currencyUnits(allowance.Funds))
-	fmt.Println("Default value:", currencyUnits(modules.DefaultAllowance.Funds))
+	fmt.Println("Default value:", currencyUnits(skymodules.DefaultAllowance.Funds))
 
 	var funds types.Currency
 	if allowance.Funds.IsZero() {
-		funds = modules.DefaultAllowance.Funds
+		funds = skymodules.DefaultAllowance.Funds
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
 		funds = allowance.Funds
@@ -992,11 +992,11 @@ The following units can be used to set the period:
     w (weeks - 1008 blocks or 10080 minutes)`)
 	fmt.Println()
 	fmt.Println("Current value:", periodUnits(allowance.Period), "weeks")
-	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.Period), "weeks")
+	fmt.Println("Default value:", periodUnits(skymodules.DefaultAllowance.Period), "weeks")
 
 	var period types.BlockHeight
 	if allowance.Period == 0 {
-		period = modules.DefaultAllowance.Period
+		period = skymodules.DefaultAllowance.Period
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
 		period = allowance.Period
@@ -1038,11 +1038,11 @@ recommended that the default number of hosts be treated as a minimum, and that
 double the default number of default hosts be treated as a maximum.`)
 	fmt.Println()
 	fmt.Println("Current value:", allowance.Hosts)
-	fmt.Println("Default value:", modules.DefaultAllowance.Hosts)
+	fmt.Println("Default value:", skymodules.DefaultAllowance.Hosts)
 
 	var hosts uint64
 	if allowance.Hosts == 0 {
-		hosts = modules.DefaultAllowance.Hosts
+		hosts = skymodules.DefaultAllowance.Hosts
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
 		hosts = allowance.Hosts
@@ -1094,11 +1094,11 @@ The following units can be used to set the renew window:
     w (weeks - 1008 blocks or 10080 minutes)`)
 	fmt.Println()
 	fmt.Println("Current value:", periodUnits(allowance.RenewWindow), "weeks")
-	fmt.Println("Default value:", periodUnits(modules.DefaultAllowance.RenewWindow), "weeks")
+	fmt.Println("Default value:", periodUnits(skymodules.DefaultAllowance.RenewWindow), "weeks")
 
 	var renewWindow types.BlockHeight
 	if allowance.RenewWindow == 0 {
-		renewWindow = modules.DefaultAllowance.RenewWindow
+		renewWindow = skymodules.DefaultAllowance.RenewWindow
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
 		renewWindow = allowance.RenewWindow
@@ -1153,12 +1153,12 @@ The following units can be used to set the expected storage:`)
 	fmt.Println()
 	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
-	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedStorage))
-	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedStorage))
+	fmt.Println("Current value:", skymodules.FilesizeUnits(allowance.ExpectedStorage))
+	fmt.Println("Default value:", skymodules.FilesizeUnits(skymodules.DefaultAllowance.ExpectedStorage))
 
 	var expectedStorage uint64
 	if allowance.ExpectedStorage == 0 {
-		expectedStorage = modules.DefaultAllowance.ExpectedStorage
+		expectedStorage = skymodules.DefaultAllowance.ExpectedStorage
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
 		expectedStorage = allowance.ExpectedStorage
@@ -1202,9 +1202,9 @@ The following units can be used to set the expected upload:`)
 	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
 	euCurrentPeriod := allowance.ExpectedUpload * uint64(allowance.Period)
-	euDefaultPeriod := modules.DefaultAllowance.ExpectedUpload * uint64(modules.DefaultAllowance.Period)
-	fmt.Println("Current value:", modules.FilesizeUnits(euCurrentPeriod))
-	fmt.Println("Default value:", modules.FilesizeUnits(euDefaultPeriod))
+	euDefaultPeriod := skymodules.DefaultAllowance.ExpectedUpload * uint64(skymodules.DefaultAllowance.Period)
+	fmt.Println("Current value:", skymodules.FilesizeUnits(euCurrentPeriod))
+	fmt.Println("Default value:", skymodules.FilesizeUnits(euDefaultPeriod))
 
 	if allowance.ExpectedUpload == 0 {
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -1259,9 +1259,9 @@ The following units can be used to set the expected download:`)
 	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
 	edCurrentPeriod := allowance.ExpectedDownload * uint64(allowance.Period)
-	edDefaultPeriod := modules.DefaultAllowance.ExpectedDownload * uint64(modules.DefaultAllowance.Period)
-	fmt.Println("Current value:", modules.FilesizeUnits(edCurrentPeriod))
-	fmt.Println("Default value:", modules.FilesizeUnits(edDefaultPeriod))
+	edDefaultPeriod := skymodules.DefaultAllowance.ExpectedDownload * uint64(skymodules.DefaultAllowance.Period)
+	fmt.Println("Current value:", skymodules.FilesizeUnits(edCurrentPeriod))
+	fmt.Println("Default value:", skymodules.FilesizeUnits(edDefaultPeriod))
 
 	if allowance.ExpectedDownload == 0 {
 		fmt.Println("Enter desired value below, or leave blank to use default value")
@@ -1314,12 +1314,12 @@ redundancies should be used as the value for expected redundancy, weighted by
 how large the files are.`)
 	fmt.Println()
 	fmt.Println("Current value:", allowance.ExpectedRedundancy)
-	fmt.Println("Default value:", modules.DefaultAllowance.ExpectedRedundancy)
+	fmt.Println("Default value:", skymodules.DefaultAllowance.ExpectedRedundancy)
 
 	var expectedRedundancy float64
 	var err error
 	if allowance.ExpectedRedundancy == 0 {
-		expectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+		expectedRedundancy = skymodules.DefaultAllowance.ExpectedRedundancy
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
 		expectedRedundancy = allowance.ExpectedRedundancy
@@ -1353,10 +1353,10 @@ how large the files are.`)
 // bubble`.
 func renterbubblecmd(directory string) {
 	// Parse the siapath
-	var siaPath modules.SiaPath
+	var siaPath skymodules.SiaPath
 	if directory == "." {
 		directory = "root" // For UX
-		siaPath = modules.RootSiaPath()
+		siaPath = skymodules.RootSiaPath()
 	} else {
 		err := siaPath.LoadString(directory)
 		if err != nil {
@@ -1444,7 +1444,7 @@ func rentercontractscmd() {
   Total Spent:        %v
   Total Fees:         %v
 
-`, modules.FilesizeUnits(totalStored), modules.FilesizeUnits(totalWasted), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
+`, skymodules.FilesizeUnits(totalStored), skymodules.FilesizeUnits(totalWasted), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
 
 	// List out contracts
 	fmt.Println("Active Contracts:")
@@ -1501,7 +1501,7 @@ func rentercontractscmd() {
   Total Spent:         %v
   Total Fees:          %v
 
-`, modules.FilesizeUnits(totalStored), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
+`, skymodules.FilesizeUnits(totalStored), currencyUnits(totalRemaining), currencyUnits(totalSpent), currencyUnits(totalFees))
 		fmt.Println("\nExpired Contracts:")
 		if len(rce.ExpiredContracts) == 0 {
 			fmt.Println("  No expired contracts.")
@@ -1543,13 +1543,13 @@ func rentercontractsviewcmd(cid string) {
 func renterdirdownload(path, destination string) {
 	destination = abs(destination)
 	// Parse SiaPath.
-	siaPath, err := modules.NewSiaPath(path)
+	siaPath, err := skymodules.NewSiaPath(path)
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
 	// If root is not set we need to rebase.
 	if !renterDownloadRoot {
-		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		siaPath, err = siaPath.Rebase(skymodules.RootSiaPath(), skymodules.UserFolder)
 		if err != nil {
 			die("Couldn't rebase SiaPath:", err)
 		}
@@ -1573,7 +1573,7 @@ func renterdirdownload(path, destination string) {
 	}
 	// Handle potential errors.
 	if len(failedDownloads) == 0 {
-		fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), modules.FilesizeUnits(totalSize), time.Since(start).Round(time.Millisecond))
+		fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), skymodules.FilesizeUnits(totalSize), time.Since(start).Round(time.Millisecond))
 		return
 	}
 	// Print errors.
@@ -1588,7 +1588,7 @@ func renterdirdownload(path, destination string) {
 
 // renterdownloadcancelcmd is the handler for the command `skyc renter download cancel [cancelID]`
 // Cancels the ongoing download.
-func renterdownloadcancelcmd(cancelID modules.DownloadID) {
+func renterdownloadcancelcmd(cancelID skymodules.DownloadID) {
 	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
 		die("Couldn't cancel download:", err)
 	}
@@ -1600,7 +1600,7 @@ func renterdownloadcancelcmd(cancelID modules.DownloadID) {
 func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 	for _, path := range paths {
 		// Parse SiaPath.
-		siaPath, err := modules.NewSiaPath(path)
+		siaPath, err := skymodules.NewSiaPath(path)
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
@@ -1648,13 +1648,13 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 // and calls the corresponding sub-handler.
 func renterfilesdownloadcmd(path, destination string) {
 	// Parse SiaPath.
-	siaPath, err := modules.NewSiaPath(path)
+	siaPath, err := skymodules.NewSiaPath(path)
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
 	// If root is not set we need to rebase.
 	if !renterDownloadRoot {
-		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		siaPath, err = siaPath.Rebase(skymodules.RootSiaPath(), skymodules.UserFolder)
 		if err != nil {
 			die("Couldn't rebase SiaPath:", err)
 		}
@@ -1723,12 +1723,12 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		os.Exit(exitCodeUsage)
 	}
 	// Parse the input siapath.
-	var sp modules.SiaPath
+	var sp skymodules.SiaPath
 	var err error
 	if path == "." || path == "" || path == "/" {
-		sp = modules.RootSiaPath()
+		sp = skymodules.RootSiaPath()
 	} else {
-		sp, err = modules.NewSiaPath(path)
+		sp, err = skymodules.NewSiaPath(path)
 		if err != nil {
 			die("could not parse siapath:", err)
 		}
@@ -1778,7 +1778,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Print totals for both verbose and not verbose output.
-	totalStoredStr := modules.FilesizeUnits(totalStored)
+	totalStoredStr := skymodules.FilesizeUnits(totalStored)
 	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Handle the non verbose output.
@@ -1788,13 +1788,13 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			for _, subDir := range dir.subDirs {
 				name := subDir.SiaPath.Name() + "/"
-				size := modules.FilesizeUnits(subDir.AggregateSize)
+				size := skymodules.FilesizeUnits(subDir.AggregateSize)
 				fmt.Fprintf(w, "  %v\t%9v\n", name, size)
 			}
 
 			for _, file := range dir.files {
 				name := file.SiaPath.Name()
-				size := modules.FilesizeUnits(file.Filesize)
+				size := skymodules.FilesizeUnits(file.Filesize)
 				fmt.Fprintf(w, "  %v\t%9v\n", name, size)
 			}
 			if err := w.Flush(); err != nil {
@@ -1812,22 +1812,22 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
 		for _, subDir := range dir.subDirs {
 			name := subDir.SiaPath.Name() + "/"
-			size := modules.FilesizeUnits(subDir.AggregateSize)
+			size := skymodules.FilesizeUnits(subDir.AggregateSize)
 			redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
 			if subDir.AggregateMinRedundancy == -1 {
 				redundancyStr = "-"
 			}
-			healthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(subDir.AggregateHealth))
-			stuckHealthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(subDir.AggregateStuckHealth))
+			healthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(subDir.AggregateHealth))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(subDir.AggregateStuckHealth))
 			stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
 			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckHealthStr, stuckStr, "-", "-", "-")
 		}
 
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
-			size := modules.FilesizeUnits(file.Filesize)
+			size := skymodules.FilesizeUnits(file.Filesize)
 			availStr := yesNo(file.Available)
-			bytesUploaded := modules.FilesizeUnits(file.UploadedBytes)
+			bytesUploaded := skymodules.FilesizeUnits(file.UploadedBytes)
 			uploadStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
 			if file.UploadProgress == -1 {
 				uploadStr = "-"
@@ -1837,8 +1837,8 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 				redundancyStr = "-"
 			}
 
-			healthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(file.Health))
-			stuckHealthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(file.StuckHealth))
+			healthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(file.Health))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(file.StuckHealth))
 			stuckStr := yesNo(file.Stuck)
 			renewStr := yesNo(file.Renewing)
 			onDiskStr := yesNo(file.OnDisk)
@@ -1856,8 +1856,8 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 // Renames a file on the Sia network.
 func renterfilesrenamecmd(path, newpath string) {
 	// Parse SiaPath.
-	siaPath, err1 := modules.NewSiaPath(path)
-	newSiaPath, err2 := modules.NewSiaPath(newpath)
+	siaPath, err1 := skymodules.NewSiaPath(path)
+	newSiaPath, err2 := skymodules.NewSiaPath(newpath)
 	if err := errors.Compose(err1, err2); err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
@@ -1914,17 +1914,17 @@ func renterfusemountcmd(path, siaPathStr string) {
 	// to update the help string of the command to indicate that mounting will
 	// mount in read-write mode.
 	path = abs(path)
-	var siaPath modules.SiaPath
+	var siaPath skymodules.SiaPath
 	var err error
 	if siaPathStr == "" || siaPathStr == "/" {
-		siaPath = modules.RootSiaPath()
+		siaPath = skymodules.RootSiaPath()
 	} else {
-		siaPath, err = modules.NewSiaPath(siaPathStr)
+		siaPath, err = skymodules.NewSiaPath(siaPathStr)
 		if err != nil {
 			die("Unable to parse the siapath that should be mounted:", err)
 		}
 	}
-	opts := modules.MountOptions{
+	opts := skymodules.MountOptions{
 		ReadOnly:   true,
 		AllowOther: renterFuseMountAllowOther,
 	}
@@ -1951,7 +1951,7 @@ func renterfuseunmountcmd(path string) {
 //through API Endpoint
 func rentersetlocalpathcmd(siapath, newlocalpath string) {
 	//Parse Siapath
-	siaPath, err := modules.NewSiaPath(siapath)
+	siaPath, err := skymodules.NewSiaPath(siapath)
 	if err != nil {
 		die("Couldn't parse Siapath:", err)
 	}
@@ -1966,7 +1966,7 @@ func rentersetlocalpathcmd(siapath, newlocalpath string) {
 // unstuckall`. Sets all files to unstuck.
 func renterfilesunstuckcmd() {
 	// Get all dirs and their files recursively.
-	dirs := getDir(modules.RootSiaPath(), true, true)
+	dirs := getDir(skymodules.RootSiaPath(), true, true)
 
 	// Count all files.
 	totalFiles := 0
@@ -1976,7 +1976,7 @@ func renterfilesunstuckcmd() {
 
 	// Declare a worker function to mark files as not stuck.
 	var atomicFilesDone uint64
-	toUnstuck := make(chan modules.SiaPath)
+	toUnstuck := make(chan skymodules.SiaPath)
 	worker := func() {
 		for siaPath := range toUnstuck {
 			err := httpClient.RenterSetFileStuckPost(siaPath, true, false)
@@ -2058,7 +2058,7 @@ func renterfilesuploadcmd(source, path string) {
 			fpath = filepath.Join(path, fpath)
 			fpath = filepath.ToSlash(fpath)
 			// Parse SiaPath.
-			fSiaPath, err := modules.NewSiaPath(fpath)
+			fSiaPath, err := skymodules.NewSiaPath(fpath)
 			if err != nil {
 				die("Couldn't parse SiaPath:", err)
 			}
@@ -2072,7 +2072,7 @@ func renterfilesuploadcmd(source, path string) {
 	} else {
 		// single file
 		// Parse SiaPath.
-		siaPath, err := modules.NewSiaPath(path)
+		siaPath, err := skymodules.NewSiaPath(path)
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
@@ -2114,7 +2114,7 @@ func renterfilesuploadresumecmd() {
 // allowance to have the estimate reflect those settings or the user can submit
 // nothing
 func renterpricescmd(cmd *cobra.Command, args []string) {
-	allowance := modules.Allowance{}
+	allowance := skymodules.Allowance{}
 
 	if len(args) != 0 && len(args) != 4 {
 		_ = cmd.UsageFunc()(cmd)
@@ -2232,7 +2232,7 @@ func renterworkerscmd() {
 	}
 
 	// Split Workers into GoodForUpload and !GoodForUpload
-	var goodForUpload, notGoodForUpload []modules.WorkerStatus
+	var goodForUpload, notGoodForUpload []skymodules.WorkerStatus
 	for _, worker := range rw.Workers {
 		if worker.ContractUtility.GoodForUpload {
 			goodForUpload = append(goodForUpload, worker)
@@ -2522,7 +2522,7 @@ func renterworkersuploadscmd() {
 }
 
 // writeWorkers is a helper function to display workers
-func writeWorkers(workers []modules.WorkerStatus) {
+func writeWorkers(workers []skymodules.WorkerStatus) {
 	fmt.Println("  Number of Workers:", len(workers))
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	contractHeader := "Worker Contract\t \t \t "

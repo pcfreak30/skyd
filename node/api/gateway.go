@@ -8,15 +8,15 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
 	// GatewayGET contains the fields returned by a GET call to "/gateway".
 	GatewayGET struct {
-		NetAddress modules.NetAddress `json:"netaddress"`
-		Peers      []modules.Peer     `json:"peers"`
-		Online     bool               `json:"online"`
+		NetAddress skymodules.NetAddress `json:"netaddress"`
+		Peers      []skymodules.Peer     `json:"peers"`
+		Online     bool                  `json:"online"`
 
 		MaxDownloadSpeed int64 `json:"maxdownloadspeed"`
 		MaxUploadSpeed   int64 `json:"maxuploadspeed"`
@@ -44,7 +44,7 @@ type (
 )
 
 // RegisterRoutesGateway is a helper function to register all gateway routes.
-func RegisterRoutesGateway(router *httprouter.Router, g modules.Gateway, requiredPassword string) {
+func RegisterRoutesGateway(router *httprouter.Router, g skymodules.Gateway, requiredPassword string) {
 	router.GET("/gateway", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		gatewayHandlerGET(g, w, req, ps)
 	})
@@ -77,20 +77,20 @@ func RegisterRoutesGateway(router *httprouter.Router, g modules.Gateway, require
 }
 
 // gatewayHandlerGET handles the API call asking for the gateway status.
-func gatewayHandlerGET(gateway modules.Gateway, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func gatewayHandlerGET(gateway skymodules.Gateway, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	peers := gateway.Peers()
 	mds, mus := gateway.RateLimits()
 	// nil slices are marshalled as 'null' in JSON, whereas 0-length slices are
 	// marshalled as '[]'. The latter is preferred, indicating that the value
 	// exists but contains no elements.
 	if peers == nil {
-		peers = make([]modules.Peer, 0)
+		peers = make([]skymodules.Peer, 0)
 	}
 	WriteJSON(w, GatewayGET{gateway.Address(), peers, gateway.Online(), mds, mus})
 }
 
 // gatewayHandlerPOST handles the API call changing gateway specific settings.
-func gatewayHandlerPOST(gateway modules.Gateway, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func gatewayHandlerPOST(gateway skymodules.Gateway, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	maxDownloadSpeed, maxUploadSpeed := gateway.RateLimits()
 	// Scan the download speed limit. (optional parameter)
 	if d := req.FormValue("maxdownloadspeed"); d != "" {
@@ -121,7 +121,7 @@ func gatewayHandlerPOST(gateway modules.Gateway, w http.ResponseWriter, req *htt
 
 // gatewayBandwidthHandlerGET handles the API call asking for the gateway's
 // bandwidth usage.
-func gatewayBandwidthHandlerGET(gateway modules.Gateway, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func gatewayBandwidthHandlerGET(gateway skymodules.Gateway, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	upload, download, startTime, err := gateway.BandwidthCounters()
 	if err != nil {
 		WriteError(w, Error{"failed to get gateway's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
@@ -135,8 +135,8 @@ func gatewayBandwidthHandlerGET(gateway modules.Gateway, w http.ResponseWriter, 
 }
 
 // gatewayConnectHandler handles the API call to add a peer to the gateway.
-func gatewayConnectHandler(gateway modules.Gateway, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
-	addr := modules.NetAddress(ps.ByName("netaddress"))
+func gatewayConnectHandler(gateway skymodules.Gateway, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+	addr := skymodules.NetAddress(ps.ByName("netaddress"))
 	err := gateway.ConnectManual(addr)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -147,8 +147,8 @@ func gatewayConnectHandler(gateway modules.Gateway, w http.ResponseWriter, _ *ht
 }
 
 // gatewayDisconnectHandler handles the API call to remove a peer from the gateway.
-func gatewayDisconnectHandler(gateway modules.Gateway, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
-	addr := modules.NetAddress(ps.ByName("netaddress"))
+func gatewayDisconnectHandler(gateway skymodules.Gateway, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+	addr := skymodules.NetAddress(ps.ByName("netaddress"))
 	err := gateway.DisconnectManual(addr)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -160,7 +160,7 @@ func gatewayDisconnectHandler(gateway modules.Gateway, w http.ResponseWriter, _ 
 
 // gatewayBlocklistHandlerGET handles the API call to get the gateway's
 // blocklist
-func gatewayBlocklistHandlerGET(gateway modules.Gateway, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func gatewayBlocklistHandlerGET(gateway skymodules.Gateway, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get Blocklist
 	blocklist, err := gateway.Blocklist()
 	if err != nil {
@@ -178,7 +178,7 @@ func gatewayBlocklistHandlerGET(gateway modules.Gateway, w http.ResponseWriter, 
 //
 // Addresses will be passed in as an array of strings, comma separated net
 // addresses
-func gatewayBlocklistHandlerPOST(gateway modules.Gateway, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func gatewayBlocklistHandlerPOST(gateway skymodules.Gateway, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
 	var params GatewayBlocklistPOST
 	err := json.NewDecoder(req.Body).Decode(&params)

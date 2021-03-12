@@ -442,7 +442,7 @@ In addition, each consensus change contains its own ID.
 
 ### Response
 
-A concatenation of Sia-encoded (binary) modules.ConsensusChange objects.
+A concatenation of Sia-encoded (binary) skymodules.ConsensusChange objects.
 
 ## /consensus/validate/transactionset [POST]
 > curl example  
@@ -1068,11 +1068,11 @@ returns information about the gateway, including the list of connected peers.
 **netaddress** | string  
 netaddress is the network address of the gateway as seen by the rest of the
 network. The address consists of the external IP address and the port Sia is
-listening on. It represents a `modules.NetAddress`.  
+listening on. It represents a `skymodules.NetAddress`.  
 
 **peers** | array  
 peers is an array of peers the gateway is connected to. It represents an array
-of `modules.Peer`s.  
+of `skymodules.Peer`s.  
         
 **inbound** | boolean  
 inbound is true when the peer initiated the connection. This field is exposed as
@@ -1084,7 +1084,7 @@ local is true if the peer's IP address belongs to a local address range such as
 192.168.x.x or 127.x.x.x  
 
 **netaddress** | string  
-netaddress is the address of the peer. It represents a `modules.NetAddress`.  
+netaddress is the address of the peer. It represents a `skymodules.NetAddress`.  
 
 **version** | string  
 version is the version number of the peer.  
@@ -4496,12 +4496,12 @@ which mountpoints have been used for each mount.
 
 ```go
 {
-  "mountpoints": [ // []modules.MountInfo
+  "mountpoints": [ // []skymodules.MountInfo
     {
       "mountpoint": "/home/user/siavideos", // string
-      "siapath": "/videos",                 // modules.SiaPath
+      "siapath": "/videos",                 // skymodules.SiaPath
 
-      "mountoptions": { // []modules.MountOptions
+      "mountoptions": { // []skymodules.MountOptions
           "allowother": false, // bool
           "readonly": true,    // bool
         },
@@ -5499,7 +5499,7 @@ value will be treated as hastings. The default ppms is 100nS.
 **Skynet-File-Metadata** | SkyfileMetadata
 
 The header field "Skynet-FileMetadata" will be set such that it has an encoded
-json object which matches the modules.SkyfileMetadata struct. If a path was
+json object which matches the skymodules.SkyfileMetadata struct. If a path was
 supplied, this metadata will be relative to the given path.
 
 > Skynet-File-Metadata Response Header Example 

@@ -11,8 +11,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // byDirectoryInfo implements sort.Interface for []directoryInfo based on the
@@ -25,17 +25,17 @@ func (s byDirectoryInfo) Less(i, j int) bool {
 	return s[i].dir.SiaPath.String() < s[j].dir.SiaPath.String()
 }
 
-// bySiaPathFile implements sort.Interface for [] modules.FileInfo based on the
+// bySiaPathFile implements sort.Interface for [] skymodules.FileInfo based on the
 // SiaPath field.
-type bySiaPathFile []modules.FileInfo
+type bySiaPathFile []skymodules.FileInfo
 
 func (s bySiaPathFile) Len() int           { return len(s) }
 func (s bySiaPathFile) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s bySiaPathFile) Less(i, j int) bool { return s[i].SiaPath.String() < s[j].SiaPath.String() }
 
-// bySiaPathDir implements sort.Interface for [] modules.DirectoryInfo based on the
+// bySiaPathDir implements sort.Interface for [] skymodules.DirectoryInfo based on the
 // SiaPath field.
-type bySiaPathDir []modules.DirectoryInfo
+type bySiaPathDir []skymodules.DirectoryInfo
 
 func (s bySiaPathDir) Len() int           { return len(s) }
 func (s bySiaPathDir) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
@@ -55,13 +55,13 @@ func (s byValue) Less(i, j int) bool {
 	return cmp > 0
 }
 
-// directoryInfo is a helper struct that contains the modules.DirectoryInfo for
-// a directory, the modules.FileInfo for all the directory's files, and the
-// modules.DirectoryInfo for all the subdirs.
+// directoryInfo is a helper struct that contains the skymodules.DirectoryInfo for
+// a directory, the skymodules.FileInfo for all the directory's files, and the
+// skymodules.DirectoryInfo for all the subdirs.
 type directoryInfo struct {
-	dir     modules.DirectoryInfo
-	files   []modules.FileInfo
-	subDirs []modules.DirectoryInfo
+	dir     skymodules.DirectoryInfo
+	files   []skymodules.FileInfo
+	subDirs []skymodules.DirectoryInfo
 }
 
 // progressMeasurement is a helper type used for measuring the progress of
@@ -73,7 +73,7 @@ type progressMeasurement struct {
 
 // trackedFile is a helper struct for tracking files related to downloads
 type trackedFile struct {
-	siaPath modules.SiaPath
+	siaPath skymodules.SiaPath
 	dst     string
 }
 
@@ -100,7 +100,7 @@ func contractStats(contracts []api.RenterContract) (size uint64, spent, remainin
 // location. It returns all the files for which a download was initialized as
 // tracked files and the ones which were ignored as skipped. Errors are composed
 // into a single error.
-func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
+func downloadDir(siaPath skymodules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
 	rd, err := httpClient.RenterDirRootGet(siaPath)
 	if err != nil {
@@ -163,8 +163,8 @@ func downloadProgress(tfs []trackedFile) []api.DownloadInfo {
 
 	// Create a map of all tracked files for faster lookups and also a measurement
 	// map which is initialized with 0 progress for all tracked files.
-	tfsMap := make(map[modules.SiaPath]trackedFile)
-	measurements := make(map[modules.SiaPath][]progressMeasurement)
+	tfsMap := make(map[skymodules.SiaPath]trackedFile)
+	measurements := make(map[skymodules.SiaPath][]progressMeasurement)
 	for _, tf := range tfs {
 		tfsMap[tf.siaPath] = tf
 		measurements[tf.siaPath] = []progressMeasurement{{
@@ -252,7 +252,7 @@ func downloadProgress(tfs []trackedFile) []api.DownloadInfo {
 			elapsed := time.Since(d.StartTime)
 			elapsed -= elapsed % time.Second // round to nearest second
 
-			progressLine := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, modules.FilesizeUnits(d.Filesize), elapsed, speed)
+			progressLine := fmt.Sprintf("Downloading %v... %5.1f%% of %v, %v elapsed, %s    ", tf.siaPath.String(), pct, skymodules.FilesizeUnits(d.Filesize), elapsed, speed)
 			if tfIdx < len(tfs)-1 {
 				progressStr += fmt.Sprintln(progressLine)
 			} else {
@@ -329,7 +329,7 @@ func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, 
 
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs, querying the root directory.
-func getDir(siaPath modules.SiaPath, root, recursive bool) (dirs []directoryInfo) {
+func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryInfo) {
 	var rd api.RenterDirectory
 	var err error
 	if root {
@@ -402,7 +402,7 @@ Contract %v
 				currencyUnits(rc.FundAccountSpending),
 				currencyUnits(rc.MaintenanceSpending.Sum()),
 				currencyUnits(rc.RenterFunds),
-				modules.FilesizeUnits(rc.Size))
+				skymodules.FilesizeUnits(rc.Size))
 
 			printScoreBreakdown(&hostInfo)
 			return nil
@@ -466,7 +466,7 @@ Spending:
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
-	rf, err := httpClient.RenterDirRootGet(modules.RootSiaPath())
+	rf, err := httpClient.RenterDirRootGet(skymodules.RootSiaPath())
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -490,10 +490,10 @@ func renterFilesAndContractSummary() error {
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "  Files:\t%v\n", rf.Directories[0].AggregateNumFiles)
-	fmt.Fprintf(w, "  Total Stored:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateSize))
-	fmt.Fprintf(w, "  Total Renewing Data:\t%v\n", modules.FilesizeUnits(activeSize+passiveSize))
-	fmt.Fprintf(w, "  Repair Data Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateRepairSize))
-	fmt.Fprintf(w, "  Stuck Repair Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateStuckSize))
+	fmt.Fprintf(w, "  Total Stored:\t%v\n", skymodules.FilesizeUnits(rf.Directories[0].AggregateSize))
+	fmt.Fprintf(w, "  Total Renewing Data:\t%v\n", skymodules.FilesizeUnits(activeSize+passiveSize))
+	fmt.Fprintf(w, "  Repair Data Remaining:\t%v\n", skymodules.FilesizeUnits(rf.Directories[0].AggregateRepairSize))
+	fmt.Fprintf(w, "  Stuck Repair Remaining:\t%v\n", skymodules.FilesizeUnits(rf.Directories[0].AggregateStuckSize))
 	fmt.Fprintf(w, "  Min Redundancy:\t%v\n", redundancyStr)
 	fmt.Fprintf(w, "  Active Contracts:\t%v\n", len(rc.ActiveContracts))
 	fmt.Fprintf(w, "  Passive Contracts:\t%v\n", len(rc.PassiveContracts))
@@ -506,13 +506,13 @@ func renterFilesAndContractSummary() error {
 func renterFilesDownload(path, destination string) {
 	destination = abs(destination)
 	// Parse SiaPath.
-	siaPath, err := modules.NewSiaPath(path)
+	siaPath, err := skymodules.NewSiaPath(path)
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
 	// If root is not set we need to rebase.
 	if !renterDownloadRoot {
-		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		siaPath, err = siaPath.Rebase(skymodules.RootSiaPath(), skymodules.UserFolder)
 		if err != nil {
 			die("Couldn't rebase SiaPath:", err)
 		}
@@ -550,7 +550,7 @@ func renterFilesDownload(path, destination string) {
 	if len(failedDownloads) > 0 {
 		die("\nDownload could not be completed:", failedDownloads[0].Error)
 	}
-	fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), modules.FilesizeUnits(file.File.Filesize), time.Since(start).Round(time.Millisecond))
+	fmt.Printf("\nDownloaded '%s' to '%s - %v in %v'.\n", path, abs(destination), skymodules.FilesizeUnits(file.File.Filesize), time.Since(start).Round(time.Millisecond))
 }
 
 // renterFileHealthSummary prints out a summary of the status of all the files
@@ -604,7 +604,7 @@ func writeContracts(contracts []api.RenterContract) {
 			currencyUnits(c.RenterFunds),
 			currencyUnits(contractTotalSpent),
 			currencyUnits(c.Fees),
-			modules.FilesizeUnits(c.Size),
+			skymodules.FilesizeUnits(c.Size),
 			c.EndHeight,
 			c.ID,
 			c.GoodForUpload,
@@ -618,7 +618,7 @@ func writeContracts(contracts []api.RenterContract) {
 
 // writeWorkerDownloadUploadInfo is a helper function for writing the download
 // or upload information to the tabwriter.
-func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw modules.WorkerPoolStatus) {
+func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw skymodules.WorkerPoolStatus) {
 	// print summary
 	fmt.Fprintf(w, "Worker Pool Summary \n")
 	fmt.Fprintf(w, "  Total Workers: \t%v\n", rw.NumWorkers)
@@ -665,7 +665,7 @@ func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw module
 
 // writeWorkerReadUpdateRegistryInfo is a helper function for writing the read registry
 // or update registry information to the tabwriter.
-func writeWorkerReadUpdateRegistryInfo(read bool, w *tabwriter.Writer, rw modules.WorkerPoolStatus) {
+func writeWorkerReadUpdateRegistryInfo(read bool, w *tabwriter.Writer, rw skymodules.WorkerPoolStatus) {
 	// print summary
 	fmt.Fprintf(w, "Worker Pool Summary \n")
 	fmt.Fprintf(w, "  Total Workers: \t%v\n", rw.NumWorkers)

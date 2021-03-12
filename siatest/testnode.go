@@ -14,11 +14,11 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/node/api/server"
 	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -145,7 +145,7 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 	if asyncSync {
 		var errChan <-chan error
 		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams, time.Now())
-		err = modules.PeekErr(errChan)
+		err = skymodules.PeekErr(errChan)
 	} else {
 		s, err = server.New(":0", userAgent, password, nodeParams, time.Now())
 	}
@@ -207,7 +207,7 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 }
 
 // IsAlertRegistered returns an error if the given alert is not found
-func (tn *TestNode) IsAlertRegistered(a modules.Alert) error {
+func (tn *TestNode) IsAlertRegistered(a skymodules.Alert) error {
 	return build.Retry(10, 100*time.Millisecond, func() error {
 		dag, err := tn.DaemonAlertsGet()
 		if err != nil {
@@ -223,7 +223,7 @@ func (tn *TestNode) IsAlertRegistered(a modules.Alert) error {
 }
 
 // IsAlertUnregistered returns an error if the given alert is still found
-func (tn *TestNode) IsAlertUnregistered(a modules.Alert) error {
+func (tn *TestNode) IsAlertUnregistered(a skymodules.Alert) error {
 	return build.Retry(10, 100*time.Millisecond, func() error {
 		dag, err := tn.DaemonAlertsGet()
 		if err != nil {
@@ -365,9 +365,9 @@ func (tn *TestNode) RestartNode() error {
 
 // SiaPath returns the siapath of a local file or directory to be used for
 // uploading
-func (tn *TestNode) SiaPath(path string) modules.SiaPath {
+func (tn *TestNode) SiaPath(path string) skymodules.SiaPath {
 	s := strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
-	sp, err := modules.NewSiaPath(s)
+	sp, err := skymodules.NewSiaPath(s)
 	if err != nil {
 		build.Critical("This shouldn't happen", err)
 	}

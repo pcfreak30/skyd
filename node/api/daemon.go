@@ -26,8 +26,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/profile"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 const (
@@ -66,12 +66,12 @@ y6/Gelaei3D0
 
 type (
 	// DaemonAlertsGet contains information about currently registered alerts
-	// across all loaded modules.
+	// across all loaded skymodules.
 	DaemonAlertsGet struct {
-		Alerts         []modules.Alert `json:"alerts"`
-		CriticalAlerts []modules.Alert `json:"criticalalerts"`
-		ErrorAlerts    []modules.Alert `json:"erroralerts"`
-		WarningAlerts  []modules.Alert `json:"warningalerts"`
+		Alerts         []skymodules.Alert `json:"alerts"`
+		CriticalAlerts []skymodules.Alert `json:"criticalalerts"`
+		ErrorAlerts    []skymodules.Alert `json:"erroralerts"`
+		WarningAlerts  []skymodules.Alert `json:"warningalerts"`
 	}
 
 	// DaemonVersionGet contains information about the running daemon's version.
@@ -120,7 +120,7 @@ type (
 		RootTarget types.Target `json:"roottarget"`
 		RootDepth  types.Target `json:"rootdepth"`
 
-		DefaultAllowance modules.Allowance `json:"defaultallowance"`
+		DefaultAllowance skymodules.Allowance `json:"defaultallowance"`
 
 		// DEPRECATED: same values as MaxTargetAdjustmentUp and
 		// MaxTargetAdjustmentDown.
@@ -317,12 +317,12 @@ func updateToRelease(version string) (err error) {
 }
 
 // daemonAlertsHandlerGET handles the API call that returns the alerts of all
-// loaded modules.
+// loaded skymodules.
 func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// initialize slices to avoid "null" in response.
-	crit := make([]modules.Alert, 0, 6)
-	err := make([]modules.Alert, 0, 6)
-	warn := make([]modules.Alert, 0, 6)
+	crit := make([]skymodules.Alert, 0, 6)
+	err := make([]skymodules.Alert, 0, 6)
+	warn := make([]skymodules.Alert, 0, 6)
 	if api.gateway != nil {
 		c, e, w := api.gateway.Alerts()
 		crit = append(crit, c...)
@@ -425,7 +425,7 @@ func (api *API) daemonConstantsHandler(w http.ResponseWriter, _ *http.Request, _
 		RootTarget: types.RootTarget,
 		RootDepth:  types.RootDepth,
 
-		DefaultAllowance: modules.DefaultAllowance,
+		DefaultAllowance: skymodules.DefaultAllowance,
 
 		// DEPRECATED: same values as MaxTargetAdjustmentUp and
 		// MaxTargetAdjustmentDown.
@@ -444,7 +444,7 @@ func (api *API) daemonConstantsHandler(w http.ResponseWriter, _ *http.Request, _
 // daemonStackHandlerGET handles the API call that requests the daemon's stack trace.
 func (api *API) daemonStackHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get the stack traces of all running goroutines.
-	stack := make([]byte, modules.StackSize)
+	stack := make([]byte, skymodules.StackSize)
 	n := runtime.Stack(stack, true)
 	if n == 0 {
 		WriteError(w, Error{"no stack trace pulled"}, http.StatusInternalServerError)
@@ -479,7 +479,7 @@ func (api *API) daemonStartProfileHandlerPOST(w http.ResponseWriter, req *http.R
 	if profileDir == "" {
 		profileDir = build.ProfileDir()
 	}
-	err = os.MkdirAll(profileDir, modules.DefaultDirPerm)
+	err = os.MkdirAll(profileDir, skymodules.DefaultDirPerm)
 	if err != nil {
 		WriteError(w, Error{"unable to create directory for profiles:" + err.Error()}, http.StatusBadRequest)
 		return
@@ -522,7 +522,7 @@ func (api *API) daemonStopHandler(w http.ResponseWriter, _ *http.Request, _ http
 // daemonSettingsHandlerGET handles the API call asking for the daemon's
 // settings.
 func (api *API) daemonSettingsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	gmds, gmus, _ := modules.GlobalRateLimits.Limits()
+	gmds, gmus, _ := skymodules.GlobalRateLimits.Limits()
 	WriteJSON(w, DaemonSettingsGet{
 		MaxDownloadSpeed: gmds,
 		MaxUploadSpeed:   gmus,
@@ -533,7 +533,7 @@ func (api *API) daemonSettingsHandlerGET(w http.ResponseWriter, _ *http.Request,
 // daemonSettingsHandlerPOST handles the API call changing daemon specific
 // settings.
 func (api *API) daemonSettingsHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	maxDownloadSpeed, maxUploadSpeed, _ := modules.GlobalRateLimits.Limits()
+	maxDownloadSpeed, maxUploadSpeed, _ := skymodules.GlobalRateLimits.Limits()
 	// Scan the download speed limit. (optional parameter)
 	if d := req.FormValue("maxdownloadspeed"); d != "" {
 		var downloadSpeed int64

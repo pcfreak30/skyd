@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/gateway"
 	"gitlab.com/skynetlabs/skyd/persist"
 	siaPersist "gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/gateway"
 )
 
 const numTestingGateways = 3
@@ -27,7 +27,7 @@ func TestLoad(t *testing.T) {
 	now := time.Now()
 	data := persistData{
 		StartTime: now,
-		NodeStats: make(map[modules.NetAddress]nodeStats),
+		NodeStats: make(map[skymodules.NetAddress]nodeStats),
 	}
 
 	err := siaPersist.LoadJSON(persistMetadata, &data, testPersistFile)
@@ -155,7 +155,7 @@ func TestRestartScanner(t *testing.T) {
 	}
 
 	gateways := make([]*gateway.Gateway, 0, numTestingGateways)
-	gatewayAddrs := make([]modules.NetAddress, 0, numTestingGateways)
+	gatewayAddrs := make([]skymodules.NetAddress, 0, numTestingGateways)
 	for i := 0; i < numTestingGateways; i++ {
 		g, err := gateway.New(fmt.Sprintf("localhost:4444%d", i), true, build.TempDir(fmt.Sprintf("SiaNodeScannerTestGateway-%d", i)))
 		if err != nil {
@@ -181,7 +181,7 @@ func TestRestartScanner(t *testing.T) {
 	recentPast := time.Now().Add(-10 * time.Minute)
 	testData := persistData{
 		StartTime: recentPast,
-		NodeStats: make(map[modules.NetAddress]nodeStats),
+		NodeStats: make(map[skymodules.NetAddress]nodeStats),
 	}
 	for _, g := range gateways {
 		testData.NodeStats[g.Address()] = nodeStats{

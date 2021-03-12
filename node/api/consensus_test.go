@@ -8,7 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestConsensusGet probes the GET call to /consensus.
@@ -119,7 +119,7 @@ func TestIntegrationConsensusSubscribe(t *testing.T) {
 	}
 	defer st.server.panicClose()
 
-	ccid := modules.ConsensusChangeBeginning
+	ccid := skymodules.ConsensusChangeBeginning
 	resp, err := HttpGET("http://" + st.server.listener.Addr().String() + "/consensus/subscribe/" + ccid.String())
 	if err != nil {
 		t.Fatal("unable to make an http request", err)
@@ -134,8 +134,8 @@ func TestIntegrationConsensusSubscribe(t *testing.T) {
 		t.Fatal(decodeError(resp))
 	}
 	dec := encoding.NewDecoder(resp.Body, 1e6)
-	var cc modules.ConsensusChange
-	var ids []modules.ConsensusChangeID
+	var cc skymodules.ConsensusChange
+	var ids []skymodules.ConsensusChangeID
 	for {
 		if err := dec.Decode(&cc); errors.Is(err, io.EOF) {
 			break

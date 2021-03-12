@@ -411,7 +411,7 @@ the master branch.
 
 ## Siad Modules
 A siad module is a single stateful object that exports some class of methods.
-Modules are usually fairly complex, and often have submodules.  A submodule is
+Modules are usually fairly complex, and often have subskymodules.  A submodule is
 just a module that doesn’t appear in the top level modules package, but
 otherwise follows all other module standards.
 
@@ -427,11 +427,11 @@ is explained further on in the document.
 Other than being able to call exported methods on each other, modules do not
 share state and do not share persistence domains. Calling Save() on one module
 will not impact the persistence of other modules, and modules should be
-programmed to not require any consistency with other modules.
+programmed to not require any consistency with other skymodules.
 ‘ProcessConsensusChange’ is a good example of managing cross-domain consistency.
 At startup, all consensus subscribers will tell the consensus module which
 update they have received most recently, eliminating the need to coordinate
-persistence across modules.
+persistence across skymodules.
 
 Siad modules often share types, and this can cause challenges with import loops.
 To categorically avoid import loops, we have a top level modules package that

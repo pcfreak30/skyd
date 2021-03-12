@@ -14,9 +14,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestApiHeight checks if the consensus api endpoint works
@@ -210,11 +210,11 @@ func TestConsensusBlocksIDGet(t *testing.T) {
 
 type testSubscriber struct {
 	height types.BlockHeight
-	ccid   modules.ConsensusChangeID
+	ccid   skymodules.ConsensusChangeID
 	mu     sync.Mutex
 }
 
-func (ts *testSubscriber) ProcessConsensusChange(cc modules.ConsensusChange) {
+func (ts *testSubscriber) ProcessConsensusChange(cc skymodules.ConsensusChange) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	ts.height += types.BlockHeight(len(cc.AppliedBlocks))
@@ -247,12 +247,12 @@ func TestConsensusSubscribe(t *testing.T) {
 	s := &testSubscriber{height: ^types.BlockHeight(0)}
 	cancel := make(chan struct{})
 	close(cancel)
-	errCh, _ := testNode.ConsensusSetSubscribe(s, modules.ConsensusChangeBeginning, cancel)
+	errCh, _ := testNode.ConsensusSetSubscribe(s, skymodules.ConsensusChangeBeginning, cancel)
 	if err := <-errCh; errors.Is(err, context.Canceled) {
 		t.Fatal("expected context.Canceled, got", err)
 	}
 	// subscribe again without cancelling
-	errCh, unsubscribe := testNode.ConsensusSetSubscribe(s, modules.ConsensusChangeBeginning, nil)
+	errCh, unsubscribe := testNode.ConsensusSetSubscribe(s, skymodules.ConsensusChangeBeginning, nil)
 	if err := <-errCh; err != nil {
 		t.Fatal(err)
 	}

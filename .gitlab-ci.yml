@@ -15,20 +15,20 @@ variables:
     ./node/api
     ./node/api/server
   package_host_pkgs: >-
-    ./modules/host
-    ./modules/host/contractmanager
-    ./modules/host/mdm
+    ./skymodules/host
+    ./skymodules/host/contractmanager
+    ./skymodules/host/mdm
   package_renter_pkgs: >-
-    ./modules/renter
-    ./modules/renter/contractor
-    ./modules/renter/filesystem
-    ./modules/renter/filesystem/siafile
-    ./modules/renter/filesystem/siadir
-    ./modules/renter/hostdb
-    ./modules/renter/hostdb/hosttree
-    ./modules/renter/proto
-    ./modules/renter/skynetblocklist
-    ./modules/renter/skynetportals
+    ./skymodules/renter
+    ./skymodules/renter/contractor
+    ./skymodules/renter/filesystem
+    ./skymodules/renter/filesystem/siafile
+    ./skymodules/renter/filesystem/siadir
+    ./skymodules/renter/hostdb
+    ./skymodules/renter/hostdb/hosttree
+    ./skymodules/renter/proto
+    ./skymodules/renter/skynetblocklist
+    ./skymodules/renter/skynetportals
   package_pkgs: >-
     ./build
     ./cmd/sia-node-scanner
@@ -37,15 +37,15 @@ variables:
     ./cmd/skynet-benchmark
     ./compatibility
     ./crypto
-    ./modules
-    ./modules/accounting
-    ./modules/consensus
-    ./modules/explorer
-    ./modules/feemanager
-    ./modules/gateway
-    ./modules/miner
-    ./modules/wallet
-    ./modules/transactionpool
+    ./skymodules
+    ./skymodules/accounting
+    ./skymodules/consensus
+    ./skymodules/explorer
+    ./skymodules/feemanager
+    ./skymodules/gateway
+    ./skymodules/miner
+    ./skymodules/wallet
+    ./skymodules/transactionpool
     ./profile
     ./persist
     ./sync

@@ -9,12 +9,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/feemanager"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/feemanager"
 )
 
 // TestFeeManager probes the FeeManager
@@ -72,7 +72,7 @@ func TestFeeManager(t *testing.T) {
 	// Set a Fee
 	amount := types.NewCurrency64(1000)
 	address := types.UnlockHash{}
-	appUID := modules.AppUID("testapp")
+	appUID := skymodules.AppUID("testapp")
 	recurring := fastrand.Intn(2) == 0
 	fmap, err := fm.FeeManagerAddPost(address, amount, appUID, recurring)
 	if err != nil {
@@ -198,7 +198,7 @@ func TestFeeManagerProcessFee(t *testing.T) {
 		t.Fatal(err)
 	}
 	amount := types.SiacoinPrecision.Mul64(10)
-	appUID := modules.AppUID("testapp")
+	appUID := skymodules.AppUID("testapp")
 	recurring := fastrand.Intn(2) == 0
 	_, err = fm.FeeManagerAddPost(rwag.Address, amount, appUID, recurring)
 	if err != nil {

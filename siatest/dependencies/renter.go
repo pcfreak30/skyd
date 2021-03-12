@@ -3,13 +3,13 @@ package dependencies
 import (
 	"sync"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // DependencyTimeoutProjectDownloadByRoot immediately times out projects that
 // try to download a sector by its root.
 type DependencyTimeoutProjectDownloadByRoot struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt forces an immediate timeout for DownloadByRoot projects.
@@ -20,7 +20,7 @@ func (d *DependencyTimeoutProjectDownloadByRoot) Disrupt(s string) bool {
 // DependencyDisableCloseUploadEntry prevents SiaFileEntries in the upload code
 // from being closed.
 type DependencyDisableCloseUploadEntry struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt prevents SiafileEntries in the upload code from being closed.
@@ -32,7 +32,7 @@ func (d *DependencyDisableCloseUploadEntry) Disrupt(s string) bool {
 // repairs and updating directory metadata from running. This includes
 // threadedUploadAndRepair, threadedStuckLoop, and threadedUpdateRenterHealth
 type DependencyDisableRepairAndHealthLoops struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will prevent the repair and health loops from running
@@ -45,7 +45,7 @@ func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
 // includes threadedUploadAndRepair, threadedStuckLoop, and
 // threadedUpdateRenterHealth
 type DependencyDisableRepairAndHealthLoopsMulti struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will prevent the repair and health loops from running
@@ -56,7 +56,7 @@ func (d *DependencyDisableRepairAndHealthLoopsMulti) Disrupt(s string) bool {
 // DependencyAddUnrepairableChunks will have the repair loop always add chunks
 // to the upload heap even if they are unrepairable
 type DependencyAddUnrepairableChunks struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will prevent the repair and health loops from running
@@ -67,7 +67,7 @@ func (d *DependencyAddUnrepairableChunks) Disrupt(s string) bool {
 // DependencyFailUploadStreamFromReader prevents SiaFileEntries in the upload code
 // from being closed.
 type DependencyFailUploadStreamFromReader struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt prevents SiafileEntries in the upload code from being closed.
@@ -77,7 +77,7 @@ func (d *DependencyFailUploadStreamFromReader) Disrupt(s string) bool {
 
 // DependencyDisableUploadGougingCheck ignores the upload gouging check
 type DependencyDisableUploadGougingCheck struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will prevent the uploads to fail due to upload gouging
@@ -90,7 +90,7 @@ func (d *DependencyDisableUploadGougingCheck) Disrupt(s string) bool {
 type DependencyToggleWatchdogBroadcast struct {
 	mu                 sync.Mutex
 	broadcastsDisabled bool
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // DisableWatchdogBroadcast will prevent the watchdog from broadcating
@@ -116,7 +116,7 @@ func (d *DependencyToggleWatchdogBroadcast) Disrupt(s string) bool {
 type DependencyHighMinHostScore struct {
 	mu                  sync.Mutex
 	forcingHighMinScore bool
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt causes a high min-score for GFR to be returned.
@@ -137,7 +137,7 @@ func (d *DependencyHighMinHostScore) ForceHighMinHostScore(force bool) {
 // DependencySkipPrepareNextChunk skips the managedPrepareNextChunk step when
 // calling managedPushChunkForRepair.
 type DependencySkipPrepareNextChunk struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt forces an immediate timeout for DownloadByRoot projects.
@@ -148,7 +148,7 @@ func (d *DependencySkipPrepareNextChunk) Disrupt(s string) bool {
 // DependencyDontUpdateStuckStatusOnCleanup will not set the chunk's stuck
 // status when cleaning up the upload chunk.
 type DependencyDontUpdateStuckStatusOnCleanup struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // Disrupt will ignore a failed repair.
@@ -161,7 +161,7 @@ func (d *DependencyDontUpdateStuckStatusOnCleanup) Disrupt(s string) bool {
 type DependencyToggleDisableDeleteBlockedFiles struct {
 	mu             sync.Mutex
 	deleteDisabled bool
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 }
 
 // DisableDeleteBlockedFiles will toggle the renter's ability to delete blocked

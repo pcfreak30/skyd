@@ -23,7 +23,7 @@ Request: None
 Response:
 
 ```go
-[]modules.NetAddress
+[]skymodules.NetAddress
 ```
 
 Recommendations:

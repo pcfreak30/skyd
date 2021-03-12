@@ -12,11 +12,11 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/host/contractmanager"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/host/contractmanager"
 )
 
 type (
@@ -49,17 +49,17 @@ var (
 	// Note: the default allowance needs to be close enough in practice to what
 	// the host default settings are that price gouging protection does not kick
 	// in.
-	DefaultAllowance = modules.Allowance{
+	DefaultAllowance = skymodules.Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(1e3),
 		Hosts:       5,
 		Period:      50,
 		RenewWindow: 24,
 
-		ExpectedStorage:    modules.SectorSize * 5e3,
-		ExpectedUpload:     modules.SectorSize * 500,
-		ExpectedDownload:   modules.SectorSize * 500,
+		ExpectedStorage:    skymodules.SectorSize * 5e3,
+		ExpectedUpload:     skymodules.SectorSize * 500,
+		ExpectedDownload:   skymodules.SectorSize * 500,
 		ExpectedRedundancy: 5.0,
-		MaxPeriodChurn:     modules.SectorSize * 500,
+		MaxPeriodChurn:     skymodules.SectorSize * 500,
 	}
 
 	// DefaultPaymentContractInitialFunding is the value used for turning renter
@@ -267,7 +267,7 @@ func addStorageFolderToHosts(hosts map[*TestNode]struct{}) error {
 	for host := range hosts {
 		wg.Add(1)
 		go func(i int, host *TestNode) {
-			storage := 4 * contractmanager.MinimumSectorsPerStorageFolder * modules.SectorSize
+			storage := 4 * contractmanager.MinimumSectorsPerStorageFolder * skymodules.SectorSize
 			if host.params.HostStorage > 0 {
 				storage = host.params.HostStorage
 			}
@@ -419,7 +419,7 @@ func setRenterAllowances(renters map[*TestNode]struct{}) error {
 			continue
 		}
 		allowance := DefaultAllowance
-		if !reflect.DeepEqual(renter.params.Allowance, modules.Allowance{}) {
+		if !reflect.DeepEqual(renter.params.Allowance, skymodules.Allowance{}) {
 			allowance = renter.params.Allowance
 		}
 		if renter.params.CreatePortal {
@@ -687,7 +687,7 @@ func (tg *TestGroup) RestartNode(tn *TestNode) error {
 }
 
 // SetRenterAllowance finished the setup for the renter test node
-func (tg *TestGroup) SetRenterAllowance(renter *TestNode, allowance modules.Allowance) error {
+func (tg *TestGroup) SetRenterAllowance(renter *TestNode, allowance skymodules.Allowance) error {
 	if _, ok := tg.renters[renter]; !ok {
 		return errors.New("Can not set allowance for renter not in test group")
 	}

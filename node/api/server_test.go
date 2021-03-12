@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestExplorerPreset checks that the default configuration for the explorer is
@@ -76,7 +76,7 @@ func TestServerTimeout(t *testing.T) {
 	t.Parallel()
 
 	apiDeps := &dependencies.DependencyTimeoutOnHostGET{}
-	st, err := createServerTesterWithDeps(t.Name(), modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, apiDeps)
+	st, err := createServerTesterWithDeps(t.Name(), skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, skymodules.ProdDependencies, apiDeps)
 	if err != nil {
 		t.Fatal(err)
 	}

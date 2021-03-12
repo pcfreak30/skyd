@@ -14,10 +14,10 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestTransactionReorg makes sure that a processedTransaction isn't returned
@@ -283,7 +283,7 @@ func TestWatchOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to get spendable outputs:", err)
 	}
-	var output modules.UnspentOutput
+	var output skymodules.UnspentOutput
 	for _, o := range unspentResp.Outputs {
 		if o.UnlockHash == addr {
 			output = o
@@ -799,9 +799,9 @@ func TestWalletChangePasswordWithSeed(t *testing.T) {
 		}
 	}()
 	// Reinit the wallet by using a specific password.
-	seed := modules.Seed{}
+	seed := skymodules.Seed{}
 	fastrand.Read(seed[:])
-	seedStr, err := modules.SeedToString(seed, mnemonics.DictionaryID("english"))
+	seedStr, err := skymodules.SeedToString(seed, mnemonics.DictionaryID("english"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -927,7 +927,7 @@ func TestWalletVerifyPassword(t *testing.T) {
 	}
 
 	// Check primary seed with Seed Endpoint
-	seed, err := modules.StringToSeed(wsg.PrimarySeed, "english")
+	seed, err := skymodules.StringToSeed(wsg.PrimarySeed, "english")
 	if err != nil {
 		t.Error(err)
 	}
@@ -940,9 +940,9 @@ func TestWalletVerifyPassword(t *testing.T) {
 	}
 
 	// Reinit the wallet by using a specific password.
-	seed = modules.Seed{}
+	seed = skymodules.Seed{}
 	fastrand.Read(seed[:])
-	seedStr, err := modules.SeedToString(seed, mnemonics.DictionaryID("english"))
+	seedStr, err := skymodules.SeedToString(seed, mnemonics.DictionaryID("english"))
 	if err != nil {
 		t.Fatal(err)
 	}

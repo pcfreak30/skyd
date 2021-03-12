@@ -11,9 +11,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -24,10 +24,10 @@ var (
 
 // Dirs returns the siapaths of all dirs of the TestNode's renter in no
 // deterministic order.
-func (tn *TestNode) Dirs() ([]modules.SiaPath, error) {
+func (tn *TestNode) Dirs() ([]skymodules.SiaPath, error) {
 	// dirs always contains the root dir.
-	dirs := []modules.SiaPath{modules.RootSiaPath()}
-	toVisit := []modules.SiaPath{modules.RootSiaPath()}
+	dirs := []skymodules.SiaPath{skymodules.RootSiaPath()}
+	toVisit := []skymodules.SiaPath{skymodules.RootSiaPath()}
 
 	// As long as we find new dirs we add them to dirs.
 	for len(toVisit) > 0 {
@@ -54,13 +54,13 @@ func (tn *TestNode) Dirs() ([]modules.SiaPath, error) {
 }
 
 // DownloadByStream downloads a file and returns its contents as a slice of bytes.
-func (tn *TestNode) DownloadByStream(rf *RemoteFile) (uid modules.DownloadID, data []byte, err error) {
+func (tn *TestNode) DownloadByStream(rf *RemoteFile) (uid skymodules.DownloadID, data []byte, err error) {
 	return tn.DownloadByStreamWithDiskFetch(rf, true)
 }
 
 // DownloadByStreamWithDiskFetch downloads a file and returns its contents as a
 // slice of bytes.
-func (tn *TestNode) DownloadByStreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) (uid modules.DownloadID, data []byte, err error) {
+func (tn *TestNode) DownloadByStreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) (uid skymodules.DownloadID, data []byte, err error) {
 	fi, err := tn.File(rf)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
@@ -119,14 +119,14 @@ func (tn *TestNode) DownloadInfo(lf *LocalFile, rf *RemoteFile) (*api.DownloadIn
 
 // DownloadToDisk downloads a previously uploaded file. The file will be downloaded
 // to a random location and returned as a LocalFile object.
-func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (modules.DownloadID, *LocalFile, error) {
+func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (skymodules.DownloadID, *LocalFile, error) {
 	return tn.DownloadToDiskWithDiskFetch(rf, async, true)
 }
 
 // DownloadToDiskPartial downloads a part of a previously uploaded file. The
 // file will be downloaded to a random location and returned as a LocalFile
 // object.
-func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async bool, offset, length uint64) (modules.DownloadID, *LocalFile, error) {
+func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async bool, offset, length uint64) (skymodules.DownloadID, *LocalFile, error) {
 	fi, err := tn.File(rf)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
@@ -174,7 +174,7 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 
 // DownloadToDiskWithDiskFetch downloads a previously uploaded file. The file
 // will be downloaded to a random location and returned as a LocalFile object.
-func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disableLocalFetch bool) (modules.DownloadID, *LocalFile, error) {
+func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disableLocalFetch bool) (skymodules.DownloadID, *LocalFile, error) {
 	fi, err := tn.File(rf)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
@@ -210,7 +210,7 @@ func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disa
 }
 
 // File returns the file queried by the user
-func (tn *TestNode) File(rf *RemoteFile) (fi modules.FileInfo, err error) {
+func (tn *TestNode) File(rf *RemoteFile) (fi skymodules.FileInfo, err error) {
 	var rfile api.RenterFile
 	if rf.Root() {
 		rfile, err = tn.RenterFileRootGet(rf.SiaPath())
@@ -225,7 +225,7 @@ func (tn *TestNode) File(rf *RemoteFile) (fi modules.FileInfo, err error) {
 }
 
 // Files lists the files tracked by the renter
-func (tn *TestNode) Files(cached bool) ([]modules.FileInfo, error) {
+func (tn *TestNode) Files(cached bool) ([]skymodules.FileInfo, error) {
 	rf, err := tn.RenterFilesGet(cached)
 	if err != nil {
 		return nil, err
@@ -247,13 +247,13 @@ func (tn *TestNode) KnowsHost(host *TestNode) error {
 
 // Rename renames a remoteFile with the root parameter set to false and returns
 // the new file.
-func (tn *TestNode) Rename(rf *RemoteFile, newPath modules.SiaPath) (*RemoteFile, error) {
+func (tn *TestNode) Rename(rf *RemoteFile, newPath skymodules.SiaPath) (*RemoteFile, error) {
 	return tn.RenameRoot(rf, newPath, false)
 }
 
 // RenameRoot renames a remoteFile with the option of setting the root parameter
 // and returns the new file.
-func (tn *TestNode) RenameRoot(rf *RemoteFile, newPath modules.SiaPath, root bool) (*RemoteFile, error) {
+func (tn *TestNode) RenameRoot(rf *RemoteFile, newPath skymodules.SiaPath, root bool) (*RemoteFile, error) {
 	err := tn.RenterRenamePost(rf.SiaPath(), newPath, root)
 	if err != nil {
 		return nil, err
@@ -313,7 +313,7 @@ func (tn *TestNode) StreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) 
 }
 
 // Upload uses the node to upload the file with the option to overwrite if exists.
-func (tn *TestNode) Upload(lf *LocalFile, siapath modules.SiaPath, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
+func (tn *TestNode) Upload(lf *LocalFile, siapath skymodules.SiaPath, dataPieces, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file
 	err := tn.RenterUploadForcePost(lf.path, siapath, dataPieces, parityPieces, force)
 	if err != nil {
@@ -515,7 +515,7 @@ func (tn *TestNode) WaitForFileAvailable(rf *RemoteFile) error {
 func (tn *TestNode) WaitForStuckChunksToBubble() error {
 	// Wait until the root directory no long reports no stuck chunks
 	return build.Retry(1000, 100*time.Millisecond, func() error {
-		rd, err := tn.RenterDirGet(modules.RootSiaPath())
+		rd, err := tn.RenterDirGet(skymodules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -531,7 +531,7 @@ func (tn *TestNode) WaitForStuckChunksToBubble() error {
 func (tn *TestNode) WaitForStuckChunksToRepair() error {
 	// Wait until the root directory no long reports no stuck chunks
 	return build.Retry(1000, 100*time.Millisecond, func() error {
-		rd, err := tn.RenterDirGet(modules.RootSiaPath())
+		rd, err := tn.RenterDirGet(skymodules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -555,8 +555,8 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 		if err != nil {
 			return ErrFileNotTracked
 		}
-		if modules.NeedsRepair(file.MaxHealth) {
-			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", modules.RepairThreshold, file.MaxHealth)
+		if skymodules.NeedsRepair(file.MaxHealth) {
+			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", skymodules.RepairThreshold, file.MaxHealth)
 		}
 		return nil
 	})

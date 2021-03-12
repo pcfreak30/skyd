@@ -16,10 +16,10 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // Config
@@ -116,11 +116,11 @@ func TestSiaUploadsDownloads(t *testing.T) {
 	log.Println()
 
 	// Print overview
-	totalData := modules.FilesizeUnits(uint64(nFiles * actualFileSize))
-	fileSizeStr := modules.FilesizeUnits(uint64(actualFileSize))
+	totalData := skymodules.FilesizeUnits(uint64(nFiles * actualFileSize))
+	fileSizeStr := skymodules.FilesizeUnits(uint64(actualFileSize))
 	log.Printf("Upload total of %s data in %d files per %s\n", totalData, nFiles, fileSizeStr)
 
-	totalData = modules.FilesizeUnits(uint64(nTotalDownloads * actualFileSize))
+	totalData = skymodules.FilesizeUnits(uint64(nTotalDownloads * actualFileSize))
 	log.Printf("Download total of %s data in %d downloads per %s\n", totalData, nTotalDownloads, fileSizeStr)
 	log.Println()
 
@@ -215,7 +215,7 @@ func averages(durations []time.Duration) (time.Duration, string) {
 
 	// Calculate and format average speed
 	averageSpeedFloat := float64(actualFileSize) / float64(averageDuration) * float64(time.Second)
-	averageSpeedString := modules.FilesizeUnits(uint64(averageSpeedFloat)) + "/s"
+	averageSpeedString := skymodules.FilesizeUnits(uint64(averageSpeedFloat)) + "/s"
 
 	return averageDuration, averageSpeedString
 }
@@ -248,7 +248,7 @@ func check(e error) {
 
 // checkMaxHealthReached checks sia file health and returns nil when 100%
 // health is reached
-func checkMaxHealthReached(c *client.Client, siaPath modules.SiaPath) error {
+func checkMaxHealthReached(c *client.Client, siaPath skymodules.SiaPath) error {
 	f, err := c.RenterFileGet(siaPath)
 	if err != nil {
 		return err
@@ -339,12 +339,12 @@ func initDirs(t *testing.T) {
 	}
 
 	// Create dirs
-	err := os.MkdirAll(upDir, modules.DefaultDirPerm)
+	err := os.MkdirAll(upDir, skymodules.DefaultDirPerm)
 	check(err)
-	err = os.MkdirAll(downDir, modules.DefaultDirPerm)
+	err = os.MkdirAll(downDir, skymodules.DefaultDirPerm)
 	check(err)
 	if useTestGroup {
-		err = os.MkdirAll(testGroupDir, modules.DefaultDirPerm)
+		err = os.MkdirAll(testGroupDir, skymodules.DefaultDirPerm)
 		check(err)
 	}
 }
@@ -353,7 +353,7 @@ func initDirs(t *testing.T) {
 // sector size if filesize is set to 0
 func initFileSize() {
 	if fileSize == 0 {
-		actualFileSize = int(modules.SectorSize)
+		actualFileSize = int(skymodules.SectorSize)
 	} else {
 		actualFileSize = fileSize
 	}
@@ -393,7 +393,7 @@ func setAllowance() {
 	check(err)
 	if !rg.Settings.Allowance.Active() {
 		log.Println("=== Setting default allowance")
-		err = c.RenterPostAllowance(modules.DefaultAllowance)
+		err = c.RenterPostAllowance(skymodules.DefaultAllowance)
 		check(err)
 	}
 }
@@ -408,7 +408,7 @@ func threadedCreateAndUploadFiles(timestamp string, workerIndex int) {
 			break
 		}
 		fileIndexStr := fmt.Sprintf("%03d", fileIndex)
-		sizeStr := modules.FilesizeUnits(uint64(actualFileSize))
+		sizeStr := skymodules.FilesizeUnits(uint64(actualFileSize))
 		filename := "Randfile" + fileIndexStr + "_" + sizeStr + "_" + timestamp
 		filename = strings.ReplaceAll(filename, " ", "")
 
@@ -464,7 +464,7 @@ func threadedDownloadFiles(workerIndex int) {
 		// Use unique local filename because one file can be downloaded concurrently multiple times
 		localFilename := filename + fmt.Sprintf("_#%03d", downloadIndex)
 		localPath := filepath.Join(downDir, localFilename)
-		siaPath, err := modules.NewSiaPath(filepath.Join(siaDir, filename))
+		siaPath, err := skymodules.NewSiaPath(filepath.Join(siaDir, filename))
 		check(err)
 
 		start := time.Now()
@@ -493,7 +493,7 @@ func uploadFile(filename string) {
 	log.Printf("Uploading file: %s\n", filename)
 
 	// Upload file to Sia
-	siaPath, err := modules.NewSiaPath(filepath.Join(siaDir, filename))
+	siaPath, err := skymodules.NewSiaPath(filepath.Join(siaDir, filename))
 	check(err)
 	localPath := filepath.Join(upDir, filename)
 	err = c.RenterUploadDefaultPost(localPath, siaPath)

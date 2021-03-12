@@ -7,8 +7,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -26,7 +26,7 @@ func (c *Client) GatewayBandwidthGet() (gbg api.GatewayBandwidthGET, err error) 
 
 // GatewayConnectPost uses the /gateway/connect/:address endpoint to connect to
 // the gateway at address
-func (c *Client) GatewayConnectPost(address modules.NetAddress) (err error) {
+func (c *Client) GatewayConnectPost(address skymodules.NetAddress) (err error) {
 	err = c.post("/gateway/connect/"+string(address), "", nil)
 	if err != nil && errors.Contains(err, ErrPeerExists) {
 		err = ErrPeerExists
@@ -36,7 +36,7 @@ func (c *Client) GatewayConnectPost(address modules.NetAddress) (err error) {
 
 // GatewayDisconnectPost uses the /gateway/disconnect/:address endpoint to
 // disconnect the gateway from a peer.
-func (c *Client) GatewayDisconnectPost(address modules.NetAddress) (err error) {
+func (c *Client) GatewayDisconnectPost(address skymodules.NetAddress) (err error) {
 	err = c.post("/gateway/disconnect/"+string(address), "", nil)
 	return
 }

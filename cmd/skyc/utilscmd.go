@@ -20,8 +20,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -271,7 +271,7 @@ func utilsverifyseedcmd() {
 		die("Could not read seed")
 	}
 
-	_, err = modules.StringToSeed(seed, mnemonics.DictionaryID(strings.ToLower(dictionaryLanguage)))
+	_, err = skymodules.StringToSeed(seed, mnemonics.DictionaryID(strings.ToLower(dictionaryLanguage)))
 	if err != nil {
 		die(err)
 	}
@@ -310,11 +310,11 @@ func utilsbruteforceseedcmd() {
 			allWords[i] = word
 			s := strings.Join(allWords, " ")
 			checksumSeedBytes, _ := mnemonics.FromString(s, did)
-			var seed modules.Seed
+			var seed skymodules.Seed
 			copy(seed[:], checksumSeedBytes)
 			fullChecksum := crypto.HashObject(seed)
-			if len(checksumSeedBytes) == crypto.EntropySize+modules.SeedChecksumSize && bytes.Equal(fullChecksum[:modules.SeedChecksumSize], checksumSeedBytes[crypto.EntropySize:]) {
-				if _, err := modules.StringToSeed(s, mnemonics.English); err == nil {
+			if len(checksumSeedBytes) == crypto.EntropySize+skymodules.SeedChecksumSize && bytes.Equal(fullChecksum[:skymodules.SeedChecksumSize], checksumSeedBytes[crypto.EntropySize:]) {
+				if _, err := skymodules.StringToSeed(s, mnemonics.English); err == nil {
 					fmt.Printf("\nFound valid seed! The missing word was %q\n", word)
 					fmt.Println(s)
 					return
@@ -357,7 +357,7 @@ func utilsuploadedsizecmd(path string) {
 	}
 
 	var diskSize, siaSize, lostPercent uint64
-	minFileSize := siatest.ChunkSize(uint64(modules.RenterDefaultDataPieces), crypto.TypeDefaultRenter)
+	minFileSize := siatest.ChunkSize(uint64(skymodules.RenterDefaultDataPieces), crypto.TypeDefaultRenter)
 
 	for _, size := range fileSizes { // Calc variables here
 		diskSize += size
@@ -380,11 +380,11 @@ func utilsuploadedsizecmd(path string) {
 Lost space: %v
     +%v%% empty space used for scaling every file up to %v
 `,
-		modules.FilesizeUnits(diskSize),
-		modules.FilesizeUnits(siaSize),
-		modules.FilesizeUnits(siaSize-diskSize),
+		skymodules.FilesizeUnits(diskSize),
+		skymodules.FilesizeUnits(siaSize),
+		skymodules.FilesizeUnits(siaSize-diskSize),
 		lostPercent,
-		modules.FilesizeUnits(minFileSize))
+		skymodules.FilesizeUnits(minFileSize))
 
 	if verbose { // print only if -v or --verbose used
 		fmt.Printf(`
@@ -393,7 +393,7 @@ Files: %v
     Median: %v
 `,
 			len(fileSizes),
-			modules.FilesizeUnits(calculateAverageUint64(fileSizes)),
-			modules.FilesizeUnits(calculateMedianUint64(fileSizes)))
+			skymodules.FilesizeUnits(calculateAverageUint64(fileSizes)),
+			skymodules.FilesizeUnits(calculateMedianUint64(fileSizes)))
 	}
 }

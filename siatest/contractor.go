@@ -9,10 +9,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
 )
 
 // CheckBalanceVsSpending checks the renters confirmed siacoin balance in their
@@ -83,7 +83,7 @@ func CheckContractVsReportedSpending(r *TestNode, WindowSize types.BlockHeight, 
 	}
 
 	// Check renter financial metrics against contract spending
-	var spending modules.ContractorSpending
+	var spending skymodules.ContractorSpending
 	for _, contract := range oldContracts {
 		if contract.StartHeight >= rg.CurrentPeriod {
 			// Calculate ContractFees
@@ -290,7 +290,7 @@ func DrainContractsByUploading(renter *TestNode, tg *TestGroup) (startingUploadS
 
 	// Renew contracts by running out of funds
 	// Set upload price to max price
-	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
+	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(skymodules.BlockBytesPerMonthTerabyte)
 	maxUploadPrice := maxStoragePrice.Mul64(100 * uint64(types.BlocksPerMonth))
 	hosts := tg.Hosts()
 	for _, h := range hosts {

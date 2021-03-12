@@ -13,10 +13,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 // TestCreateLoadBackup tests that creating a backup with the /renter/backup
@@ -62,7 +62,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
-	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), "subDir", modules.SiaDirExtension)
+	dirMDPath := filepath.Join(r.Dir, skymodules.RenterDir, skymodules.FileSystemRoot, skymodules.UserFolder.String(), "subDir", skymodules.SiaDirExtension)
 	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
 		t.Fatalf(".siadir file at %v doesn't exist", dirMDPath)
 	}
@@ -131,7 +131,7 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The .siadir file should also be recovered.
-	dirMDPath = filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), "subDir", modules.SiaDirExtension)
+	dirMDPath = filepath.Join(r.Dir, skymodules.RenterDir, skymodules.FileSystemRoot, skymodules.UserFolder.String(), "subDir", skymodules.SiaDirExtension)
 	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
 		t.Fatalf(".siadir file at %v doesn't exist", dirMDPath)
 	}
@@ -173,7 +173,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	if len(fis.Files) != 2 {
 		t.Fatalf("Expected 2 files but got %v", len(fis.Files))
 	}
-	sp, err := modules.NewSiaPath(rf.SiaPath().String() + "_1")
+	sp, err := skymodules.NewSiaPath(rf.SiaPath().String() + "_1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +445,7 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm siadir exists by querying directory
-	rd, err := r.RenterDirGet(modules.RootSiaPath())
+	rd, err := r.RenterDirGet(skymodules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,7 +513,7 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Confirm siadir exists by querying directory
-	rd, err = r.RenterDirGet(modules.RootSiaPath())
+	rd, err = r.RenterDirGet(skymodules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}

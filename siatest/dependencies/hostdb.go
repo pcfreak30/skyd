@@ -1,13 +1,13 @@
 package dependencies
 
 import (
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // DependencyBlockScan blocks the scan progress of the hostdb until Scan is
 // called on the dependency.
 type DependencyBlockScan struct {
-	modules.ProductionDependencies
+	skymodules.ProductionDependencies
 	closed bool
 	c      chan struct{}
 }

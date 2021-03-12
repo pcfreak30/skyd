@@ -10,9 +10,9 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -279,7 +279,7 @@ func main() {
 		// Check for Critical Alerts
 		alerts, err := httpClient.DaemonAlertsGet()
 		if err == nil && len(alerts.CriticalAlerts) > 0 && !alertSuppress {
-			printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
+			printAlerts(alerts.CriticalAlerts, skymodules.SeverityCritical)
 			fmt.Println("------------------")
 			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
 		}
