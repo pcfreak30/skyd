@@ -48,19 +48,12 @@ pkgs = \
 	./profile \
 	./siatest \
 	./siatest/accounting \
-	./siatest/consensus \
 	./siatest/daemon \
 	./siatest/dependencies \
-	./siatest/feemanager \
-	./siatest/gateway \
-	./siatest/host \
-	./siatest/miner \
 	./siatest/renter \
 	./siatest/renter/contractor \
 	./siatest/renter/hostdb \
 	./siatest/renterhost \
-	./siatest/transactionpool \
-	./siatest/wallet \
 	./skykey \
 
 # release-pkgs determine which packages are built for release and distribution
