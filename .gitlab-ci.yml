@@ -32,29 +32,14 @@ variables:
     ./cmd/skyd
     ./cmd/skynet-benchmark
     ./compatibility
-    ./crypto
     ./skymodules
     ./skymodules/accounting
-    ./skymodules/consensus
-    ./skymodules/feemanager
-    ./skymodules/gateway
-    ./skymodules/miner
-    ./skymodules/wallet
-    ./skymodules/transactionpool
     ./profile
-    ./sync
     ./skykey
   siatest_pkgs: >-
     ./siatest
     ./siatest/accounting
-    ./siatest/consensus
     ./siatest/daemon
-    ./siatest/feemanager
-    ./siatest/gateway
-    ./siatest/host
-    ./siatest/miner
-    ./siatest/transactionpool
-    ./siatest/wallet
   siatest_renter_pkgs: >-
     ./siatest/renter
   siatest_renter_sub_pkgs: >-
