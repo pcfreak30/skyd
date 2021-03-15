@@ -4496,12 +4496,12 @@ which mountpoints have been used for each mount.
 
 ```go
 {
-  "mountpoints": [ // []modules.MountInfo
+  "mountpoints": [ // []skymodules.MountInfo
     {
       "mountpoint": "/home/user/siavideos", // string
-      "siapath": "/videos",                 // modules.SiaPath
+      "siapath": "/videos",                 // skymodules.SiaPath
 
-      "mountoptions": { // []modules.MountOptions
+      "mountoptions": { // []skymodules.MountOptions
           "allowother": false, // bool
           "readonly": true,    // bool
         },
@@ -5499,7 +5499,7 @@ value will be treated as hastings. The default ppms is 100nS.
 **Skynet-File-Metadata** | SkyfileMetadata
 
 The header field "Skynet-FileMetadata" will be set such that it has an encoded
-json object which matches the modules.SkyfileMetadata struct. If a path was
+json object which matches the skymodules.SkyfileMetadata struct. If a path was
 supplied, this metadata will be relative to the given path.
 
 > Skynet-File-Metadata Response Header Example 

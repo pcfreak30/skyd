@@ -4,27 +4,27 @@ import (
 	"io"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
-// limitStreamer is a helper struct that wraps a modules.Streamer so it starts
+// limitStreamer is a helper struct that wraps a skymodules.Streamer so it starts
 // at a certain offset, and can only be read from until a certain limit. It
 // wraps both Read and Seek calls and handles the offset and returned bytes
 // appropriately.
 //
 // Note that the limitStreamer is not thread safe, if you call Seek and Read on
 // it from different threads, you are going to have unexpected behavior.
-// Further more, it is advised to only wrap a modules.Streamer once, wrapping it
+// Further more, it is advised to only wrap a skymodules.Streamer once, wrapping it
 // multiple times might lead to unexpected behavior and was not tested.
 type limitStreamer struct {
-	stream modules.Streamer
+	stream skymodules.Streamer
 	base   uint64
 	off    uint64
 	limit  uint64
 }
 
-// NewLimitStreamer wraps the given modules.Streamer and ensures it can only be read from within the given offset and size boundary. It does this by wrapping both the Read and Seek calls and adjusting the offset and size of the returned byte slice appropriately.
-func NewLimitStreamer(s modules.Streamer, offset, size uint64) (modules.Streamer, error) {
+// NewLimitStreamer wraps the given skymodules.Streamer and ensures it can only be read from within the given offset and size boundary. It does this by wrapping both the Read and Seek calls and adjusting the offset and size of the returned byte slice appropriately.
+func NewLimitStreamer(s skymodules.Streamer, offset, size uint64) (skymodules.Streamer, error) {
 	ls := &limitStreamer{
 		stream: s,
 		base:   offset,

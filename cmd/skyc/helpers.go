@@ -13,10 +13,10 @@ import (
 
 	"github.com/vbauerster/mpb/v5"
 	"github.com/vbauerster/mpb/v5/decor"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // abs returns the absolute representation of a path.
@@ -138,7 +138,7 @@ func newProgressSpinner(pbs *mpb.Progress, afterBar *mpb.Bar, filename string) *
 
 // parseAndAddSkykey is a helper that parses any supplied skykey and adds it to
 // the SkyfileUploadParameters
-func parseAndAddSkykey(sup modules.SkyfileUploadParameters) modules.SkyfileUploadParameters {
+func parseAndAddSkykey(sup skymodules.SkyfileUploadParameters) skymodules.SkyfileUploadParameters {
 	if skykeyName != "" && skykeyID != "" {
 		die("Can only use either skykeyname or skykeyid flag, not both.")
 	}

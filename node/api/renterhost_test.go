@@ -16,10 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestHostObligationAcceptingContracts verifies that the host will complete
@@ -108,7 +110,7 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 	}
 
 	// Get contracts via API call
-	var cts ContractInfoGET
+	var cts api.ContractInfoGET
 	err = st.getAPI("/host/contracts", &cts)
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +204,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", renewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -225,7 +227,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	}
 
 	// Check the host, who should now be reporting file contracts.
-	var cts ContractInfoGET
+	var cts api.ContractInfoGET
 	err = st.getAPI("/host/contracts", &cts)
 	if err != nil {
 		t.Fatal(err)
@@ -378,7 +380,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 
 	// Check that the host was able to get the file contract confirmed on the
 	// blockchain.
-	cts = ContractInfoGET{}
+	cts = api.ContractInfoGET{}
 	err = st.getAPI("/host/contracts", &cts)
 	if err != nil {
 		t.Fatal(err)
@@ -419,7 +421,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 		time.Sleep(time.Millisecond * 200)
 	}
 
-	cts = ContractInfoGET{}
+	cts = api.ContractInfoGET{}
 	err = st.getAPI("/host/contracts", &cts)
 	if err != nil {
 		t.Fatal(err)
@@ -791,7 +793,7 @@ func TestRenterUploadDownload(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -942,7 +944,7 @@ func TestRenterParallelDelete(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -1079,7 +1081,7 @@ func TestRenterRenew(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", strconv.Itoa(testPeriod))
 	allowanceValues.Set("renewwindow", strconv.Itoa(testPeriod/2))
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)
@@ -1337,7 +1339,7 @@ func TestHostAndRentReload(t *testing.T) {
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", testPeriod)
 	allowanceValues.Set("renewwindow", testRenewWindow)
-	allowanceValues.Set("hosts", fmt.Sprint(modules.DefaultAllowance.Hosts))
+	allowanceValues.Set("hosts", fmt.Sprint(skymodules.DefaultAllowance.Hosts))
 	err = st.stdPostAPI("/renter", allowanceValues)
 	if err != nil {
 		t.Fatal(err)

@@ -17,7 +17,7 @@ count = 1
 # cpkg determines which package is the target when running 'make fullcover'.
 # 'make fullcover' can only provide full coverage statistics on a single package
 # at a time, unfortunately.
-cpkg = ./modules/renter
+cpkg = ./skymodules/renter
 
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
@@ -29,55 +29,32 @@ pkgs = \
 	./cmd/skyd \
 	./cmd/skynet-benchmark \
 	./compatibility \
-	./crypto \
-	./modules \
-	./modules/accounting \
-	./modules/consensus \
-	./modules/explorer \
-	./modules/feemanager \
-	./modules/gateway \
-	./modules/host \
-	./modules/host/contractmanager \
-	./modules/host/mdm \
-	./modules/host/registry \
-	./modules/miner \
-	./modules/renter \
-	./modules/renter/contractor \
-	./modules/renter/filesystem \
-	./modules/renter/filesystem/siadir \
-	./modules/renter/filesystem/siafile \
-	./modules/renter/hostdb \
-	./modules/renter/hostdb/hosttree \
-	./modules/renter/proto \
-	./modules/renter/skynetblocklist \
-	./modules/renter/skynetportals \
-	./modules/transactionpool \
-	./modules/wallet \
+	./skymodules \
+	./skymodules/accounting \
+	./skymodules/renter \
+	./skymodules/renter/contractor \
+	./skymodules/renter/filesystem \
+	./skymodules/renter/filesystem/siadir \
+	./skymodules/renter/filesystem/siafile \
+	./skymodules/renter/hostdb \
+	./skymodules/renter/hostdb/hosttree \
+	./skymodules/renter/proto \
+	./skymodules/renter/skynetblocklist \
+	./skymodules/renter/skynetportals \
 	./node \
 	./node/api \
 	./node/api/server \
 	./node/api/client \
-	./persist \
 	./profile \
 	./siatest \
 	./siatest/accounting \
-	./siatest/consensus \
 	./siatest/daemon \
 	./siatest/dependencies \
-	./siatest/feemanager \
-	./siatest/gateway \
-	./siatest/host \
-	./siatest/miner \
 	./siatest/renter \
 	./siatest/renter/contractor \
 	./siatest/renter/hostdb \
 	./siatest/renterhost \
-	./siatest/transactionpool \
-	./siatest/wallet \
 	./skykey \
-	./sync \
-	./types \
-	./types/typesutil \
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
@@ -95,15 +72,11 @@ lockcheckpkgs = \
 	./node/api \
 	./node/api/client \
 	./node/api/server \
-	./modules/accounting \
-	./modules/host/mdm \
-	./modules/host/registry \
-	./modules/renter/hostdb \
-	./modules/renter/skynetblocklist \
+	./skymodules/accounting \
+	./skymodules/renter/hostdb \
+	./skymodules/renter/skynetblocklist \
 	./siatest/accounting \
 	./skykey \
-	./types \
-	./types/typesutil \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .

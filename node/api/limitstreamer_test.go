@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestLimitStreamer verifies the limit streamer properly returns the data
@@ -109,7 +109,7 @@ func TestLimitStreamer(t *testing.T) {
 }
 
 // streamerFromReader is wraps a bytes.Reader to give it a Close() method, which
-// allows it to satisfy the modules.Streamer interface.
+// allows it to satisfy the skymodules.Streamer interface.
 type streamerFromReader struct {
 	*bytes.Reader
 }
@@ -119,9 +119,9 @@ func (sfr *streamerFromReader) Close() error {
 	return nil
 }
 
-// streamerFromSlice returns a modules.Streamer given a slice. This is
+// streamerFromSlice returns a skymodules.Streamer given a slice. This is
 // non-trivial because a bytes.Reader does not implement Close.
-func streamerFromSlice(b []byte) modules.Streamer {
+func streamerFromSlice(b []byte) skymodules.Streamer {
 	reader := bytes.NewReader(b)
 	return &streamerFromReader{
 		Reader: reader,

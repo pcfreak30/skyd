@@ -5,10 +5,10 @@ import (
 	"os"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestUrlValuesFromSkynetUploadParams is a unit test that covers the helper
@@ -28,20 +28,20 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 	}
 
 	// Create monetization.
-	monetization := &modules.Monetization{
-		Monetizers: []modules.Monetizer{
+	monetization := &skymodules.Monetization{
+		Monetizers: []skymodules.Monetizer{
 			{
 				Address:  types.UnlockHash{},
 				Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
-				Currency: modules.CurrencyUSD,
+				Currency: skymodules.CurrencyUSD,
 			},
 		},
 	}
 	fastrand.Read(monetization.Monetizers[0].Address[:])
 
 	// Create SkyfileMultipartUploadParameters.
-	smup := modules.SkyfileMultipartUploadParameters{
-		SiaPath:             modules.RandomSiaPath(),
+	smup := skymodules.SkyfileMultipartUploadParameters{
+		SiaPath:             skymodules.RandomSiaPath(),
 		Force:               true,
 		Root:                true,
 		BaseChunkRedundancy: 2,
@@ -70,8 +70,8 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 	}
 
 	// Create SkyfilePinParameters.
-	spp := modules.SkyfilePinParameters{
-		SiaPath:             modules.RandomSiaPath(),
+	spp := skymodules.SkyfilePinParameters{
+		SiaPath:             skymodules.RandomSiaPath(),
 		Force:               true,
 		Root:                true,
 		BaseChunkRedundancy: 2,
@@ -92,8 +92,8 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 	var skyKeyID skykey.SkykeyID
 	fastrand.Read(skyKeyID[:])
 
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             modules.RandomSiaPath(),
+	sup := skymodules.SkyfileUploadParameters{
+		SiaPath:             skymodules.RandomSiaPath(),
 		DryRun:              true,
 		Force:               true,
 		Root:                true,

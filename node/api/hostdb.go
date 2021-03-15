@@ -7,16 +7,16 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
-	// ExtendedHostDBEntry is an extension to modules.HostDBEntry that includes
+	// ExtendedHostDBEntry is an extension to skymodules.HostDBEntry that includes
 	// the string representation of the public key, otherwise presented as two
 	// fields, a string and a base64 encoded byte slice.
 	ExtendedHostDBEntry struct {
-		modules.HostDBEntry
+		skymodules.HostDBEntry
 		PublicKeyString string `json:"publickeystring"`
 	}
 
@@ -33,8 +33,8 @@ type (
 	// HostdbHostsGET lists detailed statistics for a particular host, selected
 	// by pubkey.
 	HostdbHostsGET struct {
-		Entry          ExtendedHostDBEntry        `json:"entry"`
-		ScoreBreakdown modules.HostScoreBreakdown `json:"scorebreakdown"`
+		Entry          ExtendedHostDBEntry           `json:"entry"`
+		ScoreBreakdown skymodules.HostScoreBreakdown `json:"scorebreakdown"`
 	}
 
 	// HostdbGet holds information about the hostdb.
@@ -195,7 +195,7 @@ func (api *API) hostdbFilterModeHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	var fm modules.FilterMode
+	var fm skymodules.FilterMode
 	if err = fm.FromString(params.FilterMode); err != nil {
 		WriteError(w, Error{"unable to load filter mode from string: " + err.Error()}, http.StatusBadRequest)
 		return

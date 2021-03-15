@@ -1,6 +1,6 @@
 package dependencies
 
-import "gitlab.com/skynetlabs/skyd/modules"
+import "gitlab.com/NebulousLabs/Sia/modules"
 
 // AccountingDisablePersistLoop is a dependency that disables the background
 // loop from updating and persisting the accounting information.

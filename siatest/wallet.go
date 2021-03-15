@@ -3,8 +3,8 @@ package siatest
 import (
 	"math"
 
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // ConfirmedBalance returns the confirmed siacoin balance of the node's

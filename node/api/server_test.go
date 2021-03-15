@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 )
 

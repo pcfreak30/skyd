@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // benchmarkFn is a helper type
@@ -54,16 +54,16 @@ func captureOutput(f benchmarkFn) string {
 // output string to Skynet
 func uploadBenchmarkOutput(output string) (string, error) {
 	name := fmt.Sprintf("skynet-benchmark-%v", time.Now().Format("2021-Feb-02"))
-	siaPath, err := modules.NewSiaPath(name)
+	siaPath, err := skymodules.NewSiaPath(name)
 	if err != nil {
 		return "", err
 	}
 
 	// Fill out the upload parameters.
-	sup := modules.SkyfileUploadParameters{
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath:  siaPath,
 		Filename: name + ".log",
-		Mode:     modules.DefaultFilePerm,
+		Mode:     skymodules.DefaultFilePerm,
 		Root:     true,
 		Force:    true, // This will overwrite other files in the dir.
 		Reader:   bytes.NewBufferString(output),

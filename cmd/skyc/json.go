@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -28,7 +28,7 @@ var (
 // would specifically be 'json renter' as the focus of the current implementation
 // is on pulling together a large amount of renter information.
 func jsoncmd() {
-	var rs modules.RenterStats
+	var rs skymodules.RenterStats
 
 	// Grab any alerts.
 	alerts, err := httpClient.DaemonAlertsGet()
@@ -66,7 +66,7 @@ func jsoncmd() {
 	rs.TotalContractRemainingFunds = activeRemaining.Add(passiveRemaining).Add(refreshedRemaining).Add(disabledRemaining)
 
 	// Get the number of files on the system.
-	rf, err := httpClient.RenterDirRootGet(modules.RootSiaPath())
+	rf, err := httpClient.RenterDirRootGet(skymodules.RootSiaPath())
 	if err != nil {
 		die("Cound not get the renter root dir:", err)
 	}

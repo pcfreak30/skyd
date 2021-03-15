@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -25,7 +25,7 @@ func basicULDL(fileSize uint64) error {
 	// Create the filename.
 	name := strconv.Itoa(int(fileSize) / 1e3)
 
-	baseSiaPath, err := modules.NewSiaPath(testSiaDirBasic)
+	baseSiaPath, err := skymodules.NewSiaPath(testSiaDirBasic)
 	if err != nil {
 		return errors.AddContext(err, "error creating base sia path")
 	}
@@ -38,10 +38,10 @@ func basicULDL(fileSize uint64) error {
 	buf := bytes.NewReader(fastrand.Bytes(int(fileSize)))
 
 	// Fill out the upload parameters.
-	sup := modules.SkyfileUploadParameters{
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath:  sp,
 		Filename: name + "kb.rand",
-		Mode:     modules.DefaultFilePerm,
+		Mode:     skymodules.DefaultFilePerm,
 
 		Root:  true,
 		Force: true, // This will overwrite other files in the dir.

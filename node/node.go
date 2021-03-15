@@ -1,5 +1,5 @@
 // Package node provides tooling for creating a Sia node. Sia nodes consist of a
-// collection of modules. The node package gives you tools to easily assemble
+// collection of skymodules. The node package gives you tools to easily assemble
 // various combinations of modules with varying dependencies and settings,
 // including templates for assembling sane no-hassle Sia nodes.
 package node
@@ -11,26 +11,27 @@ import (
 	"path/filepath"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/explorer"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 
+	"gitlab.com/NebulousLabs/Sia/modules/consensus"
+	"gitlab.com/NebulousLabs/Sia/modules/feemanager"
+	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/modules/host"
+	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
+	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/accounting"
-	"gitlab.com/skynetlabs/skyd/modules/consensus"
-	"gitlab.com/skynetlabs/skyd/modules/explorer"
-	"gitlab.com/skynetlabs/skyd/modules/feemanager"
-	"gitlab.com/skynetlabs/skyd/modules/gateway"
-	"gitlab.com/skynetlabs/skyd/modules/host"
-	"gitlab.com/skynetlabs/skyd/modules/miner"
-	"gitlab.com/skynetlabs/skyd/modules/renter"
-	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/modules/renter/hostdb"
-	"gitlab.com/skynetlabs/skyd/modules/renter/proto"
-	"gitlab.com/skynetlabs/skyd/modules/transactionpool"
-	"gitlab.com/skynetlabs/skyd/modules/wallet"
-	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/accounting"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
 
 // NodeParams contains a bunch of parameters for creating a new test node. As
@@ -73,14 +74,14 @@ type NodeParams struct {
 	// module will be used instead of creating a new one. If a custom module is
 	// provided, the 'omit' flag for that module must be set to false (which is
 	// the default setting).
-	Accounting      modules.Accounting
+	Accounting      skymodules.Accounting
 	ConsensusSet    modules.ConsensusSet
 	Explorer        modules.Explorer
 	FeeManager      modules.FeeManager
 	Gateway         modules.Gateway
 	Host            modules.Host
 	Miner           modules.TestMiner
-	Renter          modules.Renter
+	Renter          skymodules.Renter
 	TransactionPool modules.TransactionPool
 	Wallet          modules.Wallet
 
@@ -105,7 +106,7 @@ type NodeParams struct {
 	SiaMuxWSAddress  string
 
 	// Custom settings for modules
-	Allowance   modules.Allowance
+	Allowance   skymodules.Allowance
 	Bootstrap   bool
 	HostAddress string
 	HostStorage uint64
@@ -125,7 +126,7 @@ type NodeParams struct {
 	CreatePortal bool
 
 	// The high level directory where all the persistence gets stored for the
-	// modules.
+	// skymodules.
 	Dir string
 }
 
@@ -135,19 +136,19 @@ type Node struct {
 	Mux *siamux.SiaMux
 
 	// The modules of the node. Modules that are not initialized will be nil.
-	Accounting      modules.Accounting
+	Accounting      skymodules.Accounting
 	ConsensusSet    modules.ConsensusSet
 	Explorer        modules.Explorer
 	FeeManager      modules.FeeManager
 	Gateway         modules.Gateway
 	Host            modules.Host
 	Miner           modules.TestMiner
-	Renter          modules.Renter
+	Renter          skymodules.Renter
 	TransactionPool modules.TransactionPool
 	Wallet          modules.Wallet
 
 	// The high level directory where all the persistence gets stored for the
-	// modules.
+	// skymodules.
 	Dir string
 }
 
@@ -483,7 +484,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Renter.
-	r, errChanRenter := func() (modules.Renter, <-chan error) {
+	r, errChanRenter := func() (skymodules.Renter, <-chan error) {
 		c := make(chan error, 1)
 		if params.CreateRenter && params.Renter != nil {
 			c <- errors.New("cannot create renter and also use custom renter")
@@ -514,7 +515,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		if renterDeps == nil {
 			renterDeps = modules.ProdDependencies
 		}
-		persistDir := filepath.Join(dir, modules.RenterDir)
+		persistDir := filepath.Join(dir, skymodules.RenterDir)
 
 		i++
 		printfRelease("(%d/%d) Loading renter...\n", i, numModules)
@@ -565,7 +566,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Accounting.
-	acc, err := func() (modules.Accounting, error) {
+	acc, err := func() (skymodules.Accounting, error) {
 		if params.CreateAccounting && params.Accounting != nil {
 			return nil, errors.New("cannot create accounting and also use custom accounting")
 		}
@@ -579,7 +580,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		if accoutingDeps == nil {
 			accoutingDeps = modules.ProdDependencies
 		}
-		persistDir := filepath.Join(dir, modules.AccountingDir)
+		persistDir := filepath.Join(dir, skymodules.AccountingDir)
 
 		i++
 		printfRelease("(%d/%d) Loading accounting...\n", i, numModules)

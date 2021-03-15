@@ -20,11 +20,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5/decor"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 var (
@@ -232,17 +233,17 @@ func skynetblocklistgetcmd(_ *cobra.Command, _ []string) {
 // the Sia network.
 func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	// Create the siapaths.
-	sourceSiaPath, err := modules.NewSiaPath(sourceSiaPathStr)
+	sourceSiaPath, err := skymodules.NewSiaPath(sourceSiaPathStr)
 	if err != nil {
 		die("Could not parse source siapath:", err)
 	}
-	destSiaPath, err := modules.NewSiaPath(destSiaPathStr)
+	destSiaPath, err := skymodules.NewSiaPath(destSiaPathStr)
 	if err != nil {
 		die("Could not parse destination siapath:", err)
 	}
 
 	// Perform the conversion and print the result.
-	sup := modules.SkyfileUploadParameters{
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath: destSiaPath,
 	}
 	sup = parseAndAddSkykey(sup)
@@ -253,11 +254,11 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	}
 
 	// Calculate the siapath that was used for the upload.
-	var skypath modules.SiaPath
+	var skypath skymodules.SiaPath
 	if skynetUploadRoot {
 		skypath = destSiaPath
 	} else {
-		skypath, err = modules.SkynetFolder.Join(destSiaPath.String())
+		skypath, err = skymodules.SkynetFolder.Join(destSiaPath.String())
 		if err != nil {
 			die("could not fetch skypath:", err)
 		}
@@ -342,7 +343,7 @@ func skynetisblockedcmd(_ *cobra.Command, skylinkStrs []string) {
 	// NOTE: errors are printed and won't cause the function to exit.
 	for _, skylinkStr := range skylinkStrs {
 		// Load the string
-		var skylink modules.Skylink
+		var skylink skymodules.Skylink
 		err := skylink.LoadString(skylinkStr)
 		if err != nil {
 			fmt.Printf("Skylink %v \tis an invalid skylink: %v\n", skylinkStr, err)
@@ -372,12 +373,12 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 		os.Exit(exitCodeUsage)
 	}
 	// Parse the input siapath.
-	var sp modules.SiaPath
+	var sp skymodules.SiaPath
 	var err error
 	if path == "." || path == "" || path == "/" {
-		sp = modules.RootSiaPath()
+		sp = skymodules.RootSiaPath()
 	} else {
-		sp, err = modules.NewSiaPath(path)
+		sp, err = skymodules.NewSiaPath(path)
 		if err != nil {
 			die("could not parse siapath:", err)
 		}
@@ -386,9 +387,9 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	// Check whether the command is based in root or based in the skynet folder.
 	if !skynetLsRoot {
 		if sp.IsRoot() {
-			sp = modules.SkynetFolder
+			sp = skymodules.SkynetFolder
 		} else {
-			sp, err = modules.SkynetFolder.Join(sp.String())
+			sp, err = skymodules.SkynetFolder.Join(sp.String())
 			if err != nil {
 				die("could not build siapath:", err)
 			}
@@ -433,14 +434,14 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Keep track of the aggregate sizes for dirs as we may be adjusting them.
-	sizePerDir := make(map[modules.SiaPath]uint64)
+	sizePerDir := make(map[skymodules.SiaPath]uint64)
 	for _, dir := range dirs {
 		sizePerDir[dir.dir.SiaPath] = dir.dir.AggregateSize
 	}
 
 	// Drop any files that are not tracking skylinks.
 	var numDropped uint64
-	numOmittedPerDir := make(map[modules.SiaPath]int)
+	numOmittedPerDir := make(map[skymodules.SiaPath]int)
 	for j := 0; j < len(dirs); j++ {
 		for i := 0; i < len(dirs[j].files); i++ {
 			file := dirs[j].files[i]
@@ -528,10 +529,10 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 // skynetPin will pin the Skyfile associated with the provided Skylink at the
 // provided SiaPath
-func skynetPin(skylink string, siaPath modules.SiaPath) (string, error) {
+func skynetPin(skylink string, siaPath skymodules.SiaPath) (string, error) {
 	// Check if --portal was set
 	if skynetPinPortal == "" {
-		spp := modules.SkyfilePinParameters{
+		spp := skymodules.SkyfilePinParameters{
 			SiaPath: siaPath,
 			Root:    skynetUploadRoot,
 		}
@@ -555,7 +556,7 @@ func skynetPin(skylink string, siaPath modules.SiaPath) (string, error) {
 	}()
 
 	// Get the SkyfileMetadata from the Header
-	var sm modules.SkyfileMetadata
+	var sm skymodules.SkyfileMetadata
 	strMetadata := resp.Header.Get("Skynet-File-Metadata")
 	if strMetadata != "" {
 		err = json.Unmarshal([]byte(strMetadata), &sm)
@@ -565,7 +566,7 @@ func skynetPin(skylink string, siaPath modules.SiaPath) (string, error) {
 	}
 
 	// Upload the skyfile to pin it to the renter node
-	sup := modules.SkyfileUploadParameters{
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath:  siaPath,
 		Reader:   reader,
 		Filename: sm.Filename,
@@ -587,7 +588,7 @@ func skynetPin(skylink string, siaPath modules.SiaPath) (string, error) {
 func skynetpincmd(sourceSkylink, destSiaPath string) {
 	skylink := strings.TrimPrefix(sourceSkylink, "sia://")
 	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(destSiaPath)
+	siaPath, err := skymodules.NewSiaPath(destSiaPath)
 	if err != nil {
 		die("Could not parse destination siapath:", err)
 	}
@@ -631,14 +632,14 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 
 	for _, skyPathStr := range skyPathStrs {
 		// Create the skypath.
-		skyPath, err := modules.NewSiaPath(skyPathStr)
+		skyPath, err := skymodules.NewSiaPath(skyPathStr)
 		if err != nil {
 			die("Could not parse skypath:", err)
 		}
 
 		// Parse out the intended siapath.
 		if !skynetUnpinRoot {
-			skyPath, err = modules.SkynetFolder.Join(skyPath.String())
+			skyPath, err = skymodules.SkynetFolder.Join(skyPath.String())
 			if err != nil {
 				die("could not build siapath:", err)
 			}
@@ -718,7 +719,7 @@ func skynetuploadpipecmd(destSiaPath string) {
 		die("Command is meant to be used with either a pipe or src file")
 	}
 	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(destSiaPath)
+	siaPath, err := skymodules.NewSiaPath(destSiaPath)
 	if err != nil {
 		die("Could not parse destination siapath:", err)
 	}
@@ -742,7 +743,7 @@ func skynetuploadpipecmd(destSiaPath string) {
 	// Set a spinner to start after the upload is finished
 	pSpinner := newProgressSpinner(pbs, bar, filename)
 	// Perform the upload
-	skylink := skynetUploadFileFromReader(r, filename, siaPath, modules.DefaultFilePerm)
+	skylink := skynetUploadFileFromReader(r, filename, siaPath, skymodules.DefaultFilePerm)
 	// Replace the spinner with the skylink and stop it
 	newProgressSkylink(pbs, pSpinner, filename, skylink)
 	return
@@ -771,12 +772,12 @@ func skynetportalsgetcmd() {
 
 // skynetportalsaddcmd adds a Skynet portal as either public or private
 func skynetportalsaddcmd(portalURL string) {
-	addition := modules.SkynetPortal{
+	addition := skymodules.SkynetPortal{
 		Address: modules.NetAddress(portalURL),
 		Public:  skynetPortalPublic,
 	}
 
-	err := httpClient.SkynetPortalsPost([]modules.SkynetPortal{addition}, nil)
+	err := httpClient.SkynetPortalsPost([]skymodules.SkynetPortal{addition}, nil)
 	if err != nil {
 		die("Could not add portal:", err)
 	}
@@ -795,7 +796,7 @@ func skynetportalsremovecmd(portalUrl string) {
 // skynetUploadFile uploads a file to Skynet
 func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.Progress) {
 	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(destSiaPath)
+	siaPath, err := skymodules.NewSiaPath(destSiaPath)
 	if err != nil {
 		die("Could not parse destination siapath:", err)
 	}
@@ -904,7 +905,7 @@ func skynetUploadFilesSeparately(sourcePath, destSiaPath string, pbs *mpb.Progre
 
 // skynetUploadDirectory uploads a directory as a single skyfile
 func skynetUploadDirectory(sourcePath, destSiaPath string) {
-	skyfilePath, err := modules.NewSiaPath(destSiaPath)
+	skyfilePath, err := skymodules.NewSiaPath(destSiaPath)
 	if err != nil {
 		fmt.Println("Failed to create siapath", destSiaPath)
 		die(err)
@@ -934,7 +935,7 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 				fmt.Printf("Failed to read file %s.\n", path)
 				die(err)
 			}
-			_, err = modules.AddMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
+			_, err = skymodules.AddMultipartFile(writer, data, "files[]", info.Name(), skymodules.DefaultFilePerm, &offset)
 			if err != nil {
 				fmt.Printf("Failed to add file %s to multipart upload.\n", path)
 				die(err)
@@ -949,7 +950,7 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		}
 	}()
 
-	sup := modules.SkyfileMultipartUploadParameters{
+	sup := skymodules.SkyfileMultipartUploadParameters{
 		SiaPath:             skyfilePath,
 		Force:               false,
 		Root:                false,
@@ -969,9 +970,9 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 }
 
 // skynetUploadFileFromReader is a helper method that uploads a file to Skynet
-func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modules.SiaPath, mode os.FileMode) (skylink string) {
+func skynetUploadFileFromReader(source io.Reader, filename string, siaPath skymodules.SiaPath, mode os.FileMode) (skylink string) {
 	// Upload the file and return a skylink
-	sup := modules.SkyfileUploadParameters{
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath: siaPath,
 		Root:    skynetUploadRoot,
 

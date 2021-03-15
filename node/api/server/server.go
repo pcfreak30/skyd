@@ -17,12 +17,13 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // A Server is a collection of siad modules that can be communicated with over
@@ -67,7 +68,7 @@ func (srv *Server) Close() error {
 	if !errors.Contains(srv.serveErr, http.ErrServerClosed) {
 		err = errors.Compose(err, srv.serveErr)
 	}
-	// Shutdown modules.
+	// Shutdown skymodules.
 	if srv.node != nil {
 		err = errors.Compose(err, srv.node.Close())
 	}
@@ -109,9 +110,9 @@ func (srv *Server) RenterCurrentPeriod() (types.BlockHeight, error) {
 
 // RenterSettings returns the renter's settings or an error if the node has no
 // renter
-func (srv *Server) RenterSettings() (modules.RenterSettings, error) {
+func (srv *Server) RenterSettings() (skymodules.RenterSettings, error) {
 	if srv.node.Renter == nil {
-		return modules.RenterSettings{}, errors.New("can't get renter settings for a non-renter node")
+		return skymodules.RenterSettings{}, errors.New("can't get renter settings for a non-renter node")
 	}
 	return srv.node.Renter.Settings()
 }
@@ -150,7 +151,7 @@ func (srv *Server) Unlock(password string) error {
 	return modules.ErrBadEncryptionKey
 }
 
-// NewAsync creates a new API server from the provided modules. The API will
+// NewAsync creates a new API server from the provided skymodules. The API will
 // require authentication using HTTP basic auth if the supplied password is not
 // the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be
@@ -169,7 +170,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		}
 
 		// Load the config file.
-		cfg, err := modules.NewConfig(filepath.Join(nodeParams.Dir, modules.ConfigName))
+		cfg, err := skymodules.NewConfig(filepath.Join(nodeParams.Dir, skymodules.ConfigName))
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to load siad config")
 		}
@@ -224,7 +225,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 			return nil, errors.AddContext(err, "server is unable to create the Sia node")
 		}
 
-		// Make sure that the server wasn't shut down while loading the modules.
+		// Make sure that the server wasn't shut down while loading the skymodules.
 		srv.closeMu.Lock()
 		defer srv.closeMu.Unlock()
 		select {
@@ -234,7 +235,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		default:
 		}
 
-		// Server wasn't shut down. Add node and replace modules.
+		// Server wasn't shut down. Add node and replace skymodules.
 		srv.node = n
 		api.SetModules(n.Accounting, n.ConsensusSet, n.Explorer, n.FeeManager, n.Gateway, n.Host, n.Miner, n.Renter, n.TransactionPool, n.Wallet)
 		return srv, nil
@@ -249,7 +250,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 	return s, errChan
 }
 
-// New creates a new API server from the provided modules. The API will
+// New creates a new API server from the provided skymodules. The API will
 // require authentication using HTTP basic auth if the supplied password is not
 // the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be
@@ -258,7 +259,7 @@ func New(APIaddr string, requiredUserAgent string, requiredPassword string, node
 	// Wait for the node to be done loading.
 	srv, errChan := NewAsync(APIaddr, requiredUserAgent, requiredPassword, nodeParams, loadStartTime)
 	if err := <-errChan; err != nil {
-		// Error occurred during async load. Close all modules.
+		// Error occurred during async load. Close all skymodules.
 		if build.Release == "standard" {
 			fmt.Println("ERROR:", err)
 		}

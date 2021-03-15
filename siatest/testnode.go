@@ -12,13 +12,14 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/node/api/server"
-	"gitlab.com/skynetlabs/skyd/persist"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -365,9 +366,9 @@ func (tn *TestNode) RestartNode() error {
 
 // SiaPath returns the siapath of a local file or directory to be used for
 // uploading
-func (tn *TestNode) SiaPath(path string) modules.SiaPath {
+func (tn *TestNode) SiaPath(path string) skymodules.SiaPath {
 	s := strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
-	sp, err := modules.NewSiaPath(s)
+	sp, err := skymodules.NewSiaPath(s)
 	if err != nil {
 		build.Critical("This shouldn't happen", err)
 	}

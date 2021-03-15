@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 type (

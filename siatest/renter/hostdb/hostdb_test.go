@@ -10,13 +10,14 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestSiamuxRequired checks that the hostdb will count a host as offline if the
@@ -709,17 +710,17 @@ func TestFilterMode(t *testing.T) {
 	}
 	renter := nodes[0]
 
-	if err := testFilterMode(tg, renter, modules.HostDBActivateBlacklist); err != nil {
+	if err := testFilterMode(tg, renter, skymodules.HostDBActivateBlacklist); err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
-	if err := testFilterMode(tg, renter, modules.HostDBActiveWhitelist); err != nil {
+	if err := testFilterMode(tg, renter, skymodules.HostDBActiveWhitelist); err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
 
-func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.FilterMode) error {
+func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodules.FilterMode) error {
 	// Grab all host pks
 	var hosts []types.SiaPublicKey
 	for _, h := range tg.Hosts() {
@@ -793,7 +794,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	}
 	var filteredHosts []types.SiaPublicKey
 	numHosts := 0
-	isWhitelist := fm == modules.HostDBActiveWhitelist
+	isWhitelist := fm == skymodules.HostDBActiveWhitelist
 	for _, pk := range hosts {
 		_, ok := contractHosts[pk.String()]
 		if isWhitelist != ok {
@@ -918,7 +919,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 
 	// Disable FilterMode and confirm all hosts are active again
 	var nullList []types.SiaPublicKey
-	if err = renter.HostDbFilterModePost(modules.HostDBDisableFilter, nullList); err != nil {
+	if err = renter.HostDbFilterModePost(skymodules.HostDBDisableFilter, nullList); err != nil {
 		return err
 	}
 	hdbActive, err = renter.HostDbActiveGet()

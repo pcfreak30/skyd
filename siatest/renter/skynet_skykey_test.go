@@ -6,13 +6,14 @@ import (
 	"net/url"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestSkykey verifies the functionality of the Skykeys.
@@ -547,7 +548,7 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey
 		t.Log(data)
 		t.Log(fetchedData)
 	}
-	if metadata.Mode != modules.DefaultFilePerm {
+	if metadata.Mode != skymodules.DefaultFilePerm {
 		t.Error("bad mode")
 	}
 	if metadata.Filename != filename {
@@ -555,11 +556,11 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey
 	}
 
 	// Pin the encrypted Skyfile.
-	pinSiaPath, err := modules.NewSiaPath("testSmallEncryptedPinPath" + skykeyType.ToString())
+	pinSiaPath, err := skymodules.NewSiaPath("testSmallEncryptedPinPath" + skykeyType.ToString())
 	if err != nil {
 		t.Fatal(err)
 	}
-	pinLUP := modules.SkyfilePinParameters{
+	pinLUP := skymodules.SkyfilePinParameters{
 		SiaPath:             pinSiaPath,
 		Force:               false,
 		Root:                false,
@@ -571,7 +572,7 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey
 	}
 
 	// See if the file is present.
-	fullPinSiaPath, err := modules.SkynetFolder.Join(pinSiaPath.String())
+	fullPinSiaPath, err := skymodules.SkynetFolder.Join(pinSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -620,7 +621,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 		t.Log(data)
 		t.Log(fetchedData)
 	}
-	if metadata.Mode != modules.DefaultFilePerm {
+	if metadata.Mode != skymodules.DefaultFilePerm {
 		t.Error("bad mode")
 	}
 	if metadata.Filename != filename {
@@ -628,11 +629,11 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 	}
 
 	// Pin the encrypted Skyfile.
-	pinSiaPath, err := modules.NewSiaPath("testEncryptedPinPath" + skykeyType.ToString())
+	pinSiaPath, err := skymodules.NewSiaPath("testEncryptedPinPath" + skykeyType.ToString())
 	if err != nil {
 		t.Fatal(err)
 	}
-	pinLUP := modules.SkyfilePinParameters{
+	pinLUP := skymodules.SkyfilePinParameters{
 		SiaPath:             pinSiaPath,
 		Force:               false,
 		Root:                false,
@@ -644,7 +645,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 	}
 
 	// See if the file is present.
-	fullPinSiaPath, err := modules.SkynetFolder.Join(pinSiaPath.String())
+	fullPinSiaPath, err := skymodules.SkynetFolder.Join(pinSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
 	}

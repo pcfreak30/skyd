@@ -17,11 +17,12 @@ import (
 	"github.com/spf13/cobra/doc"
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -357,7 +358,7 @@ func utilsuploadedsizecmd(path string) {
 	}
 
 	var diskSize, siaSize, lostPercent uint64
-	minFileSize := siatest.ChunkSize(uint64(modules.RenterDefaultDataPieces), crypto.TypeDefaultRenter)
+	minFileSize := siatest.ChunkSize(uint64(skymodules.RenterDefaultDataPieces), crypto.TypeDefaultRenter)
 
 	for _, size := range fileSizes { // Calc variables here
 		diskSize += size

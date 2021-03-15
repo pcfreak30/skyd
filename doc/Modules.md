@@ -19,7 +19,7 @@ flow simple and synchronized - a child module should never have information
 that the parent module does not (it just causes problems).
 
 For testing, it is often important to know that an update has propagated to all
-modules. Any module that subscribes to another must also implement a
+skymodules. Any module that subscribes to another must also implement a
 ModuleNotify function in subscriptions.go. ModuleNotify returns a channel down
 which a struct{} will be sent every time that module receives an update from a
 parent module. To keep things simple, a module should not subscribe to the

@@ -1,18 +1,18 @@
 package siatest
 
 import (
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (
 	// RemoteDir is a helper struct that represents a directory on the Sia
 	// network.
 	RemoteDir struct {
-		siapath modules.SiaPath
+		siapath skymodules.SiaPath
 	}
 )
 
 // SiaPath returns the siapath of a remote directory.
-func (rd *RemoteDir) SiaPath() modules.SiaPath {
+func (rd *RemoteDir) SiaPath() skymodules.SiaPath {
 	return rd.siapath
 }
