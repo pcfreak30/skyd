@@ -630,7 +630,7 @@ func (w *worker) managedRefillAccount() {
 			// to the order of events in the worker loop, seeing as we just
 			// synced our account balance with the host if that was necessary
 			if build.Release == "testing" {
-				build.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?")
+				build.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?", err)
 			}
 			w.renter.log.Println("worker account refill failed", err)
 		}
