@@ -7,7 +7,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node/api"
+	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -65,7 +65,7 @@ func hostEstimateScoreGET(host modules.Host, renter skymodules.Renter, w http.Re
 		WriteError(w, Error{"error estimating host score: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	e := api.HostEstimateScoreGET{
+	e := siaapi.HostEstimateScoreGET{
 		EstimatedScore: estimatedScoreBreakdown.Score,
 		ConversionRate: estimatedScoreBreakdown.ConversionRate,
 	}
@@ -240,12 +240,12 @@ func parseHostSettings(host modules.Host, req *http.Request) (modules.HostIntern
 	minBaseRPCPrice := settings.MinBaseRPCPrice
 	maxBaseRPCPrice := settings.MaxBaseRPCPrice()
 	if minBaseRPCPrice.Cmp(maxBaseRPCPrice) > 0 {
-		return modules.HostInternalSettings{}, api.ErrInvalidRPCDownloadRatio
+		return modules.HostInternalSettings{}, siaapi.ErrInvalidRPCDownloadRatio
 	}
 	minSectorAccessPrice := settings.MinSectorAccessPrice
 	maxSectorAccessPrice := settings.MaxSectorAccessPrice()
 	if minSectorAccessPrice.Cmp(maxSectorAccessPrice) > 0 {
-		return modules.HostInternalSettings{}, api.ErrInvalidSectorAccessDownloadRatio
+		return modules.HostInternalSettings{}, siaapi.ErrInvalidSectorAccessDownloadRatio
 	}
 
 	return settings, nil

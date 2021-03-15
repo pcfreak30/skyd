@@ -11,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
@@ -156,11 +155,6 @@ func (r *Renter) managedInitPersist() error {
 				r.log.Println("Applying a siafile update:", update.Name)
 				if err := siafile.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaFile update")
-				}
-			} else if siadir.IsSiaDirUpdate(update) {
-				r.log.Println("Applying a siadir update:", update.Name)
-				if err := siadir.ApplyUpdates(update); err != nil {
-					return errors.AddContext(err, "failed to apply SiaDir update")
 				}
 			} else {
 				r.log.Println("wal update not applied, marking transaction as not applied")
