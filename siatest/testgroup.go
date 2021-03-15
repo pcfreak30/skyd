@@ -310,8 +310,7 @@ func connectNodes(nodeA, nodeB *TestNode) error {
 		isPeer1, err1 := nodeA.hasPeer(nodeB)
 		isPeer2, err2 := nodeB.hasPeer(nodeA)
 		if err1 != nil || err2 != nil {
-			return build.ExtendErr("couldn't determine if nodeA and nodeB are connected",
-				errors.Compose(err1, err2))
+			return build.ExtendErr("couldn't determine if nodeA and nodeB are connected", errors.Compose(err1, err2))
 		}
 		if isPeer1 && isPeer2 {
 			return nil

@@ -332,7 +332,7 @@ func copyFileToTestDir(fromFilePath, toFilePath string) error {
 
 // loadAndVerifyPersistence loads the persistence and verifies that the
 // conversion updated the persistence as expected
-func loadAndVerifyPersistence(testDir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) error {
+func loadAndVerifyPersistence(testDir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) (err error) {
 	// Load Old Persistence
 	oldPersistence, err := loadOldPersistence(testDir, oldPersistFile, oldHeader, oldVersion)
 	if err != nil {
@@ -356,7 +356,7 @@ func loadAndVerifyPersistence(testDir, oldPersistFile, newPersistFile string, ol
 		return errors.AddContext(err, "unable to open new persistence")
 	}
 	defer func() {
-		errors.Compose(err, aop.Close())
+		err = errors.Compose(err, aop.Close())
 	}()
 
 	return readAndComparePersistence(reader, oldVersion, oldPersistence)
@@ -376,14 +376,14 @@ func loadCompatPersistFile(testDir string, version types.Specifier) error {
 }
 
 // loadOldPersistence loads the persistence from the old persist file
-func loadOldPersistence(testDir, oldPersistFile string, oldHeader, oldVersion types.Specifier) (map[crypto.Hash]struct{}, error) {
+func loadOldPersistence(testDir, oldPersistFile string, oldHeader, oldVersion types.Specifier) (_ map[crypto.Hash]struct{}, err error) {
 	// Verify that loading the older persist file works
 	aop, reader, err := persist.NewAppendOnlyPersist(testDir, oldPersistFile, oldHeader, oldVersion)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to open old persist file")
 	}
 	defer func() {
-		errors.Compose(err, aop.Close())
+		err = errors.Compose(err, aop.Close())
 	}()
 
 	// Grab the old persistence
