@@ -42,6 +42,10 @@ func (api *API) accountingHandlerGet(w http.ResponseWriter, req *http.Request, _
 		WriteError(w, Error{errStr}, http.StatusBadRequest)
 		return
 	}
+	if end < 0 || start < 0 {
+		WriteError(w, Error{"cannot provided negative start or end time"}, http.StatusBadRequest)
+		return
+	}
 
 	// Request the range of accounting information
 	ais, err := api.accounting.Accounting(start, end)
