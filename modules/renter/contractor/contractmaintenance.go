@@ -54,10 +54,12 @@ type (
 )
 
 // hostsForPortalFormation returns the hosts to form contracts with for a
-// portal.
+// portal. In contrast to regular renters, portals form contracts with every
+// host. It only ignores hosts that fail the gouging, have a bad score or hosts
+// that we have recoverable contracts with.
 func hostsForPortalFormation(allowance modules.Allowance, allContracts []modules.RenterContract, recoverableContracts []modules.RecoverableContract, activeHosts []modules.HostDBEntry, l *persist.Logger, scoreBreakdown func(modules.HostDBEntry) (modules.HostScoreBreakdown, error)) (int, []modules.HostDBEntry) {
 	if !allowance.PortalMode() {
-		build.Critical("managedHostsForPortalFormation was called on a non-portal")
+		build.Critical("hostsForPortalFormation was called on a non-portal")
 		return 0, nil
 	}
 	// Get a list of all current contracts.

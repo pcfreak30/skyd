@@ -139,7 +139,6 @@ func readAPIError(r io.Reader) error {
 	var apiErr api.Error
 	b, _ := ioutil.ReadAll(r)
 	if err := json.NewDecoder(bytes.NewReader(b)).Decode(&apiErr); err != nil {
-		fmt.Println("raw resp", string(b))
 		return errors.AddContext(err, "could not read error response")
 	}
 
