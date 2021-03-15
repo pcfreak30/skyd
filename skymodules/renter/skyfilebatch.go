@@ -8,12 +8,13 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -107,7 +108,7 @@ type (
 	// the resulting skylink that points to the uploaded file within the batch.
 	skylinkData struct {
 		err     error
-		skylink modules.Skylink
+		skylink skymodules.Skylink
 	}
 
 	// skyFileObj contains the information about a skyfile that is needed for
@@ -121,16 +122,16 @@ type (
 		size uint64
 
 		// Packing information
-		fp modules.FilePlacement
+		fp skymodules.FilePlacement
 	}
 )
 
 // BatchSkyfile will submit a skyfile to the batch manager to be uploaded as
 // a batch to skynet.
-func (r *Renter) BatchSkyfile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (modules.Skylink, error) {
+func (r *Renter) BatchSkyfile(sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skymodules.Skylink, error) {
 	err := r.tg.Add()
 	if err != nil {
-		return modules.Skylink{}, err
+		return skymodules.Skylink{}, err
 	}
 	defer r.tg.Done()
 	return r.staticBatchManager.managedAddFile(sup, reader)
@@ -168,10 +169,10 @@ func (sbm *skylinkBatchManager) createNewBatch() {
 //
 // NOTE: we call the method on the batch manager to ensure we are only adding
 // files to the current active batch.
-func (sbm *skylinkBatchManager) managedAddFile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (modules.Skylink, error) {
+func (sbm *skylinkBatchManager) managedAddFile(sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skymodules.Skylink, error) {
 	err := validBatchSUP(sup)
 	if err != nil {
-		return modules.Skylink{}, err
+		return skymodules.Skylink{}, err
 	}
 
 	// Acquire the batchManager lock
@@ -188,7 +189,7 @@ func (sbm *skylinkBatchManager) managedAddFile(sup modules.SkyfileUploadParamete
 		// upload should fail and the caller should resubmit without a batch
 		// attempt.
 		sbm.mu.Unlock()
-		return modules.Skylink{}, errFileTooLarge
+		return skymodules.Skylink{}, errFileTooLarge
 	}
 
 	// Define the skyFileObj
@@ -213,7 +214,7 @@ func (sbm *skylinkBatchManager) managedAddFile(sup modules.SkyfileUploadParamete
 	select {
 	case <-finalChan:
 	case <-sbm.staticRenter.tg.StopChan():
-		return modules.Skylink{}, errors.New("renter shutdown before batch could complete")
+		return skymodules.Skylink{}, errors.New("renter shutdown before batch could complete")
 	}
 	return externSkylinkData.skylink, externSkylinkData.err
 }
@@ -309,7 +310,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 		// Set errors in the extern data and null out the skylinks in the event of
 		// an error.
 		for _, esd := range sb.externSkylinkData {
-			esd.skylink = modules.Skylink{}
+			esd.skylink = skymodules.Skylink{}
 			esd.err = sb.err
 		}
 	}()
@@ -323,7 +324,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 	}
 
 	// Pack Files
-	fps, numSectors, err := modules.PackFiles(filesMap)
+	fps, numSectors, err := skymodules.PackFiles(filesMap)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to pack files")
 		return
@@ -371,26 +372,26 @@ func (sb *skylinkBatch) threadedUploadData() {
 	// and security reasons. This ultimately makes the metadata pretty generic and
 	// useless.
 	baseSectorLen := uint64(len(baseSectorData))
-	metadata := modules.SkyfileMetadata{
+	metadata := skymodules.SkyfileMetadata{
 		Filename: fmt.Sprintf("batched_file_%v", time.Now().UnixNano()),
 		Length:   baseSectorLen,
 	}
-	metadataBytes, err := modules.SkyfileMetadataBytes(metadata)
+	metadataBytes, err := skymodules.SkyfileMetadataBytes(metadata)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed, unable to get skyfile metadata bytes")
 		return
 	}
 
 	// Create Skyfile Layout
-	sl := modules.SkyfileLayout{
-		Version:      modules.SkyfileVersion,
+	sl := skymodules.SkyfileLayout{
+		Version:      skymodules.SkyfileVersion,
 		Filesize:     baseSectorLen,
 		MetadataSize: uint64(len(metadataBytes)),
 		CipherType:   crypto.TypePlain,
 	}
 
 	// Generate the BaseSector
-	baseSector, fetchSize := modules.BuildBaseSector(sl.Encode(), nil, metadataBytes, baseSectorData)
+	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, baseSectorData)
 
 	// Generate Merkleroot of the basesector
 	merkleroot := crypto.MerkleRoot(baseSector)
@@ -398,7 +399,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 	// Generate the baseSectorSkylink, this is used to upload the baseSector but
 	// is never returned since the skylinks that are important are the skylinks
 	// for the packed files
-	baseSectorSkylink, err := modules.NewSkylinkV1(merkleroot, 0, fetchSize)
+	baseSectorSkylink, err := skymodules.NewSkylinkV1(merkleroot, 0, fetchSize)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to generate skylink for base sector")
 		return
@@ -417,7 +418,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 	// Generate skylinks for all the batched files.
 	for _, f := range sb.currentFiles {
 		// Generate skylink
-		skylink, err := modules.NewSkylinkV1(merkleroot, f.fp.SectorOffset, f.size)
+		skylink, err := skymodules.NewSkylinkV1(merkleroot, f.fp.SectorOffset, f.size)
 		if err != nil {
 			sb.err = errors.AddContext(err, "batch upload failed to generate skylink for batched file")
 			return
@@ -433,12 +434,12 @@ func (sb *skylinkBatch) threadedUploadData() {
 	}
 
 	// Create the SkyfileUploadParameters for the batch
-	siaPath, err := modules.NewSiaPath(metadata.Filename)
+	siaPath, err := skymodules.NewSiaPath(metadata.Filename)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to create siapath for batch")
 		return
 	}
-	sup := modules.SkyfileUploadParameters{
+	sup := skymodules.SkyfileUploadParameters{
 		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
 		SiaPath:             siaPath,
 	}
@@ -490,7 +491,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 }
 
 // validBatchSUP checks if the SkyfileUploadParameters are valid for batching
-func validBatchSUP(sup modules.SkyfileUploadParameters) error {
+func validBatchSUP(sup skymodules.SkyfileUploadParameters) error {
 	// Check that the file should be batched.
 	if !sup.Batch {
 		return errBatchNotEnabled

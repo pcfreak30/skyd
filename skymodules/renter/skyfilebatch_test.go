@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestBatchAddFile probes the addFile method of the skylinkBatch
@@ -73,7 +74,7 @@ func TestBatchAddFile(t *testing.T) {
 	if skylinkData.err == nil {
 		t.Error("unexpected")
 	}
-	var nullSkyLink modules.Skylink
+	var nullSkyLink skymodules.Skylink
 	if skylinkData.skylink != nullSkyLink {
 		t.Error("unexpected")
 	}
@@ -185,10 +186,10 @@ func TestBatchManager(t *testing.T) {
 	}
 
 	// Define too large file
-	sup := modules.SkyfileUploadParameters{Batch: true}
+	sup := skymodules.SkyfileUploadParameters{Batch: true}
 	fileSize := maxBatchFileSize + 1
 	reader := bytes.NewReader(fastrand.Bytes(int(fileSize)))
-	sur := modules.NewSkyfileReader(reader, sup)
+	sur := skymodules.NewSkyfileReader(reader, sup)
 	_, err = rt.renter.BatchSkyfile(sup, sur)
 	if err != errFileTooLarge {
 		t.Error("expected errFileToLarge", err)
@@ -198,7 +199,7 @@ func TestBatchManager(t *testing.T) {
 	done1 := make(chan struct{})
 	fileSize = maxBatchFileSize - 1
 	reader = bytes.NewReader(fastrand.Bytes(int(fileSize)))
-	sur = modules.NewSkyfileReader(reader, sup)
+	sur = skymodules.NewSkyfileReader(reader, sup)
 
 	// Launch batch call in a go routine. Call will fail when it tries to upload
 	// but the point is that it blocks until maxBatchTime
@@ -220,9 +221,9 @@ func TestBatchManager(t *testing.T) {
 	// Redefine initial reader as it would be drained and define second reader or
 	// the first call will drain the reader and not trigger the memory limit.
 	reader = bytes.NewReader(fastrand.Bytes(int(fileSize)))
-	sur = modules.NewSkyfileReader(reader, sup)
+	sur = skymodules.NewSkyfileReader(reader, sup)
 	reader2 := bytes.NewReader(fastrand.Bytes(int(fileSize)))
-	sur2 := modules.NewSkyfileReader(reader2, sup)
+	sur2 := skymodules.NewSkyfileReader(reader2, sup)
 
 	// Launch two batch call in a separate go routines. The second call will
 	// trigger the first batch to finalize. To ensure the second call executes
@@ -250,7 +251,7 @@ func TestBatch_validBatchSUP(t *testing.T) {
 	t.Parallel()
 
 	// Start with a fully set SkyfileUploadParameters
-	sup := modules.SkyfileUploadParameters{
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath:             modules.RandomSiaPath(),
 		DryRun:              true,
 		Force:               true,
@@ -314,7 +315,7 @@ func TestBatch_validBatchSUP(t *testing.T) {
 		t.Error(err)
 	}
 	// We should also only need to set the Batch parameter to true
-	sup = modules.SkyfileUploadParameters{}
+	sup = skymodules.SkyfileUploadParameters{}
 	sup.Batch = true
 	err = validBatchSUP(sup)
 	if err != nil {
