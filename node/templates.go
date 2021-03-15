@@ -20,7 +20,7 @@ var (
 	}
 	// AccountingTemplate is a template for a Sia node that has a functioning
 	// Accounting module. The node has an Accounting module and all dependencies,
-	// but no other modules.
+	// but no other skymodules.
 	AccountingTemplate = NodeParams{
 		CreateAccounting:      true,
 		CreateConsensusSet:    true,
@@ -35,7 +35,7 @@ var (
 	}
 	// FeeManagerTemplate is a template for a Sia node that has a functioning
 	// FeeManager. The node has a FeeManager and all dependencies, but no other
-	// modules.
+	// skymodules.
 	FeeManagerTemplate = NodeParams{
 		CreateAccounting:      false,
 		CreateConsensusSet:    true,
@@ -49,7 +49,7 @@ var (
 		CreateWallet:          true,
 	}
 	// GatewayTemplate is a template for a Sia node that has a functioning
-	// Gateway. The node has a Gateway but no other modules.
+	// Gateway. The node has a Gateway but no other skymodules.
 	GatewayTemplate = NodeParams{
 		CreateAccounting:      false,
 		CreateConsensusSet:    false,
@@ -63,7 +63,7 @@ var (
 		CreateWallet:          false,
 	}
 	// HostTemplate is a template for a Sia node that has a functioning host.
-	// The node has a host and all dependencies, but no other modules.
+	// The node has a host and all dependencies, but no other skymodules.
 	HostTemplate = NodeParams{
 		CreateAccounting:      false,
 		CreateConsensusSet:    true,
@@ -77,7 +77,7 @@ var (
 		CreateWallet:          true,
 	}
 	// MinerTemplate is a template for a Sia node that has a functioning miner.
-	// The node has a miner and all dependencies, but no other modules.
+	// The node has a miner and all dependencies, but no other skymodules.
 	MinerTemplate = NodeParams{
 		CreateAccounting:      false,
 		CreateConsensusSet:    true,
@@ -92,7 +92,7 @@ var (
 	}
 	// RenterTemplate is a template for a Sia node that has a functioning
 	// renter. The node has a renter and all dependencies, but no other
-	// modules.
+	// skymodules.
 	RenterTemplate = NodeParams{
 		CreateAccounting:      false,
 		CreateConsensusSet:    true,
@@ -107,7 +107,7 @@ var (
 	}
 	// WalletTemplate is a template for a Sia node that has a functioning
 	// wallet. The node has a wallet and all dependencies, but no other
-	// modules.
+	// skymodules.
 	WalletTemplate = NodeParams{
 		CreateAccounting:      false,
 		CreateConsensusSet:    true,

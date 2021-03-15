@@ -10,12 +10,13 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestRenterDownloadStreamCache checks that the download stream caching is
@@ -302,7 +303,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 	d := bytes.NewReader(data)
 
 	// Upload the data.
-	siaPath, err := modules.NewSiaPath("/foo")
+	siaPath, err := skymodules.NewSiaPath("/foo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +370,7 @@ func testUploadStreamingWithBadDeps(t *testing.T, tg *siatest.TestGroup) {
 	d := bytes.NewReader(data)
 
 	// Upload the data.
-	siaPath, err := modules.NewSiaPath("/foo")
+	siaPath, err := skymodules.NewSiaPath("/foo")
 	if err != nil {
 		t.Fatal(err)
 	}

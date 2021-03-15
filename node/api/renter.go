@@ -18,13 +18,14 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter"
-	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/persist"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
 )
 
 var (
@@ -80,12 +81,12 @@ var (
 type (
 	// RenterGET contains various renter metrics.
 	RenterGET struct {
-		Settings         modules.RenterSettings     `json:"settings"`
-		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
-		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
-		NextPeriod       types.BlockHeight          `json:"nextperiod"`
+		Settings         skymodules.RenterSettings     `json:"settings"`
+		FinancialMetrics skymodules.ContractorSpending `json:"financialmetrics"`
+		CurrentPeriod    types.BlockHeight             `json:"currentperiod"`
+		NextPeriod       types.BlockHeight             `json:"nextperiod"`
 
-		MemoryStatus modules.MemoryStatus `json:"memorystatus"`
+		MemoryStatus skymodules.MemoryStatus `json:"memorystatus"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -110,7 +111,7 @@ type (
 		// Amount of contract funds that have been spent on maintenance tasks
 		// such as updating the price table or syncing the ephemeral account
 		// balance.
-		MaintenanceSpending modules.MaintenanceSpending `json:"maintenancespending"`
+		MaintenanceSpending skymodules.MaintenanceSpending `json:"maintenancespending"`
 		// Address of the host the file contract was formed with.
 		NetAddress modules.NetAddress `json:"netaddress"`
 		// Remaining funds left for the renter to spend on uploads & downloads.
@@ -148,20 +149,20 @@ type (
 		InactiveContracts []RenterContract `json:"inactivecontracts"`
 
 		// Current Fields
-		ActiveContracts           []RenterContract              `json:"activecontracts"`
-		PassiveContracts          []RenterContract              `json:"passivecontracts"`
-		RefreshedContracts        []RenterContract              `json:"refreshedcontracts"`
-		DisabledContracts         []RenterContract              `json:"disabledcontracts"`
-		ExpiredContracts          []RenterContract              `json:"expiredcontracts"`
-		ExpiredRefreshedContracts []RenterContract              `json:"expiredrefreshedcontracts"`
-		RecoverableContracts      []modules.RecoverableContract `json:"recoverablecontracts"`
+		ActiveContracts           []RenterContract                 `json:"activecontracts"`
+		PassiveContracts          []RenterContract                 `json:"passivecontracts"`
+		RefreshedContracts        []RenterContract                 `json:"refreshedcontracts"`
+		DisabledContracts         []RenterContract                 `json:"disabledcontracts"`
+		ExpiredContracts          []RenterContract                 `json:"expiredcontracts"`
+		ExpiredRefreshedContracts []RenterContract                 `json:"expiredrefreshedcontracts"`
+		RecoverableContracts      []skymodules.RecoverableContract `json:"recoverablecontracts"`
 	}
 
 	// RenterDirectory lists the files and directories contained in the queried
 	// directory
 	RenterDirectory struct {
-		Directories []modules.DirectoryInfo `json:"directories"`
-		Files       []modules.FileInfo      `json:"files"`
+		Directories []skymodules.DirectoryInfo `json:"directories"`
+		Files       []skymodules.FileInfo      `json:"files"`
 	}
 
 	// RenterDownloadQueue contains the renter's download queue.
@@ -171,17 +172,17 @@ type (
 
 	// RenterFile lists the file queried.
 	RenterFile struct {
-		File modules.FileInfo `json:"file"`
+		File skymodules.FileInfo `json:"file"`
 	}
 
 	// RenterFiles lists the files known to the renter.
 	RenterFiles struct {
-		Files []modules.FileInfo `json:"files"`
+		Files []skymodules.FileInfo `json:"files"`
 	}
 
 	// RenterFuseInfo contains information about mounted fuse filesystems.
 	RenterFuseInfo struct {
-		MountPoints []modules.MountInfo `json:"mountpoints"`
+		MountPoints []skymodules.MountInfo `json:"mountpoints"`
 	}
 
 	// RenterLoad lists files that were loaded into the renter.
@@ -192,8 +193,8 @@ type (
 	// RenterPricesGET lists the data that is returned when a GET call is made
 	// to /renter/prices.
 	RenterPricesGET struct {
-		modules.RenterPriceEstimation
-		modules.Allowance
+		skymodules.RenterPriceEstimation
+		skymodules.Allowance
 	}
 	// RenterRecoveryStatusGET returns information about potential contract
 	// recovery scans.
@@ -240,12 +241,12 @@ type (
 
 	// DownloadInfo contains all client-facing information of a file.
 	DownloadInfo struct {
-		Destination     string          `json:"destination"`     // The destination of the download.
-		DestinationType string          `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
-		Filesize        uint64          `json:"filesize"`        // DEPRECATED. Same as 'Length'.
-		Length          uint64          `json:"length"`          // The length requested for the download.
-		Offset          uint64          `json:"offset"`          // The offset within the siafile requested for the download.
-		SiaPath         modules.SiaPath `json:"siapath"`         // The siapath of the file used for the download.
+		Destination     string             `json:"destination"`     // The destination of the download.
+		DestinationType string             `json:"destinationtype"` // Can be "file", "memory buffer", or "http stream".
+		Filesize        uint64             `json:"filesize"`        // DEPRECATED. Same as 'Length'.
+		Length          uint64             `json:"length"`          // The length requested for the download.
+		Offset          uint64             `json:"offset"`          // The offset within the siafile requested for the download.
+		SiaPath         skymodules.SiaPath `json:"siapath"`         // The siapath of the file used for the download.
 
 		Completed            bool      `json:"completed"`            // Whether or not the download has completed.
 		EndTime              time.Time `json:"endtime"`              // The time when the download fully completed.
@@ -273,20 +274,20 @@ func isCalledWithRootFlag(req *http.Request) (bool, error) {
 
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
 // prefixed by the user's home directory.
-func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
+func rebaseInputSiaPath(siaPath skymodules.SiaPath) (skymodules.SiaPath, error) {
 	// Prepend the provided siapath with the /home/siafiles dir.
 	if siaPath.IsRoot() {
-		return modules.UserFolder, nil
+		return skymodules.UserFolder, nil
 	}
-	return modules.UserFolder.Join(siaPath.String())
+	return skymodules.UserFolder.Join(siaPath.String())
 }
 
 // trimSiaDirFolder is a helper method to trim /home/siafiles off of the
 // siapaths of the dirinfos since the user expects a path relative to
 // /home/siafiles and not relative to root.
-func trimSiaDirFolder(dis ...modules.DirectoryInfo) (_ []modules.DirectoryInfo, err error) {
+func trimSiaDirFolder(dis ...skymodules.DirectoryInfo) (_ []skymodules.DirectoryInfo, err error) {
 	for i := range dis {
-		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
+		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(skymodules.UserFolder, skymodules.RootSiaPath())
 		if err != nil {
 			return nil, err
 		}
@@ -297,9 +298,9 @@ func trimSiaDirFolder(dis ...modules.DirectoryInfo) (_ []modules.DirectoryInfo, 
 // trimSiaDirFolderOnFiles is a helper method to trim /home/siafiles off of the
 // siapaths of the fileinfos since the user expects a path relative to
 // /home/siafiles and not relative to root.
-func trimSiaDirFolderOnFiles(fis ...modules.FileInfo) (_ []modules.FileInfo, err error) {
+func trimSiaDirFolderOnFiles(fis ...skymodules.FileInfo) (_ []skymodules.FileInfo, err error) {
 	for i := range fis {
-		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
+		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(skymodules.UserFolder, skymodules.RootSiaPath())
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to trim the user sia path from a provided fileinfo")
 		}
@@ -310,9 +311,9 @@ func trimSiaDirFolderOnFiles(fis ...modules.FileInfo) (_ []modules.FileInfo, err
 // trimSiaDirInfo is a helper method to trim /home/siafiles off of the
 // siapaths of the fileinfos since the user expects a path relative to
 // /home/siafiles and not relative to root.
-func trimDownloadInfo(dis ...modules.DownloadInfo) (_ []modules.DownloadInfo, err error) {
+func trimDownloadInfo(dis ...skymodules.DownloadInfo) (_ []skymodules.DownloadInfo, err error) {
 	for i := range dis {
-		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
+		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(skymodules.UserFolder, skymodules.RootSiaPath())
 		if err != nil {
 			return nil, err
 		}
@@ -334,7 +335,7 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 	}
 
 	// Parse the siaPath
-	var siaPath modules.SiaPath
+	var siaPath skymodules.SiaPath
 	s := req.FormValue("siapath")
 	if rootSiaPath && s != "" {
 		WriteError(w, Error{"rootsiapath and non empty siapath cannot both be used"}, http.StatusBadRequest)
@@ -345,7 +346,7 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if rootSiaPath {
-		siaPath = modules.RootSiaPath()
+		siaPath = skymodules.RootSiaPath()
 	} else {
 		err = siaPath.LoadString(s)
 		if err != nil {
@@ -462,10 +463,10 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 		return
 	}
 	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := modules.DeriveRenterSeed(ws)
+	rs := skymodules.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
+	secret := crypto.HashAll(rs, skymodules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Create the backup.
 	if err := api.renter.CreateBackup(backupPath, secret[:32]); err != nil {
@@ -509,10 +510,10 @@ func (api *API) renterBackupsRestoreHandlerGET(w http.ResponseWriter, req *http.
 		return
 	}
 	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := modules.DeriveRenterSeed(ws)
+	rs := skymodules.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
+	secret := crypto.HashAll(rs, skymodules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Load the backup.
 	if err := api.renter.LoadBackup(backupPath, secret[:32]); err != nil {
@@ -542,10 +543,10 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 		return
 	}
 	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := modules.DeriveRenterSeed(ws)
+	rs := skymodules.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
+	secret := crypto.HashAll(rs, skymodules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Create the backup.
 	if err := api.renter.CreateBackup(dst, secret[:32]); err != nil {
@@ -575,10 +576,10 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := modules.DeriveRenterSeed(ws)
+	rs := skymodules.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
+	secret := crypto.HashAll(rs, skymodules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Load the backup.
 	if err := api.renter.LoadBackup(src, secret[:32]); err != nil {
@@ -591,7 +592,7 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 // parseErasureCodingParameters parses the supplied string values and creates
 // an erasure coder. If values haven't been supplied it will fill in sane
 // defaults.
-func parseErasureCodingParameters(strDataPieces, strParityPieces string) (modules.ErasureCoder, error) {
+func parseErasureCodingParameters(strDataPieces, strParityPieces string) (skymodules.ErasureCoder, error) {
 	// Parse data and parity pieces
 	dataPieces, parityPieces, err := ParseDataAndParityPieces(strDataPieces, strParityPieces)
 	if err != nil {
@@ -616,7 +617,7 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 	}
 
 	// Create the erasure coder.
-	return modules.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
+	return skymodules.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
 }
 
 // ParseDataAndParityPieces parse the numeric values for dataPieces and
@@ -845,8 +846,8 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 	if zeroFunds && zeroPeriod {
 		// If both the funds and period are zero then the allowance should be
 		// cancelled. Make sure that the rest of the fields are zeroed out
-		settings.Allowance = modules.Allowance{}
-	} else if !reflect.DeepEqual(settings.Allowance, modules.Allowance{}) {
+		settings.Allowance = skymodules.Allowance{}
+	} else if !reflect.DeepEqual(settings.Allowance, skymodules.Allowance{}) {
 		// Allowance has been set at least partially. Validate that all fields
 		// are set correctly
 
@@ -870,7 +871,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{contractor.ErrAllowanceNoHosts.Error()}, http.StatusBadRequest)
 			return
 		} else if settings.Allowance.Hosts == 0 {
-			settings.Allowance.Hosts = modules.DefaultAllowance.Hosts
+			settings.Allowance.Hosts = skymodules.DefaultAllowance.Hosts
 		}
 
 		// If the user set the Renew Window to 0 return an error, otherwise if
@@ -890,7 +891,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedStorage.Error()}, http.StatusBadRequest)
 			return
 		} else if settings.Allowance.ExpectedStorage == 0 {
-			settings.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
+			settings.Allowance.ExpectedStorage = skymodules.DefaultAllowance.ExpectedStorage
 		}
 
 		// If the user set ExpectedUpload to 0 return an error, otherwise if
@@ -900,7 +901,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedUpload.Error()}, http.StatusBadRequest)
 			return
 		} else if settings.Allowance.ExpectedUpload == 0 {
-			settings.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
+			settings.Allowance.ExpectedUpload = skymodules.DefaultAllowance.ExpectedUpload
 		}
 
 		// If the user set ExpectedDownload to 0 return an error, otherwise if
@@ -910,7 +911,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedDownload.Error()}, http.StatusBadRequest)
 			return
 		} else if settings.Allowance.ExpectedDownload == 0 {
-			settings.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
+			settings.Allowance.ExpectedDownload = skymodules.DefaultAllowance.ExpectedDownload
 		}
 
 		// If the user set ExpectedRedundancy to 0 return an error, otherwise if
@@ -920,7 +921,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{contractor.ErrAllowanceZeroExpectedRedundancy.Error()}, http.StatusBadRequest)
 			return
 		} else if settings.Allowance.ExpectedRedundancy == 0 {
-			settings.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+			settings.Allowance.ExpectedRedundancy = skymodules.DefaultAllowance.ExpectedRedundancy
 		}
 
 		// If the user set MaxPeriodChurn to 0 return an error, otherwise if
@@ -930,7 +931,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{contractor.ErrAllowanceZeroMaxPeriodChurn.Error()}, http.StatusBadRequest)
 			return
 		} else if settings.Allowance.MaxPeriodChurn == 0 {
-			settings.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
+			settings.Allowance.MaxPeriodChurn = skymodules.DefaultAllowance.MaxPeriodChurn
 		}
 	}
 
@@ -983,7 +984,7 @@ func (api *API) renterAllowanceCancelHandlerPOST(w http.ResponseWriter, _ *http.
 	}
 
 	// Set the allownace to nil
-	settings.Allowance = modules.Allowance{}
+	settings.Allowance = skymodules.Allowance{}
 
 	// Set the settings in the renter.
 	err = api.renter.SetSettings(settings)
@@ -997,13 +998,13 @@ func (api *API) renterAllowanceCancelHandlerPOST(w http.ResponseWriter, _ *http.
 // renterCleanHandlerPOST handles the API call to clean lost files from a Renter.
 func (api *API) renterCleanHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	var deleteErrs error
-	cleanFunc := func(fi modules.FileInfo) {
+	cleanFunc := func(fi skymodules.FileInfo) {
 		if fi.OnDisk || fi.Redundancy >= 1 {
 			return
 		}
 		deleteErrs = errors.Compose(deleteErrs, api.renter.DeleteFile(fi.SiaPath))
 	}
-	err := api.renter.FileList(modules.RootSiaPath(), true, false, cleanFunc)
+	err := api.renter.FileList(skymodules.RootSiaPath(), true, false, cleanFunc)
 	err = errors.Compose(err, deleteErrs)
 	if err != nil {
 		WriteError(w, Error{"unable to clear lost files: " + err.Error()}, http.StatusBadRequest)
@@ -1096,7 +1097,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 	contracts := api.parseRenterContracts(disabled, inactive, expired)
 
 	// Get recoverable contracts
-	var recoverableContracts []modules.RecoverableContract
+	var recoverableContracts []skymodules.RecoverableContract
 	if recoverable {
 		recoverableContracts = api.renter.RecoverableContracts()
 	}
@@ -1315,7 +1316,7 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, req *http.Request,
 // renterDownloadByUIDHandlerGET handles the API call to /renter/downloadinfo.
 func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	uid := strings.TrimPrefix(ps.ByName("uid"), "/")
-	di, exists := api.renter.DownloadByUID(modules.DownloadID(uid))
+	di, exists := api.renter.DownloadByUID(skymodules.DownloadID(uid))
 	if !exists {
 		WriteError(w, Error{fmt.Sprintf("Download with id '%v' doesn't exist", string(uid))}, http.StatusBadRequest)
 		return
@@ -1350,7 +1351,7 @@ func (api *API) renterFuseHandlerGET(w http.ResponseWriter, _ *http.Request, _ h
 		MountPoints: api.renter.MountInfo(),
 	}
 	for i := 0; i < len(rfi.MountPoints); i++ {
-		rebased, err := rfi.MountPoints[i].SiaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
+		rebased, err := rfi.MountPoints[i].SiaPath.Rebase(skymodules.UserFolder, skymodules.RootSiaPath())
 		if err != nil {
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
@@ -1363,13 +1364,13 @@ func (api *API) renterFuseHandlerGET(w http.ResponseWriter, _ *http.Request, _ h
 
 // renterFuseMountHandlerPOST handles the API call to /renter/fuse/mount.
 func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var siaPath modules.SiaPath
+	var siaPath skymodules.SiaPath
 	var err error
 	spfv := req.FormValue("siapath")
 	if spfv == "" {
-		siaPath = modules.RootSiaPath()
+		siaPath = skymodules.RootSiaPath()
 	} else {
-		siaPath, err = modules.NewSiaPath(spfv)
+		siaPath, err = skymodules.NewSiaPath(spfv)
 		if err != nil {
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
@@ -1382,7 +1383,7 @@ func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 	}
 
 	mount := req.FormValue("mount")
-	var opts modules.MountOptions
+	var opts skymodules.MountOptions
 	if req.FormValue("readonly") != "" {
 		readOnly, err := scanBool(req.FormValue("readonly"))
 		if err != nil {
@@ -1438,12 +1439,12 @@ func (api *API) renterRecoveryScanHandlerGET(w http.ResponseWriter, _ *http.Requ
 // renter.
 func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse the siaPath and the newSiaPath
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	newSiaPath, err := modules.NewSiaPath(req.FormValue("newsiapath"))
+	newSiaPath, err := skymodules.NewSiaPath(req.FormValue("newsiapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1479,7 +1480,7 @@ func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps
 // renterFileHandler handles GET requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Determine the siapath that the user wants to get the file from.
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1532,7 +1533,7 @@ func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{"unable to parse root flag: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{"unable to parse siapath: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -1577,9 +1578,9 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 			return
 		}
 	}
-	var files []modules.FileInfo
+	var files []skymodules.FileInfo
 	var mu sync.Mutex
-	err = api.renter.FileList(modules.UserFolder, true, c, func(fi modules.FileInfo) {
+	err = api.renter.FileList(skymodules.UserFolder, true, c, func(fi skymodules.FileInfo) {
 		mu.Lock()
 		files = append(files, fi)
 		mu.Unlock()
@@ -1605,7 +1606,7 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 // renterPricesHandler reports the expected costs of various actions given the
 // renter settings and the set of available hosts.
 func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	allowance := modules.Allowance{}
+	allowance := skymodules.Allowance{}
 	// Scan the allowance amount. (optional parameter)
 	if f := req.FormValue("funds"); f != "" {
 		funds, ok := scanAmount(f)
@@ -1622,7 +1623,7 @@ func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, _ 
 			WriteError(w, Error{"unable to parse hosts: " + err.Error()}, http.StatusBadRequest)
 			return
 		} else if hosts != 0 && hosts < requiredHosts {
-			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", modules.DefaultAllowance.Hosts, hosts)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", skymodules.DefaultAllowance.Hosts, hosts)}, http.StatusBadRequest)
 			return
 		} else {
 			allowance.Hosts = hosts
@@ -1654,7 +1655,7 @@ func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, _ 
 	// Check for partially set allowance, which can happen since hosts and renew
 	// window can be optional fields. Checking here instead of assigning values
 	// above so that an empty allowance can still be submitted
-	if !reflect.DeepEqual(allowance, modules.Allowance{}) {
+	if !reflect.DeepEqual(allowance, skymodules.Allowance{}) {
 		if allowance.Funds.Cmp(types.ZeroCurrency) == 0 {
 			WriteError(w, Error{fmt.Sprint("Allowance not set correctly, `funds` parameter left empty")}, http.StatusBadRequest)
 			return
@@ -1687,7 +1688,7 @@ func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, _ 
 // renterDeleteHandler handles the API call to delete a file entry from the
 // renter.
 func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1720,7 +1721,7 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 // renterCancelDownloadHandler handles the API call to cancel a download.
 func (api *API) renterCancelDownloadHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get the id.
-	id := modules.DownloadID(req.FormValue("id"))
+	id := skymodules.DownloadID(req.FormValue("id"))
 	if id == "" {
 		WriteError(w, Error{"id not specified"}, http.StatusBadRequest)
 		return
@@ -1746,7 +1747,7 @@ func (api *API) renterDownloadHandler(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	var id modules.DownloadID
+	var id skymodules.DownloadID
 	var start func() error
 	if params.Async {
 		var cancel func()
@@ -1795,7 +1796,7 @@ func (api *API) renterDownloadAsyncHandler(w http.ResponseWriter, req *http.Requ
 // parseDownloadParameters parses the download parameters passed to the
 // /renter/download endpoint. Validation of these parameters is done by the
 // renter.
-func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (modules.RenterDownloadParameters, error) {
+func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (skymodules.RenterDownloadParameters, error) {
 	destination := req.FormValue("destination")
 
 	// The offset and length in bytes.
@@ -1822,44 +1823,44 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	if len(offsetparam) > 0 {
 		_, err := fmt.Sscan(offsetparam, &offset)
 		if err != nil {
-			return modules.RenterDownloadParameters{}, errors.AddContext(err, "could not decode the offset as uint64")
+			return skymodules.RenterDownloadParameters{}, errors.AddContext(err, "could not decode the offset as uint64")
 		}
 	}
 	if len(lengthparam) > 0 {
 		_, err := fmt.Sscan(lengthparam, &length)
 		if err != nil {
-			return modules.RenterDownloadParameters{}, errors.AddContext(err, "could not decode the offset as uint64")
+			return skymodules.RenterDownloadParameters{}, errors.AddContext(err, "could not decode the offset as uint64")
 		}
 	}
 
 	// Parse the httpresp parameter.
 	httpresp, err := scanBool(httprespparam)
 	if err != nil {
-		return modules.RenterDownloadParameters{}, errors.AddContext(err, "httpresp parameter could not be parsed")
+		return skymodules.RenterDownloadParameters{}, errors.AddContext(err, "httpresp parameter could not be parsed")
 	}
 
 	// Parse the async parameter.
 	async, err := scanBool(asyncparam)
 	if err != nil {
-		return modules.RenterDownloadParameters{}, errors.AddContext(err, "async parameter could not be parsed")
+		return skymodules.RenterDownloadParameters{}, errors.AddContext(err, "async parameter could not be parsed")
 	}
 
 	// Parse the root parameter. If it is set we rebase the siapath.
 	root, err := scanBool(rootparam)
 	if err != nil {
-		return modules.RenterDownloadParameters{}, errors.AddContext(err, "root parameter could not be parsed")
+		return skymodules.RenterDownloadParameters{}, errors.AddContext(err, "root parameter could not be parsed")
 	}
 
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
-		return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the siapath")
+		return skymodules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the siapath")
 	}
 
 	// If root is not set we need to rebase the siapath.
 	if !root {
 		siaPath, err = rebaseInputSiaPath(siaPath)
 		if err != nil {
-			return modules.RenterDownloadParameters{}, err
+			return skymodules.RenterDownloadParameters{}, err
 		}
 	}
 
@@ -1867,11 +1868,11 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	if disablelocalfetchparam != "" {
 		disableLocalFetch, err = scanBool(disablelocalfetchparam)
 		if err != nil {
-			return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the disablelocalfetch flag")
+			return skymodules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the disablelocalfetch flag")
 		}
 	}
 
-	dp := modules.RenterDownloadParameters{
+	dp := skymodules.RenterDownloadParameters{
 		Destination:      destination,
 		DisableDiskFetch: disableLocalFetch,
 		Async:            async,
@@ -1888,7 +1889,7 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 
 // renterStreamHandler handles downloads from the /renter/stream endpoint
 func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1955,7 +1956,7 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 	}
 
 	// Call the renter to upload the file.
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1965,7 +1966,7 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	err = api.renter.Upload(modules.FileUploadParams{
+	err = api.renter.Upload(skymodules.FileUploadParams{
 		Source:              source,
 		SiaPath:             siaPath,
 		ErasureCode:         ec,
@@ -1997,8 +1998,8 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 	}
 	// Check if we need to set to defaults
 	if dataPieces == 0 && parityPieces == 0 {
-		dataPieces = modules.RenterDefaultDataPieces
-		parityPieces = modules.RenterDefaultParityPieces
+		dataPieces = skymodules.RenterDefaultDataPieces
+		parityPieces = skymodules.RenterDefaultParityPieces
 	}
 	contractsNeeded := dataPieces + parityPieces
 
@@ -2086,7 +2087,7 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 	}
 
 	// Call the renter to upload the file.
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -2096,7 +2097,7 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	up := modules.FileUploadParams{
+	up := skymodules.FileUploadParams{
 		SiaPath:     siaPath,
 		ErasureCode: ec,
 		Force:       force,
@@ -2116,7 +2117,7 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 // renterValidateSiaPathHandler handles the API call that validates a siapath
 func (api *API) renterValidateSiaPathHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Try and create a new siapath, this will validate the potential siapath
-	_, err := modules.NewSiaPath(ps.ByName("siapath"))
+	_, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -2126,7 +2127,7 @@ func (api *API) renterValidateSiaPathHandler(w http.ResponseWriter, _ *http.Requ
 
 // renterDirHandlerGET handles the API call to query a directory
 func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	var siaPath modules.SiaPath
+	var siaPath skymodules.SiaPath
 	var err error
 
 	// Check whether the user is requesting the directory from the root path.
@@ -2138,9 +2139,9 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 
 	str := ps.ByName("siapath")
 	if str == "" || str == "/" {
-		siaPath = modules.RootSiaPath()
+		siaPath = skymodules.RootSiaPath()
 	} else {
-		siaPath, err = modules.NewSiaPath(str)
+		siaPath, err = skymodules.NewSiaPath(str)
 	}
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -2169,9 +2170,9 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 		}
 	}
 
-	var files []modules.FileInfo
+	var files []skymodules.FileInfo
 	var mu sync.Mutex
-	err = api.renter.FileList(siaPath, false, true, func(fi modules.FileInfo) {
+	err = api.renter.FileList(siaPath, false, true, func(fi skymodules.FileInfo) {
 		mu.Lock()
 		files = append(files, fi)
 		mu.Unlock()
@@ -2206,7 +2207,7 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 	// Parse mode
-	mode := os.FileMode(modules.DefaultDirPerm)
+	mode := os.FileMode(skymodules.DefaultDirPerm)
 	if m := req.FormValue("mode"); m != "" {
 		mode64, err := strconv.ParseUint(m, 10, 32)
 		if err != nil {
@@ -2215,7 +2216,7 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		}
 		mode = os.FileMode(mode64)
 	}
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err := skymodules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -2256,7 +2257,7 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 	if action == "rename" {
-		newSiaPath, err := modules.NewSiaPath(req.FormValue("newsiapath"))
+		newSiaPath, err := skymodules.NewSiaPath(req.FormValue("newsiapath"))
 		if err != nil {
 			WriteError(w, Error{"failed to parse newsiapath: " + err.Error()}, http.StatusBadRequest)
 			return

@@ -1,6 +1,6 @@
 package siatest
 
-import "gitlab.com/skynetlabs/skyd/types"
+import "gitlab.com/NebulousLabs/Sia/types"
 
 // BlockHeight returns the node's consensus modules's synced block height.
 func (tn *TestNode) BlockHeight() (types.BlockHeight, error) {

@@ -5,10 +5,10 @@ import (
 	"net/url"
 	"strconv"
 
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // HostParam is a parameter in the host's settings that can be changed via the

@@ -11,12 +11,13 @@ import (
 	"gitlab.com/NebulousLabs/log"
 	"gitlab.com/NebulousLabs/ratelimit"
 
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
 
 type stubHostDB struct{}
@@ -236,7 +237,7 @@ func TestHostLockTimeout(t *testing.T) {
 	// unlock, allowing the other session to acquire the lock. When it does, it
 	// should see the modified contract.
 	errCh := make(chan error)
-	var lockedContract modules.RenterContract
+	var lockedContract skymodules.RenterContract
 	go func() {
 		// NOTE: the ContractSet uses a local mutex to serialize RPCs, so this
 		// test requires a separate ContractSet.

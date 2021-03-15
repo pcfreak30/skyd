@@ -12,15 +12,16 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem/siafile"
 	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 // TestRenterSpendingReporting checks the accuracy for the reported
@@ -593,7 +594,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
-			err = r.RenterRenamePost(sp, modules.RandomSiaPath(), false)
+			err = r.RenterRenamePost(sp, skymodules.RandomSiaPath(), false)
 			if isErr(err) {
 				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error renaming file", threadName)))
 				return
@@ -702,7 +703,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
 			// Make sure that dir isn't the root.
-			if dir.Equals(modules.RootSiaPath()) {
+			if dir.Equals(skymodules.RootSiaPath()) {
 				continue
 			}
 			if fastrand.Intn(2) == 0 {
@@ -806,7 +807,7 @@ func TestUploadStreamFailAndRepair(t *testing.T) {
 
 	// Use upload streaming to upload a file. This should fail in the middle.
 	data := fastrand.Bytes(int(10 * modules.SectorSize))
-	sp := modules.RandomSiaPath()
+	sp := skymodules.RandomSiaPath()
 	deps.Fail()
 	err = renter.RenterUploadStreamPost(bytes.NewReader(data), sp, 1, 1, false)
 	deps.Disable()

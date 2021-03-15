@@ -5,10 +5,9 @@ import (
 	"net/url"
 	"strconv"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/errors"
-
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/node/api"
 )
 
 var (

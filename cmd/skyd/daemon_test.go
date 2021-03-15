@@ -24,7 +24,7 @@ func TestUnitProcessNetAddr(t *testing.T) {
 // TestUnitProcessModules tests that processModules correctly processes modules
 // passed to the -M / --modules flag.
 func TestUnitProcessModules(t *testing.T) {
-	// Test valid modules.
+	// Test valid skymodules.
 	testVals := []struct {
 		in  string
 		out string
@@ -72,7 +72,7 @@ func TestUnitProcessModules(t *testing.T) {
 		}
 	}
 
-	// Test invalid modules.
+	// Test invalid skymodules.
 	invalidModules := []string{"abdfijklnopqsuvxyz", "cghmrtwez", "cz", "z", "cc", "ccz", "ccm", "cmm", "ccmm"}
 	for _, invalidModule := range invalidModules {
 		_, err := processModules(invalidModule)

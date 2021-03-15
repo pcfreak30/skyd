@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/persist"
+	siaPersist "gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/gateway"
-	"gitlab.com/skynetlabs/skyd/persist"
-	siaPersist "gitlab.com/skynetlabs/skyd/persist"
 )
 
 const numTestingGateways = 3

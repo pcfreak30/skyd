@@ -3,7 +3,7 @@ package client
 import (
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestEscapeSiaPath probes the escapeSiaPath function
@@ -40,9 +40,9 @@ func TestEscapeSiaPath(t *testing.T) {
 		{"", ""},
 	}
 	for _, test := range tests {
-		var siaPath modules.SiaPath
+		var siaPath skymodules.SiaPath
 		if test.in == "" {
-			siaPath = modules.RootSiaPath()
+			siaPath = skymodules.RootSiaPath()
 		} else {
 			err := siaPath.LoadString(test.in)
 			if err != nil {

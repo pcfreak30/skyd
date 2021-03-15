@@ -15,26 +15,27 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/crypto"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter"
-	"gitlab.com/skynetlabs/skyd/modules/renter/skynetportals"
 	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetportals"
 )
 
 // The SkynetPerformanceStats are stateful and tracked globally, bound by a
 // mutex.
 var (
-	skynetPerformanceStats   *modules.SkynetPerformanceStats
+	skynetPerformanceStats   *skymodules.SkynetPerformanceStats
 	skynetPerformanceStatsMu sync.Mutex
 )
 
 // Initialize the global performance tracking.
 func init() {
-	skynetPerformanceStats = modules.NewSkynetPerformanceStats()
+	skynetPerformanceStats = skymodules.NewSkynetPerformanceStats()
 }
 
 const (
@@ -97,14 +98,14 @@ type (
 	// SkynetPortalsGET contains the information queried for the /skynet/portals
 	// GET endpoint.
 	SkynetPortalsGET struct {
-		Portals []modules.SkynetPortal `json:"portals"`
+		Portals []skymodules.SkynetPortal `json:"portals"`
 	}
 
 	// SkynetPortalsPOST contains the information needed for the /skynet/portals
 	// POST endpoint to be called.
 	SkynetPortalsPOST struct {
-		Add    []modules.SkynetPortal `json:"add"`
-		Remove []modules.NetAddress   `json:"remove"`
+		Add    []skymodules.SkynetPortal `json:"add"`
+		Remove []modules.NetAddress      `json:"remove"`
 	}
 
 	// SkynetRestorePOST is the response that the api returns after the
@@ -116,11 +117,11 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		PerformanceStats modules.SkynetPerformanceStats `json:"performancestats"`
+		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
 
-		Uptime      int64               `json:"uptime"`
-		UploadStats modules.SkynetStats `json:"uploadstats"`
-		VersionInfo SkynetVersion       `json:"versioninfo"`
+		Uptime      int64                  `json:"uptime"`
+		UploadStats skymodules.SkynetStats `json:"uploadstats"`
+		VersionInfo SkynetVersion          `json:"versioninfo"`
 	}
 
 	// SkynetVersion contains version information
@@ -162,7 +163,7 @@ type (
 
 	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
-	archiveFunc func(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error
+	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata) error
 )
 
 // skynetBaseSectorHandlerGET accepts a skylink as input and will return the
@@ -323,7 +324,7 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 			}
 		} else {
 			// Convert Skylink
-			var skylink modules.Skylink
+			var skylink skymodules.Skylink
 			err := skylink.LoadString(addStr)
 			if err != nil {
 				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
@@ -345,7 +346,7 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 			}
 		} else {
 			// Convert Skylink
-			var skylink modules.Skylink
+			var skylink skymodules.Skylink
 			err := skylink.LoadString(removeStr)
 			if err != nil {
 				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
@@ -589,13 +590,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Parse the 'format' query string parameter.
-	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
+	format := skymodules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
 	switch format {
-	case modules.SkyfileFormatNotSpecified:
-	case modules.SkyfileFormatConcat:
-	case modules.SkyfileFormatTar:
-	case modules.SkyfileFormatTarGz:
-	case modules.SkyfileFormatZip:
+	case skymodules.SkyfileFormatNotSpecified:
+	case skymodules.SkyfileFormatConcat:
+	case skymodules.SkyfileFormatTar:
+	case skymodules.SkyfileFormatTarGz:
+	case skymodules.SkyfileFormatZip:
 	default:
 		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar', 'targz' and 'zip'"}, http.StatusBadRequest)
 		return
@@ -679,7 +680,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)
 		return
 	}
-	if metadata.DefaultPath != "" && metadata.DisableDefaultPath && format == modules.SkyfileFormatNotSpecified {
+	if metadata.DefaultPath != "" && metadata.DisableDefaultPath && format == skymodules.SkyfileFormatNotSpecified {
 		WriteError(w, Error{"invalid defaultpath state - both defaultpath and disabledefaultpath are set, please specify a format"}, http.StatusBadRequest)
 		return
 	}
@@ -689,13 +690,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			// If `defaultpath` and `disabledefaultpath` are not set and the
 			// skyfile has a single subfile we automatically default to it.
 			for filename := range metadata.Subfiles {
-				defaultPath = modules.EnsurePrefix(filename, "/")
+				defaultPath = skymodules.EnsurePrefix(filename, "/")
 				break
 			}
 		} else {
-			prefixedDefaultSkynetPath := modules.EnsurePrefix(DefaultSkynetDefaultPath, "/")
+			prefixedDefaultSkynetPath := skymodules.EnsurePrefix(DefaultSkynetDefaultPath, "/")
 			for filename := range metadata.Subfiles {
-				if modules.EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
+				if skymodules.EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
 					defaultPath = prefixedDefaultSkynetPath
 					break
 				}
@@ -712,7 +713,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// We only use the default path when the user requests the root path because
 	// we want to enable people to access individual subfile without forcing
 	// them to download the entire skyfile.
-	if path == "/" && defaultPath != "" && format == modules.SkyfileFormatNotSpecified {
+	if path == "/" && defaultPath != "" && format == skymodules.SkyfileFormatNotSpecified {
 		if strings.Count(defaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", defaultPath)}, http.StatusBadRequest)
 			return
@@ -775,8 +776,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// If we are serving more than one file, and the format is not
 	// specified, default to downloading it as a zip archive.
-	if !isSubfile && metadata.IsDirectory() && format == modules.SkyfileFormatNotSpecified {
-		format = modules.SkyfileFormatZip
+	if !isSubfile && metadata.IsDirectory() && format == skymodules.SkyfileFormatNotSpecified {
+		format = skymodules.SkyfileFormatZip
 	}
 
 	// Encode the metadata
@@ -852,7 +853,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.
-	if format == modules.SkyfileFormatTar {
+	if format == skymodules.SkyfileFormatTar {
 		w.Header().Set("Content-Type", "application/x-tar")
 		err = serveArchive(w, streamer, metadata, serveTar)
 		if err != nil {
@@ -860,7 +861,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 		return
 	}
-	if format == modules.SkyfileFormatTarGz {
+	if format == skymodules.SkyfileFormatTarGz {
 		w.Header().Set("Content-Type", "application/gzip")
 		gzw := gzip.NewWriter(w)
 		err = serveArchive(gzw, streamer, metadata, serveTar)
@@ -870,7 +871,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 		return
 	}
-	if format == modules.SkyfileFormatZip {
+	if format == skymodules.SkyfileFormatZip {
 		w.Header().Set("Content-Type", "application/zip")
 		err = serveArchive(w, streamer, metadata, serveZip)
 		if err != nil {
@@ -900,7 +901,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	strLink := ps.ByName("skylink")
-	var skylink modules.Skylink
+	var skylink skymodules.Skylink
 	err = skylink.LoadString(strLink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
@@ -919,12 +920,12 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	// Parse out the intended siapath.
-	var siaPath modules.SiaPath
+	var siaPath skymodules.SiaPath
 	siaPathStr := queryForm.Get("siapath")
 	if root {
-		siaPath, err = modules.NewSiaPath(siaPathStr)
+		siaPath, err = skymodules.NewSiaPath(siaPathStr)
 	} else {
-		siaPath, err = modules.SkynetFolder.Join(siaPathStr)
+		siaPath, err = skymodules.SkynetFolder.Join(siaPathStr)
 	}
 	if err != nil {
 		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
@@ -996,7 +997,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	// Create the upload parameters. Notably, the fanout redundancy, the file
 	// metadata and the filename are not included. Changing those would change
 	// the skylink, which is not the goal.
-	lup := modules.SkyfileUploadParameters{
+	lup := skymodules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
 		Force:               force,
 		BaseChunkRedundancy: redundancy,
@@ -1035,7 +1036,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// build the upload parameters
-	sup := modules.SkyfileUploadParameters{
+	sup := skymodules.SkyfileUploadParameters{
 		BaseChunkRedundancy: params.baseChunkRedundancy,
 		DryRun:              params.dryRun,
 		Force:               params.force,
@@ -1056,11 +1057,11 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// set the reader
-	var reader modules.SkyfileUploadReader
+	var reader skymodules.SkyfileUploadReader
 	if isMultipartRequest(headers.mediaType) {
-		reader, err = modules.NewSkyfileMultipartReaderFromRequest(req, sup)
+		reader, err = skymodules.NewSkyfileMultipartReaderFromRequest(req, sup)
 	} else {
-		reader = modules.NewSkyfileReader(req.Body, sup)
+		reader = skymodules.NewSkyfileReader(req.Body, sup)
 	}
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("unable to create multipart reader: %v", err)}, http.StatusBadRequest)
@@ -1141,7 +1142,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// There is a convert path.
-	convertPath, err := modules.NewSiaPath(params.convertPath)
+	convertPath, err := skymodules.NewSiaPath(params.convertPath)
 	if err != nil {
 		WriteError(w, Error{"invalid convertpath provided: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -1181,16 +1182,16 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynet, e.g. number of files uploaded, total size, etc.
 func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Define the SkynetStats
-	var stats modules.SkynetStats
+	var stats skymodules.SkynetStats
 
 	// Pull the skynet stats from the root directory
-	dis, err := api.renter.DirList(modules.RootSiaPath())
+	dis, err := api.renter.DirList(skymodules.RootSiaPath())
 	if err == nil {
 		// If there is an error we just return null stats
 		//
 		// Update the stats with the information from the root directory
 		di := dis[0]
-		stats = modules.SkynetStats{
+		stats = skymodules.SkynetStats{
 			NumFiles:  int(di.AggregateSkynetFiles),
 			TotalSize: di.AggregateSkynetSize,
 		}

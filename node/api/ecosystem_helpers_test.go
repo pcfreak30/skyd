@@ -17,8 +17,9 @@ import (
 	"net/url"
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // addStorageToAllHosts adds a storage folder with a bunch of storage to each
@@ -60,7 +61,7 @@ func announceAllHosts(sts []*serverTester) error {
 		}
 
 		// Fetch the host net address.
-		var hg HostGET
+		var hg api.HostGET
 		err = st.getAPI("/host", &hg)
 		if err != nil {
 			return err
@@ -139,7 +140,7 @@ func announceAllHosts(sts []*serverTester) error {
 // synchronized.
 func fullyConnectNodes(sts []*serverTester) error {
 	for i, sta := range sts {
-		var gg GatewayGET
+		var gg api.GatewayGET
 		err := sta.getAPI("/gateway", &gg)
 		if err != nil {
 			return err
@@ -161,7 +162,7 @@ func fullyConnectNodes(sts []*serverTester) error {
 				// Check that the gateways are connected.
 				bToA := false
 				aToB := false
-				var ggb GatewayGET
+				var ggb api.GatewayGET
 				err = stb.getAPI("/gateway", &ggb)
 				if err != nil {
 					return err
@@ -266,7 +267,7 @@ func synchronizationCheck(sts []*serverTester) (types.BlockID, error) {
 		}
 	}
 
-	var cg ConsensusGET
+	var cg api.ConsensusGET
 	err := sts[0].getAPI("/consensus", &cg)
 	if err != nil {
 		return types.BlockID{}, err
@@ -296,7 +297,7 @@ func synchronizationCheck(sts []*serverTester) (types.BlockID, error) {
 // waitForBlock will block until the provided chain tip is the most recent
 // block in the provided testing node.
 func waitForBlock(chainTip types.BlockID, st *serverTester) error {
-	var cg ConsensusGET
+	var cg api.ConsensusGET
 	success := false
 	for j := 0; j < 100; j++ {
 		err := st.getAPI("/consensus", &cg)

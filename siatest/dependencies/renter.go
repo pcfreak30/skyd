@@ -3,7 +3,7 @@ package dependencies
 import (
 	"sync"
 
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // DependencyTimeoutProjectDownloadByRoot immediately times out projects that

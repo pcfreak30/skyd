@@ -7,8 +7,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (

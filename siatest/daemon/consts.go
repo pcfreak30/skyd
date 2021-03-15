@@ -3,7 +3,7 @@ package daemon
 import (
 	"os"
 
-	"gitlab.com/skynetlabs/skyd/persist"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 )
 

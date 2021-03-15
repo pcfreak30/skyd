@@ -8,10 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 const scanHistoryLen = 30
@@ -333,7 +334,7 @@ func hostdbfiltermodecmd() {
 // hostdbsetfiltermodecmd is the handler for the command `skyc hostdb
 // setfiltermode`. sets the hostdb filtermode (whitelist, blacklist, disable)
 func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
-	var fm modules.FilterMode
+	var fm skymodules.FilterMode
 	var filterModeStr string
 	var host types.SiaPublicKey
 	var hosts []types.SiaPublicKey

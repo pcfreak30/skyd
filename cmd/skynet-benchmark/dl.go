@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/montanaflynn/stats"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -67,7 +67,7 @@ func dl() {
 	threadssCount := map[string]uint64{threads1: 1, threads4: 4, threads16: 16, threads64: 64}
 
 	// Establish the directories that we will be using for testing.
-	dirBasePath, err := modules.NewSiaPath(testSiaDirDL)
+	dirBasePath, err := skymodules.NewSiaPath(testSiaDirDL)
 	if err != nil {
 		fmt.Println("Could not create siapath for testing directory:", err)
 		return
@@ -87,7 +87,7 @@ func dl() {
 	fmt.Println("Beginning uploading test files.")
 
 	// Keep track of the sia paths to avoid having to recreate them later.
-	paths := make(map[string]modules.SiaPath)
+	paths := make(map[string]skymodules.SiaPath)
 
 	// Iterate over every size category and thread count we're interested in and
 	// upload the file set to that corresponding sia dir. We re-upload all files
@@ -136,7 +136,7 @@ func dl() {
 
 // downloadFileSet will download all of the files of the expected fetch size in
 // a dir.
-func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.Float64Data, error) {
+func downloadFileSet(dir skymodules.SiaPath, fileSize int, threads uint64) (stats.Float64Data, error) {
 	now := time.Now()
 
 	// Create a list of timings
@@ -268,7 +268,7 @@ func getPercentilesString(timings stats.Float64Data) string {
 
 // getMissingFiles will fetch a map of all the files that are missing or don't
 // have skylinks
-func getMissingFiles(dir modules.SiaPath, expectedFileSize uint64, expectedFetchSize uint64) (map[int]struct{}, error) {
+func getMissingFiles(dir skymodules.SiaPath, expectedFileSize uint64, expectedFetchSize uint64) (map[int]struct{}, error) {
 	// Determine whether the dirs already exist and have files in them for
 	// downloading.
 	rdg, err := c.RenterDirRootGet(dir)
@@ -292,7 +292,7 @@ func getMissingFiles(dir modules.SiaPath, expectedFileSize uint64, expectedFetch
 		if len(file.Skylinks) != 1 {
 			continue
 		}
-		var sl modules.Skylink
+		var sl skymodules.Skylink
 		err := sl.LoadString(file.Skylinks[0])
 		if err != nil {
 			return nil, errors.AddContext(err, "error parsing skylink in testing dir")
@@ -318,7 +318,7 @@ func getMissingFiles(dir modules.SiaPath, expectedFileSize uint64, expectedFetch
 
 // uploadFileSet will upload a set of files for testing, skipping over any files
 // that already exist.
-func uploadFileSet(dir modules.SiaPath, fileSize uint64, expectedFetchSize uint64) error {
+func uploadFileSet(dir skymodules.SiaPath, fileSize uint64, expectedFetchSize uint64) error {
 	missingFiles, err := getMissingFiles(dir, fileSize, expectedFetchSize)
 	if err != nil {
 		return errors.AddContext(err, "error assembling set of missing files")
@@ -336,10 +336,10 @@ func uploadFileSet(dir modules.SiaPath, fileSize uint64, expectedFetchSize uint6
 		}
 		buf := bytes.NewReader(fastrand.Bytes(int(fileSize)))
 		// Fill out the upload parameters.
-		sup := modules.SkyfileUploadParameters{
+		sup := skymodules.SkyfileUploadParameters{
 			SiaPath:  sp,
 			Filename: strconv.Itoa(i) + ".rand",
-			Mode:     modules.DefaultFilePerm,
+			Mode:     skymodules.DefaultFilePerm,
 
 			Root:  true,
 			Force: true, // This will overwrite other files in the dir.

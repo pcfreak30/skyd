@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/modules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (
@@ -60,7 +60,7 @@ func accountingcmd() {
 
 // writeAccountingCSV is a helper to write the accounting information to a csv
 // file.
-func writeAccountingCSV(ais []modules.AccountingInfo, w io.Writer) error {
+func writeAccountingCSV(ais []skymodules.AccountingInfo, w io.Writer) error {
 	// Create csv writer
 	csvW := csv.NewWriter(w)
 

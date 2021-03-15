@@ -7,13 +7,14 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/filesystem"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 // TestSkynetBackupAndRestore verifies the back up and restoration functionality
@@ -289,7 +290,7 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		// Portal 1 converts the siafile to a skyfile
-		sup := modules.SkyfileUploadParameters{
+		sup := skymodules.SkyfileUploadParameters{
 			SiaPath:    rf.SiaPath(),
 			SkykeyName: skykeyName,
 		}
@@ -337,7 +338,7 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, portal1, portal2 *siatest.Tes
 	}
 
 	// Have Portal 1 delete the file
-	skySiaPath, err := modules.SkynetFolder.Join(siaPath)
+	skySiaPath, err := skymodules.SkynetFolder.Join(siaPath)
 	if err != nil {
 		return err
 	}
@@ -345,7 +346,7 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, portal1, portal2 *siatest.Tes
 	if err != nil {
 		return err
 	}
-	skySiaPathExtended, err := skySiaPath.Join(modules.ExtendedSuffix)
+	skySiaPathExtended, err := skySiaPath.Join(skymodules.ExtendedSuffix)
 	if err != nil {
 		return err
 	}

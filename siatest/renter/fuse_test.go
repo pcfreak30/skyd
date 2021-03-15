@@ -15,11 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -27,8 +28,8 @@ import (
 // siaPathToFusePath will return the location that a file should exist on disk
 // for a mounted fuse point. The full calculation requires knowing the siapath,
 // the fuse root, and the mountpoint on distk.
-func siaPathToFusePath(sp modules.SiaPath, fuseRoot modules.SiaPath, mountpoint string) (string, error) {
-	rebased, err := sp.Rebase(modules.RootSiaPath(), fuseRoot)
+func siaPathToFusePath(sp skymodules.SiaPath, fuseRoot skymodules.SiaPath, mountpoint string) (string, error) {
+	rebased, err := sp.Rebase(skymodules.RootSiaPath(), fuseRoot)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to rebase the siapath")
 	}
@@ -71,7 +72,7 @@ func TestFuse(t *testing.T) {
 	// NOTE: Can't test 'AllowOther' in this test, if 'AllowOther' is set to
 	// true, Linux will complain unless the user has changed the default
 	// configuration for fuse established in /etc/fuse.conf.
-	defaultOpts := modules.MountOptions{
+	defaultOpts := skymodules.MountOptions{
 		ReadOnly:   true,
 		AllowOther: false,
 	}
@@ -82,7 +83,7 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), defaultOpts)
+	err = r.RenterFuseMount(mountpoint1, skymodules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +160,7 @@ func TestFuse(t *testing.T) {
 	// Mount fuse to the empty filesystem again, this time upload a file while
 	// the system is mounted, then try to read the filesystem from the
 	// directory.
-	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), defaultOpts)
+	err = r.RenterFuseMount(mountpoint1, skymodules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +201,7 @@ func TestFuse(t *testing.T) {
 
 	// Read that file from the fuse directory.
 	path := remoteFile.SiaPath()
-	fusePath, err := siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
+	fusePath, err := siaPathToFusePath(path, skymodules.RootSiaPath(), mountpoint1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +370,7 @@ func TestFuse(t *testing.T) {
 
 	// See if we can read the new file in fuse.
 	path = remotefd1f1.SiaPath()
-	fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
+	fusePath, err = siaPathToFusePath(path, skymodules.RootSiaPath(), mountpoint1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +436,7 @@ func TestFuse(t *testing.T) {
 
 	// See if we can read the new file in fuse.
 	path = remotefd1f2.SiaPath()
-	fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
+	fusePath, err = siaPathToFusePath(path, skymodules.RootSiaPath(), mountpoint1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,7 +519,7 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	localfd2f1Path, err := siaPathToFusePath(remotefd2f1.SiaPath(), modules.RootSiaPath(), mountpoint1)
+	localfd2f1Path, err := siaPathToFusePath(remotefd2f1.SiaPath(), skymodules.RootSiaPath(), mountpoint1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +588,7 @@ func TestFuse(t *testing.T) {
 	// Create a directory with non-standard permissions.
 	customDirPath := filepath.Join(r.FilesDir().Path(), "custom-dir-1")
 	customDirPerm := defaultDirMode // ^ 040
-	customDirSiaPath, err := modules.RootSiaPath().Join("custom-dir-1")
+	customDirSiaPath, err := skymodules.RootSiaPath().Join("custom-dir-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -631,11 +632,11 @@ func TestFuse(t *testing.T) {
 	}
 	// Open the new custom dir and file in fuse and ensure that the modes are
 	// set correctly.
-	customDirFusePath, err := siaPathToFusePath(customDirSiaPath, modules.RootSiaPath(), mountpoint1)
+	customDirFusePath, err := siaPathToFusePath(customDirSiaPath, skymodules.RootSiaPath(), mountpoint1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	customFileFusePath, err := siaPathToFusePath(customFileSiaPath, modules.RootSiaPath(), mountpoint1)
+	customFileFusePath, err := siaPathToFusePath(customFileSiaPath, skymodules.RootSiaPath(), mountpoint1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -747,11 +748,11 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.RenterFuseMount(inodeMount, modules.RootSiaPath(), defaultOpts)
+	err = r.RenterFuseMount(inodeMount, skymodules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	inodeFile1Path, err := siaPathToFusePath(remoteFile.SiaPath(), modules.RootSiaPath(), inodeMount)
+	inodeFile1Path, err := siaPathToFusePath(remoteFile.SiaPath(), skymodules.RootSiaPath(), inodeMount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -768,7 +769,7 @@ func TestFuse(t *testing.T) {
 		t.Fatal("unable to get system stat info on inode file 1")
 	}
 	inodeFile1aIno := infoStat.Ino
-	inodeDir1Path, err := siaPathToFusePath(remotefd1.SiaPath(), modules.RootSiaPath(), inodeMount)
+	inodeDir1Path, err := siaPathToFusePath(remotefd1.SiaPath(), skymodules.RootSiaPath(), inodeMount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -821,7 +822,7 @@ func TestFuse(t *testing.T) {
 			// Choose a home folder. Use Fuzz(). If Fuzz() is 1, use fd2,
 			// otherwise use fd1.
 			var home *siatest.LocalDir
-			var homeSiaPath modules.SiaPath
+			var homeSiaPath skymodules.SiaPath
 			if siatest.Fuzz() < 1 {
 				home = localfd1
 				homeSiaPath = remotefd1.SiaPath()
@@ -906,7 +907,7 @@ func TestFuse(t *testing.T) {
 			mountIters := 25
 			for i := 0; i < mountIters; i++ {
 				var err error
-				var siaPathToMount modules.SiaPath
+				var siaPathToMount skymodules.SiaPath
 				if siatest.Fuzz() < 1 {
 					siaPathToMount = homeSiaPath
 				} else {
@@ -951,7 +952,7 @@ func TestFuse(t *testing.T) {
 			// Phase three. Mount the root, and then repeatedly perform actions
 			// on the files and folders in root to verify the concurrency safety
 			// of the ro filesystem.
-			err = r.RenterFuseMount(threadMount, modules.RootSiaPath(), defaultOpts)
+			err = r.RenterFuseMount(threadMount, skymodules.RootSiaPath(), defaultOpts)
 			if err != nil {
 				err = errors.AddContext(err, "unable to mount thread mount")
 				errMu.Lock()
@@ -963,7 +964,7 @@ func TestFuse(t *testing.T) {
 			readIters := 20
 			for i := 0; i < readIters; i++ {
 				path := remoteFile.SiaPath()
-				fusePath, err := siaPathToFusePath(path, modules.RootSiaPath(), threadMount)
+				fusePath, err := siaPathToFusePath(path, skymodules.RootSiaPath(), threadMount)
 				if err != nil {
 					err = errors.AddContext(err, "unable to convert remote file to a fuse path")
 					errMu.Lock()
@@ -1054,13 +1055,13 @@ func TestFuse(t *testing.T) {
 			// Leave either the home path, the thread remote dir, or the root
 			// mounted for the user to explore. Do this action before calling
 			// 'wg.Wait()' on the final phase.
-			var siaPathToMount modules.SiaPath
+			var siaPathToMount skymodules.SiaPath
 			if siatest.Fuzz() == -1 {
 				siaPathToMount = homeSiaPath
 			} else if siatest.Fuzz() == 0 {
 				siaPathToMount = threadRemoteDir.SiaPath()
 			} else {
-				siaPathToMount = modules.RootSiaPath()
+				siaPathToMount = skymodules.RootSiaPath()
 			}
 			err = r.RenterFuseMount(threadMount, siaPathToMount, defaultOpts)
 			if err != nil {

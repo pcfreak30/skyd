@@ -9,19 +9,20 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/sync"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/modules/renter/contractor"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/sync"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
 )
 
 // test is a helper struct for running subtests when tests can use the same test
@@ -103,8 +104,8 @@ func testContractFunding(t *testing.T, tg *siatest.TestGroup) {
 	// Get Contract Price from host and determine contract funding based on the
 	// transaction fees
 	contractPrice := hg.ExternalSettings.ContractPrice
-	tpoolMaxFee := contractPrice.Div64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
-	txnFee := tpoolMaxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
+	tpoolMaxFee := contractPrice.Div64(skymodules.EstimatedFileContractRevisionAndProofTransactionSetSize)
+	txnFee := tpoolMaxFee.Mul64(skymodules.EstimatedFileContractTransactionSetSize)
 	contractFunding := contractPrice.Add(txnFee).Mul64(contractor.ContractFeeFundingMulFactor)
 
 	// Sanity checks on funding
@@ -685,7 +686,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 	}
 
 	// Delete the contracts.
-	if err := os.RemoveAll(filepath.Join(r.Dir, modules.RenterDir, "contracts")); err != nil {
+	if err := os.RemoveAll(filepath.Join(r.Dir, skymodules.RenterDir, "contracts")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -846,7 +847,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	}
 
 	// Delete the contracts.
-	if err := os.RemoveAll(filepath.Join(r.Dir, modules.RenterDir, "contracts")); err != nil {
+	if err := os.RemoveAll(filepath.Join(r.Dir, skymodules.RenterDir, "contracts")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1030,13 +1031,13 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 
 	// Copy the siafile to the new location.
-	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), lf.FileName()+modules.SiaFileExtension)
+	oldPath := filepath.Join(r.Dir, skymodules.RenterDir, skymodules.FileSystemRoot, skymodules.UserFolder.String(), lf.FileName()+skymodules.SiaFileExtension)
 	siaFile, err := ioutil.ReadFile(oldPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newRenterDir := filepath.Join(testDir, "renter")
-	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), lf.FileName()+modules.SiaFileExtension)
+	newPath := filepath.Join(newRenterDir, skymodules.RenterDir, skymodules.FileSystemRoot, skymodules.UserFolder.String(), lf.FileName()+skymodules.SiaFileExtension)
 	if err := os.MkdirAll(filepath.Dir(newPath), persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
@@ -1655,7 +1656,7 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 	// Save the window end height, and a copy of the contract status to test
 	// contract archival in the watchdog.
 	var windowEnd types.BlockHeight
-	var contractStatus modules.ContractWatchStatus
+	var contractStatus skymodules.ContractWatchStatus
 
 	// Let the watchdog send transactions now.
 	toggleDep.DisableWatchdogBroadcast(false)
@@ -2178,7 +2179,7 @@ func TestWatchdogExtraDependencyRegression(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fee := feeGet.Maximum.Mul64(modules.EstimatedFileContractTransactionSetSize)
+	fee := feeGet.Maximum.Mul64(skymodules.EstimatedFileContractTransactionSetSize)
 	_, err = renter.WalletSiacoinsPost(balance.Sub(fee), addressGet.Address, false)
 	if err != nil {
 		t.Fatal(err)

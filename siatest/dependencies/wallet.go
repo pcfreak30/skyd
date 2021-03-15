@@ -1,8 +1,6 @@
 package dependencies
 
-import (
-	"gitlab.com/skynetlabs/skyd/modules"
-)
+import "gitlab.com/NebulousLabs/Sia/modules"
 
 // DependencyUnsyncedConsensus makes the consensus set appear unsynced
 type DependencyUnsyncedConsensus struct {

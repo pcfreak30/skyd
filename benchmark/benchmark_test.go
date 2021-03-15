@@ -14,12 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/persist"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // Config
@@ -248,7 +249,7 @@ func check(e error) {
 
 // checkMaxHealthReached checks sia file health and returns nil when 100%
 // health is reached
-func checkMaxHealthReached(c *client.Client, siaPath modules.SiaPath) error {
+func checkMaxHealthReached(c *client.Client, siaPath skymodules.SiaPath) error {
 	f, err := c.RenterFileGet(siaPath)
 	if err != nil {
 		return err
@@ -339,12 +340,12 @@ func initDirs(t *testing.T) {
 	}
 
 	// Create dirs
-	err := os.MkdirAll(upDir, modules.DefaultDirPerm)
+	err := os.MkdirAll(upDir, skymodules.DefaultDirPerm)
 	check(err)
-	err = os.MkdirAll(downDir, modules.DefaultDirPerm)
+	err = os.MkdirAll(downDir, skymodules.DefaultDirPerm)
 	check(err)
 	if useTestGroup {
-		err = os.MkdirAll(testGroupDir, modules.DefaultDirPerm)
+		err = os.MkdirAll(testGroupDir, skymodules.DefaultDirPerm)
 		check(err)
 	}
 }
@@ -393,7 +394,7 @@ func setAllowance() {
 	check(err)
 	if !rg.Settings.Allowance.Active() {
 		log.Println("=== Setting default allowance")
-		err = c.RenterPostAllowance(modules.DefaultAllowance)
+		err = c.RenterPostAllowance(skymodules.DefaultAllowance)
 		check(err)
 	}
 }
@@ -464,7 +465,7 @@ func threadedDownloadFiles(workerIndex int) {
 		// Use unique local filename because one file can be downloaded concurrently multiple times
 		localFilename := filename + fmt.Sprintf("_#%03d", downloadIndex)
 		localPath := filepath.Join(downDir, localFilename)
-		siaPath, err := modules.NewSiaPath(filepath.Join(siaDir, filename))
+		siaPath, err := skymodules.NewSiaPath(filepath.Join(siaDir, filename))
 		check(err)
 
 		start := time.Now()
@@ -493,7 +494,7 @@ func uploadFile(filename string) {
 	log.Printf("Uploading file: %s\n", filename)
 
 	// Upload file to Sia
-	siaPath, err := modules.NewSiaPath(filepath.Join(siaDir, filename))
+	siaPath, err := skymodules.NewSiaPath(filepath.Join(siaDir, filename))
 	check(err)
 	localPath := filepath.Join(upDir, filename)
 	err = c.RenterUploadDefaultPost(localPath, siaPath)

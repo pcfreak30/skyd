@@ -81,11 +81,11 @@ func versionCmd(*cobra.Command, []string) {
 	}
 }
 
-// modulesCmd is a cobra command that prints help info about modules.
+// modulesCmd is a cobra command that prints help info about skymodules.
 func modulesCmd(*cobra.Command, []string) {
-	fmt.Println(`Use the -M or --modules flag to only run specific modules. Modules are
+	fmt.Println(`Use the -M or --modules flag to only run specific skymodules. Modules are
 independent components of Sia. This flag should only be used by developers or
-people who want to reduce overhead from unused modules. Modules are specified by
+people who want to reduce overhead from unused skymodules. Modules are specified by
 their first letter. If the -M or --modules flag is not specified the default
 modules are run. The default modules are all modules except the miner and the explorer:
 	gateway, consensus set, transaction pool, wallet, renter, host, feemanager, accounting
@@ -101,7 +101,7 @@ Below is a list of all the modules available.
 Gateway (g):
 	The gateway maintains a peer to peer connection to the network and
 	enables other modules to perform RPC calls on peers.
-	The gateway is required by all other modules.
+	The gateway is required by all other skymodules.
 	Example:
 		siad -M g
 		siad -M gateway

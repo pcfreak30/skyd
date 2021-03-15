@@ -14,21 +14,17 @@ variables:
     ./node
     ./node/api
     ./node/api/server
-  package_host_pkgs: >-
-    ./modules/host
-    ./modules/host/contractmanager
-    ./modules/host/mdm
   package_renter_pkgs: >-
-    ./modules/renter
-    ./modules/renter/contractor
-    ./modules/renter/filesystem
-    ./modules/renter/filesystem/siafile
-    ./modules/renter/filesystem/siadir
-    ./modules/renter/hostdb
-    ./modules/renter/hostdb/hosttree
-    ./modules/renter/proto
-    ./modules/renter/skynetblocklist
-    ./modules/renter/skynetportals
+    ./skymodules/renter
+    ./skymodules/renter/contractor
+    ./skymodules/renter/filesystem
+    ./skymodules/renter/filesystem/siafile
+    ./skymodules/renter/filesystem/siadir
+    ./skymodules/renter/hostdb
+    ./skymodules/renter/hostdb/hosttree
+    ./skymodules/renter/proto
+    ./skymodules/renter/skynetblocklist
+    ./skymodules/renter/skynetportals
   package_pkgs: >-
     ./build
     ./cmd/sia-node-scanner
@@ -36,32 +32,14 @@ variables:
     ./cmd/skyd
     ./cmd/skynet-benchmark
     ./compatibility
-    ./crypto
-    ./modules
-    ./modules/accounting
-    ./modules/consensus
-    ./modules/explorer
-    ./modules/feemanager
-    ./modules/gateway
-    ./modules/miner
-    ./modules/wallet
-    ./modules/transactionpool
+    ./skymodules
+    ./skymodules/accounting
     ./profile
-    ./persist
-    ./sync
     ./skykey
-    ./types
   siatest_pkgs: >-
     ./siatest
     ./siatest/accounting
-    ./siatest/consensus
     ./siatest/daemon
-    ./siatest/feemanager
-    ./siatest/gateway
-    ./siatest/host
-    ./siatest/miner
-    ./siatest/transactionpool
-    ./siatest/wallet
   siatest_renter_pkgs: >-
     ./siatest/renter
   siatest_renter_sub_pkgs: >-
@@ -230,15 +208,6 @@ legacy-tests:
 #################
 # Package Tests
 #################
-package-host-tests:
-  <<: *default_test_params
-  cache:
-    key: package-cache
-    paths:
-      - .cache
-  script:
-    - make test-long run=. pkgs="$package_host_pkgs"
-
 package-renter-tests:
   <<: *default_test_params
   cache:
@@ -312,17 +281,7 @@ legacy-windows-tests-nightly:
 #################
 # Package Test
 #################
-package-host-tests-nightly:
-  <<: *default_nightly_params
-  script:
-    - make test-vlong run=. pkgs="$package_host_pkgs"
-
 # Windows execution
-package-host-windows-tests-nightly:
-  <<: *default_nightly_windows_params
-  script:
-    - make test-vlong run=. pkgs="$package_host_pkgs"
-
 package-renter-tests-nightly:
   <<: *default_nightly_params
   script:

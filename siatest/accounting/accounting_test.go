@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestAccounting probes the /accounting endpoint
@@ -77,7 +77,7 @@ func testAccounting(t *testing.T, np node.NodeParams) {
 	checkRenter := np.CreateRenter || np.Renter != nil
 
 	// Define check function
-	checkAccounting := func(actual, expected modules.AccountingInfo) {
+	checkAccounting := func(actual, expected skymodules.AccountingInfo) {
 		if !reflect.DeepEqual(actual, expected) {
 			t.Logf("Expected:\n%v", siatest.PrintJSON(expected))
 			t.Logf("Actual:\n%v", siatest.PrintJSON(actual))
@@ -106,20 +106,20 @@ func testAccounting(t *testing.T, np node.NodeParams) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wa := modules.WalletAccounting{
+	wa := skymodules.WalletAccounting{
 		ConfirmedSiacoinBalance: wg.ConfirmedSiacoinBalance,
 		ConfirmedSiafundBalance: wg.SiafundBalance,
 	}
 
 	// Get the Renter Information
-	var ra modules.RenterAccounting
+	var ra skymodules.RenterAccounting
 	if checkRenter {
 		rg, err := n.RenterGet()
 		if err != nil {
 			t.Fatal(err)
 		}
 		_, _, unspentUnallocated := rg.FinancialMetrics.SpendingBreakdown()
-		ra = modules.RenterAccounting{
+		ra = skymodules.RenterAccounting{
 			UnspentUnallocated: unspentUnallocated,
 			WithheldFunds:      rg.FinancialMetrics.WithheldFunds,
 		}
@@ -130,7 +130,7 @@ func testAccounting(t *testing.T, np node.NodeParams) {
 		t.Error("timestamp is 0")
 	}
 	// Check Accounting
-	expected := modules.AccountingInfo{
+	expected := skymodules.AccountingInfo{
 		Renter:    ra,
 		Wallet:    wa,
 		Timestamp: ag[0].Timestamp,

@@ -3,8 +3,8 @@ package dependencies
 import (
 	"sync"
 
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // DependencyCustomNebulousAddress will use a custom address for the Nebulous

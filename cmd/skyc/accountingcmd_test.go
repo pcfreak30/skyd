@@ -8,21 +8,21 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/modules"
-	"gitlab.com/skynetlabs/skyd/types"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // randomAcountingInfo is a helper that generates random accounting information
-func randomAcountingInfo(num int) []modules.AccountingInfo {
-	var ais []modules.AccountingInfo
+func randomAcountingInfo(num int) []skymodules.AccountingInfo {
+	var ais []skymodules.AccountingInfo
 	for i := 0; i < num; i++ {
-		ais = append(ais, modules.AccountingInfo{
-			Wallet: modules.WalletAccounting{
+		ais = append(ais, skymodules.AccountingInfo{
+			Wallet: skymodules.WalletAccounting{
 				ConfirmedSiacoinBalance: types.NewCurrency64(fastrand.Uint64n(1000)),
 				ConfirmedSiafundBalance: types.NewCurrency64(fastrand.Uint64n(1000)),
 			},
-			Renter: modules.RenterAccounting{
+			Renter: skymodules.RenterAccounting{
 				UnspentUnallocated: types.NewCurrency64(fastrand.Uint64n(1000)),
 				WithheldFunds:      types.NewCurrency64(fastrand.Uint64n(1000)),
 			},

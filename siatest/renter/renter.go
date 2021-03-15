@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/modules"
 	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // copyFile is a helper function to copy a file to a destination.
@@ -115,7 +115,7 @@ func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		// Wait to ensure download and stream have started
 		time.Sleep(sleep)
 		var err error
-		rf, err = r.Rename(rf, modules.RandomSiaPath())
+		rf, err = r.Rename(rf, skymodules.RandomSiaPath())
 		if err != nil {
 			t.Error(err)
 			return
