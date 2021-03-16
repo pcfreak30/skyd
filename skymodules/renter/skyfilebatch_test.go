@@ -10,13 +10,24 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
-// TestBatchAddFile probes the addFile method of the skylinkBatch
-func TestBatchAddFile(t *testing.T) {
+// TestSkyfileBatch probes the skyfile batch subsystem
+func TestSkyfileBatch(t *testing.T) {
+	t.Parallel()
+
+	// Short Tests
+	t.Run("ValidSUP", testvalidBatchSUP)
+
+	// Long Tests
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
 
+	t.Run("AddFile", testBatchAddFile)
+	t.Run("BatchManager", testBatchManager)
+}
+
+// testBatchAddFile probes the addFile method of the skylinkBatch
+func testBatchAddFile(t *testing.T) {
 	// Create renter and grab the batchManager
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
@@ -47,7 +58,7 @@ func TestBatchAddFile(t *testing.T) {
 	// than the batch time
 	initialBatch := bm.activeBatch
 	select {
-	case <-initialBatch.available:
+	case <-initialBatch.staticAvailable:
 		t.Fatal("resultChan closed before maxBatchTime")
 	case <-time.After(maxBatchTime * 2):
 	}
@@ -64,9 +75,12 @@ func TestBatchAddFile(t *testing.T) {
 	case <-time.After(maxBatchTime):
 	}
 
-	// Make sure the result chan is closed, if the resultChan is still open this
-	// will block and timeout the test suite.
-	<-resultChan
+	// Make sure the result chan is closed.
+	select {
+	case <-resultChan:
+	case <-time.After(time.Minute):
+		t.Fatal("resultChan still blocking")
+	}
 
 	// Since the uploads will fail in a unit test, the skylinkData should have an
 	// err and a null skylink
@@ -98,7 +112,7 @@ func TestBatchAddFile(t *testing.T) {
 	// The active batch on the batchManager should now be fresh. Check the
 	// resultChan of the active batch
 	select {
-	case <-bm.activeBatch.available:
+	case <-bm.activeBatch.staticAvailable:
 		t.Fatal("channel shouldn't be close")
 	default:
 	}
@@ -118,7 +132,7 @@ func TestBatchAddFile(t *testing.T) {
 		}()
 	}
 	select {
-	case <-batch.available:
+	case <-batch.staticAvailable:
 	case <-time.After(maxBatchTime):
 		t.Fatal("result chan should have closed before the maxBatchTime")
 	}
@@ -149,20 +163,15 @@ func TestBatchAddFile(t *testing.T) {
 	bm.mu.Lock()
 	defer bm.mu.Unlock()
 	select {
-	case <-bm.activeBatch.available:
+	case <-bm.activeBatch.staticAvailable:
 		t.Fatal("result chan should not have been closed before maxBatchTime")
 	case <-time.After(maxBatchTime):
 	}
 }
 
-// TestBatchManager tests the initialization of the batchManager and the
+// testBatchManager tests the initialization of the batchManager and the
 // blocking functionality.
-func TestBatchManager(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+func testBatchManager(t *testing.T) {
 	// Create renter
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
@@ -245,10 +254,8 @@ func TestBatchManager(t *testing.T) {
 	}
 }
 
-// TestBatch_validBatchSUP probes the validBatchSUP function
-func TestBatch_validBatchSUP(t *testing.T) {
-	t.Parallel()
-
+// testvalidBatchSUP probes the validBatchSUP function
+func testvalidBatchSUP(t *testing.T) {
 	// Start with a fully set SkyfileUploadParameters
 	sup := skymodules.SkyfileUploadParameters{
 		SiaPath:             skymodules.RandomSiaPath(),

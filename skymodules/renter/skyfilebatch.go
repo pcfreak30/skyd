@@ -32,6 +32,10 @@ var (
 	errFileTooLarge = fmt.Errorf("upload is too large for batching, max size is %v", maxBatchFileSize)
 
 	// maxBatchFileSize is the maximum size of a skyfile that will be batched
+	//
+	// NOTE: maxBatchFileSize should always be less than or equal to maxBatchSize
+	// to prevent a potential infinite loop where there is not space in the batch
+	// for the file but the file is a valid size.
 	maxBatchFileSize = modules.SectorSize / 2
 
 	// maxBatchSize is the maximum size of a batch of skyfile uploads
@@ -61,7 +65,7 @@ func newBatchUID() batchUID {
 
 type (
 	// skylinkBatchManager handles the batching of skyfile uploads. The batch
-	// manager manages one active batch at a time that  will execute when it
+	// manager manages one active batch at a time that will execute when it
 	// exceeds 2 MiB, i.e. half a sector size.  Files will be batched if they are
 	// under 2 MiB.  This makes code that handles edge cases nice and easy.
 	//
@@ -77,10 +81,6 @@ type (
 
 	// skylinkBatch contains the information about batching of skyfile uploads.
 	skylinkBatch struct {
-		// available is the channel used to signal that the upload is complete and the
-		// externSkylinkData is available to be accessed
-		available chan struct{}
-
 		// currentFiles are the files currently being batched
 		currentFiles map[batchUID]*skyFileObj
 
@@ -98,9 +98,15 @@ type (
 		// remainingMemory indicates the remaining memory available in the batch
 		remainingMemory uint64
 
+		// staticAvailable is the channel used to signal that the upload is complete
+		// and the externSkylinkData is staticAvailable to be accessed
+		staticAvailable chan struct{}
+
 		// staticBatchManager is the global batchManager
 		staticBatchManager *skylinkBatchManager
 
+		// err is common error for the skyfile batch. It is returned to all the
+		// individual batched file requests.
 		err error
 	}
 
@@ -146,6 +152,12 @@ func (r *Renter) newSkylinkBatchManager() {
 		return
 	}
 
+	// Sanity check consts
+	if maxBatchFileSize > maxBatchSize {
+		build.Critical("maxBatchFileSize cannot be larger than maxBatchSize")
+		return
+	}
+
 	// Initialize the batch manager and a batch
 	bm := &skylinkBatchManager{staticRenter: r}
 	bm.createNewBatch()
@@ -161,7 +173,7 @@ func (sbm *skylinkBatchManager) createNewBatch() {
 		currentFiles:       make(map[batchUID]*skyFileObj),
 		externSkylinkData:  make(map[batchUID]*skylinkData),
 		remainingMemory:    maxBatchSize,
-		available:          make(chan struct{}),
+		staticAvailable:    make(chan struct{}),
 	}
 }
 
@@ -238,7 +250,11 @@ func (sb *skylinkBatch) addFile(f *skyFileObj) (*skylinkData, chan struct{}) {
 		sb.staticBatchManager.createNewBatch()
 
 		// Upload current batch
-		go sb.threadedUploadData()
+		//
+		// Ignore error from Launch as that just indicates that the renter has
+		// shutdown, in which case threadedUploadData won't be called.
+		r := sb.staticBatchManager.staticRenter
+		_ = r.tg.Launch(sb.threadedUploadData)
 
 		// Add this file to the new batch
 		return sb.staticBatchManager.activeBatch.addFile(f)
@@ -249,7 +265,7 @@ func (sb *skylinkBatch) addFile(f *skyFileObj) (*skylinkData, chan struct{}) {
 		sb.initSkylinkBatch()
 	}
 
-	// Add to file to the batch
+	// Add the file to the batch
 	//
 	// Decrement the remaining memory
 	sb.remainingMemory -= f.size
@@ -262,7 +278,7 @@ func (sb *skylinkBatch) addFile(f *skyFileObj) (*skylinkData, chan struct{}) {
 	// Initialize the skylink data that will be returned
 	res := &skylinkData{}
 	sb.externSkylinkData[uid] = res
-	return res, sb.available
+	return res, sb.staticAvailable
 }
 
 // initSkylinkBatch is called the first time a file is added to the skylink
@@ -301,7 +317,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 	// Close the available chan at the end to signal the batch is complete. This
 	// will signal the original file upload callers that it is OK to look at the
 	// skylinkData.
-	defer close(sb.available)
+	defer close(sb.staticAvailable)
 
 	defer func() {
 		if sb.err == nil {
@@ -371,10 +387,9 @@ func (sb *skylinkBatch) threadedUploadData() {
 	// shouldn't include any information about the individual files for privacy
 	// and security reasons. This ultimately makes the metadata pretty generic and
 	// useless.
-	baseSectorLen := uint64(len(baseSectorData))
 	metadata := skymodules.SkyfileMetadata{
 		Filename: fmt.Sprintf("batched_file_%v", time.Now().UnixNano()),
-		Length:   baseSectorLen,
+		Length:   totalSize,
 	}
 	metadataBytes, err := skymodules.SkyfileMetadataBytes(metadata)
 	if err != nil {
@@ -385,7 +400,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 	// Create Skyfile Layout
 	sl := skymodules.SkyfileLayout{
 		Version:      skymodules.SkyfileVersion,
-		Filesize:     baseSectorLen,
+		Filesize:     totalSize,
 		MetadataSize: uint64(len(metadataBytes)),
 		CipherType:   crypto.TypePlain,
 	}
