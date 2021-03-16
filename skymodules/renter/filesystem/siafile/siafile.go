@@ -546,14 +546,9 @@ func (sf *SiaFile) SaveWithChunks(chunks Chunks) (err error) {
 }
 
 // SaveHeader saves the file's header to disk.
-func (sf *SiaFile) SaveHeader() error {
+func (sf *SiaFile) SaveHeader() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	return sf.saveHeader()
-}
-
-// saveHeader saves the file's header to disk.
-func (sf *SiaFile) saveHeader() (err error) {
 	// Can't save the header of a deleted file.
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't SaveHeader of deleted file")
@@ -573,14 +568,9 @@ func (sf *SiaFile) saveHeader() (err error) {
 }
 
 // SaveMetadata saves the file's metadata to disk.
-func (sf *SiaFile) SaveMetadata() error {
+func (sf *SiaFile) SaveMetadata() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	return sf.saveMetadata()
-}
-
-// saveMetadata saves the file's metadata to disk.
-func (sf *SiaFile) saveMetadata() (err error) {
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't SaveMetadata of deleted file")
 	}
@@ -1087,9 +1077,18 @@ func (sf *SiaFile) UID() SiafileUID {
 }
 
 // UpdateMetadata updates various parts of the siafile's metadata
-func (sf *SiaFile) UpdateMetadata(offlineMap, goodForRenew map[string]bool, contracts map[string]skymodules.RenterContract, used []types.SiaPublicKey) (err error) {
+func (sf *SiaFile) UpdateMetadata(offlineMap, goodForRenew map[string]bool, contracts map[string]skymodules.RenterContract, used []types.SiaPublicKey) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	return sf.updateMetadata(offlineMap, goodForRenew, contracts, used)
+}
+
+// updateMetadata updates various parts of the siafile's metadata
+func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, contracts map[string]skymodules.RenterContract, used []types.SiaPublicKey) (err error) {
+	// Don't update metadata for a deleted file.
+	if sf.deleted {
+		return ErrDeleted
+	}
 
 	// backup the changed metadata before changing it. Revert the change on
 	// error.
@@ -1121,12 +1120,14 @@ func (sf *SiaFile) UpdateMetadata(offlineMap, goodForRenew map[string]bool, cont
 	// method.
 	_ = sf.expiration(contracts)
 
-	// Generate the metadata updates.
-	metadataUpdates, err := sf.saveMetadataUpdates()
+	// Generate the header updates as updateUsedHostUpdates updates the
+	// pubKeyTable.
+	headerUpdates, err := sf.saveHeaderUpdates()
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to generate header updates")
 	}
-	updates = append(updates, metadataUpdates...)
+	updates = append(updates, headerUpdates...)
+
 	// Save the updates.
 	return sf.createAndApplyTransaction(updates...)
 }
