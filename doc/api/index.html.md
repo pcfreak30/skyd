@@ -4053,10 +4053,10 @@ curl -A "Sia-Agent" "localhost:9980/renter/downloads"
 Lists all files in the download queue.
 
 ### Query String Parameters
-### REQUIRED
-**root** | boolean  
+### OPTIONAL
+**root** | boolean\
 If root is set, the downloads will contain their absolute paths instead of
-the relative ones starting at home/user.
+the relative ones starting at /home/user.
 
 ### JSON Response
 > JSON Response Example
