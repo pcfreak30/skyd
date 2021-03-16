@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 // TODO - once bubbling metadata has been updated to be more I/O
@@ -725,7 +724,7 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath skymodules.SiaPath,
 				if err != nil {
 					return err
 				}
-				err = r.managedUpdateFileMetadata(sf, offlineMap, goodForRenewMap, contracts, used)
+				err = sf.UpdateMetadata(offlineMap, goodForRenewMap, contracts, used)
 				return errors.Compose(err, sf.Close())
 			}()
 			errMU.Lock()
@@ -770,29 +769,4 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath skymodules.SiaPath,
 	close(fileSiaPathChan)
 	wg.Wait()
 	return errs
-}
-
-// managedUpdateFileMetadata updates the metadata of a siafile.
-func (r *Renter) managedUpdateFileMetadata(sf *filesystem.FileNode, offlineMap, goodForRenew map[string]bool, contracts map[string]skymodules.RenterContract, used []types.SiaPublicKey) (err error) {
-	// Update the siafile's used hosts.
-	if err := sf.UpdateUsedHosts(used); err != nil {
-		return errors.AddContext(err, "WARN: Could not update used hosts")
-	}
-	// Update cached redundancy values.
-	_, _, err = sf.Redundancy(offlineMap, goodForRenew)
-	if err != nil {
-		return errors.AddContext(err, "WARN: Could not update cached redundancy")
-	}
-	// Update cached health values.
-	_, _, _, _, _, _, _ = sf.Health(offlineMap, goodForRenew)
-	// Set the LastHealthCheckTime
-	sf.SetLastHealthCheckTime()
-	// Update the cached expiration of the siafile.
-	_ = sf.Expiration(contracts)
-	// Save the metadata.
-	err = sf.SaveMetadata()
-	if err != nil {
-		return err
-	}
-	return nil
 }
