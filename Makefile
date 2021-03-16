@@ -29,6 +29,21 @@ pkgs = \
 	./cmd/skyd \
 	./cmd/skynet-benchmark \
 	./compatibility \
+	./fixtures \
+	./node \
+	./node/api \
+	./node/api/client \
+	./node/api/server \
+	./profile \
+	./siatest \
+	./siatest/accounting \
+	./siatest/daemon \
+	./siatest/dependencies \
+	./siatest/renter \
+	./siatest/renter/contractor \
+	./siatest/renter/hostdb \
+	./siatest/renterhost \
+	./skykey \
 	./skymodules \
 	./skymodules/accounting \
 	./skymodules/renter \
@@ -41,20 +56,6 @@ pkgs = \
 	./skymodules/renter/proto \
 	./skymodules/renter/skynetblocklist \
 	./skymodules/renter/skynetportals \
-	./node \
-	./node/api \
-	./node/api/server \
-	./node/api/client \
-	./profile \
-	./siatest \
-	./siatest/accounting \
-	./siatest/daemon \
-	./siatest/dependencies \
-	./siatest/renter \
-	./siatest/renter/contractor \
-	./siatest/renter/hostdb \
-	./siatest/renterhost \
-	./skykey \
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
@@ -68,15 +69,32 @@ lockcheckpkgs = \
 	./cmd/skyc \
 	./cmd/skyd \
 	./cmd/skynet-benchmark \
+	./compatibility \
+	./fixtures \
 	./node \
 	./node/api \
 	./node/api/client \
 	./node/api/server \
+	./profile \
+	./siatest \
+	./siatest/accounting \
+	./siatest/daemon \
+	./siatest/dependencies \
+	./siatest/renter \
+	./siatest/renter/contractor \
+	./siatest/renter/hostdb \
+	./siatest/renterhost \
+	./skykey \
+	./skymodules \
 	./skymodules/accounting \
 	./skymodules/renter/hostdb \
+	./skymodules/renter/filesystem \
+	./skymodules/renter/filesystem/siadir \
+	./skymodules/renter/hostdb \
+	./skymodules/renter/hostdb/hosttree \
+	./skymodules/renter/proto \
 	./skymodules/renter/skynetblocklist \
-	./siatest/accounting \
-	./skykey \
+	./skymodules/renter/skynetportals \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .

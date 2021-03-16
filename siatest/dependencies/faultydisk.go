@@ -60,13 +60,15 @@ func NewFaultyDiskDependency(writeLimit int) *DependencyFaultyDisk {
 	}
 }
 
-// disabled allows the caller to temporarily disable the dependency
-func (d *DependencyFaultyDisk) disable() {
+// managedDisable allows the caller to temporarily disable the dependency
+func (d *DependencyFaultyDisk) managedDisable() {
 	d.mu.Lock()
 	d.disabled = true
 	d.mu.Unlock()
 }
-func (d *DependencyFaultyDisk) enable() {
+
+// managedEnable allows the caller to temporarily enable the dependency
+func (d *DependencyFaultyDisk) managedEnable() {
 	d.mu.Lock()
 	d.disabled = false
 	d.mu.Unlock()
@@ -136,6 +138,8 @@ func (d *DependencyFaultyDisk) OpenFile(path string, flag int, perm os.FileMode)
 	if err != nil {
 		return nil, err
 	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d.newFaultyFile(f), nil
 }
 
