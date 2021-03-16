@@ -43,21 +43,6 @@ var (
 	}).(time.Duration)
 )
 
-// persistence contains the accounting information that is persisted on disk
-type persistence struct {
-	// Not implemented yet
-	//
-	// FeeManager modules.FeeManagerAccounting `json:"feemanager"`
-	// Host       modules.HostAccounting       `json:"host"`
-	// Miner      skymodules.MinerAccounting      `json:"miner"`
-
-	Renter skymodules.RenterAccounting `json:"renter"`
-	Wallet skymodules.WalletAccounting `json:"wallet"`
-
-	// Unix Timestamp
-	Timestamp int64 `json:"timestamp"`
-}
-
 // callThreadedPersistAccounting is a background loop that persists the
 // accounting information based on the persistInterval.
 func (a *Accounting) callThreadedPersistAccounting() {
@@ -69,19 +54,16 @@ func (a *Accounting) callThreadedPersistAccounting() {
 
 	// Determine the initial interval for persisting the accounting information
 	a.mu.Lock()
-	lastPersistTime := time.Unix(a.persistence.Timestamp, 0)
+	var lastPersistTime time.Time
+	if len(a.history) > 0 {
+		lastPersistTime = time.Unix(a.history[len(a.history)-1].Timestamp, 0)
+	}
 	a.mu.Unlock()
 	interval := persistInterval - time.Since(lastPersistTime)
 	if interval <= 0 {
-		// If it has been longer than the persistInterval then persist the
-		// accounting information immediately
-		err = a.managedUpdateAndPersistAccounting()
-		if err != nil {
-			a.staticLog.Println("WARN: Persist loop error:", err)
-			interval = persistErrorInterval
-		} else {
-			interval = persistInterval
-		}
+		// If it has been longer than the persistInterval then set the interval to
+		// 0 so that we persist immediately
+		interval = 0
 	}
 
 	// Persist the accounting information in a loop until there is a shutdown
@@ -137,10 +119,8 @@ func (a *Accounting) initPersist() error {
 		return errors.AddContext(err, "unable to unmarshal persistence")
 	}
 
-	// Keep the last persist entry in memory
-	if len(persistence) > 0 {
-		a.persistence = persistence[len(persistence)-1]
-	}
+	// Load persistence into memory
+	a.history = persistence
 	return nil
 }
 
@@ -149,7 +129,7 @@ func (a *Accounting) initPersist() error {
 func (a *Accounting) managedUpdateAndPersistAccounting() error {
 	logStr := "Update and Persist error"
 	// Update the persistence information
-	_, err := a.callUpdateAccounting()
+	ai, err := a.callUpdateAccounting()
 	if err != nil {
 		err = errors.AddContext(err, "unable to update accounting information")
 		a.staticLog.Printf("WARN: %v:%v", logStr, err)
@@ -157,10 +137,7 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 	}
 
 	// Marshall the persistence
-	a.mu.Lock()
-	p := a.persistence
-	a.mu.Unlock()
-	data, err := marshalPersistence(p)
+	data, err := marshalPersistence(ai)
 	if err != nil {
 		err = errors.AddContext(err, "unable to marshal persistence")
 		a.staticLog.Printf("WARN: %v:%v", logStr, err)
@@ -168,20 +145,25 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 	}
 
 	// Persist
-	_, err = a.staticAOP.Write(data[:])
+	_, err = a.staticAOP.Write(data)
 	if err != nil {
 		err = errors.AddContext(err, "unable to write persistence to disk")
 		a.staticLog.Printf("WARN: %v:%v", logStr, err)
 		return err
 	}
 
+	// Add to the history
+	a.mu.Lock()
+	a.history = append(a.history, ai)
+	a.mu.Unlock()
+
 	return nil
 }
 
 // marshalPersistence marshals the persistence.
-func marshalPersistence(p persistence) ([]byte, error) {
+func marshalPersistence(ai skymodules.AccountingInfo) ([]byte, error) {
 	// Marshal the persistence
-	data, err := json.Marshal(p)
+	data, err := json.Marshal(ai)
 	if err != nil {
 		return nil, err
 	}
@@ -190,23 +172,23 @@ func marshalPersistence(p persistence) ([]byte, error) {
 
 // unmarshalPersistence uses a json Decoder to read the persisted json entries
 // and unmarshals them.
-func unmarshalPersistence(r io.Reader) ([]persistence, error) {
+func unmarshalPersistence(r io.Reader) ([]skymodules.AccountingInfo, error) {
 	// Create decoder
 	d := json.NewDecoder(r)
 
-	var persist []persistence
+	var ais []skymodules.AccountingInfo
 	for {
 		// Decode persisted json entry
-		var p persistence
-		err := d.Decode(&p)
+		var ai skymodules.AccountingInfo
+		err := d.Decode(&ai)
 		if errors.Contains(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to read from reader")
 		}
-		// Append to persist
-		persist = append(persist, p)
+		// Append entry
+		ais = append(ais, ai)
 	}
-	return persist, nil
+	return ais, nil
 }

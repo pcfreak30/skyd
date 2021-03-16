@@ -36,8 +36,7 @@ module.
 
 The persistence subsystem is responsible for ensuring safe and performant ACID
 operations by using the `persist` package's `AppendOnlyPersist` object. The
-latest persistence is stored in the `Accounting` struct and is loaded from disk
-on startup.
+persistence is rows of JSON.
 
 **Inbound Complexities**
  - `callThreadedPersistAccounting` is a background loop that updates the

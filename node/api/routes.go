@@ -34,6 +34,11 @@ func (api *API) buildHTTPRoutes() {
 	router.NotFound = http.HandlerFunc(api.UnrecognizedCallHandler)
 	router.RedirectTrailingSlash = false
 
+	// Accounting API Calls
+	if api.accounting != nil {
+		router.GET("/accounting", api.accountingHandlerGet)
+	}
+
 	// Daemon API Calls
 	router.GET("/daemon/alerts", api.daemonAlertsHandlerGET)
 	router.GET("/daemon/constants", api.daemonConstantsHandler)

@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -252,7 +251,7 @@ func TestBatch_validBatchSUP(t *testing.T) {
 
 	// Start with a fully set SkyfileUploadParameters
 	sup := skymodules.SkyfileUploadParameters{
-		SiaPath:             modules.RandomSiaPath(),
+		SiaPath:             skymodules.RandomSiaPath(),
 		DryRun:              true,
 		Force:               true,
 		Root:                true,
