@@ -244,6 +244,8 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		return
 	}
 	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
 		_ = streamer.Close()
 	}()
 
@@ -540,6 +542,8 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 	streamer := renter.StreamerFromSlice(sector)
 	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
 		_ = streamer.Close()
 	}()
 
@@ -672,6 +676,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
 		_ = streamer.Close()
 	}()
 
