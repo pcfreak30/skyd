@@ -82,7 +82,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Debugln("callDiscard: launch failed", err)
+		w.renter.staticLog.Debugln("callDiscard: launch failed", err)
 	}
 }
 
@@ -105,7 +105,7 @@ func (j *jobUpdateRegistry) callExecute() {
 			}
 		})
 		if errLaunch != nil {
-			w.renter.log.Debugln("callExececute: launch failed", err)
+			w.renter.staticLog.Debugln("callExececute: launch failed", err)
 		}
 	}
 
@@ -231,7 +231,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 func (w *worker) initJobUpdateRegistryQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobUpdateRegistryQueue != nil {
-		w.renter.log.Critical("incorret call on initJobUpdateRegistryQueue")
+		w.renter.staticLog.Critical("incorret call on initJobUpdateRegistryQueue")
 		return
 	}
 

@@ -152,7 +152,7 @@ func (j *jobDownloadSnapshot) callExpectedBandwidth() (ul, dl uint64) {
 // the worker.
 func (w *worker) initJobDownloadSnapshotQueue() {
 	if w.staticJobDownloadSnapshotQueue != nil {
-		w.renter.log.Critical("should not be double initializng the upload snapshot queue")
+		w.renter.staticLog.Critical("should not be double initializng the upload snapshot queue")
 		return
 	}
 

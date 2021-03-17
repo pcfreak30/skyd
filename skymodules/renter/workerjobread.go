@@ -92,7 +92,7 @@ func (j *jobRead) callDiscard(err error) {
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Print("callDiscard: launch failed", err)
+		w.renter.staticLog.Print("callDiscard: launch failed", err)
 	}
 }
 
@@ -119,7 +119,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		}
 	})
 	if err != nil {
-		j.staticQueue.staticWorker().renter.log.Print("managedFinishExecute: launch failed", err)
+		j.staticQueue.staticWorker().renter.staticLog.Print("managedFinishExecute: launch failed", err)
 	}
 
 	// Report success or failure to the queue.
@@ -260,7 +260,7 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 func (w *worker) initJobReadQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadQueue != nil {
-		w.renter.log.Critical("incorret call on initJobReadQueue")
+		w.renter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
@@ -272,7 +272,7 @@ func (w *worker) initJobReadQueue() {
 func (w *worker) initJobLowPrioReadQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobLowPrioReadQueue != nil {
-		w.renter.log.Critical("incorret call on initJobReadQueue")
+		w.renter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),

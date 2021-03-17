@@ -116,7 +116,7 @@ func (j *jobRenew) callExpectedBandwidth() (ul, dl uint64) {
 func (w *worker) initJobRenewQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobRenewQueue != nil {
-		w.renter.log.Critical("incorret call on initJobRenewQueue")
+		w.renter.staticLog.Critical("incorret call on initJobRenewQueue")
 		return
 	}
 

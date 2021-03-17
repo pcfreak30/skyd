@@ -151,7 +151,7 @@ func (j *jobReadRegistry) callDiscard(err error) {
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Debugln("callDiscard: launch failed", err)
+		w.renter.staticLog.Debugln("callDiscard: launch failed", err)
 	}
 }
 
@@ -175,7 +175,7 @@ func (j *jobReadRegistry) callExecute() {
 			}
 		})
 		if errLaunch != nil {
-			w.renter.log.Debugln("callExececute: launch failed", err)
+			w.renter.staticLog.Debugln("callExececute: launch failed", err)
 		}
 	}
 
@@ -228,7 +228,7 @@ func (j *jobReadRegistry) callExpectedBandwidth() (ul, dl uint64) {
 func (w *worker) initJobReadRegistryQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadRegistryQueue != nil {
-		w.renter.log.Critical("incorret call on initJobReadRegistryQueue")
+		w.renter.staticLog.Critical("incorret call on initJobReadRegistryQueue")
 		return
 	}
 

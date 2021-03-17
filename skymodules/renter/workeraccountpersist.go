@@ -397,7 +397,7 @@ func (am *accountManager) load() error {
 		if errors.Contains(err, io.EOF) {
 			break
 		} else if err != nil {
-			am.staticRenter.log.Println("ERROR: could not load account", err)
+			am.staticRenter.staticLog.Println("ERROR: could not load account", err)
 			continue
 		}
 
@@ -431,7 +431,7 @@ func (am *accountManager) openFile() (bool, error) {
 
 	// Sanity check that the file isn't already opened.
 	if am.staticFile != nil {
-		r.log.Critical("double open detected on account manager")
+		r.staticLog.Critical("double open detected on account manager")
 		return false, errors.New("accounts file already open")
 	}
 
@@ -468,7 +468,7 @@ func (am *accountManager) openFile() (bool, error) {
 		}
 
 		// log the successful upgrade
-		am.staticRenter.log.Println("successfully upgraded accounts file from v150 to v156")
+		am.staticRenter.staticLog.Println("successfully upgraded accounts file from v150 to v156")
 	}
 
 	// Whether this is a new file or an existing file, we need to set the header
@@ -595,10 +595,10 @@ func (am *accountManager) upgradeFromV150ToV156() error {
 	// read the accounts from the accounts file, but link them to the tmp file,
 	// when calling persist on the account it will write the account into the
 	// tmp file
-	accounts := compatV150ReadAccounts(r.log, am.staticFile, tmpFile)
+	accounts := compatV150ReadAccounts(r.staticLog, am.staticFile, tmpFile)
 	for _, acc := range accounts {
 		if err := acc.managedPersist(); err != nil {
-			r.log.Println("failed to upgrade account from v150 to v156", err)
+			r.staticLog.Println("failed to upgrade account from v150 to v156", err)
 		}
 	}
 

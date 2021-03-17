@@ -70,7 +70,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
+			w.renter.staticLog.Println("ERROR: failed to close stream", err)
 		}
 	}()
 
@@ -206,7 +206,7 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
-			w.renter.log.Println("managedRenew: failed to close stream", err)
+			w.renter.staticLog.Println("managedRenew: failed to close stream", err)
 		}
 	}()
 

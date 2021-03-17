@@ -109,7 +109,7 @@ func (j *jobUploadSnapshot) callDiscard(err error) {
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Print("callDiscard: launch failed", err)
+		w.renter.staticLog.Print("callDiscard: launch failed", err)
 	}
 }
 
@@ -132,7 +132,7 @@ func (j *jobUploadSnapshot) callExecute() {
 			}
 		})
 		if errLaunch != nil {
-			w.renter.log.Print("callExecute: launch failed", err)
+			w.renter.staticLog.Print("callExecute: launch failed", err)
 		}
 
 		// Report a failure to the queue if this job had an error.
@@ -153,14 +153,14 @@ func (j *jobUploadSnapshot) callExecute() {
 	var sess contractor.Session
 	sess, err = w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
-		w.renter.log.Debugln("unable to grab a session to perform an upload snapshot job:", err)
+		w.renter.staticLog.Debugln("unable to grab a session to perform an upload snapshot job:", err)
 		err = errors.AddContext(err, "unable to get host session")
 		return
 	}
 	defer func() {
 		closeErr := sess.Close()
 		if closeErr != nil {
-			w.renter.log.Println("error while closing session:", closeErr)
+			w.renter.staticLog.Println("error while closing session:", closeErr)
 		}
 		err = errors.Compose(err, closeErr)
 	}()
@@ -183,7 +183,7 @@ func (j *jobUploadSnapshot) callExecute() {
 	// Upload the snapshot to the host.
 	err = w.renter.managedUploadSnapshotHost(meta, j.staticSiaFileData, sess, w)
 	if err != nil {
-		w.renter.log.Debugln("uploading a snapshot to a host failed:", err)
+		w.renter.staticLog.Debugln("uploading a snapshot to a host failed:", err)
 		err = errors.AddContext(err, "uploading a snapshot to a host failed")
 		return
 	}
@@ -201,7 +201,7 @@ func (j *jobUploadSnapshot) callExpectedBandwidth() (ul, dl uint64) {
 // the worker.
 func (w *worker) initJobUploadSnapshotQueue() {
 	if w.staticJobUploadSnapshotQueue != nil {
-		w.renter.log.Critical("should not be double initializng the upload snapshot queue")
+		w.renter.staticLog.Critical("should not be double initializng the upload snapshot queue")
 		return
 	}
 

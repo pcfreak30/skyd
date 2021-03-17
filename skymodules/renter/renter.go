@@ -260,15 +260,15 @@ type Renter struct {
 	w                                  modules.Wallet
 	hostContractor                     hostContractor
 	hostDB                             skymodules.HostDB
-	log                                *persist.Logger
 	persist                            persistence
 	persistDir                         string
 	mu                                 *siasync.RWMutex
-	repairLog                          *persist.Logger
 	staticAccountManager               *accountManager
 	staticAlerter                      *modules.GenericAlerter
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
+	staticLog                          *persist.Logger
+	staticRepairLog                    *persist.Logger
 	staticSkykeyManager                *skykey.SkykeyManager
 	staticStreamBufferSet              *streamBufferSet
 	tg                                 threadgroup.ThreadGroup
@@ -716,7 +716,7 @@ func (r *Renter) SetFilterMode(lm skymodules.FilterMode, hosts []types.SiaPublic
 	}
 	minHosts := settings.Allowance.Hosts
 	if len(hosts) < int(minHosts) && lm == skymodules.HostDBActiveWhitelist {
-		r.log.Printf("WARN: There are fewer whitelisted hosts than the allowance requires.  Have %v whitelisted hosts, need %v to support allowance\n", len(hosts), minHosts)
+		r.staticLog.Printf("WARN: There are fewer whitelisted hosts than the allowance requires.  Have %v whitelisted hosts, need %v to support allowance\n", len(hosts), minHosts)
 	}
 
 	// Set list mode filter for the hostdb
@@ -1035,18 +1035,18 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Initialize the loggers so that they are available for the components as
 	// the components start up.
-	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
+	r.staticLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
 	if err != nil {
 		return nil, err
 	}
-	if err := r.tg.AfterStop(r.log.Close); err != nil {
+	if err := r.tg.AfterStop(r.staticLog.Close); err != nil {
 		return nil, err
 	}
-	r.repairLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, repairLogFile))
+	r.staticRepairLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, repairLogFile))
 	if err != nil {
 		return nil, err
 	}
-	if err := r.tg.AfterStop(r.repairLog.Close); err != nil {
+	if err := r.tg.AfterStop(r.staticRepairLog.Close); err != nil {
 		return nil, err
 	}
 

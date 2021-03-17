@@ -98,7 +98,7 @@ func (d *download) managedFail(err error) {
 	if complete && d.err != nil {
 		return
 	} else if complete && d.err == nil {
-		d.r.log.Critical("download is marked as completed without error, but then managedFail was called with err:", err)
+		d.r.staticLog.Critical("download is marked as completed without error, but then managedFail was called with err:", err)
 		return
 	}
 
@@ -130,7 +130,7 @@ func (d *download) markComplete() {
 	}
 	// Log potential errors.
 	if err != nil {
-		d.r.log.Println("Failed to execute at least one downloadCompleteFunc", err)
+		d.r.staticLog.Println("Failed to execute at least one downloadCompleteFunc", err)
 	}
 	// Set downloadCompleteFuncs to nil to avoid executing them multiple times.
 	d.downloadCompleteFuncs = nil
@@ -145,7 +145,7 @@ func (d *download) onComplete(f func(error) error) {
 	select {
 	case <-d.completeChan:
 		if err := f(d.err); err != nil {
-			d.r.log.Println("Failed to execute downloadCompleteFunc", err)
+			d.r.staticLog.Println("Failed to execute downloadCompleteFunc", err)
 		}
 		return
 	default:
@@ -453,7 +453,7 @@ func (d *download) Start() error {
 				// the same chunk.
 				_, exists := chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()]
 				if exists {
-					d.r.log.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.", params.file.SiaPath(), chunkIndex, pieceIndex, piece.HostPubKey.String())
+					d.r.staticLog.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.", params.file.SiaPath(), chunkIndex, pieceIndex, piece.HostPubKey.String())
 				}
 				chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()] = downloadPieceInfo{
 					index: uint64(pieceIndex),

@@ -54,7 +54,7 @@ func (w *worker) managedUpdateCache() {
 	// Grab the host to check the version.
 	host, ok, err := w.renter.hostDB.Host(w.staticHostPubKey)
 	if !ok || err != nil {
-		w.renter.log.Printf("Worker %v could not update the cache, hostdb found host %v, with error: %v, worker being killed", w.staticHostPubKeyStr, ok, err)
+		w.renter.staticLog.Printf("Worker %v could not update the cache, hostdb found host %v, with error: %v, worker being killed", w.staticHostPubKeyStr, ok, err)
 		w.managedKill()
 		atomic.StoreUint64(&w.atomicCacheUpdating, 0)
 		return
@@ -63,7 +63,7 @@ func (w *worker) managedUpdateCache() {
 	// Grab the renter contract from the host contractor.
 	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
 	if !exists {
-		w.renter.log.Printf("Worker %v could not update the cache, host not found in contractor, worker being killed", w.staticHostPubKeyStr)
+		w.renter.staticLog.Printf("Worker %v could not update the cache, host not found in contractor, worker being killed", w.staticHostPubKeyStr)
 		w.managedKill()
 		atomic.StoreUint64(&w.atomicCacheUpdating, 0)
 		return
@@ -100,7 +100,7 @@ func (w *worker) managedUpdateCache() {
 // newCache will initialize an unitialized cache on the worker.
 func (w *worker) newCache() {
 	if w.staticCache() != nil {
-		w.renter.log.Critical("creating a new cache one already exists")
+		w.renter.staticLog.Critical("creating a new cache one already exists")
 	}
 	ptr := unsafe.Pointer(new(workerCache))
 	atomic.StorePointer(&w.atomicCache, ptr)
@@ -122,7 +122,7 @@ func (w *worker) staticTryUpdateCache() {
 	// are new blocks being processed or a reorg being processed.
 	err := w.renter.tg.Launch(w.managedUpdateCache)
 	if err != nil {
-		w.renter.log.Print("staticTryUpdateCache: failed to launch cache update", err)
+		w.renter.staticLog.Print("staticTryUpdateCache: failed to launch cache update", err)
 	}
 }
 

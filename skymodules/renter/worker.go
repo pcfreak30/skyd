@@ -180,7 +180,7 @@ func (w *worker) managedKill() {
 
 	err := w.staticTG.Stop()
 	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
-		w.renter.log.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
+		w.renter.staticLog.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
 	}
 }
 

@@ -222,7 +222,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) (err error) {
 	var allowance skymodules.Allowance
 	if err := dec.Decode(&allowance); err != nil {
 		// legacy backup without allowance
-		r.log.Println("WARN: Decoding the backup's allowance failed: ", err)
+		r.staticLog.Println("WARN: Decoding the backup's allowance failed: ", err)
 	}
 	// If the backup contained a valid allowance and we currently don't have an
 	// allowance set, import it.

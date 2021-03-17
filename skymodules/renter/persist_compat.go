@@ -224,7 +224,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
-			r.log.Println("WARN: could not stat file or folder during walk:", err)
+			r.staticLog.Println("WARN: could not stat file or folder during walk:", err)
 			return nil
 		}
 
@@ -315,7 +315,7 @@ func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []sk
 	for _, contract := range f.contracts {
 		pk, exists := idToPk[contract.ID]
 		if !exists {
-			r.log.Printf("Couldn't find pubKey for contract %v with WindowStart %v",
+			r.staticLog.Printf("Couldn't find pubKey for contract %v with WindowStart %v",
 				contract.ID, contract.WindowStart)
 			continue
 		}

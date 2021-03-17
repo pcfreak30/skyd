@@ -60,7 +60,7 @@ func (w *worker) externLaunchSerialJob(job func()) {
 	ok := atomic.CompareAndSwapUint64(&w.staticLoopState.atomicSerialJobRunning, 0, 1)
 	if !ok {
 		// There already is a job running. This is not allowed.
-		w.renter.log.Critical("running a job when another job is already running")
+		w.renter.staticLog.Critical("running a job when another job is already running")
 	}
 
 	fn := func() {

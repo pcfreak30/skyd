@@ -191,7 +191,7 @@ func (s *streamer) managedFillCache() bool {
 		readErr := errors.Compose(s.readErr, err, closeErr)
 		s.readErr = readErr
 		s.mu.Unlock()
-		s.r.log.Println("Error downloading for stream file:", readErr)
+		s.r.staticLog.Println("Error downloading for stream file:", readErr)
 		return false
 	}
 	// Register some cleanup for when the download is done.
@@ -213,7 +213,7 @@ func (s *streamer) managedFillCache() bool {
 			readErr := errors.Compose(s.readErr, completeErr)
 			s.readErr = readErr
 			s.mu.Unlock()
-			s.r.log.Println("Error during stream download:", readErr)
+			s.r.staticLog.Println("Error during stream download:", readErr)
 			return false
 		}
 	case <-s.r.tg.StopChan():
@@ -222,7 +222,7 @@ func (s *streamer) managedFillCache() bool {
 		readErr := errors.Compose(s.readErr, stopErr)
 		s.readErr = readErr
 		s.mu.Unlock()
-		s.r.log.Debugln(stopErr)
+		s.r.staticLog.Debugln(stopErr)
 		return false
 	}
 
@@ -284,7 +284,7 @@ func (s *streamer) threadedFillCache() {
 	// Add this thread to the renter's threadgroup.
 	err := s.r.tg.Add()
 	if err != nil {
-		s.r.log.Debugln("threadedFillCache terminating early because renter has stopped")
+		s.r.staticLog.Debugln("threadedFillCache terminating early because renter has stopped")
 	}
 	defer s.r.tg.Done()
 

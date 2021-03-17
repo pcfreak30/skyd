@@ -80,7 +80,7 @@ func (j *jobHasSector) callDiscard(err error) {
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Print("callDiscard: launch failed", err)
+		w.renter.staticLog.Print("callDiscard: launch failed", err)
 	}
 }
 
@@ -106,7 +106,7 @@ func (j *jobHasSector) callExecute() {
 		}
 	})
 	if err2 != nil {
-		w.renter.log.Println("callExececute: launch failed", err)
+		w.renter.staticLog.Println("callExececute: launch failed", err)
 	}
 
 	// Report success or failure to the queue.
@@ -212,7 +212,7 @@ func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
 func (w *worker) initJobHasSectorQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobHasSectorQueue != nil {
-		w.renter.log.Critical("incorret call on initJobHasSectorQueue")
+		w.renter.staticLog.Critical("incorret call on initJobHasSectorQueue")
 		return
 	}
 

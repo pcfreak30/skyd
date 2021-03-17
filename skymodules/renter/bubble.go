@@ -168,7 +168,7 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 			// Perform the bubble update
 			err := bs.managedPerformBubbleUpdate(siaPath)
 			if err != nil {
-				bs.staticRenter.log.Printf("WARN: error performing bubble on '%v': %v", siaPath, err)
+				bs.staticRenter.staticLog.Printf("WARN: error performing bubble on '%v': %v", siaPath, err)
 			}
 
 			// Complete the bubble
@@ -177,7 +177,7 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 			// Queue a bubble on the parent directory
 			err = bs.managedQueueParent(siaPath)
 			if err != nil {
-				bs.staticRenter.log.Printf("WARN: error queuing bubble for parent directory on '%v': %v", siaPath, err)
+				bs.staticRenter.staticLog.Printf("WARN: error queuing bubble for parent directory on '%v': %v", siaPath, err)
 			}
 		}
 	}

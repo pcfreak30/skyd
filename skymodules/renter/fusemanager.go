@@ -71,11 +71,11 @@ func (fm *fuseManager) managedCloseFuseManager() error {
 			delete(fm.mountPoints, name)
 			fm.mu.Unlock()
 			fm.renter.tg.Done()
-			fm.renter.log.Printf("Unable to unmount %s: %v", name, umountErr)
+			fm.renter.staticLog.Printf("Unable to unmount %s: %v", name, umountErr)
 			fmt.Printf("Unable to unmount %s: %v - use `umount [mountpoint]` or `fusermount -u [mountpoint]` to unmount manually\n", name, umountErr)
 		}
 		if errors.Contains(err, errNothingMounted) {
-			fm.renter.log.Critical("Nothing mounted at the provided mountpoint, even though something was mounted at the beginning of shutdown.", name)
+			fm.renter.staticLog.Critical("Nothing mounted at the provided mountpoint, even though something was mounted at the beginning of shutdown.", name)
 		}
 		err = errors.Compose(err, errors.AddContext(umountErr, "unable to unmount "+name))
 	}

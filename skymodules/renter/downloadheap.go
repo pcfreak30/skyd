@@ -187,7 +187,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// Open the file.
 	file, err := os.Open(localPath)
 	if err != nil {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
+		r.staticLog.Debugf("managedTryFetchChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
 		return false
 	}
 
@@ -195,13 +195,13 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// check that the filesize is the same.
 	fi, err := file.Stat()
 	if err != nil {
-		r.log.Printf("local file %v of file %v was not used for download because stat failed: %v", localPath, fileName, err)
+		r.staticLog.Printf("local file %v of file %v was not used for download because stat failed: %v", localPath, fileName, err)
 		return false
 	}
 	fiSize := uint64(fi.Size())
 	rfSize := chunk.renterFile.Size()
 	if fiSize != rfSize {
-		r.log.Printf("local file %v of file %v was not used for download: filesizes are mismatched: %v vs %v", localPath, fileName, fiSize, rfSize)
+		r.staticLog.Printf("local file %v of file %v was not used for download: filesizes are mismatched: %v vs %v", localPath, fileName, fiSize, rfSize)
 		return false
 	}
 
@@ -217,7 +217,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		defer r.tg.Done()
 		defer func() {
 			if err := file.Close(); err != nil {
-				r.log.Println("WARN: error closing file after download served from disk:", err)
+				r.staticLog.Println("WARN: error closing file after download served from disk:", err)
 			}
 		}()
 		// Try downloading if serving from disk failed.
@@ -244,20 +244,20 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize)+int64(chunk.staticFetchOffset), int64(chunk.staticFetchLength))
 		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 		if err != nil {
-			r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
+			r.staticLog.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
 				localPath, fileName, err)
 			return false
 		}
 		shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
 		if err != nil {
-			r.log.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
+			r.staticLog.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
 				localPath, fileName, err)
 			return false
 		}
 		// Write the data to the destination.
 		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, 0, chunk.staticWriteOffset, chunk.staticFetchLength)
 		if err != nil {
-			r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
+			r.staticLog.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
 				localPath, fileName, err)
 			return false
 		}

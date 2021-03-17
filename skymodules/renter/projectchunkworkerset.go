@@ -283,7 +283,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// Delete the worker from the set of unresolved workers.
 	w := resp.staticWorker
 	if w == nil {
-		ws.staticRenter.log.Critical("nil worker provided in resp")
+		ws.staticRenter.staticLog.Critical("nil worker provided in resp")
 	}
 	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
 
@@ -323,7 +323,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	numWorkers := pcws.staticRenter.staticWorkerPool.callNumWorkers()
 	err := checkPCWSGouging(pt, cache.staticRenterAllowance, numWorkers, len(pcws.staticPieceRoots))
 	if err != nil {
-		pcws.staticRenter.log.Debugf("price gouging for chunk worker set detected in worker %v, err %v", w.staticHostPubKeyStr, err)
+		pcws.staticRenter.staticLog.Debugf("price gouging for chunk worker set detected in worker %v, err %v", w.staticHostPubKeyStr, err)
 		return err
 	}
 
@@ -343,7 +343,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	jhs := w.newJobHasSector(ctx, responseChan, pcws.staticPieceRoots...)
 	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
 	if err != nil {
-		pcws.staticRenter.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
+		pcws.staticRenter.staticLog.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
 		return err
 	}
 	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
@@ -416,7 +416,7 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 		// Consistency check - should not be getting nil responses from the
 		// workers.
 		if resp == nil {
-			ws.staticRenter.log.Critical("nil response received")
+			ws.staticRenter.staticLog.Critical("nil response received")
 			continue
 		}
 

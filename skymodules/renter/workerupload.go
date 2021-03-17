@@ -98,7 +98,7 @@ func (w *worker) managedDropUploadChunks() {
 
 	for chunkToDrop := chunksToDrop.Pop(); chunkToDrop != nil; chunkToDrop = chunksToDrop.Pop() {
 		w.managedDropChunk(chunkToDrop)
-		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunkToDrop.staticIndex, chunkToDrop.staticSiaPath)
+		w.renter.staticRepairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunkToDrop.staticIndex, chunkToDrop.staticSiaPath)
 	}
 }
 
@@ -188,7 +188,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	}
 	defer func() {
 		if err := e.Close(); err != nil {
-			w.renter.log.Print("managedPerformUploadChunkJob: failed to close editor", err)
+			w.renter.staticLog.Print("managedPerformUploadChunkJob: failed to close editor", err)
 		}
 	}()
 
@@ -317,7 +317,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 // managedUploadFailed is called if a worker failed to upload part of an unfinished
 // chunk.
 func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint64, failureErr error) {
-	w.renter.repairLog.Printf("Worker upload failed. Worker: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, uc.staticIndex, uc.staticSiaPath, failureErr)
+	w.renter.staticRepairLog.Printf("Worker upload failed. Worker: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, uc.staticIndex, uc.staticSiaPath, failureErr)
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
 	if w.renter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted)) {
