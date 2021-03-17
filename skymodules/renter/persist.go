@@ -176,7 +176,7 @@ func (r *Renter) managedInitPersist() error {
 
 	// Initialize the wal, staticFileSet and the staticDirSet. With the
 	// staticDirSet finish the initialization of the files directory
-	r.wal = wal
+	r.staticWAL = wal
 	r.staticFileSystem = fs
 
 	// Load the prior persistence structures.

@@ -278,8 +278,8 @@ type Renter struct {
 	staticLog       *persist.Logger
 	staticMux       *siamux.SiaMux
 	staticRepairLog *persist.Logger
+	staticWAL       *writeaheadlog.WAL
 	tg              threadgroup.ThreadGroup
-	wal             *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies

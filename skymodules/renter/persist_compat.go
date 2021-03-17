@@ -234,7 +234,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 		}
 
 		// Check if file was already converted.
-		_, err = siafile.LoadSiaFile(path, r.wal)
+		_, err = siafile.LoadSiaFile(path, r.staticWAL)
 		if err == nil {
 			return nil
 		}
