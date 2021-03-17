@@ -496,7 +496,7 @@ func (d *download) Start() error {
 			physicalChunkData: make([][]byte, params.file.ErasureCode().NumPieces()),
 			pieceUsage:        make([]bool, params.file.ErasureCode().NumPieces()),
 
-			download:            d,
+			staticDownload:      d,
 			staticMemoryManager: params.staticMemoryManager,
 			renterFile:          params.file,
 		}

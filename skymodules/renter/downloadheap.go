@@ -35,8 +35,8 @@ func (dch downloadChunkHeap) Less(i, j int) bool {
 		return dch[i].staticPriority > dch[j].staticPriority
 	}
 	// For equal priority, sort by start time.
-	if dch[i].download.staticStartTime != dch[j].download.staticStartTime {
-		return dch[i].download.staticStartTime.Before(dch[j].download.staticStartTime)
+	if dch[i].staticDownload.staticStartTime != dch[j].staticDownload.staticStartTime {
+		return dch[i].staticDownload.staticStartTime.Before(dch[j].staticDownload.staticStartTime)
 	}
 	// For equal start time (typically meaning it's the same file), sort by
 	// chunkIndex.
@@ -152,7 +152,7 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 			return nil
 		}
 		nextChunk := heap.Pop(r.downloadHeap).(*unfinishedDownloadChunk)
-		if !nextChunk.download.staticComplete() {
+		if !nextChunk.staticDownload.staticComplete() {
 			return nextChunk
 		}
 	}
@@ -225,8 +225,8 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 			if success {
 				// Return the memory for the chunk on success and finalize the
 				// recovery.
-				atomic.AddUint64(&chunk.download.atomicDataReceived, chunk.staticFetchLength)
-				atomic.AddUint64(&chunk.download.atomicTotalDataTransferred, chunk.staticFetchLength)
+				atomic.AddUint64(&chunk.staticDownload.atomicDataReceived, chunk.staticFetchLength)
+				atomic.AddUint64(&chunk.staticDownload.atomicTotalDataTransferred, chunk.staticFetchLength)
 				chunk.managedFinalizeRecovery()
 				chunk.returnMemory()
 			} else {
@@ -236,7 +236,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		}()
 		// Check if download was already aborted.
 		select {
-		case <-chunk.download.completeChan:
+		case <-chunk.staticDownload.completeChan:
 			return false
 		default:
 		}

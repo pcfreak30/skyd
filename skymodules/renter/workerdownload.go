@@ -146,7 +146,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	// in. Perhaps even include the data from creating the downloader and other
 	// data sent to and received from the host (like signatures) that aren't
 	// actually payload data.
-	atomic.AddUint64(&udc.download.atomicTotalDataTransferred, udc.staticPieceSize)
+	atomic.AddUint64(&udc.staticDownload.atomicTotalDataTransferred, udc.staticPieceSize)
 
 	// Decrypt the piece. This might introduce some overhead for downloads with
 	// a large overdrive. It shouldn't be a bottleneck though since bandwidth
@@ -167,7 +167,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	udc.markPieceCompleted(pieceIndex)
 	udc.piecesRegistered--
 	if udc.piecesCompleted <= udc.erasureCode.MinPieces() {
-		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength/uint64(udc.erasureCode.MinPieces()))
+		atomic.AddUint64(&udc.staticDownload.atomicDataReceived, udc.staticFetchLength/uint64(udc.erasureCode.MinPieces()))
 		udc.physicalChunkData[pieceIndex] = decryptedPiece
 	} else {
 		// This worker's piece was not needed, another worker was faster. Nil
@@ -179,7 +179,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 		// add up to staticFetchLength so we need to figure out how much we
 		// already added to the download and how much is missing.
 		addedReceivedData := uint64(udc.erasureCode.MinPieces()) * (udc.staticFetchLength / uint64(udc.erasureCode.MinPieces()))
-		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength-addedReceivedData)
+		atomic.AddUint64(&udc.staticDownload.atomicDataReceived, udc.staticFetchLength-addedReceivedData)
 		// Recover the logical data.
 		if err := w.staticRenter.tg.Add(); err != nil {
 			w.staticRenter.staticLog.Debugln("worker failed to decrypt piece:", err)
@@ -216,7 +216,7 @@ func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfi
 	// worker and return nil. Worker only needs to be removed if worker is being
 	// dropped.
 	udc.mu.Lock()
-	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces() || udc.download.staticComplete()
+	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces() || udc.staticDownload.staticComplete()
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces() || udc.failed
 	pieceData, workerHasPiece := udc.staticChunkMap[w.staticHostPubKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
