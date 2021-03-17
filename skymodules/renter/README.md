@@ -90,6 +90,7 @@ responsibilities.
  - [Persistence Subsystem](#persistence-subsystem)
  - [Refresh Paths Subsystem](#refresh-paths-subsystem)
  - [Skyfile Subsystem](#skyfile-subsystem)
+ - [Skyfile Batch Subsystem](#skyfile-batch-subsystem)
  - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Upload Subsystem](#upload-subsystem)
@@ -564,6 +565,17 @@ skylink.
  - callUploadStreamFromReader is used to upload new data to the Sia network when
    creating skyfiles. This call appears three times in
    [skyfile.go](./skyfile.go)
+
+### Skyfile Batch Subsystem
+**Key Files**
+ - [skyfilebatch.go](./skyfilebatch.go)
+
+The skyfile batch system is responsible for batching skyfiles together in
+a single upload. 
+
+**Outbound Complexities**
+ - callUploadStreamFromReader is used in `threadedUploadData` to upload the
+   batched data to the Sia network. 
 
 ### Stream Buffer Subsystem
 **Key Files**
