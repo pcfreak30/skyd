@@ -89,7 +89,7 @@ func (r *Renter) managedLoadSettings() error {
 			r.staticLog.Println("WARNING: 040 to 133 renter upgrade failed, trying 133 to 140 next", err)
 		}
 		// Then upgrade from 133 to 140.
-		oldContracts := r.hostContractor.OldContracts()
+		oldContracts := r.staticHostContractor.OldContracts()
 		err = r.convertPersistVersionFrom133To140(filepath.Join(r.persistDir, PersistFilename), oldContracts)
 		if err != nil {
 			r.staticLog.Println("WARNING: 133 to 140 renter upgrade failed", err)

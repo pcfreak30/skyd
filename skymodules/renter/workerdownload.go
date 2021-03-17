@@ -122,7 +122,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	defer udc.managedRemoveWorker()
 
 	// Before performing the download, check for price gouging.
-	allowance := w.staticRenter.hostContractor.Allowance()
+	allowance := w.staticRenter.staticHostContractor.Allowance()
 	err := checkDownloadGouging(allowance, &w.staticPriceTable().staticPriceTable)
 	if err != nil {
 		w.staticRenter.staticLog.Debugln("worker downloader is not being used because price gouging was detected:", err)

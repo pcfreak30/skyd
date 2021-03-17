@@ -138,7 +138,7 @@ func TestWorkerMaintenanceRefillLowContractFunds(t *testing.T) {
 	}
 
 	// check remaining balance on contract.
-	contract, ok := w.staticRenter.hostContractor.ContractByPublicKey(wt.staticHostPubKey)
+	contract, ok := w.staticRenter.staticHostContractor.ContractByPublicKey(wt.staticHostPubKey)
 	if !ok {
 		t.Fatal("contract not found")
 	}

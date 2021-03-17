@@ -43,7 +43,7 @@ func TestRenewContract(t *testing.T) {
 	funding := types.SiacoinPrecision
 
 	// Get the host from the hostdb.
-	host, _, err := wt.staticRenter.hostDB.Host(wt.staticHostPubKey)
+	host, _, err := wt.staticRenter.staticHostDB.Host(wt.staticHostPubKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestRenewContract(t *testing.T) {
 	}
 
 	// Get some more vars.
-	allowance := wt.rt.renter.hostContractor.Allowance()
+	allowance := wt.rt.renter.staticHostContractor.Allowance()
 	bh := wt.staticCache().staticBlockHeight
 	rs := skymodules.DeriveRenterSeed(seed)
 
@@ -81,7 +81,7 @@ func TestRenewContract(t *testing.T) {
 	}
 
 	// Check contract before renewal.
-	oldContractPreRenew, ok := wt.staticRenter.hostContractor.ContractByPublicKey(params.Host.PublicKey)
+	oldContractPreRenew, ok := wt.staticRenter.staticHostContractor.ContractByPublicKey(params.Host.PublicKey)
 	if !ok {
 		t.Fatal("contract doesn't exist")
 	}
@@ -257,7 +257,7 @@ func TestRenewContract(t *testing.T) {
 	}
 
 	// Get the new contract's revision from the contractor.
-	c, found := wt.staticRenter.hostContractor.ContractByPublicKey(wt.staticHostPubKey)
+	c, found := wt.staticRenter.staticHostContractor.ContractByPublicKey(wt.staticHostPubKey)
 	if !found {
 		t.Fatal("contract not found in contractor")
 	}
@@ -334,7 +334,7 @@ func TestRenewContractEmptyPriceTableUID(t *testing.T) {
 	funding := types.SiacoinPrecision
 
 	// Get the host from the hostdb.
-	host, _, err := wt.staticRenter.hostDB.Host(wt.staticHostPubKey)
+	host, _, err := wt.staticRenter.staticHostDB.Host(wt.staticHostPubKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestRenewContractEmptyPriceTableUID(t *testing.T) {
 	}
 
 	// Get some more vars.
-	allowance := wt.rt.renter.hostContractor.Allowance()
+	allowance := wt.rt.renter.staticHostContractor.Allowance()
 	bh := wt.staticCache().staticBlockHeight
 	rs := skymodules.DeriveRenterSeed(seed)
 
@@ -372,7 +372,7 @@ func TestRenewContractEmptyPriceTableUID(t *testing.T) {
 	}
 
 	// Check contract before renewal.
-	oldContractPreRenew, ok := wt.staticRenter.hostContractor.ContractByPublicKey(params.Host.PublicKey)
+	oldContractPreRenew, ok := wt.staticRenter.staticHostContractor.ContractByPublicKey(params.Host.PublicKey)
 	if !ok {
 		t.Fatal("contract doesn't exist")
 	}

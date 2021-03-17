@@ -69,7 +69,7 @@ func (r *Renter) Upload(up skymodules.FileUploadParams) error {
 	// parity/2 contracts. NumPieces is equal to data+parity, and min pieces is
 	// equal to parity. Therefore (NumPieces+MinPieces)/2 = (data+data+parity)/2
 	// = data+parity/2.
-	numContracts := len(r.hostContractor.Contracts())
+	numContracts := len(r.staticHostContractor.Contracts())
 	requiredContracts := (up.ErasureCode.NumPieces() + up.ErasureCode.MinPieces()) / 2
 	if numContracts < requiredContracts && build.Release != "testing" {
 		return fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (up.ErasureCode.NumPieces()+up.ErasureCode.MinPieces())/2)

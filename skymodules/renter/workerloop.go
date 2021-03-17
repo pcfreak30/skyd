@@ -267,7 +267,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 func (w *worker) managedBlockUntilReady() bool {
 	// Check internet connectivity. If the worker does not have internet
 	// connectivity, block until connectivity is restored.
-	for !w.staticRenter.g.Online() {
+	for !w.staticRenter.staticGateway.Online() {
 		select {
 		case <-w.staticTG.StopChan():
 			return false

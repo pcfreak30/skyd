@@ -329,7 +329,7 @@ func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hostEntry, found, err := rt.renter.hostDB.Host(h.PublicKey())
+	hostEntry, found, err := rt.renter.staticHostDB.Host(h.PublicKey())
 	if err != nil {
 		t.Fatal(err)
 	}

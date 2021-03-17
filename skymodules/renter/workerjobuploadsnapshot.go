@@ -151,7 +151,7 @@ func (j *jobUploadSnapshot) callExecute() {
 
 	// Perform the actual upload.
 	var sess contractor.Session
-	sess, err = w.staticRenter.hostContractor.Session(w.staticHostPubKey, w.staticRenter.tg.StopChan())
+	sess, err = w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticRenter.tg.StopChan())
 	if err != nil {
 		w.staticRenter.staticLog.Debugln("unable to grab a session to perform an upload snapshot job:", err)
 		err = errors.AddContext(err, "unable to get host session")
@@ -165,7 +165,7 @@ func (j *jobUploadSnapshot) callExecute() {
 		err = errors.Compose(err, closeErr)
 	}()
 
-	allowance := w.staticRenter.hostContractor.Allowance()
+	allowance := w.staticRenter.staticHostContractor.Allowance()
 	hostSettings := sess.HostSettings()
 	err = checkUploadSnapshotGouging(allowance, hostSettings)
 	if err != nil {
@@ -213,7 +213,7 @@ func (w *worker) initJobUploadSnapshotQueue() {
 // managedUploadSnapshotHost uploads a snapshot to a single host.
 func (r *Renter) managedUploadSnapshotHost(meta skymodules.UploadedBackup, dotSia []byte, host contractor.Session, w *worker) error {
 	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
+	ws, _, err := r.staticWallet.PrimarySeed()
 	if err != nil {
 		return errors.AddContext(err, "failed to get wallet's primary seed")
 	}

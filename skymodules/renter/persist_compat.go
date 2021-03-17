@@ -287,7 +287,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 // populated using the legacy file remain blank.
 func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []skymodules.RenterContract) (*filesystem.FileNode, error) {
 	// Create a mapping of contract ids to host keys.
-	contracts := r.hostContractor.Contracts()
+	contracts := r.staticHostContractor.Contracts()
 	idToPk := make(map[types.FileContractID]types.SiaPublicKey)
 	for _, c := range contracts {
 		idToPk[c.ID] = c.HostPublicKey

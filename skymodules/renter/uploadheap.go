@@ -635,7 +635,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// redundancy. Check if the allowance has enough hosts for the chunk to
 		// reach minimum redundancy
 		r.staticLog.Debugf("Not building any chunks from file: %v: num workers %v, min pieces %v", skymodules.ErrNotEnoughWorkersInWorkerPool, workerPoolLen, minPieces)
-		allowance := r.hostContractor.Allowance()
+		allowance := r.staticHostContractor.Allowance()
 		// Only perform this check when we are looking for unstuck chunks. This
 		// will prevent log spam from repeatedly logging to the user the issue
 		// with the file after marking the chunks as stuck
@@ -747,7 +747,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 // peer-to-peer network.
 func (r *Renter) managedBlockUntilSynced() bool {
 	for {
-		synced := r.cs.Synced()
+		synced := r.staticConsensusSet.Synced()
 		if synced {
 			return true
 		}
@@ -757,7 +757,7 @@ func (r *Renter) managedBlockUntilSynced() bool {
 			return false
 		case <-time.After(syncCheckInterval):
 			continue
-		case <-r.hostContractor.Synced():
+		case <-r.staticHostContractor.Synced():
 			return true
 		}
 	}
@@ -1333,7 +1333,7 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 	//
 	// TODO / NOTE: This code can be removed once files store the HostPubKey
 	// of the hosts they are using, instead of just the FileContractID.
-	currentContracts := r.hostContractor.Contracts()
+	currentContracts := r.staticHostContractor.Contracts()
 	hosts := make(map[string]struct{})
 	for _, contract := range currentContracts {
 		hosts[contract.HostPublicKey.String()] = struct{}{}
@@ -1371,7 +1371,7 @@ func (r *Renter) managedRepairLoop() error {
 		}
 
 		// Return if the renter is not online.
-		if !r.g.Online() {
+		if !r.staticGateway.Online() {
 			return errors.New("repair loop returned early due to the renter been offline")
 		}
 
@@ -1408,7 +1408,7 @@ func (r *Renter) managedRepairLoop() error {
 				// There are not enough available workers for the chunk to reach
 				// minimum redundancy. Check if the allowance has enough hosts
 				// for the chunk to reach minimum redundancy
-				allowance := r.hostContractor.Allowance()
+				allowance := r.staticHostContractor.Allowance()
 				if allowance.Hosts < uint64(nextChunk.staticMinimumPieces) {
 					// There are not enough hosts in the allowance for this
 					// chunk to reach minimum redundancy. Log an error, set the

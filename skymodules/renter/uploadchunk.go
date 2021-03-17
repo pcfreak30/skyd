@@ -405,7 +405,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 
 		// If Sia is not currently online, the chunk doesn't need to be marked
 		// as stuck.
-		if !r.g.Online() {
+		if !r.staticGateway.Online() {
 			return
 		}
 
@@ -765,7 +765,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		renterError = true
 	default:
 		// Check that the renter is still online
-		if !r.g.Online() {
+		if !r.staticGateway.Online() {
 			renterError = true
 		}
 	}

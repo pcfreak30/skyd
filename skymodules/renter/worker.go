@@ -206,7 +206,7 @@ func (w *worker) staticWake() {
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	_, ok, err := r.hostDB.Host(hostPubKey)
+	_, ok, err := r.staticHostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}

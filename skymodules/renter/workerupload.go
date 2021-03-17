@@ -180,7 +180,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 		return
 	}
 	// Open an editing connection to the host.
-	e, err := w.staticRenter.hostContractor.Editor(w.staticHostPubKey, w.staticRenter.tg.StopChan())
+	e, err := w.staticRenter.staticHostContractor.Editor(w.staticHostPubKey, w.staticRenter.tg.StopChan())
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to acquire an editor: %v", err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
@@ -193,7 +193,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	}()
 
 	// Before performing the upload, check for price gouging.
-	allowance := w.staticRenter.hostContractor.Allowance()
+	allowance := w.staticRenter.staticHostContractor.Allowance()
 	hostSettings := e.HostSettings()
 	err = checkUploadGouging(allowance, hostSettings)
 	if err != nil && !w.staticRenter.deps.Disrupt("DisableUploadGouging") {
@@ -320,7 +320,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 	w.staticRenter.staticRepairLog.Printf("Worker upload failed. Worker: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, uc.staticIndex, uc.staticSiaPath, failureErr)
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
-	if w.staticRenter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted)) {
+	if w.staticRenter.staticGateway.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted)) {
 		w.mu.Lock()
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr

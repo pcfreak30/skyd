@@ -556,7 +556,7 @@ func (w *worker) managedRefillAccount() {
 
 	// If the target amount is larger than the remaining money, adjust the
 	// target. Make sure it can still cover the funding cost.
-	if contract, ok := w.staticRenter.hostContractor.ContractByPublicKey(w.staticHostPubKey); ok {
+	if contract, ok := w.staticRenter.staticHostContractor.ContractByPublicKey(w.staticHostPubKey); ok {
 		if amount.Add(pt.FundAccountCost).Cmp(contract.RenterFunds) > 0 && contract.RenterFunds.Cmp(pt.FundAccountCost) > 0 {
 			amount = contract.RenterFunds.Sub(pt.FundAccountCost)
 		}
@@ -683,7 +683,7 @@ func (w *worker) managedRefillAccount() {
 	}
 
 	// provide payment
-	err = w.staticRenter.hostContractor.ProvidePayment(stream, &pt, details)
+	err = w.staticRenter.staticHostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
 		// The host reporting that the balance has been exceeded suggests that
 		// the host believes that we have more money than we believe that we
@@ -776,7 +776,7 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	}
 
 	// provide payment
-	err = w.staticRenter.hostContractor.ProvidePayment(stream, &pt, details)
+	err = w.staticRenter.staticHostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		// If the error could be caused by a revision number mismatch,
 		// signal it by setting the flag.

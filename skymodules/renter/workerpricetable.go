@@ -337,7 +337,7 @@ func (w *worker) staticUpdatePriceTable() {
 	}
 
 	// provide payment
-	err = w.staticRenter.hostContractor.ProvidePayment(stream, &pt, details)
+	err = w.staticRenter.staticHostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		err = errors.AddContext(err, "unable to provide payment")
 		return

@@ -52,7 +52,7 @@ func (w *worker) managedUpdateCache() {
 	}
 
 	// Grab the host to check the version.
-	host, ok, err := w.staticRenter.hostDB.Host(w.staticHostPubKey)
+	host, ok, err := w.staticRenter.staticHostDB.Host(w.staticHostPubKey)
 	if !ok || err != nil {
 		w.staticRenter.staticLog.Printf("Worker %v could not update the cache, hostdb found host %v, with error: %v, worker being killed", w.staticHostPubKeyStr, ok, err)
 		w.managedKill()
@@ -61,7 +61,7 @@ func (w *worker) managedUpdateCache() {
 	}
 
 	// Grab the renter contract from the host contractor.
-	renterContract, exists := w.staticRenter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
+	renterContract, exists := w.staticRenter.staticHostContractor.ContractByPublicKey(w.staticHostPubKey)
 	if !exists {
 		w.staticRenter.staticLog.Printf("Worker %v could not update the cache, host not found in contractor, worker being killed", w.staticHostPubKeyStr)
 		w.managedKill()
@@ -71,13 +71,13 @@ func (w *worker) managedUpdateCache() {
 
 	// Create the cache object.
 	newCache := &workerCache{
-		staticBlockHeight:     w.staticRenter.cs.Height(),
+		staticBlockHeight:     w.staticRenter.staticConsensusSet.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
 		staticHostMuxAddress:  host.SiaMuxAddress(),
 		staticHostVersion:     host.Version,
-		staticRenterAllowance: w.staticRenter.hostContractor.Allowance(),
-		staticSynced:          w.staticRenter.cs.Synced(),
+		staticRenterAllowance: w.staticRenter.staticHostContractor.Allowance(),
+		staticSynced:          w.staticRenter.staticConsensusSet.Synced(),
 
 		staticLastUpdate: time.Now(),
 	}

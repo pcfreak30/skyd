@@ -111,7 +111,7 @@ func (r *Renter) managedAddChunkToDownloadHeap(udc *unfinishedDownloadChunk) {
 // will appropriately handle incoming download requests and stop signals while
 // waiting.
 func (r *Renter) managedBlockUntilOnline() bool {
-	for !r.g.Online() {
+	for !r.staticGateway.Online() {
 		select {
 		case <-r.tg.StopChan():
 			return false
@@ -294,7 +294,7 @@ LOOP:
 		for {
 			// Check that we still have an internet connection, and also that we
 			// do not need to update the worker pool yet.
-			if !r.g.Online() || time.Now().After(workerUpdateTime.Add(workerPoolUpdateTimeout)) {
+			if !r.staticGateway.Online() || time.Now().After(workerUpdateTime.Add(workerPoolUpdateTimeout)) {
 				// Reset to the top of the outer loop. Either we need to wait
 				// until we are online, or we need to refresh the worker pool.
 				// The outer loop will handle both situations.

@@ -58,7 +58,7 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	// not know which revision the host used, but since the public key is the
 	// same for all revisions, we can at least verify that it's a revision we
 	// agreed upon at some point.
-	cpk, ok := w.staticRenter.hostContractor.ContractPublicKey(w.staticHostPubKey)
+	cpk, ok := w.staticRenter.staticHostContractor.ContractPublicKey(w.staticHostPubKey)
 	if !ok {
 		return nil, errors.New("jobReadOffset: failed to get public key for contract")
 	}

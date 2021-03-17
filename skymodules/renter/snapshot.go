@@ -77,7 +77,7 @@ func (r *Renter) UploadedBackups() ([]skymodules.UploadedBackup, []types.SiaPubl
 	defer r.mu.RUnlock(id)
 	backups := append([]skymodules.UploadedBackup(nil), r.persist.UploadedBackups...)
 	hosts := make([]types.SiaPublicKey, 0, len(r.persist.SyncedContracts))
-	for _, c := range r.hostContractor.Contracts() {
+	for _, c := range r.staticHostContractor.Contracts() {
 		for _, id := range r.persist.SyncedContracts {
 			if c.ID == id {
 				hosts = append(hosts, c.HostPublicKey)
@@ -145,7 +145,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return err
 	}
 	// Create upload params with high redundancy.
-	allowance := r.hostContractor.Allowance()
+	allowance := r.staticHostContractor.Allowance()
 	dataPieces := allowance.Hosts / 10
 	if dataPieces == 0 {
 		dataPieces = 1
@@ -309,7 +309,7 @@ func (r *Renter) managedSaveSnapshot(meta skymodules.UploadedBackup) error {
 // managedDownloadSnapshotTable will fetch the snapshot table from the host.
 func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, error) {
 	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
+	ws, _, err := r.staticWallet.PrimarySeed()
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to get wallet's primary seed")
 	}
@@ -325,7 +325,7 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 
 	// Fetch the contract and see if it's empty, if that is the case return an
 	// empty entryTable and appropriate error.
-	contract, ok := r.hostContractor.ContractByPublicKey(host.staticHostPubKey)
+	contract, ok := r.staticHostContractor.ContractByPublicKey(host.staticHostPubKey)
 	if !ok {
 		return nil, errors.New("failed to host contract")
 	}
@@ -458,7 +458,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub skymodules.UploadedBa
 	defer r.tg.Done()
 
 	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
+	ws, _, err := r.staticWallet.PrimarySeed()
 	if err != nil {
 		return skymodules.UploadedBackup{}, nil, errors.AddContext(err, "failed to get wallet's primary seed")
 	}
@@ -471,7 +471,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub skymodules.UploadedBa
 
 	// try downloading from each host in serial, prioritizing the hosts that are
 	// GoodForUpload, then GoodForRenew
-	contracts := r.hostContractor.Contracts()
+	contracts := r.staticHostContractor.Contracts()
 	sort.Slice(contracts, func(i, j int) bool {
 		if contracts[i].Utility.GoodForUpload == contracts[j].Utility.GoodForUpload {
 			return contracts[i].Utility.GoodForRenew && !contracts[j].Utility.GoodForRenew
@@ -575,7 +575,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 
 	for {
 		// Can't do anything if the wallet is locked.
-		if unlocked, _ := r.w.Unlocked(); !unlocked {
+		if unlocked, _ := r.staticWallet.Unlocked(); !unlocked {
 			select {
 			case <-time.After(snapshotSyncSleepDuration):
 			case <-r.tg.StopChan():
@@ -700,7 +700,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		r.mu.RUnlock(id)
 
 		// Select an unsynchronized host.
-		contracts := r.hostContractor.Contracts()
+		contracts := r.staticHostContractor.Contracts()
 		var found bool
 		var c skymodules.RenterContract
 		for _, c = range contracts {

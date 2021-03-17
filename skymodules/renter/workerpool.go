@@ -70,7 +70,7 @@ func (wp *workerPool) callStatus() skymodules.WorkerPoolStatus {
 // worker pool to match, creating new workers and killing existing workers as
 // necessary.
 func (wp *workerPool) callUpdate() {
-	contractSlice := wp.staticRenter.hostContractor.Contracts()
+	contractSlice := wp.staticRenter.staticHostContractor.Contracts()
 	contractMap := make(map[string]skymodules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
 		if contract.Utility.BadContract {

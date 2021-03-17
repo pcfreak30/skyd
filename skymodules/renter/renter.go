@@ -253,30 +253,32 @@ type Renter struct {
 	userDownloadMemoryManager *memoryManager
 	repairMemoryManager       *memoryManager
 
-	// Utilities.
-	cs                                 modules.ConsensusSet
+	// Modules and subsystems
+	staticAccountManager  *accountManager
+	staticAlerter         *modules.GenericAlerter
+	staticConsensusSet    modules.ConsensusSet
+	staticFileSystem      *filesystem.FileSystem
+	staticFuseManager     renterFuseManager
+	staticGateway         modules.Gateway
+	staticHostContractor  hostContractor
+	staticHostDB          skymodules.HostDB
+	staticMemoryManager   *memoryManager
+	staticSkykeyManager   *skykey.SkykeyManager
+	staticStreamBufferSet *streamBufferSet
+	staticWallet          modules.Wallet
+	staticWorkerPool      *workerPool
+
+	// Utilities
 	deps                               modules.Dependencies
-	g                                  modules.Gateway
-	w                                  modules.Wallet
-	hostContractor                     hostContractor
-	hostDB                             skymodules.HostDB
 	persist                            persistence
 	persistDir                         string
 	mu                                 *siasync.RWMutex
-	staticAccountManager               *accountManager
-	staticAlerter                      *modules.GenericAlerter
-	staticFileSystem                   *filesystem.FileSystem
-	staticFuseManager                  renterFuseManager
 	staticLog                          *persist.Logger
 	staticRepairLog                    *persist.Logger
-	staticSkykeyManager                *skykey.SkykeyManager
-	staticStreamBufferSet              *streamBufferSet
 	tg                                 threadgroup.ThreadGroup
 	tpool                              modules.TransactionPool
 	wal                                *writeaheadlog.WAL
-	staticWorkerPool                   *workerPool
 	staticMux                          *siamux.SiaMux
-	memoryManager                      *memoryManager
 	staticUploadChunkDistributionQueue *uploadChunkDistributionQueue
 }
 
@@ -287,7 +289,7 @@ func (r *Renter) Close() error {
 		return nil
 	}
 
-	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlocklist.Close(), r.staticSkynetPortals.Close())
+	return errors.Compose(r.tg.Stop(), r.staticHostDB.Close(), r.staticHostContractor.Close(), r.staticSkynetBlocklist.Close(), r.staticSkynetPortals.Close())
 }
 
 // MemoryStatus returns the current status of the memory manager
@@ -356,7 +358,7 @@ func (r *Renter) PriceEstimation(allowance skymodules.Allowance) (skymodules.Ren
 	}
 	// Get hosts from pubkeys
 	for _, pk := range pks {
-		host, ok, err := r.hostDB.Host(pk)
+		host, ok, err := r.staticHostDB.Host(pk)
 		if !ok || host.Filtered || err != nil {
 			continue
 		}
@@ -391,7 +393,7 @@ func (r *Renter) PriceEstimation(allowance skymodules.Allowance) (skymodules.Ren
 		}
 		// Grab hosts to perform the estimation.
 		var err error
-		randHosts, err := r.hostDB.RandomHostsWithAllowance(int(allowance.Hosts)-len(hosts), pks, pks, allowance)
+		randHosts, err := r.staticHostDB.RandomHostsWithAllowance(int(allowance.Hosts)-len(hosts), pks, pks, allowance)
 		if err != nil {
 			return skymodules.RenterPriceEstimation{}, allowance, errors.AddContext(err, "could not generate estimate, could not get random hosts")
 		}
@@ -478,7 +480,7 @@ func (r *Renter) PriceEstimation(allowance skymodules.Allowance) (skymodules.Ren
 	// estimate the renter to spend all of it's allowance so the siafund fee
 	// will be calculated on the sum of the allowance and the hosts collateral
 	totalPayout := allowance.Funds.Add(hostCollateral)
-	siafundFee := types.Tax(r.cs.Height(), totalPayout)
+	siafundFee := types.Tax(r.staticConsensusSet.Height(), totalPayout)
 	totalContractCost = totalContractCost.Add(siafundFee)
 
 	// Increase estimates by a factor of safety to account for host churn and
@@ -513,7 +515,7 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 
 	// Get the list of public keys from the contractor and use it to fill out
 	// the contracts map.
-	cs := r.hostContractor.Contracts()
+	cs := r.staticHostContractor.Contracts()
 	for i := 0; i < len(cs); i++ {
 		contracts[cs[i].HostPublicKey.String()] = cs[i]
 	}
@@ -526,7 +528,7 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 			continue
 		}
 		goodForRenew[pkString] = cu.GoodForRenew
-		offline[pkString] = r.hostContractor.IsOffline(contract.HostPublicKey)
+		offline[pkString] = r.staticHostContractor.IsOffline(contract.HostPublicKey)
 	}
 	return offline, goodForRenew, contracts
 }
@@ -551,13 +553,13 @@ func (r *Renter) managedUpdateRenterContractsAndUtilities() {
 	var used []types.SiaPublicKey
 	goodForRenew := make(map[string]bool)
 	offline := make(map[string]bool)
-	allContracts := r.hostContractor.Contracts()
+	allContracts := r.staticHostContractor.Contracts()
 	contracts := make(map[string]skymodules.RenterContract)
 	for _, contract := range allContracts {
 		pk := contract.HostPublicKey
 		cu := contract.Utility
 		goodForRenew[pk.String()] = cu.GoodForRenew
-		offline[pk.String()] = r.hostContractor.IsOffline(pk)
+		offline[pk.String()] = r.staticHostContractor.IsOffline(pk)
 		contracts[pk.String()] = contract
 		if cu.GoodForRenew {
 			used = append(used, pk)
@@ -619,13 +621,13 @@ func (r *Renter) SetSettings(s skymodules.RenterSettings) error {
 	}
 
 	// Set allowance.
-	err := r.hostContractor.SetAllowance(s.Allowance)
+	err := r.staticHostContractor.SetAllowance(s.Allowance)
 	if err != nil {
 		return err
 	}
 
 	// Set IPViolationsCheck
-	r.hostDB.SetIPViolationCheck(s.IPViolationCheck)
+	r.staticHostDB.SetIPViolationCheck(s.IPViolationCheck)
 
 	// Set the bandwidth limits.
 	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
@@ -683,10 +685,10 @@ func (r *Renter) SetFileTrackingPath(siaPath skymodules.SiaPath, newPath string)
 }
 
 // ActiveHosts returns an array of hostDB's active hosts
-func (r *Renter) ActiveHosts() ([]skymodules.HostDBEntry, error) { return r.hostDB.ActiveHosts() }
+func (r *Renter) ActiveHosts() ([]skymodules.HostDBEntry, error) { return r.staticHostDB.ActiveHosts() }
 
 // AllHosts returns an array of all hosts
-func (r *Renter) AllHosts() ([]skymodules.HostDBEntry, error) { return r.hostDB.AllHosts() }
+func (r *Renter) AllHosts() ([]skymodules.HostDBEntry, error) { return r.staticHostDB.AllHosts() }
 
 // Filter returns the renter's hostdb's filterMode and filteredHosts
 func (r *Renter) Filter() (skymodules.FilterMode, map[string]types.SiaPublicKey, error) {
@@ -696,7 +698,7 @@ func (r *Renter) Filter() (skymodules.FilterMode, map[string]types.SiaPublicKey,
 		return fm, hosts, err
 	}
 	defer r.tg.Done()
-	fm, hosts, err := r.hostDB.Filter()
+	fm, hosts, err := r.staticHostDB.Filter()
 	if err != nil {
 		return fm, hosts, errors.AddContext(err, "error getting hostdb filter:")
 	}
@@ -720,7 +722,7 @@ func (r *Renter) SetFilterMode(lm skymodules.FilterMode, hosts []types.SiaPublic
 	}
 
 	// Set list mode filter for the hostdb
-	if err := r.hostDB.SetFilterMode(lm, hosts); err != nil {
+	if err := r.staticHostDB.SetFilterMode(lm, hosts); err != nil {
 		return err
 	}
 
@@ -729,16 +731,16 @@ func (r *Renter) SetFilterMode(lm skymodules.FilterMode, hosts []types.SiaPublic
 
 // Host returns the host associated with the given public key
 func (r *Renter) Host(spk types.SiaPublicKey) (skymodules.HostDBEntry, bool, error) {
-	return r.hostDB.Host(spk)
+	return r.staticHostDB.Host(spk)
 }
 
 // InitialScanComplete returns a boolean indicating if the initial scan of the
 // hostdb is completed.
-func (r *Renter) InitialScanComplete() (bool, error) { return r.hostDB.InitialScanComplete() }
+func (r *Renter) InitialScanComplete() (bool, error) { return r.staticHostDB.InitialScanComplete() }
 
 // ScoreBreakdown returns the score breakdown
 func (r *Renter) ScoreBreakdown(e skymodules.HostDBEntry) (skymodules.HostScoreBreakdown, error) {
-	return r.hostDB.ScoreBreakdown(e)
+	return r.staticHostDB.ScoreBreakdown(e)
 }
 
 // EstimateHostScore returns the estimated host score
@@ -753,68 +755,68 @@ func (r *Renter) EstimateHostScore(e skymodules.HostDBEntry, a skymodules.Allowa
 	if reflect.DeepEqual(a, skymodules.Allowance{}) {
 		a = skymodules.DefaultAllowance
 	}
-	return r.hostDB.EstimateHostScore(e, a)
+	return r.staticHostDB.EstimateHostScore(e, a)
 }
 
 // CancelContract cancels a renter's contract by ID by setting goodForRenew and goodForUpload to false
 func (r *Renter) CancelContract(id types.FileContractID) error {
-	return r.hostContractor.CancelContract(id)
+	return r.staticHostContractor.CancelContract(id)
 }
 
 // Contracts returns an array of host contractor's staticContracts
-func (r *Renter) Contracts() []skymodules.RenterContract { return r.hostContractor.Contracts() }
+func (r *Renter) Contracts() []skymodules.RenterContract { return r.staticHostContractor.Contracts() }
 
 // CurrentPeriod returns the host contractor's current period
-func (r *Renter) CurrentPeriod() types.BlockHeight { return r.hostContractor.CurrentPeriod() }
+func (r *Renter) CurrentPeriod() types.BlockHeight { return r.staticHostContractor.CurrentPeriod() }
 
 // ContractUtility returns the utility field for a given contract, along
 // with a bool indicating if it exists.
 func (r *Renter) ContractUtility(pk types.SiaPublicKey) (skymodules.ContractUtility, bool) {
-	return r.hostContractor.ContractUtility(pk)
+	return r.staticHostContractor.ContractUtility(pk)
 }
 
 // ContractStatus returns the status of the given contract within the watchdog,
 // and a bool indicating whether or not it is being monitored.
 func (r *Renter) ContractStatus(fcID types.FileContractID) (skymodules.ContractWatchStatus, bool) {
-	return r.hostContractor.ContractStatus(fcID)
+	return r.staticHostContractor.ContractStatus(fcID)
 }
 
 // ContractorChurnStatus returns contract churn stats for the current period.
 func (r *Renter) ContractorChurnStatus() skymodules.ContractorChurnStatus {
-	return r.hostContractor.ChurnStatus()
+	return r.staticHostContractor.ChurnStatus()
 }
 
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
 // contracts within a separate thread.
 func (r *Renter) InitRecoveryScan() error {
-	return r.hostContractor.InitRecoveryScan()
+	return r.staticHostContractor.InitRecoveryScan()
 }
 
 // RecoveryScanStatus returns a bool indicating if a scan for recoverable
 // contracts is in progress and if it is, the current progress of the scan.
 func (r *Renter) RecoveryScanStatus() (bool, types.BlockHeight) {
-	return r.hostContractor.RecoveryScanStatus()
+	return r.staticHostContractor.RecoveryScanStatus()
 }
 
 // OldContracts returns an array of host contractor's oldContracts
 func (r *Renter) OldContracts() []skymodules.RenterContract {
-	return r.hostContractor.OldContracts()
+	return r.staticHostContractor.OldContracts()
 }
 
 // PeriodSpending returns the host contractor's period spending
 func (r *Renter) PeriodSpending() (skymodules.ContractorSpending, error) {
-	return r.hostContractor.PeriodSpending()
+	return r.staticHostContractor.PeriodSpending()
 }
 
 // RecoverableContracts returns the host contractor's recoverable contracts.
 func (r *Renter) RecoverableContracts() []skymodules.RecoverableContract {
-	return r.hostContractor.RecoverableContracts()
+	return r.staticHostContractor.RecoverableContracts()
 }
 
 // RefreshedContract returns a bool indicating if the contract was previously
 // refreshed
 func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
-	return r.hostContractor.RefreshedContract(fcid)
+	return r.staticHostContractor.RefreshedContract(fcid)
 }
 
 // Settings returns the Renter's current settings.
@@ -824,13 +826,13 @@ func (r *Renter) Settings() (skymodules.RenterSettings, error) {
 	}
 	defer r.tg.Done()
 	download, upload, _ := r.rl.Limits()
-	enabled, err := r.hostDB.IPViolationsCheck()
+	enabled, err := r.staticHostDB.IPViolationsCheck()
 	if err != nil {
 		return skymodules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	paused, endTime := r.staticUploadHeap.managedPauseStatus()
 	return skymodules.RenterSettings{
-		Allowance:        r.hostContractor.Allowance(),
+		Allowance:        r.staticHostContractor.Allowance(),
 		IPViolationCheck: enabled,
 		MaxDownloadSpeed: download,
 		MaxUploadSpeed:   upload,
@@ -854,7 +856,7 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the
 // same name.
 func (r *Renter) SetIPViolationCheck(enabled bool) {
-	r.hostDB.SetIPViolationCheck(enabled)
+	r.staticHostDB.SetIPViolationCheck(enabled)
 }
 
 // MountInfo returns the list of currently mounted fusefilesystems.
@@ -1003,18 +1005,18 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		downloadHistory: make(map[skymodules.DownloadID]*download),
 
-		cs:             cs,
-		deps:           deps,
-		g:              g,
-		w:              w,
-		hostDB:         hdb,
-		hostContractor: hc,
-		persistDir:     persistDir,
-		rl:             rl,
-		staticAlerter:  modules.NewAlerter("renter"),
-		staticMux:      mux,
-		mu:             siasync.New(modules.SafeMutexDelay, 1),
-		tpool:          tpool,
+		staticConsensusSet:   cs,
+		deps:                 deps,
+		staticGateway:        g,
+		staticWallet:         w,
+		staticHostDB:         hdb,
+		staticHostContractor: hc,
+		persistDir:           persistDir,
+		rl:                   rl,
+		staticAlerter:        modules.NewAlerter("renter"),
+		staticMux:            mux,
+		mu:                   siasync.New(modules.SafeMutexDelay, 1),
+		tpool:                tpool,
 	}
 	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
@@ -1088,7 +1090,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticWorkerPool = r.newWorkerPool()
 
 	// Set the worker pool on the contractor.
-	r.hostContractor.UpdateWorkerPool(r.staticWorkerPool)
+	r.staticHostContractor.UpdateWorkerPool(r.staticWorkerPool)
 
 	// Create the skykey manager.
 	// In testing, keep the skykeys with the rest of the renter data.

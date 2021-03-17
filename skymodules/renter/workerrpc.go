@@ -258,7 +258,7 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 
 	// have the contractset handle the renewal.
 	r := w.staticRenter
-	newContract, txnSet, err := w.staticRenter.hostContractor.RenewContract(stream, fcid, params, txnBuilder, r.tpool, r.hostDB, &pt)
+	newContract, txnSet, err := w.staticRenter.staticHostContractor.RenewContract(stream, fcid, params, txnBuilder, r.tpool, r.staticHostDB, &pt)
 	if err != nil {
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: call to RenewContract failed")
 	}
