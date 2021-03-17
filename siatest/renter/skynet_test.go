@@ -4488,3 +4488,103 @@ func TestReadUnknownRegistryEntry(t *testing.T) {
 		t.Fatalf("%v not between %v and %v", passed, renter.ReadRegistryBackgroundTimeout, renter.MaxRegistryReadTimeout)
 	}
 }
+
+// TestSkynetFeePaid tests that the renter calls paySkynetFee. The various edge
+// cases of paySkynetFee and the exact amounts are tested within its unit test.
+func TestSkynetFeePaid(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create an independent wallet node.
+	wallet, err := siatest.NewCleanNode(node.Wallet(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wallet.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Connect it to the group.
+	err = wallet.GatewayConnectPost(tg.Hosts()[0].GatewayAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// It should start with a 0 balance.
+	balance, err := wallet.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !balance.IsZero() {
+		t.Fatal("balance should be 0")
+	}
+
+	// Get an address.
+	wag, err := wallet.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a new renter that thinks the wallet's address is the fee address.
+	rt := node.RenterTemplate
+	deps := &dependencies.DependencyCustomNebulousAddress{}
+	deps.SetAddress(wag.Address)
+	rt.RenterDeps = deps
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Upload a file.
+	_, _, err = r.UploadNewFileBlocking(100, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the next payout.
+	time.Sleep(skymodules.SkynetFeePayoutInterval)
+
+	// Mine a block to confirm the txn.
+	err = tg.Miners()[0].MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for some money to show up on the address.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		balance, err := wallet.ConfirmedBalance()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if balance.IsZero() {
+			return errors.New("balance is zero")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

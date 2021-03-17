@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -35,9 +36,9 @@ type (
 		// it can be used for rebroadcasting the txn.
 		Txn []types.Transaction `json:"txn"`
 
-		// Height is the height at which the last entry was saved. That way we
-		// can determine whether or not a txn is old enough to be replaced.
-		Height types.BlockHeight `json:"height"`
+		// Time is the time at which the last entry was saved. That way we can
+		// determine whether or not a txn is old enough to be replaced.
+		Time time.Time `json:"time"`
 	}
 )
 
@@ -91,15 +92,15 @@ func (sh *spendingHistory) Close() error {
 
 // AddSpending adds a new entry. This includes the value and the txn used to pay
 // for the delta since the last value.
-func (sh *spendingHistory) AddSpending(spending types.Currency, txn []types.Transaction, bh types.BlockHeight) error {
+func (sh *spendingHistory) AddSpending(spending types.Currency, txn []types.Transaction, t time.Time) error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
 	// Marshal the entry.
 	entry := spendingEntry{
-		Height: bh,
-		Txn:    txn,
-		Value:  spending,
+		Time:  t,
+		Txn:   txn,
+		Value: spending,
 	}
 	entryBytes, err := json.Marshal(entry)
 	if err != nil {
@@ -116,8 +117,8 @@ func (sh *spendingHistory) AddSpending(spending types.Currency, txn []types.Tran
 }
 
 // LastSpending returns the last saved spending entry.
-func (sh *spendingHistory) LastSpending() (types.Currency, types.BlockHeight) {
+func (sh *spendingHistory) LastSpending() (types.Currency, time.Time) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
-	return sh.recentSpending.Value, sh.recentSpending.Height
+	return sh.recentSpending.Value, sh.recentSpending.Time
 }

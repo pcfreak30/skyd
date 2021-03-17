@@ -852,30 +852,37 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	r.mu.Unlock(id)
 	if cc.Synced {
 		_ = r.tg.Launch(r.staticWorkerPool.callUpdate)
-
-		// Pay skynet license fee.
-		r.managedPaySkynetFee()
 	}
 }
 
-// managedPaySkynetFee pays the accumulated skynet fee every 24 hours.
-func (r *Renter) managedPaySkynetFee() {
-	na := r.deps.NebulousAddress()
-	err := paySkynetFee(r.staticSpendingHistory, r.w, r.cs.Height(), append(r.Contracts(), r.OldContracts()...), na)
-	if err != nil {
-		r.log.Print(err)
+// threadedPaySkynetFee pays the accumulated skynet fee every 24 hours.
+func (r *Renter) threadedPaySkynetFee() {
+	// Pay periodically.
+	ticker := time.NewTicker(skymodules.SkynetFeePayoutInterval)
+	for {
+		select {
+		case <-r.tg.StopChan():
+			return // shutdown
+		case <-ticker.C:
+		}
+
+		na := r.deps.NebulousAddress()
+		err := paySkynetFee(r.staticSpendingHistory, r.w, append(r.Contracts(), r.OldContracts()...), na)
+		if err != nil {
+			r.log.Print(err)
+		}
 	}
 }
 
 // paySkynetFee pays the accumulated skynet fee every 24 hours.
 // TODO: once we pay for monetized content, that also needs to be part of the
 // total spending.
-func paySkynetFee(sh *spendingHistory, w siacoinSender, bh types.BlockHeight, contracts []skymodules.RenterContract, addr types.UnlockHash) error {
+func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.RenterContract, addr types.UnlockHash) error {
 	// Get the last spending.
 	lastSpending, lastSpendingHeight := sh.LastSpending()
 
 	// Only pay fees once per day.
-	if bh < lastSpendingHeight+types.BlocksPerDay {
+	if time.Since(lastSpendingHeight) < 24*time.Hour {
 		return nil
 	}
 
@@ -900,7 +907,7 @@ func paySkynetFee(sh *spendingHistory, w siacoinSender, bh types.BlockHeight, co
 	}
 
 	// Mark the totalSpending in the history.
-	err = sh.AddSpending(totalSpending, txn, bh)
+	err = sh.AddSpending(totalSpending, txn, time.Now())
 	if err != nil {
 		err = errors.AddContext(err, "failed to persist paid skynet fees")
 		build.Critical(err)
@@ -1185,6 +1192,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// threads disabled by "DisableRepairAndHealthLoops" so that manual calls to
 	// for bubble updates are processed.
 	go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
+
+	// Spin up the skynet fee paying goroutine.
+	if err := r.tg.Launch(r.threadedPaySkynetFee); err != nil {
+		return nil, err
+	}
 
 	// Unsubscribe on shutdown.
 	err = r.tg.OnStop(func() error {

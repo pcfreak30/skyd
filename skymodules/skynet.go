@@ -83,6 +83,14 @@ var (
 	SkyfileFormatZip = SkyfileFormat("zip")
 )
 
+// SkynetFeePayoutInterval is the time after which the renter pays out the
+// accumulated skynet fees.
+var SkynetFeePayoutInterval = build.Select(build.Var{
+	Dev:      time.Minute * 5,
+	Standard: time.Hour * 24,
+	Testing:  time.Second * 5,
+}).(time.Duration)
+
 type (
 	// SkyfileSubfiles contains the subfiles of a skyfile, indexed by their
 	// filename.

@@ -453,23 +453,24 @@ func TestPaySkynetFee(t *testing.T) {
 	// Create a test sender.
 	ts := &testSiacoinSender{}
 
-	// Pay a skynet fee but the blockheight is 143 so not enough time has
-	// passed.
-	bh := types.BlockHeight(143)
-	err = paySkynetFee(sh, ts, bh, contracts, uh)
+	// Pay a skynet fee but the time is now so not enough time has passed.
+	expectedTime := time.Now()
+	sh.AddSpending(types.ZeroCurrency, nil, expectedTime)
+	err = paySkynetFee(sh, ts, contracts, uh)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ls, lsa := ts.LastSend(); !ls.IsZero() || lsa != (types.UnlockHash{}) {
 		t.Fatal("money was paid even though it shouldn't", ls, lsa)
 	}
-	if ls, lsbd := sh.LastSpending(); !ls.IsZero() || lsbd != 0 {
-		t.Fatal("history shouldn't have been updated", ls, lsbd)
+	if ls, lsbd := sh.LastSpending(); !ls.IsZero() || lsbd != expectedTime {
+		t.Fatal("history shouldn't have been updated", ls, lsbd, expectedTime)
 	}
 
-	// BH is 144. Now the fee will be paid.
-	bh++
-	err = paySkynetFee(sh, ts, bh, contracts, uh)
+	// Last spending was 48 hours ago which is enough.
+	expectedTime = time.Now().AddDate(0, 0, -2)
+	sh.AddSpending(types.ZeroCurrency, nil, expectedTime)
+	err = paySkynetFee(sh, ts, contracts, uh)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,43 +479,30 @@ func TestPaySkynetFee(t *testing.T) {
 	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
 		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
 	}
-	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != bh {
-		t.Fatal("wrong history", ls, expectedFee, lsbd, bh)
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd.Before(expectedTime) {
+		t.Fatal("wrong history", ls, expectedFee, lsbd, expectedTime)
 	}
 
 	// Add another contract.
 	contracts = append(contracts, randomContract())
 
-	// BH is 287. Too early to pay again. Nothing changed.
-	bh = 287
-	oldBH := types.BlockHeight(144)
-	err = paySkynetFee(sh, ts, bh, contracts, uh)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
-		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
-	}
-	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != oldBH {
-		t.Fatal("wrong history", ls, expectedSpending, lsbd, oldBH)
-	}
-
-	// BH is 288 but the spending didn't increase. Nothing changed.
-	bh++
+	// Time is 48 hours ago but spending didn't change. Nothing happens.
+	expectedTime = time.Now().AddDate(0, 0, -2)
+	sh.AddSpending(expectedSpending, nil, expectedTime)
 	oldContracts := contracts[:1]
-	err = paySkynetFee(sh, ts, bh, oldContracts, uh)
+	err = paySkynetFee(sh, ts, oldContracts, uh)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
 		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
 	}
-	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != oldBH {
-		t.Fatal("wrong history", ls, expectedSpending, lsbd, oldBH)
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != expectedTime {
+		t.Fatal("wrong history", ls, expectedSpending, lsbd, expectedTime)
 	}
 
 	// Spending increased. Payment expected.
-	err = paySkynetFee(sh, ts, bh, contracts, uh)
+	err = paySkynetFee(sh, ts, contracts, uh)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -523,7 +511,7 @@ func TestPaySkynetFee(t *testing.T) {
 	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
 		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
 	}
-	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != bh {
-		t.Fatal("wrong history", ls, expectedSpending, lsbd, bh)
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd.Before(expectedTime) {
+		t.Fatal("wrong history", ls, expectedSpending, lsbd, expectedTime)
 	}
 }
