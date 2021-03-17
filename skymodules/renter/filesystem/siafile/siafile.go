@@ -1099,7 +1099,7 @@ func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, cont
 	}(sf.staticMetadata.backup())
 
 	// Update the siafile's used hosts.
-	updates, err := sf.updateUsedHostsUpdates(used)
+	updates, err := sf.updateUsedHosts(used)
 	if err != nil {
 		return errors.AddContext(err, "unable to update used hosts")
 	}
@@ -1132,48 +1132,9 @@ func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, cont
 	return sf.createAndApplyTransaction(updates...)
 }
 
-// UpdateUsedHosts updates the 'Used' flag for the entries in the pubKeyTable
-// of the SiaFile. The keys of all used hosts should be passed to the method
-// and the SiaFile will update the flag for hosts it knows of to 'true' and set
-// hosts which were not passed in to 'false'.
-func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) (err error) {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-
-	return sf.updateUsedHosts(used)
-}
-
-// updateUsedHosts updates the 'Used' flag for the entries in the
-// pubKeyTable of the SiaFile. The keys of all used hosts should be passed to
-// the method and the SiaFile will update the flag for hosts it knows of to
-// 'true' and set hosts which were not passed in to 'false'.
-func (sf *SiaFile) updateUsedHosts(used []types.SiaPublicKey) (err error) {
-	oldPubKeyTable := append([]HostPublicKey{}, sf.pubKeyTable...)
-	defer func(backup Metadata) {
-		if err != nil {
-			sf.staticMetadata.restore(backup)
-			sf.pubKeyTable = oldPubKeyTable
-		}
-	}(sf.staticMetadata.backup())
-	updates, err := sf.updateUsedHostsUpdates(used)
-	if err != nil {
-		return errors.AddContext(err, "unable to generate updates for used hosts")
-	}
-	// Apply all updates.
-	err = sf.createAndApplyTransaction(updates...)
-	if err != nil {
-		return err
-	}
-	// Also update used hosts for potential partial chunk.
-	if sf.partialsSiaFile != nil {
-		return sf.partialsSiaFile.UpdateUsedHosts(used)
-	}
-	return nil
-}
-
-// updateUsedHostsUpdates returns the wal updates needed for updating the used
-// hosts for the siafile.
-func (sf *SiaFile) updateUsedHostsUpdates(used []types.SiaPublicKey) (_ []writeaheadlog.Update, err error) {
+// updateUsedHosts returns the wal updates needed for updating the used hosts
+// for the siafile.
+func (sf *SiaFile) updateUsedHosts(used []types.SiaPublicKey) (_ []writeaheadlog.Update, err error) {
 	// Can't update used hosts on deleted file.
 	if sf.deleted {
 		return nil, errors.AddContext(ErrDeleted, "can't call UpdateUsedHosts on deleted file")

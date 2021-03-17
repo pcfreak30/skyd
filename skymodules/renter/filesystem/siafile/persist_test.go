@@ -717,7 +717,7 @@ func testApply(t *testing.T, siaFile *SiaFile, apply func(...writeaheadlog.Updat
 	}
 }
 
-// TestUpdateUsedHosts tests the UpdateUsedHosts method.
+// TestUpdateUsedHosts tests the updateUsedHosts method.
 func TestUpdateUsedHosts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -741,8 +741,13 @@ func TestUpdateUsedHosts(t *testing.T) {
 			used = append(used, entry.PublicKey)
 		}
 	}
-	if err := sf.UpdateUsedHosts(used); err != nil {
+	updates, err := sf.updateUsedHosts(used)
+	if err != nil {
 		t.Fatal("failed to update hosts", err)
+	}
+	err = sf.createAndApplyTransaction(updates...)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Create a map of the used keys for faster lookups.
@@ -760,7 +765,6 @@ func TestUpdateUsedHosts(t *testing.T) {
 	}
 
 	// Reload the siafile to see if the flags were also persisted.
-	var err error
 	sf, err = LoadSiaFile(sf.siaFilePath, sf.wal)
 	if err != nil {
 		t.Fatal(err)
