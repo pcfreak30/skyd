@@ -775,7 +775,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 	// heap is empty
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	consecutiveDirHeapFailures := 0
-	for r.staticUploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
+	for r.staticUploadHeap.managedLen() < maxUploadHeapChunks && r.staticDirectoryHeap.managedLen() > 0 {
 		select {
 		case <-r.tg.StopChan():
 			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
@@ -793,7 +793,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 			// Log the error and then decide whether or not to continue of to return
 			consecutiveDirHeapFailures++
 			if consecutiveDirHeapFailures > maxConsecutiveDirHeapFailures {
-				r.directoryHeap.managedReset()
+				r.staticDirectoryHeap.managedReset()
 				return siaPaths, errors.AddContext(err, "too many consecutive dir heap failures")
 			}
 			continue
@@ -917,7 +917,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// the next directory, when we re-add this directory to the directory heap,
 	// it gets added behind the next directory, ensuring progress is made.
 	var tempChunkHeap uploadChunkHeap
-	nextDirHealth, nextDirRemote := r.directoryHeap.managedPeekHealth()
+	nextDirHealth, nextDirRemote := r.staticDirectoryHeap.managedPeekHealth()
 	wh := worstIgnoredHealth{
 		nextDirHealth: nextDirHealth,
 		nextDirRemote: nextDirRemote,
@@ -1122,7 +1122,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// Push the directory back onto the directory heap so that when the current
 	// upload heap is drained, the ignored chunks in this dir will be
 	// reconsidered.
-	r.directoryHeap.managedPush(d)
+	r.staticDirectoryHeap.managedPush(d)
 }
 
 // managedBuildChunkHeap will iterate through all of the files in the renter and
@@ -1352,7 +1352,7 @@ func (r *Renter) managedRepairLoop() error {
 	// heap size. We want to process all of the chunks if the rest of the
 	// directory heap is in good health, ie does not need to be repaired, and
 	// there are no more chunks that could be added to the heap.
-	dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
+	dirHeapHealth, _ := r.staticDirectoryHeap.managedPeekHealth()
 	smallRepair := !skymodules.NeedsRepair(dirHeapHealth)
 
 	// Limit the amount of time spent in each iteration of the repair loop so
@@ -1512,7 +1512,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			if err != nil {
 				r.staticRepairLog.Println("WARN: there was an error resetting the upload heap:", err)
 			}
-			r.directoryHeap.managedReset()
+			r.staticDirectoryHeap.managedReset()
 			err = r.managedPushUnexploredDirectory(skymodules.RootSiaPath())
 			if err != nil {
 				r.staticRepairLog.Println("WARN: there was an error pushing an unexplored root directory onto the directory heap:", err)
@@ -1534,7 +1534,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// directory.
 		if time.Now().After(resetTime) {
 			resetTime = time.Now().Add(repairLoopResetFrequency)
-			r.directoryHeap.managedReset()
+			r.staticDirectoryHeap.managedReset()
 			err = r.managedPushUnexploredDirectory(skymodules.RootSiaPath())
 			if err != nil {
 				r.staticRepairLog.Println("WARN: error re-initializing the directory heap:", err)
@@ -1557,7 +1557,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Check if there is work to do. If the filesystem is healthy and the
 		// heap is empty, there is no work to do and the thread should block
 		// until there is work to do.
-		dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
+		dirHeapHealth, _ := r.staticDirectoryHeap.managedPeekHealth()
 		if r.staticUploadHeap.managedLen() == 0 && !skymodules.NeedsRepair(dirHeapHealth) {
 			// TODO: This has a tiny window where it might be dumping out chunks
 			// that need health, if the upload call is appending to the
@@ -1568,7 +1568,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			// the chunks into the heap. Then, even if a reset is triggered,
 			// because a rapid bubble has already completed updating the health
 			// of the root dir, it will be considered fairly.
-			r.directoryHeap.managedReset()
+			r.staticDirectoryHeap.managedReset()
 
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.

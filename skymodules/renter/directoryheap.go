@@ -253,7 +253,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 		}
 
 		// Pop directory
-		d := r.directoryHeap.managedPop()
+		d := r.staticDirectoryHeap.managedPop()
 
 		// Sanity check that we are still popping off directories
 		if d == nil {
@@ -279,7 +279,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 		}
 
 		// Add popped directory back to heap with explored now set to true.
-		r.directoryHeap.managedPush(d)
+		r.staticDirectoryHeap.managedPush(d)
 	}
 }
 
@@ -318,6 +318,6 @@ func (r *Renter) managedPushUnexploredDirectory(siaPath skymodules.SiaPath) (err
 	}
 
 	// Push unexplored directory onto heap.
-	r.directoryHeap.managedPushDirectory(siaPath, metadata, false)
+	r.staticDirectoryHeap.managedPushDirectory(siaPath, metadata, false)
 	return nil
 }

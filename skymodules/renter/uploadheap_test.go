@@ -695,8 +695,8 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 		t.Fatal("Expected upload heap to be empty but has length of", rt.renter.staticUploadHeap.managedLen())
 	}
 	// Directory Heap is also empty when using renter with dependencies.
-	if rt.renter.directoryHeap.managedLen() != 0 {
-		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.directoryHeap.managedLen())
+	if rt.renter.staticDirectoryHeap.managedLen() != 0 {
+		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.staticDirectoryHeap.managedLen())
 	}
 
 	// Add chunks from file to uploadHeap
@@ -706,8 +706,8 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 	if rt.renter.staticUploadHeap.managedLen() != int(f.NumChunks()) {
 		t.Fatalf("Expected upload heap to be of size %v but was %v", f.NumChunks(), rt.renter.staticUploadHeap.managedLen())
 	}
-	if rt.renter.directoryHeap.managedLen() != 0 {
-		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.directoryHeap.managedLen())
+	if rt.renter.staticDirectoryHeap.managedLen() != 0 {
+		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.staticDirectoryHeap.managedLen())
 	}
 
 	// Empty uploadHeap
@@ -750,11 +750,11 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 		t.Fatalf("Expected upload heap to be of size %v but was %v", uploadHeapLen, rt.renter.staticUploadHeap.managedLen())
 	}
 	// There should be one directory in the directory heap now
-	if rt.renter.directoryHeap.managedLen() != 1 {
-		t.Fatal("Expected directory heap to have 1 element but has length of", rt.renter.directoryHeap.managedLen())
+	if rt.renter.staticDirectoryHeap.managedLen() != 1 {
+		t.Fatal("Expected directory heap to have 1 element but has length of", rt.renter.staticDirectoryHeap.managedLen())
 	}
 	// The directory should be marked as explored
-	d := rt.renter.directoryHeap.managedPop()
+	d := rt.renter.staticDirectoryHeap.managedPop()
 	if !d.explored {
 		t.Fatal("Directory should be explored")
 	}
@@ -1224,7 +1224,7 @@ func testAddChunksToHeapPanic(t *testing.T) {
 	// Add maxConsecutiveDirHeapFailures non existent directories to the
 	// directoryHeap
 	for i := 0; i <= maxConsecutiveDirHeapFailures; i++ {
-		rt.renter.directoryHeap.managedPush(&directory{
+		rt.renter.staticDirectoryHeap.managedPush(&directory{
 			staticSiaPath: skymodules.RandomSiaPath(),
 		})
 	}

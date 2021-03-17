@@ -206,10 +206,10 @@ type Renter struct {
 	downloadHistory   map[skymodules.DownloadID]*download
 	downloadHistoryMu sync.Mutex
 
-	// Upload management.
-	directoryHeap    directoryHeap
-	staticUploadHeap uploadHeap
-	stuckStack       stuckStack
+	// Upload and repair management.
+	staticDirectoryHeap directoryHeap
+	staticStuckStack    stuckStack
+	staticUploadHeap    uploadHeap
 
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []skymodules.HostDBEntry
@@ -999,7 +999,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 			pauseChan: make(chan struct{}),
 		},
-		directoryHeap: directoryHeap{
+		staticDirectoryHeap: directoryHeap{
 			heapDirectories: make(map[skymodules.SiaPath]*directory),
 		},
 
@@ -1064,7 +1064,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticRepairMemoryManager = newMemoryManager(repairMemoryDefault, repairMemoryPriorityDefault, r.tg.StopChan())
 
 	r.staticFuseManager = newFuseManager(r)
-	r.stuckStack = callNewStuckStack()
+	r.staticStuckStack = callNewStuckStack()
 
 	// Add SkynetBlocklist
 	sb, err := skynetblocklist.New(r.persistDir)

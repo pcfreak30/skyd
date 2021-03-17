@@ -85,9 +85,9 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 	var dirSiaPaths []skymodules.SiaPath
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	numStuckChunks, _ := r.staticUploadHeap.managedNumStuckChunks()
-	for r.stuckStack.managedLen() > 0 && numStuckChunks < maxStuckChunksInHeap {
+	for r.staticStuckStack.managedLen() > 0 && numStuckChunks < maxStuckChunksInHeap {
 		// Pop the first file SiaPath
-		siaPath := r.stuckStack.managedPop()
+		siaPath := r.staticStuckStack.managedPop()
 
 		// Add stuck chunks to uploadHeap
 		err := r.managedAddStuckChunksToHeap(siaPath, hosts, offline, goodForRenew)
@@ -163,7 +163,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath skymodules.SiaPath, hosts m
 
 	// check if there are more stuck chunks in the file
 	if len(unfinishedStuckChunks) > 0 {
-		r.stuckStack.managedPush(siaPath)
+		r.staticStuckStack.managedPush(siaPath)
 	}
 	return allErrors
 }
