@@ -1,4 +1,4 @@
-package skymodules
+package renter
 
 import (
 	"encoding/json"
@@ -15,9 +15,9 @@ import (
 // new txn.
 
 type (
-	// SpendingHistory tracks the history of the renter spending relevant to
+	// spendingHistory tracks the history of the renter spending relevant to
 	// skynet fees.
-	SpendingHistory struct {
+	spendingHistory struct {
 		recentSpending spendingEntry
 
 		staticAop *persist.AppendOnlyPersist
@@ -33,7 +33,7 @@ type (
 		// Txn is the txn that was used to pay the delta between the previous
 		// spending entry and this one. It's currently not used but in the future
 		// it can be used for rebroadcasting the txn.
-		Txn types.Transaction `json:"txn"`
+		Txn []types.Transaction `json:"txn"`
 
 		// Height is the height at which the last entry was saved. That way we
 		// can determine whether or not a txn is old enough to be replaced.
@@ -42,10 +42,11 @@ type (
 )
 
 var (
-	// metadataHeader is the header of the metadata for the persist file
-	metadataHeader = types.NewSpecifier("SkynetFees\n")
+	// spendingHistoryMDHeader is the header of the metadata for the persist file
+	spendingHistoryMDHeader = types.NewSpecifier("SpendingHistory")
 )
 
+// loadSpendingHistory loads the spending history from the reader.
 func loadSpendingHistory(r io.Reader) (spendingEntry, error) {
 	decoder := json.NewDecoder(r)
 
@@ -65,9 +66,9 @@ func loadSpendingHistory(r io.Reader) (spendingEntry, error) {
 
 // NewSpendingHistory creates a new spending history or loads an existing one
 // from disk.
-func NewSpendingHistory(dir, filename string) (*SpendingHistory, error) {
+func NewSpendingHistory(dir, filename string) (*spendingHistory, error) {
 	// Open persistence.
-	aop, r, err := persist.NewAppendOnlyPersist(dir, filename, metadataHeader, persist.MetadataVersionv156)
+	aop, r, err := persist.NewAppendOnlyPersist(dir, filename, spendingHistoryMDHeader, persist.MetadataVersionv156)
 	if err != nil {
 		return nil, err
 	}
@@ -77,20 +78,20 @@ func NewSpendingHistory(dir, filename string) (*SpendingHistory, error) {
 		return nil, err
 	}
 	// TODO: handle init
-	return &SpendingHistory{
+	return &spendingHistory{
 		staticAop:      aop,
 		recentSpending: spending,
 	}, nil
 }
 
 // Close closes the underlying persistence.
-func (sh *SpendingHistory) Close() error {
+func (sh *spendingHistory) Close() error {
 	return sh.staticAop.Close()
 }
 
 // AddSpending adds a new entry. This includes the value and the txn used to pay
 // for the delta since the last value.
-func (sh *SpendingHistory) AddSpending(spending types.Currency, txn types.Transaction, bh types.BlockHeight) error {
+func (sh *spendingHistory) AddSpending(spending types.Currency, txn []types.Transaction, bh types.BlockHeight) error {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
@@ -115,7 +116,7 @@ func (sh *SpendingHistory) AddSpending(spending types.Currency, txn types.Transa
 }
 
 // LastSpending returns the last saved spending entry.
-func (sh *SpendingHistory) LastSpending() (types.Currency, types.BlockHeight) {
+func (sh *spendingHistory) LastSpending() (types.Currency, types.BlockHeight) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	return sh.recentSpending.Value, sh.recentSpending.Height

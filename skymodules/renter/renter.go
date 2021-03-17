@@ -176,6 +176,12 @@ type renterFuseManager interface {
 	Unmount(mountPoint string) error
 }
 
+type siacoinSender interface {
+	// SendSiacoins sends the specified amount of siacoins to the provided
+	// address.
+	SendSiacoins(types.Currency, types.UnlockHash) ([]types.Transaction, error)
+}
+
 // cachedUtilities contains the cached utilities used when bubbling file and
 // folder metadata.
 type cachedUtilities struct {
@@ -191,6 +197,7 @@ type Renter struct {
 	// Skynet Management
 	staticSkynetBlocklist *skynetblocklist.SkynetBlocklist
 	staticSkynetPortals   *skynetportals.SkynetPortals
+	staticSpendingHistory *spendingHistory
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -845,7 +852,61 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	r.mu.Unlock(id)
 	if cc.Synced {
 		_ = r.tg.Launch(r.staticWorkerPool.callUpdate)
+
+		// Pay skynet license fee.
+		r.managedPaySkynetFee()
 	}
+}
+
+// managedPaySkynetFee pays the accumulated skynet fee every 24 hours.
+func (r *Renter) managedPaySkynetFee() {
+	na := r.deps.NebulousAddress()
+	err := paySkynetFee(r.staticSpendingHistory, r.w, r.cs.Height(), append(r.Contracts(), r.OldContracts()...), na)
+	if err != nil {
+		r.log.Print(err)
+	}
+}
+
+// paySkynetFee pays the accumulated skynet fee every 24 hours.
+// TODO: once we pay for monetized content, that also needs to be part of the
+// total spending.
+func paySkynetFee(sh *spendingHistory, w siacoinSender, bh types.BlockHeight, contracts []skymodules.RenterContract, addr types.UnlockHash) error {
+	// Get the last spending.
+	lastSpending, lastSpendingHeight := sh.LastSpending()
+
+	// Only pay fees once per day.
+	if bh < lastSpendingHeight+types.BlocksPerDay {
+		return nil
+	}
+
+	// Compute the total spending at this point in time.
+	var totalSpending types.Currency
+	for _, contract := range contracts {
+		totalSpending = totalSpending.Add(contract.Spending())
+	}
+
+	// Check by how much it increased since the last time.
+	if totalSpending.Cmp(lastSpending) <= 0 {
+		return nil // Spending didn't increase
+	}
+
+	// Compute the fee.
+	fee := totalSpending.Sub(lastSpending).Div64(5)
+
+	// Send the fee.
+	txn, err := w.SendSiacoins(fee, addr)
+	if err != nil {
+		return errors.AddContext(err, "Failed to send siacoins for skynet fee. Will try again in a day")
+	}
+
+	// Mark the totalSpending in the history.
+	err = sh.AddSpending(totalSpending, txn, bh)
+	if err != nil {
+		err = errors.AddContext(err, "failed to persist paid skynet fees")
+		build.Critical(err)
+		return err
+	}
+	return nil
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the
@@ -1024,6 +1085,13 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, err
 	}
+
+	// Init the spending history.
+	sh, err := NewSpendingHistory(r.persistDir, skymodules.SkynetSpendingHistoryFilename)
+	if err != nil {
+		return nil, err
+	}
+	r.staticSpendingHistory = sh
 
 	// Init the statsChan and close it right away to signal that no scan is
 	// going on.

@@ -1,4 +1,4 @@
-package skymodules
+package renter
 
 import (
 	"encoding/json"
@@ -9,14 +9,16 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
+// TestSpendingHistory tests the spending history persistence.
 func TestSpendingHistory(t *testing.T) {
-	testDir := modulesTestDir(t.Name())
+	testDir := build.TempDir("renter", t.Name())
 	fileName := "test"
 
 	spending1 := types.NewCurrency64(1)
-	txn1 := types.Transaction{ArbitraryData: [][]byte{fastrand.Bytes(100)}}
+	txn1 := []types.Transaction{{ArbitraryData: [][]byte{fastrand.Bytes(100)}}}
 	bh1 := types.BlockHeight(1)
 
 	// Create a new history.

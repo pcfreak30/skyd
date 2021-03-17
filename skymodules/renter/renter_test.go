@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 
@@ -380,5 +381,149 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	_, _, err = rt.renter.PriceEstimation(skymodules.Allowance{})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+type (
+	testSiacoinSender struct {
+		lastSend     types.Currency
+		lastSendAddr types.UnlockHash
+	}
+)
+
+func (tss *testSiacoinSender) LastSend() (types.Currency, types.UnlockHash) {
+	return tss.lastSend, tss.lastSendAddr
+}
+
+func (tss *testSiacoinSender) SendSiacoins(amt types.Currency, addr types.UnlockHash) ([]types.Transaction, error) {
+	tss.lastSend = amt
+	tss.lastSendAddr = addr
+	return nil, nil
+}
+
+// TestPaySkynetFee is a unit test for paySkynetFee.
+func TestPaySkynetFee(t *testing.T) {
+	testDir := build.TempDir("renter", t.Name())
+	fileName := "test"
+
+	// Create a new history.
+	sh, err := NewSpendingHistory(testDir, fileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Declare helper for contract creation.
+	randomContract := func() skymodules.RenterContract {
+		return skymodules.RenterContract{
+			DownloadSpending:    types.NewCurrency64(fastrand.Uint64n(100)),
+			FundAccountSpending: types.NewCurrency64(fastrand.Uint64n(100)),
+			MaintenanceSpending: skymodules.MaintenanceSpending{
+				AccountBalanceCost:   types.NewCurrency64(fastrand.Uint64n(100)),
+				FundAccountCost:      types.NewCurrency64(fastrand.Uint64n(100)),
+				UpdatePriceTableCost: types.NewCurrency64(fastrand.Uint64n(100)),
+			},
+			StorageSpending: types.NewCurrency64(fastrand.Uint64n(100)),
+			UploadSpending:  types.NewCurrency64(fastrand.Uint64n(100)),
+		}
+	}
+
+	// Create a contract.
+	contracts := []skymodules.RenterContract{
+		randomContract(),
+	}
+
+	// Helper to compute spending of contracts.
+	spending := func(contracts []skymodules.RenterContract) types.Currency {
+		var spending types.Currency
+		for _, c := range contracts {
+			spending = spending.Add(c.Spending())
+		}
+		return spending
+	}
+
+	// Helper to compute the fee from a given spending delta.
+	fee := func(delta types.Currency) types.Currency {
+		return delta.Div64(5) // 20%
+	}
+
+	// Create an address.
+	var uh types.UnlockHash
+	fastrand.Read(uh[:])
+
+	// Create a test sender.
+	ts := &testSiacoinSender{}
+
+	// Pay a skynet fee but the blockheight is 143 so not enough time has
+	// passed.
+	bh := types.BlockHeight(143)
+	err = paySkynetFee(sh, ts, bh, contracts, uh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ls, lsa := ts.LastSend(); !ls.IsZero() || lsa != (types.UnlockHash{}) {
+		t.Fatal("money was paid even though it shouldn't", ls, lsa)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.IsZero() || lsbd != 0 {
+		t.Fatal("history shouldn't have been updated", ls, lsbd)
+	}
+
+	// BH is 144. Now the fee will be paid.
+	bh++
+	err = paySkynetFee(sh, ts, bh, contracts, uh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedSpending := spending(contracts)
+	expectedFee := fee(expectedSpending)
+	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
+		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != bh {
+		t.Fatal("wrong history", ls, expectedFee, lsbd, bh)
+	}
+
+	// Add another contract.
+	contracts = append(contracts, randomContract())
+
+	// BH is 287. Too early to pay again. Nothing changed.
+	bh = 287
+	oldBH := types.BlockHeight(144)
+	err = paySkynetFee(sh, ts, bh, contracts, uh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
+		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != oldBH {
+		t.Fatal("wrong history", ls, expectedSpending, lsbd, oldBH)
+	}
+
+	// BH is 288 but the spending didn't increase. Nothing changed.
+	bh++
+	oldContracts := contracts[:1]
+	err = paySkynetFee(sh, ts, bh, oldContracts, uh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
+		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != oldBH {
+		t.Fatal("wrong history", ls, expectedSpending, lsbd, oldBH)
+	}
+
+	// Spending increased. Payment expected.
+	err = paySkynetFee(sh, ts, bh, contracts, uh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedSpending = spending(contracts)
+	expectedFee = fee(expectedSpending.Sub(spending(oldContracts)))
+	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
+		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != bh {
+		t.Fatal("wrong history", ls, expectedSpending, lsbd, bh)
 	}
 }

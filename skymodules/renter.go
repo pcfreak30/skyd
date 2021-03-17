@@ -232,6 +232,11 @@ const (
 	// provide the storage proof at the end of the contract duration.
 	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
 
+	// SkynetSpendingHistoryFilename is the name of the file that periodically
+	// tracks the part of the renter spending that is elligible for the skynet
+	// license fee.
+	SkynetSpendingHistoryFilename = "spendinghistory.dat"
+
 	// StreamDownloadSize is the size of downloaded in a single streaming download
 	// request.
 	StreamDownloadSize = uint64(1 << 16) // 64 KiB
@@ -818,6 +823,18 @@ func (rc *RenterContract) Size() uint64 {
 		size = rc.Transaction.FileContractRevisions[0].NewFileSize
 	}
 	return size
+}
+
+// Spending return the sum of all spending of the contract.
+func (rc *RenterContract) Spending() (spending types.Currency) {
+	// TODO: should we also include contract, siafund and txn fees? Strictly
+	// speaking those are not spendings.
+	spending = spending.Add(rc.DownloadSpending)
+	spending = spending.Add(rc.FundAccountSpending)
+	spending = spending.Add(rc.MaintenanceSpending.Sum())
+	spending = spending.Add(rc.StorageSpending)
+	spending = spending.Add(rc.UploadSpending)
+	return
 }
 
 // ContractorSpending contains the metrics about how much the Contractor has
