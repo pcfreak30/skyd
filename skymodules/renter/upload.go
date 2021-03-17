@@ -123,7 +123,7 @@ func (r *Renter) Upload(up skymodules.FileUploadParams) error {
 	hosts := r.managedRefreshHostsAndWorkers()
 	r.callBuildAndPushChunks([]*filesystem.FileNode{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
 	select {
-	case r.uploadHeap.newUploads <- struct{}{}:
+	case r.staticUploadHeap.newUploads <- struct{}{}:
 	default:
 	}
 	return nil

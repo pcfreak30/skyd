@@ -495,7 +495,7 @@ func (r *Renter) PauseRepairsAndUploads(duration time.Duration) error {
 		return err
 	}
 	defer r.tg.Done()
-	r.uploadHeap.managedPause(duration)
+	r.staticUploadHeap.managedPause(duration)
 	return nil
 }
 
@@ -505,7 +505,7 @@ func (r *Renter) ResumeRepairsAndUploads() error {
 		return err
 	}
 	defer r.tg.Done()
-	r.uploadHeap.managedResume()
+	r.staticUploadHeap.managedResume()
 	return nil
 }
 
@@ -770,12 +770,12 @@ func (r *Renter) managedBlockUntilSynced() bool {
 // sufficiently healthy then we return.
 func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefreshPaths, error) {
 	siaPaths := r.newUniqueRefreshPaths()
-	prevHeapLen := r.uploadHeap.managedLen()
+	prevHeapLen := r.staticUploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	consecutiveDirHeapFailures := 0
-	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
+	for r.staticUploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
 		select {
 		case <-r.tg.StopChan():
 			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
@@ -818,7 +818,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		r.managedBuildChunkHeap(dir.staticSiaPath, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 		// Check to see if we are still adding chunks
-		heapLen := r.uploadHeap.managedLen()
+		heapLen := r.staticUploadHeap.managedLen()
 		if heapLen == prevHeapLen {
 			// If no chunks were added from this directory then just continue as
 			// this could be due to a slight delay in the metadata being updated
@@ -943,7 +943,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			chunk := unfinishedUploadChunks[i]
 			// Skip adding this chunk if it is already in the upload heap.
-			if r.uploadHeap.managedExists(chunk.id) {
+			if r.staticUploadHeap.managedExists(chunk.id) {
 				// Close the file entry before skipping the chunk.
 				err := chunk.fileEntry.Close()
 				if err != nil {
@@ -1022,7 +1022,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// We now have a temporary heap of the worst chunks in the directory. Move
 	// the chunks from the temporary heap to the upload heap until either there
 	// are no more temporary chunks or until the upload heap is full.
-	for len(tempChunkHeap) > 0 && (r.uploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
+	for len(tempChunkHeap) > 0 && (r.staticUploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
 		// Add this chunk to the upload heap.
 		chunk := heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
 		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
@@ -1270,12 +1270,12 @@ func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkT
 	}
 
 	// Try and update any existing chunk in the heap
-	err := r.uploadHeap.managedTryUpdate(uuc, ct)
+	err := r.staticUploadHeap.managedTryUpdate(uuc, ct)
 	if err != nil {
 		return false, errors.AddContext(err, "unable to update chunk in heap")
 	}
 	// Push the chunk onto the upload heap
-	pushed := r.uploadHeap.managedPush(uuc, ct)
+	pushed := r.staticUploadHeap.managedPush(uuc, ct)
 	// If we were not able to push the chunk, or if the chunkType is localChunk we
 	// return
 	if !pushed || ct == chunkTypeLocalChunk {
@@ -1362,7 +1362,7 @@ func (r *Renter) managedRepairLoop() error {
 	// Work through the heap repairing chunks until heap is empty for
 	// smallRepairs or heap drops below minUploadHeapSize for larger repairs, or
 	// until the total amount of time spent in one repair iteration has elapsed.
-	for r.uploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.Now().After(repairBreakTime) {
+	for r.staticUploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.Now().After(repairBreakTime) {
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
@@ -1376,20 +1376,20 @@ func (r *Renter) managedRepairLoop() error {
 		}
 
 		// Check if the repair has been paused
-		if r.uploadHeap.managedIsPaused() {
+		if r.staticUploadHeap.managedIsPaused() {
 			// If paused we reset the upload heap and return so that when the
 			// repair is resumes the upload heap can be built fresh.
 			errPaused := errors.New("could not finish repairing upload heap because repair was paused")
-			err := r.uploadHeap.managedReset()
+			err := r.staticUploadHeap.managedReset()
 			return errors.Compose(err, errPaused)
 		}
 
 		// Check if there is work by trying to pop off the next chunk from the
 		// heap.
-		nextChunk := r.uploadHeap.managedPop()
+		nextChunk := r.staticUploadHeap.managedPop()
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
-			r.uploadHeap.managedReset()
+			r.staticUploadHeap.managedReset()
 			return nil
 		}
 		chunkPath := nextChunk.staticSiaPath
@@ -1426,7 +1426,7 @@ func (r *Renter) managedRepairLoop() error {
 			// for now and close the file
 			nextChunk.fileEntry.Close()
 			// Remove the chunk from the repairingChunks map
-			r.uploadHeap.managedMarkRepairDone(nextChunk)
+			r.staticUploadHeap.managedMarkRepairDone(nextChunk)
 			continue
 		}
 
@@ -1445,7 +1445,7 @@ func (r *Renter) managedRepairLoop() error {
 			r.repairLog.Printf("WARN: error while preparing chunk %v from %s: %v", nextChunk.staticIndex, chunkPath, err)
 			nextChunk.fileEntry.Close()
 			// Remove the chunk from the repairingChunks map
-			r.uploadHeap.managedMarkRepairDone(nextChunk)
+			r.staticUploadHeap.managedMarkRepairDone(nextChunk)
 			continue
 		}
 	}
@@ -1497,18 +1497,18 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Check if repair process has been paused
-		if r.uploadHeap.managedIsPaused() {
+		if r.staticUploadHeap.managedIsPaused() {
 			r.repairLog.Println("Repairs and Uploads have been paused")
 			// Block until the repair process is restarted
 			select {
 			case <-r.tg.StopChan():
 				return
-			case <-r.uploadHeap.pauseChan:
+			case <-r.staticUploadHeap.pauseChan:
 				r.repairLog.Println("Repairs and Uploads have been resumed")
 			}
 			// Reset the upload heap and the directory heap now that has been
 			// resumed
-			err := r.uploadHeap.managedReset()
+			err := r.staticUploadHeap.managedReset()
 			if err != nil {
 				r.repairLog.Println("WARN: there was an error resetting the upload heap:", err)
 			}
@@ -1546,10 +1546,10 @@ func (r *Renter) threadedUploadAndRepair() {
 		// storing system files and chunks such as those related to snapshot
 		// backups is different from the siafileset that stores non-system files
 		// and chunks.
-		heapLen := r.uploadHeap.managedLen()
+		heapLen := r.staticUploadHeap.managedLen()
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
 		r.managedBuildChunkHeap(skymodules.BackupFolder, hosts, targetBackupChunks, offline, goodForRenew)
-		numBackupChunks := r.uploadHeap.managedLen() - heapLen
+		numBackupChunks := r.staticUploadHeap.managedLen() - heapLen
 		if numBackupChunks > 0 {
 			r.repairLog.Printf("Added %v backup chunks to the upload heap", numBackupChunks)
 		}
@@ -1558,7 +1558,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// heap is empty, there is no work to do and the thread should block
 		// until there is work to do.
 		dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
-		if r.uploadHeap.managedLen() == 0 && !skymodules.NeedsRepair(dirHeapHealth) {
+		if r.staticUploadHeap.managedLen() == 0 && !skymodules.NeedsRepair(dirHeapHealth) {
 			// TODO: This has a tiny window where it might be dumping out chunks
 			// that need health, if the upload call is appending to the
 			// directory heap because there is a new upload.
@@ -1573,9 +1573,9 @@ func (r *Renter) threadedUploadAndRepair() {
 			// If the file system is healthy then block until there is a new
 			// upload or there is a repair that is needed.
 			select {
-			case <-r.uploadHeap.newUploads:
+			case <-r.staticUploadHeap.newUploads:
 				r.repairLog.Debugln("repair loop triggered by new upload channel")
-			case <-r.uploadHeap.repairNeeded:
+			case <-r.staticUploadHeap.repairNeeded:
 				r.repairLog.Debugln("repair loop triggered by repair needed channel")
 			case <-r.tg.StopChan():
 				return
@@ -1612,7 +1612,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// The repair loop will return immediately if it is given little or no
 		// work but it can see that there is more work that it could be given.
 
-		uploadHeapLen := r.uploadHeap.managedLen()
+		uploadHeapLen := r.staticUploadHeap.managedLen()
 		if uploadHeapLen > 0 {
 			r.repairLog.Printf("Executing an upload and repair cycle, uploadHeap has %v chunks in it", uploadHeapLen)
 		}

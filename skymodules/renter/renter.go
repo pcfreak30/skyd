@@ -207,9 +207,9 @@ type Renter struct {
 	downloadHistoryMu sync.Mutex
 
 	// Upload management.
-	uploadHeap    uploadHeap
-	directoryHeap directoryHeap
-	stuckStack    stuckStack
+	directoryHeap    directoryHeap
+	staticUploadHeap uploadHeap
+	stuckStack       stuckStack
 
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []skymodules.HostDBEntry
@@ -828,7 +828,7 @@ func (r *Renter) Settings() (skymodules.RenterSettings, error) {
 	if err != nil {
 		return skymodules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
-	paused, endTime := r.uploadHeap.managedPauseStatus()
+	paused, endTime := r.staticUploadHeap.managedPauseStatus()
 	return skymodules.RenterSettings{
 		Allowance:        r.hostContractor.Allowance(),
 		IPViolationCheck: enabled,
@@ -985,7 +985,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		newDownloads: make(chan struct{}, 1),
 		downloadHeap: new(downloadChunkHeap),
 
-		uploadHeap: uploadHeap{
+		staticUploadHeap: uploadHeap{
 			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
 			stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
 			unstuckHeapChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
@@ -1020,7 +1020,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentile)
-	close(r.uploadHeap.pauseChan)
+	close(r.staticUploadHeap.pauseChan)
 
 	// Seed the rrs.
 	err := r.staticRRS.AddDatum(readRegistryStatsSeed)

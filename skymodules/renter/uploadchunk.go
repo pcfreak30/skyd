@@ -706,7 +706,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			}
 		}
 		// Remove the chunk from the repairingChunks map
-		r.uploadHeap.managedMarkRepairDone(uc)
+		r.staticUploadHeap.managedMarkRepairDone(uc)
 		// Signal garbage collector to free memory before returning it to the manager.
 		uc.logicalChunkData = nil
 		uc.physicalChunkData = nil
@@ -803,7 +803,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		case <-r.tg.StopChan():
 			r.log.Debugln("WARN: renter shut down before the stuck loop was signalled that the stuck repair was successful")
 			return
-		case r.uploadHeap.stuckChunkSuccess <- struct{}{}:
+		case r.staticUploadHeap.stuckChunkSuccess <- struct{}{}:
 		default:
 		}
 	}

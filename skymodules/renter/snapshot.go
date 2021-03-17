@@ -692,7 +692,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			} else {
 				// signal r.threadedUploadAndRepair to keep uploading the snapshot
 				select {
-				case r.uploadHeap.repairNeeded <- struct{}{}:
+				case r.staticUploadHeap.repairNeeded <- struct{}{}:
 				default:
 				}
 			}

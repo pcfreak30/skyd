@@ -316,13 +316,13 @@ func (bs *bubbleScheduler) managedPerformBubbleUpdate(siaPath skymodules.SiaPath
 	if siaPath.IsRoot() {
 		if skymodules.NeedsRepair(metadata.AggregateHealth) {
 			select {
-			case r.uploadHeap.repairNeeded <- struct{}{}:
+			case r.staticUploadHeap.repairNeeded <- struct{}{}:
 			default:
 			}
 		}
 		if metadata.AggregateNumStuckChunks > 0 {
 			select {
-			case r.uploadHeap.stuckChunkFound <- struct{}{}:
+			case r.staticUploadHeap.stuckChunkFound <- struct{}{}:
 			default:
 			}
 		}

@@ -34,7 +34,7 @@ var (
 func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymodules.SiaPath, error) {
 	var dirSiaPaths []skymodules.SiaPath
 	// Remember number of stuck chunks we are starting with
-	prevNumStuckChunks, prevNumRandomStuckChunks := r.uploadHeap.managedNumStuckChunks()
+	prevNumStuckChunks, prevNumRandomStuckChunks := r.staticUploadHeap.managedNumStuckChunks()
 	// Check if there is space in the heap. There is space if the number of
 	// random stuck chunks has not exceeded maxRandomStuckChunksInHeap and the
 	// total number of stuck chunks as not exceeded maxStuckChunksInHeap
@@ -59,7 +59,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymo
 		}
 
 		// Sanity check that stuck chunks were added
-		currentNumStuckChunks, currentNumRandomStuckChunks := r.uploadHeap.managedNumStuckChunks()
+		currentNumStuckChunks, currentNumRandomStuckChunks := r.staticUploadHeap.managedNumStuckChunks()
 		if currentNumRandomStuckChunks <= prevNumRandomStuckChunks {
 			// If the number of stuck chunks in the heap is not increasing
 			// then break out of this loop in order to prevent getting stuck
@@ -84,7 +84,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymo
 func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) ([]skymodules.SiaPath, error) {
 	var dirSiaPaths []skymodules.SiaPath
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
-	numStuckChunks, _ := r.uploadHeap.managedNumStuckChunks()
+	numStuckChunks, _ := r.staticUploadHeap.managedNumStuckChunks()
 	for r.stuckStack.managedLen() > 0 && numStuckChunks < maxStuckChunksInHeap {
 		// Pop the first file SiaPath
 		siaPath := r.stuckStack.managedPop()
@@ -105,7 +105,7 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 			return dirSiaPaths, errors.AddContext(err, "unable to get directory siapath")
 		}
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
-		numStuckChunks, _ = r.uploadHeap.managedNumStuckChunks()
+		numStuckChunks, _ = r.staticUploadHeap.managedNumStuckChunks()
 	}
 	return dirSiaPaths, nil
 }
@@ -498,16 +498,16 @@ func (r *Renter) threadedStuckFileLoop() {
 		dirSiaPaths = append(dirSiaPaths, randomDirSiaPaths...)
 
 		// Check if any stuck chunks were added to the upload heap
-		numStuckChunks, _ := r.uploadHeap.managedNumStuckChunks()
+		numStuckChunks, _ := r.staticUploadHeap.managedNumStuckChunks()
 		if numStuckChunks == 0 {
 			// Block until new work is required.
 			select {
 			case <-r.tg.StopChan():
 				// The renter has shut down.
 				return
-			case <-r.uploadHeap.stuckChunkFound:
+			case <-r.staticUploadHeap.stuckChunkFound:
 				// Health Loop found stuck chunk
-			case <-r.uploadHeap.stuckChunkSuccess:
+			case <-r.staticUploadHeap.stuckChunkSuccess:
 				// Stuck chunk was successfully repaired.
 			}
 			continue
@@ -516,7 +516,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		// Signal that a repair is needed because stuck chunks were added to the
 		// upload heap
 		select {
-		case r.uploadHeap.repairNeeded <- struct{}{}:
+		case r.staticUploadHeap.repairNeeded <- struct{}{}:
 		default:
 		}
 
@@ -528,7 +528,7 @@ func (r *Renter) threadedStuckFileLoop() {
 			return
 		case <-rebuildStuckHeapSignal:
 			// Time to find another random chunk
-		case <-r.uploadHeap.stuckChunkSuccess:
+		case <-r.staticUploadHeap.stuckChunkSuccess:
 			// Stuck chunk was successfully repaired.
 		}
 

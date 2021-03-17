@@ -204,8 +204,8 @@ func testManagedBuildChunkHeap(t *testing.T) {
 	// from the file added
 	offline, goodForRenew, _ := rt.renter.managedContractUtilityMaps()
 	rt.renter.managedBuildChunkHeap(skymodules.RootSiaPath(), hosts, targetUnstuckChunks, offline, goodForRenew)
-	if rt.renter.uploadHeap.managedLen() != int(f1.NumChunks()) {
-		t.Fatalf("Expected heap length of %v but got %v", f1.NumChunks(), rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != int(f1.NumChunks()) {
+		t.Fatalf("Expected heap length of %v but got %v", f1.NumChunks(), rt.renter.staticUploadHeap.managedLen())
 	}
 }
 
@@ -295,9 +295,9 @@ func testUploadHeapBasic(t *testing.T) {
 	}
 
 	// There should be 10 chunks in the heap
-	if rt.renter.uploadHeap.managedLen() != 10 {
+	if rt.renter.staticUploadHeap.managedLen() != 10 {
 		t.Fatalf("Expected %v chunks in heap found %v",
-			10, rt.renter.uploadHeap.managedLen())
+			10, rt.renter.staticUploadHeap.managedLen())
 	}
 
 	// Save chunks
@@ -309,8 +309,8 @@ func testUploadHeapBasic(t *testing.T) {
 	//  - Third 2 chunks should be stuck
 	//  - Fourth 2 chunks should be remote (ie !onDisk)
 	//  - Last 2 chunks should be unstuck
-	chunk1 := rt.renter.uploadHeap.managedPop()
-	chunk2 := rt.renter.uploadHeap.managedPop()
+	chunk1 := rt.renter.staticUploadHeap.managedPop()
+	chunk2 := rt.renter.staticUploadHeap.managedPop()
 	if !chunk1.staticPriority || !chunk2.staticPriority {
 		t.Fatalf("Expected chunks to be priority, got priority %v and %v",
 			chunk1.staticPriority, chunk2.staticPriority)
@@ -321,8 +321,8 @@ func testUploadHeapBasic(t *testing.T) {
 	}
 	topChunk := chunk1
 	chunks = append(chunks, chunk1, chunk2)
-	chunk1 = rt.renter.uploadHeap.managedPop()
-	chunk2 = rt.renter.uploadHeap.managedPop()
+	chunk1 = rt.renter.staticUploadHeap.managedPop()
+	chunk2 = rt.renter.staticUploadHeap.managedPop()
 	if !chunk1.fileRecentlySuccessful || !chunk2.fileRecentlySuccessful {
 		t.Fatalf("Expected chunks to be fileRecentlySuccessful, got fileRecentlySuccessful %v and %v",
 			chunk1.fileRecentlySuccessful, chunk2.fileRecentlySuccessful)
@@ -332,8 +332,8 @@ func testUploadHeapBasic(t *testing.T) {
 			chunk1.health, chunk2.health)
 	}
 	chunks = append(chunks, chunk1, chunk2)
-	chunk1 = rt.renter.uploadHeap.managedPop()
-	chunk2 = rt.renter.uploadHeap.managedPop()
+	chunk1 = rt.renter.staticUploadHeap.managedPop()
+	chunk2 = rt.renter.staticUploadHeap.managedPop()
 	if !chunk1.stuck || !chunk2.stuck {
 		t.Fatalf("Expected chunks to be stuck, got stuck %v and %v",
 			chunk1.stuck, chunk2.stuck)
@@ -343,8 +343,8 @@ func testUploadHeapBasic(t *testing.T) {
 			chunk1.health, chunk2.health)
 	}
 	chunks = append(chunks, chunk1, chunk2)
-	chunk1 = rt.renter.uploadHeap.managedPop()
-	chunk2 = rt.renter.uploadHeap.managedPop()
+	chunk1 = rt.renter.staticUploadHeap.managedPop()
+	chunk2 = rt.renter.staticUploadHeap.managedPop()
 	if chunk1.onDisk || chunk2.onDisk {
 		t.Fatalf("Expected chunks to be remote and not onDisk, got onDisk %v and %v",
 			chunk1.onDisk, chunk2.onDisk)
@@ -355,8 +355,8 @@ func testUploadHeapBasic(t *testing.T) {
 	}
 	middleChunk := chunk1
 	chunks = append(chunks, chunk1, chunk2)
-	chunk1 = rt.renter.uploadHeap.managedPop()
-	chunk2 = rt.renter.uploadHeap.managedPop()
+	chunk1 = rt.renter.staticUploadHeap.managedPop()
+	chunk2 = rt.renter.staticUploadHeap.managedPop()
 	if chunk1.health < chunk2.health {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
 			chunk1.health, chunk2.health)
@@ -365,7 +365,7 @@ func testUploadHeapBasic(t *testing.T) {
 	chunks = append(chunks, chunk1, chunk2)
 
 	// Clear and reset the heap
-	uh := &rt.renter.uploadHeap
+	uh := &rt.renter.staticUploadHeap
 	err = uh.managedReset()
 	if err != nil {
 		t.Fatal(err)
@@ -514,8 +514,8 @@ func testManagedAddChunksToHeap(t *testing.T) {
 	if totalDirs != 3 {
 		t.Fatal("Expected 3 siaPaths to be returned, got", totalDirs)
 	}
-	if rt.renter.uploadHeap.managedLen() != int(numChunks) {
-		t.Fatalf("Expected uploadHeap to have %v chunks but it has %v chunks", numChunks, rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != int(numChunks) {
+		t.Fatalf("Expected uploadHeap to have %v chunks but it has %v chunks", numChunks, rt.renter.staticUploadHeap.managedLen())
 	}
 }
 
@@ -634,8 +634,8 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 	// the directory heap, both the remote and local chunks are added.
 	//
 	// Then the root directory is popped again and now the local file is added.
-	if rt.renter.uploadHeap.managedLen() != numChunks {
-		t.Fatalf("Expected uploadHeap to have %v chunks but it has %v chunks", numChunks, rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != numChunks {
+		t.Fatalf("Expected uploadHeap to have %v chunks but it has %v chunks", numChunks, rt.renter.staticUploadHeap.managedLen())
 	}
 }
 
@@ -691,8 +691,8 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// Confirm we are starting with an empty upload and directory heap
-	if rt.renter.uploadHeap.managedLen() != 0 {
-		t.Fatal("Expected upload heap to be empty but has length of", rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != 0 {
+		t.Fatal("Expected upload heap to be empty but has length of", rt.renter.staticUploadHeap.managedLen())
 	}
 	// Directory Heap is also empty when using renter with dependencies.
 	if rt.renter.directoryHeap.managedLen() != 0 {
@@ -703,20 +703,20 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 	rt.renter.callBuildAndPushChunks([]*filesystem.FileNode{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 	// Upload heap should now have NumChunks chunks and directory heap should still be empty
-	if rt.renter.uploadHeap.managedLen() != int(f.NumChunks()) {
-		t.Fatalf("Expected upload heap to be of size %v but was %v", f.NumChunks(), rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != int(f.NumChunks()) {
+		t.Fatalf("Expected upload heap to be of size %v but was %v", f.NumChunks(), rt.renter.staticUploadHeap.managedLen())
 	}
 	if rt.renter.directoryHeap.managedLen() != 0 {
 		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.directoryHeap.managedLen())
 	}
 
 	// Empty uploadHeap
-	rt.renter.uploadHeap.managedReset()
+	rt.renter.staticUploadHeap.managedReset()
 
 	// Fill upload heap with chunks that are a worse health than the chunks in
 	// the file
 	var i uint64
-	for rt.renter.uploadHeap.managedLen() < maxUploadHeapChunks {
+	for rt.renter.staticUploadHeap.managedLen() < maxUploadHeapChunks {
 		chunk := &unfinishedUploadChunk{
 			id: uploadChunkID{
 				fileUID: "chunk",
@@ -740,14 +740,14 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 	}
 
 	// Record length of upload heap
-	uploadHeapLen := rt.renter.uploadHeap.managedLen()
+	uploadHeapLen := rt.renter.staticUploadHeap.managedLen()
 
 	// Try and add chunks to upload heap again
 	rt.renter.callBuildAndPushChunks([]*filesystem.FileNode{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 	// No chunks should have been added to the upload heap
-	if rt.renter.uploadHeap.managedLen() != uploadHeapLen {
-		t.Fatalf("Expected upload heap to be of size %v but was %v", uploadHeapLen, rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != uploadHeapLen {
+		t.Fatalf("Expected upload heap to be of size %v but was %v", uploadHeapLen, rt.renter.staticUploadHeap.managedLen())
 	}
 	// There should be one directory in the directory heap now
 	if rt.renter.directoryHeap.managedLen() != 1 {
@@ -817,12 +817,12 @@ func testUploadHeapMaps(t *testing.T) {
 		}
 		// Confirm chunk is in the correct map
 		if stuck {
-			_, ok := rt.renter.uploadHeap.stuckHeapChunks[chunk.id]
+			_, ok := rt.renter.staticUploadHeap.stuckHeapChunks[chunk.id]
 			if !ok {
 				t.Fatal("stuck chunk not in stuck chunk heap map")
 			}
 		} else {
-			_, ok := rt.renter.uploadHeap.unstuckHeapChunks[chunk.id]
+			_, ok := rt.renter.staticUploadHeap.unstuckHeapChunks[chunk.id]
 			if !ok {
 				t.Fatal("unstuck chunk not in unstuck chunk heap map")
 			}
@@ -833,23 +833,23 @@ func testUploadHeapMaps(t *testing.T) {
 	sf.Close()
 
 	// Confirm length of maps
-	if len(rt.renter.uploadHeap.unstuckHeapChunks) != int(numHeapChunks/2) {
-		t.Fatalf("Expected %v unstuck chunks in map but found %v", numHeapChunks/2, len(rt.renter.uploadHeap.unstuckHeapChunks))
+	if len(rt.renter.staticUploadHeap.unstuckHeapChunks) != int(numHeapChunks/2) {
+		t.Fatalf("Expected %v unstuck chunks in map but found %v", numHeapChunks/2, len(rt.renter.staticUploadHeap.unstuckHeapChunks))
 	}
-	if len(rt.renter.uploadHeap.stuckHeapChunks) != int(numHeapChunks/2) {
-		t.Fatalf("Expected %v stuck chunks in map but found %v", numHeapChunks/2, len(rt.renter.uploadHeap.stuckHeapChunks))
+	if len(rt.renter.staticUploadHeap.stuckHeapChunks) != int(numHeapChunks/2) {
+		t.Fatalf("Expected %v stuck chunks in map but found %v", numHeapChunks/2, len(rt.renter.staticUploadHeap.stuckHeapChunks))
 	}
-	if len(rt.renter.uploadHeap.repairingChunks) != 0 {
-		t.Fatalf("Expected %v repairing chunks in map but found %v", 0, len(rt.renter.uploadHeap.repairingChunks))
+	if len(rt.renter.staticUploadHeap.repairingChunks) != 0 {
+		t.Fatalf("Expected %v repairing chunks in map but found %v", 0, len(rt.renter.staticUploadHeap.repairingChunks))
 	}
 
 	// Pop off some chunks
 	poppedChunks := 3
 	for i := 0; i < poppedChunks; i++ {
 		// Pop chunk
-		chunk := rt.renter.uploadHeap.managedPop()
+		chunk := rt.renter.staticUploadHeap.managedPop()
 		// Confirm it is in the repairing map
-		_, ok := rt.renter.uploadHeap.repairingChunks[chunk.id]
+		_, ok := rt.renter.staticUploadHeap.repairingChunks[chunk.id]
 		if !ok {
 			t.Fatal("popped chunk not found in repairing map")
 		}
@@ -864,24 +864,24 @@ func testUploadHeapMaps(t *testing.T) {
 	}
 
 	// Confirm length of maps
-	if len(rt.renter.uploadHeap.repairingChunks) != poppedChunks {
-		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.uploadHeap.repairingChunks))
+	if len(rt.renter.staticUploadHeap.repairingChunks) != poppedChunks {
+		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.staticUploadHeap.repairingChunks))
 	}
-	remainingChunks := len(rt.renter.uploadHeap.unstuckHeapChunks) + len(rt.renter.uploadHeap.stuckHeapChunks)
+	remainingChunks := len(rt.renter.staticUploadHeap.unstuckHeapChunks) + len(rt.renter.staticUploadHeap.stuckHeapChunks)
 	if remainingChunks != int(numHeapChunks)-poppedChunks {
 		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", int(numHeapChunks)-poppedChunks, remainingChunks)
 	}
 
 	// Reset the heap
-	if err := rt.renter.uploadHeap.managedReset(); err != nil {
+	if err := rt.renter.staticUploadHeap.managedReset(); err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm length of maps
-	if len(rt.renter.uploadHeap.repairingChunks) != poppedChunks {
-		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.uploadHeap.repairingChunks))
+	if len(rt.renter.staticUploadHeap.repairingChunks) != poppedChunks {
+		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.staticUploadHeap.repairingChunks))
 	}
-	remainingChunks = len(rt.renter.uploadHeap.unstuckHeapChunks) + len(rt.renter.uploadHeap.stuckHeapChunks)
+	remainingChunks = len(rt.renter.staticUploadHeap.unstuckHeapChunks) + len(rt.renter.staticUploadHeap.stuckHeapChunks)
 	if remainingChunks != 0 {
 		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", 0, remainingChunks)
 	}
@@ -942,7 +942,7 @@ func testChunkSwitchStuckStatus(t *testing.T) {
 	if !pushed {
 		t.Fatal("unable to push chunk", chunk)
 	}
-	if rt.renter.uploadHeap.managedLen() != 1 {
+	if rt.renter.staticUploadHeap.managedLen() != 1 {
 		t.Error("Expected only 1 chunk in heap")
 	}
 
@@ -958,12 +958,12 @@ func testChunkSwitchStuckStatus(t *testing.T) {
 	if pushed {
 		t.Error("should not be able to push chunk again")
 	}
-	if rt.renter.uploadHeap.managedLen() != 1 {
+	if rt.renter.staticUploadHeap.managedLen() != 1 {
 		t.Error("Expected only 1 chunk in heap")
 	}
 
 	// Pop the chunk
-	chunk = rt.renter.uploadHeap.managedPop()
+	chunk = rt.renter.staticUploadHeap.managedPop()
 	if chunk == nil {
 		t.Fatal("Nil chunk popped")
 	}
@@ -972,7 +972,7 @@ func testChunkSwitchStuckStatus(t *testing.T) {
 	//
 	// Regression check 2: previously this would trigger the build.Critical that
 	// the popped chunk was already in the repair map
-	chunk = rt.renter.uploadHeap.managedPop()
+	chunk = rt.renter.staticUploadHeap.managedPop()
 	if chunk != nil {
 		t.Fatal("Expected nil chunk")
 	}
@@ -991,7 +991,7 @@ func testManagedPushChunkForRepair(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	uh := &rt.renter.uploadHeap
+	uh := &rt.renter.staticUploadHeap
 
 	// Create a stream chunk
 	file, err := rt.renter.newRenterTestFile()
@@ -1112,7 +1112,7 @@ func testManagedTryUpdate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	uh := &rt.renter.uploadHeap
+	uh := &rt.renter.staticUploadHeap
 
 	// Define test cases
 	var buf []byte
