@@ -594,6 +594,12 @@ func (sf *SiaFile) SaveMetadata() (err error) {
 func (sf *SiaFile) Expiration(contracts map[string]skymodules.RenterContract) types.BlockHeight {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	return sf.expiration(contracts)
+}
+
+// expiration updates CachedExpiration with the lowest height at which any of
+// the file's contracts will expire and returns the new value.
+func (sf *SiaFile) expiration(contracts map[string]skymodules.RenterContract) types.BlockHeight {
 	if len(sf.pubKeyTable) == 0 {
 		sf.staticMetadata.CachedExpiration = 0
 		return 0
@@ -650,12 +656,28 @@ func (sf *SiaFile) Expiration(contracts map[string]skymodules.RenterContract) ty
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
 func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h, sh, uh, ush float64, nsc, rb, sb uint64) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.health(offline, goodForRenew)
+}
+
+// health calculates the health of the file to be used in determining repair
+// priority. Health of the file is the lowest health of any of the chunks and is
+// defined as the percent of parity pieces remaining. The NumStuckChunks will be
+// calculated for the SiaFile and returned.
+//
+// NOTE: The cached values of the health and stuck health will be set but not
+// saved to disk as Health() does not write to disk. If the cached values need
+// to be updated on disk then a metadata save method should be called in
+// conjunction with Health()
+//
+// health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
+// to be repaired from disk
+func (sf *SiaFile) health(offline map[string]bool, goodForRenew map[string]bool) (h, sh, uh, ush float64, nsc, rb, sb uint64) {
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
 	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
 	worstHealth := CalculateHealth(0, minPieces, numPieces)
 
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
 	// Update the cache.
 	defer func() {
 		sf.staticMetadata.CachedHealth = h
@@ -844,7 +866,17 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r, ur float64, err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	return sf.redundancy(offlineMap, goodForRenewMap)
+}
 
+// redundancy returns the redundancy of the least redundant chunk. A file
+// becomes available when this redundancy is >= 1. Assumes that every piece is
+// unique within a file contract. -1 is returned if the file has size 0. It
+// takes two arguments, a map of offline contracts for this file and a map that
+// indicates if a contract is goodForRenew. The first redundancy returned is the
+// one that should be used by the repair code and is more accurate. The other
+// one is the redundancy presented to users.
+func (sf *SiaFile) redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r, ur float64, err error) {
 	// If the file has been deleted, we can't compute its redundancy.
 	if sf.deleted {
 		return 0, 0, errors.AddContext(ErrDeleted, "can't call Redundancy on deleted file")
@@ -1044,6 +1076,62 @@ func (sf *SiaFile) UID() SiafileUID {
 	return sf.staticMetadata.UniqueID
 }
 
+// UpdateMetadata updates various parts of the siafile's metadata
+func (sf *SiaFile) UpdateMetadata(offlineMap, goodForRenew map[string]bool, contracts map[string]skymodules.RenterContract, used []types.SiaPublicKey) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.updateMetadata(offlineMap, goodForRenew, contracts, used)
+}
+
+// updateMetadata updates various parts of the siafile's metadata
+func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, contracts map[string]skymodules.RenterContract, used []types.SiaPublicKey) (err error) {
+	// Don't update metadata for a deleted file.
+	if sf.deleted {
+		return ErrDeleted
+	}
+
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
+	// Update the siafile's used hosts.
+	updates, err := sf.updateUsedHostsUpdates(used)
+	if err != nil {
+		return errors.AddContext(err, "unable to update used hosts")
+	}
+
+	// Update cached redundancy values by calling the redundancy method.
+	_, _, err = sf.redundancy(offlineMap, goodForRenew)
+	if err != nil {
+		return errors.AddContext(err, "unable to update cached redundancy")
+	}
+
+	// Update cached health values by calling the health method.
+	_, _, _, _, _, _, _ = sf.health(offlineMap, goodForRenew)
+
+	// Set the LastHealthCheckTime
+	sf.staticMetadata.LastHealthCheckTime = time.Now()
+
+	// Update the cached expiration of the siafile by calling the expiration
+	// method.
+	_ = sf.expiration(contracts)
+
+	// Generate the header updates as updateUsedHostUpdates updates the
+	// pubKeyTable.
+	headerUpdates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return errors.AddContext(err, "unable to generate header updates")
+	}
+	updates = append(updates, headerUpdates...)
+
+	// Save the updates.
+	return sf.createAndApplyTransaction(updates...)
+}
+
 // UpdateUsedHosts updates the 'Used' flag for the entries in the pubKeyTable
 // of the SiaFile. The keys of all used hosts should be passed to the method
 // and the SiaFile will update the flag for hosts it knows of to 'true' and set
@@ -1051,9 +1139,44 @@ func (sf *SiaFile) UID() SiafileUID {
 func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+
+	return sf.updateUsedHosts(used)
+}
+
+// updateUsedHosts updates the 'Used' flag for the entries in the
+// pubKeyTable of the SiaFile. The keys of all used hosts should be passed to
+// the method and the SiaFile will update the flag for hosts it knows of to
+// 'true' and set hosts which were not passed in to 'false'.
+func (sf *SiaFile) updateUsedHosts(used []types.SiaPublicKey) (err error) {
+	oldPubKeyTable := append([]HostPublicKey{}, sf.pubKeyTable...)
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+			sf.pubKeyTable = oldPubKeyTable
+		}
+	}(sf.staticMetadata.backup())
+	updates, err := sf.updateUsedHostsUpdates(used)
+	if err != nil {
+		return errors.AddContext(err, "unable to generate updates for used hosts")
+	}
+	// Apply all updates.
+	err = sf.createAndApplyTransaction(updates...)
+	if err != nil {
+		return err
+	}
+	// Also update used hosts for potential partial chunk.
+	if sf.partialsSiaFile != nil {
+		return sf.partialsSiaFile.UpdateUsedHosts(used)
+	}
+	return nil
+}
+
+// updateUsedHostsUpdates returns the wal updates needed for updating the used
+// hosts for the siafile.
+func (sf *SiaFile) updateUsedHostsUpdates(used []types.SiaPublicKey) (_ []writeaheadlog.Update, err error) {
 	// Can't update used hosts on deleted file.
 	if sf.deleted {
-		return errors.AddContext(ErrDeleted, "can't call UpdateUsedHosts on deleted file")
+		return nil, errors.AddContext(ErrDeleted, "can't call UpdateUsedHosts on deleted file")
 	}
 	// Adding this should restore the metadata later.
 	oldPubKeyTable := append([]HostPublicKey{}, sf.pubKeyTable...)
@@ -1090,27 +1213,18 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) (err error) {
 		// save the header.
 		pruneUpdates, err := sf.pruneHosts()
 		if err != nil {
-			return errors.AddContext(err, "pruneHosts failed")
+			return nil, errors.AddContext(err, "pruneHosts failed")
 		}
 		updates = append(updates, pruneUpdates...)
 	} else {
 		// If we don't prune the hosts we explicitly save the header.
 		headerUpdates, err := sf.saveHeaderUpdates()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		updates = append(updates, headerUpdates...)
 	}
-	// Apply all updates.
-	err = sf.createAndApplyTransaction(updates...)
-	if err != nil {
-		return err
-	}
-	// Also update used hosts for potential partial chunk.
-	if sf.partialsSiaFile != nil {
-		return sf.partialsSiaFile.UpdateUsedHosts(used)
-	}
-	return nil
+	return updates, nil
 }
 
 // defragChunk removes pieces which belong to bad hosts and if that wasn't
