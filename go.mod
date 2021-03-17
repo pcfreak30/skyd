@@ -13,14 +13,14 @@ require (
 	github.com/montanaflynn/stats v0.6.3
 	github.com/spf13/cobra v1.0.0
 	github.com/vbauerster/mpb/v5 v5.0.3
-	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210312162501-ba02a258d68b
+	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210317123216-466931998d30
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
 	gitlab.com/NebulousLabs/errors v0.0.0-20200929122200-06c536cf6975
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
 	gitlab.com/NebulousLabs/log v0.0.0-20200604091839-0ba4a941cdc2
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200811080431-99b8f0768b2e
-	gitlab.com/NebulousLabs/siamux v0.0.0-20210210103854-9bdf3025036b
+	gitlab.com/NebulousLabs/siamux v0.0.0-20210301103357-b3e1da6f3ee1
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899
