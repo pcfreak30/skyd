@@ -25,9 +25,9 @@ type (
 		//
 		// We also keep the full file entry as it allows us to update metadata
 		// items in the file such as the access time.
-		staticFile *siafile.Snapshot
-		offset     int64
-		r          *Renter
+		staticFile   *siafile.Snapshot
+		offset       int64
+		staticRenter *Renter
 
 		// The cache itself is a []byte that is managed by threadedFillCache. The
 		// 'cacheOffset' indicates the starting location of the cache within the
@@ -169,7 +169,7 @@ func (s *streamer) managedFillCache() bool {
 	// Perform the actual download.
 	buffer := bytes.NewBuffer([]byte{})
 	ddw := newDownloadDestinationWriter(buffer)
-	d, err := s.r.managedNewDownload(downloadParams{
+	d, err := s.staticRenter.managedNewDownload(downloadParams{
 		destination:       ddw,
 		destinationType:   destinationTypeSeekStream,
 		destinationString: "httpresponse",
@@ -183,7 +183,7 @@ func (s *streamer) managedFillCache() bool {
 		overdrive:     5,    // TODO: high default until full overdrive support is added.
 		priority:      1000, // TODO: high default until full priority support is added.
 
-		staticMemoryManager: s.r.staticUserDownloadMemoryManager, // user initiated download
+		staticMemoryManager: s.staticRenter.staticUserDownloadMemoryManager, // user initiated download
 	})
 	if err != nil {
 		closeErr := ddw.Close()
@@ -191,7 +191,7 @@ func (s *streamer) managedFillCache() bool {
 		readErr := errors.Compose(s.readErr, err, closeErr)
 		s.readErr = readErr
 		s.mu.Unlock()
-		s.r.staticLog.Println("Error downloading for stream file:", readErr)
+		s.staticRenter.staticLog.Println("Error downloading for stream file:", readErr)
 		return false
 	}
 	// Register some cleanup for when the download is done.
@@ -213,16 +213,16 @@ func (s *streamer) managedFillCache() bool {
 			readErr := errors.Compose(s.readErr, completeErr)
 			s.readErr = readErr
 			s.mu.Unlock()
-			s.r.staticLog.Println("Error during stream download:", readErr)
+			s.staticRenter.staticLog.Println("Error during stream download:", readErr)
 			return false
 		}
-	case <-s.r.tg.StopChan():
+	case <-s.staticRenter.tg.StopChan():
 		stopErr := errors.New("download interrupted by shutdown")
 		s.mu.Lock()
 		readErr := errors.Compose(s.readErr, stopErr)
 		s.readErr = readErr
 		s.mu.Unlock()
-		s.r.staticLog.Debugln(stopErr)
+		s.staticRenter.staticLog.Debugln(stopErr)
 		return false
 	}
 
@@ -282,11 +282,11 @@ func (s *streamer) managedFillCache() bool {
 // whether the cache was emptied further since the previous call.
 func (s *streamer) threadedFillCache() {
 	// Add this thread to the renter's threadgroup.
-	err := s.r.tg.Add()
+	err := s.staticRenter.tg.Add()
 	if err != nil {
-		s.r.staticLog.Debugln("threadedFillCache terminating early because renter has stopped")
+		s.staticRenter.staticLog.Debugln("threadedFillCache terminating early because renter has stopped")
 	}
-	defer s.r.tg.Done()
+	defer s.staticRenter.tg.Done()
 
 	// Kick things off by filling the cache for the first time.
 	fetchMore := s.managedFillCache()
@@ -299,7 +299,7 @@ func (s *streamer) threadedFillCache() {
 		// shutting down if a shutdown signal is received.
 		select {
 		case <-s.activateCache:
-		case <-s.r.tg.StopChan():
+		case <-s.staticRenter.tg.StopChan():
 			return
 		}
 
@@ -518,8 +518,8 @@ func (r *Renter) StreamerByNode(node *filesystem.FileNode, disableLocalFetch boo
 // its cache.
 func (r *Renter) managedStreamer(snapshot *siafile.Snapshot, disableLocalFetch bool) skymodules.Streamer {
 	s := &streamer{
-		staticFile: snapshot,
-		r:          r,
+		staticFile:   snapshot,
+		staticRenter: r,
 
 		activateCache:           make(chan struct{}),
 		cacheReady:              make(chan struct{}),
