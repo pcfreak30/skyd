@@ -60,7 +60,7 @@ func (w *worker) externLaunchSerialJob(job func()) {
 	ok := atomic.CompareAndSwapUint64(&w.staticLoopState.atomicSerialJobRunning, 0, 1)
 	if !ok {
 		// There already is a job running. This is not allowed.
-		w.renter.staticLog.Critical("running a job when another job is already running")
+		w.staticRenter.staticLog.Critical("running a job when another job is already running")
 	}
 
 	fn := func() {
@@ -73,7 +73,7 @@ func (w *worker) externLaunchSerialJob(job func()) {
 		// worker to check for a new serial job.
 		w.staticWake()
 	}
-	err := w.renter.tg.Launch(fn)
+	err := w.staticRenter.tg.Launch(fn)
 	if err != nil {
 		// Renter has closed, job will not be executed.
 		atomic.StoreUint64(&w.staticLoopState.atomicSerialJobRunning, 0)
@@ -98,7 +98,7 @@ func (w *worker) externTryLaunchSerialJob() {
 
 	// Perform a disrupt for testing. See the implementation in
 	// workerloop_test.go for more info.
-	if w.renter.deps.Disrupt("TestJobSerialExecution") {
+	if w.staticRenter.deps.Disrupt("TestJobSerialExecution") {
 		return
 	}
 
@@ -161,7 +161,7 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 		// blocked / ignored because there was not enough bandwidth available.
 		w.staticWake()
 	}
-	err := w.renter.tg.Launch(fn)
+	err := w.staticRenter.tg.Launch(fn)
 	if err != nil {
 		// Renter has closed, but we want to represent that the work was
 		// processed anyway - returning true indicates that the worker should
@@ -223,7 +223,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// launches are controlled correctly. The disrupt operates on a mock worker,
 	// so it needs to happen after the ratelimit checks but before the cache,
 	// price table, and account checks.
-	if w.renter.deps.Disrupt("TestAsyncJobLaunches") {
+	if w.staticRenter.deps.Disrupt("TestAsyncJobLaunches") {
 		return true
 	}
 
@@ -267,7 +267,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 func (w *worker) managedBlockUntilReady() bool {
 	// Check internet connectivity. If the worker does not have internet
 	// connectivity, block until connectivity is restored.
-	for !w.renter.g.Online() {
+	for !w.staticRenter.g.Online() {
 		select {
 		case <-w.staticTG.StopChan():
 			return false
@@ -294,7 +294,7 @@ func (w *worker) managedDiscardAsyncJobs(err error) {
 // can be performed with high parallelism.
 func (w *worker) threadedWorkLoop() {
 	// Perform a disrupt for testing.
-	if w.renter.deps.Disrupt("DisableWorkerLoop") {
+	if w.staticRenter.deps.Disrupt("DisableWorkerLoop") {
 		return
 	}
 

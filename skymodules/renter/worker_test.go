@@ -284,7 +284,7 @@ func TestWorkerSpending(t *testing.T) {
 	// getRenterContract is a helper function that fetches the contract
 	getRenterContract := func() skymodules.RenterContract {
 		host := w.staticHostPubKey
-		rc, found := w.renter.hostContractor.ContractByPublicKey(host)
+		rc, found := w.staticRenter.hostContractor.ContractByPublicKey(host)
 		if !found {
 			t.Fatal("unexpected")
 		}

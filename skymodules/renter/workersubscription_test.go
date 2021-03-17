@@ -866,7 +866,7 @@ func TestHandleNotification(t *testing.T) {
 	// Register it.
 	budget := modules.NewBudget(types.SiacoinPrecision.Mul64(1000))
 	limit := modules.NewBudgetLimit(budget, downloadBandwidthCost, uploadBandwidthCost)
-	err = wt.renter.staticMux.NewListener(subscriberStr, func(stream siamux.Stream) {
+	err = wt.staticRenter.staticMux.NewListener(subscriberStr, func(stream siamux.Stream) {
 		nh.managedHandleNotification(stream, budget, limit)
 	})
 	if err != nil {
@@ -876,9 +876,9 @@ func TestHandleNotification(t *testing.T) {
 	// Declare a helper function that creates a stream which triggers the
 	// notification handler when written to.
 	hostStream := func() siamux.Stream {
-		muxAddr := wt.renter.staticMux.Address()
-		pk := wt.renter.staticMux.PublicKey()
-		stream, err := wt.renter.staticMux.NewStream(subscriberStr, muxAddr.String(), pk)
+		muxAddr := wt.staticRenter.staticMux.Address()
+		pk := wt.staticRenter.staticMux.PublicKey()
+		stream, err := wt.staticRenter.staticMux.NewStream(subscriberStr, muxAddr.String(), pk)
 		if err != nil {
 			t.Fatal(err)
 		}

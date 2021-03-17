@@ -85,11 +85,11 @@ func (j *jobDownloadSnapshot) callDiscard(err error) {
 		staticErr: errors.Extend(err, ErrJobDiscarded),
 	}
 	w := j.staticQueue.staticWorker()
-	w.renter.tg.Launch(func() {
+	w.staticRenter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 }
@@ -106,11 +106,11 @@ func (j *jobDownloadSnapshot) callExecute() {
 			staticErr:       err,
 			staticSnapshots: snapshots,
 		}
-		w.renter.tg.Launch(func() {
+		w.staticRenter.tg.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
 			case <-j.staticCtx.Done():
-			case <-w.renter.tg.StopChan():
+			case <-w.staticRenter.tg.StopChan():
 			}
 		})
 
@@ -132,7 +132,7 @@ func (j *jobDownloadSnapshot) callExecute() {
 	}
 
 	// Perform the actual download
-	snapshots, err = w.renter.managedDownloadSnapshotTable(w)
+	snapshots, err = w.staticRenter.managedDownloadSnapshotTable(w)
 	if err != nil && errors.Contains(err, errEmptyContract) {
 		err = nil
 	}
@@ -152,7 +152,7 @@ func (j *jobDownloadSnapshot) callExpectedBandwidth() (ul, dl uint64) {
 // the worker.
 func (w *worker) initJobDownloadSnapshotQueue() {
 	if w.staticJobDownloadSnapshotQueue != nil {
-		w.renter.staticLog.Critical("should not be double initializng the upload snapshot queue")
+		w.staticRenter.staticLog.Critical("should not be double initializng the upload snapshot queue")
 		return
 	}
 

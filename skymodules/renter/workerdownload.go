@@ -103,10 +103,10 @@ func checkDownloadGouging(allowance skymodules.Allowance, pt *modules.RPCPriceTa
 // threadedPerformDownloadChunkJob will schedule some download work, wait for
 // it to be done and try to recover the logical data of the chunk if possible.
 func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
-	if err := w.renter.tg.Add(); err != nil {
+	if err := w.staticRenter.tg.Add(); err != nil {
 		return
 	}
-	defer w.renter.tg.Done()
+	defer w.staticRenter.tg.Done()
 	// Process this chunk. If the worker is not fit to do the download, or is
 	// put on standby, 'nil' will be returned. After the chunk has been
 	// processed, the worker will be registered with the chunk.
@@ -122,10 +122,10 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	defer udc.managedRemoveWorker()
 
 	// Before performing the download, check for price gouging.
-	allowance := w.renter.hostContractor.Allowance()
+	allowance := w.staticRenter.hostContractor.Allowance()
 	err := checkDownloadGouging(allowance, &w.staticPriceTable().staticPriceTable)
 	if err != nil {
-		w.renter.staticLog.Debugln("worker downloader is not being used because price gouging was detected:", err)
+		w.staticRenter.staticLog.Debugln("worker downloader is not being used because price gouging was detected:", err)
 		udc.managedUnregisterWorker(w)
 		return
 	}
@@ -134,9 +134,9 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	// unregistered with the chunk.
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := w.ReadSectorLowPrio(w.renter.tg.StopCtx(), root, fetchOffset, fetchLength)
+	pieceData, err := w.ReadSectorLowPrio(w.staticRenter.tg.StopCtx(), root, fetchOffset, fetchLength)
 	if err != nil {
-		w.renter.staticLog.Debugln("worker failed to download sector:", err)
+		w.staticRenter.staticLog.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)
 		return
 	}
@@ -155,7 +155,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	key := udc.masterKey.Derive(udc.staticChunkIndex, pieceIndex)
 	decryptedPiece, err := key.DecryptBytesInPlace(pieceData, uint64(fetchOffset/crypto.SegmentSize))
 	if err != nil {
-		w.renter.staticLog.Debugln("worker failed to decrypt piece:", err)
+		w.staticRenter.staticLog.Debugln("worker failed to decrypt piece:", err)
 		udc.managedUnregisterWorker(w)
 		return
 	}
@@ -181,13 +181,13 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 		addedReceivedData := uint64(udc.erasureCode.MinPieces()) * (udc.staticFetchLength / uint64(udc.erasureCode.MinPieces()))
 		atomic.AddUint64(&udc.download.atomicDataReceived, udc.staticFetchLength-addedReceivedData)
 		// Recover the logical data.
-		if err := w.renter.tg.Add(); err != nil {
-			w.renter.staticLog.Debugln("worker failed to decrypt piece:", err)
+		if err := w.staticRenter.tg.Add(); err != nil {
+			w.staticRenter.staticLog.Debugln("worker failed to decrypt piece:", err)
 			udc.mu.Unlock()
 			return
 		}
 		go func() {
-			defer w.renter.tg.Done()
+			defer w.staticRenter.tg.Done()
 			udc.threadedRecoverLogicalData()
 		}()
 	}

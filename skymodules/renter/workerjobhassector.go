@@ -67,7 +67,7 @@ func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasS
 // callDiscard will discard a job, sending the provided error.
 func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.renter.tg.Launch(func() {
+	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobHasSectorResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 
@@ -76,11 +76,11 @@ func (j *jobHasSector) callDiscard(err error) {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 	if errLaunch != nil {
-		w.renter.staticLog.Print("callDiscard: launch failed", err)
+		w.staticRenter.staticLog.Print("callDiscard: launch failed", err)
 	}
 }
 
@@ -98,15 +98,15 @@ func (j *jobHasSector) callExecute() {
 		staticJobTime:    jobTime,
 		staticWorker:     w,
 	}
-	err2 := w.renter.tg.Launch(func() {
+	err2 := w.staticRenter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 	if err2 != nil {
-		w.renter.staticLog.Println("callExececute: launch failed", err)
+		w.staticRenter.staticLog.Println("callExececute: launch failed", err)
 	}
 
 	// Report success or failure to the queue.
@@ -212,7 +212,7 @@ func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
 func (w *worker) initJobHasSectorQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobHasSectorQueue != nil {
-		w.renter.staticLog.Critical("incorret call on initJobHasSectorQueue")
+		w.staticRenter.staticLog.Critical("incorret call on initJobHasSectorQueue")
 		return
 	}
 

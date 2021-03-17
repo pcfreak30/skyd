@@ -169,7 +169,7 @@ func (w *worker) managedTrackRevisionMismatchFixErr(err error) {
 // newMaintenanceState will initialize a maintenance state on the worker.
 func (w *worker) newMaintenanceState() {
 	if w.staticMaintenanceState != nil {
-		w.renter.staticLog.Critical("maintenancestate already exists")
+		w.staticRenter.staticLog.Critical("maintenancestate already exists")
 	}
 	w.staticMaintenanceState = new(workerMaintenanceState)
 }

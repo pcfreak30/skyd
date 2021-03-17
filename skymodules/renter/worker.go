@@ -124,10 +124,10 @@ type (
 		staticSubscriptionInfo *subscriptionInfos
 
 		// Utilities.
-		staticTG threadgroup.ThreadGroup
-		mu       sync.Mutex
-		renter   *Renter
-		wakeChan chan struct{} // Worker will check queues if given a wake signal.
+		staticTG     threadgroup.ThreadGroup
+		mu           sync.Mutex
+		staticRenter *Renter
+		wakeChan     chan struct{} // Worker will check queues if given a wake signal.
 	}
 )
 
@@ -180,7 +180,7 @@ func (w *worker) managedKill() {
 
 	err := w.staticTG.Stop()
 	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
-		w.renter.staticLog.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
+		w.staticRenter.staticLog.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
 	}
 }
 
@@ -253,7 +253,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 
 		unprocessedChunks: newUploadChunks(),
 		wakeChan:          make(chan struct{}, 1),
-		renter:            r,
+		staticRenter:      r,
 	}
 	w.newPriceTable()
 	w.newMaintenanceState()

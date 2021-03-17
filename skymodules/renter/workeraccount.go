@@ -457,15 +457,15 @@ func (w *worker) externSyncAccountBalanceToHost() {
 		if time.Since(start) > accountIdleMaxWait {
 			// The worker failed to go idle for too long. Print the loop state,
 			// so we know what kind of task is keeping it busy.
-			w.renter.staticLog.Printf("Worker static loop state: %+v\n\n", w.staticLoopState)
+			w.staticRenter.staticLog.Printf("Worker static loop state: %+v\n\n", w.staticLoopState)
 			// Get the stack traces of all running goroutines.
 			buf := make([]byte, skymodules.StackSize) // 64MB
 			n := runtime.Stack(buf, true)
-			w.renter.staticLog.Println(string(buf[:n]))
-			w.renter.staticLog.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
+			w.staticRenter.staticLog.Println(string(buf[:n]))
+			w.staticRenter.staticLog.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
 			return
 		}
-		awake := w.renter.tg.Sleep(accountIdleCheckFrequency)
+		awake := w.staticRenter.tg.Sleep(accountIdleCheckFrequency)
 		if !awake {
 			return
 		}
@@ -477,7 +477,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// new jobs while it is performing the sync operation.
 	defer func() {
 		if !isIdle() {
-			w.renter.staticLog.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")
+			w.staticRenter.staticLog.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")
 		}
 	}()
 
@@ -495,7 +495,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	balance, err := w.staticHostAccountBalance()
 	w.managedTrackAccountSyncErr(err)
 	if err != nil {
-		w.renter.staticLog.Debugf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
+		w.staticRenter.staticLog.Debugf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
 
@@ -544,7 +544,7 @@ func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
 
 // managedRefillAccount will refill the account if it needs to be refilled
 func (w *worker) managedRefillAccount() {
-	if w.renter.deps.Disrupt("DisableFunding") {
+	if w.staticRenter.deps.Disrupt("DisableFunding") {
 		return // don't refill account
 	}
 	// The account balance dropped to below half the balance target, refill. Use
@@ -556,7 +556,7 @@ func (w *worker) managedRefillAccount() {
 
 	// If the target amount is larger than the remaining money, adjust the
 	// target. Make sure it can still cover the funding cost.
-	if contract, ok := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey); ok {
+	if contract, ok := w.staticRenter.hostContractor.ContractByPublicKey(w.staticHostPubKey); ok {
 		if amount.Add(pt.FundAccountCost).Cmp(contract.RenterFunds) > 0 && contract.RenterFunds.Cmp(pt.FundAccountCost) > 0 {
 			amount = contract.RenterFunds.Sub(pt.FundAccountCost)
 		}
@@ -605,7 +605,7 @@ func (w *worker) managedRefillAccount() {
 
 		// Have the threadgroup wake the worker when the account comes off of
 		// cooldown.
-		w.renter.tg.AfterFunc(cd.Sub(time.Now()), func() {
+		w.staticRenter.tg.AfterFunc(cd.Sub(time.Now()), func() {
 			w.staticWake()
 		})
 	}()
@@ -634,7 +634,7 @@ func (w *worker) managedRefillAccount() {
 	defer func() {
 		closeErr := stream.Close()
 		if closeErr != nil {
-			w.renter.staticLog.Println("ERROR: failed to close stream", closeErr)
+			w.staticRenter.staticLog.Println("ERROR: failed to close stream", closeErr)
 		}
 	}()
 
@@ -683,19 +683,19 @@ func (w *worker) managedRefillAccount() {
 	}
 
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, &pt, details)
+	err = w.staticRenter.hostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
 		// The host reporting that the balance has been exceeded suggests that
 		// the host believes that we have more money than we believe that we
 		// have.
-		if !w.renter.deps.Disrupt("DisableCriticalOnMaxBalance") {
+		if !w.staticRenter.deps.Disrupt("DisableCriticalOnMaxBalance") {
 			// Log a critical in testing as this is very unlikely to happen due
 			// to the order of events in the worker loop, seeing as we just
 			// synced our account balance with the host if that was necessary
 			if build.Release == "testing" {
 				build.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?")
 			}
-			w.renter.staticLog.Println("worker account refill failed", err)
+			w.staticRenter.staticLog.Println("worker account refill failed", err)
 		}
 		w.staticAccount.mu.Lock()
 		w.staticAccount.syncAt = time.Time{}
@@ -727,7 +727,7 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	// Sanity check - only one account balance check should be running at a
 	// time.
 	if !atomic.CompareAndSwapUint64(&w.atomicAccountBalanceCheckRunning, 0, 1) {
-		w.renter.staticLog.Critical("account balance is being checked in two threads concurrently")
+		w.staticRenter.staticLog.Critical("account balance is being checked in two threads concurrently")
 	}
 	defer atomic.StoreUint64(&w.atomicAccountBalanceCheckRunning, 0)
 
@@ -746,7 +746,7 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
-			w.renter.staticLog.Println("ERROR: failed to close stream", err)
+			w.staticRenter.staticLog.Println("ERROR: failed to close stream", err)
 		}
 	}()
 
@@ -776,7 +776,7 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	}
 
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, &pt, details)
+	err = w.staticRenter.hostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		// If the error could be caused by a revision number mismatch,
 		// signal it by setting the flag.

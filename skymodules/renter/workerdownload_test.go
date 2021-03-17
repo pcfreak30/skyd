@@ -242,7 +242,7 @@ func TestProcessDownloadChunk(t *testing.T) {
 			download: &download{
 				completeChan: make(chan struct{}),
 			},
-			staticMemoryManager: wt.renter.repairMemoryManager,
+			staticMemoryManager: wt.staticRenter.repairMemoryManager,
 		}
 	}
 
