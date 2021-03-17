@@ -258,7 +258,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 
 		// Start the chunk upload.
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
-		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.userUploadMemoryManager)
+		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to fetch chunk for stream")
 		}

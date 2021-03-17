@@ -239,19 +239,20 @@ type Renter struct {
 
 	// Memory management
 	//
-	// registryMemoryManager is used for updating registry entries and reading
+	// staticRegistryMemoryManager is used for updating registry entries and reading
 	// them.
 	//
-	// userUploadManager is used for user-initiated uploads
+	// staticUserUploadManager is used for user-initiated uploads
 	//
-	// userDownloadMemoryManager is used for user-initiated downloads
+	// staticUserDownloadMemoryManager is used for user-initiated downloads
 	//
-	// repairMemoryManager is used for repair work scheduled by siad
+	// staticRepairMemoryManager is used for repair work scheduled by siad
 	//
-	registryMemoryManager     *memoryManager
-	userUploadMemoryManager   *memoryManager
-	userDownloadMemoryManager *memoryManager
-	repairMemoryManager       *memoryManager
+	staticMemoryManager             *memoryManager
+	staticRegistryMemoryManager     *memoryManager
+	staticRepairMemoryManager       *memoryManager
+	staticUserDownloadMemoryManager *memoryManager
+	staticUserUploadMemoryManager   *memoryManager
 
 	// Modules and subsystems
 	staticAccountManager  *accountManager
@@ -262,7 +263,6 @@ type Renter struct {
 	staticGateway         modules.Gateway
 	staticHostContractor  hostContractor
 	staticHostDB          skymodules.HostDB
-	staticMemoryManager   *memoryManager
 	staticSkykeyManager   *skykey.SkykeyManager
 	staticStreamBufferSet *streamBufferSet
 	staticWallet          modules.Wallet
@@ -299,10 +299,10 @@ func (r *Renter) MemoryStatus() (skymodules.MemoryStatus, error) {
 	}
 	defer r.tg.Done()
 
-	repairStatus := r.repairMemoryManager.callStatus()
-	userDownloadStatus := r.userDownloadMemoryManager.callStatus()
-	userUploadStatus := r.userUploadMemoryManager.callStatus()
-	registryStatus := r.registryMemoryManager.callStatus()
+	repairStatus := r.staticRepairMemoryManager.callStatus()
+	userDownloadStatus := r.staticUserDownloadMemoryManager.callStatus()
+	userUploadStatus := r.staticUserUploadMemoryManager.callStatus()
+	registryStatus := r.staticRegistryMemoryManager.callStatus()
 	total := repairStatus.Add(userDownloadStatus).Add(userUploadStatus).Add(registryStatus)
 	return skymodules.MemoryStatus{
 		MemoryManagerStatus: total,
@@ -1058,10 +1058,10 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, errors.AddContext(err, "unable to create account manager")
 	}
 
-	r.registryMemoryManager = newMemoryManager(registryMemoryDefault, registryMemoryPriorityDefault, r.tg.StopChan())
-	r.userUploadMemoryManager = newMemoryManager(userUploadMemoryDefault, userUploadMemoryPriorityDefault, r.tg.StopChan())
-	r.userDownloadMemoryManager = newMemoryManager(userDownloadMemoryDefault, userDownloadMemoryPriorityDefault, r.tg.StopChan())
-	r.repairMemoryManager = newMemoryManager(repairMemoryDefault, repairMemoryPriorityDefault, r.tg.StopChan())
+	r.staticRegistryMemoryManager = newMemoryManager(registryMemoryDefault, registryMemoryPriorityDefault, r.tg.StopChan())
+	r.staticUserUploadMemoryManager = newMemoryManager(userUploadMemoryDefault, userUploadMemoryPriorityDefault, r.tg.StopChan())
+	r.staticUserDownloadMemoryManager = newMemoryManager(userDownloadMemoryDefault, userDownloadMemoryPriorityDefault, r.tg.StopChan())
+	r.staticRepairMemoryManager = newMemoryManager(repairMemoryDefault, repairMemoryPriorityDefault, r.tg.StopChan())
 
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()

@@ -939,7 +939,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		}
 
 		// Build unfinished chunks from file and add them to the temp heap.
-		unfinishedUploadChunks := r.managedBuildUnfinishedChunks(file, hosts, target, offline, goodForRenew, r.repairMemoryManager)
+		unfinishedUploadChunks := r.managedBuildUnfinishedChunks(file, hosts, target, offline, goodForRenew, r.staticRepairMemoryManager)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			chunk := unfinishedUploadChunks[i]
 			// Skip adding this chunk if it is already in the upload heap.

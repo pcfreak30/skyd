@@ -328,7 +328,7 @@ func (r *Renter) managedDownload(p skymodules.RenterDownloadParameters) (_ *down
 		overdrive:     3, // TODO: moderate default until full overdrive support is added.
 		priority:      5, // TODO: moderate default until full priority support is added.
 
-		staticMemoryManager: r.userDownloadMemoryManager, // user initiated download
+		staticMemoryManager: r.staticUserDownloadMemoryManager, // user initiated download
 	})
 	if closer, ok := dw.(io.Closer); err != nil && ok {
 		// If the destination can be closed we do so.
