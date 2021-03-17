@@ -90,6 +90,7 @@ lockcheckpkgs = \
 	./skymodules/renter/hostdb \
 	./skymodules/renter/filesystem \
 	./skymodules/renter/filesystem/siadir \
+	./skymodules/renter/filesystem/siafile \
 	./skymodules/renter/hostdb \
 	./skymodules/renter/hostdb/hosttree \
 	./skymodules/renter/proto \
