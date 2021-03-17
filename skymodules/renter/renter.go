@@ -227,7 +227,7 @@ type Renter struct {
 	staticBatchManager *skylinkBatchManager
 
 	// The renter's bandwidth ratelimit.
-	rl *ratelimit.RateLimit
+	staticRL *ratelimit.RateLimit
 
 	// stats cache related fields.
 	stats     *skymodules.SkynetStats
@@ -595,10 +595,10 @@ func (r *Renter) setBandwidthLimits(downloadSpeed int64, uploadSpeed int64) erro
 
 	// Check for sentinel "no limits" value.
 	if downloadSpeed == 0 && uploadSpeed == 0 {
-		r.rl.SetLimits(0, 0, 0)
+		r.staticRL.SetLimits(0, 0, 0)
 	} else {
 		// Set the rate limits according to the provided values.
-		r.rl.SetLimits(downloadSpeed, uploadSpeed, 4*4096)
+		r.staticRL.SetLimits(downloadSpeed, uploadSpeed, 4*4096)
 	}
 	return nil
 }
@@ -825,7 +825,7 @@ func (r *Renter) Settings() (skymodules.RenterSettings, error) {
 		return skymodules.RenterSettings{}, err
 	}
 	defer r.tg.Done()
-	download, upload, _ := r.rl.Limits()
+	download, upload, _ := r.staticRL.Limits()
 	enabled, err := r.staticHostDB.IPViolationsCheck()
 	if err != nil {
 		return skymodules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
@@ -1012,7 +1012,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticHostDB:         hdb,
 		staticHostContractor: hc,
 		persistDir:           persistDir,
-		rl:                   rl,
+		staticRL:             rl,
 		staticAlerter:        modules.NewAlerter("renter"),
 		staticMux:            mux,
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
