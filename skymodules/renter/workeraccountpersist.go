@@ -362,7 +362,7 @@ func (am *accountManager) handleInterruptedUpgrade() error {
 	}
 
 	// open the tmp file
-	tmpFile, err := r.deps.OpenFile(tmpFilePath, os.O_RDWR, defaultFilePerm)
+	tmpFile, err := r.staticDeps.OpenFile(tmpFilePath, os.O_RDWR, defaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "error opening tmp account file")
 	}
@@ -375,7 +375,7 @@ func (am *accountManager) handleInterruptedUpgrade() error {
 		return am.upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile)
 	}
 
-	return errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath))
+	return errors.Compose(tmpFile.Close(), r.staticDeps.RemoveFile(tmpFilePath))
 }
 
 // managedLoad will pull all of the accounts off of disk and load them into the
@@ -410,7 +410,7 @@ func (am *accountManager) load() error {
 
 	// Ensure that when the renter is shut down, the save and close function
 	// runs.
-	if am.staticRenter.deps.Disrupt("InterruptAccountSaveOnShutdown") {
+	if am.staticRenter.staticDeps.Disrupt("InterruptAccountSaveOnShutdown") {
 		// Dependency injection to simulate an unclean shutdown.
 		return nil
 	}
@@ -508,7 +508,7 @@ func (am *accountManager) openAccountsFile(filename string) (modules.File, error
 	}
 
 	// open the file and create it if necessary
-	accountsFile, err := r.deps.OpenFile(accountsFilepath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	accountsFile, err := r.staticDeps.OpenFile(accountsFilepath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
 	if err != nil {
 		return nil, errors.AddContext(err, "error opening account file")
 	}
@@ -660,7 +660,7 @@ func (am *accountManager) upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile mod
 	}
 
 	// delete the tmp file
-	return errors.AddContext(errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
+	return errors.AddContext(errors.Compose(tmpFile.Close(), r.staticDeps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
 }
 
 // updateMetadata writes the given metadata to the accounts file.

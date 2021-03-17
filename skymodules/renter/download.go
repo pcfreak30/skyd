@@ -292,7 +292,7 @@ func (r *Renter) managedDownload(p skymodules.RenterDownloadParameters) (_ *down
 			return nil, err
 		}
 		dw = &downloadDestinationFile{
-			deps:            r.deps,
+			deps:            r.staticDeps,
 			f:               osFile,
 			staticChunkSize: int64(entry.ChunkSize()),
 		}

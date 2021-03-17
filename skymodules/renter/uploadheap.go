@@ -712,7 +712,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		repairable := chunk.health <= 1 || chunk.onDisk
 		needsRepair := skymodules.NeedsRepair(chunk.health)
 
-		if r.deps.Disrupt("AddUnrepairableChunks") && needsRepair {
+		if r.staticDeps.Disrupt("AddUnrepairableChunks") && needsRepair {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
 		}
@@ -1288,7 +1288,7 @@ func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkT
 	uuc.mu.Unlock()
 
 	// Disrupt check
-	if r.deps.Disrupt("skipPrepareNextChunk") {
+	if r.staticDeps.Disrupt("skipPrepareNextChunk") {
 		return pushed, nil
 	}
 

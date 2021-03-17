@@ -244,7 +244,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing
 		// connectivity during the upload.
-		if r.deps.Disrupt("DisruptUploadStream") {
+		if r.staticDeps.Disrupt("DisruptUploadStream") {
 			c, ok := reader.(io.Closer)
 			if ok {
 				c.Close()
@@ -335,7 +335,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 
 	// Disrupt to force an error and ensure the fileNode is being closed
 	// correctly.
-	if r.deps.Disrupt("failUploadStreamFromReader") {
+	if r.staticDeps.Disrupt("failUploadStreamFromReader") {
 		return nil, errors.New("disrupted by failUploadStreamFromReader")
 	}
 	return fileNode, nil

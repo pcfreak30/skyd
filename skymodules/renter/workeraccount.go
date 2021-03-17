@@ -544,7 +544,7 @@ func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
 
 // managedRefillAccount will refill the account if it needs to be refilled
 func (w *worker) managedRefillAccount() {
-	if w.staticRenter.deps.Disrupt("DisableFunding") {
+	if w.staticRenter.staticDeps.Disrupt("DisableFunding") {
 		return // don't refill account
 	}
 	// The account balance dropped to below half the balance target, refill. Use
@@ -688,7 +688,7 @@ func (w *worker) managedRefillAccount() {
 		// The host reporting that the balance has been exceeded suggests that
 		// the host believes that we have more money than we believe that we
 		// have.
-		if !w.staticRenter.deps.Disrupt("DisableCriticalOnMaxBalance") {
+		if !w.staticRenter.staticDeps.Disrupt("DisableCriticalOnMaxBalance") {
 			// Log a critical in testing as this is very unlikely to happen due
 			// to the order of events in the worker loop, seeing as we just
 			// synced our account balance with the host if that was necessary

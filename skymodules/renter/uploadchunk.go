@@ -699,7 +699,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		}
 
 		// Close the file entry for the completed chunk unless disrupted.
-		if !r.deps.Disrupt("disableCloseUploadEntry") {
+		if !r.staticDeps.Disrupt("disableCloseUploadEntry") {
 			err := uc.fileEntry.Close()
 			if err != nil {
 				r.staticLog.Println("WARN: unable to close file entry for chunk", uc.fileEntry.SiaFilePath())
@@ -732,7 +732,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 // closes the fileEntry.
 func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, setStuck bool) error {
 	// Check for ignore failed repairs dependency
-	if r.deps.Disrupt("IgnoreFailedRepairs") {
+	if r.staticDeps.Disrupt("IgnoreFailedRepairs") {
 		uc.mu.Lock()
 		uc.stuck = false
 		uc.mu.Unlock()
@@ -783,7 +783,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	}
 	// Update chunk stuck status unless the dependency to skip this step is
 	// enabled.
-	if !r.deps.Disrupt("DontUpdateChunkStatus") {
+	if !r.staticDeps.Disrupt("DontUpdateChunkStatus") {
 		if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
 			r.staticLog.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
 		}

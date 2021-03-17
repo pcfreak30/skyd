@@ -639,7 +639,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
 func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileLayout, skymodules.SkyfileMetadata, skymodules.Streamer, error) {
-	if r.deps.Disrupt("resolveSkylinkToFixture") {
+	if r.staticDeps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
 			return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to fetch fixture")
@@ -974,7 +974,7 @@ func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader sk
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
-	if r.deps.Disrupt("SkyfileUploadFail") {
+	if r.staticDeps.Disrupt("SkyfileUploadFail") {
 		return skymodules.Skylink{}, errors.New("SkyfileUploadFail")
 	}
 

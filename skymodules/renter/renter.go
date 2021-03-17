@@ -255,31 +255,31 @@ type Renter struct {
 	staticUserUploadMemoryManager   *memoryManager
 
 	// Modules and subsystems
-	staticAccountManager  *accountManager
-	staticAlerter         *modules.GenericAlerter
-	staticConsensusSet    modules.ConsensusSet
-	staticFileSystem      *filesystem.FileSystem
-	staticFuseManager     renterFuseManager
-	staticGateway         modules.Gateway
-	staticHostContractor  hostContractor
-	staticHostDB          skymodules.HostDB
-	staticSkykeyManager   *skykey.SkykeyManager
-	staticStreamBufferSet *streamBufferSet
-	staticWallet          modules.Wallet
-	staticWorkerPool      *workerPool
+	staticAccountManager               *accountManager
+	staticAlerter                      *modules.GenericAlerter
+	staticConsensusSet                 modules.ConsensusSet
+	staticFileSystem                   *filesystem.FileSystem
+	staticFuseManager                  renterFuseManager
+	staticGateway                      modules.Gateway
+	staticHostContractor               hostContractor
+	staticHostDB                       skymodules.HostDB
+	staticSkykeyManager                *skykey.SkykeyManager
+	staticStreamBufferSet              *streamBufferSet
+	staticTPool                        modules.TransactionPool
+	staticUploadChunkDistributionQueue *uploadChunkDistributionQueue
+	staticWallet                       modules.Wallet
+	staticWorkerPool                   *workerPool
 
 	// Utilities
-	deps                               modules.Dependencies
-	persist                            persistence
-	persistDir                         string
-	mu                                 *siasync.RWMutex
-	staticLog                          *persist.Logger
-	staticRepairLog                    *persist.Logger
-	tg                                 threadgroup.ThreadGroup
-	tpool                              modules.TransactionPool
-	wal                                *writeaheadlog.WAL
-	staticMux                          *siamux.SiaMux
-	staticUploadChunkDistributionQueue *uploadChunkDistributionQueue
+	persist         persistence
+	persistDir      string
+	mu              *siasync.RWMutex
+	staticDeps      modules.Dependencies
+	staticLog       *persist.Logger
+	staticMux       *siamux.SiaMux
+	staticRepairLog *persist.Logger
+	tg              threadgroup.ThreadGroup
+	wal             *writeaheadlog.WAL
 }
 
 // Close closes the Renter and its dependencies
@@ -440,7 +440,7 @@ func (r *Renter) PriceEstimation(allowance skymodules.Allowance) (skymodules.Ren
 
 	// Add the cost of paying the transaction fees and then double the contract
 	// costs to account for renewing a full set of contracts.
-	_, feePerByte := r.tpool.FeeEstimation()
+	_, feePerByte := r.staticTPool.FeeEstimation()
 	txnsFees := feePerByte.Mul64(skymodules.EstimatedFileContractTransactionSetSize).Mul64(uint64(allowance.Hosts))
 	totalContractCost = totalContractCost.Add(txnsFees)
 	totalContractCost = totalContractCost.Mul64(2)
@@ -1006,7 +1006,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		downloadHistory: make(map[skymodules.DownloadID]*download),
 
 		staticConsensusSet:   cs,
-		deps:                 deps,
+		staticDeps:           deps,
 		staticGateway:        g,
 		staticWallet:         w,
 		staticHostDB:         hdb,
@@ -1016,7 +1016,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticAlerter:        modules.NewAlerter("renter"),
 		staticMux:            mux,
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
-		tpool:                tpool,
+		staticTPool:          tpool,
 	}
 	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
@@ -1110,7 +1110,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
-	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+	if !r.staticDeps.Disrupt("DisableRepairAndHealthLoops") {
 		// Push the root directory onto the directory heap for the repair process.
 		err = r.managedPushUnexploredDirectory(skymodules.RootSiaPath())
 		if err != nil {
@@ -1140,7 +1140,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 // renterAsyncStartup handles the non-blocking portion of NewCustomRenter.
 func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
-	if r.deps.Disrupt("BlockAsyncStartup") {
+	if r.staticDeps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
 	// Subscribe to the consensus set in a separate goroutine.
@@ -1157,12 +1157,12 @@ func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
 	// consensus set.
 	// Spin up the workers for the work pool.
 	go r.threadedDownloadLoop()
-	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+	if !r.staticDeps.Disrupt("DisableRepairAndHealthLoops") {
 		go r.threadedUploadAndRepair()
 		go r.threadedStuckFileLoop()
 	}
 	// Spin up the snapshot synchronization thread.
-	if !r.deps.Disrupt("DisableSnapshotSync") {
+	if !r.staticDeps.Disrupt("DisableSnapshotSync") {
 		go r.threadedSynchronizeSnapshots()
 	}
 	return nil

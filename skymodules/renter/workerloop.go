@@ -98,7 +98,7 @@ func (w *worker) externTryLaunchSerialJob() {
 
 	// Perform a disrupt for testing. See the implementation in
 	// workerloop_test.go for more info.
-	if w.staticRenter.deps.Disrupt("TestJobSerialExecution") {
+	if w.staticRenter.staticDeps.Disrupt("TestJobSerialExecution") {
 		return
 	}
 
@@ -223,7 +223,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// launches are controlled correctly. The disrupt operates on a mock worker,
 	// so it needs to happen after the ratelimit checks but before the cache,
 	// price table, and account checks.
-	if w.staticRenter.deps.Disrupt("TestAsyncJobLaunches") {
+	if w.staticRenter.staticDeps.Disrupt("TestAsyncJobLaunches") {
 		return true
 	}
 
@@ -294,7 +294,7 @@ func (w *worker) managedDiscardAsyncJobs(err error) {
 // can be performed with high parallelism.
 func (w *worker) threadedWorkLoop() {
 	// Perform a disrupt for testing.
-	if w.staticRenter.deps.Disrupt("DisableWorkerLoop") {
+	if w.staticRenter.staticDeps.Disrupt("DisableWorkerLoop") {
 		return
 	}
 

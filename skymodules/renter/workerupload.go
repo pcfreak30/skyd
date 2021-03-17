@@ -196,7 +196,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	allowance := w.staticRenter.staticHostContractor.Allowance()
 	hostSettings := e.HostSettings()
 	err = checkUploadGouging(allowance, hostSettings)
-	if err != nil && !w.staticRenter.deps.Disrupt("DisableUploadGouging") {
+	if err != nil && !w.staticRenter.staticDeps.Disrupt("DisableUploadGouging") {
 		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return

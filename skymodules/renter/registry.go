@@ -340,7 +340,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// If specified, increment numWorkers. This will cause the loop to never
 	// exit without any of the context being closed since the response set won't
 	// be able to read the last response.
-	if r.deps.Disrupt("ReadRegistryBlocking") {
+	if r.staticDeps.Disrupt("ReadRegistryBlocking") {
 		numWorkers++
 	}
 

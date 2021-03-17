@@ -239,7 +239,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 				dirMetadata.AggregateLastHealthCheckTime = time.Now()
 				// Check for the dependency to disable the LastHealthCheckTime
 				// correction, (LHCT = LastHealthCheckTime).
-				if !r.deps.Disrupt("DisableLHCTCorrection") {
+				if !r.staticDeps.Disrupt("DisableLHCTCorrection") {
 					// Queue a bubble to bubble the directory, ignore the return channel
 					// as we do not want to block on this update.
 					r.staticLog.Debugf("Found zero time for ALHCT at '%v'", dirMetadata.sp)
@@ -327,7 +327,7 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 
 	// First check if the fileNode is blocked. Blocking a file does not remove the
 	// file so this is required to ensuring the node is purging blocked files.
-	if r.isFileNodeBlocked(sf) && !r.deps.Disrupt("DisableDeleteBlockedFiles") {
+	if r.isFileNodeBlocked(sf) && !r.staticDeps.Disrupt("DisableDeleteBlockedFiles") {
 		// Delete the file
 		r.staticLog.Println("Deleting blocked fileNode at:", siaPath)
 		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)

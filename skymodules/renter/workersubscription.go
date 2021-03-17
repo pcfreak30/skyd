@@ -702,7 +702,7 @@ func (w *worker) threadedSubscriptionLoop() {
 	}
 
 	// Disable loop if necessary.
-	if w.staticRenter.deps.Disrupt("DisableSubscriptionLoop") {
+	if w.staticRenter.staticDeps.Disrupt("DisableSubscriptionLoop") {
 		return
 	}
 

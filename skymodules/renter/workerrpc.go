@@ -163,7 +163,7 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	// If disrupt is called we sleep for the specified 'defaultNewStreamTimeout'
 	// simulating how an unreachable host would behave in production.
 	timeout := defaultNewStreamTimeout
-	if w.staticRenter.deps.Disrupt("InterruptNewStreamTimeout") {
+	if w.staticRenter.staticDeps.Disrupt("InterruptNewStreamTimeout") {
 		time.Sleep(timeout)
 		return nil, errors.New("InterruptNewStreamTimeout")
 	}
@@ -244,7 +244,7 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 	}
 	// For the txn fee estimate take we use a constant multiple of our own
 	// expectation.
-	min, max := w.staticRenter.tpool.FeeEstimation()
+	min, max := w.staticRenter.staticTPool.FeeEstimation()
 	if pt.TxnFeeMinRecommended.Cmp(min.Mul(renewGougingFeeMultiplier)) > 0 {
 		return skymodules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table txn fee min gouging %v > %v", pt.TxnFeeMinRecommended, min.Mul(renewGougingFeeMultiplier))
 	}
@@ -258,7 +258,7 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 
 	// have the contractset handle the renewal.
 	r := w.staticRenter
-	newContract, txnSet, err := w.staticRenter.staticHostContractor.RenewContract(stream, fcid, params, txnBuilder, r.tpool, r.staticHostDB, &pt)
+	newContract, txnSet, err := w.staticRenter.staticHostContractor.RenewContract(stream, fcid, params, txnBuilder, r.staticTPool, r.staticHostDB, &pt)
 	if err != nil {
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: call to RenewContract failed")
 	}
