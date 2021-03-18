@@ -257,9 +257,10 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	defer r.registryMemoryManager.Return(readRegistryMemory)
 
 	// Start the ReadRegistry jobs.
+	start := time.Now()
 	srv, err := r.managedReadRegistry(ctx, spk, tweak)
 	if errors.Contains(err, ErrRegistryLookupTimeout) {
-		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", time.Since(start).Seconds()))
 	}
 	return srv, err
 }
