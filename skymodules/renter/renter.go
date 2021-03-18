@@ -817,6 +817,18 @@ func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 	return r.hostContractor.RefreshedContract(fcid)
 }
 
+// RegistryStatus returns some registry related information.
+func (r *Renter) RegistryStatus() (skymodules.RegistryStatus, error) {
+	if err := r.tg.Add(); err != nil {
+		return skymodules.RegistryStatus{}, err
+	}
+	defer r.tg.Done()
+
+	return skymodules.RegistryStatus{
+		ReadTimeoutEstimate: r.staticRRS.Estimate(),
+	}, nil
+}
+
 // Settings returns the Renter's current settings.
 func (r *Renter) Settings() (skymodules.RenterSettings, error) {
 	if err := r.tg.Add(); err != nil {

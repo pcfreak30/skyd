@@ -107,6 +107,14 @@ var (
 		Standard: 2 * time.Second,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
+
+	// minRegistryReadTimeout is the minimum timeout we give a read registry
+	// request to finish.
+	minRegistryReadTimeout = build.Select(build.Var{
+		Dev:      200 * time.Millisecond,
+		Standard: 200 * time.Millisecond,
+		Testing:  readRegistryStatsInterval,
+	}).(time.Duration)
 )
 
 // readResponseSet is a helper type which allows for returning a set of ongoing
@@ -357,7 +365,11 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	}()
 
 	// Further restrict the input timeout using historical data.
-	ctx, cancel := context.WithTimeout(ctx, r.staticRRS.Estimate())
+	estimate := r.staticRRS.Estimate()
+	if estimate < minRegistryReadTimeout {
+		estimate = minRegistryReadTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, estimate)
 	defer cancel()
 
 	// Prepare a context which will be overwritten by a child context with a timeout

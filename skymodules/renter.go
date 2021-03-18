@@ -604,6 +604,11 @@ type MemoryManagerStatus struct {
 	PriorityReserve   uint64 `json:"priorityreserve"`
 }
 
+// RegistryStatus is some registry related information returned by the renter.
+type RegistryStatus struct {
+	ReadTimeoutEstimate time.Duration `json:"readtimeoutestimate"`
+}
+
 // Add combines two MemoryManagerStatus objects into one.
 func (ms MemoryManagerStatus) Add(ms2 MemoryManagerStatus) MemoryManagerStatus {
 	return MemoryManagerStatus{
@@ -1112,6 +1117,9 @@ type Renter interface {
 
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
+
+	// RegistryStatus returns some registry related information.
+	RegistryStatus() (RegistryStatus, error)
 
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error

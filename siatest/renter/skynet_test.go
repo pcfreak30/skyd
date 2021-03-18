@@ -4075,6 +4075,15 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Make sure registry status is set.
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rg.RegistryStatus.ReadTimeoutEstimate == 0 {
+		t.Fatal("estimate not set")
+	}
+
 	// Update the regisry.
 	err = r.RegistryUpdate(spk, dataKey, srv1.Revision, srv1.Signature, skylink1)
 	if err != nil {

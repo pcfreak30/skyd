@@ -3069,41 +3069,101 @@ Returns the current settings along with metrics on the renter's spending.
  
 ```go
 {
+{
   "settings": {
     "allowance": {
-      "funds":              "1234",         // hastings
-      "hosts":              24,             // int
-      "period":             6048,           // blocks
-      "renewwindow":        3024            // blocks
-      "expectedstorage":    1000000000000,  // uint64
-      "expectedupload":     2,              // uint64
-      "expecteddownload":   1,              // uint64
-      "expectedredundancy": 3               // uint64
+      "funds": "1000000000000000000000000000",  // hastings
+      "hosts": 5,                               // int   
+      "period": 50,                             // blocks
+      "renewwindow": 24,                        // blocks
+      "paymentcontractinitialfunding": "0",     // hastings
+      "expectedstorage": 20480000,              // uint64
+      "expectedupload": 2048000,                // uint64
+      "expecteddownload": 2048000,              // uint64
+      "expectedredundancy": 5,                  // float64
+      "maxperiodchurn": 2048000,                // uint64
+      "maxrpcprice": "0",                       // hastings
+      "maxcontractprice": "0",                  // hastings
+      "maxdownloadbandwidthprice": "0",         // hastings
+      "maxsectoraccessprice": "0"               // hastings
+      "maxstorageprice": "0",                   // hastings
+      "maxuploadbandwidthprice": "0"            // hastings
     },
-    "maxuploadspeed":     1234, // BPS
-    "maxdownloadspeed":   1234, // BPS
-    "streamcachesize":    4     // int
+    "ipviolationcheck": true, // bool
+    "maxuploadspeed": 0,      // uint64
+    "maxdownloadspeed": 0,    // uint64
+    "uploadsstatus": {
+      "paused": false,                          // bool
+      "pauseendtime": "0001-01-01T00:00:00Z"    // time
+    }
   },
   "financialmetrics": {
-    "contractfees":        "1234", // hastings
-    "contractspending":    "1234", // hastings (deprecated, now totalallocated)
-    "downloadspending":    "5678", // hastings
-    "fundaccountspending": "5678", // hastings
+    "contractfees": "1797134052977777761550000",        // hastings
+    "downloadspending": "0",                            // hastings
+    "fundaccountspending": "3000000000000000000000000", // hastings
     "maintenancespending": {
-      "accountbalancecost":   "1234", // hastings
-      "fundaccountcost":      "1234", // hastings
-      "updatepricetablecost": "1234", // hastings
+      "accountbalancecost": "3",                        // hastings
+      "fundaccountcost": "3",                           // hastings
+      "updatepricetablecost": "3"                       // hastings
     },
-    "storagespending":     "1234", // hastings
-    "totalallocated":      "1234", // hastings
-    "uploadspending":      "5678", // hastings
-    "unspent":             "1234"  // hastings
+    "storagespending": "0",                             // hastings
+    "totalallocated": "30000000000000000000000000",     // hastings
+    "uploadspending": "0",                              // hastings
+    "unspent": "995202865947022222238449991",           // hastings
+    "contractspending": "30000000000000000000000000",   // hastings
+    "withheldfunds": "0",                               // hastings
+    "releaseblock": 0,                                  // blockheight
+    "previousspending": "0"                             // hastings
   },
-  "currentperiod":  6000  // blockheight
-  "nextperiod":    12248  // blockheight
-  "uploadsstatus": {
-    "pause":        false,       // boolean
-    "pauseendtime": 1234567890,  // Unix timestamp
+  "currentperiod": 17,                                  // blockheight
+  "nextperiod": 67,                                     // blockheight
+  "registrystatus": {
+    "readtimeoutestimate": 5020000000                   // uint64
+  },
+  "memorystatus":
+    "available": 491520                 // uint64
+    "base": 491520,                     // uint64
+    "requested": 0,                     // uint64
+    "priorityavailable": 524288,        // uint64
+    "prioritybase": 524288,             // uint64
+    "priorityrequested": 0,             // uint64
+    "priorityreserve": 32768,           // uint64
+    "registry": {                     
+      "available": 131072,              // uint64
+      "base": 131072,                   // uint64
+      "requested": 0,                   // uint64
+      "priorityavailable": 131072,      // uint64
+      "prioritybase": 131072,           // uint64
+      "priorityrequested": 0,           // uint64
+      "priorityreserve": 0              // uint64
+    },
+    "userupload": {
+      "available": 131072,              // uint64
+      "base": 131072,                   // uint64
+      "requested": 0,                   // uint64
+      "priorityavailable": 131072,      // uint64
+      "prioritybase": 131072,           // uint64
+      "priorityrequested": 0,           // uint64
+      "priorityreserve": 0              // uint64
+    },
+    "userdownload": {
+      "available": 131072,              // uint64
+      "base": 131072,                   // uint64
+      "requested": 0,                   // uint64
+      "priorityavailable": 131072,      // uint64
+      "prioritybase": 131072,           // uint64
+      "priorityrequested": 0,           // uint64
+      "priorityreserve": 0              // uint64
+    },
+    "system": {
+      "available": 98304,               // uint64
+      "base": 98304,                    // uint64
+      "requested": 0,                   // uint64
+      "priorityavailable": 131072,      // uint64
+      "prioritybase": 131072,           // uint64
+      "priorityrequested": 0,           // uint64
+      "priorityreserve": 32768          // uint64
+    }
   }
 }
 ```

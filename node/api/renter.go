@@ -86,7 +86,8 @@ type (
 		CurrentPeriod    types.BlockHeight             `json:"currentperiod"`
 		NextPeriod       types.BlockHeight             `json:"nextperiod"`
 
-		MemoryStatus skymodules.MemoryStatus `json:"memorystatus"`
+		RegistryStatus skymodules.RegistryStatus `json:"registrystatus"`
+		MemoryStatus   skymodules.MemoryStatus   `json:"memorystatus"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -674,13 +675,19 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, _ *http.Request, _ httpr
 		WriteError(w, Error{"unable to get renter memory information: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+	registryStatus, err := api.renter.RegistryStatus()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter registry status: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	WriteJSON(w, RenterGET{
 		Settings:         settings,
 		FinancialMetrics: spending,
 		CurrentPeriod:    currentPeriod,
 		NextPeriod:       nextPeriod,
 
-		MemoryStatus: memoryStatus,
+		MemoryStatus:   memoryStatus,
+		RegistryStatus: registryStatus,
 	})
 }
 
