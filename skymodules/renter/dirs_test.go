@@ -256,7 +256,7 @@ func TestRenterListDirectory(t *testing.T) {
 	for _, dir := range directories {
 		siaPaths = append(siaPaths, dir.SiaPath)
 	}
-	err = rt.bubbleAll(siaPaths)
+	err = rt.bubbleAllBlocking(siaPaths)
 	if err != nil {
 		t.Fatal(err)
 	}
