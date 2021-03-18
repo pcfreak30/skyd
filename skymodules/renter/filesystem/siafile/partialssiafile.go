@@ -45,6 +45,29 @@ func (sf *SiaFile) addCombinedChunk() ([]writeaheadlog.Update, error) {
 	return updates, err
 }
 
+// managedIndexMap creates and indexMap and a list of newChunks for merging
+// siafiles.
+func (sf *SiaFile) managedIndexMap(numChunks int) (map[uint64]uint64, []chunk, error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	if sf.deleted {
+		return nil, nil, ErrDeleted
+	}
+	var newChunks []chunk
+	indexMap := make(map[uint64]uint64)
+	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+		newIndex := numChunks
+		indexMap[uint64(chunk.Index)] = uint64(newIndex)
+		chunk.Index = newIndex
+		newChunks = append(newChunks, chunk)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return indexMap, newChunks, nil
+}
+
 // merge merges two PartialsSiafiles into one, returning a map which translates
 // chunk indices in newFile to indices in sf.
 func (sf *SiaFile) merge(newFile *SiaFile) (map[uint64]uint64, error) {
@@ -57,23 +80,8 @@ func (sf *SiaFile) merge(newFile *SiaFile) (map[uint64]uint64, error) {
 	if filepath.Ext(newFile.SiaFilePath()) != skymodules.PartialsSiaFileExtension {
 		return nil, errors.New("can only merge PartialsSiafiles into a PartialsSiaFile")
 	}
-	newFile.mu.Lock()
-	defer newFile.mu.Unlock()
-	if newFile.deleted {
-		return nil, errors.New("can't merge deleted file")
-	}
-	var newChunks []chunk
-	indexMap := make(map[uint64]uint64)
-	ncb := sf.numChunks
-	err := newFile.iterateChunksReadonly(func(chunk chunk) error {
-		newIndex := sf.numChunks
-		indexMap[uint64(chunk.Index)] = uint64(newIndex)
-		chunk.Index = newIndex
-		newChunks = append(newChunks, chunk)
-		return nil
-	})
+	indexMap, newChunks, err := newFile.managedIndexMap(sf.numChunks)
 	if err != nil {
-		sf.numChunks = ncb
 		return nil, err
 	}
 	return indexMap, sf.saveFile(newChunks)
