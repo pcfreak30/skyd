@@ -817,15 +817,17 @@ func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 	return r.hostContractor.RefreshedContract(fcid)
 }
 
-// RegistryStatus returns some registry related information.
-func (r *Renter) RegistryStatus() (skymodules.RegistryStatus, error) {
+// RegistryStats returns some registry related information.
+func (r *Renter) RegistryStats() (skymodules.RegistryStats, error) {
 	if err := r.tg.Add(); err != nil {
-		return skymodules.RegistryStatus{}, err
+		return skymodules.RegistryStats{}, err
 	}
 	defer r.tg.Done()
-
-	return skymodules.RegistryStatus{
-		ReadTimeoutEstimate: r.staticRRS.Estimate(),
+	estimates := r.staticRRS.Estimate()
+	return skymodules.RegistryStats{
+		ReadProjectP99:   estimates[0],
+		ReadProjectP999:  estimates[1],
+		ReadProjectP9999: estimates[2],
 	}, nil
 }
 
@@ -1031,7 +1033,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
-	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentile)
+	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
 	close(r.uploadHeap.pauseChan)
 
 	// Seed the rrs.

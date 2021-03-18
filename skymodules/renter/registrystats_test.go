@@ -11,7 +11,7 @@ import (
 // decay.
 func TestReadRegistryStatsNoDecay(t *testing.T) {
 	decay := 1.0
-	percentile := 0.5
+	percentile := []float64{0.5}
 	interval := time.Millisecond
 
 	// Add 0ms measurement. This results in the following bucket.
@@ -24,14 +24,14 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bs.Estimate() != time.Millisecond {
-		t.Fatal("wrong measurement", bs.Estimate())
+	if bs.Estimate()[0] != time.Millisecond {
+		t.Fatal("wrong measurement", bs.Estimate()[0])
 	}
 	if len(bs.staticBuckets) != 1 {
 		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
-	if bs.currentPosition != 0 {
-		t.Fatal("wrong position", bs.currentPosition)
+	if bs.currentPositions[0] != 0 {
+		t.Fatal("wrong position", bs.currentPositions[0])
 	}
 
 	// Add interval measurement. This results in the following buckets.
@@ -44,14 +44,14 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bs.Estimate() != 2*time.Millisecond {
-		t.Fatal("wrong measurement", bs.Estimate())
+	if bs.Estimate()[0] != 2*time.Millisecond {
+		t.Fatal("wrong measurement", bs.Estimate()[0])
 	}
 	if len(bs.staticBuckets) != 2 {
 		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
-	if bs.currentPosition != 1 {
-		t.Fatal("wrong position", bs.currentPosition)
+	if bs.currentPositions[0] != 1 {
+		t.Fatal("wrong position", bs.currentPositions[0])
 	}
 
 	// Add larger than interval measurement.
@@ -64,14 +64,14 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bs.Estimate() != 3*interval {
-		t.Fatal("wrong measurement", bs.Estimate())
+	if bs.Estimate()[0] != 3*interval {
+		t.Fatal("wrong measurement", bs.Estimate()[0])
 	}
 	if len(bs.staticBuckets) != 3 {
 		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
-	if bs.currentPosition != 2 {
-		t.Fatal("wrong position", bs.currentPosition)
+	if bs.currentPositions[0] != 2 {
+		t.Fatal("wrong position", bs.currentPositions[0])
 	}
 
 	// Add measurements 0..99 exactly once.
@@ -86,14 +86,14 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if bs.Estimate() != 50*time.Millisecond {
-		t.Fatal("wrong measurement", bs.Estimate())
+	if bs.Estimate()[0] != 50*time.Millisecond {
+		t.Fatal("wrong measurement", bs.Estimate()[0])
 	}
 	if len(bs.staticBuckets) != 100 {
 		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
-	if bs.currentPosition != 49 {
-		t.Fatal("wrong position", bs.currentPosition)
+	if bs.currentPositions[0] != 49 {
+		t.Fatal("wrong position", bs.currentPositions[0])
 	}
 
 	// Add 10 measurements for 0, 9 for 1, 8 for 2 and so on.
@@ -112,21 +112,21 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 			}
 		}
 	}
-	if bs.Estimate() != 4*time.Millisecond {
-		t.Fatal("wrong measurement", bs.Estimate())
+	if bs.Estimate()[0] != 4*time.Millisecond {
+		t.Fatal("wrong measurement", bs.Estimate()[0])
 	}
 	if len(bs.staticBuckets) != 10 {
 		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
-	if bs.currentPosition != 3 {
-		t.Fatal("wrong position", bs.currentPosition)
+	if bs.currentPositions[0] != 3 {
+		t.Fatal("wrong position", bs.currentPositions[0])
 	}
 }
 
 // TestReadRegistryStatsDecay tests the decay of the read registry stats object.
 func TestReadRegistryStatsDecay(t *testing.T) {
 	decay := 0.5
-	percentile := 0.5
+	percentile := []float64{0.5}
 	interval := time.Millisecond
 
 	// Add 10 datapoints to 10 buckets.
@@ -163,8 +163,8 @@ func TestReadRegistryStatsDecay(t *testing.T) {
 	if bs.total != 51 {
 		t.Fatal("wrong total", bs.total)
 	}
-	if bs.Estimate() != 6*time.Millisecond {
-		t.Fatal("wrong estimate", bs.Estimate())
+	if bs.Estimate()[0] != 6*time.Millisecond {
+		t.Fatal("wrong estimate", bs.Estimate()[0])
 	}
 }
 
@@ -178,7 +178,7 @@ func BenchmarkAddDatum(b *testing.B) {
 	// Add n datapoints to 5000 buckets.
 	maxTime := 5 * time.Minute        // 5 minutes
 	interval := 10 * time.Millisecond // 300,000 buckets
-	bs := newReadRegistryStats(maxTime, interval, 0.95, 0.999)
+	bs := newReadRegistryStats(maxTime, interval, 0.95, []float64{0.999})
 
 	// Add one entry in the last bucket to allocate the slice.
 	err := bs.AddDatum(maxTime - interval) // off-by-one
@@ -206,6 +206,6 @@ func BenchmarkAddDatum(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		_ = bs.Estimate()
+		_ = bs.Estimate()[0]
 	}
 }

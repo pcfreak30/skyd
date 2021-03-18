@@ -3117,9 +3117,6 @@ Returns the current settings along with metrics on the renter's spending.
   },
   "currentperiod": 17,                                  // blockheight
   "nextperiod": 67,                                     // blockheight
-  "registrystatus": {
-    "readtimeoutestimate": 5020000000                   // uint64
-  },
   "memorystatus":
     "available": 491520                 // uint64
     "base": 491520,                     // uint64
@@ -5862,7 +5859,64 @@ returns statistical information about Skynet, e.g. number of files uploaded
     "gitrevision": "cd5a83712"     // string
   },
   "performancestats": {
-  }
+    "timetofirstbyte": {
+      "lastupdate": "2021-03-18T13:29:53.397408+01:00",
+      "oneminute": {
+        "n60ms": 0,
+        "n120ms": 0,
+        "n240ms": 0,
+        "n500ms": 0,
+        "n1000ms": 0,
+        "n2000ms": 0,
+        "n5000ms": 0,
+        "n10s": 0,
+        "nlong": 0,
+        "nerr": 0,
+        "totalsize": 0
+      },
+      "fiveminutes": {
+        // ...
+      },
+      "fifteenminutes": {
+        // ...
+      },
+      "twentyfourhours": {
+        // ...
+      },
+      "lifetime": {
+        // ...
+      }
+    },
+    "download64kb": {
+      // ...
+    },
+    "download1mb": {
+      // ...
+    },
+    "download4mb": {
+      // ...
+    },
+    "downloadlarge": {
+      // ...
+    },
+    "upload4mb": {
+      // ...
+    },
+    "uploadlarge": {
+      // ...
+    },
+    "registryread": {
+      // ...
+    },
+    "registrywrite": {
+      // ...
+    }
+  },
+  "registrystats": {
+    "readprojectp99": 5020000000,
+    "readprojectp999": 5020000000,
+    "readprojectp9999": 5020000000
+  },
 }
 ```
 

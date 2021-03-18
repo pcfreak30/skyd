@@ -604,9 +604,11 @@ type MemoryManagerStatus struct {
 	PriorityReserve   uint64 `json:"priorityreserve"`
 }
 
-// RegistryStatus is some registry related information returned by the renter.
-type RegistryStatus struct {
-	ReadTimeoutEstimate time.Duration `json:"readtimeoutestimate"`
+// RegistryStats is some registry related information returned by the renter.
+type RegistryStats struct {
+	ReadProjectP99   time.Duration `json:"readprojectp99"`
+	ReadProjectP999  time.Duration `json:"readprojectp999"`
+	ReadProjectP9999 time.Duration `json:"readprojectp9999"`
 }
 
 // Add combines two MemoryManagerStatus objects into one.
@@ -1118,8 +1120,8 @@ type Renter interface {
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
 
-	// RegistryStatus returns some registry related information.
-	RegistryStatus() (RegistryStatus, error)
+	// RegistryStats returns some registry related information.
+	RegistryStats() (RegistryStats, error)
 
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error

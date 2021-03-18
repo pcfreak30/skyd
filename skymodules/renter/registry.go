@@ -95,9 +95,9 @@ var (
 	// readRegistryStatsDecay is the decay applied to the registry stats.
 	readRegistryStatsDecay = 0.995
 
-	// readRegistryStatsPercentile is the percentile returned by the read
+	// readRegistryStatsPercentiles are the percentile returned by the read
 	// registry stats Estimate method.
-	readRegistryStatsPercentile = 0.99
+	readRegistryStatsPercentiles = []float64{0.99, 0.999, 0.9999}
 
 	// readRegistrySeed is the first duration added to the registry stats after
 	// creating it.
@@ -366,7 +366,8 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	}()
 
 	// Further restrict the input timeout using historical data.
-	estimate := r.staticRRS.Estimate()
+	// We use the first estimate returned here which is p99.
+	estimate := r.staticRRS.Estimate()[0]
 	if estimate < minRegistryReadTimeout {
 		estimate = minRegistryReadTimeout
 	}
