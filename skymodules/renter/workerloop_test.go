@@ -77,8 +77,8 @@ func TestJobSerialExecution(t *testing.T) {
 	// Create a stub worker.
 	d := &dependencyTestJobSerialExecution{}
 	w := new(worker)
-	w.renter = new(Renter)
-	w.renter.deps = d
+	w.staticRenter = new(Renter)
+	w.staticRenter.staticDeps = d
 	w.staticLoopState = new(workerLoopState)
 	d.staticWorker = w
 
@@ -135,7 +135,7 @@ func (j *jobTestAsync) callDiscard(err error) {
 // thrown. Jobs take 100ms, which gives the renter time to explore how many it
 // can run in parallel.
 func (j *jobTestAsync) callExecute() {
-	d := j.staticQueue.staticWorker().renter.deps.(*dependencyTestAsyncJobLauncher)
+	d := j.staticQueue.staticWorker().staticRenter.staticDeps.(*dependencyTestAsyncJobLauncher)
 
 	d.mu.Lock()
 	d.jobsRunning++
@@ -186,8 +186,8 @@ func TestJobAsync(t *testing.T) {
 			staticWorkerObj: w,
 		},
 	}
-	w.renter = new(Renter)
-	w.renter.deps = d
+	w.staticRenter = new(Renter)
+	w.staticRenter.staticDeps = d
 	w.staticLoopState = new(workerLoopState)
 	w.staticLoopState.atomicReadDataLimit = 10e6
 	w.staticLoopState.atomicWriteDataLimit = 10e6

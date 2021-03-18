@@ -35,8 +35,8 @@ func (dch downloadChunkHeap) Less(i, j int) bool {
 		return dch[i].staticPriority > dch[j].staticPriority
 	}
 	// For equal priority, sort by start time.
-	if dch[i].download.staticStartTime != dch[j].download.staticStartTime {
-		return dch[i].download.staticStartTime.Before(dch[j].download.staticStartTime)
+	if dch[i].staticDownload.staticStartTime != dch[j].staticDownload.staticStartTime {
+		return dch[i].staticDownload.staticStartTime.Before(dch[j].staticDownload.staticStartTime)
 	}
 	// For equal start time (typically meaning it's the same file), sort by
 	// chunkIndex.
@@ -111,7 +111,7 @@ func (r *Renter) managedAddChunkToDownloadHeap(udc *unfinishedDownloadChunk) {
 // will appropriately handle incoming download requests and stop signals while
 // waiting.
 func (r *Renter) managedBlockUntilOnline() bool {
-	for !r.g.Online() {
+	for !r.staticGateway.Online() {
 		select {
 		case <-r.tg.StopChan():
 			return false
@@ -152,7 +152,7 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 			return nil
 		}
 		nextChunk := heap.Pop(r.downloadHeap).(*unfinishedDownloadChunk)
-		if !nextChunk.download.staticComplete() {
+		if !nextChunk.staticDownload.staticComplete() {
 			return nextChunk
 		}
 	}
@@ -187,7 +187,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// Open the file.
 	file, err := os.Open(localPath)
 	if err != nil {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
+		r.staticLog.Debugf("managedTryFetchChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
 		return false
 	}
 
@@ -195,13 +195,13 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// check that the filesize is the same.
 	fi, err := file.Stat()
 	if err != nil {
-		r.log.Printf("local file %v of file %v was not used for download because stat failed: %v", localPath, fileName, err)
+		r.staticLog.Printf("local file %v of file %v was not used for download because stat failed: %v", localPath, fileName, err)
 		return false
 	}
 	fiSize := uint64(fi.Size())
 	rfSize := chunk.renterFile.Size()
 	if fiSize != rfSize {
-		r.log.Printf("local file %v of file %v was not used for download: filesizes are mismatched: %v vs %v", localPath, fileName, fiSize, rfSize)
+		r.staticLog.Printf("local file %v of file %v was not used for download: filesizes are mismatched: %v vs %v", localPath, fileName, fiSize, rfSize)
 		return false
 	}
 
@@ -217,7 +217,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		defer r.tg.Done()
 		defer func() {
 			if err := file.Close(); err != nil {
-				r.log.Println("WARN: error closing file after download served from disk:", err)
+				r.staticLog.Println("WARN: error closing file after download served from disk:", err)
 			}
 		}()
 		// Try downloading if serving from disk failed.
@@ -225,8 +225,8 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 			if success {
 				// Return the memory for the chunk on success and finalize the
 				// recovery.
-				atomic.AddUint64(&chunk.download.atomicDataReceived, chunk.staticFetchLength)
-				atomic.AddUint64(&chunk.download.atomicTotalDataTransferred, chunk.staticFetchLength)
+				atomic.AddUint64(&chunk.staticDownload.atomicDataReceived, chunk.staticFetchLength)
+				atomic.AddUint64(&chunk.staticDownload.atomicTotalDataTransferred, chunk.staticFetchLength)
 				chunk.managedFinalizeRecovery()
 				chunk.returnMemory()
 			} else {
@@ -236,7 +236,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		}()
 		// Check if download was already aborted.
 		select {
-		case <-chunk.download.completeChan:
+		case <-chunk.staticDownload.completeChan:
 			return false
 		default:
 		}
@@ -244,20 +244,20 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize)+int64(chunk.staticFetchOffset), int64(chunk.staticFetchLength))
 		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 		if err != nil {
-			r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
+			r.staticLog.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
 				localPath, fileName, err)
 			return false
 		}
 		shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
 		if err != nil {
-			r.log.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
+			r.staticLog.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
 				localPath, fileName, err)
 			return false
 		}
 		// Write the data to the destination.
 		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, 0, chunk.staticWriteOffset, chunk.staticFetchLength)
 		if err != nil {
-			r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
+			r.staticLog.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
 				localPath, fileName, err)
 			return false
 		}
@@ -294,7 +294,7 @@ LOOP:
 		for {
 			// Check that we still have an internet connection, and also that we
 			// do not need to update the worker pool yet.
-			if !r.g.Online() || time.Now().After(workerUpdateTime.Add(workerPoolUpdateTimeout)) {
+			if !r.staticGateway.Online() || time.Now().After(workerUpdateTime.Add(workerPoolUpdateTimeout)) {
 				// Reset to the top of the outer loop. Either we need to wait
 				// until we are online, or we need to refresh the worker pool.
 				// The outer loop will handle both situations.

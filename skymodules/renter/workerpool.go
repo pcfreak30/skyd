@@ -25,9 +25,9 @@ import (
 // calling complexity of the functions that currently need to pass this
 // information around.
 type workerPool struct {
-	workers map[string]*worker // The string is the host's public key.
-	mu      sync.RWMutex
-	renter  *Renter
+	workers      map[string]*worker // The string is the host's public key.
+	mu           sync.RWMutex
+	staticRenter *Renter
 }
 
 // callStatus returns the status of the workers in the worker pool.
@@ -58,7 +58,7 @@ func (wp *workerPool) callStatus() skymodules.WorkerPoolStatus {
 		statuss = append(statuss, status)
 	}
 	return skymodules.WorkerPoolStatus{
-		NumWorkers:               len(wp.workers),
+		NumWorkers:               len(workers),
 		TotalDownloadCoolDown:    totalDownloadCoolDown,
 		TotalMaintenanceCoolDown: totalMaintenanceCoolDown,
 		TotalUploadCoolDown:      totalUploadCoolDown,
@@ -70,7 +70,7 @@ func (wp *workerPool) callStatus() skymodules.WorkerPoolStatus {
 // worker pool to match, creating new workers and killing existing workers as
 // necessary.
 func (wp *workerPool) callUpdate() {
-	contractSlice := wp.renter.hostContractor.Contracts()
+	contractSlice := wp.staticRenter.staticHostContractor.Contracts()
 	contractMap := make(map[string]skymodules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
 		if contract.Utility.BadContract {
@@ -92,20 +92,20 @@ func (wp *workerPool) callUpdate() {
 		}
 
 		// Create a new worker and add it to the map
-		w, err := wp.renter.newWorker(contract.HostPublicKey)
+		w, err := wp.staticRenter.newWorker(contract.HostPublicKey)
 		if err != nil {
-			wp.renter.log.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
+			wp.staticRenter.staticLog.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
 			continue
 		}
 		wp.workers[id] = w
 
 		// Start the work loop in a separate goroutine
-		err = wp.renter.tg.Launch(w.threadedWorkLoop)
+		err = wp.staticRenter.tg.Launch(w.threadedWorkLoop)
 		if err != nil {
 			return
 		}
 		// Start the subscription loop in a separate goroutine.
-		err = wp.renter.tg.Launch(w.threadedSubscriptionLoop)
+		err = wp.staticRenter.tg.Launch(w.threadedSubscriptionLoop)
 		if err != nil {
 			return
 		}
@@ -114,7 +114,7 @@ func (wp *workerPool) callUpdate() {
 	// Remove a worker for any worker that is not in the set of new contracts.
 	for id, worker := range wp.workers {
 		select {
-		case <-wp.renter.tg.StopChan():
+		case <-wp.staticRenter.tg.StopChan():
 			// Release the lock and return to prevent error of trying to close
 			// the worker channel after a shutdown
 			return
@@ -183,10 +183,10 @@ func (wp *workerPool) callNumWorkers() int {
 // newWorkerPool will initialize and return a worker pool.
 func (r *Renter) newWorkerPool() *workerPool {
 	wp := &workerPool{
-		workers: make(map[string]*worker),
-		renter:  r,
+		workers:      make(map[string]*worker),
+		staticRenter: r,
 	}
-	wp.renter.tg.OnStop(func() error {
+	wp.staticRenter.tg.OnStop(func() error {
 		wp.mu.RLock()
 		for _, w := range wp.workers {
 			// Kill the worker in a goroutine. This avoids locking issues, as

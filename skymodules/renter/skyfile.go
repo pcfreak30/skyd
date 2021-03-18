@@ -535,7 +535,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	defer func() {
 		err := fileNode.Close()
 		if err != nil {
-			r.log.Printf("Could not close node, err: %s\n", err.Error())
+			r.staticLog.Printf("Could not close node, err: %s\n", err.Error())
 		}
 	}()
 
@@ -639,7 +639,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
 func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileLayout, skymodules.SkyfileMetadata, skymodules.Streamer, error) {
-	if r.deps.Disrupt("resolveSkylinkToFixture") {
+	if r.staticDeps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
 			return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to fetch fixture")
@@ -918,7 +918,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	// Defer closing the file
 	defer func() {
 		if err := fileNode.Close(); err != nil {
-			r.log.Printf("Could not close node, err: %s\n", err.Error())
+			r.staticLog.Printf("Could not close node, err: %s\n", err.Error())
 		}
 	}()
 
@@ -958,13 +958,13 @@ func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader sk
 	defer func() {
 		if err != nil || sup.DryRun {
 			if err := r.DeleteFile(sup.SiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
-				r.log.Printf("error deleting siafile after upload error: %v", err)
+				r.staticLog.Printf("error deleting siafile after upload error: %v", err)
 			}
 
 			extendedPath := sup.SiaPath.String() + skymodules.ExtendedSuffix
 			extendedSiaPath, _ := skymodules.NewSiaPath(extendedPath)
 			if err := r.DeleteFile(extendedSiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
-				r.log.Printf("error deleting extended siafile after upload error: %v\n", err)
+				r.staticLog.Printf("error deleting extended siafile after upload error: %v\n", err)
 			}
 		}
 	}()
@@ -974,7 +974,7 @@ func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader sk
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
-	if r.deps.Disrupt("SkyfileUploadFail") {
+	if r.staticDeps.Disrupt("SkyfileUploadFail") {
 		return skymodules.Skylink{}, errors.New("SkyfileUploadFail")
 	}
 
@@ -998,7 +998,7 @@ func (r *Renter) isFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 			// conversion due to bad old skylinks
 			//
 			// Log the error for debugging purposes
-			r.log.Printf("WARN: previous skylink for siafile %v could not be loaded from string; potentially corrupt skylink: %v", fileNode.SiaFilePath(), skylinkstr)
+			r.staticLog.Printf("WARN: previous skylink for siafile %v could not be loaded from string; potentially corrupt skylink: %v", fileNode.SiaFilePath(), skylinkstr)
 			continue
 		}
 		// Check if skylink is blocked

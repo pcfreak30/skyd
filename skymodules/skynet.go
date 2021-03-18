@@ -41,7 +41,7 @@ const (
 	CurrencyUSD = "usd"
 
 	// LicenseMonetization is the first skynet monetization license.
-	LicenseMonetization = "AAAQ0UB7qWNm1sMcVuASY4iGNk7spjcAPxhNliCofOrhvg"
+	LicenseMonetization = "CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg"
 )
 
 var (

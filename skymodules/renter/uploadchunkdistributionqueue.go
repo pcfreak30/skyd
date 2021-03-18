@@ -140,7 +140,7 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 	if ucdq.lowPriorityLane.Len() == 0 {
 		// Consistency check
 		if ucdq.priorityBuildup != 0 {
-			ucdq.staticRenter.log.Critical("there should be no buildup if there is nothing in the low priority lane")
+			ucdq.staticRenter.staticLog.Critical("there should be no buildup if there is nothing in the low priority lane")
 		}
 
 		// No need to worry about priority buildup if there is nothing waiting
@@ -305,7 +305,7 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) bool
 	}
 
 	uc.managedUpdateDistributionTime()
-	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.staticIndex, uc.staticSiaPath, jobsDistributed)
+	r.staticRepairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.staticIndex, uc.staticSiaPath, jobsDistributed)
 	// Cleanup is required after distribution to ensure that memory is released
 	// for any pieces which don't have a worker.
 	r.managedCleanUpUploadChunk(uc)

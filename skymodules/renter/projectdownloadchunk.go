@@ -212,7 +212,7 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	// Prevent a production panic.
 	if jrr == nil {
-		pdc.workerSet.staticRenter.log.Critical("received nil job read response in handleJobReadResponse")
+		pdc.workerSet.staticRenter.staticLog.Critical("received nil job read response in handleJobReadResponse")
 		return
 	}
 
@@ -251,7 +251,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	key := pdc.workerSet.staticMasterKey.Derive(pdc.workerSet.staticChunkIndex, uint64(pieceIndex))
 	_, err := key.DecryptBytesInPlace(jrr.staticData, pdc.pieceOffset/crypto.SegmentSize)
 	if err != nil {
-		pdc.workerSet.staticRenter.log.Println("decryption of a piece failed")
+		pdc.workerSet.staticRenter.staticLog.Println("decryption of a piece failed")
 		return
 	}
 

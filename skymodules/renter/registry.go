@@ -251,10 +251,10 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
-	if !r.registryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
+	if !r.staticRegistryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
 		return modules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
 	}
-	defer r.registryMemoryManager.Return(readRegistryMemory)
+	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
 
 	// Start the ReadRegistry jobs.
 	start := time.Now()
@@ -280,10 +280,10 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
-	if !r.registryMemoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
+	if !r.staticRegistryMemoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
 		return errors.New("timeout while waiting in job queue - server is busy")
 	}
-	defer r.registryMemoryManager.Return(updateRegistryMemory)
+	defer r.staticRegistryMemoryManager.Return(updateRegistryMemory)
 
 	// Start the UpdateRegistry jobs.
 	err := r.managedUpdateRegistry(ctx, spk, srv)
@@ -325,7 +325,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 		pt := worker.staticPriceTable().staticPriceTable
 		err := checkProjectDownloadGouging(pt, cache.staticRenterAllowance)
 		if err != nil {
-			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+			r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
 		}
 
@@ -349,7 +349,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// If specified, increment numWorkers. This will cause the loop to never
 	// exit without any of the context being closed since the response set won't
 	// be able to read the last response.
-	if r.deps.Disrupt("ReadRegistryBlocking") {
+	if r.staticDeps.Disrupt("ReadRegistryBlocking") {
 		numWorkers++
 	}
 
@@ -482,13 +482,13 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		// check for price gouging
 		// TODO: use upload gouging for some basic protection. Should be
 		// replaced as part of the gouging overhaul.
-		host, ok, err := r.hostDB.Host(worker.staticHostPubKey)
+		host, ok, err := r.staticHostDB.Host(worker.staticHostPubKey)
 		if !ok || err != nil {
 			continue
 		}
 		err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
 		if err != nil {
-			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+			r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
 		}
 
@@ -561,11 +561,11 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
-		r.log.Print("RegistryUpdate failed with 0 successful responses: ", err)
+		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", err)
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
-		r.log.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
+		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	return nil

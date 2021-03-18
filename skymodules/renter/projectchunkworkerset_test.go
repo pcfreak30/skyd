@@ -69,7 +69,7 @@ func testBasic(t *testing.T, wt *workerTester) {
 	}
 
 	// create PCWS
-	pcws, err := wt.renter.newPCWSByRoots(context.Background(), []crypto.Hash{sectorRoot}, ptec, ptck, 0)
+	pcws, err := wt.staticRenter.newPCWSByRoots(context.Background(), []crypto.Hash{sectorRoot}, ptec, ptck, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func testMultiple(t *testing.T, wt *workerTester) {
 
 	// wait until the renter has a worker for all hosts
 	err = build.Retry(600, 100*time.Millisecond, func() error {
-		ws, err := wt.renter.WorkerPoolStatus()
+		ws, err := wt.staticRenter.WorkerPoolStatus()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -236,7 +236,7 @@ func testMultiple(t *testing.T, wt *workerTester) {
 
 	// wait until we're certain all workers are fit for duty
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		ws, err := wt.renter.WorkerPoolStatus()
+		ws, err := wt.staticRenter.WorkerPoolStatus()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -251,7 +251,7 @@ func testMultiple(t *testing.T, wt *workerTester) {
 	})
 
 	// create PCWS
-	pcws, err := wt.renter.newPCWSByRoots(context.Background(), roots, ec, ptck, 0)
+	pcws, err := wt.staticRenter.newPCWSByRoots(context.Background(), roots, ec, ptck, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

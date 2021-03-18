@@ -217,7 +217,7 @@ func TestAccountCorrupted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	file, err := r.deps.OpenFile(filepath.Join(r.persistDir, accountsFilename), os.O_RDWR, defaultFilePerm)
+	file, err := r.staticDeps.OpenFile(filepath.Join(r.persistDir, accountsFilename), os.O_RDWR, defaultFilePerm)
 	if err != nil {
 		t.Fatal(err)
 	}

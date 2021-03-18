@@ -224,7 +224,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
-			r.log.Println("WARN: could not stat file or folder during walk:", err)
+			r.staticLog.Println("WARN: could not stat file or folder during walk:", err)
 			return nil
 		}
 
@@ -234,7 +234,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 		}
 
 		// Check if file was already converted.
-		_, err = siafile.LoadSiaFile(path, r.wal)
+		_, err = siafile.LoadSiaFile(path, r.staticWAL)
 		if err == nil {
 			return nil
 		}
@@ -287,7 +287,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 // populated using the legacy file remain blank.
 func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []skymodules.RenterContract) (*filesystem.FileNode, error) {
 	// Create a mapping of contract ids to host keys.
-	contracts := r.hostContractor.Contracts()
+	contracts := r.staticHostContractor.Contracts()
 	idToPk := make(map[types.FileContractID]types.SiaPublicKey)
 	for _, c := range contracts {
 		idToPk[c.ID] = c.HostPublicKey
@@ -315,7 +315,7 @@ func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []sk
 	for _, contract := range f.contracts {
 		pk, exists := idToPk[contract.ID]
 		if !exists {
-			r.log.Printf("Couldn't find pubKey for contract %v with WindowStart %v",
+			r.staticLog.Printf("Couldn't find pubKey for contract %v with WindowStart %v",
 				contract.ID, contract.WindowStart)
 			continue
 		}

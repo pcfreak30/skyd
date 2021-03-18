@@ -170,7 +170,7 @@ func (r *Renter) managedInitUploadStream(up skymodules.FileUploadParams) (*files
 	// parity/2 contracts. NumPieces is equal to data+parity, and min pieces is
 	// equal to parity. Therefore (NumPieces+MinPieces)/2 = (data+data+parity)/2
 	// = data+parity/2.
-	numContracts := len(r.hostContractor.Contracts())
+	numContracts := len(r.staticHostContractor.Contracts())
 	requiredContracts := (ec.NumPieces() + ec.MinPieces()) / 2
 	if numContracts < requiredContracts && build.Release != "testing" {
 		return nil, fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (ec.NumPieces()+ec.MinPieces())/2)
@@ -244,7 +244,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing
 		// connectivity during the upload.
-		if r.deps.Disrupt("DisruptUploadStream") {
+		if r.staticDeps.Disrupt("DisruptUploadStream") {
 			c, ok := reader.(io.Closer)
 			if ok {
 				c.Close()
@@ -258,7 +258,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 
 		// Start the chunk upload.
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
-		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.userUploadMemoryManager)
+		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to fetch chunk for stream")
 		}
@@ -335,7 +335,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 
 	// Disrupt to force an error and ensure the fileNode is being closed
 	// correctly.
-	if r.deps.Disrupt("failUploadStreamFromReader") {
+	if r.staticDeps.Disrupt("failUploadStreamFromReader") {
 		return nil, errors.New("disrupted by failUploadStreamFromReader")
 	}
 	return fileNode, nil

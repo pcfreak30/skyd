@@ -73,7 +73,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 	// Read directory
 	fileinfos, err := r.staticFileSystem.ReadDir(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.String(), err)
+		r.staticLog.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.String(), err)
 		return siadir.Metadata{}, err
 	}
 
@@ -93,7 +93,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			fName := strings.TrimSuffix(fi.Name(), skymodules.SiaFileExtension)
 			fileSiaPath, err := siaPath.Join(fName)
 			if err != nil {
-				r.log.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
+				r.staticLog.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
 				continue
 			}
 			fileSiaPaths = append(fileSiaPaths, fileSiaPath)
@@ -101,7 +101,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			// Directory is found, read the directory metadata file
 			dirSiaPath, err := siaPath.Join(fi.Name())
 			if err != nil {
-				r.log.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
+				r.staticLog.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
 				continue
 			}
 			dirSiaPaths = append(dirSiaPaths, dirSiaPath)
@@ -114,7 +114,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 	// files failed and that the remaining metadatas are good to use.
 	bubbledMetadatas, err := r.managedCachedFileMetadatas(fileSiaPaths)
 	if err != nil {
-		r.log.Printf("failed to calculate file metadata: %v", err)
+		r.staticLog.Printf("failed to calculate file metadata: %v", err)
 	}
 
 	// Get all the Directory Metadata
@@ -123,7 +123,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 	// directories failed and that the remaining metadatas are good to use.
 	dirMetadatas, err := r.managedDirectoryMetadatas(dirSiaPaths)
 	if err != nil {
-		r.log.Printf("failed to calculate file metadata: %v", err)
+		r.staticLog.Printf("failed to calculate file metadata: %v", err)
 	}
 
 	for len(bubbledMetadatas)+len(dirMetadatas) > 0 {
@@ -239,10 +239,10 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 				dirMetadata.AggregateLastHealthCheckTime = time.Now()
 				// Check for the dependency to disable the LastHealthCheckTime
 				// correction, (LHCT = LastHealthCheckTime).
-				if !r.deps.Disrupt("DisableLHCTCorrection") {
+				if !r.staticDeps.Disrupt("DisableLHCTCorrection") {
 					// Queue a bubble to bubble the directory, ignore the return channel
 					// as we do not want to block on this update.
-					r.log.Debugf("Found zero time for ALHCT at '%v'", dirMetadata.sp)
+					r.staticLog.Debugf("Found zero time for ALHCT at '%v'", dirMetadata.sp)
 					_ = r.staticBubbleScheduler.callQueueBubble(dirMetadata.sp)
 				}
 			}
@@ -327,9 +327,9 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 
 	// First check if the fileNode is blocked. Blocking a file does not remove the
 	// file so this is required to ensuring the node is purging blocked files.
-	if r.isFileNodeBlocked(sf) && !r.deps.Disrupt("DisableDeleteBlockedFiles") {
+	if r.isFileNodeBlocked(sf) && !r.staticDeps.Disrupt("DisableDeleteBlockedFiles") {
 		// Delete the file
-		r.log.Println("Deleting blocked fileNode at:", siaPath)
+		r.staticLog.Println("Deleting blocked fileNode at:", siaPath)
 		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)
 	}
 
@@ -340,7 +340,7 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 	_, err = os.Stat(sf.LocalPath())
 	onDisk := err == nil
 	if !onDisk && md.CachedRedundancy < 1 {
-		r.log.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
+		r.staticLog.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
 
 	// Grab the number of skylinks
@@ -504,7 +504,7 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath skymodules.SiaPath) er
 	// Read directory
 	fileinfos, err := r.staticFileSystem.ReadDir(siaPath)
 	if err != nil {
-		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.String(), err)
+		r.staticLog.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.String(), err)
 		return err
 	}
 

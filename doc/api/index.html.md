@@ -5633,7 +5633,7 @@ supplied, this metadata will be relative to the given path.
   "mode":     640,      // os.FileMode
   "filename": "folder", // string
   "monetization": {
-    "license": "AAAQ0UB7qWNm1sMcVuASY4iGNk7spjcAPxhNliCofOrhvg" // skylink
+    "license": "CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg" // skylink
     "monetizers": [
       "address": "e81107109496fe714a492f557c2af4b281e4913c674d10e8b3cd5cd3b7e59c582590531607c8", // hash
       "amount": "1000000000000000000000000"                                                      // types.Currency
@@ -5689,7 +5689,7 @@ curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/src?filenam
 // This command uploads the file 'myImage.png' to the Sia folder
 // 'var/skynet/images/myImage.png' as before. This time with a monetizer that
 // consists of a payout address and payout amount.
-curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?monetization=%7B%22monetizers%22%3A%5B%7B%22address%22%3A%22cfef78babd3faecb4fb3fdd94bdf4f9385a3cc394be4ae7a21430a425606819024ea37139e36%22%2C%22amount%22%3A%221000000000000000000000000%22%2C%22currency%22%3A%22usd%22%7D%5D%2C%22license%22%3A%22AAAQ0UB7qWNm1sMcVuASY4iGNk7spjcAPxhNliCofOrhvg%22%7D" -F 'file=@image.png'
+curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?monetization=%7B%22monetizers%22%3A%5B%7B%22address%22%3A%22cfef78babd3faecb4fb3fdd94bdf4f9385a3cc394be4ae7a21430a425606819024ea37139e36%22%2C%22amount%22%3A%221000000000000000000000000%22%2C%22currency%22%3A%22usd%22%7D%5D%2C%22license%22%3A%22CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg%22%7D" -F 'file=@image.png'
 ```
 
 Uploads a file to the network using a stream. If the upload stream POST call

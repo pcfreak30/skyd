@@ -80,19 +80,19 @@ func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.renter.tg.Launch(func() {
+	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobReadResponse{
 			staticErr:      errors.Extend(err, ErrJobDiscarded),
 			staticMetadata: j.staticJobReadMetadata(),
 		}
 		select {
 		case j.staticResponseChan <- response:
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		case <-j.staticCtx.Done():
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Print("callDiscard: launch failed", err)
+		w.staticRenter.staticLog.Print("callDiscard: launch failed", err)
 	}
 }
 
@@ -111,15 +111,15 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticJobTime:  readJobTime,
 	}
 	w := j.staticQueue.staticWorker()
-	err := w.renter.tg.Launch(func() {
+	err := w.staticRenter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 	if err != nil {
-		j.staticQueue.staticWorker().renter.log.Print("managedFinishExecute: launch failed", err)
+		j.staticQueue.staticWorker().staticRenter.staticLog.Print("managedFinishExecute: launch failed", err)
 	}
 
 	// Report success or failure to the queue.
@@ -260,7 +260,7 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 func (w *worker) initJobReadQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadQueue != nil {
-		w.renter.log.Critical("incorret call on initJobReadQueue")
+		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
@@ -272,7 +272,7 @@ func (w *worker) initJobReadQueue() {
 func (w *worker) initJobLowPrioReadQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobLowPrioReadQueue != nil {
-		w.renter.log.Critical("incorret call on initJobReadQueue")
+		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),

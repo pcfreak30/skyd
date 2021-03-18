@@ -17,9 +17,9 @@ var (
 	bubbleWaitInTestTime = time.Minute
 )
 
-// bubble is a helper for the renterTester to call bubble on a directory and
-// block until the bubble has executed.
-func (rt *renterTester) bubble(siaPath skymodules.SiaPath) error {
+// bubbleBlocking is a helper for the renterTester to call bubble on a directory
+// and block until the bubble has executed.
+func (rt *renterTester) bubbleBlocking(siaPath skymodules.SiaPath) error {
 	complete := rt.renter.staticBubbleScheduler.callQueueBubble(siaPath)
 	select {
 	case <-complete:
@@ -29,9 +29,9 @@ func (rt *renterTester) bubble(siaPath skymodules.SiaPath) error {
 	return nil
 }
 
-// bubbleAll is a helper for the renterTester to call bubble on multiple
+// bubbleAllBlocking is a helper for the renterTester to call bubble on multiple
 // directories and block until all the bubbles has executed.
-func (rt *renterTester) bubbleAll(siaPaths []skymodules.SiaPath) (errs error) {
+func (rt *renterTester) bubbleAllBlocking(siaPaths []skymodules.SiaPath) (errs error) {
 	// Define common variables
 	var errMU sync.Mutex
 	siaPathChan := make(chan skymodules.SiaPath, numBubbleWorkerThreads)
@@ -40,7 +40,7 @@ func (rt *renterTester) bubbleAll(siaPaths []skymodules.SiaPath) (errs error) {
 	// Define bubbleWorker to call bubble on siaPaths
 	bubbleWorker := func() {
 		for siaPath := range siaPathChan {
-			err := rt.bubble(siaPath)
+			err := errors.AddContext(rt.bubbleBlocking(siaPath), fmt.Sprintf("error with bubble on %v", siaPath))
 			errMU.Lock()
 			errs = errors.Compose(errs, err)
 			errMU.Unlock()

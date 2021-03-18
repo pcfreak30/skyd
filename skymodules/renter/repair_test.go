@@ -59,7 +59,7 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Bubble all the system dirs.
 	beforeBubble := time.Now()
-	err = rt.bubbleAll([]skymodules.SiaPath{skymodules.BackupFolder, skymodules.SkynetFolder, skymodules.UserFolder})
+	err = rt.bubbleAllBlocking([]skymodules.SiaPath{skymodules.BackupFolder, skymodules.SkynetFolder, skymodules.UserFolder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestBubbleHealth(t *testing.T) {
 	bubbleAndVerifyMetadata := func(testCase string, dirToBubble, expectedMDDir skymodules.SiaPath, anf, ansd uint64) {
 		// Bubble target directory
 		beforeBubble := time.Now()
-		if err := rt.bubble(dirToBubble); err != nil {
+		if err := rt.bubbleBlocking(dirToBubble); err != nil {
 			t.Fatal(err)
 		}
 
@@ -418,7 +418,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
 	// SubDir1/SubDir2 gets bubbled up
 	subDir1 := newSiaPath("root/SubDir1")
-	if err := rt.bubble(subDir1); err != nil {
+	if err := rt.bubbleBlocking(subDir1); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(60, time.Second, func() error {
@@ -458,7 +458,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := rt.bubble(subDir1); err != nil {
+	if err := rt.bubbleBlocking(subDir1); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(60, time.Second, func() error {
@@ -604,7 +604,7 @@ func TestNumFiles(t *testing.T) {
 
 	// Call bubble on lowest level and skynet folder and confirm top level reports
 	// accurate number of files and aggregate number of files
-	err = rt.bubbleAll([]skymodules.SiaPath{subDir1_2, skymodules.SkynetFolder})
+	err = rt.bubbleAllBlocking([]skymodules.SiaPath{subDir1_2, skymodules.SkynetFolder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,7 +728,7 @@ func TestDirectorySize(t *testing.T) {
 	}
 
 	// Call bubble on lowest lever and confirm top level reports accurate size
-	if err := rt.bubble(subDir1_2); err != nil {
+	if err := rt.bubbleBlocking(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -803,7 +803,7 @@ func TestDirectoryModTime(t *testing.T) {
 	}
 
 	// Call Bubble to update filesystem ModTimes so there are no zero times
-	if err := rt.bubble(subDir1_2); err != nil {
+	if err := rt.bubbleBlocking(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	// Sleep for 1 second to allow bubbles to update filesystem. Retry doesn't
@@ -856,7 +856,7 @@ func TestDirectoryModTime(t *testing.T) {
 
 	// Call bubble on lowest lever and confirm top level reports accurate last
 	// update time
-	if err := rt.bubble(subDir1_2); err != nil {
+	if err := rt.bubbleBlocking(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -985,7 +985,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// but the repair loop could have marked the rest as stuck so we just want
 	// to ensure that the root directory reflects at least the 3 we marked as
 	// stuck
-	if err := rt.bubble(subDir1_2); err != nil {
+	if err := rt.bubbleBlocking(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -1100,14 +1100,14 @@ func TestRandomStuckFile(t *testing.T) {
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	if err := rt.bubble(skymodules.UserFolder); err != nil {
+	if err := rt.bubbleBlocking(skymodules.UserFolder); err != nil {
 		t.Fatal(err)
 	}
 	i := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			if err := rt.bubble(skymodules.RootSiaPath()); err != nil {
+			if err := rt.bubbleBlocking(skymodules.RootSiaPath()); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1163,14 +1163,14 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	if err := rt.bubble(dir); err != nil {
+	if err := rt.bubbleBlocking(dir); err != nil {
 		t.Fatal(err)
 	}
 	i = 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			if err := rt.bubble(dir); err != nil {
+			if err := rt.bubbleBlocking(dir); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1445,8 +1445,8 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if !errors.Contains(err, errNoStuckChunks) {
 		t.Fatal(err)
 	}
-	if rt.renter.uploadHeap.managedLen() != 0 {
-		t.Fatal("Expected uploadHeap to be of length 0 got", rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != 0 {
+		t.Fatal("Expected uploadHeap to be of length 0 got", rt.renter.staticUploadHeap.managedLen())
 	}
 
 	// make chunk stuck
@@ -1459,12 +1459,12 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.renter.uploadHeap.managedLen() != 1 {
-		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != 1 {
+		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.staticUploadHeap.managedLen())
 	}
 
 	// Pop chunk, chunk should be marked as fileRecentlySuccessful true
-	chunk := rt.renter.uploadHeap.managedPop()
+	chunk := rt.renter.staticUploadHeap.managedPop()
 	if !chunk.fileRecentlySuccessful {
 		t.Fatal("chunk not marked as fileRecentlySuccessful true")
 	}
