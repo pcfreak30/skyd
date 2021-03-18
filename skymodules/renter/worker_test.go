@@ -42,7 +42,7 @@ func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencie
 	}
 
 	// Set an allowance.
-	err = rt.renter.hostContractor.SetAllowance(skymodules.DefaultAllowance)
+	err = rt.renter.staticHostContractor.SetAllowance(skymodules.DefaultAllowance)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +284,7 @@ func TestWorkerSpending(t *testing.T) {
 	// getRenterContract is a helper function that fetches the contract
 	getRenterContract := func() skymodules.RenterContract {
 		host := w.staticHostPubKey
-		rc, found := w.renter.hostContractor.ContractByPublicKey(host)
+		rc, found := w.staticRenter.staticHostContractor.ContractByPublicKey(host)
 		if !found {
 			t.Fatal("unexpected")
 		}

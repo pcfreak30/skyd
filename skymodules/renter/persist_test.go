@@ -202,7 +202,7 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wal := rt.renter.wal
+	wal := rt.renter.staticWAL
 	rc, err := skymodules.NewRSSubCode(1, 1, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)

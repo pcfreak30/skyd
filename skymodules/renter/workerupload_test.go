@@ -146,7 +146,7 @@ func testProcessUploadChunkBasic(t *testing.T, chunk func(wt *workerTester) *unf
 	uuc.mu.Lock()
 	uuc.pieceUsage[0] = true // mark first piece as used
 	uuc.mu.Unlock()
-	_ = wt.renter.repairMemoryManager.Request(context.Background(), modules.SectorSize*uint64(uuc.staticPiecesNeeded-1), true)
+	_ = wt.staticRenter.staticRepairMemoryManager.Request(context.Background(), modules.SectorSize*uint64(uuc.staticPiecesNeeded-1), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc == nil {
 		t.Error("next chunk shouldn't be nil")
@@ -517,7 +517,7 @@ func testProcessUploadChunkNotGoodForUpload(t *testing.T, chunk func(wt *workerT
 	wt.mu.Unlock()
 
 	// mark contract as bad
-	err = wt.renter.CancelContract(wt.staticCache().staticContractID)
+	err = wt.staticRenter.CancelContract(wt.staticCache().staticContractID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -584,7 +584,7 @@ func TestProcessUploadChunk(t *testing.T) {
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
 			staticMemoryNeeded:        uint64(pieces) * modules.SectorSize,
-			staticMemoryManager:       wt.renter.repairMemoryManager,
+			staticMemoryManager:       wt.staticRenter.staticRepairMemoryManager,
 		}
 	}
 

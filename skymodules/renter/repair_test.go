@@ -1445,8 +1445,8 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if !errors.Contains(err, errNoStuckChunks) {
 		t.Fatal(err)
 	}
-	if rt.renter.uploadHeap.managedLen() != 0 {
-		t.Fatal("Expected uploadHeap to be of length 0 got", rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != 0 {
+		t.Fatal("Expected uploadHeap to be of length 0 got", rt.renter.staticUploadHeap.managedLen())
 	}
 
 	// make chunk stuck
@@ -1459,12 +1459,12 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.renter.uploadHeap.managedLen() != 1 {
-		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != 1 {
+		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.staticUploadHeap.managedLen())
 	}
 
 	// Pop chunk, chunk should be marked as fileRecentlySuccessful true
-	chunk := rt.renter.uploadHeap.managedPop()
+	chunk := rt.renter.staticUploadHeap.managedPop()
 	if !chunk.fileRecentlySuccessful {
 		t.Fatal("chunk not marked as fileRecentlySuccessful true")
 	}

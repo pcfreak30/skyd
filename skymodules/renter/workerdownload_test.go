@@ -239,10 +239,10 @@ func TestProcessDownloadChunk(t *testing.T) {
 			staticChunkMap: map[string]downloadPieceInfo{ // worker has a piece
 				wt.staticHostPubKey.String(): {},
 			},
-			download: &download{
+			staticDownload: &download{
 				completeChan: make(chan struct{}),
 			},
-			staticMemoryManager: wt.renter.repairMemoryManager,
+			staticMemoryManager: wt.staticRenter.staticRepairMemoryManager,
 		}
 	}
 
@@ -293,8 +293,8 @@ func TestProcessDownloadChunk(t *testing.T) {
 	queue := wt.staticJobLowPrioReadQueue
 	udc = chunk()
 	addBlankJobs(3)
-	close(udc.download.completeChan)
-	udc.download.err = errors.New("test error to prevent critical")
+	close(udc.staticDownload.completeChan)
+	udc.staticDownload.err = errors.New("test error to prevent critical")
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
@@ -378,8 +378,8 @@ func TestProcessDownloadChunk(t *testing.T) {
 	queue.cooldownUntil = cooldownUntil(queue.consecutiveFailures)
 	queue.mu.Unlock()
 	udc = chunk()
-	close(udc.download.completeChan)
-	udc.download.err = errors.New("test error to prevent critical")
+	close(udc.staticDownload.completeChan)
+	udc.staticDownload.err = errors.New("test error to prevent critical")
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
