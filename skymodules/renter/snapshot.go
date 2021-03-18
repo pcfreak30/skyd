@@ -334,7 +334,7 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 	}
 
 	// Download the table of snapshots that the host is storing.
-	tableSector, err := host.ReadOffset(r.tg.StopCtx(), 0, modules.SectorSize)
+	tableSector, err := host.ReadOffset(r.tg.StopCtx(), categorySnapshotDownload, 0, modules.SectorSize)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to perform a download by index on this contract")
 	}
@@ -504,7 +504,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub skymodules.UploadedBa
 			// download the entry
 			dotSia = nil
 			for _, root := range entry.DataSectors {
-				data, err := w.ReadSector(r.tg.StopCtx(), root, 0, modules.SectorSize)
+				data, err := w.ReadSector(r.tg.StopCtx(), categorySnapshotDownload, root, 0, modules.SectorSize)
 				if err != nil {
 					return err
 				}

@@ -284,6 +284,14 @@ legacy-windows-tests-nightly:
 # Package Test
 #################
 # Windows execution
+<<<<<<< HEAD
+=======
+package-host-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong-windows run=. pkgs="$package_host_pkgs"
+
+>>>>>>> d668d970259476eacc7e9e2f9ddb42e58d8b132a
 package-renter-tests-nightly:
   <<: *default_nightly_params
   script:
