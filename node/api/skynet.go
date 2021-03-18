@@ -118,6 +118,7 @@ type (
 	// GET endpoint
 	SkynetStatsGET struct {
 		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
+		RegistryStats    skymodules.RegistryStats          `json:"registrystats"`
 
 		Uptime      int64                  `json:"uptime"`
 		UploadStats skymodules.SkynetStats `json:"uploadstats"`
@@ -1218,8 +1219,16 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	// Grab the siad uptime
 	uptime := time.Since(api.StartTime()).Seconds()
 
+	// Get the registry stats.
+	registryStats, err := api.renter.RegistryStats()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter registry status: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
 	WriteJSON(w, &SkynetStatsGET{
 		PerformanceStats: perfStats,
+		RegistryStats:    registryStats,
 
 		Uptime:      int64(uptime),
 		UploadStats: stats,

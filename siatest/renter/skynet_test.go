@@ -915,6 +915,17 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("Uptime is zero")
 	}
 
+	// Check registry stats are set
+	if stats.RegistryStats.ReadProjectP99 == 0 {
+		t.Error("readregistry p99 is zero")
+	}
+	if stats.RegistryStats.ReadProjectP999 == 0 {
+		t.Error("readregistry p999 is zero")
+	}
+	if stats.RegistryStats.ReadProjectP9999 == 0 {
+		t.Error("readregistry p9999 is zero")
+	}
+
 	// create two test files with sizes below and above the sector size
 	files := make(map[string]uint64)
 	files["statfile1"] = 2033

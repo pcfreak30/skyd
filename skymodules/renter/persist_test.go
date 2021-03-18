@@ -82,8 +82,10 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 
 	// The registry stats should be seeded.
-	if rt.renter.staticRRS.Estimate() != readRegistryStatsSeed+readRegistryStatsInterval {
-		t.Fatalf("registry stats aren't seeded correctly %v != %v", rt.renter.staticRRS.Estimate(), readRegistryStatsSeed+readRegistryStatsInterval)
+	for i := range readRegistryStatsPercentiles {
+		if rt.renter.staticRRS.Estimate()[i] != readRegistryStatsSeed+readRegistryStatsInterval {
+			t.Fatalf("registry stats aren't seeded correctly %v != %v", rt.renter.staticRRS.Estimate(), readRegistryStatsSeed+readRegistryStatsInterval)
+		}
 	}
 	// It should be possible to add a ReadRegistryBackgroundTimeout measurement.
 	if err := rt.renter.staticRRS.AddDatum(ReadRegistryBackgroundTimeout); err != nil {

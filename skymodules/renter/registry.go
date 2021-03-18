@@ -95,9 +95,9 @@ var (
 	// readRegistryStatsDecay is the decay applied to the registry stats.
 	readRegistryStatsDecay = 0.995
 
-	// readRegistryStatsPercentile is the percentile returned by the read
+	// readRegistryStatsPercentiles are the percentile returned by the read
 	// registry stats Estimate method.
-	readRegistryStatsPercentile = 0.99
+	readRegistryStatsPercentiles = []float64{0.99, 0.999, 0.9999}
 
 	// readRegistrySeed is the first duration added to the registry stats after
 	// creating it.
@@ -106,6 +106,14 @@ var (
 		Dev:      30 * time.Second,
 		Standard: 2 * time.Second,
 		Testing:  5 * time.Second,
+	}).(time.Duration)
+
+	// minRegistryReadTimeout is the minimum timeout we give a read registry
+	// request to finish.
+	minRegistryReadTimeout = build.Select(build.Var{
+		Dev:      200 * time.Millisecond,
+		Standard: 800 * time.Millisecond,
+		Testing:  readRegistryStatsInterval,
 	}).(time.Duration)
 )
 
@@ -249,9 +257,10 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
 
 	// Start the ReadRegistry jobs.
+	start := time.Now()
 	srv, err := r.managedReadRegistry(ctx, spk, tweak)
 	if errors.Contains(err, ErrRegistryLookupTimeout) {
-		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", time.Since(start).Seconds()))
 	}
 	return srv, err
 }
@@ -357,7 +366,12 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	}()
 
 	// Further restrict the input timeout using historical data.
-	ctx, cancel := context.WithTimeout(ctx, r.staticRRS.Estimate())
+	// We use the first estimate returned here which is p99.
+	estimate := r.staticRRS.Estimate()[0]
+	if estimate < minRegistryReadTimeout {
+		estimate = minRegistryReadTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, estimate)
 	defer cancel()
 
 	// Prepare a context which will be overwritten by a child context with a timeout
