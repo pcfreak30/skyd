@@ -3327,6 +3327,42 @@ Height at which the current allowance period began.
 **nextperiod** | blockheight  
 Height at which the next allowance period began.  
 
+**memorystatus**   
+Information about the state of the renter's internal memory manager.  
+
+**registry**  
+Memory information related to skynet registry operations.  
+
+**userupload**  
+Memory information related to user-initiated uploads.  
+
+**userdownload**  
+Memory information related to user-initiated downloads.  
+
+**system**  
+Memory information related to daemon-initiated tasks. e.g. repair uploads and downloads.  
+
+**available** | uint64  
+The amount of currently available for a given category.  
+
+**base** | uint64  
+The base amount of memory for a given category.  
+
+**requested** | uint64  
+The amount of memory currently requested for a given category.  
+
+**priorityavailable** | uint64  
+The amount of available priority memory for a given category.  
+
+**prioritybase** | uint64  
+The base amount of priority memory for a given category.  
+
+**priorityrequested** | uint64  
+The amount of priority memory currently requested for a given category.  
+
+**priorityreserve** | uint64  
+The amount of memory set aside for priority tasks.  
+
 **uploadsstatus**  
 Information about the renter's uploads.  
 
@@ -5860,19 +5896,19 @@ returns statistical information about Skynet, e.g. number of files uploaded
   },
   "performancestats": {
     "timetofirstbyte": {
-      "lastupdate": "2021-03-18T13:29:53.397408+01:00",
+      "lastupdate": "2021-03-18T13:29:53.397408+01:00", // timestamp
       "oneminute": {
-        "n60ms": 0,
-        "n120ms": 0,
-        "n240ms": 0,
-        "n500ms": 0,
-        "n1000ms": 0,
-        "n2000ms": 0,
-        "n5000ms": 0,
-        "n10s": 0,
-        "nlong": 0,
-        "nerr": 0,
-        "totalsize": 0
+        "n60ms": 0,     // uint64
+        "n120ms": 0,    // uint64
+        "n240ms": 0,    // uint64
+        "n500ms": 0,    // uint64
+        "n1000ms": 0,   // uint64
+        "n2000ms": 0,   // uint64
+        "n5000ms": 0,   // uint64
+        "n10s": 0,      // uint64
+        "nlong": 0,     // uint64
+        "nerr": 0,      // uint64
+        "totalsize": 0  // uint64
       },
       "fiveminutes": {
         // ...
@@ -5913,9 +5949,9 @@ returns statistical information about Skynet, e.g. number of files uploaded
     }
   },
   "registrystats": {
-    "readprojectp99": 5020000000,
-    "readprojectp999": 5020000000,
-    "readprojectp9999": 5020000000
+    "readprojectp99": 5020000000,   // uint64
+    "readprojectp999": 5020000000,  // uint64
+    "readprojectp9999": 5020000000  // uint64
   },
 }
 ```
@@ -5969,6 +6005,12 @@ request took.
 The performance stats fields are not protected by a compatibility promise, and
 may change over time.
 
+**registrystats**  
+Contains some stats about the skynet registry. 
+
+**readprojectpX** | uint64  
+The Xth percentile of the execution time of all successful read registry
+projects.
 
 ## /skynet/addskykey [POST]
 > curl example
