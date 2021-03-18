@@ -112,7 +112,7 @@ var (
 	// request to finish.
 	minRegistryReadTimeout = build.Select(build.Var{
 		Dev:      200 * time.Millisecond,
-		Standard: 200 * time.Millisecond,
+		Standard: 800 * time.Millisecond,
 		Testing:  readRegistryStatsInterval,
 	}).(time.Duration)
 )
