@@ -4,7 +4,7 @@
 [![Coverage Report](https://gitlab.com/skynetlabs/skyd/badges/master/coverage.svg)](https://gitlab.com/skynetlabs/skyd/commits/master)
 [![GoDoc](https://godoc.org/gitlab.com/skynetlabs/skyd?status.svg)](https://godoc.org/gitlab.com/skynetlabs/skyd)
 [![Go Report Card](https://goreportcard.com/badge/gitlab.com/skynetlabs/skyd)](https://goreportcard.com/report/gitlab.com/skynetlabs/skyd)
-[Skynet License](https://siasky.net/skynet-license.md)]
+[![Skynet License](https://img.shields.io/badge/license-skynet%20license-blue)](https://gitlab.com/skynetlabs/skyd/-/blob/master/LICENSE.md)
 
 Sia is a decentralized cloud storage platform that radically alters the
 landscape of cloud storage. By leveraging smart contracts, client-side
