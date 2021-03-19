@@ -90,7 +90,7 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modu
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryRead, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to execute program")
 	}
@@ -190,6 +190,8 @@ func (j *jobReadRegistry) callExecute() {
 	// Check if we have a cached version of the looked up entry. If the new entry
 	// has a higher revision number we update it. If it has a lower one we know that
 	// the host should be punished for losing it or trying to cheat us.
+	// TODO: update the cache to store the hash in addition to the revision
+	// number for verifying the pow.
 	if srv != nil {
 		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSiaPublicKey, j.staticTweak)
 		if cached && cachedRevision > srv.Revision {
