@@ -29,6 +29,27 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
 
+type (
+	// testSiacoinSender is a implementation of the SiacoinSender interface
+	// which remembers the arguments of the last call to SendSiacoins.
+	testSiacoinSender struct {
+		lastSend     types.Currency
+		lastSendAddr types.UnlockHash
+	}
+)
+
+// LastSend returns the arguments of the last call to SendSiacoins.
+func (tss *testSiacoinSender) LastSend() (types.Currency, types.UnlockHash) {
+	return tss.lastSend, tss.lastSendAddr
+}
+
+// SendSiacoins implements the SiacoinSender interface.
+func (tss *testSiacoinSender) SendSiacoins(amt types.Currency, addr types.UnlockHash) ([]types.Transaction, error) {
+	tss.lastSend = amt
+	tss.lastSendAddr = addr
+	return nil, nil
+}
+
 // renterTester contains all of the modules that are used while testing the renter.
 type renterTester struct {
 	cs      modules.ConsensusSet
@@ -382,23 +403,6 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-type (
-	testSiacoinSender struct {
-		lastSend     types.Currency
-		lastSendAddr types.UnlockHash
-	}
-)
-
-func (tss *testSiacoinSender) LastSend() (types.Currency, types.UnlockHash) {
-	return tss.lastSend, tss.lastSendAddr
-}
-
-func (tss *testSiacoinSender) SendSiacoins(amt types.Currency, addr types.UnlockHash) ([]types.Transaction, error) {
-	tss.lastSend = amt
-	tss.lastSendAddr = addr
-	return nil, nil
 }
 
 // TestPaySkynetFee is a unit test for paySkynetFee.

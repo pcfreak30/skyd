@@ -115,7 +115,7 @@ func (sh *spendingHistory) AddSpending(spending types.Currency, txn []types.Tran
 	return nil
 }
 
-// LastSpending returns the last saved spending entry.
+// LastSpending returns the last saved spending entry value and timestamp.
 func (sh *spendingHistory) LastSpending() (types.Currency, time.Time) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
