@@ -176,6 +176,7 @@ type renterFuseManager interface {
 	Unmount(mountPoint string) error
 }
 
+// A siacoinSender is an object capable of sending siacoins to an address.
 type siacoinSender interface {
 	// SendSiacoins sends the specified amount of siacoins to the provided
 	// address.
@@ -858,18 +859,17 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 // threadedPaySkynetFee pays the accumulated skynet fee every 24 hours.
 func (r *Renter) threadedPaySkynetFee() {
 	// Pay periodically.
-	ticker := time.NewTicker(skymodules.SkynetFeePayoutInterval)
+	ticker := time.NewTicker(skymodules.SkynetFeePayoutCheckInterval)
 	for {
-		select {
-		case <-r.tg.StopChan():
-			return // shutdown
-		case <-ticker.C:
-		}
-
 		na := r.deps.NebulousAddress()
 		err := paySkynetFee(r.staticSpendingHistory, r.w, append(r.Contracts(), r.OldContracts()...), na)
 		if err != nil {
 			r.log.Print(err)
+		}
+		select {
+		case <-r.tg.StopChan():
+			return // shutdown
+		case <-ticker.C:
 		}
 	}
 }
@@ -882,7 +882,7 @@ func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.R
 	lastSpending, lastSpendingHeight := sh.LastSpending()
 
 	// Only pay fees once per day.
-	if time.Since(lastSpendingHeight) < 24*time.Hour {
+	if time.Since(lastSpendingHeight) < skymodules.SkynetFeePayoutInterval {
 		return nil
 	}
 
@@ -898,12 +898,12 @@ func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.R
 	}
 
 	// Compute the fee.
-	fee := totalSpending.Sub(lastSpending).Div64(5)
+	fee := totalSpending.Sub(lastSpending).Div64(skymodules.SkynetFeeDivider)
 
 	// Send the fee.
 	txn, err := w.SendSiacoins(fee, addr)
 	if err != nil {
-		return errors.AddContext(err, "Failed to send siacoins for skynet fee. Will try again in a day")
+		return errors.AddContext(err, "Failed to send siacoins for skynet fee. Will retry again in an hour")
 	}
 
 	// Mark the totalSpending in the history.
