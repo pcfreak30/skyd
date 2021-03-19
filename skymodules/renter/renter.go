@@ -55,6 +55,12 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetportals"
 )
 
+const (
+	// skynetFeePayoutMultiplier is a factor that we multiply the fee estimation
+	// with to determine the skynet fee payout threshold.
+	skynetFeePayoutMultiplier = 100 * 1024 // 100 * 1kib
+)
+
 var (
 	errNilContractor = errors.New("cannot create renter with nil contractor")
 	errNilCS         = errors.New("cannot create renter with nil consensus set")
@@ -881,7 +887,12 @@ func (r *Renter) threadedPaySkynetFee() {
 	ticker := time.NewTicker(skymodules.SkynetFeePayoutCheckInterval)
 	for {
 		na := r.staticDeps.NebulousAddress()
-		err := paySkynetFee(r.staticSpendingHistory, r.staticWallet, append(r.Contracts(), r.OldContracts()...), na)
+
+		// Compute the threshold.
+		_, max := r.staticTPool.FeeEstimation()
+		threshold := max.Mul64(skynetFeePayoutMultiplier)
+
+		err := paySkynetFee(r.staticSpendingHistory, r.staticWallet, append(r.Contracts(), r.OldContracts()...), na, threshold)
 		if err != nil {
 			r.staticLog.Print(err)
 		}
@@ -896,7 +907,7 @@ func (r *Renter) threadedPaySkynetFee() {
 // paySkynetFee pays the accumulated skynet fee every 24 hours.
 // TODO: once we pay for monetized content, that also needs to be part of the
 // total spending.
-func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.RenterContract, addr types.UnlockHash) error {
+func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.RenterContract, addr types.UnlockHash, threshold types.Currency) error {
 	// Get the last spending.
 	lastSpending, lastSpendingHeight := sh.LastSpending()
 
@@ -918,6 +929,11 @@ func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.R
 
 	// Compute the fee.
 	fee := totalSpending.Sub(lastSpending).Div64(skymodules.SkynetFeeDivider)
+
+	// Check if we are above a payout threshold.
+	if fee.Cmp(threshold) < 0 {
+		return nil // Don't pay if we are below the threshold.
+	}
 
 	// Send the fee.
 	txn, err := w.SendSiacoins(fee, addr)

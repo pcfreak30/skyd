@@ -454,9 +454,10 @@ func TestPaySkynetFee(t *testing.T) {
 	ts := &testSiacoinSender{}
 
 	// Pay a skynet fee but the time is now so not enough time has passed.
+	threshold := types.ZeroCurrency
 	expectedTime := time.Now()
 	sh.AddSpending(types.ZeroCurrency, nil, expectedTime)
-	err = paySkynetFee(sh, ts, contracts, uh)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +471,7 @@ func TestPaySkynetFee(t *testing.T) {
 	// Last spending was 48 hours ago which is enough.
 	expectedTime = time.Now().AddDate(0, 0, -2)
 	sh.AddSpending(types.ZeroCurrency, nil, expectedTime)
-	err = paySkynetFee(sh, ts, contracts, uh)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +491,7 @@ func TestPaySkynetFee(t *testing.T) {
 	expectedTime = time.Now().AddDate(0, 0, -2)
 	sh.AddSpending(expectedSpending, nil, expectedTime)
 	oldContracts := contracts[:1]
-	err = paySkynetFee(sh, ts, oldContracts, uh)
+	err = paySkynetFee(sh, ts, oldContracts, uh, threshold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +503,7 @@ func TestPaySkynetFee(t *testing.T) {
 	}
 
 	// Spending increased. Payment expected.
-	err = paySkynetFee(sh, ts, contracts, uh)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,5 +514,26 @@ func TestPaySkynetFee(t *testing.T) {
 	}
 	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd.Before(expectedTime) {
 		t.Fatal("wrong history", ls, expectedSpending, lsbd, expectedTime)
+	}
+
+	// Add another contract.
+	contracts = append(contracts, randomContract())
+	oldContracts = contracts[:2]
+
+	// Spending increased again but the threshold is too low.
+	oldExpectedSpending := expectedSpending
+	oldExpectedFee := expectedFee
+	expectedSpending = spending(contracts)
+	expectedFee = fee(expectedSpending.Sub(spending(oldContracts)))
+	threshold = expectedFee.Add64(1)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ls, lsa := ts.LastSend(); !ls.Equals(oldExpectedFee) || lsa != uh {
+		t.Fatal("wrong payment", ls, oldExpectedFee, lsa, uh)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(oldExpectedSpending) || lsbd.Before(expectedTime) {
+		t.Fatal("wrong history", ls, oldExpectedSpending, lsbd, expectedTime)
 	}
 }
