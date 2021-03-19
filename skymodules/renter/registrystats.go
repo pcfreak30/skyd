@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 )
 
@@ -84,17 +83,11 @@ func (rrs *readRegistryStats) AddDatum(duration time.Duration) error {
 			}
 		}
 	}
-	// Sanity check position. It should always be set at this point.
-	var err error
+	// If position wasn't set, set it to the last index.
 	for i := range rrs.currentPositions {
 		if rrs.currentPositions[i] == -1 {
 			rrs.currentPositions[i] = len(rrs.staticBuckets) - 1
-			err = errors.Compose(err, fmt.Errorf("current position wasn't set smaller = %v, larger = %v, total = %v, ratio = %v, percentile = %v", smaller, larger, rrs.total, smaller/rrs.total, rrs.staticPercentiles[i]))
 		}
-	}
-	if err != nil {
-		build.Critical(err)
-		return err
 	}
 	return nil
 }
