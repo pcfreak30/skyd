@@ -56,6 +56,16 @@ import (
 )
 
 var (
+	// skynetFeePayoutMultiplier is a factor that we multiply the fee estimation
+	// with to determine the skynet fee payout threshold.
+	skynetFeePayoutMultiplier = build.Select(build.Var{
+		Dev:      uint64(100 * 1024), // 100 * 1kib txn
+		Standard: uint64(100 * 1024), // 100 * 1kib txn
+		Testing:  uint64(1),          // threshold == fee estimate
+	}).(uint64)
+)
+
+var (
 	errNilContractor = errors.New("cannot create renter with nil contractor")
 	errNilCS         = errors.New("cannot create renter with nil consensus set")
 	errNilGateway    = errors.New("cannot create hostdb with nil gateway")
@@ -176,6 +186,13 @@ type renterFuseManager interface {
 	Unmount(mountPoint string) error
 }
 
+// A siacoinSender is an object capable of sending siacoins to an address.
+type siacoinSender interface {
+	// SendSiacoins sends the specified amount of siacoins to the provided
+	// address.
+	SendSiacoins(types.Currency, types.UnlockHash) ([]types.Transaction, error)
+}
+
 // cachedUtilities contains the cached utilities used when bubbling file and
 // folder metadata.
 type cachedUtilities struct {
@@ -191,6 +208,7 @@ type Renter struct {
 	// Skynet Management
 	staticSkynetBlocklist *skynetblocklist.SkynetBlocklist
 	staticSkynetPortals   *skynetportals.SkynetPortals
+	staticSpendingHistory *spendingHistory
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -867,6 +885,80 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	}
 }
 
+// threadedPaySkynetFee pays the accumulated skynet fee every 24 hours.
+func (r *Renter) threadedPaySkynetFee() {
+	// Pay periodically.
+	ticker := time.NewTicker(skymodules.SkynetFeePayoutCheckInterval)
+	for {
+		na := r.staticDeps.NebulousAddress()
+
+		// Compute the threshold.
+		_, max := r.staticTPool.FeeEstimation()
+		threshold := max.Mul64(skynetFeePayoutMultiplier)
+
+		err := paySkynetFee(r.staticSpendingHistory, r.staticWallet, append(r.Contracts(), r.OldContracts()...), na, threshold, r.staticLog)
+		if err != nil {
+			r.staticLog.Print(err)
+		}
+		select {
+		case <-r.tg.StopChan():
+			return // shutdown
+		case <-ticker.C:
+		}
+	}
+}
+
+// paySkynetFee pays the accumulated skynet fee every 24 hours.
+// TODO: once we pay for monetized content, that also needs to be part of the
+// total spending.
+func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.RenterContract, addr types.UnlockHash, threshold types.Currency, log *persist.Logger) error {
+	// Get the last spending.
+	lastSpending, lastSpendingHeight := sh.LastSpending()
+
+	// Only pay fees once per day.
+	if time.Since(lastSpendingHeight) < skymodules.SkynetFeePayoutInterval {
+		return nil
+	}
+
+	// Compute the total spending at this point in time.
+	var totalSpending types.Currency
+	for _, contract := range contracts {
+		totalSpending = totalSpending.Add(contract.SkynetSpending())
+	}
+
+	// Check by how much it increased since the last time.
+	if totalSpending.Cmp(lastSpending) <= 0 {
+		return nil // Spending didn't increase
+	}
+
+	// Compute the fee.
+	fee := totalSpending.Sub(lastSpending).Div64(skymodules.SkynetFeeDivider)
+
+	// Check if we are above a payout threshold.
+	if fee.Cmp(threshold) < 0 {
+		log.Printf("Not paying fee of %v since it's below the threshold of %v", fee, threshold)
+		return nil // Don't pay if we are below the threshold.
+	}
+
+	// Log that we are about to pay the fee.
+	log.Printf("Paying fee of %v to %v after spending increased from %v to %v", fee, addr, lastSpending, totalSpending)
+
+	// Send the fee.
+	txn, err := w.SendSiacoins(fee, addr)
+	if err != nil {
+		return errors.AddContext(err, "Failed to send siacoins for skynet fee. Will retry again in an hour")
+	}
+
+	// Mark the totalSpending in the history.
+	err = sh.AddSpending(totalSpending, txn, time.Now())
+	if err != nil {
+		err = errors.AddContext(err, "failed to persist paid skynet fees")
+		build.Critical(err)
+		return err
+	}
+	return nil
+}
+
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the
 // same name.
 func (r *Renter) SetIPViolationCheck(enabled bool) {
@@ -1044,6 +1136,13 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 
+	// Init the spending history.
+	sh, err := NewSpendingHistory(r.persistDir, skymodules.SkynetSpendingHistoryFilename)
+	if err != nil {
+		return nil, err
+	}
+	r.staticSpendingHistory = sh
+
 	// Init the statsChan and close it right away to signal that no scan is
 	// going on.
 	r.statsChan = make(chan struct{})
@@ -1140,6 +1239,26 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Initialize the batch manager
 	r.newSkylinkBatchManager()
+
+	// If the spending history didn't exist before, manually init it with the
+	// current spending. We don't want portals to pay a huge fee right after
+	// upgrading for pre-skynet license spendings.
+	_, lastSpendingTime := sh.LastSpending()
+	if lastSpendingTime.IsZero() {
+		var totalSpending types.Currency
+		for _, c := range append(r.Contracts(), r.OldContracts()...) {
+			totalSpending = totalSpending.Add(c.SkynetSpending())
+		}
+		err = sh.AddSpending(totalSpending, []types.Transaction{}, time.Now())
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to add initial spending")
+		}
+	}
+
+	// Spin up the skynet fee paying goroutine.
+	if err := r.tg.Launch(r.threadedPaySkynetFee); err != nil {
+		return nil, err
+	}
 
 	// Unsubscribe on shutdown.
 	err = r.tg.OnStop(func() error {
