@@ -24,6 +24,10 @@ const (
 	// of a skyfile used to describe the rest of the skyfile.
 	SkyfileLayoutSize = 99
 
+	// SkynetFeeDivider is the number by which the renter spending is divided to
+	// determine the skynet fee to be paid.
+	SkynetFeeDivider = 5 // 20%
+
 	// SkyfileVersion establishes the current version for creating skyfiles.
 	// The skyfile versions are different from the siafile versions.
 	SkyfileVersion = 1
@@ -82,6 +86,22 @@ var (
 	// SkyfileFormatZip returns the skyfiles as a .zip.
 	SkyfileFormatZip = SkyfileFormat("zip")
 )
+
+// SkynetFeePayoutInterval is the time after which the renter pays out the
+// accumulated skynet fees.
+var SkynetFeePayoutInterval = build.Select(build.Var{
+	Dev:      time.Minute * 5,
+	Standard: time.Hour * 24,
+	Testing:  time.Second * 5,
+}).(time.Duration)
+
+// SkynetFeePayoutCheckInterval is the time between the renter's periodic payout
+// checks.
+var SkynetFeePayoutCheckInterval = build.Select(build.Var{
+	Dev:      time.Minute,
+	Standard: time.Hour,
+	Testing:  time.Second,
+}).(time.Duration)
 
 type (
 	// SkyfileSubfiles contains the subfiles of a skyfile, indexed by their

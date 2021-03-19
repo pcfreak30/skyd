@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 
@@ -27,6 +28,27 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
+
+type (
+	// testSiacoinSender is a implementation of the SiacoinSender interface
+	// which remembers the arguments of the last call to SendSiacoins.
+	testSiacoinSender struct {
+		lastSend     types.Currency
+		lastSendAddr types.UnlockHash
+	}
+)
+
+// LastSend returns the arguments of the last call to SendSiacoins.
+func (tss *testSiacoinSender) LastSend() (types.Currency, types.UnlockHash) {
+	return tss.lastSend, tss.lastSendAddr
+}
+
+// SendSiacoins implements the SiacoinSender interface.
+func (tss *testSiacoinSender) SendSiacoins(amt types.Currency, addr types.UnlockHash) ([]types.Transaction, error) {
+	tss.lastSend = amt
+	tss.lastSendAddr = addr
+	return nil, nil
+}
 
 // renterTester contains all of the modules that are used while testing the renter.
 type renterTester struct {
@@ -380,5 +402,148 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	_, _, err = rt.renter.PriceEstimation(skymodules.Allowance{})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestPaySkynetFee is a unit test for paySkynetFee.
+func TestPaySkynetFee(t *testing.T) {
+	testDir := build.TempDir("renter", t.Name())
+	fileName := "test"
+
+	// Create a new history.
+	sh, err := NewSpendingHistory(testDir, fileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Declare helper for contract creation.
+	randomContract := func() skymodules.RenterContract {
+		return skymodules.RenterContract{
+			DownloadSpending:    types.NewCurrency64(fastrand.Uint64n(100)),
+			FundAccountSpending: types.NewCurrency64(fastrand.Uint64n(100)),
+			MaintenanceSpending: skymodules.MaintenanceSpending{
+				AccountBalanceCost:   types.NewCurrency64(fastrand.Uint64n(100)),
+				FundAccountCost:      types.NewCurrency64(fastrand.Uint64n(100)),
+				UpdatePriceTableCost: types.NewCurrency64(fastrand.Uint64n(100)),
+			},
+			StorageSpending: types.NewCurrency64(fastrand.Uint64n(100)),
+			UploadSpending:  types.NewCurrency64(fastrand.Uint64n(100)),
+		}
+	}
+
+	// Create a contract.
+	contracts := []skymodules.RenterContract{
+		randomContract(),
+	}
+
+	// Helper to compute spending of contracts.
+	spending := func(contracts []skymodules.RenterContract) types.Currency {
+		var spending types.Currency
+		for _, c := range contracts {
+			spending = spending.Add(c.SkynetSpending())
+		}
+		return spending
+	}
+
+	// Helper to compute the fee from a given spending delta.
+	fee := func(delta types.Currency) types.Currency {
+		return delta.Div64(5) // 20%
+	}
+
+	// Create an address.
+	var uh types.UnlockHash
+	fastrand.Read(uh[:])
+
+	// Create a test sender.
+	ts := &testSiacoinSender{}
+
+	// Dummy log.
+	log, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pay a skynet fee but the time is now so not enough time has passed.
+	threshold := types.ZeroCurrency
+	expectedTime := time.Now()
+	sh.AddSpending(types.ZeroCurrency, nil, expectedTime)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ls, lsa := ts.LastSend(); !ls.IsZero() || lsa != (types.UnlockHash{}) {
+		t.Fatal("money was paid even though it shouldn't", ls, lsa)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.IsZero() || lsbd != expectedTime {
+		t.Fatal("history shouldn't have been updated", ls, lsbd, expectedTime)
+	}
+
+	// Last spending was 48 hours ago which is enough.
+	expectedTime = time.Now().AddDate(0, 0, -2)
+	sh.AddSpending(types.ZeroCurrency, nil, expectedTime)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedSpending := spending(contracts)
+	expectedFee := fee(expectedSpending)
+	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
+		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd.Before(expectedTime) {
+		t.Fatal("wrong history", ls, expectedFee, lsbd, expectedTime)
+	}
+
+	// Add another contract.
+	contracts = append(contracts, randomContract())
+
+	// Time is 48 hours ago but spending didn't change. Nothing happens.
+	expectedTime = time.Now().AddDate(0, 0, -2)
+	sh.AddSpending(expectedSpending, nil, expectedTime)
+	oldContracts := contracts[:1]
+	err = paySkynetFee(sh, ts, oldContracts, uh, threshold, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
+		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd != expectedTime {
+		t.Fatal("wrong history", ls, expectedSpending, lsbd, expectedTime)
+	}
+
+	// Spending increased. Payment expected.
+	err = paySkynetFee(sh, ts, contracts, uh, threshold, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedSpending = spending(contracts)
+	expectedFee = fee(expectedSpending.Sub(spending(oldContracts)))
+	if ls, lsa := ts.LastSend(); !ls.Equals(expectedFee) || lsa != uh {
+		t.Fatal("wrong payment", ls, expectedFee, lsa, uh)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(expectedSpending) || lsbd.Before(expectedTime) {
+		t.Fatal("wrong history", ls, expectedSpending, lsbd, expectedTime)
+	}
+
+	// Add another contract.
+	contracts = append(contracts, randomContract())
+	oldContracts = contracts[:2]
+
+	// Spending increased again but the threshold is too low.
+	oldExpectedSpending := expectedSpending
+	oldExpectedFee := expectedFee
+	expectedSpending = spending(contracts)
+	expectedFee = fee(expectedSpending.Sub(spending(oldContracts)))
+	threshold = expectedFee.Add64(1)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ls, lsa := ts.LastSend(); !ls.Equals(oldExpectedFee) || lsa != uh {
+		t.Fatal("wrong payment", ls, oldExpectedFee, lsa, uh)
+	}
+	if ls, lsbd := sh.LastSpending(); !ls.Equals(oldExpectedSpending) || lsbd.Before(expectedTime) {
+		t.Fatal("wrong history", ls, oldExpectedSpending, lsbd, expectedTime)
 	}
 }
