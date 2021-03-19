@@ -1535,6 +1535,8 @@ func (c *Contractor) managedHostsForRegularFormation(allowance modules.Allowance
 	return hostsForRegularFormation(allowance, c.staticContracts.ViewAll(), c.RecoverableContracts(), c.hdb.RandomHosts, c.log)
 }
 
+// managedFormContracts tries to form up to neededContracts with the hosts given
+// by hosts and the provided budget, allowance and endHeight.
 func (c *Contractor) managedFormContracts(budget types.Currency, hosts []modules.HostDBEntry, neededContracts int, allowance modules.Allowance, endHeight types.BlockHeight) (lowFunds, walletLocked bool) {
 	// Calculate the anticipated transaction fee.
 	_, maxFee := c.tpool.FeeEstimation()
