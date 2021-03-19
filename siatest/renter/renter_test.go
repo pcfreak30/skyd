@@ -4749,6 +4749,9 @@ func TestWorkerStatus(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 	numHosts := len(tg.Hosts())
+	if numHosts < 2 {
+		t.Fatal("test needs at least 2 hosts")
+	}
 
 	// Build Contract ID and PubKey maps
 	rc, err := r.RenterContractsGet()
@@ -4908,6 +4911,24 @@ func TestWorkerStatus(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Check RenterWorkersSortedGet
+	rwsg, err := r.RenterWorkersSortedGet(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rwsg.Workers) != numHosts {
+		t.Fatalf("Unexpected number of workers %v; expected %v", len(rwsg.Workers), numHosts)
+	}
+	// Workers should be sorted in ascending order
+	for i, w := range rwsg.Workers {
+		if i == len(rwsg.Workers)-1 {
+			break
+		}
+		if w.HostPubKey.String() > rwsg.Workers[i+1].HostPubKey.String() {
+			t.Fatal("unsorted worker")
+		}
 	}
 }
 

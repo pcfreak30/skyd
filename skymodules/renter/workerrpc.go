@@ -46,7 +46,7 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, category spendingCategory, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// Defer a function that schedules a price table update in case we received
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
@@ -56,10 +56,11 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// track the withdrawal
-	// TODO: this is very naive and does not consider refunds at all
+	var refund types.Currency
 	w.staticAccount.managedTrackWithdrawal(cost)
 	defer func() {
-		w.staticAccount.managedCommitWithdrawal(cost, err == nil)
+		withdrawn := cost.Sub(refund)
+		w.staticAccount.managedCommitWithdrawal(category, withdrawn, refund, err == nil)
 	}()
 
 	// create a new stream
@@ -70,7 +71,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
+			w.staticRenter.staticLog.Println("ERROR: failed to close stream", err)
 		}
 	}()
 
@@ -147,6 +148,8 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 			return
 		}
 
+		refund = refund.Add(response.FailureRefund)
+
 		// We received a valid response. Append it.
 		responses = append(responses, response)
 
@@ -163,13 +166,13 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	// If disrupt is called we sleep for the specified 'defaultNewStreamTimeout'
 	// simulating how an unreachable host would behave in production.
 	timeout := defaultNewStreamTimeout
-	if w.renter.deps.Disrupt("InterruptNewStreamTimeout") {
+	if w.staticRenter.staticDeps.Disrupt("InterruptNewStreamTimeout") {
 		time.Sleep(timeout)
 		return nil, errors.New("InterruptNewStreamTimeout")
 	}
 
 	// Create a stream with a reasonable dial up timeout.
-	stream, err := w.renter.staticMux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, w.staticCache().staticHostMuxAddress, timeout, modules.SiaPKToMuxPK(w.staticHostPubKey))
+	stream, err := w.staticRenter.staticMux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, w.staticCache().staticHostMuxAddress, timeout, modules.SiaPKToMuxPK(w.staticHostPubKey))
 	if err != nil {
 		return nil, err
 	}
@@ -183,10 +186,10 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	//
 	// NOTE: this only ratelimits the data going over the stream and not the raw
 	// bytes going over the wire, so the ratelimit might be off by a few bytes.
-	rlStream := ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan())
+	rlStream := ratelimit.NewRLStream(stream, w.staticRenter.staticRL, w.staticRenter.tg.StopChan())
 
 	// Wrap the stream in global ratelimit.
-	return ratelimit.NewRLStream(rlStream, skymodules.GlobalRateLimits, w.renter.tg.StopChan()), nil
+	return ratelimit.NewRLStream(rlStream, skymodules.GlobalRateLimits, w.staticRenter.tg.StopChan()), nil
 }
 
 // managedRenew renews the contract with the worker's host.
@@ -206,7 +209,7 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
-			w.renter.log.Println("managedRenew: failed to close stream", err)
+			w.staticRenter.staticLog.Println("managedRenew: failed to close stream", err)
 		}
 	}()
 
@@ -244,7 +247,7 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 	}
 	// For the txn fee estimate take we use a constant multiple of our own
 	// expectation.
-	min, max := w.renter.tpool.FeeEstimation()
+	min, max := w.staticRenter.staticTPool.FeeEstimation()
 	if pt.TxnFeeMinRecommended.Cmp(min.Mul(renewGougingFeeMultiplier)) > 0 {
 		return skymodules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table txn fee min gouging %v > %v", pt.TxnFeeMinRecommended, min.Mul(renewGougingFeeMultiplier))
 	}
@@ -257,8 +260,8 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 	}
 
 	// have the contractset handle the renewal.
-	r := w.renter
-	newContract, txnSet, err := w.renter.hostContractor.RenewContract(stream, fcid, params, txnBuilder, r.tpool, r.hostDB, &pt)
+	r := w.staticRenter
+	newContract, txnSet, err := w.staticRenter.staticHostContractor.RenewContract(stream, fcid, params, txnBuilder, r.staticTPool, r.staticHostDB, &pt)
 	if err != nil {
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: call to RenewContract failed")
 	}

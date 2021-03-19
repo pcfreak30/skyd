@@ -28,7 +28,7 @@ func (r *Renter) DeleteFile(siaPath skymodules.SiaPath) error {
 	// Need a metadata update func that operates on a node to do that.
 	dirSiaPath, err := siaPath.Dir()
 	if err != nil {
-		r.log.Printf("Unable to fetch the directory from a siaPath %v for deleted siafile: %v", siaPath, err)
+		r.staticLog.Printf("Unable to fetch the directory from a siaPath %v for deleted siafile: %v", siaPath, err)
 		// Return 'nil' because the delete operation succeeded, it was only the
 		// metadata update operation that failed.
 		return nil
@@ -113,11 +113,11 @@ func (r *Renter) RenameFile(currentName, newName skymodules.SiaPath) error {
 	bubblePaths := r.newUniqueRefreshPaths()
 	err = bubblePaths.callAdd(oldDirSiaPath)
 	if err != nil {
-		r.log.Printf("failed to add old directory '%v' to bubble paths:  %v", oldDirSiaPath, err)
+		r.staticLog.Printf("failed to add old directory '%v' to bubble paths:  %v", oldDirSiaPath, err)
 	}
 	err = bubblePaths.callAdd(newDirSiaPath)
 	if err != nil {
-		r.log.Printf("failed to add new directory '%v' to bubble paths:  %v", newDirSiaPath, err)
+		r.staticLog.Printf("failed to add new directory '%v' to bubble paths:  %v", newDirSiaPath, err)
 	}
 	return bubblePaths.callRefreshAll()
 }

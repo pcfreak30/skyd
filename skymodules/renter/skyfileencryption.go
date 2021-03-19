@@ -31,7 +31,7 @@ func (r *Renter) checkSkyfileEncryptionIDMatch(encryptionIdentifier []byte, nonc
 	for _, sk := range allSkykeys {
 		matches, err := sk.MatchesSkyfileEncryptionID(encryptionIdentifier, nonce)
 		if err != nil {
-			r.log.Debugln("SkykeyEncryptionID match err", err)
+			r.staticLog.Debugln("SkykeyEncryptionID match err", err)
 			continue
 		}
 		if matches {

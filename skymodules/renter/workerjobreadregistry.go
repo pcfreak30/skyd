@@ -90,7 +90,7 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modu
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryRead, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to execute program")
 	}
@@ -139,7 +139,7 @@ func (w *worker) newJobReadRegistry(ctx context.Context, responseChan chan *jobR
 // callDiscard will discard a job, sending the provided error.
 func (j *jobReadRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.renter.tg.Launch(func() {
+	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobReadRegistryResponse{
 			staticErr:          errors.Extend(err, ErrJobDiscarded),
 			staticCompleteTime: time.Now(),
@@ -147,11 +147,11 @@ func (j *jobReadRegistry) callDiscard(err error) {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Debugln("callDiscard: launch failed", err)
+		w.staticRenter.staticLog.Debugln("callDiscard: launch failed", err)
 	}
 }
 
@@ -162,7 +162,7 @@ func (j *jobReadRegistry) callExecute() {
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
-		errLaunch := w.renter.tg.Launch(func() {
+		errLaunch := w.staticRenter.tg.Launch(func() {
 			response := &jobReadRegistryResponse{
 				staticCompleteTime:        time.Now(),
 				staticSignedRegistryValue: srv,
@@ -171,11 +171,11 @@ func (j *jobReadRegistry) callExecute() {
 			select {
 			case j.staticResponseChan <- response:
 			case <-j.staticCtx.Done():
-			case <-w.renter.tg.StopChan():
+			case <-w.staticRenter.tg.StopChan():
 			}
 		})
 		if errLaunch != nil {
-			w.renter.log.Debugln("callExececute: launch failed", err)
+			w.staticRenter.staticLog.Debugln("callExececute: launch failed", err)
 		}
 	}
 
@@ -190,6 +190,8 @@ func (j *jobReadRegistry) callExecute() {
 	// Check if we have a cached version of the looked up entry. If the new entry
 	// has a higher revision number we update it. If it has a lower one we know that
 	// the host should be punished for losing it or trying to cheat us.
+	// TODO: update the cache to store the hash in addition to the revision
+	// number for verifying the pow.
 	if srv != nil {
 		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSiaPublicKey, j.staticTweak)
 		if cached && cachedRevision > srv.Revision {
@@ -226,7 +228,7 @@ func (j *jobReadRegistry) callExpectedBandwidth() (ul, dl uint64) {
 func (w *worker) initJobReadRegistryQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadRegistryQueue != nil {
-		w.renter.log.Critical("incorret call on initJobReadRegistryQueue")
+		w.staticRenter.staticLog.Critical("incorret call on initJobReadRegistryQueue")
 		return
 	}
 

@@ -27,167 +27,6 @@ func (rt *renterTester) updateFileMetadatas(dirSiaPath skymodules.SiaPath) error
 	return rt.renter.managedUpdateFileMetadatasParams(dirSiaPath, offlineMap, goodForRenewMap, contracts, used)
 }
 
-// timeEquals is a helper function for checking if two times are equal
-//
-// Since we can't check timestamps for equality cause they are often set to
-// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
-func timeEquals(t1, t2 time.Time, delta time.Duration) bool {
-	if t1.After(t2) && t1.After(t2.Add(delta)) {
-		return false
-	}
-	if t2.After(t1) && t2.After(t1.Add(delta)) {
-		return false
-	}
-	return true
-}
-
-// equalBubbledMetadata is a helper that checks for equality in the siadir
-// metadata that gets bubbled
-//
-// Since we can't check timestamps for equality cause they are often set to
-// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
-func equalBubbledMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
-	err1 := equalBubbledAggregateMetadata(md1, md2, delta)
-	err2 := equalBubbledDirectoryMetadata(md1, md2, delta)
-	return errors.Compose(err1, err2)
-}
-
-// equalBubbledAggregateMetadata is a helper that checks for equality in the
-// aggregate siadir metadata fields that gets bubbled
-//
-// Since we can't check timestamps for equality cause they are often set to
-// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
-func equalBubbledAggregateMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
-	// Check AggregateHealth
-	if md1.AggregateHealth != md2.AggregateHealth {
-		return fmt.Errorf("AggregateHealth not equal, %v and %v", md1.AggregateHealth, md2.AggregateHealth)
-	}
-	// Check AggregateLastHealthCheckTime
-	if !timeEquals(md1.AggregateLastHealthCheckTime, md2.AggregateLastHealthCheckTime, delta) {
-		return fmt.Errorf("AggregateLastHealthCheckTimes not equal %v and %v (%v)", md1.AggregateLastHealthCheckTime, md2.AggregateLastHealthCheckTime, delta)
-	}
-	// Check AggregateMinRedundancy
-	if md1.AggregateMinRedundancy != md2.AggregateMinRedundancy {
-		return fmt.Errorf("AggregateMinRedundancy not equal, %v and %v", md1.AggregateMinRedundancy, md2.AggregateMinRedundancy)
-	}
-	// Check AggregateModTime
-	if !timeEquals(md2.AggregateModTime, md1.AggregateModTime, delta) {
-		return fmt.Errorf("AggregateModTime not equal %v and %v (%v)", md1.AggregateModTime, md2.AggregateModTime, delta)
-	}
-	// Check AggregateNumFiles
-	if md1.AggregateNumFiles != md2.AggregateNumFiles {
-		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md1.AggregateNumFiles, md2.AggregateNumFiles)
-	}
-	// Check AggregateNumStuckChunks
-	if md1.AggregateNumStuckChunks != md2.AggregateNumStuckChunks {
-		return fmt.Errorf("AggregateNumStuckChunks not equal, %v and %v", md1.AggregateNumStuckChunks, md2.AggregateNumStuckChunks)
-	}
-	// Check AggregateNumSubDirs
-	if md1.AggregateNumSubDirs != md2.AggregateNumSubDirs {
-		return fmt.Errorf("AggregateNumSubDirs not equal, %v and %v", md1.AggregateNumSubDirs, md2.AggregateNumSubDirs)
-	}
-	// Check AggregateRemoteHealth
-	if md1.AggregateRemoteHealth != md2.AggregateRemoteHealth {
-		return fmt.Errorf("AggregateRemoteHealth not equal, %v and %v", md1.AggregateRemoteHealth, md2.AggregateRemoteHealth)
-	}
-	// Check AggregateRepairSize
-	if md1.AggregateRepairSize != md2.AggregateRepairSize {
-		return fmt.Errorf("AggregateRepairSize not equal, %v and %v", md1.AggregateRepairSize, md2.AggregateRepairSize)
-	}
-	// Check AggregateSize
-	if md1.AggregateSize != md2.AggregateSize {
-		return fmt.Errorf("AggregateSize not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
-	}
-	// Check AggregateStuckHealth
-	if md1.AggregateStuckHealth != md2.AggregateStuckHealth {
-		return fmt.Errorf("AggregateStuckHealth not equal, %v and %v", md1.AggregateStuckHealth, md2.AggregateStuckHealth)
-	}
-	// Check AggregateStuckSize
-	if md1.AggregateStuckSize != md2.AggregateStuckSize {
-		return fmt.Errorf("AggregateStuckSize not equal, %v and %v", md1.AggregateStuckSize, md2.AggregateStuckSize)
-	}
-
-	// Aggregate Skynet Fields
-	//
-	// Check AggregateSkynetFiles
-	if md1.AggregateSkynetFiles != md2.AggregateSkynetFiles {
-		return fmt.Errorf("AggregateSkynetFiles not equal, %v and %v", md1.AggregateSkynetFiles, md2.AggregateSkynetFiles)
-	}
-	// Check AggregateSkynetSize
-	if md1.AggregateSkynetSize != md2.AggregateSkynetSize {
-		return fmt.Errorf("AggregateSkynetSize not equal, %v and %v", md1.AggregateSkynetSize, md2.AggregateSkynetSize)
-	}
-	return nil
-}
-
-// equalBubbledDirectoryMetadata is a helper that checks for equality in the
-// non-aggregate siadir metadata fields that gets bubbled
-//
-// Since we can't check timestamps for equality cause they are often set to
-// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
-func equalBubbledDirectoryMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
-	// Check Health
-	if md1.Health != md2.Health {
-		return fmt.Errorf("Health not equal, %v and %v", md1.Health, md2.Health)
-	}
-	// Check LastHealthCheckTime
-	if !timeEquals(md1.LastHealthCheckTime, md2.LastHealthCheckTime, delta) {
-		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v (%v)", md1.LastHealthCheckTime, md2.LastHealthCheckTime, delta)
-	}
-	// Check MinRedundancy
-	if md1.MinRedundancy != md2.MinRedundancy {
-		return fmt.Errorf("MinRedundancy not equal, %v and %v", md1.MinRedundancy, md2.MinRedundancy)
-	}
-	// Check ModTime
-	if !timeEquals(md2.ModTime, md1.ModTime, delta) {
-		return fmt.Errorf("ModTime not equal %v and %v (%v)", md1.ModTime, md2.ModTime, delta)
-	}
-	// Check NumFiles
-	if md1.NumFiles != md2.NumFiles {
-		return fmt.Errorf("NumFiles not equal, %v and %v", md1.NumFiles, md2.NumFiles)
-	}
-	// Check NumStuckChunks
-	if md1.NumStuckChunks != md2.NumStuckChunks {
-		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md1.NumStuckChunks, md2.NumStuckChunks)
-	}
-	// Check NumSubDirs
-	if md1.NumSubDirs != md2.NumSubDirs {
-		return fmt.Errorf("NumSubDirs not equal, %v and %v", md1.NumSubDirs, md2.NumSubDirs)
-	}
-	// Check RemoteHealth
-	if md1.RemoteHealth != md2.RemoteHealth {
-		return fmt.Errorf("RemoteHealth not equal, %v and %v", md1.RemoteHealth, md2.RemoteHealth)
-	}
-	// Check RepairSize
-	if md1.RepairSize != md2.RepairSize {
-		return fmt.Errorf("RepairSize not equal, %v and %v", md1.RepairSize, md2.RepairSize)
-	}
-	// Check Size
-	if md1.Size != md2.Size {
-		return fmt.Errorf("Size not equal, %v and %v", md1.Size, md2.Size)
-	}
-	// Check StuckHealth
-	if md1.StuckHealth != md2.StuckHealth {
-		return fmt.Errorf("StuckHealth not equal, %v and %v", md1.StuckHealth, md2.StuckHealth)
-	}
-	// Check StuckSize
-	if md1.StuckSize != md2.StuckSize {
-		return fmt.Errorf("StuckSize not equal, %v and %v", md1.StuckSize, md2.StuckSize)
-	}
-
-	// Skynet Fields
-	//
-	// Check SkynetFiles
-	if md1.SkynetFiles != md2.SkynetFiles {
-		return fmt.Errorf("SkynetFiles not equal, %v and %v", md1.SkynetFiles, md2.SkynetFiles)
-	}
-	// Check SkynetSize
-	if md1.SkynetSize != md2.SkynetSize {
-		return fmt.Errorf("SkynetSize not equal, %v and %v", md1.SkynetSize, md2.SkynetSize)
-	}
-	return nil
-}
-
 // openAndUpdateDir is a helper method for updating a siadir metadata
 func (rt *renterTester) openAndUpdateDir(siapath skymodules.SiaPath, metadata siadir.Metadata) error {
 	siadir, err := rt.renter.staticFileSystem.OpenSiaDir(siapath)
@@ -220,7 +59,7 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Bubble all the system dirs.
 	beforeBubble := time.Now()
-	err = rt.bubbleAll([]skymodules.SiaPath{skymodules.BackupFolder, skymodules.SkynetFolder, skymodules.UserFolder})
+	err = rt.bubbleAllBlocking([]skymodules.SiaPath{skymodules.BackupFolder, skymodules.SkynetFolder, skymodules.UserFolder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +165,7 @@ func TestBubbleHealth(t *testing.T) {
 	bubbleAndVerifyMetadata := func(testCase string, dirToBubble, expectedMDDir skymodules.SiaPath, anf, ansd uint64) {
 		// Bubble target directory
 		beforeBubble := time.Now()
-		if err := rt.bubble(dirToBubble); err != nil {
+		if err := rt.bubbleBlocking(dirToBubble); err != nil {
 			t.Fatal(err)
 		}
 
@@ -579,7 +418,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
 	// SubDir1/SubDir2 gets bubbled up
 	subDir1 := newSiaPath("root/SubDir1")
-	if err := rt.bubble(subDir1); err != nil {
+	if err := rt.bubbleBlocking(subDir1); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(60, time.Second, func() error {
@@ -619,7 +458,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := rt.bubble(subDir1); err != nil {
+	if err := rt.bubbleBlocking(subDir1); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(60, time.Second, func() error {
@@ -765,7 +604,7 @@ func TestNumFiles(t *testing.T) {
 
 	// Call bubble on lowest level and skynet folder and confirm top level reports
 	// accurate number of files and aggregate number of files
-	err = rt.bubbleAll([]skymodules.SiaPath{subDir1_2, skymodules.SkynetFolder})
+	err = rt.bubbleAllBlocking([]skymodules.SiaPath{subDir1_2, skymodules.SkynetFolder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -889,7 +728,7 @@ func TestDirectorySize(t *testing.T) {
 	}
 
 	// Call bubble on lowest lever and confirm top level reports accurate size
-	if err := rt.bubble(subDir1_2); err != nil {
+	if err := rt.bubbleBlocking(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -964,7 +803,7 @@ func TestDirectoryModTime(t *testing.T) {
 	}
 
 	// Call Bubble to update filesystem ModTimes so there are no zero times
-	if err := rt.bubble(subDir1_2); err != nil {
+	if err := rt.bubbleBlocking(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	// Sleep for 1 second to allow bubbles to update filesystem. Retry doesn't
@@ -1017,7 +856,7 @@ func TestDirectoryModTime(t *testing.T) {
 
 	// Call bubble on lowest lever and confirm top level reports accurate last
 	// update time
-	if err := rt.bubble(subDir1_2); err != nil {
+	if err := rt.bubbleBlocking(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -1146,7 +985,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// but the repair loop could have marked the rest as stuck so we just want
 	// to ensure that the root directory reflects at least the 3 we marked as
 	// stuck
-	if err := rt.bubble(subDir1_2); err != nil {
+	if err := rt.bubbleBlocking(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -1261,14 +1100,14 @@ func TestRandomStuckFile(t *testing.T) {
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	if err := rt.bubble(skymodules.UserFolder); err != nil {
+	if err := rt.bubbleBlocking(skymodules.UserFolder); err != nil {
 		t.Fatal(err)
 	}
 	i := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			if err := rt.bubble(skymodules.RootSiaPath()); err != nil {
+			if err := rt.bubbleBlocking(skymodules.RootSiaPath()); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1324,14 +1163,14 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	if err := rt.bubble(dir); err != nil {
+	if err := rt.bubbleBlocking(dir); err != nil {
 		t.Fatal(err)
 	}
 	i = 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			if err := rt.bubble(dir); err != nil {
+			if err := rt.bubbleBlocking(dir); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1606,8 +1445,8 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if !errors.Contains(err, errNoStuckChunks) {
 		t.Fatal(err)
 	}
-	if rt.renter.uploadHeap.managedLen() != 0 {
-		t.Fatal("Expected uploadHeap to be of length 0 got", rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != 0 {
+		t.Fatal("Expected uploadHeap to be of length 0 got", rt.renter.staticUploadHeap.managedLen())
 	}
 
 	// make chunk stuck
@@ -1620,12 +1459,12 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.renter.uploadHeap.managedLen() != 1 {
-		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.uploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != 1 {
+		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.staticUploadHeap.managedLen())
 	}
 
 	// Pop chunk, chunk should be marked as fileRecentlySuccessful true
-	chunk := rt.renter.uploadHeap.managedPop()
+	chunk := rt.renter.staticUploadHeap.managedPop()
 	if !chunk.fileRecentlySuccessful {
 		t.Fatal("chunk not marked as fileRecentlySuccessful true")
 	}

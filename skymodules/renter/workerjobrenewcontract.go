@@ -51,14 +51,14 @@ func renewJobExpectedBandwidth() (ul, dl uint64) {
 // callDiscard will discard a job, sending the provided error.
 func (j *jobRenew) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	w.renter.tg.Launch(func() {
+	w.staticRenter.tg.Launch(func() {
 		response := &jobRenewResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 		}
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 }
@@ -87,11 +87,11 @@ func (j *jobRenew) callExecute() {
 
 		staticWorker: w,
 	}
-	w.renter.tg.Launch(func() {
+	w.staticRenter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 
@@ -116,7 +116,7 @@ func (j *jobRenew) callExpectedBandwidth() (ul, dl uint64) {
 func (w *worker) initJobRenewQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobRenewQueue != nil {
-		w.renter.log.Critical("incorret call on initJobRenewQueue")
+		w.staticRenter.staticLog.Critical("incorret call on initJobRenewQueue")
 		return
 	}
 

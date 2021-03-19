@@ -153,7 +153,7 @@ func (rt *renterTester) createZeroByteFileOnDisk() (string, error) {
 // reloadRenter closes the given renter and then re-adds it, effectively
 // reloading the renter.
 func (rt *renterTester) reloadRenter(r *Renter) (*Renter, error) {
-	return rt.reloadRenterWithDependency(r, r.deps)
+	return rt.reloadRenterWithDependency(r, r.staticDeps)
 }
 
 // reloadRenterWithDependency closes the given renter and recreates it using the
@@ -330,7 +330,7 @@ func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hostEntry, found, err := rt.renter.hostDB.Host(h.PublicKey())
+	hostEntry, found, err := rt.renter.staticHostDB.Host(h.PublicKey())
 	if err != nil {
 		t.Fatal(err)
 	}

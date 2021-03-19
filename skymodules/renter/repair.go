@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 // TODO - once bubbling metadata has been updated to be more I/O
@@ -35,7 +34,7 @@ var (
 func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymodules.SiaPath, error) {
 	var dirSiaPaths []skymodules.SiaPath
 	// Remember number of stuck chunks we are starting with
-	prevNumStuckChunks, prevNumRandomStuckChunks := r.uploadHeap.managedNumStuckChunks()
+	prevNumStuckChunks, prevNumRandomStuckChunks := r.staticUploadHeap.managedNumStuckChunks()
 	// Check if there is space in the heap. There is space if the number of
 	// random stuck chunks has not exceeded maxRandomStuckChunksInHeap and the
 	// total number of stuck chunks as not exceeded maxStuckChunksInHeap
@@ -54,13 +53,13 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymo
 		}
 
 		// Add stuck chunk to upload heap and signal repair needed
-		err = r.managedBuildAndPushRandomChunk(siaPath, hosts, targetStuckChunks, r.repairMemoryManager)
+		err = r.managedBuildAndPushRandomChunk(siaPath, hosts, targetStuckChunks, r.staticRepairMemoryManager)
 		if err != nil {
 			return dirSiaPaths, errors.AddContext(err, "unable to push random stuck chunk from '"+siaPath.String()+"' of '"+dirSiaPath.String()+"'")
 		}
 
 		// Sanity check that stuck chunks were added
-		currentNumStuckChunks, currentNumRandomStuckChunks := r.uploadHeap.managedNumStuckChunks()
+		currentNumStuckChunks, currentNumRandomStuckChunks := r.staticUploadHeap.managedNumStuckChunks()
 		if currentNumRandomStuckChunks <= prevNumRandomStuckChunks {
 			// If the number of stuck chunks in the heap is not increasing
 			// then break out of this loop in order to prevent getting stuck
@@ -71,7 +70,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymo
 		// Remember the directory so bubble can be called on it at the end of
 		// the iteration
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
-		r.repairLog.Printf("Added %v stuck chunks from %s", currentNumRandomStuckChunks-prevNumRandomStuckChunks, dirSiaPath.String())
+		r.staticRepairLog.Printf("Added %v stuck chunks from %s", currentNumRandomStuckChunks-prevNumRandomStuckChunks, dirSiaPath.String())
 		prevNumStuckChunks = currentNumStuckChunks
 		prevNumRandomStuckChunks = currentNumRandomStuckChunks
 		spaceInHeap = prevNumRandomStuckChunks < maxRandomStuckChunksInHeap && prevNumStuckChunks < maxStuckChunksInHeap
@@ -85,10 +84,10 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymo
 func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) ([]skymodules.SiaPath, error) {
 	var dirSiaPaths []skymodules.SiaPath
 	offline, goodForRenew, _ := r.managedContractUtilityMaps()
-	numStuckChunks, _ := r.uploadHeap.managedNumStuckChunks()
-	for r.stuckStack.managedLen() > 0 && numStuckChunks < maxStuckChunksInHeap {
+	numStuckChunks, _ := r.staticUploadHeap.managedNumStuckChunks()
+	for r.staticStuckStack.managedLen() > 0 && numStuckChunks < maxStuckChunksInHeap {
 		// Pop the first file SiaPath
-		siaPath := r.stuckStack.managedPop()
+		siaPath := r.staticStuckStack.managedPop()
 
 		// Add stuck chunks to uploadHeap
 		err := r.managedAddStuckChunksToHeap(siaPath, hosts, offline, goodForRenew)
@@ -106,7 +105,7 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 			return dirSiaPaths, errors.AddContext(err, "unable to get directory siapath")
 		}
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
-		numStuckChunks, _ = r.uploadHeap.managedNumStuckChunks()
+		numStuckChunks, _ = r.staticUploadHeap.managedNumStuckChunks()
 	}
 	return dirSiaPaths, nil
 }
@@ -130,7 +129,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath skymodules.SiaPath, hosts m
 
 	// Build unfinished stuck chunks
 	var allErrors error
-	unfinishedStuckChunks := r.managedBuildUnfinishedChunks(sf, hosts, targetStuckChunks, offline, goodForRenew, r.repairMemoryManager)
+	unfinishedStuckChunks := r.managedBuildUnfinishedChunks(sf, hosts, targetStuckChunks, offline, goodForRenew, r.staticRepairMemoryManager)
 	defer func() {
 		// Close out remaining file entries
 		for _, chunk := range unfinishedStuckChunks {
@@ -159,12 +158,12 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath skymodules.SiaPath, hosts m
 		stuckChunksAdded++
 	}
 	if stuckChunksAdded > 0 {
-		r.repairLog.Printf("Added %v stuck chunks from %s to the repair heap", stuckChunksAdded, siaPath.String())
+		r.staticRepairLog.Printf("Added %v stuck chunks from %s to the repair heap", stuckChunksAdded, siaPath.String())
 	}
 
 	// check if there are more stuck chunks in the file
 	if len(unfinishedStuckChunks) > 0 {
-		r.stuckStack.managedPush(siaPath)
+		r.staticStuckStack.managedPush(siaPath)
 	}
 	return allErrors
 }
@@ -243,7 +242,7 @@ func (r *Renter) managedOldestHealthCheckTime() (skymodules.SiaPath, time.Time, 
 		if !updated {
 			// We return the LastHealthCheckTime here because at this point we should
 			// actually be in the oldest directory.
-			r.log.Debugf("Health Loop found LHCT OldestDir %v, LHCT %v, ALHCT %v", siaPath, metadata.LastHealthCheckTime, metadata.AggregateLastHealthCheckTime)
+			r.staticLog.Debugf("Health Loop found LHCT OldestDir %v, LHCT %v, ALHCT %v", siaPath, metadata.LastHealthCheckTime, metadata.AggregateLastHealthCheckTime)
 			return siaPath, metadata.LastHealthCheckTime, nil
 		}
 	}
@@ -252,7 +251,7 @@ func (r *Renter) managedOldestHealthCheckTime() (skymodules.SiaPath, time.Time, 
 	// traversing the filesystem via the above for loop. This doesn't mean that we
 	// have necessarily ended up in the oldest directory but we are on the oldest
 	// subtree so return the AggregateLastHealthCheckTime
-	r.log.Debugf("Health Loop found ALHCT OldestDir %v, LHCT %v, ALHCT %v", siaPath, metadata.LastHealthCheckTime, metadata.AggregateLastHealthCheckTime)
+	r.staticLog.Debugf("Health Loop found ALHCT OldestDir %v, LHCT %v, ALHCT %v", siaPath, metadata.LastHealthCheckTime, metadata.AggregateLastHealthCheckTime)
 	return siaPath, metadata.AggregateLastHealthCheckTime, nil
 }
 
@@ -291,7 +290,7 @@ func (r *Renter) managedStuckDirectory() (skymodules.SiaPath, error) {
 		if directories[0].AggregateNumStuckChunks == 0 {
 			// Log error if we are not at the root directory
 			if !siaPath.IsRoot() {
-				r.log.Println("WARN: ended up in directory with no stuck chunks that is not root directory:", siaPath)
+				r.staticLog.Println("WARN: ended up in directory with no stuck chunks that is not root directory:", siaPath)
 			}
 			return siaPath, errNoStuckFiles
 		}
@@ -466,7 +465,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.
-			r.log.Println("renter shutdown before internet connection")
+			r.staticLog.Println("renter shutdown before internet connection")
 			return
 		}
 
@@ -487,28 +486,28 @@ func (r *Renter) threadedStuckFileLoop() {
 		// directory.
 		stuckStackDirSiaPaths, err := r.managedAddStuckChunksFromStuckStack(hosts)
 		if err != nil {
-			r.repairLog.Println("WARN: error adding stuck chunks to repair heap from files with previously successful stuck repair jobs:", err)
+			r.staticRepairLog.Println("WARN: error adding stuck chunks to repair heap from files with previously successful stuck repair jobs:", err)
 		}
 		dirSiaPaths = append(dirSiaPaths, stuckStackDirSiaPaths...)
 
 		// Try add random stuck chunks to upload heap
 		randomDirSiaPaths, err := r.managedAddRandomStuckChunks(hosts)
 		if err != nil {
-			r.repairLog.Println("WARN: error adding random stuck chunks to upload heap:", err)
+			r.staticRepairLog.Println("WARN: error adding random stuck chunks to upload heap:", err)
 		}
 		dirSiaPaths = append(dirSiaPaths, randomDirSiaPaths...)
 
 		// Check if any stuck chunks were added to the upload heap
-		numStuckChunks, _ := r.uploadHeap.managedNumStuckChunks()
+		numStuckChunks, _ := r.staticUploadHeap.managedNumStuckChunks()
 		if numStuckChunks == 0 {
 			// Block until new work is required.
 			select {
 			case <-r.tg.StopChan():
 				// The renter has shut down.
 				return
-			case <-r.uploadHeap.stuckChunkFound:
+			case <-r.staticUploadHeap.stuckChunkFound:
 				// Health Loop found stuck chunk
-			case <-r.uploadHeap.stuckChunkSuccess:
+			case <-r.staticUploadHeap.stuckChunkSuccess:
 				// Stuck chunk was successfully repaired.
 			}
 			continue
@@ -517,7 +516,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		// Signal that a repair is needed because stuck chunks were added to the
 		// upload heap
 		select {
-		case r.uploadHeap.repairNeeded <- struct{}{}:
+		case r.staticUploadHeap.repairNeeded <- struct{}{}:
 		default:
 		}
 
@@ -529,7 +528,7 @@ func (r *Renter) threadedStuckFileLoop() {
 			return
 		case <-rebuildStuckHeapSignal:
 			// Time to find another random chunk
-		case <-r.uploadHeap.stuckChunkSuccess:
+		case <-r.staticUploadHeap.stuckChunkSuccess:
 			// Stuck chunk was successfully repaired.
 		}
 
@@ -543,7 +542,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		for _, dirSiaPath := range dirSiaPaths {
 			err = bubblePaths.callAdd(dirSiaPath)
 			if err != nil {
-				r.repairLog.Printf("Error adding refresh path of %s: %v", dirSiaPath.String(), err)
+				r.staticRepairLog.Printf("Error adding refresh path of %s: %v", dirSiaPath.String(), err)
 			}
 		}
 		bubblePaths.callRefreshAllBlocking()
@@ -570,12 +569,12 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		}
 
 		// Follow path of oldest time, return directory and timestamp
-		r.log.Debugln("Checking for oldest health check time")
+		r.staticLog.Debugln("Checking for oldest health check time")
 		siaPath, lastHealthCheckTime, err := r.managedOldestHealthCheckTime()
 		if err != nil {
 			// If there is an error getting the lastHealthCheckTime sleep for a
 			// little bit before continuing
-			r.log.Println("WARN: Could not find oldest health check time:", err)
+			r.staticLog.Println("WARN: Could not find oldest health check time:", err)
 			select {
 			case <-time.After(healthLoopErrorSleepDuration):
 			case <-r.tg.StopChan():
@@ -592,7 +591,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		if timeSinceLastCheck < healthCheckInterval {
 			// Sleep until the least recent check is outside the check interval.
 			sleepDuration := healthCheckInterval - timeSinceLastCheck
-			r.log.Printf("Health loop sleeping for %v, lastHealthCheckTime %v, directory %v", sleepDuration, lastHealthCheckTime, siaPath)
+			r.staticLog.Printf("Health loop sleeping for %v, lastHealthCheckTime %v, directory %v", sleepDuration, lastHealthCheckTime, siaPath)
 			wakeSignal := time.After(sleepDuration)
 			select {
 			case <-r.tg.StopChan():
@@ -602,11 +601,11 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		}
 
 		// Prepare the subtree for being bubbled
-		r.log.Debugf("Preparing subtree '%v' for bubble", siaPath)
+		r.staticLog.Debugf("Preparing subtree '%v' for bubble", siaPath)
 		urp, err := r.callPrepareForBubble(siaPath, false)
 		if err != nil {
 			// Log the error
-			r.log.Println("Error calling callPrepareForBubble on `", siaPath.String(), "`:", err)
+			r.staticLog.Println("Error calling callPrepareForBubble on `", siaPath.String(), "`:", err)
 
 			// Check if urp is nil. This should only happen if the first call to Add
 			// the Root dir fails.
@@ -635,7 +634,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			}
 			continue
 		}
-		r.log.Printf("Calling bubble on the subtree '%v', # bubbles %v", siaPath, urp.callNumChildDirs())
+		r.staticLog.Printf("Calling bubble on the subtree '%v', # bubbles %v", siaPath, urp.callNumChildDirs())
 		urp.callRefreshAllBlocking()
 	}
 }
@@ -678,7 +677,7 @@ func (r *Renter) callPrepareForBubble(rootDir skymodules.SiaPath, force bool) (*
 		// Add the directory to uniqueRefreshPaths
 		addErr := urp.callAdd(di.SiaPath)
 		if addErr != nil {
-			r.log.Printf("WARN: unable to add siapath `%v` to uniqueRefreshPaths; err: %v", di.SiaPath, addErr)
+			r.staticLog.Printf("WARN: unable to add siapath `%v` to uniqueRefreshPaths; err: %v", di.SiaPath, addErr)
 			err = errors.Compose(err, addErr)
 			return
 		}
@@ -725,7 +724,7 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath skymodules.SiaPath,
 				if err != nil {
 					return err
 				}
-				err = r.managedUpdateFileMetadata(sf, offlineMap, goodForRenewMap, contracts, used)
+				err = sf.UpdateMetadata(offlineMap, goodForRenewMap, contracts, used)
 				return errors.Compose(err, sf.Close())
 			}()
 			errMU.Lock()
@@ -753,7 +752,7 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath skymodules.SiaPath,
 		fName := strings.TrimSuffix(fi.Name(), skymodules.SiaFileExtension)
 		fileSiaPath, err := dirSiaPath.Join(fName)
 		if err != nil {
-			r.log.Println("managedUpdateFileMetadatas: unable to join siapath with dirpath", err)
+			r.staticLog.Println("managedUpdateFileMetadatas: unable to join siapath with dirpath", err)
 			continue
 		}
 		// Send fileSiaPath to the file workers
@@ -770,29 +769,4 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath skymodules.SiaPath,
 	close(fileSiaPathChan)
 	wg.Wait()
 	return errs
-}
-
-// managedUpdateFileMetadata updates the metadata of a siafile.
-func (r *Renter) managedUpdateFileMetadata(sf *filesystem.FileNode, offlineMap, goodForRenew map[string]bool, contracts map[string]skymodules.RenterContract, used []types.SiaPublicKey) (err error) {
-	// Update the siafile's used hosts.
-	if err := sf.UpdateUsedHosts(used); err != nil {
-		return errors.AddContext(err, "WARN: Could not update used hosts")
-	}
-	// Update cached redundancy values.
-	_, _, err = sf.Redundancy(offlineMap, goodForRenew)
-	if err != nil {
-		return errors.AddContext(err, "WARN: Could not update cached redundancy")
-	}
-	// Update cached health values.
-	_, _, _, _, _, _, _ = sf.Health(offlineMap, goodForRenew)
-	// Set the LastHealthCheckTime
-	sf.SetLastHealthCheckTime()
-	// Update the cached expiration of the siafile.
-	_ = sf.Expiration(contracts)
-	// Save the metadata.
-	err = sf.SaveMetadata()
-	if err != nil {
-		return err
-	}
-	return nil
 }

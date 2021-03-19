@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -22,13 +23,13 @@ var readRegistryStatsDecayInterval = build.Select(build.Var{
 // timings. We decay all buckets every time a new datum is added to any of them
 // and if the time since the last decay is larger than the decay interval.
 type readRegistryStats struct {
-	staticBuckets    []float64
-	currentPosition  int
-	interval         time.Duration
-	lastDecay        time.Time
-	staticDecay      float64
-	staticPercentile float64
-	total            float64
+	staticBuckets     []float64
+	currentPositions  []int
+	interval          time.Duration
+	lastDecay         time.Time
+	staticDecay       float64
+	staticPercentiles []float64
+	total             float64
 
 	mu sync.Mutex
 }
@@ -61,7 +62,9 @@ func (rrs *readRegistryStats) AddDatum(duration time.Duration) error {
 	// index where smaller / total >= percentile.
 	smaller := 0.0
 	larger := rrs.total
-	rrs.currentPosition = -1
+	for i := range rrs.currentPositions {
+		rrs.currentPositions[i] = -1
+	}
 	for i := range rrs.staticBuckets {
 		// Decay the bucket if necessary.
 		if decay {
@@ -74,34 +77,50 @@ func (rrs *readRegistryStats) AddDatum(duration time.Duration) error {
 		// Increment smaller and decrement larger as we continue.
 		larger -= rrs.staticBuckets[i]
 		smaller += rrs.staticBuckets[i]
-		// If the condition is met for the current position, set it.
-		if rrs.currentPosition == -1 && smaller/rrs.total >= rrs.staticPercentile {
-			rrs.currentPosition = i
+		// If the condition is met for the position, set it.
+		for j := range rrs.staticPercentiles {
+			if rrs.currentPositions[j] == -1 && smaller/rrs.total >= rrs.staticPercentiles[j] {
+				rrs.currentPositions[j] = i
+			}
 		}
 	}
 	// Sanity check position. It should always be set at this point.
-	if rrs.currentPosition == -1 {
-		err := errors.New("current position wasn't set")
+	var err error
+	for i := range rrs.currentPositions {
+		if rrs.currentPositions[i] == -1 {
+			rrs.currentPositions[i] = len(rrs.staticBuckets) - 1
+			err = errors.Compose(err, fmt.Errorf("current position wasn't set smaller = %v, larger = %v, total = %v, ratio = %v, percentile = %v", smaller, larger, rrs.total, smaller/rrs.total, rrs.staticPercentiles[i]))
+		}
+	}
+	if err != nil {
 		build.Critical(err)
-		rrs.currentPosition = 0
 		return err
 	}
 	return nil
 }
 
 // Estimate returns the current estimate.
-func (rrs *readRegistryStats) Estimate() time.Duration {
+func (rrs *readRegistryStats) Estimate() []time.Duration {
 	rrs.mu.Lock()
 	defer rrs.mu.Unlock()
-	return time.Duration(rrs.currentPosition+1) * rrs.interval
+	durations := make([]time.Duration, len(rrs.currentPositions))
+	for i := range durations {
+		durations[i] = time.Duration(rrs.currentPositions[i]+1) * rrs.interval
+	}
+	return durations
 }
 
 // newReadRegistryStats creates new stats from a given decay and percentile.
-func newReadRegistryStats(maxTime, interval time.Duration, decay, percentile float64) *readRegistryStats {
+func newReadRegistryStats(maxTime, interval time.Duration, decay float64, percentiles []float64) *readRegistryStats {
+	if !sort.Float64sAreSorted(percentiles) {
+		build.Critical("percentiles need to be sorted in ascending order")
+		return nil
+	}
 	return &readRegistryStats{
-		interval:         interval,
-		staticBuckets:    make([]float64, (maxTime/interval)+1),
-		staticDecay:      decay,
-		staticPercentile: percentile,
+		currentPositions:  make([]int, len(percentiles)),
+		interval:          interval,
+		staticBuckets:     make([]float64, (maxTime/interval)+1),
+		staticDecay:       decay,
+		staticPercentiles: percentiles,
 	}
 }

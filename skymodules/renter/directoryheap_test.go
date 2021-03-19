@@ -76,7 +76,7 @@ func addDirectoriesToHeap(r *Renter, numDirs int, explored, remote bool) {
 			remoteHealth:          remoteHealth,
 			staticSiaPath:         skymodules.RandomSiaPath(),
 		}
-		r.directoryHeap.managedPush(d)
+		r.staticDirectoryHeap.managedPush(d)
 	}
 }
 
@@ -99,8 +99,8 @@ func TestDirectoryHeap(t *testing.T) {
 	}()
 
 	// Check that the heap was initialized properly
-	if rt.renter.directoryHeap.managedLen() != 0 {
-		t.Fatal("directory heap should have length of 0 but has length of", rt.renter.directoryHeap.managedLen())
+	if rt.renter.staticDirectoryHeap.managedLen() != 0 {
+		t.Fatal("directory heap should have length of 0 but has length of", rt.renter.staticDirectoryHeap.managedLen())
 	}
 
 	// Add directories of each type to the heap
@@ -110,19 +110,19 @@ func TestDirectoryHeap(t *testing.T) {
 	addDirectoriesToHeap(rt.renter, 1, false, false)
 
 	// Confirm all elements added.
-	if rt.renter.directoryHeap.managedLen() != 4 {
-		t.Fatalf("heap should have length of %v but was %v", 4, rt.renter.directoryHeap.managedLen())
+	if rt.renter.staticDirectoryHeap.managedLen() != 4 {
+		t.Fatalf("heap should have length of %v but was %v", 4, rt.renter.staticDirectoryHeap.managedLen())
 	}
 
 	// Check that the heapHealth is remote
-	_, remote := rt.renter.directoryHeap.managedPeekHealth()
+	_, remote := rt.renter.staticDirectoryHeap.managedPeekHealth()
 	if !remote {
 		t.Error("Heap should have a remote health at the top")
 	}
 
 	// Pop the directories and validate their position
-	d1 := rt.renter.directoryHeap.managedPop()
-	d2 := rt.renter.directoryHeap.managedPop()
+	d1 := rt.renter.staticDirectoryHeap.managedPop()
+	d2 := rt.renter.staticDirectoryHeap.managedPop()
 	d1Health, d1Remote := d1.managedHeapHealth()
 	d2Health, d2Remote := d2.managedHeapHealth()
 
@@ -135,8 +135,8 @@ func TestDirectoryHeap(t *testing.T) {
 		t.Errorf("Expected top directory to have worse health but got %v >= %v", d1Health, d2Health)
 	}
 
-	d3 := rt.renter.directoryHeap.managedPop()
-	d4 := rt.renter.directoryHeap.managedPop()
+	d3 := rt.renter.staticDirectoryHeap.managedPop()
+	d4 := rt.renter.staticDirectoryHeap.managedPop()
 	d3Health, d3Remote := d3.managedHeapHealth()
 	d4Health, d4Remote := d4.managedHeapHealth()
 	// Both Directories should not be remote
@@ -149,10 +149,10 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 
 	// Push directories part on to the heap
-	rt.renter.directoryHeap.managedPush(d1)
-	rt.renter.directoryHeap.managedPush(d2)
-	rt.renter.directoryHeap.managedPush(d3)
-	rt.renter.directoryHeap.managedPush(d4)
+	rt.renter.staticDirectoryHeap.managedPush(d1)
+	rt.renter.staticDirectoryHeap.managedPush(d2)
+	rt.renter.staticDirectoryHeap.managedPush(d3)
+	rt.renter.staticDirectoryHeap.managedPush(d4)
 
 	// Modifying d4 and re-push it to update it's position in the heap
 	d4.explored = true
@@ -160,13 +160,13 @@ func TestDirectoryHeap(t *testing.T) {
 	d4.aggregateRemoteHealth = d1Health + 1
 	d4.health = 0
 	d4.remoteHealth = 0
-	rt.renter.directoryHeap.managedPush(d4)
+	rt.renter.staticDirectoryHeap.managedPush(d4)
 
 	// Now, even though d4 has a worse aggregate remote health than d1's
 	// heapHealth, it should not be on the top of the heap because it is
 	// explored and therefore its heapHealth will be using the non aggregate
 	// fields
-	d := rt.renter.directoryHeap.managedPop()
+	d := rt.renter.staticDirectoryHeap.managedPop()
 	if reflect.DeepEqual(d, d4) {
 		t.Log(d)
 		t.Log(d4)
@@ -179,15 +179,15 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 
 	// Push top directory back onto heap
-	rt.renter.directoryHeap.managedPush(d)
+	rt.renter.staticDirectoryHeap.managedPush(d)
 
 	// No set d4 to not be explored, this should be enough to force it to the
 	// top of the heap
 	d4.explored = false
-	rt.renter.directoryHeap.managedPush(d4)
+	rt.renter.staticDirectoryHeap.managedPush(d4)
 
 	// Check that top directory is directory 4
-	d = rt.renter.directoryHeap.managedPop()
+	d = rt.renter.staticDirectoryHeap.managedPop()
 	if !reflect.DeepEqual(d, d4) {
 		t.Log(d)
 		t.Log(d4)
@@ -195,11 +195,11 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 
 	// Reset Directory heap
-	rt.renter.directoryHeap.managedReset()
+	rt.renter.staticDirectoryHeap.managedReset()
 
 	// Confirm that the heap is empty
-	if rt.renter.directoryHeap.managedLen() != 0 {
-		t.Fatal("heap should empty but has length of", rt.renter.directoryHeap.managedLen())
+	if rt.renter.staticDirectoryHeap.managedLen() != 0 {
+		t.Fatal("heap should empty but has length of", rt.renter.staticDirectoryHeap.managedLen())
 	}
 
 	// Test pushing an unexplored directory
@@ -207,10 +207,10 @@ func TestDirectoryHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.renter.directoryHeap.managedLen() != 1 {
-		t.Fatal("directory heap should have length of 1 but has length of", rt.renter.directoryHeap.managedLen())
+	if rt.renter.staticDirectoryHeap.managedLen() != 1 {
+		t.Fatal("directory heap should have length of 1 but has length of", rt.renter.staticDirectoryHeap.managedLen())
 	}
-	d = rt.renter.directoryHeap.managedPop()
+	d = rt.renter.staticDirectoryHeap.managedPop()
 	if d.explored {
 		t.Fatal("directory should be unexplored root")
 	}
@@ -291,7 +291,7 @@ func TestPushSubDirectories(t *testing.T) {
 	}
 
 	// Make sure we are starting with an empty heap
-	rt.renter.directoryHeap.managedReset()
+	rt.renter.staticDirectoryHeap.managedReset()
 
 	// Add siafiles sub directories
 	d := &directory{
@@ -303,12 +303,12 @@ func TestPushSubDirectories(t *testing.T) {
 	}
 
 	// Heap should have a length of 5
-	if rt.renter.directoryHeap.managedLen() != 5 {
-		t.Fatal("Heap should have length of 5 but was", rt.renter.directoryHeap.managedLen())
+	if rt.renter.staticDirectoryHeap.managedLen() != 5 {
+		t.Fatal("Heap should have length of 5 but was", rt.renter.staticDirectoryHeap.managedLen())
 	}
 
 	// Pop off elements and confirm the are correct
-	d = rt.renter.directoryHeap.managedPop()
+	d = rt.renter.staticDirectoryHeap.managedPop()
 	if !d.staticSiaPath.Equals(siaPath2) {
 		t.Fatalf("Expected directory %v but found %v", siaPath2.String(), d.staticSiaPath.String())
 	}
@@ -321,7 +321,7 @@ func TestPushSubDirectories(t *testing.T) {
 	if d.explored {
 		t.Fatal("Expected directory to be unexplored")
 	}
-	d = rt.renter.directoryHeap.managedPop()
+	d = rt.renter.staticDirectoryHeap.managedPop()
 	if !d.staticSiaPath.Equals(siaPath1) {
 		t.Fatalf("Expected directory %v but found %v", siaPath1.String(), d.staticSiaPath.String())
 	}
@@ -439,7 +439,7 @@ func TestNextExploredDirectory(t *testing.T) {
 
 	// Make sure we are starting with an empty heap, this helps with ndfs and
 	// tests proper handling of empty heaps
-	rt.renter.directoryHeap.managedReset()
+	rt.renter.staticDirectoryHeap.managedReset()
 	err = rt.renter.managedPushUnexploredDirectory(skymodules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)

@@ -70,7 +70,7 @@ func (w *worker) newJobUpdateRegistry(ctx context.Context, responseChan chan *jo
 // callDiscard will discard a job, sending the provided error.
 func (j *jobUpdateRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.renter.tg.Launch(func() {
+	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobUpdateRegistryResponse{
 			srv:       nil,
 			staticErr: errors.Extend(err, ErrJobDiscarded),
@@ -78,11 +78,11 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Debugln("callDiscard: launch failed", err)
+		w.staticRenter.staticLog.Debugln("callDiscard: launch failed", err)
 	}
 }
 
@@ -93,7 +93,7 @@ func (j *jobUpdateRegistry) callExecute() {
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
-		errLaunch := w.renter.tg.Launch(func() {
+		errLaunch := w.staticRenter.tg.Launch(func() {
 			response := &jobUpdateRegistryResponse{
 				srv:       srv,
 				staticErr: err,
@@ -101,11 +101,11 @@ func (j *jobUpdateRegistry) callExecute() {
 			select {
 			case j.staticResponseChan <- response:
 			case <-j.staticCtx.Done():
-			case <-w.renter.tg.StopChan():
+			case <-w.staticRenter.tg.StopChan():
 			}
 		})
 		if errLaunch != nil {
-			w.renter.log.Debugln("callExececute: launch failed", err)
+			w.staticRenter.staticLog.Debugln("callExececute: launch failed", err)
 		}
 	}
 
@@ -124,14 +124,17 @@ func (j *jobUpdateRegistry) callExecute() {
 			return
 		}
 		// If the entry is valid, check if the revision number is actually
-		// invalid.
-		if j.staticSignedRegistryValue.Revision > rv.Revision {
+		// invalid or if the revision numbers match but the PoW is too low.
+		if j.staticSignedRegistryValue.Revision > rv.Revision ||
+			(j.staticSignedRegistryValue.Revision == rv.Revision && j.staticSignedRegistryValue.HasMoreWork(rv.RegistryValue)) {
 			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(errHostOutdatedProof)
 			return
 		}
 		// If the entry is valid and the revision is also valid, check if we
 		// have a higher revision number in the cache than the provided one.
+		// TODO: update the cache to store the hash in addition to the revision
+		// number for verifying the pow.
 		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
 		if cached && cachedRevision > rv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)
@@ -193,7 +196,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 
 	// Execute the program and parse the responses.
 	var responses []programResponse
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryWrite, cost)
 	if err != nil {
 		return modules.SignedRegistryValue{}, errors.AddContext(err, "Unable to execute program")
 	}
@@ -228,7 +231,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 func (w *worker) initJobUpdateRegistryQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobUpdateRegistryQueue != nil {
-		w.renter.log.Critical("incorret call on initJobUpdateRegistryQueue")
+		w.staticRenter.staticLog.Critical("incorret call on initJobUpdateRegistryQueue")
 		return
 	}
 

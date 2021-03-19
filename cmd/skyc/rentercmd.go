@@ -2211,15 +2211,10 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 // renterworkerscmd is the handler for the command `skyc renter workers`.
 // It lists the Renter's workers.
 func renterworkerscmd() {
-	rw, err := httpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
-		die("Could not get contracts:", err)
+		die("Could not get workers:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	// Print Worker Pool Summary
 	fmt.Println("Worker Pool Summary")
@@ -2262,15 +2257,10 @@ func renterworkerscmd() {
 // renterworkerseacmd is the handler for the command `skyc renter workers ea`.
 // It lists the status of the account of every worker.
 func renterworkerseacmd() {
-	rw, err := httpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
-		die("Could not get worker statuses:", err)
+		die("Could not get workers:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	// collect some overal account stats
 	var nfw uint64
@@ -2324,15 +2314,10 @@ func renterworkerseacmd() {
 // renterworkersdownloadscmd is the handler for the command `skyc renter workers
 // dj`.  It lists the status of the download jobs of every worker.
 func renterworkersdownloadscmd() {
-	rw, err := httpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
-		die("Could not get worker statuses:", err)
+		die("Could not get workers:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	// Create tab writer
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
@@ -2349,15 +2334,10 @@ func renterworkersdownloadscmd() {
 // renterworkersptcmd is the handler for the command `skyc renter workers pt`.
 // It lists the status of the price table of every worker.
 func renterworkersptcmd() {
-	rw, err := httpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
-		die("Could not get worker statuses:", err)
+		die("Could not get workers:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	// collect some overal account stats
 	var workersWithoutPTs uint64
@@ -2410,15 +2390,10 @@ func renterworkersptcmd() {
 // renterworkersrjcmd is the handler for the command `skyc renter workers rj`.
 // It lists the status of the read job queue for every worker.
 func renterworkersrjcmd() {
-	rw, err := httpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
-		die("Could not get worker statuses:", err)
+		die("Could not get workers:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	defer func() {
@@ -2456,15 +2431,10 @@ func renterworkersrjcmd() {
 // renterworkershsjcmd is the handler for the command `skyc renter workers hs`.
 // It lists the status of the has sector job queue for every worker.
 func renterworkershsjcmd() {
-	rw, err := httpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
-		die("Could not get worker statuses:", err)
+		die("Could not get workers:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	defer func() {
@@ -2500,15 +2470,10 @@ func renterworkershsjcmd() {
 // renterworkersuploadscmd is the handler for the command `skyc renter workers
 // uj`.  It lists the status of the upload jobs of every worker.
 func renterworkersuploadscmd() {
-	rw, err := httpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
-		die("Could not get worker statuses:", err)
+		die("Could not get workers:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	// Create tab writer
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
@@ -2578,15 +2543,10 @@ func writeWorkers(workers []skymodules.WorkerStatus) {
 // renterworkerreadregistrycmd is the handler for the command `skyc renter workers
 // rrj`.  It lists the status of the read registry jobs of every worker.
 func renterworkersreadregistrycmd() {
-	rw, err := httpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
-		die("Could not get worker statuses:", err)
+		die("Could not get workers:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	// Create tab writer
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
@@ -2604,15 +2564,10 @@ func renterworkersreadregistrycmd() {
 // workers urj`. It lists the status of the update registry jobs of every
 // worker.
 func renterworkersupdateregistrycmd() {
-	rw, err := httpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
-		die("Could not get worker statuses:", err)
+		die("Could not get workers:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	// Create tab writer
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)

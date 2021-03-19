@@ -102,6 +102,14 @@ func (sf *SiaFile) SetPartialChunks(combinedChunks []skymodules.PartialChunk, up
 	if totalLength != expectedLength {
 		return fmt.Errorf("expect partial chunk length to be %v but was %v", expectedLength, totalLength)
 	}
+	// Lock both the SiaFile and partials SiaFile. We need to atomically update
+	// both of them.
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Check if siafile has been deleted.
+	if sf.deleted {
+		return errors.New("can't set combined chunk of deleted siafile")
+	}
 	// backup the changed metadata before changing it. Revert the change on
 	// error.
 	oldNumChunks := sf.numChunks
@@ -111,14 +119,6 @@ func (sf *SiaFile) SetPartialChunks(combinedChunks []skymodules.PartialChunk, up
 			sf.numChunks = oldNumChunks
 		}
 	}(sf.staticMetadata.backup())
-	// Lock both the SiaFile and partials SiaFile. We need to atomically update
-	// both of them.
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// Check if siafile has been deleted.
-	if sf.deleted {
-		return errors.New("can't set combined chunk of deleted siafile")
-	}
 	sf.partialsSiaFile.mu.Lock()
 	defer sf.partialsSiaFile.mu.Unlock()
 	// For each combined chunk that is not yet tracked within the partials sia

@@ -915,6 +915,17 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("Uptime is zero")
 	}
 
+	// Check registry stats are set
+	if stats.RegistryStats.ReadProjectP99 == 0 {
+		t.Error("readregistry p99 is zero")
+	}
+	if stats.RegistryStats.ReadProjectP999 == 0 {
+		t.Error("readregistry p999 is zero")
+	}
+	if stats.RegistryStats.ReadProjectP9999 == 0 {
+		t.Error("readregistry p9999 is zero")
+	}
+
 	// create two test files with sizes below and above the sector size
 	files := make(map[string]uint64)
 	files["statfile1"] = 2033
@@ -4123,12 +4134,30 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatalf("read took too long to time out %v > %v", time.Since(start), 2*time.Second)
 	}
 
-	// Update the registry again, with the same revision. Shouldn't work.
+	// Update the registry again, with the same revision and same PoW. Shouldn't
+	// work.
 	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
 		t.Fatal(err)
 	}
 	if err == nil || !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+		t.Fatal(err)
+	}
+
+	// Update the registry again. With the same revision but higher PoW. Should work.
+	srvHigherPoW := srv2
+	slHigherPow := skylink2
+	for !srvHigherPoW.HasMoreWork(srv2.RegistryValue) {
+		sl, err := skymodules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srvHigherPoW.Data = sl.Bytes()
+		srvHigherPoW = srvHigherPoW.Sign(sk)
+		slHigherPow = sl
+	}
+	err = r.RegistryUpdate(spk, dataKey, srvHigherPoW.Revision, srvHigherPoW.Signature, slHigherPow)
+	if err != nil {
 		t.Fatal(err)
 	}
 

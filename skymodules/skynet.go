@@ -45,7 +45,7 @@ const (
 	CurrencyUSD = "usd"
 
 	// LicenseMonetization is the first skynet monetization license.
-	LicenseMonetization = "AAAQ0UB7qWNm1sMcVuASY4iGNk7spjcAPxhNliCofOrhvg"
+	LicenseMonetization = "CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg"
 )
 
 var (
@@ -169,6 +169,9 @@ type (
 		// a Skykey will be derived from the Master Skykey found under that
 		// name/ID to be used for this specific upload.
 		FileSpecificSkykey skykey.Skykey
+
+		// Batch determines whether the upload should be batched with other uploads.
+		Batch bool
 	}
 
 	// SkyfileMultipartUploadParameters defines the parameters specific to

@@ -41,7 +41,7 @@ func (w *worker) externTryFixRevisionMismatch() {
 
 	// Initiate a session, this performs a handshake with the host and syncs up
 	// the revision if necessary.
-	session, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
+	session, err := w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticRenter.tg.StopChan())
 
 	// Track the outcome of the revision mismatch fix - this ensures a proper
 	// working of the maintenance cooldown mechanism.
@@ -54,19 +54,19 @@ func (w *worker) externTryFixRevisionMismatch() {
 	}
 
 	if err != nil {
-		w.renter.log.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
+		w.staticRenter.staticLog.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
 
 	// Immediately close the session.
 	err = session.Close()
 	if err != nil {
-		w.renter.log.Printf("could not close session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
+		w.staticRenter.staticLog.Printf("could not close session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
 
 	// Log that we have attempted to fix a revision number mismatch.
-	w.renter.log.Debugf("%v revision resync triggered\n", w.staticHostPubKeyStr)
+	w.staticRenter.staticLog.Debugf("%v revision resync triggered\n", w.staticHostPubKeyStr)
 }
 
 // staticSetSuspectRevisionMismatch sets the atomicSuspectRevisionMismatch flag.

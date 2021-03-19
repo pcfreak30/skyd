@@ -496,6 +496,8 @@ func (api *API) renterBackupsRestoreHandlerGET(w http.ResponseWriter, req *http.
 		return
 	}
 	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
 		_ = os.RemoveAll(tmpDir)
 	}()
 	backupPath := filepath.Join(tmpDir, name)
@@ -1924,6 +1926,8 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
 		_ = streamer.Close()
 	}()
 	http.ServeContent(w, req, fileName, time.Time{}, streamer)

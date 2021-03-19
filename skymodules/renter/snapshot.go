@@ -77,7 +77,7 @@ func (r *Renter) UploadedBackups() ([]skymodules.UploadedBackup, []types.SiaPubl
 	defer r.mu.RUnlock(id)
 	backups := append([]skymodules.UploadedBackup(nil), r.persist.UploadedBackups...)
 	hosts := make([]types.SiaPublicKey, 0, len(r.persist.SyncedContracts))
-	for _, c := range r.hostContractor.Contracts() {
+	for _, c := range r.staticHostContractor.Contracts() {
 		for _, id := range r.persist.SyncedContracts {
 			if c.ID == id {
 				hosts = append(hosts, c.HostPublicKey)
@@ -145,7 +145,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return err
 	}
 	// Create upload params with high redundancy.
-	allowance := r.hostContractor.Allowance()
+	allowance := r.staticHostContractor.Allowance()
 	dataPieces := allowance.Hosts / 10
 	if dataPieces == 0 {
 		dataPieces = 1
@@ -309,7 +309,7 @@ func (r *Renter) managedSaveSnapshot(meta skymodules.UploadedBackup) error {
 // managedDownloadSnapshotTable will fetch the snapshot table from the host.
 func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, error) {
 	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
+	ws, _, err := r.staticWallet.PrimarySeed()
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to get wallet's primary seed")
 	}
@@ -325,7 +325,7 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 
 	// Fetch the contract and see if it's empty, if that is the case return an
 	// empty entryTable and appropriate error.
-	contract, ok := r.hostContractor.ContractByPublicKey(host.staticHostPubKey)
+	contract, ok := r.staticHostContractor.ContractByPublicKey(host.staticHostPubKey)
 	if !ok {
 		return nil, errors.New("failed to host contract")
 	}
@@ -334,7 +334,7 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 	}
 
 	// Download the table of snapshots that the host is storing.
-	tableSector, err := host.ReadOffset(r.tg.StopCtx(), 0, modules.SectorSize)
+	tableSector, err := host.ReadOffset(r.tg.StopCtx(), categorySnapshotDownload, 0, modules.SectorSize)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to perform a download by index on this contract")
 	}
@@ -411,13 +411,13 @@ LOOP:
 		meta.UploadProgress = calcSnapshotUploadProgress(100, pct)
 		err := r.managedSaveSnapshot(meta)
 		if err != nil {
-			r.log.Println("Error saving snapshot during upload:", err)
+			r.staticLog.Println("Error saving snapshot during upload:", err)
 			continue
 		}
 
 		// Log any error.
 		if resp.staticErr != nil {
-			r.log.Debugln("snapshot upload failed:", resp.staticErr)
+			r.staticLog.Debugln("snapshot upload failed:", resp.staticErr)
 			continue
 		}
 		successes++
@@ -436,7 +436,7 @@ LOOP:
 	// who knows. Like really we should probably be looking at the total number
 	// of hosts in the allowance and comparing against that.
 	if successes < total/3 {
-		r.log.Printf("Unable to save snapshot effectively, wanted %v but only got %v successful snapshot backups", total, successes)
+		r.staticLog.Printf("Unable to save snapshot effectively, wanted %v but only got %v successful snapshot backups", total, successes)
 		return fmt.Errorf("needed at least %v successes, only got %v", total/3, successes)
 	}
 
@@ -458,7 +458,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub skymodules.UploadedBa
 	defer r.tg.Done()
 
 	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
+	ws, _, err := r.staticWallet.PrimarySeed()
 	if err != nil {
 		return skymodules.UploadedBackup{}, nil, errors.AddContext(err, "failed to get wallet's primary seed")
 	}
@@ -471,7 +471,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub skymodules.UploadedBa
 
 	// try downloading from each host in serial, prioritizing the hosts that are
 	// GoodForUpload, then GoodForRenew
-	contracts := r.hostContractor.Contracts()
+	contracts := r.staticHostContractor.Contracts()
 	sort.Slice(contracts, func(i, j int) bool {
 		if contracts[i].Utility.GoodForUpload == contracts[j].Utility.GoodForUpload {
 			return contracts[i].Utility.GoodForRenew && !contracts[j].Utility.GoodForRenew
@@ -504,7 +504,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub skymodules.UploadedBa
 			// download the entry
 			dotSia = nil
 			for _, root := range entry.DataSectors {
-				data, err := w.ReadSector(r.tg.StopCtx(), root, 0, modules.SectorSize)
+				data, err := w.ReadSector(r.tg.StopCtx(), categorySnapshotDownload, root, 0, modules.SectorSize)
 				if err != nil {
 					return err
 				}
@@ -524,7 +524,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub skymodules.UploadedBa
 			return nil
 		}()
 		if err != nil {
-			r.log.Printf("Downloading backup from host %v failed: %v", contracts[i].HostPublicKey, err)
+			r.staticLog.Printf("Downloading backup from host %v failed: %v", contracts[i].HostPublicKey, err)
 			continue
 		}
 		return ub, dotSia, nil
@@ -575,7 +575,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 
 	for {
 		// Can't do anything if the wallet is locked.
-		if unlocked, _ := r.w.Unlocked(); !unlocked {
+		if unlocked, _ := r.staticWallet.Unlocked(); !unlocked {
 			select {
 			case <-time.After(snapshotSyncSleepDuration):
 			case <-r.tg.StopChan():
@@ -606,14 +606,14 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			}
 			r.mu.RUnlock(id)
 			if !found {
-				r.log.Println("Could not locate entry for file in backup set")
+				r.staticLog.Println("Could not locate entry for file in backup set")
 				return
 			}
 
 			// record current UploadProgress
 			meta.UploadProgress = calcSnapshotUploadProgress(info.UploadProgress, 0)
 			if err := r.managedSaveSnapshot(meta); err != nil {
-				r.log.Println("Could not save upload progress:", err)
+				r.staticLog.Println("Could not save upload progress:", err)
 				return
 			}
 
@@ -621,7 +621,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// not ready for upload yet
 				return
 			}
-			r.log.Println("Uploading snapshot", info.SiaPath)
+			r.staticLog.Println("Uploading snapshot", info.SiaPath)
 			err := func() error {
 				// Grab the entry for the uploaded backup's siafile.
 				entry, err := r.staticFileSystem.OpenSiaFile(info.SiaPath)
@@ -674,13 +674,13 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				return nil
 			}()
 			if err != nil {
-				r.log.Println("Failed to upload snapshot .sia:", err)
+				r.staticLog.Println("Failed to upload snapshot .sia:", err)
 			}
 		}
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 		err := r.staticFileSystem.List(root, true, offlineMap, goodForRenewMap, contractsMap, flf, func(skymodules.DirectoryInfo) {})
 		if err != nil {
-			r.log.Println("Could not get un-uploaded snapshots:", err)
+			r.staticLog.Println("Could not get un-uploaded snapshots:", err)
 		}
 
 		// Build a set of the snapshots we already have.
@@ -692,7 +692,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			} else {
 				// signal r.threadedUploadAndRepair to keep uploading the snapshot
 				select {
-				case r.uploadHeap.repairNeeded <- struct{}{}:
+				case r.staticUploadHeap.repairNeeded <- struct{}{}:
 				default:
 				}
 			}
@@ -700,7 +700,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		r.mu.RUnlock(id)
 
 		// Select an unsynchronized host.
-		contracts := r.hostContractor.Contracts()
+		contracts := r.staticHostContractor.Contracts()
 		var found bool
 		var c skymodules.RenterContract
 		for _, c = range contracts {
@@ -734,7 +734,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		}
 
 		// Synchronize the host.
-		r.log.Debugln("Synchronizing snapshots on host", c.HostPublicKey)
+		r.staticLog.Debugln("Synchronizing snapshots on host", c.HostPublicKey)
 		err = func() (err error) {
 			// Get the right worker for the host.
 			w, err := r.staticWorkerPool.callWorker(c.HostPublicKey)
@@ -765,7 +765,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 					if err := r.managedSaveSnapshot(ub); err != nil {
 						return err
 					}
-					r.log.Printf("Located new snapshot %q on host %v", ub.Name, c.HostPublicKey)
+					r.staticLog.Printf("Located new snapshot %q on host %v", ub.Name, c.HostPublicKey)
 				}
 			}
 
@@ -783,12 +783,12 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				if err := w.UploadSnapshot(r.tg.StopCtx(), ub, dotSia); err != nil {
 					return err
 				}
-				r.log.Printf("Replicated missing snapshot %q to host %v", ub.Name, c.HostPublicKey)
+				r.staticLog.Printf("Replicated missing snapshot %q to host %v", ub.Name, c.HostPublicKey)
 			}
 			return nil
 		}()
 		if err != nil {
-			r.log.Println("Failed to synchronize snapshots on host:", err)
+			r.staticLog.Println("Failed to synchronize snapshots on host:", err)
 			// sleep for a bit to prevent retrying the same host repeatedly in a
 			// tight loop
 			select {
@@ -807,7 +807,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			r.persist.SyncedContracts = append(r.persist.SyncedContracts, fcid)
 		}
 		if err := r.saveSync(); err != nil {
-			r.log.Println("Failed to update set of synced hosts:", err)
+			r.staticLog.Println("Failed to update set of synced hosts:", err)
 		}
 		r.mu.Unlock(id)
 	}
