@@ -832,15 +832,17 @@ func (rc *RenterContract) Size() uint64 {
 	return size
 }
 
-// Spending return the sum of all spending of the contract.
-func (rc *RenterContract) Spending() (spending types.Currency) {
-	// TODO: should we also include contract, siafund and txn fees? Strictly
-	// speaking those are not spendings.
+// SkynetSpending return the sum of all spending of the contract that is subject to
+// skynet fees.
+func (rc *RenterContract) SkynetSpending() (spending types.Currency) {
 	spending = spending.Add(rc.DownloadSpending)
 	spending = spending.Add(rc.FundAccountSpending)
 	spending = spending.Add(rc.MaintenanceSpending.Sum())
 	spending = spending.Add(rc.StorageSpending)
 	spending = spending.Add(rc.UploadSpending)
+	spending = spending.Add(rc.ContractFee)
+	spending = spending.Add(rc.TxnFee)
+	spending = spending.Add(rc.SiafundFee)
 	return
 }
 

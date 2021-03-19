@@ -436,7 +436,7 @@ func TestPaySkynetFee(t *testing.T) {
 	spending := func(contracts []skymodules.RenterContract) types.Currency {
 		var spending types.Currency
 		for _, c := range contracts {
-			spending = spending.Add(c.Spending())
+			spending = spending.Add(c.SkynetSpending())
 		}
 		return spending
 	}

@@ -908,7 +908,7 @@ func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.R
 	// Compute the total spending at this point in time.
 	var totalSpending types.Currency
 	for _, contract := range contracts {
-		totalSpending = totalSpending.Add(contract.Spending())
+		totalSpending = totalSpending.Add(contract.SkynetSpending())
 	}
 
 	// Check by how much it increased since the last time.
@@ -1223,7 +1223,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if lastSpendingTime.IsZero() {
 		var totalSpending types.Currency
 		for _, c := range append(r.Contracts(), r.OldContracts()...) {
-			totalSpending = totalSpending.Add(c.Spending())
+			totalSpending = totalSpending.Add(c.SkynetSpending())
 		}
 		err = sh.AddSpending(totalSpending, []types.Transaction{}, time.Now())
 		if err != nil {
