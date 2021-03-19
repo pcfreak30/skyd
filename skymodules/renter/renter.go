@@ -55,10 +55,14 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetportals"
 )
 
-const (
+var (
 	// skynetFeePayoutMultiplier is a factor that we multiply the fee estimation
 	// with to determine the skynet fee payout threshold.
-	skynetFeePayoutMultiplier = 100 * 1024 // 100 * 1kib
+	skynetFeePayoutMultiplier = build.Select(build.Var{
+		Dev:      uint64(100 * 1024), // 100 * 1kib txn
+		Standard: uint64(100 * 1024), // 100 * 1kib txn
+		Testing:  uint64(1),          // threshold == fee estimate
+	}).(uint64)
 )
 
 var (
