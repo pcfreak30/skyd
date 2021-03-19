@@ -13,7 +13,7 @@ require (
 	github.com/montanaflynn/stats v0.6.3
 	github.com/spf13/cobra v1.0.0
 	github.com/vbauerster/mpb/v5 v5.0.3
-	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210317123216-466931998d30
+	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210319110920-9b7767f5f7f4
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
 	gitlab.com/NebulousLabs/errors v0.0.0-20200929122200-06c536cf6975
