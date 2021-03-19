@@ -892,7 +892,7 @@ func (r *Renter) threadedPaySkynetFee() {
 		_, max := r.staticTPool.FeeEstimation()
 		threshold := max.Mul64(skynetFeePayoutMultiplier)
 
-		err := paySkynetFee(r.staticSpendingHistory, r.staticWallet, append(r.Contracts(), r.OldContracts()...), na, threshold)
+		err := paySkynetFee(r.staticSpendingHistory, r.staticWallet, append(r.Contracts(), r.OldContracts()...), na, threshold, r.staticLog)
 		if err != nil {
 			r.staticLog.Print(err)
 		}
@@ -907,7 +907,7 @@ func (r *Renter) threadedPaySkynetFee() {
 // paySkynetFee pays the accumulated skynet fee every 24 hours.
 // TODO: once we pay for monetized content, that also needs to be part of the
 // total spending.
-func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.RenterContract, addr types.UnlockHash, threshold types.Currency) error {
+func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.RenterContract, addr types.UnlockHash, threshold types.Currency, log *persist.Logger) error {
 	// Get the last spending.
 	lastSpending, lastSpendingHeight := sh.LastSpending()
 
@@ -932,8 +932,12 @@ func paySkynetFee(sh *spendingHistory, w siacoinSender, contracts []skymodules.R
 
 	// Check if we are above a payout threshold.
 	if fee.Cmp(threshold) < 0 {
+		log.Printf("Not paying fee of %v since it's below the threshold of %v", fee, threshold)
 		return nil // Don't pay if we are below the threshold.
 	}
+
+	// Log that we are about to pay the fee.
+	log.Printf("Paying fee of %v to %v after spending increased from %v to %v", fee, addr, lastSpending, totalSpending)
 
 	// Send the fee.
 	txn, err := w.SendSiacoins(fee, addr)

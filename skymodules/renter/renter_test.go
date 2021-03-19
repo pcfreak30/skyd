@@ -453,11 +453,17 @@ func TestPaySkynetFee(t *testing.T) {
 	// Create a test sender.
 	ts := &testSiacoinSender{}
 
+	// Dummy log.
+	log, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Pay a skynet fee but the time is now so not enough time has passed.
 	threshold := types.ZeroCurrency
 	expectedTime := time.Now()
 	sh.AddSpending(types.ZeroCurrency, nil, expectedTime)
-	err = paySkynetFee(sh, ts, contracts, uh, threshold)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,7 +477,7 @@ func TestPaySkynetFee(t *testing.T) {
 	// Last spending was 48 hours ago which is enough.
 	expectedTime = time.Now().AddDate(0, 0, -2)
 	sh.AddSpending(types.ZeroCurrency, nil, expectedTime)
-	err = paySkynetFee(sh, ts, contracts, uh, threshold)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,7 +497,7 @@ func TestPaySkynetFee(t *testing.T) {
 	expectedTime = time.Now().AddDate(0, 0, -2)
 	sh.AddSpending(expectedSpending, nil, expectedTime)
 	oldContracts := contracts[:1]
-	err = paySkynetFee(sh, ts, oldContracts, uh, threshold)
+	err = paySkynetFee(sh, ts, oldContracts, uh, threshold, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +509,7 @@ func TestPaySkynetFee(t *testing.T) {
 	}
 
 	// Spending increased. Payment expected.
-	err = paySkynetFee(sh, ts, contracts, uh, threshold)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +532,7 @@ func TestPaySkynetFee(t *testing.T) {
 	expectedSpending = spending(contracts)
 	expectedFee = fee(expectedSpending.Sub(spending(oldContracts)))
 	threshold = expectedFee.Add64(1)
-	err = paySkynetFee(sh, ts, contracts, uh, threshold)
+	err = paySkynetFee(sh, ts, contracts, uh, threshold, log)
 	if err != nil {
 		t.Fatal(err)
 	}
