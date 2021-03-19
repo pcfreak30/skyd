@@ -1193,6 +1193,21 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// for bubble updates are processed.
 	go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
 
+	// If the spending history didn't exist before, manually init it with the
+	// current spending. We don't want portals to pay a huge fee right after
+	// upgrading for pre-skynet license spendings.
+	_, lastSpendingTime := sh.LastSpending()
+	if lastSpendingTime.IsZero() {
+		var totalSpending types.Currency
+		for _, c := range append(r.Contracts(), r.OldContracts()...) {
+			totalSpending = totalSpending.Add(c.Spending())
+		}
+		err = sh.AddSpending(totalSpending, []types.Transaction{}, time.Now())
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to add initial spending")
+		}
+	}
+
 	// Spin up the skynet fee paying goroutine.
 	if err := r.tg.Launch(r.threadedPaySkynetFee); err != nil {
 		return nil, err

@@ -78,7 +78,6 @@ func NewSpendingHistory(dir, filename string) (*spendingHistory, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: handle init
 	return &spendingHistory{
 		staticAop:      aop,
 		recentSpending: spending,
