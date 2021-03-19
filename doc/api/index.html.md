@@ -3069,41 +3069,98 @@ Returns the current settings along with metrics on the renter's spending.
  
 ```go
 {
+{
   "settings": {
     "allowance": {
-      "funds":              "1234",         // hastings
-      "hosts":              24,             // int
-      "period":             6048,           // blocks
-      "renewwindow":        3024            // blocks
-      "expectedstorage":    1000000000000,  // uint64
-      "expectedupload":     2,              // uint64
-      "expecteddownload":   1,              // uint64
-      "expectedredundancy": 3               // uint64
+      "funds": "1000000000000000000000000000",  // hastings
+      "hosts": 5,                               // int   
+      "period": 50,                             // blocks
+      "renewwindow": 24,                        // blocks
+      "paymentcontractinitialfunding": "0",     // hastings
+      "expectedstorage": 20480000,              // uint64
+      "expectedupload": 2048000,                // uint64
+      "expecteddownload": 2048000,              // uint64
+      "expectedredundancy": 5,                  // float64
+      "maxperiodchurn": 2048000,                // uint64
+      "maxrpcprice": "0",                       // hastings
+      "maxcontractprice": "0",                  // hastings
+      "maxdownloadbandwidthprice": "0",         // hastings
+      "maxsectoraccessprice": "0"               // hastings
+      "maxstorageprice": "0",                   // hastings
+      "maxuploadbandwidthprice": "0"            // hastings
     },
-    "maxuploadspeed":     1234, // BPS
-    "maxdownloadspeed":   1234, // BPS
-    "streamcachesize":    4     // int
+    "ipviolationcheck": true, // bool
+    "maxuploadspeed": 0,      // uint64
+    "maxdownloadspeed": 0,    // uint64
+    "uploadsstatus": {
+      "paused": false,                          // bool
+      "pauseendtime": "0001-01-01T00:00:00Z"    // time
+    }
   },
   "financialmetrics": {
-    "contractfees":        "1234", // hastings
-    "contractspending":    "1234", // hastings (deprecated, now totalallocated)
-    "downloadspending":    "5678", // hastings
-    "fundaccountspending": "5678", // hastings
+    "contractfees": "1797134052977777761550000",        // hastings
+    "downloadspending": "0",                            // hastings
+    "fundaccountspending": "3000000000000000000000000", // hastings
     "maintenancespending": {
-      "accountbalancecost":   "1234", // hastings
-      "fundaccountcost":      "1234", // hastings
-      "updatepricetablecost": "1234", // hastings
+      "accountbalancecost": "3",                        // hastings
+      "fundaccountcost": "3",                           // hastings
+      "updatepricetablecost": "3"                       // hastings
     },
-    "storagespending":     "1234", // hastings
-    "totalallocated":      "1234", // hastings
-    "uploadspending":      "5678", // hastings
-    "unspent":             "1234"  // hastings
+    "storagespending": "0",                             // hastings
+    "totalallocated": "30000000000000000000000000",     // hastings
+    "uploadspending": "0",                              // hastings
+    "unspent": "995202865947022222238449991",           // hastings
+    "contractspending": "30000000000000000000000000",   // hastings
+    "withheldfunds": "0",                               // hastings
+    "releaseblock": 0,                                  // blockheight
+    "previousspending": "0"                             // hastings
   },
-  "currentperiod":  6000  // blockheight
-  "nextperiod":    12248  // blockheight
-  "uploadsstatus": {
-    "pause":        false,       // boolean
-    "pauseendtime": 1234567890,  // Unix timestamp
+  "currentperiod": 17,                                  // blockheight
+  "nextperiod": 67,                                     // blockheight
+  "memorystatus":
+    "available": 491520                 // uint64
+    "base": 491520,                     // uint64
+    "requested": 0,                     // uint64
+    "priorityavailable": 524288,        // uint64
+    "prioritybase": 524288,             // uint64
+    "priorityrequested": 0,             // uint64
+    "priorityreserve": 32768,           // uint64
+    "registry": {                     
+      "available": 131072,              // uint64
+      "base": 131072,                   // uint64
+      "requested": 0,                   // uint64
+      "priorityavailable": 131072,      // uint64
+      "prioritybase": 131072,           // uint64
+      "priorityrequested": 0,           // uint64
+      "priorityreserve": 0              // uint64
+    },
+    "userupload": {
+      "available": 131072,              // uint64
+      "base": 131072,                   // uint64
+      "requested": 0,                   // uint64
+      "priorityavailable": 131072,      // uint64
+      "prioritybase": 131072,           // uint64
+      "priorityrequested": 0,           // uint64
+      "priorityreserve": 0              // uint64
+    },
+    "userdownload": {
+      "available": 131072,              // uint64
+      "base": 131072,                   // uint64
+      "requested": 0,                   // uint64
+      "priorityavailable": 131072,      // uint64
+      "prioritybase": 131072,           // uint64
+      "priorityrequested": 0,           // uint64
+      "priorityreserve": 0              // uint64
+    },
+    "system": {
+      "available": 98304,               // uint64
+      "base": 98304,                    // uint64
+      "requested": 0,                   // uint64
+      "priorityavailable": 131072,      // uint64
+      "prioritybase": 131072,           // uint64
+      "priorityrequested": 0,           // uint64
+      "priorityreserve": 32768          // uint64
+    }
   }
 }
 ```
@@ -3269,6 +3326,42 @@ Height at which the current allowance period began.
 
 **nextperiod** | blockheight  
 Height at which the next allowance period began.  
+
+**memorystatus**   
+Information about the state of the renter's internal memory manager.  
+
+**registry**  
+Memory information related to skynet registry operations.  
+
+**userupload**  
+Memory information related to user-initiated uploads.  
+
+**userdownload**  
+Memory information related to user-initiated downloads.  
+
+**system**  
+Memory information related to daemon-initiated tasks. e.g. repair uploads and downloads.  
+
+**available** | uint64  
+The amount of currently available for a given category.  
+
+**base** | uint64  
+The base amount of memory for a given category.  
+
+**requested** | uint64  
+The amount of memory currently requested for a given category.  
+
+**priorityavailable** | uint64  
+The amount of available priority memory for a given category.  
+
+**prioritybase** | uint64  
+The base amount of priority memory for a given category.  
+
+**priorityrequested** | uint64  
+The amount of priority memory currently requested for a given category.  
+
+**priorityreserve** | uint64  
+The amount of memory set aside for priority tasks.  
 
 **uploadsstatus**  
 Information about the renter's uploads.  
@@ -5576,7 +5669,7 @@ supplied, this metadata will be relative to the given path.
   "mode":     640,      // os.FileMode
   "filename": "folder", // string
   "monetization": {
-    "license": "AAAQ0UB7qWNm1sMcVuASY4iGNk7spjcAPxhNliCofOrhvg" // skylink
+    "license": "CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg" // skylink
     "monetizers": [
       "address": "e81107109496fe714a492f557c2af4b281e4913c674d10e8b3cd5cd3b7e59c582590531607c8", // hash
       "amount": "1000000000000000000000000"                                                      // types.Currency
@@ -5632,7 +5725,7 @@ curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/src?filenam
 // This command uploads the file 'myImage.png' to the Sia folder
 // 'var/skynet/images/myImage.png' as before. This time with a monetizer that
 // consists of a payout address and payout amount.
-curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?monetization=%7B%22monetizers%22%3A%5B%7B%22address%22%3A%22cfef78babd3faecb4fb3fdd94bdf4f9385a3cc394be4ae7a21430a425606819024ea37139e36%22%2C%22amount%22%3A%221000000000000000000000000%22%2C%22currency%22%3A%22usd%22%7D%5D%2C%22license%22%3A%22AAAQ0UB7qWNm1sMcVuASY4iGNk7spjcAPxhNliCofOrhvg%22%7D" -F 'file=@image.png'
+curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?monetization=%7B%22monetizers%22%3A%5B%7B%22address%22%3A%22cfef78babd3faecb4fb3fdd94bdf4f9385a3cc394be4ae7a21430a425606819024ea37139e36%22%2C%22amount%22%3A%221000000000000000000000000%22%2C%22currency%22%3A%22usd%22%7D%5D%2C%22license%22%3A%22CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg%22%7D" -F 'file=@image.png'
 ```
 
 Uploads a file to the network using a stream. If the upload stream POST call
@@ -5802,7 +5895,64 @@ returns statistical information about Skynet, e.g. number of files uploaded
     "gitrevision": "cd5a83712"     // string
   },
   "performancestats": {
-  }
+    "timetofirstbyte": {
+      "lastupdate": "2021-03-18T13:29:53.397408+01:00", // timestamp
+      "oneminute": {
+        "n60ms": 0,     // uint64
+        "n120ms": 0,    // uint64
+        "n240ms": 0,    // uint64
+        "n500ms": 0,    // uint64
+        "n1000ms": 0,   // uint64
+        "n2000ms": 0,   // uint64
+        "n5000ms": 0,   // uint64
+        "n10s": 0,      // uint64
+        "nlong": 0,     // uint64
+        "nerr": 0,      // uint64
+        "totalsize": 0  // uint64
+      },
+      "fiveminutes": {
+        // ...
+      },
+      "fifteenminutes": {
+        // ...
+      },
+      "twentyfourhours": {
+        // ...
+      },
+      "lifetime": {
+        // ...
+      }
+    },
+    "download64kb": {
+      // ...
+    },
+    "download1mb": {
+      // ...
+    },
+    "download4mb": {
+      // ...
+    },
+    "downloadlarge": {
+      // ...
+    },
+    "upload4mb": {
+      // ...
+    },
+    "uploadlarge": {
+      // ...
+    },
+    "registryread": {
+      // ...
+    },
+    "registrywrite": {
+      // ...
+    }
+  },
+  "registrystats": {
+    "readprojectp99": 5020000000,   // uint64
+    "readprojectp999": 5020000000,  // uint64
+    "readprojectp9999": 5020000000  // uint64
+  },
 }
 ```
 
@@ -5855,6 +6005,12 @@ request took.
 The performance stats fields are not protected by a compatibility promise, and
 may change over time.
 
+**registrystats**  
+Contains some stats about the skynet registry. 
+
+**readprojectpX** | uint64  
+The Xth percentile of the execution time of all successful read registry
+projects.
 
 ## /skynet/addskykey [POST]
 > curl example

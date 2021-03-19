@@ -362,7 +362,7 @@ func (am *accountManager) handleInterruptedUpgrade() error {
 	}
 
 	// open the tmp file
-	tmpFile, err := r.deps.OpenFile(tmpFilePath, os.O_RDWR, defaultFilePerm)
+	tmpFile, err := r.staticDeps.OpenFile(tmpFilePath, os.O_RDWR, defaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "error opening tmp account file")
 	}
@@ -375,7 +375,7 @@ func (am *accountManager) handleInterruptedUpgrade() error {
 		return am.upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile)
 	}
 
-	return errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath))
+	return errors.Compose(tmpFile.Close(), r.staticDeps.RemoveFile(tmpFilePath))
 }
 
 // managedLoad will pull all of the accounts off of disk and load them into the
@@ -397,7 +397,7 @@ func (am *accountManager) load() error {
 		if errors.Contains(err, io.EOF) {
 			break
 		} else if err != nil {
-			am.staticRenter.log.Println("ERROR: could not load account", err)
+			am.staticRenter.staticLog.Println("ERROR: could not load account", err)
 			continue
 		}
 
@@ -410,7 +410,7 @@ func (am *accountManager) load() error {
 
 	// Ensure that when the renter is shut down, the save and close function
 	// runs.
-	if am.staticRenter.deps.Disrupt("InterruptAccountSaveOnShutdown") {
+	if am.staticRenter.staticDeps.Disrupt("InterruptAccountSaveOnShutdown") {
 		// Dependency injection to simulate an unclean shutdown.
 		return nil
 	}
@@ -431,7 +431,7 @@ func (am *accountManager) openFile() (bool, error) {
 
 	// Sanity check that the file isn't already opened.
 	if am.staticFile != nil {
-		r.log.Critical("double open detected on account manager")
+		r.staticLog.Critical("double open detected on account manager")
 		return false, errors.New("accounts file already open")
 	}
 
@@ -468,7 +468,7 @@ func (am *accountManager) openFile() (bool, error) {
 		}
 
 		// log the successful upgrade
-		am.staticRenter.log.Println("successfully upgraded accounts file from v150 to v156")
+		am.staticRenter.staticLog.Println("successfully upgraded accounts file from v150 to v156")
 	}
 
 	// Whether this is a new file or an existing file, we need to set the header
@@ -508,7 +508,7 @@ func (am *accountManager) openAccountsFile(filename string) (modules.File, error
 	}
 
 	// open the file and create it if necessary
-	accountsFile, err := r.deps.OpenFile(accountsFilepath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	accountsFile, err := r.staticDeps.OpenFile(accountsFilepath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
 	if err != nil {
 		return nil, errors.AddContext(err, "error opening account file")
 	}
@@ -595,10 +595,10 @@ func (am *accountManager) upgradeFromV150ToV156() error {
 	// read the accounts from the accounts file, but link them to the tmp file,
 	// when calling persist on the account it will write the account into the
 	// tmp file
-	accounts := compatV150ReadAccounts(r.log, am.staticFile, tmpFile)
+	accounts := compatV150ReadAccounts(r.staticLog, am.staticFile, tmpFile)
 	for _, acc := range accounts {
 		if err := acc.managedPersist(); err != nil {
-			r.log.Println("failed to upgrade account from v150 to v156", err)
+			r.staticLog.Println("failed to upgrade account from v150 to v156", err)
 		}
 	}
 
@@ -660,7 +660,7 @@ func (am *accountManager) upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile mod
 	}
 
 	// delete the tmp file
-	return errors.AddContext(errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
+	return errors.AddContext(errors.Compose(tmpFile.Close(), r.staticDeps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
 }
 
 // updateMetadata writes the given metadata to the accounts file.

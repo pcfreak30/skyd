@@ -63,6 +63,17 @@ To get started with Sia, check out the guides below:
 - [How to Become a Sia Host](https://blog.sia.tech/how-to-run-a-host-on-sia-2159ebc4725)
 - [Using the Sia API](https://blog.sia.tech/api-quickstart-guide-f1d160c05235)
 
+License
+-----
+
+Skyd uses a custom [License](./LICENSE.md). The Skynet License is a source
+code license that allows you to use, modify and distribute the software, but
+you must preserve the payment mechanism in the software.
+
+For the purposes of complying with our code license, you can use the
+following Siacoin address:
+
+`fb6c9320bc7e01fbb9cd8d8c3caaa371386928793c736837832e634aaaa484650a3177d6714a`
 
 Usage
 -----

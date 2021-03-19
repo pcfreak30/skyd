@@ -42,7 +42,7 @@ func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencie
 	}
 
 	// Set an allowance.
-	err = rt.renter.hostContractor.SetAllowance(skymodules.DefaultAllowance)
+	err = rt.renter.staticHostContractor.SetAllowance(skymodules.DefaultAllowance)
 	if err != nil {
 		return nil, err
 	}
@@ -158,11 +158,11 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	}
 	// Download the first sector partially and then fully since both actions
 	// require different proofs.
-	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)
+	_, err = wt.ReadOffset(context.Background(), categorySnapshotDownload, 0, modules.SectorSize/2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
+	_, err = wt.ReadOffset(context.Background(), categorySnapshotDownload, 0, modules.SectorSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	// Do it again but this time corrupt the output to make sure the proof
 	// doesn't match.
 	deps.Fail()
-	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)
+	_, err = wt.ReadOffset(context.Background(), categorySnapshotDownload, 0, modules.SectorSize/2)
 	if err == nil || !strings.Contains(err.Error(), "verifying proof failed") {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	// Retry since the worker might be on a cooldown.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		deps.Fail()
-		_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
+		_, err = wt.ReadOffset(context.Background(), categorySnapshotDownload, 0, modules.SectorSize)
 		if err == nil || !strings.Contains(err.Error(), "verifying proof failed") {
 			return fmt.Errorf("unexpected error %v", err)
 		}
@@ -284,7 +284,7 @@ func TestWorkerSpending(t *testing.T) {
 	// getRenterContract is a helper function that fetches the contract
 	getRenterContract := func() skymodules.RenterContract {
 		host := w.staticHostPubKey
-		rc, found := w.renter.hostContractor.ContractByPublicKey(host)
+		rc, found := w.staticRenter.staticHostContractor.ContractByPublicKey(host)
 		if !found {
 			t.Fatal("unexpected")
 		}

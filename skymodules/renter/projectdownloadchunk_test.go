@@ -260,7 +260,7 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal("unexpected")
 	}
-	renter.log = logger
+	renter.staticLog = logger
 	pcws.staticRenter = renter
 
 	pdc := new(projectDownloadChunk)

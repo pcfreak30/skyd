@@ -251,14 +251,14 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 	// Close the stream when done.
 	defer func() {
 		if err := stream.Close(); err != nil {
-			w.renter.log.Print("managedHandleNotification: failed to close stream: ", err)
+			w.staticRenter.staticLog.Print("managedHandleNotification: failed to close stream: ", err)
 		}
 	}()
 
 	// The stream should have a sane deadline.
 	err := stream.SetDeadline(time.Now().Add(defaultNewStreamTimeout))
 	if err != nil {
-		w.renter.log.Print("managedHandleNotification: failed to set deadlien on stream: ", err)
+		w.staticRenter.staticLog.Print("managedHandleNotification: failed to set deadlien on stream: ", err)
 		return
 	}
 
@@ -266,7 +266,7 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 	var snt modules.RPCRegistrySubscriptionNotificationType
 	err = modules.RPCRead(stream, &snt)
 	if err != nil {
-		w.renter.log.Print("managedHandleNotification: failed to read notification type: ", err)
+		w.staticRenter.staticLog.Print("managedHandleNotification: failed to read notification type: ", err)
 		return
 	}
 
@@ -274,21 +274,21 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 	switch snt.Type {
 	case modules.SubscriptionResponseSubscriptionSuccess:
 		if err := nh.managedHandleSubscriptionSuccess(stream, limit); err != nil {
-			w.renter.log.Print("managedHAndleSubscriptionSuccess:", err)
+			w.staticRenter.staticLog.Print("managedHAndleSubscriptionSuccess:", err)
 		}
 		return
 	case modules.SubscriptionResponseRegistryValue:
 		if err := nh.managedHandleRegistryEntry(stream, budget, limit); err != nil {
-			w.renter.log.Print("managedHandleRegistryEntry:", err)
+			w.staticRenter.staticLog.Print("managedHandleRegistryEntry:", err)
 		}
 		return
 	default:
 	}
 
 	// TODO: (f/u) Punish the host by adding a subscription cooldown.
-	w.renter.log.Print("managedHandleNotification: unknown notification type")
+	w.staticRenter.staticLog.Print("managedHandleNotification: unknown notification type")
 	if err := nh.staticStream.Close(); err != nil {
-		w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
+		w.staticRenter.staticLog.Debugln("managedHandleNotification: failed to close subscription:", err)
 	}
 }
 
@@ -431,14 +431,14 @@ func (w *worker) managedRefillSubscription(stream siamux.Stream, pt *modules.RPC
 	// Fund the subscription.
 	err := w.managedFundSubscription(stream, pt, fundAmt)
 	if err != nil {
-		w.staticAccount.managedCommitWithdrawal(fundAmt, false)
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, fundAmt, types.ZeroCurrency, false)
 		return errors.AddContext(err, "failed to fund subscription")
 	}
 
 	// Success. Add the funds to the budget and signal to the account
 	// that the withdrawal was successful.
 	budget.Deposit(fundAmt)
-	w.staticAccount.managedCommitWithdrawal(fundAmt, true)
+	w.staticAccount.managedCommitWithdrawal(categorySubscription, fundAmt, types.ZeroCurrency, true)
 	return nil
 }
 
@@ -460,7 +460,7 @@ func (w *worker) managedSubscriptionCleanup(stream siamux.Stream, subscriber str
 	time.Sleep(stopSubscriptionGracePeriod)
 
 	// Close the handler.
-	err = errors.Compose(err, w.renter.staticMux.CloseListener(subscriber))
+	err = errors.Compose(err, w.staticRenter.staticMux.CloseListener(subscriber))
 
 	// Clear the active subscriptions at the end of this method.
 	subInfo.managedClearSubscriptions()
@@ -546,7 +546,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 		staticPTUpdatedChan: make(chan struct{}),
 		notificationCost:    pt.SubscriptionNotificationCost,
 	}
-	err = w.renter.staticMux.NewListenerSerial(subscriber, func(stream siamux.Stream) {
+	err = w.staticRenter.staticMux.NewListenerSerial(subscriber, func(stream siamux.Stream) {
 		nh.managedHandleNotification(stream, budget, limit)
 	})
 	if err != nil {
@@ -639,7 +639,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		// a price table that is at least valid for another 5 minutes. The
 		// SubscriptionPeriod also happens to be 5 minutes but we renew 2.5
 		// minutes before it ends.
-		w.renter.log.Printf("managedPriceTableForSubscription: pt not ready yet for worker %v", w.staticHostPubKeyStr)
+		w.staticRenter.staticLog.Printf("managedPriceTableForSubscription: pt not ready yet for worker %v", w.staticHostPubKeyStr)
 
 		// Trigger an update by setting the update time to now and calling
 		// 'staticWake'.
@@ -659,7 +659,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 
 		// Wait a bit before checking again.
 		select {
-		case _ = <-w.renter.tg.StopChan():
+		case _ = <-w.staticRenter.tg.StopChan():
 			return nil // shutdown
 		case <-time.After(priceTableRetryInterval):
 		}
@@ -702,7 +702,7 @@ func (w *worker) threadedSubscriptionLoop() {
 	}
 
 	// Disable loop if necessary.
-	if w.renter.deps.Disrupt("DisableSubscriptionLoop") {
+	if w.staticRenter.staticDeps.Disrupt("DisableSubscriptionLoop") {
 		return
 	}
 
@@ -767,32 +767,29 @@ func (w *worker) threadedSubscriptionLoop() {
 		stream, err := w.managedBeginSubscription(initialBudget, w.staticAccount.staticID, subscriber)
 		if err != nil {
 			// Mark withdrawal as failed.
-			w.staticAccount.managedCommitWithdrawal(initialBudget, false)
+			w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, types.ZeroCurrency, false)
 
 			// Log error and increment cooldown.
-			w.renter.log.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
+			w.staticRenter.staticLog.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
 			subInfo.managedIncrementCooldown()
 			continue
 		}
-
-		// Commit the withdrawal.
-		w.staticAccount.managedCommitWithdrawal(initialBudget, true)
 
 		// Run the subscription. The error is checked after closing the handler
 		// and the refund.
 		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
-		// Deposit refund. This happens in any case.
+		// Commit the withdrawal now we know the refund.
 		refund := budget.Remaining()
-		w.staticAccount.managedTrackDeposit(refund)
-		w.staticAccount.managedCommitDeposit(refund, true)
+		withdrawal := initialBudget.Sub(refund)
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, withdrawal, refund, true)
 
 		// Check the error.
 		if errors.Contains(errSubscription, threadgroup.ErrStopped) {
 			return // shutdown
 		}
 		if err != nil {
-			w.renter.log.Printf("Worker %v: subscription got interrupted: %v", w.staticHostPubKeyStr, errSubscription)
+			w.staticRenter.staticLog.Printf("Worker %v: subscription got interrupted: %v", w.staticHostPubKeyStr, errSubscription)
 			subInfo.managedIncrementCooldown()
 			continue
 		}
