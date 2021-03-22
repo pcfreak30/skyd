@@ -222,6 +222,13 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 	// Add the duration to the estimate.
 	d := best.staticCompleteTime.Sub(startTime)
 
+	// Sanity check duration is not zero.
+	if d == 0 {
+		err := errors.New("zero duration was passed to AddDatum")
+		build.Critical(err)
+		return
+	}
+
 	// The error is ignored since it only returns an error if the measurement is
 	// outside of the 5 minute bounds the stats were created with.
 	_ = rs.AddDatum(d)

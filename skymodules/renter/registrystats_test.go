@@ -14,13 +14,13 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 	percentile := []float64{0.5}
 	interval := time.Millisecond
 
-	// Add 1ns measurement. This results in the following bucket.
+	// Add 0ms measurement. This results in the following bucket.
 	// pos:   [x]
 	// est:   [1]
 	// count: [1]
 	// The 50th percentile should be 1.
 	bs := newReadRegistryStats(0, interval, decay, percentile)
-	err := bs.AddDatum(1)
+	err := bs.AddDatum(0)
 	if err != nil {
 		t.Fatal(err)
 	}
