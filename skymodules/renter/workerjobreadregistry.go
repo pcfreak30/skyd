@@ -22,6 +22,10 @@ const (
 	// performance is decayed each time a new datapoint is added. The jobs use
 	// an exponential weighted average.
 	jobReadRegistryPerformanceDecay = 0.9
+
+	// minReadRegistrySIDVersion is the minimum host version that supports
+	// reading registry entries by subscription id.
+	minReadRegistrySIDVersion = "1.5.6"
 )
 
 type (
@@ -69,6 +73,12 @@ func parseSignedRegistryValueResponse(resp []byte) ([]byte, uint64, crypto.Signa
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
 func lookupRegistry(w *worker, sid modules.SubscriptionID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*modules.SignedRegistryValue, error) {
+	// Sanity check args first.
+	if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 && (spk == nil || tweak == nil) {
+		err := errors.New("can't call lookupRegistry without pubkey/tweak on legacy hosts")
+		build.Critical(err)
+		return nil, err
+	}
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
@@ -76,7 +86,7 @@ func lookupRegistry(w *worker, sid modules.SubscriptionID, spk *types.SiaPublicK
 	var err error
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
 		refund, err = pb.V154AddReadRegistryInstruction(*spk, *tweak)
-	} else if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.6") < 0 {
+	} else if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 {
 		refund, err = pb.AddReadRegistryInstruction(*spk, *tweak)
 	} else {
 		refund, err = pb.AddReadRegistrySIDInstruction(sid)

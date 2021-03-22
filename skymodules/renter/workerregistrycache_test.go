@@ -88,7 +88,8 @@ func TestRegistryCache(t *testing.T) {
 	// Fill up the cache with numEntries-1 more entries. All have revision
 	// number 1.
 	for i := uint64(1); i < numEntries; i++ {
-		cache.Set(modules.RegistrySubscriptionID(pk, rv.Tweak), registryValue(i, 1), false)
+		tmpRV := registryValue(i, 1)
+		cache.Set(modules.RegistrySubscriptionID(pk, tmpRV.Tweak), tmpRV, false)
 	}
 	if uint64(len(cache.entryMap)) != numEntries || uint64(len(cache.entryList)) != numEntries {
 		t.Fatal("map and list should both have numEntries element")
