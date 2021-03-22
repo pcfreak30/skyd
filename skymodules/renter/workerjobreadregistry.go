@@ -27,8 +27,9 @@ const (
 type (
 	// jobReadRegistry contains information about a ReadRegistry query.
 	jobReadRegistry struct {
-		staticSiaPublicKey types.SiaPublicKey
-		staticTweak        crypto.Hash
+		staticSubscriptionID modules.SubscriptionID
+		staticSiaPublicKey   *types.SiaPublicKey
+		staticTweak          *crypto.Hash
 
 		staticResponseChan chan *jobReadRegistryResponse // Channel to send a response down
 
@@ -55,28 +56,30 @@ type (
 
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
-func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+func parseSignedRegistryValueResponse(resp []byte) ([]byte, uint64, crypto.Signature, error) {
 	if len(resp) < crypto.SignatureSize+8 {
-		return modules.SignedRegistryValue{}, errors.New("failed to parse response due to invalid size")
+		return nil, 0, crypto.Signature{}, errors.New("failed to parse response due to invalid size")
 	}
 	var sig crypto.Signature
 	copy(sig[:], resp[:crypto.SignatureSize])
 	rev := binary.LittleEndian.Uint64(resp[crypto.SignatureSize:])
 	data := resp[crypto.SignatureSize+8:]
-	return modules.NewSignedRegistryValue(tweak, data, rev, sig), nil
+	return data, rev, sig, nil
 }
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
-func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
+func lookupRegistry(w *worker, sid modules.SubscriptionID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*modules.SignedRegistryValue, error) {
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
 	var refund types.Currency
 	var err error
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
-		refund, err = pb.V154AddReadRegistryInstruction(spk, tweak)
+		refund, err = pb.V154AddReadRegistryInstruction(*spk, *tweak)
+	} else if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.6") < 0 {
+		refund, err = pb.AddReadRegistryInstruction(*spk, *tweak)
 	} else {
-		refund, err = pb.AddReadRegistryInstruction(spk, tweak)
+		refund, err = pb.AddReadRegistrySIDInstruction(sid)
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to add read registry instruction")
@@ -114,10 +117,17 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modu
 	}
 
 	// Parse response.
-	rv, err := parseSignedRegistryValueResponse(resp.Output, tweak)
+	data, revision, sig, err := parseSignedRegistryValueResponse(resp.Output)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to parse signed revision response")
 	}
+
+	// If we don't have both the key and tweak, we are done.
+	if spk == nil || tweak == nil {
+		rv := modules.NewSignedRegistryValue(crypto.Hash{}, data, revision, sig)
+		return &rv, nil
+	}
+	rv := modules.NewSignedRegistryValue(*tweak, data, revision, sig)
 
 	// Verify signature.
 	if rv.Verify(spk.ToPublicKey()) != nil {
@@ -128,11 +138,18 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modu
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
 func (w *worker) newJobReadRegistry(ctx context.Context, responseChan chan *jobReadRegistryResponse, spk types.SiaPublicKey, tweak crypto.Hash) *jobReadRegistry {
+	sid := modules.RegistrySubscriptionID(spk, tweak)
+	return w.newJobReadRegistrySID(ctx, responseChan, sid, &spk, &tweak)
+}
+
+// newJobReadRegistry is a helper method to create a new ReadRegistry job.
+func (w *worker) newJobReadRegistrySID(ctx context.Context, responseChan chan *jobReadRegistryResponse, sid modules.SubscriptionID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
 	return &jobReadRegistry{
-		staticSiaPublicKey: spk,
-		staticTweak:        tweak,
-		staticResponseChan: responseChan,
-		jobGeneric:         newJobGeneric(ctx, w.staticJobReadRegistryQueue, nil),
+		staticSiaPublicKey:   spk,
+		staticSubscriptionID: sid,
+		staticTweak:          tweak,
+		staticResponseChan:   responseChan,
+		jobGeneric:           newJobGeneric(ctx, w.staticJobReadRegistryQueue, nil),
 	}
 }
 
@@ -180,7 +197,8 @@ func (j *jobReadRegistry) callExecute() {
 	}
 
 	// Read the value.
-	srv, err := lookupRegistry(w, j.staticSiaPublicKey, j.staticTweak)
+	spk, tweak := j.staticSiaPublicKey, j.staticTweak
+	srv, err := lookupRegistry(w, j.staticSubscriptionID, spk, tweak)
 	if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
@@ -193,14 +211,14 @@ func (j *jobReadRegistry) callExecute() {
 	// TODO: update the cache to store the hash in addition to the revision
 	// number for verifying the pow.
 	if srv != nil {
-		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSiaPublicKey, j.staticTweak)
+		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSubscriptionID)
 		if cached && cachedRevision > srv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-			w.staticRegistryCache.Set(j.staticSiaPublicKey, *srv, true) // adjust the cache
+			w.staticRegistryCache.Set(j.staticSubscriptionID, *srv, true) // adjust the cache
 			return
 		} else if !cached || srv.Revision > cachedRevision {
-			w.staticRegistryCache.Set(j.staticSiaPublicKey, *srv, false) // adjust the cache
+			w.staticRegistryCache.Set(j.staticSubscriptionID, *srv, false) // adjust the cache
 		}
 	}
 
@@ -241,6 +259,32 @@ func (w *worker) initJobReadRegistryQueue() {
 func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
 	jur := w.newJobReadRegistry(ctx, readRegistryRespChan, spk, tweak)
+
+	// Add the job to the queue.
+	if !w.staticJobReadRegistryQueue.callAdd(jur) {
+		return nil, errors.New("worker unavailable")
+	}
+
+	// Wait for the response.
+	var resp *jobReadRegistryResponse
+	select {
+	case <-ctx.Done():
+		return nil, errors.New("ReadRegistry interrupted")
+	case resp = <-readRegistryRespChan:
+	}
+
+	// Sanity check that the finish time was set.
+	if resp.staticCompleteTime.IsZero() {
+		build.Critical("finish time wasn't set")
+	}
+	return resp.staticSignedRegistryValue, resp.staticErr
+}
+
+// ReadRegistrySID is a helper method to run a ReadRegistry job on a worker
+// without a pubkey or tweak.
+func (w *worker) ReadRegistrySID(ctx context.Context, sid modules.SubscriptionID) (*modules.SignedRegistryValue, error) {
+	readRegistryRespChan := make(chan *jobReadRegistryResponse)
+	jur := w.newJobReadRegistrySID(ctx, readRegistryRespChan, sid, nil, nil)
 
 	// Add the job to the queue.
 	if !w.staticJobReadRegistryQueue.callAdd(jur) {

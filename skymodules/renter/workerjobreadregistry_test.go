@@ -61,6 +61,19 @@ func TestReadRegistryJob(t *testing.T) {
 		t.Log(rv)
 		t.Fatal("entries don't match")
 	}
+
+	// Do it again without the pubkey or tweak. Should also work.
+	lookedUpRV, err = wt.ReadRegistry(context.Background(), spk, rv.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The entries should match.
+	if !reflect.DeepEqual(*lookedUpRV, rv) {
+		t.Log(lookedUpRV)
+		t.Log(rv)
+		t.Fatal("entries don't match")
+	}
 }
 
 // TestReadRegistryInvalidCached checks that a host can't provide an older
@@ -162,6 +175,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	sid := modules.RegistrySubscriptionID(spk, tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -170,14 +184,14 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	}
 
 	// Make sure the value is in the cache.
-	rev, cached := wt.staticRegistryCache.Get(spk, tweak)
+	rev, cached := wt.staticRegistryCache.Get(sid)
 	if !cached || rev != rv.Revision {
 		t.Fatal("invalid cached value")
 	}
 
 	// Delete the value from the cache.
-	wt.staticRegistryCache.Delete(spk, rv)
-	_, cached = wt.staticRegistryCache.Get(spk, tweak)
+	wt.staticRegistryCache.Delete(modules.RegistrySubscriptionID(spk, rv.Tweak))
+	_, cached = wt.staticRegistryCache.Get(sid)
 	if cached {
 		t.Fatal("value wasn't removed")
 	}
@@ -192,7 +206,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	}
 
 	// Revision should be cached again.
-	rev, cached = wt.staticRegistryCache.Get(spk, tweak)
+	rev, cached = wt.staticRegistryCache.Get(sid)
 	if !cached || rev != rv.Revision {
 		t.Fatal("invalid cached value")
 	}
@@ -207,14 +221,14 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	}
 
 	// Make sure the value is in the cache.
-	rev, cached = wt.staticRegistryCache.Get(spk, tweak)
+	rev, cached = wt.staticRegistryCache.Get(sid)
 	if !cached || rev != rv2.Revision {
 		t.Fatal("invalid cached value")
 	}
 
 	// Set the cache to the earlier revision of rv.
-	wt.staticRegistryCache.Set(spk, rv, true)
-	rev, cached = wt.staticRegistryCache.Get(spk, tweak)
+	wt.staticRegistryCache.Set(sid, rv, true)
+	rev, cached = wt.staticRegistryCache.Get(sid)
 	if !cached || rev != rv.Revision {
 		t.Fatal("invalid cached value")
 	}
@@ -229,7 +243,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	}
 
 	// Revision from rv2 should be cached again.
-	rev, cached = wt.staticRegistryCache.Get(spk, tweak)
+	rev, cached = wt.staticRegistryCache.Get(sid)
 	if !cached || rev != rv2.Revision {
 		t.Fatal("invalid cached value")
 	}

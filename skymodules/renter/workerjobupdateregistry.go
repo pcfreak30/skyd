@@ -90,6 +90,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 func (j *jobUpdateRegistry) callExecute() {
 	start := time.Now()
 	w := j.staticQueue.staticWorker()
+	sid := modules.RegistrySubscriptionID(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
@@ -135,11 +136,11 @@ func (j *jobUpdateRegistry) callExecute() {
 		// have a higher revision number in the cache than the provided one.
 		// TODO: update the cache to store the hash in addition to the revision
 		// number for verifying the pow.
-		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
+		cachedRevision, cached := w.staticRegistryCache.Get(sid)
 		if cached && cachedRevision > rv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-			w.staticRegistryCache.Set(j.staticSiaPublicKey, rv, true) // adjust the cache
+			w.staticRegistryCache.Set(sid, rv, true) // adjust the cache
 			return
 		}
 		sendResponse(&rv, err)
@@ -154,7 +155,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	jobTime := time.Since(start)
 
 	// Update the registry cache.
-	w.staticRegistryCache.Set(j.staticSiaPublicKey, j.staticSignedRegistryValue, false)
+	w.staticRegistryCache.Set(sid, j.staticSignedRegistryValue, false)
 
 	// Send the response and report success.
 	sendResponse(nil, nil)
@@ -213,7 +214,8 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		}
 		if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
 			// Parse the proof.
-			rv, parseErr := parseSignedRegistryValueResponse(resp.Output, j.staticSignedRegistryValue.Tweak)
+			data, revision, sig, parseErr := parseSignedRegistryValueResponse(resp.Output)
+			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig)
 			return rv, errors.Compose(err, parseErr)
 		}
 		if err != nil {

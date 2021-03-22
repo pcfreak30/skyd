@@ -3,9 +3,7 @@ package renter
 import (
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -14,7 +12,7 @@ type (
 	// in memory. It decides randomly which entries to evict to make it more
 	// unpredictable for the host.
 	registryRevisionCache struct {
-		entryMap   map[crypto.Hash]*cachedEntry
+		entryMap   map[modules.SubscriptionID]*cachedEntry
 		entryList  []*cachedEntry
 		maxEntries uint64
 		mu         sync.Mutex
@@ -23,7 +21,7 @@ type (
 	// cachedEntry describes a single cached entry. To make sure we can cache as
 	// many entries as possible, this only contains the necessary information.
 	cachedEntry struct {
-		key      crypto.Hash
+		key      modules.SubscriptionID
 		revision uint64
 	}
 )
@@ -35,19 +33,18 @@ const cachedEntryEstimatedSize = 32 + 8 + 16
 // newRegistryCache creates a new registry cache.
 func newRegistryCache(size uint64) *registryRevisionCache {
 	return &registryRevisionCache{
-		entryMap:   make(map[crypto.Hash]*cachedEntry),
+		entryMap:   make(map[modules.SubscriptionID]*cachedEntry),
 		entryList:  nil,
 		maxEntries: size / cachedEntryEstimatedSize,
 	}
 }
 
 // Get fetches an entry from the cache.
-func (rc *registryRevisionCache) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (uint64, bool) {
+func (rc *registryRevisionCache) Get(sid modules.SubscriptionID) (uint64, bool) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
-	mapKey := crypto.HashAll(pubKey, tweak)
-	cachedEntry, exists := rc.entryMap[mapKey]
+	cachedEntry, exists := rc.entryMap[sid]
 	if !exists {
 		return 0, false
 	}
@@ -56,13 +53,12 @@ func (rc *registryRevisionCache) Get(pubKey types.SiaPublicKey, tweak crypto.Has
 
 // Set sets an entry in the registry. When 'force' is false, settings a lower
 // revision number will be a no-op.
-func (rc *registryRevisionCache) Set(pubKey types.SiaPublicKey, rv modules.SignedRegistryValue, force bool) {
+func (rc *registryRevisionCache) Set(sid modules.SubscriptionID, rv modules.SignedRegistryValue, force bool) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
 	// Check if entry already exists.
-	mapKey := crypto.HashAll(pubKey, rv.Tweak)
-	ce, exists := rc.entryMap[mapKey]
+	ce, exists := rc.entryMap[sid]
 
 	// If it does, update the revision.
 	if exists && (rv.Revision > ce.revision || force) {
@@ -74,10 +70,10 @@ func (rc *registryRevisionCache) Set(pubKey types.SiaPublicKey, rv modules.Signe
 
 	// If it doesn't, create a new one.
 	ce = &cachedEntry{
-		key:      mapKey,
+		key:      sid,
 		revision: rv.Revision,
 	}
-	rc.entryMap[mapKey] = ce
+	rc.entryMap[sid] = ce
 	rc.entryList = append(rc.entryList, ce)
 
 	// Make sure we stay within maxEntries.

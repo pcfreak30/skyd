@@ -45,6 +45,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	sid := modules.RegistrySubscriptionID(spk, tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -53,7 +54,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err := lookupRegistry(wt.worker, spk, tweak)
+	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	wt.staticJobUpdateRegistryQueue.mu.Unlock()
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err = lookupRegistry(wt.worker, spk, tweak)
+	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +170,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err = lookupRegistry(wt.worker, spk, tweak)
+	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,6 +210,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	sid := modules.RegistrySubscriptionID(spk, tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -217,7 +219,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err := lookupRegistry(wt.worker, spk, tweak)
+	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
