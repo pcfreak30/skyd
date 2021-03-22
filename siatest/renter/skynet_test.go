@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -4515,6 +4516,45 @@ func TestReadUnknownRegistryEntry(t *testing.T) {
 	// than readRegistryBackgroundTimeout.
 	if passed >= renter.MaxRegistryReadTimeout || passed <= renter.ReadRegistryBackgroundTimeout {
 		t.Fatalf("%v not between %v and %v", passed, renter.ReadRegistryBackgroundTimeout, renter.MaxRegistryReadTimeout)
+	}
+
+	// The remainder of the test might take a while. Only execute it in vlong
+	// tests.
+	if !build.VLONG {
+		t.SkipNow()
+	}
+
+	// Run 200 reads to lower the p99 below the seed. Do it in batches of 10
+	// reads.
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		for j := 0; j < 10; j++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := r.RegistryRead(spk, crypto.Hash{})
+				if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+					t.Error(err)
+				}
+			}()
+		}
+		wg.Wait()
+	}
+
+	// Verify that the estimate is lower than the timeout after multiple reads
+	// with slow hosts.
+	err = build.Retry(60, time.Second, func() error {
+		ss, err := r.SkynetStatsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ss.RegistryStats.ReadProjectP99 >= renter.ReadRegistryBackgroundTimeout {
+			return fmt.Errorf("%v >= %v", ss.RegistryStats.ReadProjectP99, renter.ReadRegistryBackgroundTimeout)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

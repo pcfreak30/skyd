@@ -177,13 +177,6 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		return // nothing to do
 	}
 
-	// Check for shutdown since collect might have blocked for a while.
-	select {
-	case <-ctx.Done():
-		return // shutdown
-	default:
-	}
-
 	// Find the fastest timing with the highest revision number.
 	var best *jobReadRegistryResponse
 	for _, resp := range resps {
