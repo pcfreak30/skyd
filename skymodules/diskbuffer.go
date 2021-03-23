@@ -1,11 +1,14 @@
 package skymodules
 
 import (
+	"encoding/hex"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 type (
@@ -27,7 +30,8 @@ func NewDiskBuffer() (io.ReadWriteCloser, error) {
 
 // newDiskBuffer creates a disk buffer in the given dir.
 func newDiskBuffer(dir string) (*diskBuffer, error) {
-	f, err := os.CreateTemp(dir, "*")
+	path := filepath.Join(dir, hex.EncodeToString(fastrand.Bytes(20)))
+	f, err := os.Create(path)
 	if err != nil {
 		return nil, err
 	}
