@@ -510,7 +510,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 				if fw == nil {
 					continue
 				}
-				pdc.launchWorker(fw.worker, uint64(i))
+				pdc.launchWorker(fw.worker, uint64(i), false)
 			}
 			return nil
 		}
