@@ -53,12 +53,14 @@ func newTestSubscriptionManager() *testSubscriptionManager {
 
 // Notify implements the subscriptionManager interface. Every notification is
 // tracked.
-func (sm *testSubscriptionManager) Notify(spk types.SiaPublicKey, rv *modules.SignedRegistryValue) {
+func (sm *testSubscriptionManager) Notify(rvs ...modules.RPCRegistrySubscriptionNotificationEntryUpdate) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
-	sm.values[sid] = append(sm.values[sid], rv)
+	for _, rv := range rvs {
+		sid := modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)
+		sm.values[sid] = append(sm.values[sid], &rv.Entry)
+	}
 }
 
 // randomRegistryValue is a helper to create a signed registry value for
