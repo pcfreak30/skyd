@@ -73,12 +73,6 @@ func parseSignedRegistryValueResponse(resp []byte) ([]byte, uint64, crypto.Signa
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
 func lookupRegistry(w *worker, sid modules.SubscriptionID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*modules.SignedRegistryValue, error) {
-	// Sanity check args first.
-	if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 && (spk == nil || tweak == nil) {
-		err := errors.New("can't call lookupRegistry without pubkey/tweak on legacy hosts")
-		build.Critical(err)
-		return nil, err
-	}
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
@@ -206,8 +200,29 @@ func (j *jobReadRegistry) callExecute() {
 		}
 	}
 
-	// Read the value.
+	// Pubkey and tweak should be set for hosts that don't support fetching the
+	// entry by subscription id yet.
 	spk, tweak := j.staticSiaPublicKey, j.staticTweak
+	if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 && (spk == nil || tweak == nil) {
+		err := errors.New("can't call lookupRegistry without pubkey/tweak on legacy hosts")
+		build.Critical(err)
+		sendResponse(nil, err)
+		j.staticQueue.callReportFailure(err)
+		return
+	}
+	// If both are set, they should match the subscription id.
+	if spk != nil && tweak != nil {
+		sid := modules.RegistrySubscriptionID(*spk, *tweak)
+		if sid != j.staticSubscriptionID {
+			err := errors.New("subscription id doesn't match provided pubkey and tweak")
+			build.Critical(err)
+			sendResponse(nil, err)
+			j.staticQueue.callReportFailure(err)
+			return
+		}
+	}
+
+	// Read the value.
 	srv, err := lookupRegistry(w, j.staticSubscriptionID, spk, tweak)
 	if err != nil {
 		sendResponse(nil, err)
