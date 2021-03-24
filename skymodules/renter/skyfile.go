@@ -34,6 +34,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"gitlab.com/skynetlabs/skyd/build"
@@ -173,7 +174,7 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 // The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutReader io.Reader) (skymodules.Skylink, error) {
+func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := skymodules.ValidateSkyfileMetadata(skyfileMetadata)
 	if err != nil {
@@ -205,11 +206,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 		return skymodules.Skylink{}, errors.AddContext(err, "error retrieving skyfile metadata bytes")
 	}
 
-	// Create the fanout for the siafile.
-	fanoutBytes, err := skyfileEncodeFanout(fileNode, fanoutReader)
-	if err != nil {
-		return skymodules.Skylink{}, errors.AddContext(err, "unable to encode the fanout of the siafile")
-	}
+	// Check the header size.
 	headerSize := uint64(skymodules.SkyfileLayoutSize + len(metadataBytes) + len(fanoutBytes))
 	if headerSize > modules.SectorSize {
 		return skymodules.Skylink{}, errors.AddContext(ErrMetadataTooBig, fmt.Sprintf("skyfile does not fit in leading chunk - metadata size plus fanout size must be less than %v bytes, metadata size is %v bytes and fanout size is %v bytes", modules.SectorSize-skymodules.SkyfileLayoutSize, len(metadataBytes), len(fanoutBytes)))
@@ -514,21 +511,10 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
 	}
 
-	var fileNode *filesystem.FileNode
-	if sup.DryRun {
-		// In case of a dry-run we don't want to perform the actual upload,
-		// instead we create a filenode that contains all of the data pieces and
-		// their merkle roots.
-		fileNode, err = r.managedCreateFileNodeFromReader(fup, fileReader)
-		if err != nil {
-			return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
-		}
-	} else {
-		// Upload the file using a streamer.
-		fileNode, err = r.callUploadStreamFromReader(fup, fileReader)
-		if err != nil {
-			return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
-		}
+	// Check the upload params first.
+	fileNode, err := r.managedInitUploadStream(fup)
+	if err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "unable to init upload stream")
 	}
 
 	// Defer closing the file
@@ -539,6 +525,49 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		}
 	}()
 
+	// Start a goroutine to compute the fanout during the upload.
+	// The teereader will forward the raw data to a pipe without buffering that
+	// the goroutine reads from to encode the fanout.
+	pipeReader, pipeWriter := io.Pipe()
+	tr := io.TeeReader(fileReader, pipeWriter)
+	var wg sync.WaitGroup
+	var fanout []byte
+	var errFanout error
+	wg.Add(1)
+	go func() {
+		fanout, errFanout = skyfileEncodeFanout(fileNode, pipeReader)
+		wg.Done()
+	}()
+
+	if sup.DryRun {
+		// In case of a dry-run we don't want to perform the actual upload,
+		// instead we create a filenode that contains all of the data pieces and
+		// their merkle roots.
+		fileNode, err = r.managedCreateFileNodeFromReader(fileNode, tr)
+		if err != nil {
+			err = errors.Compose(err, pipeWriter.Close())
+			return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
+		}
+	} else {
+		// Upload the file using a streamer.
+		err = r.callUploadStreamFromReader(fileNode, tr)
+		if err != nil {
+			err = errors.Compose(err, pipeWriter.Close())
+			return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
+		}
+	}
+
+	// Close the pipe writer to make the reader return io.EOF.
+	if err := pipeWriter.Close(); err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "unable to close pipewriter")
+	}
+	wg.Wait()
+
+	// Check fanout error.
+	if errFanout != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "failed to compute fanout")
+	}
+
 	// Get the SkyfileMetadata from the reader object.
 	metadata, err := fileReader.SkyfileMetadata(r.tg.StopCtx())
 	if err != nil {
@@ -547,7 +576,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	skylink, err := r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fileReader.FanoutReader())
+	skylink, err := r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fanout)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create skylink from filenode")
 	}
