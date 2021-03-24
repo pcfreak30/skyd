@@ -190,10 +190,10 @@ func (c *Contractor) managedCancelAllowance() error {
 		s, sok := c.sessions[id]
 		c.mu.RUnlock()
 		if eok {
-			e.invalidate()
+			e.callInvalidate()
 		}
 		if sok {
-			s.invalidate()
+			s.callInvalidate()
 		}
 	}
 

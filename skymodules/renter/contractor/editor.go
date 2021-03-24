@@ -45,20 +45,22 @@ type Editor interface {
 type hostEditor struct {
 	clients    int // safe to Close when 0
 	contractor *Contractor
-	editor     *proto.Editor
-	endHeight  types.BlockHeight
-	id         types.FileContractID
-	invalid    bool // true if invalidate has been called
-	netAddress modules.NetAddress
+	editor     *proto.Editor // TODO is this static? the proto.Editor doesn't have a mutex
+	invalid    bool          // true if invalidate has been called
+
+	// Static Fields
+	staticEndHeight  types.BlockHeight
+	staticID         types.FileContractID
+	staticNetAddress modules.NetAddress
 
 	mu sync.Mutex
 }
 
-// invalidate sets the invalid flag and closes the underlying proto.Editor.
-// Once invalidate returns, the hostEditor is guaranteed to not further revise
-// its contract. This is used during contract renewal to prevent an Editor
-// from revising a contract mid-renewal.
-func (he *hostEditor) invalidate() {
+// callInvalidate sets the invalid flag and closes the underlying proto.Editor.
+// Once callInvalidate returns, the hostEditor is guaranteed to not further
+// revise its contract. This is used during contract renewal to prevent an
+// Editor from revising a contract mid-renewal.
+func (he *hostEditor) callInvalidate() {
 	he.mu.Lock()
 	defer he.mu.Unlock()
 	if !he.invalid {
@@ -66,19 +68,19 @@ func (he *hostEditor) invalidate() {
 		he.invalid = true
 	}
 	he.contractor.mu.Lock()
-	delete(he.contractor.editors, he.id)
+	delete(he.contractor.editors, he.staticID)
 	he.contractor.mu.Unlock()
 }
 
 // Address returns the NetAddress of the host.
-func (he *hostEditor) Address() modules.NetAddress { return he.netAddress }
+func (he *hostEditor) Address() modules.NetAddress { return he.staticNetAddress }
 
 // ContractID returns the id of the contract being revised.
-func (he *hostEditor) ContractID() types.FileContractID { return he.id }
+func (he *hostEditor) ContractID() types.FileContractID { return he.staticID }
 
 // EndHeight returns the height at which the host is no longer obligated to
 // store the file.
-func (he *hostEditor) EndHeight() types.BlockHeight { return he.endHeight }
+func (he *hostEditor) EndHeight() types.BlockHeight { return he.staticEndHeight }
 
 // Close cleanly terminates the revision loop with the host and closes the
 // connection.
@@ -93,7 +95,7 @@ func (he *hostEditor) Close() error {
 	}
 	he.invalid = true
 	he.contractor.mu.Lock()
-	delete(he.contractor.editors, he.id)
+	delete(he.contractor.editors, he.staticID)
 	he.contractor.mu.Unlock()
 	return he.editor.Close()
 }
@@ -185,12 +187,12 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 
 	// cache editor
 	he := &hostEditor{
-		clients:    1,
-		contractor: c,
-		editor:     e,
-		endHeight:  contract.EndHeight,
-		id:         id,
-		netAddress: host.NetAddress,
+		clients:          1,
+		contractor:       c,
+		editor:           e,
+		staticEndHeight:  contract.EndHeight,
+		staticID:         id,
+		staticNetAddress: host.NetAddress,
 	}
 	c.mu.Lock()
 	c.editors[contract.ID] = he

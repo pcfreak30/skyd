@@ -61,20 +61,22 @@ type Session interface {
 type hostSession struct {
 	clients    int // safe to Close when 0
 	contractor *Contractor
-	session    *proto.Session
-	endHeight  types.BlockHeight
-	id         types.FileContractID
-	invalid    bool // true if invalidate has been called
-	netAddress modules.NetAddress
+	session    *proto.Session // is this static? proto.Session doesn't have a mutex
+	invalid    bool           // true if invalidate has been called
+
+	// Static Fields
+	staticEndHeight  types.BlockHeight
+	staticID         types.FileContractID
+	staticNetAddress modules.NetAddress
 
 	mu sync.Mutex
 }
 
-// invalidate sets the invalid flag and closes the underlying proto.Session.
-// Once invalidate returns, the hostSession is guaranteed to not further revise
-// its contract. This is used during contract renewal to prevent an Session
-// from revising a contract mid-renewal.
-func (hs *hostSession) invalidate() {
+// callInvalidate sets the invalid flag and closes the underlying proto.Session.
+// Once callInvalidate returns, the hostSession is guaranteed to not further
+// revise its contract. This is used during contract renewal to prevent an
+// Session from revising a contract mid-renewal.
+func (hs *hostSession) callInvalidate() {
 	hs.mu.Lock()
 	defer hs.mu.Unlock()
 	if hs.invalid {
@@ -82,13 +84,13 @@ func (hs *hostSession) invalidate() {
 	}
 	hs.session.Close()
 	hs.contractor.mu.Lock()
-	delete(hs.contractor.sessions, hs.id)
+	delete(hs.contractor.sessions, hs.staticID)
 	hs.contractor.mu.Unlock()
 	hs.invalid = true
 }
 
 // Address returns the NetAddress of the host.
-func (hs *hostSession) Address() modules.NetAddress { return hs.netAddress }
+func (hs *hostSession) Address() modules.NetAddress { return hs.staticNetAddress }
 
 // Close cleanly terminates the revision loop with the host and closes the
 // connection.
@@ -103,14 +105,14 @@ func (hs *hostSession) Close() error {
 	}
 	hs.invalid = true
 	hs.contractor.mu.Lock()
-	delete(hs.contractor.sessions, hs.id)
+	delete(hs.contractor.sessions, hs.staticID)
 	hs.contractor.mu.Unlock()
 
 	return hs.session.Close()
 }
 
 // ContractID returns the ID of the contract being revised.
-func (hs *hostSession) ContractID() types.FileContractID { return hs.id }
+func (hs *hostSession) ContractID() types.FileContractID { return hs.staticID }
 
 // Download retrieves the sector with the specified Merkle root, and revises
 // the underlying contract to pay the host proportionally to the data
@@ -157,7 +159,7 @@ func (hs *hostSession) DownloadIndex(index uint64, offset, length uint32) ([]byt
 
 // EndHeight returns the height at which the host is no longer obligated to
 // store the file.
-func (hs *hostSession) EndHeight() types.BlockHeight { return hs.endHeight }
+func (hs *hostSession) EndHeight() types.BlockHeight { return hs.staticEndHeight }
 
 // Upload negotiates a revision that adds a sector to a file contract.
 func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
@@ -258,12 +260,12 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 
 	// cache session
 	hs := &hostSession{
-		clients:    1,
-		contractor: c,
-		session:    s,
-		endHeight:  contract.EndHeight,
-		id:         id,
-		netAddress: host.NetAddress,
+		clients:          1,
+		contractor:       c,
+		session:          s,
+		staticEndHeight:  contract.EndHeight,
+		staticID:         id,
+		staticNetAddress: host.NetAddress,
 	}
 	c.mu.Lock()
 	c.sessions[contract.ID] = hs

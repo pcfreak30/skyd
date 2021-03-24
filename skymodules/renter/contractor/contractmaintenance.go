@@ -805,7 +805,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.mu.RUnlock()
 	if eok {
 		c.staticLog.Debugln("Waiting for editor invalidation")
-		e.invalidate()
+		e.callInvalidate()
 		c.staticLog.Debugln("Got editor invalidation")
 	}
 	if dok {
@@ -821,7 +821,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		return
 	}
 	c.staticLog.Debugln("Waiting for session invalidation")
-	s.invalidate()
+	s.callInvalidate()
 	c.staticLog.Debugln("Got session invalidation")
 
 	// Perform the actual renew. If the renew fails, return the
