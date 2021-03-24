@@ -281,7 +281,7 @@ func (c *Contractor) callInterruptContractMaintenance() {
 		select {
 		case <-gotLock:
 			return
-		case c.interruptMaintenance <- struct{}{}:
+		case c.staticInterruptMaintenance <- struct{}{}:
 			c.staticLog.Debugln("Signal sent to interrupt contract maintenance")
 		}
 	}
@@ -1266,7 +1266,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		case <-c.staticTG.StopChan():
 			c.staticLog.Println("returning because the renter was stopped")
 			return
-		case <-c.interruptMaintenance:
+		case <-c.staticInterruptMaintenance:
 			c.staticLog.Println("returning because maintenance was interrupted")
 			return
 		default:
@@ -1309,7 +1309,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		case <-c.staticTG.StopChan():
 			c.staticLog.Println("returning because the renter was stopped")
 			return
-		case <-c.interruptMaintenance:
+		case <-c.staticInterruptMaintenance:
 			c.staticLog.Println("returning because maintenance was interrupted")
 			return
 		default:
@@ -1409,7 +1409,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		case <-c.staticTG.StopChan():
 			c.staticLog.Println("returning because the renter was stopped")
 			return
-		case <-c.interruptMaintenance:
+		case <-c.staticInterruptMaintenance:
 			c.staticLog.Println("returning because maintenance was interrupted")
 			return
 		default:
@@ -1522,7 +1522,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		select {
 		case <-c.staticTG.StopChan():
 			return
-		case <-c.interruptMaintenance:
+		case <-c.staticInterruptMaintenance:
 			return
 		default:
 		}

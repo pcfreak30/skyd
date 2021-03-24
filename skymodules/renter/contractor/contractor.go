@@ -65,8 +65,8 @@ type Contractor struct {
 	persistDir string
 
 	// Only one thread should be performing contract maintenance at a time.
-	interruptMaintenance chan struct{}
-	maintenanceLock      siasync.TryMutex
+	staticInterruptMaintenance chan struct{}
+	maintenanceLock            siasync.TryMutex
 
 	// Only one thread should be scanning the blockchain for recoverable
 	// contracts at a time.
@@ -481,8 +481,8 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		staticTPool:   tp,
 		staticWallet:  w,
 
-		interruptMaintenance: make(chan struct{}),
-		synced:               make(chan struct{}),
+		staticInterruptMaintenance: make(chan struct{}),
+		synced:                     make(chan struct{}),
 
 		staticContracts:      contractSet,
 		downloaders:          make(map[types.FileContractID]*hostDownloader),
