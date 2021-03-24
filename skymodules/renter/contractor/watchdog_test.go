@@ -240,7 +240,7 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 		transactionPool: c.tpool,
 	}
 	c.staticWatchdog.mu.Lock()
-	c.staticWatchdog.tpool = gatedTpool
+	c.staticWatchdog.staticTPool = gatedTpool
 	c.staticWatchdog.mu.Unlock()
 
 	// Mine a block, and check that the watchdog finds it, and is watching for the
@@ -494,7 +494,7 @@ func TestWatchdogStorageProofCheck(t *testing.T) {
 		transactionPool: c.tpool,
 	}
 	c.staticWatchdog.mu.Lock()
-	c.staticWatchdog.tpool = gatedTpool
+	c.staticWatchdog.staticTPool = gatedTpool
 	c.staticWatchdog.mu.Unlock()
 
 	// Mine a block, and check that the watchdog finds it, and is watching for the
@@ -727,7 +727,7 @@ func TestWatchdogPruning(t *testing.T) {
 		transactionPool: c.tpool,
 	}
 	c.staticWatchdog.mu.Lock()
-	c.staticWatchdog.tpool = gatedTpool
+	c.staticWatchdog.staticTPool = gatedTpool
 	c.staticWatchdog.mu.Unlock()
 
 	// Signal the watchdog with this file contract and formation transaction.
