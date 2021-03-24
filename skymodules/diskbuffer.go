@@ -12,6 +12,21 @@ import (
 )
 
 type (
+	// DiskBuffer defines the interface for a buffer that stores its contents on
+	// disk. All the data written to it will be written to a file without
+	// syncing. After the last bit of data is written to the buffer it needs to
+	// be closed with Close and after io.EOF is returned by the buffer Cleanup
+	// needs to be called to remove it from disk.
+	DiskBuffer interface {
+		io.ReadWriteCloser
+
+		// Cleanup removes the buffer from disk. This should be called by the
+		// reading side when it is clear that no more data will be read from the
+		// buffer.
+		Cleanup() error
+	}
+
+	// diskBuffer implements the DiskBuffer interface.
 	diskBuffer struct {
 		staticFile      *os.File
 		staticWriteChan chan struct{}
@@ -24,7 +39,7 @@ type (
 )
 
 // NewDiskBuffer creates a new disk buffer.
-func NewDiskBuffer() (io.ReadWriteCloser, error) {
+func NewDiskBuffer() (DiskBuffer, error) {
 	return newDiskBuffer(os.TempDir())
 }
 
