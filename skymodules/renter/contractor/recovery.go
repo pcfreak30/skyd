@@ -34,7 +34,7 @@ type recoveryScanner struct {
 }
 
 // newRecoveryScanner creates a new scanner from a seed.
-func (c *Contractor) newRecoveryScanner(rs skymodules.RenterSeed) *recoveryScanner {
+func newRecoveryScanner(c *Contractor, rs skymodules.RenterSeed) *recoveryScanner {
 	return &recoveryScanner{
 		c:  c,
 		rs: rs,

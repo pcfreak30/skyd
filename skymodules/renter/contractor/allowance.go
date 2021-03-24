@@ -61,7 +61,11 @@ func (c *Contractor) SetAllowance(a skymodules.Allowance) error {
 	if reflect.DeepEqual(a, skymodules.Allowance{}) {
 		return c.managedCancelAllowance()
 	}
-	if reflect.DeepEqual(a, c.allowance) {
+
+	c.mu.Lock()
+	noChange := reflect.DeepEqual(a, c.allowance)
+	c.mu.Unlock()
+	if noChange {
 		return nil
 	}
 

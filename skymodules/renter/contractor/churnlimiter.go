@@ -30,8 +30,8 @@ type churnLimiter struct {
 	// churned in the current period.
 	aggregateCurrentPeriodChurn uint64
 
-	mu         sync.Mutex
-	contractor *Contractor
+	mu               sync.Mutex
+	staticContractor *Contractor
 }
 
 // churnLimiterPersist is the persisted state of a churnLimiter.
@@ -42,7 +42,7 @@ type churnLimiterPersist struct {
 
 // managedMaxPeriodChurn returns the MaxPeriodChurn of the churnLimiter.
 func (cl *churnLimiter) managedMaxPeriodChurn() uint64 {
-	return cl.contractor.Allowance().MaxPeriodChurn
+	return cl.staticContractor.Allowance().MaxPeriodChurn
 }
 
 // callPersistData returns the churnLimiterPersist corresponding to this
@@ -56,7 +56,7 @@ func (cl *churnLimiter) callPersistData() churnLimiterPersist {
 // newChurnLimiterFromPersist creates a new churnLimiter using persisted state.
 func newChurnLimiterFromPersist(contractor *Contractor, persistData churnLimiterPersist) *churnLimiter {
 	return &churnLimiter{
-		contractor:                  contractor,
+		staticContractor:            contractor,
 		aggregateCurrentPeriodChurn: persistData.AggregateCurrentPeriodChurn,
 		remainingChurnBudget:        persistData.RemainingChurnBudget,
 	}
@@ -64,7 +64,7 @@ func newChurnLimiterFromPersist(contractor *Contractor, persistData churnLimiter
 
 // newChurnLimiter returns a new churnLimiter.
 func newChurnLimiter(contractor *Contractor) *churnLimiter {
-	return &churnLimiter{contractor: contractor}
+	return &churnLimiter{staticContractor: contractor}
 }
 
 // ChurnStatus returns the current period's aggregate churn and the max churn
@@ -81,7 +81,7 @@ func (c *Contractor) ChurnStatus() skymodules.ContractorChurnStatus {
 // method must be called at the beginning of every new period.
 func (cl *churnLimiter) callResetAggregateChurn() {
 	cl.mu.Lock()
-	cl.contractor.staticLog.Println("Aggregate Churn for last period: ", cl.aggregateCurrentPeriodChurn)
+	cl.staticContractor.staticLog.Println("Aggregate Churn for last period: ", cl.aggregateCurrentPeriodChurn)
 	cl.aggregateCurrentPeriodChurn = 0
 	cl.mu.Unlock()
 }
@@ -100,8 +100,8 @@ func (cl *churnLimiter) callNotifyChurnedContract(contract skymodules.RenterCont
 
 	cl.aggregateCurrentPeriodChurn += size
 	cl.remainingChurnBudget -= int(size)
-	cl.contractor.staticLog.Debugf("Increasing aggregate churn by %d to %d (MaxPeriodChurn: %d)", size, cl.aggregateCurrentPeriodChurn, maxPeriodChurn)
-	cl.contractor.staticLog.Debugf("Remaining churn budget: %d", cl.remainingChurnBudget)
+	cl.staticContractor.staticLog.Debugf("Increasing aggregate churn by %d to %d (MaxPeriodChurn: %d)", size, cl.aggregateCurrentPeriodChurn, maxPeriodChurn)
+	cl.staticContractor.staticLog.Debugf("Remaining churn budget: %d", cl.remainingChurnBudget)
 }
 
 // callBumpChurnBudget increases the churn budget by a fraction of the max churn
@@ -124,7 +124,7 @@ func (cl *churnLimiter) callBumpChurnBudget(numBlocksAdded int, period types.Blo
 	if cl.remainingChurnBudget > maxChurnBudget {
 		cl.remainingChurnBudget = maxChurnBudget
 	}
-	cl.contractor.staticLog.Debugf("Updated churn budget: %d", cl.remainingChurnBudget)
+	cl.staticContractor.staticLog.Debugf("Updated churn budget: %d", cl.remainingChurnBudget)
 }
 
 // managedMaxChurnBudget returns the max allowed value for remainingChurnBudget.
@@ -153,18 +153,18 @@ func (cl *churnLimiter) managedProcessSuggestedUpdates(queue []contractScoreAndU
 		turnedNotGFR := queuedContract.contract.Utility.GoodForRenew && !queuedContract.util.GoodForRenew
 		churningThisContract := turnedNotGFR && cl.managedCanChurnContract(queuedContract.contract)
 		if turnedNotGFR && !churningThisContract {
-			cl.contractor.staticLog.Debugln("Avoiding churn on contract: ", queuedContract.contract.ID)
+			cl.staticContractor.staticLog.Debugln("Avoiding churn on contract: ", queuedContract.contract.ID)
 			currentBudget, periodBudget := cl.managedChurnBudget()
-			cl.contractor.staticLog.Debugf("Remaining Churn Budget: %d. Remaining Period Budget: %d", currentBudget, periodBudget)
+			cl.staticContractor.staticLog.Debugf("Remaining Churn Budget: %d. Remaining Period Budget: %d", currentBudget, periodBudget)
 			queuedContract.util.GoodForRenew = true
 		}
 
 		if churningThisContract {
-			cl.contractor.staticLog.Println("Churning contract for bad score: ", queuedContract.contract.ID, queuedContract.score)
+			cl.staticContractor.staticLog.Println("Churning contract for bad score: ", queuedContract.contract.ID, queuedContract.score)
 		}
 
 		// Apply changes.
-		err := cl.contractor.managedAcquireAndUpdateContractUtility(queuedContract.contract.ID, queuedContract.util)
+		err := cl.staticContractor.managedAcquireAndUpdateContractUtility(queuedContract.contract.ID, queuedContract.util)
 		if err != nil {
 			return err
 		}

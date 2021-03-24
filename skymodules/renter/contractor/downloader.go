@@ -46,11 +46,11 @@ type hostDownloader struct {
 	mu           sync.Mutex
 }
 
-// invalidate sets the invalid flag and closes the underlying
-// proto.Downloader. Once invalidate returns, the hostDownloader is guaranteed
-// to not further revise its contract. This is used during contract renewal to
-// prevent a Downloader from revising a contract mid-renewal.
-func (hd *hostDownloader) invalidate() {
+// callInvalidate sets the invalid flag and closes the underlying
+// proto.Downloader. Once callInvalidate returns, the hostDownloader is
+// guaranteed to not further revise its contract. This is used during contract
+// renewal to prevent a Downloader from revising a contract mid-renewal.
+func (hd *hostDownloader) callInvalidate() {
 	hd.mu.Lock()
 	defer hd.mu.Unlock()
 	if !hd.invalid {

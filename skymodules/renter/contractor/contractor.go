@@ -623,7 +623,7 @@ func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (
 	// Reset the scan progress before starting the scan.
 	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
 	// Create the scanner.
-	scanner := c.newRecoveryScanner(rs)
+	scanner := newRecoveryScanner(c, rs)
 	// Start the scan.
 	go func() {
 		// Add scanning thread to threadgroup.

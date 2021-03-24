@@ -623,12 +623,12 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 	}
 
 	c.mu.Lock()
-	if reflect.DeepEqual(c.allowance, skymodules.Allowance{}) {
-		c.mu.Unlock()
+	a := c.allowance
+	c.mu.Unlock()
+	if reflect.DeepEqual(a, skymodules.Allowance{}) {
 		return skymodules.RenterContract{}, errors.New("called managedRenew but allowance isn't set")
 	}
-	period := c.allowance.Period
-	c.mu.Unlock()
+	period := a.Period
 
 	if !ok {
 		return skymodules.RenterContract{}, errHostNotFound
@@ -646,7 +646,7 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 	}
 
 	// Check for price gouging on the renewal.
-	err = checkFormContractGouging(c.allowance, host.HostExternalSettings)
+	err = checkFormContractGouging(a, host.HostExternalSettings)
 	if err != nil {
 		return skymodules.RenterContract{}, errors.AddContext(err, "unable to renew - price gouging protection enabled")
 	}
@@ -810,7 +810,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}
 	if dok {
 		c.staticLog.Debugln("Waiting for downloader invalidation")
-		d.invalidate()
+		d.callInvalidate()
 		c.staticLog.Debugln("Got downloader invalidation")
 	}
 
