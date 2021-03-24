@@ -556,6 +556,12 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	}
 	wg.Wait()
 
+	// If there was no reader then the fanout creation failed. We need to create
+	// the fanout from the fileNode in that case.
+	if fileReader == nil {
+		fanout, errFanout = skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
+	}
+
 	// Check fanout error.
 	if errFanout != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to compute fanout")
