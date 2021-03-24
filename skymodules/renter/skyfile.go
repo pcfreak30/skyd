@@ -527,6 +527,8 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	// Start a goroutine to compute the fanout during the upload.
 	// The teereader will forward the raw data to a pipe without buffering that
 	// the goroutine reads from to encode the fanout.
+	// TODO (f/u): we should replace this code with a custom fanout writer
+	// instead of using a pipe and goroutine as a long term fix.
 	pipeReader, pipeWriter := io.Pipe()
 	tr := io.TeeReader(fileReader, pipeWriter)
 	var wg sync.WaitGroup
