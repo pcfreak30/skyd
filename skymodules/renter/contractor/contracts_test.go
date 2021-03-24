@@ -37,7 +37,7 @@ func TestPubkeysToContractIDMap(t *testing.T) {
 
 	// get the host's entry from the db
 	pk := h.PublicKey()
-	hostEntry, ok, err := c.hdb.Host(pk)
+	hostEntry, ok, err := c.staticHDB.Host(pk)
 	if err != nil {
 		t.Fatal(err)
 	}

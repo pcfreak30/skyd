@@ -77,19 +77,19 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 	if deadScore || (badScore && !paymentContract) {
 		// Log if the utility has changed.
 		if u.GoodForUpload || u.GoodForRenew {
-			c.log.Printf("Marking contract as having no utility because of host score: %v", contract.ID)
-			c.log.Println("Min Score:", minScoreGFR)
-			c.log.Println("Score:    ", sb.Score)
-			c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
-			c.log.Println("Base Price Adjustment: ", sb.BasePriceAdjustment)
-			c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
-			c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
-			c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
-			c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
-			c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
-			c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
-			c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
-			c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
+			c.staticLog.Printf("Marking contract as having no utility because of host score: %v", contract.ID)
+			c.staticLog.Println("Min Score:", minScoreGFR)
+			c.staticLog.Println("Score:    ", sb.Score)
+			c.staticLog.Println("Age Adjustment:        ", sb.AgeAdjustment)
+			c.staticLog.Println("Base Price Adjustment: ", sb.BasePriceAdjustment)
+			c.staticLog.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+			c.staticLog.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+			c.staticLog.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+			c.staticLog.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+			c.staticLog.Println("Price Adjustment:      ", sb.PriceAdjustment)
+			c.staticLog.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+			c.staticLog.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+			c.staticLog.Println("Version Adjustment:    ", sb.VersionAdjustment)
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = false
@@ -100,29 +100,29 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 		if deadScore {
 			return u, necessaryUtilityUpdate
 		}
-		c.log.Println("Adding contract utility update to churnLimiter queue")
+		c.staticLog.Println("Adding contract utility update to churnLimiter queue")
 		return u, suggestedUtilityUpdate
 	}
 
 	// Contract should not be used for uplodaing if the score is poor.
 	if !minScoreGFU.IsZero() && sb.Score.Cmp(minScoreGFU) < 0 {
 		if u.GoodForUpload {
-			c.log.Printf("Marking contract as not good for upload because of a poor score: %v", contract.ID)
-			c.log.Println("Min Score:", minScoreGFU)
-			c.log.Println("Score:    ", sb.Score)
-			c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
-			c.log.Println("Base Price Adjustment: ", sb.BasePriceAdjustment)
-			c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
-			c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
-			c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
-			c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
-			c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
-			c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
-			c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
-			c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
+			c.staticLog.Printf("Marking contract as not good for upload because of a poor score: %v", contract.ID)
+			c.staticLog.Println("Min Score:", minScoreGFU)
+			c.staticLog.Println("Score:    ", sb.Score)
+			c.staticLog.Println("Age Adjustment:        ", sb.AgeAdjustment)
+			c.staticLog.Println("Base Price Adjustment: ", sb.BasePriceAdjustment)
+			c.staticLog.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+			c.staticLog.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+			c.staticLog.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+			c.staticLog.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+			c.staticLog.Println("Price Adjustment:      ", sb.PriceAdjustment)
+			c.staticLog.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+			c.staticLog.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+			c.staticLog.Println("Version Adjustment:    ", sb.VersionAdjustment)
 		}
 		if !u.GoodForRenew {
-			c.log.Println("Marking contract as being good for renew", contract.ID)
+			c.staticLog.Println("Marking contract as being good for renew", contract.ID)
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = true
@@ -195,13 +195,13 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host s
 // used to update the contract state.
 func (c *Contractor) managedHostInHostDBCheck(contract skymodules.RenterContract) (skymodules.HostDBEntry, skymodules.ContractUtility, bool) {
 	u := contract.Utility
-	host, exists, err := c.hdb.Host(contract.HostPublicKey)
+	host, exists, err := c.staticHDB.Host(contract.HostPublicKey)
 	// Contract has no utility if the host is not in the database. Or is
 	// filtered by the blacklist or whitelist. Or if there was an error
 	if !exists || host.Filtered || err != nil {
 		// Log if the utility has changed.
 		if u.GoodForUpload || u.GoodForRenew {
-			c.log.Printf("Marking contract as having no utility because found in hostDB: %v, or host is Filtered: %v - %v", exists, host.Filtered, contract.ID)
+			c.staticLog.Printf("Marking contract as having no utility because found in hostDB: %v, or host is Filtered: %v - %v", exists, host.Filtered, contract.ID)
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = false
@@ -225,7 +225,7 @@ func (c *Contractor) offlineCheck(contract skymodules.RenterContract, host skymo
 	if isOffline(host) {
 		// Log if the utility has changed.
 		if u.GoodForUpload || u.GoodForRenew {
-			c.log.Println("Marking contract as having no utility because of host being offline", contract.ID)
+			c.staticLog.Println("Marking contract as having no utility because of host being offline", contract.ID)
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = false
@@ -243,10 +243,10 @@ func (c *Contractor) upForRenewalCheck(contract skymodules.RenterContract, renew
 	// renew the contract.
 	if blockHeight+renewWindow >= contract.EndHeight {
 		if u.GoodForUpload {
-			c.log.Println("Marking contract as not good for upload because it is time to renew the contract", contract.ID)
+			c.staticLog.Println("Marking contract as not good for upload because it is time to renew the contract", contract.ID)
 		}
 		if !u.GoodForRenew {
-			c.log.Println("Marking contract as being good for renew:", contract.ID)
+			c.staticLog.Println("Marking contract as being good for renew:", contract.ID)
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = true
@@ -273,10 +273,10 @@ func (c *Contractor) sufficientFundsCheck(contract skymodules.RenterContract, ho
 	percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
 	if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundUploadThreshold {
 		if u.GoodForUpload {
-			c.log.Printf("Marking contract as not good for upload because of insufficient funds: %v vs. %v - %v", contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0, percentRemaining, contract.ID)
+			c.staticLog.Printf("Marking contract as not good for upload because of insufficient funds: %v vs. %v - %v", contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0, percentRemaining, contract.ID)
 		}
 		if !u.GoodForRenew {
-			c.log.Println("Marking contract as being good for renew:", contract.ID)
+			c.staticLog.Println("Marking contract as being good for renew:", contract.ID)
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = true
@@ -297,10 +297,10 @@ func (c *Contractor) outOfStorageCheck(contract skymodules.RenterContract, block
 	// Contract should not be used for uploading if the host is out of storage.
 	if blockHeight-u.LastOOSErr <= oosRetryInterval {
 		if u.GoodForUpload {
-			c.log.Println("Marking contract as not being good for upload due to the host running out of storage:", contract.ID)
+			c.staticLog.Println("Marking contract as not being good for upload due to the host running out of storage:", contract.ID)
 		}
 		if !u.GoodForRenew {
-			c.log.Println("Marking contract as being good for renew:", contract.ID)
+			c.staticLog.Println("Marking contract as being good for renew:", contract.ID)
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = true

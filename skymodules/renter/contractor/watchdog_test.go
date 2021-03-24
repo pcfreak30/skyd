@@ -237,7 +237,7 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 			logTxns: true,
 			txnSets: make([][]types.Transaction, 0, 0),
 		},
-		transactionPool: c.tpool,
+		transactionPool: c.staticTPool,
 	}
 	c.staticWatchdog.mu.Lock()
 	c.staticWatchdog.staticTPool = gatedTpool
@@ -491,7 +491,7 @@ func TestWatchdogStorageProofCheck(t *testing.T) {
 			logTxns: true,
 			txnSets: make([][]types.Transaction, 0, 0),
 		},
-		transactionPool: c.tpool,
+		transactionPool: c.staticTPool,
 	}
 	c.staticWatchdog.mu.Lock()
 	c.staticWatchdog.staticTPool = gatedTpool
@@ -724,7 +724,7 @@ func TestWatchdogPruning(t *testing.T) {
 			logTxns: true,
 			txnSets: make([][]types.Transaction, 0, 0),
 		},
-		transactionPool: c.tpool,
+		transactionPool: c.staticTPool,
 	}
 	c.staticWatchdog.mu.Lock()
 	c.staticWatchdog.staticTPool = gatedTpool

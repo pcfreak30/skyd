@@ -157,7 +157,7 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	if !haveContract {
 		return nil, errors.New("contract was not found in the renter's contract set")
 	}
-	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
+	host, haveHost, err := c.staticHDB.Host(contract.HostPublicKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	} else if height > contract.EndHeight {
@@ -178,7 +178,7 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	}
 
 	// Create the editor.
-	e, err := c.staticContracts.NewEditor(host, contract.ID, height, c.hdb, cancel)
+	e, err := c.staticContracts.NewEditor(host, contract.ID, height, c.staticHDB, cancel)
 	if err != nil {
 		return nil, err
 	}

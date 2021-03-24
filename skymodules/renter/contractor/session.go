@@ -232,7 +232,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	if !haveContract {
 		return nil, errors.New("contract not found in the renter contract set")
 	}
-	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
+	host, haveHost, err := c.staticHDB.Host(contract.HostPublicKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	} else if height > contract.EndHeight {
@@ -248,7 +248,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	}
 
 	// Create the session.
-	s, err := c.staticContracts.NewSession(host, id, height, c.hdb, c.log.Logger, cancel)
+	s, err := c.staticContracts.NewSession(host, id, height, c.staticHDB, c.staticLog.Logger, cancel)
 	if modules.IsContractNotRecognizedErr(err) {
 		err = errors.Compose(err, c.MarkContractBad(id))
 	}

@@ -136,7 +136,7 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 	if !haveContract {
 		return nil, errors.New("contract not found in renter's contract set")
 	}
-	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
+	host, haveHost, err := c.staticHDB.Host(contract.HostPublicKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	}
@@ -154,7 +154,7 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 	}
 
 	// create downloader
-	d, err := c.staticContracts.NewDownloader(host, contract.ID, height, c.hdb, cancel)
+	d, err := c.staticContracts.NewDownloader(host, contract.ID, height, c.staticHDB, cancel)
 	if err != nil {
 		return nil, err
 	}
