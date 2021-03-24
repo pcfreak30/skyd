@@ -45,7 +45,7 @@ func testSkyfileEncodeFanout_Reader(t *testing.T, rt *renterTester) {
 	//
 	// Since we are using test data we don't care about the final result of the
 	// fanout, we just are testing that the panics aren't triggered.
-	_, err = skyfileEncodeFanoutFromReader(file, reader)
+	_, err = skyfileEncodeFanoutFromReader(file, reader, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func testSkyfileEncodeFanout_Reader(t *testing.T, rt *renterTester) {
 	//
 	// Since we are using test data we don't care about the final result of the
 	// fanout, we just are testing that the panics aren't triggered.
-	_, err = skyfileEncodeFanoutFromReader(file, reader)
+	_, err = skyfileEncodeFanoutFromReader(file, reader, true)
 	if err != nil {
 		t.Fatal(err)
 	}

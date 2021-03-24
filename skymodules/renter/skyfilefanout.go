@@ -93,7 +93,7 @@ func skyfileEncodeFanoutFromFileNode(fileNode *filesystem.FileNode, onePiece boo
 // retrieve a file concatenated together, where piece 0 of chunk 0 is first,
 // piece 1 of chunk 0 is second, etc. The full set of erasure coded pieces are
 // included.
-func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Reader) ([]byte, error) {
+func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Reader, onePiece bool) ([]byte, error) {
 	// We always need to drain the reader.
 	defer io.Copy(ioutil.Discard, reader)
 
@@ -127,6 +127,11 @@ func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Read
 			// mean that an emptyHash is a valid MerkleRoot and a host should be
 			// able to return the corresponding data.
 			fanout = append(fanout, root[:]...)
+
+			// If only one piece is needed break out of the inner loop.
+			if onePiece {
+				break
+			}
 		}
 	}
 }

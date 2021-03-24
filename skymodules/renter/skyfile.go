@@ -518,6 +518,12 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		}
 	}()
 
+	// Figure out how to create the fanout. If only one piece is needed, we
+	// create it from the node directly after the upload.
+	cipherType := fileNode.MasterKey().Type()
+	dataPieces := fileNode.ErasureCode().MinPieces()
+	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
+
 	// Start a goroutine to compute the fanout during the upload.
 	// The teereader will forward the raw data to a pipe without buffering that
 	// the goroutine reads from to encode the fanout.
@@ -528,7 +534,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	var errFanout error
 	wg.Add(1)
 	go func() {
-		fanout, errFanout = skyfileEncodeFanoutFromReader(fileNode, pipeReader)
+		fanout, errFanout = skyfileEncodeFanoutFromReader(fileNode, pipeReader, onlyOnePieceNeeded)
 		wg.Done()
 	}()
 
