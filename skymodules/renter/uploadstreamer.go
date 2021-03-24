@@ -191,33 +191,16 @@ func (r *Renter) managedInitUploadStream(up skymodules.FileUploadParams) (*files
 	return r.staticFileSystem.OpenSiaFile(siaPath)
 }
 
-// callUploadStreamFromReader reads from the provided reader until io.EOF is
-// reached and upload the data to the Sia network. Depending on whether backup
-// is true or false, the siafile for the upload will be stored in the siafileset
-// or backupfileset.
+// callUploadStreamFromReaderWithFileNode reads from the provided reader until
+// io.EOF is reached and upload the data to the Sia network. Depending on
+// whether backup is true or false, the siafile for the upload will be stored in
+// the siafileset or backupfileset.
 //
 // callUploadStreamFromReader will return as soon as the data is available on
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, reader io.Reader) (fileNode *filesystem.FileNode, err error) {
-	// Check the upload params first.
-	fileNode, err = r.managedInitUploadStream(up)
-	if err != nil {
-		return nil, err
-	}
-	// Need to make a copy of this value for the defer statement. Because
-	// 'fileNode' is a named value, if you run the call `return nil, err`, then
-	// 'fileNode' will be set to 'nil' when 'fileNode.Close()' gets called in
-	// the 'defer'.
-	fn := fileNode
-	defer func() {
-		// Ensure the fileNode is closed if there is an error upon return.
-		if err != nil {
-			err = errors.Compose(err, fn.Close())
-		}
-	}()
-
+func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.FileNode, reader io.Reader) (err error) {
 	// Build a map of host public keys.
 	pks := make(map[string]types.SiaPublicKey)
 	for _, pk := range fileNode.HostPublicKeys() {
@@ -233,7 +216,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 	availableWorkers := len(r.staticWorkerPool.workers)
 	r.staticWorkerPool.mu.RUnlock()
 	if availableWorkers < minWorkers {
-		return nil, fmt.Errorf("Need at least %v workers for upload but got only %v", minWorkers, availableWorkers)
+		return fmt.Errorf("Need at least %v workers for upload but got only %v", minWorkers, availableWorkers)
 	}
 
 	// Read the chunks we want to upload one by one from the input stream using
@@ -253,14 +236,14 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 		// Grow the SiaFile to the right size. Otherwise buildUnfinishedChunk
 		// won't realize that there are pieces which haven't been repaired yet.
 		if err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1); err != nil {
-			return nil, err
+			return err
 		}
 
 		// Start the chunk upload.
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
 		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
 		if err != nil {
-			return nil, errors.AddContext(err, "unable to fetch chunk for stream")
+			return errors.AddContext(err, "unable to fetch chunk for stream")
 		}
 
 		// Create a new shard set it to be the source reader of the chunk.
@@ -272,14 +255,14 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 			// Add the chunk to the upload heap's repair map.
 			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
 			if err != nil {
-				return nil, errors.AddContext(err, "unable to push chunk")
+				return errors.AddContext(err, "unable to push chunk")
 			}
 			if !pushed {
 				// The chunk wasn't added to the repair map meaning it must have
 				// already been in the repair map
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				if err := ss.Close(); err != nil {
-					return nil, err
+					return err
 				}
 			}
 			chunks = append(chunks, uuc)
@@ -290,13 +273,13 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 			// since we check that anyway at the end of the loop.
 			_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 			if err := ss.Close(); err != nil {
-				return nil, err
+				return err
 			}
 		}
 		// Wait for the shard to be read.
 		select {
 		case <-r.tg.StopChan():
-			return nil, errors.New("interrupted by shutdown")
+			return errors.New("interrupted by shutdown")
 		case <-ss.signalChan:
 		}
 
@@ -306,7 +289,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 			// All chunks successfully submitted.
 			break
 		} else if ss.err != nil {
-			return nil, ss.err
+			return ss.err
 		}
 
 		// Call Peek to make sure that there's more data for another shard.
@@ -314,7 +297,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 		if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 			break
 		} else if err != nil {
-			return nil, ss.err
+			return ss.err
 		}
 	}
 
@@ -329,14 +312,37 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 			chunk.mu.Unlock()
 		}
 		if err != nil {
-			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
+			return errors.AddContext(err, "upload streamer failed to get all data available")
 		}
 	}
 
 	// Disrupt to force an error and ensure the fileNode is being closed
 	// correctly.
 	if r.staticDeps.Disrupt("failUploadStreamFromReader") {
-		return nil, errors.New("disrupted by failUploadStreamFromReader")
+		return errors.New("disrupted by failUploadStreamFromReader")
+	}
+	return nil
+}
+
+// callUploadStreamFromReader reads from the provided reader until io.EOF is
+// reached and upload the data to the Sia network. Depending on whether backup
+// is true or false, the siafile for the upload will be stored in the siafileset
+// or backupfileset.
+//
+// callUploadStreamFromReader will return as soon as the data is available on
+// the Sia network, this will happen faster than the entire upload is complete -
+// the streamer may continue uploading in the background after returning while
+// it is boosting redundancy.
+func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, reader io.Reader) (fileNode *filesystem.FileNode, err error) {
+	// Check the upload params first.
+	fileNode, err = r.managedInitUploadStream(up)
+	if err != nil {
+		return nil, err
+	}
+	err = r.callUploadStreamFromReaderWithFileNode(fileNode, reader)
+	if err != nil {
+		err = errors.Compose(err, fileNode.Close())
+		return nil, err
 	}
 	return fileNode, nil
 }

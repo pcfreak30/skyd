@@ -432,6 +432,8 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(largeFetchedData, largeData) {
+		t.Log(largeFetchedData)
+		t.Log(largeData)
 		t.Error("upload and download data does not match for large siafiles", len(largeFetchedData), len(largeData))
 	}
 

@@ -1,12 +1,10 @@
 package renter
 
 import (
-	"io"
 	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 // TestSkyfileFanout probes the fanout encoding.
@@ -27,40 +25,7 @@ func TestSkyfileFanout(t *testing.T) {
 		}
 	}()
 
-	t.Run("Panics", func(t *testing.T) { testSkyfileEncodeFanout_Panic(t, rt) })
 	t.Run("Reader", func(t *testing.T) { testSkyfileEncodeFanout_Reader(t, rt) })
-}
-
-// testSkyfileEncodeFanout_Panic probes the panic conditions for generating the
-// fanout
-func testSkyfileEncodeFanout_Panic(t *testing.T, rt *renterTester) {
-	// Create a file for the renter with erasure coding of 1-of-N and a PlainText
-	// cipher type.
-	siaPath, rsc := testingFileParamsCustom(1, 2)
-	file, err := rt.renter.createRenterTestFileWithParams(siaPath, rsc, crypto.TypePlain)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testPanic(t, file, nil)
-
-	// Create a file for the renter with erasure coding of N-of-M and a non
-	// PlainText cipher type.
-	siaPath, rsc = testingFileParamsCustom(2, 3)
-	file, err = rt.renter.createRenterTestFileWithParams(siaPath, rsc, crypto.TypeDefaultRenter)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testPanic(t, file, nil)
-}
-
-// testPanic executes the function and recovers from the expected panic.
-func testPanic(t *testing.T, fileNode *filesystem.FileNode, reader io.Reader) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected build critical for empty hash in fanout")
-		}
-	}()
-	skyfileEncodeFanout(fileNode, reader)
 }
 
 // testSkyfileEncodeFanout_Reader probes generating the fanout from a reader
@@ -80,7 +45,7 @@ func testSkyfileEncodeFanout_Reader(t *testing.T, rt *renterTester) {
 	//
 	// Since we are using test data we don't care about the final result of the
 	// fanout, we just are testing that the panics aren't triggered.
-	_, err = skyfileEncodeFanout(file, reader)
+	_, err = skyfileEncodeFanoutFromReader(file, reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +65,7 @@ func testSkyfileEncodeFanout_Reader(t *testing.T, rt *renterTester) {
 	//
 	// Since we are using test data we don't care about the final result of the
 	// fanout, we just are testing that the panics aren't triggered.
-	_, err = skyfileEncodeFanout(file, reader)
+	_, err = skyfileEncodeFanoutFromReader(file, reader)
 	if err != nil {
 		t.Fatal(err)
 	}

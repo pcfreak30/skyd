@@ -269,17 +269,10 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
 }
 
-// managedCreateFileNodeFromReader takes the file upload parameters and a reader
-// and returns a filenode. This method turns the reader into a FileNode without
-// effectively uploading the data. It is used to perform a dry-run of a skyfile
-// upload.
-func (r *Renter) managedCreateFileNodeFromReader(up skymodules.FileUploadParams, reader io.Reader) (*filesystem.FileNode, error) {
-	// Check the upload params first.
-	fileNode, err := r.managedInitUploadStream(up)
-	if err != nil {
-		return nil, err
-	}
-
+// managedPopulateFileNodeFromReader takes the fileNode and a reader and returns
+// a populated filenode without uploading any data. It is used to perform a
+// dry-run of a skyfile upload.
+func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode, reader io.Reader) error {
 	// Extract some helper variables
 	hpk := types.SiaPublicKey{} // blank host key
 	ec := fileNode.ErasureCode()
@@ -291,7 +284,7 @@ func (r *Renter) managedCreateFileNodeFromReader(up skymodules.FileUploadParams,
 		// Grow the SiaFile to the right size.
 		err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		// Allocate data pieces and fill them with data from r.
@@ -320,7 +313,7 @@ func (r *Renter) managedCreateFileNodeFromReader(up skymodules.FileUploadParams,
 			return nil
 		}()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		_, err = ss.Result()
@@ -328,10 +321,10 @@ func (r *Renter) managedCreateFileNodeFromReader(up skymodules.FileUploadParams,
 			break
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return fileNode, nil
+	return nil
 }
 
 // Blocklist returns the merkleroots that are on the blocklist
@@ -511,10 +504,10 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
 	}
 
-	// Check the upload params first.
+	// Check the upload params first and create a fileNode.
 	fileNode, err := r.managedInitUploadStream(fup)
 	if err != nil {
-		return skymodules.Skylink{}, errors.AddContext(err, "unable to init upload stream")
+		return skymodules.Skylink{}, err
 	}
 
 	// Defer closing the file
@@ -535,7 +528,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	var errFanout error
 	wg.Add(1)
 	go func() {
-		fanout, errFanout = skyfileEncodeFanout(fileNode, pipeReader)
+		fanout, errFanout = skyfileEncodeFanoutFromReader(fileNode, pipeReader)
 		wg.Done()
 	}()
 
@@ -543,23 +536,15 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		// In case of a dry-run we don't want to perform the actual upload,
 		// instead we create a filenode that contains all of the data pieces and
 		// their merkle roots.
-		fileNode, err = r.managedCreateFileNodeFromReader(fileNode, tr)
-		if err != nil {
-			err = errors.Compose(err, pipeWriter.Close())
-			return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
-		}
+		err = r.managedPopulateFileNodeFromReader(fileNode, tr)
 	} else {
 		// Upload the file using a streamer.
-		err = r.callUploadStreamFromReader(fileNode, tr)
-		if err != nil {
-			err = errors.Compose(err, pipeWriter.Close())
-			return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
-		}
+		err = r.callUploadStreamFromReaderWithFileNode(fileNode, tr)
 	}
-
 	// Close the pipe writer to make the reader return io.EOF.
-	if err := pipeWriter.Close(); err != nil {
-		return skymodules.Skylink{}, errors.AddContext(err, "unable to close pipewriter")
+	err = errors.Compose(err, pipeWriter.Close())
+	if err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
 	}
 	wg.Wait()
 
