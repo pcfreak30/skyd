@@ -59,15 +59,15 @@ type Session interface {
 // implements the Session interface. hostSessions are safe for use by multiple
 // goroutines.
 type hostSession struct {
-	clients    int // safe to Close when 0
-	contractor *Contractor
-	session    *proto.Session // is this static? proto.Session doesn't have a mutex
-	invalid    bool           // true if invalidate has been called
+	clients int  // safe to Close when 0
+	invalid bool // true if invalidate has been called
 
 	// Static Fields
+	staticContractor *Contractor
 	staticEndHeight  types.BlockHeight
 	staticID         types.FileContractID
 	staticNetAddress modules.NetAddress
+	staticSession    *proto.Session
 
 	mu sync.Mutex
 }
@@ -82,10 +82,10 @@ func (hs *hostSession) callInvalidate() {
 	if hs.invalid {
 		return
 	}
-	hs.session.Close()
-	hs.contractor.mu.Lock()
-	delete(hs.contractor.sessions, hs.staticID)
-	hs.contractor.mu.Unlock()
+	hs.staticSession.Close()
+	hs.staticContractor.mu.Lock()
+	delete(hs.staticContractor.sessions, hs.staticID)
+	hs.staticContractor.mu.Unlock()
 	hs.invalid = true
 }
 
@@ -104,11 +104,11 @@ func (hs *hostSession) Close() error {
 		return nil
 	}
 	hs.invalid = true
-	hs.contractor.mu.Lock()
-	delete(hs.contractor.sessions, hs.staticID)
-	hs.contractor.mu.Unlock()
+	hs.staticContractor.mu.Lock()
+	delete(hs.staticContractor.sessions, hs.staticID)
+	hs.staticContractor.mu.Unlock()
 
-	return hs.session.Close()
+	return hs.staticSession.Close()
 }
 
 // ContractID returns the ID of the contract being revised.
@@ -125,7 +125,7 @@ func (hs *hostSession) Download(root crypto.Hash, offset, length uint32) ([]byte
 	}
 
 	// Download the data.
-	_, data, err := hs.session.ReadSection(root, offset, length)
+	_, data, err := hs.staticSession.ReadSection(root, offset, length)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func (hs *hostSession) DownloadIndex(index uint64, offset, length uint32) ([]byt
 	}
 
 	// Retrieve the Merkle root for the index.
-	_, roots, err := hs.session.SectorRoots(modules.LoopSectorRootsRequest{
+	_, roots, err := hs.staticSession.SectorRoots(modules.LoopSectorRootsRequest{
 		RootOffset: index,
 		NumRoots:   1,
 	})
@@ -150,7 +150,7 @@ func (hs *hostSession) DownloadIndex(index uint64, offset, length uint32) ([]byt
 	}
 
 	// Download the data.
-	_, data, err := hs.session.ReadSection(roots[0], offset, length)
+	_, data, err := hs.staticSession.ReadSection(roots[0], offset, length)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
 	}
 
 	// Perform the upload.
-	_, sectorRoot, err := hs.session.Append(data)
+	_, sectorRoot, err := hs.staticSession.Append(data)
 	if err != nil {
 		// Return the sector root so that it can be logged and used for
 		// debugging in the event of an error.
@@ -187,7 +187,7 @@ func (hs *hostSession) Replace(data []byte, sectorIndex uint64, trim bool) (cryp
 		return crypto.Hash{}, errInvalidSession
 	}
 
-	_, sectorRoot, err := hs.session.Replace(data, sectorIndex, trim)
+	_, sectorRoot, err := hs.staticSession.Replace(data, sectorIndex, trim)
 	if err != nil {
 		return crypto.Hash{}, errors.AddContext(err, "unable to perform replace operation in session")
 	}
@@ -196,12 +196,12 @@ func (hs *hostSession) Replace(data []byte, sectorIndex uint64, trim bool) (cryp
 
 // HostSettings returns the currently active host settings for the session.
 func (hs *hostSession) HostSettings() modules.HostExternalSettings {
-	return hs.session.HostSettings()
+	return hs.staticSession.HostSettings()
 }
 
 // Settings calls the Session RPC and updates the active host settings.
 func (hs *hostSession) Settings() (modules.HostExternalSettings, error) {
-	return hs.session.Settings()
+	return hs.staticSession.Settings()
 }
 
 // Session returns a Session object that can be used to upload, modify, and
@@ -261,8 +261,8 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	// cache session
 	hs := &hostSession{
 		clients:          1,
-		contractor:       c,
-		session:          s,
+		staticContractor: c,
+		staticSession:    s,
 		staticEndHeight:  contract.EndHeight,
 		staticID:         id,
 		staticNetAddress: host.NetAddress,

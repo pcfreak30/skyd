@@ -43,12 +43,12 @@ type Editor interface {
 // implements the Editor interface. hostEditors are safe for use by
 // multiple goroutines.
 type hostEditor struct {
-	clients    int // safe to Close when 0
-	contractor *Contractor
-	editor     *proto.Editor // TODO is this static? the proto.Editor doesn't have a mutex
-	invalid    bool          // true if invalidate has been called
+	clients int  // safe to Close when 0
+	invalid bool // true if invalidate has been called
 
 	// Static Fields
+	staticContractor *Contractor
+	staticEditor     *proto.Editor
 	staticEndHeight  types.BlockHeight
 	staticID         types.FileContractID
 	staticNetAddress modules.NetAddress
@@ -64,12 +64,12 @@ func (he *hostEditor) callInvalidate() {
 	he.mu.Lock()
 	defer he.mu.Unlock()
 	if !he.invalid {
-		he.editor.Close()
+		he.staticEditor.Close()
 		he.invalid = true
 	}
-	he.contractor.mu.Lock()
-	delete(he.contractor.editors, he.staticID)
-	he.contractor.mu.Unlock()
+	he.staticContractor.mu.Lock()
+	delete(he.staticContractor.editors, he.staticID)
+	he.staticContractor.mu.Unlock()
 }
 
 // Address returns the NetAddress of the host.
@@ -94,16 +94,16 @@ func (he *hostEditor) Close() error {
 		return nil
 	}
 	he.invalid = true
-	he.contractor.mu.Lock()
-	delete(he.contractor.editors, he.staticID)
-	he.contractor.mu.Unlock()
-	return he.editor.Close()
+	he.staticContractor.mu.Lock()
+	delete(he.staticContractor.editors, he.staticID)
+	he.staticContractor.mu.Unlock()
+	return he.staticEditor.Close()
 }
 
 // HostSettings returns the host settings that are currently active for the
 // underlying session.
 func (he *hostEditor) HostSettings() modules.HostExternalSettings {
-	return he.editor.HostSettings()
+	return he.staticEditor.HostSettings()
 }
 
 // Upload negotiates a revision that adds a sector to a file contract.
@@ -115,7 +115,7 @@ func (he *hostEditor) Upload(data []byte) (_ crypto.Hash, err error) {
 	}
 
 	// Perform the upload.
-	_, sectorRoot, err := he.editor.Upload(data)
+	_, sectorRoot, err := he.staticEditor.Upload(data)
 	if err != nil {
 		return crypto.Hash{}, err
 	}
@@ -188,8 +188,8 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	// cache editor
 	he := &hostEditor{
 		clients:          1,
-		contractor:       c,
-		editor:           e,
+		staticContractor: c,
+		staticEditor:     e,
 		staticEndHeight:  contract.EndHeight,
 		staticID:         id,
 		staticNetAddress: host.NetAddress,
