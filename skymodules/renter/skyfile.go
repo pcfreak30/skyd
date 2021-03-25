@@ -545,6 +545,9 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		// Upload the file using a streamer.
 		err = r.callUploadStreamFromReaderWithFileNode(fileNode, tr)
 	}
+	if err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload file")
+	}
 
 	// If there was no reader then the fanout creation failed. We need to create
 	// the fanout from the fileNode in that case.
