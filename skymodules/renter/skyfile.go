@@ -34,7 +34,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"gitlab.com/skynetlabs/skyd/build"
@@ -524,22 +523,9 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	dataPieces := fileNode.ErasureCode().MinPieces()
 	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
 
-	// Start a goroutine to compute the fanout during the upload.
-	// The teereader will forward the raw data to a pipe without buffering that
-	// the goroutine reads from to encode the fanout.
-	// TODO (f/u): we should replace this code with a custom fanout writer
-	// instead of using a pipe and goroutine as a long term fix.
-	pipeReader, pipeWriter := io.Pipe()
-	tr := io.TeeReader(fileReader, pipeWriter)
-	var wg sync.WaitGroup
-	var fanout []byte
-	var errFanout error
-	wg.Add(1)
-	go func() {
-		fanout, errFanout = skyfileEncodeFanoutFromReader(fileNode, pipeReader, onlyOnePieceNeeded)
-		wg.Done()
-	}()
-
+	// The teereader will forward the raw data to the fanoutWriter.
+	fanoutWriter := newFanoutWriter(fileNode, onlyOnePieceNeeded)
+	tr := io.TeeReader(fileReader, fanoutWriter)
 	if sup.DryRun {
 		// In case of a dry-run we don't want to perform the actual upload,
 		// instead we create a filenode that contains all of the data pieces and
@@ -549,21 +535,16 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		// Upload the file using a streamer.
 		err = r.callUploadStreamFromReaderWithFileNode(fileNode, tr)
 	}
-	// Close the pipe writer to make the reader return io.EOF.
-	err = errors.Compose(err, pipeWriter.Close())
-	if err != nil {
-		return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
-	}
-	wg.Wait()
 
 	// If there was no reader then the fanout creation failed. We need to create
 	// the fanout from the fileNode in that case.
-	if fileReader == nil {
-		fanout, errFanout = skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
+	var fanout []byte
+	if fileReader != nil {
+		fanout, err = fanoutWriter.Fanout()
+	} else {
+		fanout, err = skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
 	}
-
-	// Check fanout error.
-	if errFanout != nil {
+	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to compute fanout")
 	}
 
