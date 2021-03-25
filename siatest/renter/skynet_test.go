@@ -432,6 +432,8 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(largeFetchedData, largeData) {
+		t.Log(largeFetchedData)
+		t.Log(largeData)
 		t.Error("upload and download data does not match for large siafiles", len(largeFetchedData), len(largeData))
 	}
 
@@ -612,31 +614,20 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 // testConvertSiaFile tests converting a siafile to a skyfile. This test checks
 // for 1-of-N redundancies and N-of-M redundancies.
 func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
+	t.Run("1-of-N Conversion", func(t *testing.T) {
+		testConversion(t, tg, 1, 2, t.Name())
+	})
+	t.Run("N-of-M Conversion", func(t *testing.T) {
+		testConversion(t, tg, 2, 1, t.Name())
+	})
+}
+
+// testConversion is a subtest for testConvertSiaFile
+func testConversion(t *testing.T, tg *siatest.TestGroup, dp, pp uint64, skykeyName string) {
 	r := tg.Renters()[0]
-
 	// Upload a siafile that will then be converted to a skyfile.
-	//
-	// Set 2 as the datapieces to check for N-of-M redundancy conversions
 	filesize := int(modules.SectorSize) + siatest.Fuzz()
-	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create Skyfile Upload Parameters
-	sup := skymodules.SkyfileUploadParameters{
-		SiaPath: skymodules.RandomSiaPath(),
-	}
-
-	// Try and convert to a Skyfile, this should succeed, even if the original
-	// siafile is of N-of-M redundancy and not 1-N
-	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	if err != nil {
-		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
-	}
-
-	// Upload a new file with a 1-N redundancy by setting the datapieces to 1
-	localFile, remoteFile, err = r.UploadNewFileBlocking(filesize, 1, 2, false)
+	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, dp, pp, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -651,19 +642,19 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Recreate Skyfile Upload Parameters
-	sup = skymodules.SkyfileUploadParameters{
+	// Create Skyfile Upload Parameters
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath: skymodules.RandomSiaPath(),
 	}
 
-	// Convert to a Skyfile
+	// Try and convert to a Skyfile
 	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
 	}
-	skylink := sshp.Skylink
 
 	// Try to download the skylink.
+	skylink := sshp.Skylink
 	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -682,7 +673,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	// ensure we do not panic and we return the expected error
 	//
 	// Add SkyKey
-	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
+	sk, err := r.SkykeyCreateKeyPost(skykeyName, skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
