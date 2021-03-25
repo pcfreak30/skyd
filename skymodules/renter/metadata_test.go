@@ -1,12 +1,15 @@
 package renter
 
 import (
+	"encoding/json"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -182,12 +185,162 @@ func TestDirectoryMetadatas(t *testing.T) {
 	}
 }
 
-// TODO:
-//  - Combine following tests to verify managedCalculateDirectoryMetadata and
-//  move to metadata_test.go
-//		- TestBubbleHealth
-//		- TestNumFiles
-//		- TestDirectorySize
-//		- TestDirectoryModTime
-//
-func TestCalculateDirectoryMetadata(t *testing.T) {}
+// TestCalculateDirectoryMetadata probes the callCalculateDirectoryMetadata
+// method
+func TestCalculateDirectoryMetadata(t *testing.T) {
+	// Create renter with deps
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Define common test parameters
+	fileSize := uint64(100)
+	var dp, pp int = 1, 1
+	rsc, _ := skymodules.NewRSCode(dp, pp)
+	ct := crypto.RandomCipherType()
+	worstFileHealth := 1 - (0-float64(dp))/float64(pp)
+	repairSize := modules.SectorSize * uint64(dp+pp)
+
+	// Add a file to the root directory
+	rootFile, err := rt.renter.createRenterTestFileWithParamsAndSize(skymodules.RandomSiaPath(), rsc, ct, fileSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := rootFile.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a file to the root directory that has a skylink
+	rootSkyFile, err := rt.renter.createRenterTestFileWithParamsAndSize(skymodules.RandomSiaPath(), rsc, ct, fileSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := rootSkyFile.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	var skylink skymodules.Skylink
+	err = rootSkyFile.AddSkylink(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update siafile metadatas
+	err = rt.updateFileMetadatas(skymodules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mock adding a file to the skynet directory by updating the var metadata
+	varMetadata := siadir.Metadata{
+		AggregateLastHealthCheckTime: time.Now(),
+		AggregateNumFiles:            1,
+		AggregateNumSubDirs:          1,
+		AggregateRepairSize:          repairSize,
+		AggregateSize:                modules.SectorSize,
+
+		AggregateSkynetFiles: 1,
+		AggregateSkynetSize:  modules.SectorSize,
+	}
+	if err := rt.openAndUpdateDir(skymodules.VarFolder, varMetadata); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure the home folder has the bare minimum information expected
+	homeMetadata := siadir.Metadata{
+		AggregateLastHealthCheckTime: time.Now(),
+		AggregateNumSubDirs:          1,
+	}
+	if err := rt.openAndUpdateDir(skymodules.HomeFolder, homeMetadata); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure the backup folder has the bare minimum information expected
+	backupMetadata := siadir.Metadata{
+		AggregateLastHealthCheckTime: time.Now(),
+	}
+	if err := rt.openAndUpdateDir(skymodules.BackupFolder, backupMetadata); err != nil {
+		t.Fatal(err)
+	}
+
+	// Define expected Metadata
+	beforeUpdate := time.Now()
+	expected := siadir.Metadata{
+		AggregateHealth:              worstFileHealth,
+		AggregateLastHealthCheckTime: beforeUpdate,
+		AggregateMinRedundancy:       0,
+		AggregateModTime:             beforeUpdate,
+		AggregateNumFiles:            3,
+		AggregateNumStuckChunks:      0,
+		AggregateNumSubDirs:          5,
+		AggregateRemoteHealth:        worstFileHealth,
+		AggregateRepairSize:          3 * repairSize,
+		AggregateSize:                2*fileSize + modules.SectorSize,
+		AggregateStuckHealth:         0,
+		AggregateStuckSize:           0,
+
+		AggregateSkynetFiles: 1,
+		AggregateSkynetSize:  fileSize + modules.SectorSize,
+
+		Health:              worstFileHealth,
+		LastHealthCheckTime: beforeUpdate,
+		MinRedundancy:       0,
+		ModTime:             beforeUpdate,
+		NumFiles:            2,
+		NumStuckChunks:      0,
+		NumSubDirs:          3,
+		RemoteHealth:        worstFileHealth,
+		RepairSize:          2 * repairSize,
+		Size:                2 * fileSize,
+		StuckHealth:         0,
+		StuckSize:           0,
+
+		SkynetFiles: 0,
+		SkynetSize:  fileSize,
+	}
+
+	// call callCalculateDirectoryMetadata
+	md, err := rt.renter.callCalculateDirectoryMetadata(skymodules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Explicitly check that the times should have been updated
+	if !md.AggregateLastHealthCheckTime.Before(beforeUpdate) {
+		t.Error("AggregateLastHealthCheckTime was not updated")
+	}
+	expected.AggregateLastHealthCheckTime = md.AggregateLastHealthCheckTime
+	if !md.LastHealthCheckTime.Before(beforeUpdate) {
+		t.Error("LastHealthCheckTime was not updated")
+	}
+	expected.LastHealthCheckTime = md.LastHealthCheckTime
+	if !md.AggregateModTime.Before(beforeUpdate) {
+		t.Error("AggregateModTime was not updated")
+	}
+	expected.AggregateModTime = md.AggregateModTime
+	if !md.ModTime.Before(beforeUpdate) {
+		t.Error("ModTime was not updated")
+	}
+	expected.ModTime = md.ModTime
+
+	// Verify metadata
+	err = equalBubbledMetadata(md, expected, time.Duration(0))
+	if err != nil {
+		expectedData, _ := json.MarshalIndent(expected, "", " ")
+		actual, _ := json.MarshalIndent(md, "", " ")
+		t.Log("Expected Metadata")
+		t.Log(string(expectedData))
+		t.Log("Actual Metadata")
+		t.Log(string(actual))
+		t.Fatal(err)
+	}
+}
