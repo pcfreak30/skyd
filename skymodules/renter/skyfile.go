@@ -165,7 +165,17 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 		Monetization: sup.Monetization,
 		Length:       fileNode.Size(),
 	}
-	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, nil)
+
+	// Generate the fanoutBytes
+	dataPieces := fileNode.ErasureCode().MinPieces()
+	cipherType := fileNode.Metadata().StaticMasterKeyType
+	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
+	fanoutBytes, err := skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
+	if err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "unable to generate the fanout bytes")
+	}
+
+	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fanoutBytes)
 }
 
 // managedCreateSkylinkFromFileNode creates a skylink from a file node.
