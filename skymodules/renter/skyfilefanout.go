@@ -70,20 +70,7 @@ func (fw *fanoutWriter) Write(b []byte) (int, error) {
 	}
 
 	// If we got enough pieces for a full chunk, encode it.
-	err = fw.encodeChunk()
-	if err != nil {
-		return 0, err
-	}
-
-	// If we reached the end of the buffer, reset it. That way we reuse its
-	// internal memory for the next piece.
-	if fw.pieces.Len() == 0 {
-		fw.pieces.Reset()
-	}
-
-	// Increment chunk index.
-	fw.chunkIndex++
-	return len(b), nil
+	return len(b), fw.encodeChunk()
 }
 
 // encodeChunk reads up to a full chunk from the internal pieces buffer, pads
