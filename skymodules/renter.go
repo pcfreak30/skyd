@@ -620,9 +620,9 @@ type RegistryStats struct {
 // returns a new stats object.
 func (rs RegistryStats) ToMS() RegistryStats {
 	// Adjust stats from nanoseconds to milliseconds.
-	rs.ReadProjectP99 /= 1e6
-	rs.ReadProjectP999 /= 1e6
-	rs.ReadProjectP9999 /= 1e6
+	rs.ReadProjectP99 /= time.Millisecond
+	rs.ReadProjectP999 /= time.Millisecond
+	rs.ReadProjectP9999 /= time.Millisecond
 	return rs
 }
 
