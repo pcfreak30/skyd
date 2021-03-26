@@ -206,9 +206,10 @@ type cachedUtilities struct {
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
 	// Skynet Management
-	staticSkynetBlocklist *skynetblocklist.SkynetBlocklist
-	staticSkynetPortals   *skynetportals.SkynetPortals
-	staticSpendingHistory *spendingHistory
+	staticSkynetBlocklist   *skynetblocklist.SkynetBlocklist
+	staticSkynetPortals     *skynetportals.SkynetPortals
+	staticSpendingHistory   *spendingHistory
+	staticSkynetTUSUploader *skynetTUSUploader
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -1108,6 +1109,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticDirectoryHeap: directoryHeap{
 			heapDirectories: make(map[skymodules.SiaPath]*directory),
 		},
+		staticSkynetTUSUploader: newSkynetTUSUploader(),
 
 		downloadHistory: make(map[skymodules.DownloadID]*download),
 

@@ -1145,6 +1145,10 @@ type Renter interface {
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
+	// SkynetTUSUploader returns the TUSUploader that can be used to initiate
+	// resumable uploads to skynet.
+	SkynetTUSUploader() SkynetTUSDataStore
+
 	// UploadBackup uploads a backup to hosts, such that it can be retrieved
 	// using only the seed.
 	UploadBackup(src string, name string) error

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tus/tusd/pkg/handler"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -247,6 +248,15 @@ type (
 		Address  types.UnlockHash `json:"address"`
 		Amount   types.Currency   `json:"amount"`
 		Currency string           `json:"currency"`
+	}
+
+	// SkynetTUSDataStore is the combined interface of all TUS interfaces that
+	// the renter implements for skynet.
+	SkynetTUSDataStore interface {
+		handler.DataStore
+		handler.TerminaterDataStore
+		handler.ConcaterDataStore
+		handler.LengthDeferrerDataStore
 	}
 )
 

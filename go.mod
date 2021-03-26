@@ -12,6 +12,7 @@ require (
 	github.com/klauspost/reedsolomon v1.9.3
 	github.com/montanaflynn/stats v0.6.3
 	github.com/spf13/cobra v1.0.0
+	github.com/tus/tusd v1.5.1
 	github.com/vbauerster/mpb/v5 v5.0.3
 	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210319110920-9b7767f5f7f4
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe
