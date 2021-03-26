@@ -254,9 +254,6 @@ type (
 	// the renter implements for skynet.
 	SkynetTUSDataStore interface {
 		handler.DataStore
-		handler.TerminaterDataStore
-		handler.ConcaterDataStore
-		handler.LengthDeferrerDataStore
 	}
 )
 

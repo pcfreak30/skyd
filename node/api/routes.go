@@ -9,7 +9,6 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/tus/tusd/pkg/handler"
-	"github.com/tus/tusd/pkg/memorylocker"
 	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 
 	"gitlab.com/skynetlabs/skyd/build"
@@ -90,7 +89,6 @@ func (api *API) buildHTTPRoutes() {
 	}
 
 	// Renter API Calls
-	var skynetTUSHandler *handler.UnroutedHandler
 	if api.renter != nil {
 		router.GET("/renter", api.renterHandlerGET)
 		router.POST("/renter", RequirePassword(api.renterHandlerPOST, requiredPassword))
@@ -159,18 +157,18 @@ func (api *API) buildHTTPRoutes() {
 		// uploading a file with a known size in chunks.
 		storeComposer.UseCore(sds)
 
-		// This enables uploads where the length of the upload is not known at
+		// TODO: This enables uploads where the length of the upload is not known at
 		// the time the upload starts.
-		storeComposer.UseLengthDeferrer(sds)
+		// storeComposer.UseLengthDeferrer(sds)
 
-		// This will enable the uploader to terminate the upload.
-		storeComposer.UseTerminater(sds)
+		// TODO: This will enable the uploader to terminate the upload.
+		// storeComposer.UseTerminater(sds)
 
-		// This will enable combining partial uploads into a full upload.
-		storeComposer.UseConcater(sds)
+		// TODO: This will enable combining partial uploads into a full upload.
+		// storeComposer.UseConcater(sds)
 
-		// This enables accessing an upload from multiple threads.
-		storeComposer.UseLocker(memorylocker.New())
+		// TODO: This enables accessing an upload from multiple threads.
+		// storeComposer.UseLocker(memorylocker.New())
 
 		// Create the TUS handler and register its routes.
 		tusHandler, err := handler.NewUnroutedHandler(handler.Config{
@@ -180,14 +178,12 @@ func (api *API) buildHTTPRoutes() {
 		})
 		if err != nil {
 			build.Critical("failed to create skynet TUS handler", err)
+			return
 		}
-		router.POST("/skynet/tus", httpRouterHandle(tusHandler.PostFile))
-		router.HEAD("/skynet/tus/:id", httpRouterHandle(tusHandler.HeadFile))
-		router.PATCH("/skynet/tus/:id", httpRouterHandle(tusHandler.PatchFile))
-		router.GET("/skynet/tus/:id", httpRouterHandle(tusHandler.GetFile))
-
-		// Remember the handler to set the middleware later.
-		skynetTUSHandler = tusHandler
+		router.POST("/skynet/tus", RequireTUSMiddleware(tusHandler.PostFile, tusHandler))
+		router.HEAD("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.HeadFile, tusHandler))
+		router.PATCH("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.PatchFile, tusHandler))
+		router.GET("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.GetFile, tusHandler))
 
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))
@@ -221,23 +217,15 @@ func (api *API) buildHTTPRoutes() {
 		siaapi.RegisterRoutesWallet(router, api.wallet, requiredPassword)
 	}
 
-	// Set router on API.
-	api.routerMu.Lock()
-	defer api.routerMu.Unlock()
-	api.router = router
-
-	// Apply TUS middleware if necessary.
-	if skynetTUSHandler != nil {
-		api.router = skynetTUSHandler.Middleware(router)
-	}
-
 	// Apply UserAgent middleware and return the Router
 	timeoutErr := Error{fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout)}
 	jsonErr, err := json.Marshal(timeoutErr)
 	if err != nil {
 		build.Critical("marshalling error on object that should be safe to marshal:", err)
 	}
-	api.router = http.TimeoutHandler(RequireUserAgent(api.router, requiredUserAgent), httpServerTimeout, string(jsonErr))
+	api.routerMu.Lock()
+	api.router = http.TimeoutHandler(RequireUserAgent(router, requiredUserAgent), httpServerTimeout, string(jsonErr))
+	api.routerMu.Unlock()
 	return
 }
 
@@ -272,15 +260,15 @@ func RequirePassword(h httprouter.Handle, password string) httprouter.Handle {
 	}
 }
 
-// isUnrestricted checks if a request may bypass the useragent check.
-func isUnrestricted(req *http.Request) bool {
-	return strings.HasPrefix(req.URL.Path, "/renter/stream/") || strings.HasPrefix(req.URL.Path, "/skynet/skylink")
+// RequireTUSMiddleware will apply the provided handler's middleware to the
+// handle and return a httprouter.Handle.
+func RequireTUSMiddleware(handle http.HandlerFunc, uh *handler.UnroutedHandler) httprouter.Handle {
+	return func(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+		uh.Middleware(handle).ServeHTTP(w, req)
+	}
 }
 
-// httpRouterHanle is a convenience function to turn a http.HandlerFund into a
-// httprouter.Handle.
-func httpRouterHandle(handle http.HandlerFunc) httprouter.Handle {
-	return func(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-		handle(w, req)
-	}
+// isUnrestricted checks if a request may bypass the useragent check.
+func isUnrestricted(req *http.Request) bool {
+	return strings.HasPrefix(req.URL.Path, "/renter/stream/") || strings.HasPrefix(req.URL.Path, "/skynet/skylink") || strings.HasPrefix(req.URL.Path, "/skynet/tus")
 }
