@@ -1109,7 +1109,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticDirectoryHeap: directoryHeap{
 			heapDirectories: make(map[skymodules.SiaPath]*directory),
 		},
-		staticSkynetTUSUploader: newSkynetTUSUploader(),
 
 		downloadHistory: make(map[skymodules.DownloadID]*download),
 
@@ -1126,6 +1125,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
 	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
