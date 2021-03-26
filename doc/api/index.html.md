@@ -5949,9 +5949,9 @@ returns statistical information about Skynet, e.g. number of files uploaded
     }
   },
   "registrystats": {
-    "readprojectp99": 5020000000,   // uint64
-    "readprojectp999": 5020000000,  // uint64
-    "readprojectp9999": 5020000000  // uint64
+    "readprojectp99": 5020,   // uint64
+    "readprojectp999": 5020,  // uint64
+    "readprojectp9999": 5020  // uint64
   },
 }
 ```

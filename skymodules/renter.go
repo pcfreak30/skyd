@@ -616,6 +616,16 @@ type RegistryStats struct {
 	ReadProjectP9999 time.Duration `json:"readprojectp9999"`
 }
 
+// ToMS adjusts all stats in the RegistryStats object to milliseconds and
+// returns a new stats object.
+func (rs RegistryStats) ToMS() RegistryStats {
+	// Adjust stats from nanoseconds to milliseconds.
+	rs.ReadProjectP99 /= 1e6
+	rs.ReadProjectP999 /= 1e6
+	rs.ReadProjectP9999 /= 1e6
+	return rs
+}
+
 // Add combines two MemoryManagerStatus objects into one.
 func (ms MemoryManagerStatus) Add(ms2 MemoryManagerStatus) MemoryManagerStatus {
 	return MemoryManagerStatus{
