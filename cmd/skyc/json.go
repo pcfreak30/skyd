@@ -70,9 +70,12 @@ func jsoncmd() {
 	if err != nil {
 		die("Cound not get the renter root dir:", err)
 	}
+	rs.TotalRepairSize = rf.Directories[0].AggregateRepairSize
 	rs.TotalSiafiles = rf.Directories[0].AggregateNumFiles
 	rs.TotalSiadirs = rf.Directories[0].AggregateNumSubDirs
 	rs.TotalSize = rf.Directories[0].AggregateSize
+	rs.TotalStuckChunks = rf.Directories[0].AggregateNumStuckChunks
+	rs.TotalStuckSize = rf.Directories[0].AggregateStuckSize
 
 	// Get information on the allowance.
 	rg, err := httpClient.RenterGet()
