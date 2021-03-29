@@ -65,17 +65,27 @@ func (r *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileInfo
 	}
 	r.uploads[info.ID] = upload
 
+	// Get a siapath from the metadata if possible.
+	spStr, exists := upload.fi.MetaData["SiaPath"]
+	if !exists {
+		// TODO: set a better siapath. Ideally similar to nginx.
+		spStr = skymodules.RandomSiaPath().String()
+		upload.fi.MetaData["SiaPath"] = spStr
+	}
+	sp, err := skymodules.NewSiaPath(spStr)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the upload params.
 	// TODO: add a mechanism to stop the upload if no data has been received for
 	// a while.
-	// TODO: set a better siapath. Ideally similar to nginx.
 	// TODO: use info.metadata to create skyfileuploadparameters different from
 	// the default.
-	sp := skymodules.RandomSiaPath()
 	sup := skymodules.SkyfileUploadParameters{
 		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
 		Filename:            sp.Name(),
-		SiaPath:             skymodules.RandomSiaPath(),
+		SiaPath:             sp,
 	}
 
 	// Run the upload in the background.
@@ -125,7 +135,11 @@ func (u *skynetTUSUpload) writeUnstableTUS(src io.Reader, offset int64) (int64, 
 	if err != nil {
 		return int64(n), err
 	}
-	return int64(n), errors.New("TUSUnstable")
+	// Then close the pipe writer with an error to simulate cutting off the
+	// connection.
+	err = errors.New("TUSUnstable")
+	u.staticPipeWriter.CloseWithError(err)
+	return int64(n), err
 }
 
 // WriteChunk writes the chunk to the provided offset.
