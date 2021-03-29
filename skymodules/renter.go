@@ -129,12 +129,13 @@ type RenterStats struct {
 	PassiveContractData uint64 `json:"passivecontractdata"`
 	WastedContractData  uint64 `json:"wastedcontractdata"`
 
-	TotalRepairSize  uint64 `json:"totalrepairsize"`
-	TotalSiafiles    uint64 `json:"totalsiafiles"`
-	TotalSiadirs     uint64 `json:"totalsiadirs"`
-	TotalSize        uint64 `json:"totalsize"`
-	TotalStuckChunks uint64 `json:"totalstuckchunks"`
-	TotalStuckSize   uint64 `json:"totalstucksize"`
+	AggregateLastHealthCheckTime time.Time `json:"aggregateLastHealthCheckTime"`
+	TotalRepairSize              uint64    `json:"totalrepairsize"`
+	TotalSiafiles                uint64    `json:"totalsiafiles"`
+	TotalSiadirs                 uint64    `json:"totalsiadirs"`
+	TotalSize                    uint64    `json:"totalsize"`
+	TotalStuckChunks             uint64    `json:"totalstuckchunks"`
+	TotalStuckSize               uint64    `json:"totalstucksize"`
 
 	TotalContractSpentFunds     types.Currency `json:"totalcontractspentfunds"` // Includes fees
 	TotalContractSpentFees      types.Currency `json:"totalcontractspentfees"`

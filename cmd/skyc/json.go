@@ -70,6 +70,7 @@ func jsoncmd() {
 	if err != nil {
 		die("Cound not get the renter root dir:", err)
 	}
+	rs.AggregateLastHealthCheckTime = rf.Directories[0].AggregateLastHealthCheckTime
 	rs.TotalRepairSize = rf.Directories[0].AggregateRepairSize
 	rs.TotalSiafiles = rf.Directories[0].AggregateNumFiles
 	rs.TotalSiadirs = rf.Directories[0].AggregateNumSubDirs
