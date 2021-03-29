@@ -1228,7 +1228,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 
 	WriteJSON(w, &SkynetStatsGET{
 		PerformanceStats: perfStats,
-		RegistryStats:    registryStats,
+		RegistryStats:    registryStats.ToMS(),
 
 		Uptime:      int64(uptime),
 		UploadStats: stats,
