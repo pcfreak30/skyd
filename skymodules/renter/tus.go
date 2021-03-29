@@ -6,34 +6,35 @@ import (
 	"encoding/hex"
 	"io"
 	"os"
-	"sync"
+	"time"
 
 	"github.com/tus/tusd/pkg/handler"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
+// TODO: periodically remove old uploads.
+
 type (
 	// skynetTUSUploader implements multiple TUS interfaces for skynet uploads
 	// allowing for resumable uploads.
 	skynetTUSUploader struct {
-		uploads  map[string]*skynetTUSUpload
-		uploadMu sync.Mutex
+		uploads map[string]*skynetTUSUpload
 
 		staticRenter skymodules.Renter
 	}
 
 	// skynetTUSUpload implements multiple TUS interfaces for uploads.
-	// TODO: build the skyfile metadata and fanout.
 	skynetTUSUpload struct {
-		fi             handler.FileInfo
-		staticUploader *skynetTUSUploader
-
-		err              error
-		staticResultChan chan struct{}
+		fi               handler.FileInfo
 		staticPipeWriter *io.PipeWriter
+		staticUploader   *skynetTUSUploader
+
+		// Result
+		finishTime       time.Time
+		staticResultChan chan struct{}
+		err              error
 	}
 )
 
@@ -61,40 +62,46 @@ func (r *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileInfo
 		staticResultChan: make(chan struct{}),
 		staticUploader:   r,
 	}
-	r.uploadMu.Lock()
 	r.uploads[info.ID] = upload
-	r.uploadMu.Unlock()
 
 	// Create the upload params.
 	// TODO: add a mechanism to stop the upload if no data has been received for
 	// a while.
 	// TODO: set a better siapath. Ideally similar to nginx.
-	// TODO: figure out how to get input params for the upload from the metadata
-	// to override the defaults.
-	up := skymodules.FileUploadParams{
-		DisablePartialChunk: true, // Disable partial chunk for this
+	// TODO: use info.metadata to create skyfileuploadparameters different from
+	// the default.
+	sp := skymodules.RandomSiaPath()
+	sup := skymodules.SkyfileUploadParameters{
+		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
+		Filename:            sp.Name(),
 		SiaPath:             skymodules.RandomSiaPath(),
-		CipherType:          crypto.TypeDefaultRenter,
 	}
 
 	// Run the upload in the background.
-	go func(up skymodules.FileUploadParams) {
-		upload.err = r.staticRenter.UploadStreamFromReader(up, pipeReader)
+	go func(sup skymodules.SkyfileUploadParameters) {
+		reader := skymodules.NewSkyfileReader(pipeReader, sup)
+		var skylink skymodules.Skylink
+		skylink, upload.err = r.staticRenter.UploadSkyfile(sup, reader)
+
+		// set the finish time of the upload.
+		upload.finishTime = time.Now()
+
+		// Set skylink in the fileinfo.
+		info.MetaData["Skylink"] = skylink.String()
+
 		// Close the reader. If this happens before the writes are done, the
 		// writer will return the upload.err.
 		pipeReader.CloseWithError(upload.err)
 
 		// Close the result chan.
 		close(upload.staticResultChan)
-	}(up)
+	}(sup)
 	return upload, nil
 }
 
 // GetUpload returns an existing upload.
 func (r *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler.Upload, error) {
-	r.uploadMu.Lock()
 	upload, exists := r.uploads[id]
-	r.uploadMu.Unlock()
 	if !exists {
 		return nil, os.ErrNotExist
 	}
@@ -120,10 +127,6 @@ func (u *skynetTUSUpload) GetReader(ctx context.Context) (io.Reader, error) {
 
 // FinishUpload is called when the upload is done.
 func (u *skynetTUSUpload) FinishUpload(ctx context.Context) error {
-	// Delete the upload from the map.
-	u.staticUploader.uploadMu.Lock()
-	delete(u.staticUploader.uploads, u.fi.ID)
-	u.staticUploader.uploadMu.Unlock()
 	// Close the writer to indicate that no more data is coming.
 	// We don't care abou the error at this point.
 	_ = u.staticPipeWriter.Close()

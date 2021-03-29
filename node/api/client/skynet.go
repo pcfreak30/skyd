@@ -1,6 +1,8 @@
 package client
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/eventials/go-tus"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -43,6 +46,76 @@ func (c *Client) SkynetDownloadByRootGet(root crypto.Hash, offset, length uint64
 	getQuery := fmt.Sprintf("/skynet/root?%v", values.Encode())
 	_, reader, err := c.getReaderResponse(getQuery)
 	return reader, err
+}
+
+// SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
+// and the specified chunkSize.
+func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string, error) {
+	// Create config for client.
+	config := tus.DefaultConfig()
+	config.ChunkSize = chunkSize
+
+	// Create client.
+	tc, err := tus.NewClient(fmt.Sprintf("http://%v/skynet/tus", c.Address), config)
+	if err != nil {
+		return "", err
+	}
+
+	// Create the uploader and upload the data.
+	upload := tus.NewUploadFromBytes(data)
+	uploader, err := tc.CreateUpload(upload)
+	if err != nil {
+		return "", err
+	}
+	err = uploader.Upload()
+	if err != nil {
+		return "", err
+	}
+
+	// After the upload, fetch the skylink from the metadata.
+	req, err := http.NewRequest("HEAD", uploader.Url(), bytes.NewReader([]byte{}))
+	if err != nil {
+		return "", err
+	}
+	resp, err := tc.Do(req)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to fetch upload info: %v", resp.StatusCode)
+	}
+
+	// Get upload metadata from header.
+	metadata, found := resp.Header["Upload-Metadata"]
+	if !found {
+		return "", errors.New("metadata header not set")
+	}
+
+	// Find the skylink in the metadata.
+	var skylink64 string
+	for _, md := range metadata {
+		splitMD := strings.Split(md, " ")
+		if splitMD[0] != "Skylink" {
+			continue
+		}
+		if len(splitMD) != 2 {
+			return "", errors.New("invalid skylink metadata")
+		}
+		if skylink64 != "" {
+			return "", errors.New("skylink field exists more than once")
+		}
+		skylink64 = splitMD[1]
+	}
+	if skylink64 == "" {
+		return "", errors.New("skylink metadata missing")
+	}
+
+	// Decode skylink.
+	skylink, err := base64.StdEncoding.DecodeString(skylink64)
+	if err != nil {
+		return "", errors.New("failed to decode skylink")
+	}
+	return string(skylink), nil
 }
 
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a

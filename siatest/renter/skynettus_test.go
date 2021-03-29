@@ -1,11 +1,9 @@
 package renter
 
 import (
-	"fmt"
-	"net"
+	"bytes"
 	"testing"
 
-	"github.com/eventials/go-tus"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/siatest"
 )
@@ -42,36 +40,21 @@ func TestSkynetTUSUploader(t *testing.T) {
 
 // testTUSUploadSmallFile tests uploading a small file using the TUS protocol.
 func testTUSUploaderSmallFile(t *testing.T, r *siatest.TestNode) {
-	// create the tus client.
-	_, port, err := net.SplitHostPort(r.APIAddress())
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// upload a 100 byte file in chunks of 10 bytes.
 	fileSize := 100
-	chunkSize := fileSize / 10
-
-	// create the client.
-	config := tus.DefaultConfig()
-	config.ChunkSize = int64(chunkSize)
-	client, err := tus.NewClient(fmt.Sprintf("http://localhost:%v/skynet/tus", port), config)
+	chunkSize := int64(fileSize / 10)
+	uploadedData := fastrand.Bytes(fileSize)
+	skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// create an upload from a file.
-	upload := tus.NewUploadFromBytes(fastrand.Bytes(fileSize))
-
-	// create the uploader.
-	uploader, err := client.CreateUpload(upload)
+	// Download the uploaded data and compare it to the uploaded data.
+	downloadedData, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// start the uploading process.
-	err = uploader.Upload()
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(uploadedData, downloadedData) {
+		t.Fatal("data doesn't match")
 	}
 }
