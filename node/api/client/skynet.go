@@ -26,6 +26,39 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
+// tusStore is a simple implementation of the tus.Store interface.
+type tusStore struct {
+	store map[string]string
+}
+
+// newTUSStore creates a new in-memory store.
+func newTUSStore() *tusStore {
+	return &tusStore{
+		store: make(map[string]string),
+	}
+}
+
+// Get implements tus.Store.
+func (ts *tusStore) Get(fingerprint string) (string, bool) {
+	url, ok := ts.store[fingerprint]
+	return url, ok
+}
+
+// Set implements tus.Store.
+func (ts *tusStore) Set(fingerprint, url string) {
+	ts.store[fingerprint] = url
+}
+
+// Delete implements tus.Store.
+func (ts *tusStore) Delete(fingerprint string) {
+	delete(ts.store, fingerprint)
+}
+
+// Close implements tus.Store.
+func (ts *tusStore) Close() {
+	ts.store = nil
+}
+
 // SkynetBaseSectorGet uses the /skynet/basesector endpoint to fetch a reader of
 // the basesector data.
 func (c *Client) SkynetBaseSectorGet(skylink string) (io.ReadCloser, error) {
@@ -48,15 +81,23 @@ func (c *Client) SkynetDownloadByRootGet(root crypto.Hash, offset, length uint64
 	return reader, err
 }
 
-// SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
-// and the specified chunkSize.
-func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string, error) {
+// SkynetTUSClient creates a ready-to-use TUS client.
+func (c *Client) SkynetTUSClient(chunkSize int64) (*tus.Client, error) {
 	// Create config for client.
 	config := tus.DefaultConfig()
 	config.ChunkSize = chunkSize
+	config.Resume = true
+	config.Store = newTUSStore()
 
 	// Create client.
-	tc, err := tus.NewClient(fmt.Sprintf("http://%v/skynet/tus", c.Address), config)
+	return tus.NewClient(fmt.Sprintf("http://%v/skynet/tus", c.Address), config)
+}
+
+// SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
+// and the specified chunkSize.
+func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string, error) {
+	// Get client.
+	tc, err := c.SkynetTUSClient(chunkSize)
 	if err != nil {
 		return "", err
 	}
@@ -71,51 +112,8 @@ func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string,
 	if err != nil {
 		return "", err
 	}
-
 	// After the upload, fetch the skylink from the metadata.
-	req, err := http.NewRequest("HEAD", uploader.Url(), bytes.NewReader([]byte{}))
-	if err != nil {
-		return "", err
-	}
-	resp, err := tc.Do(req)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to fetch upload info: %v", resp.StatusCode)
-	}
-
-	// Get upload metadata from header.
-	metadata, found := resp.Header["Upload-Metadata"]
-	if !found {
-		return "", errors.New("metadata header not set")
-	}
-
-	// Find the skylink in the metadata.
-	var skylink64 string
-	for _, md := range metadata {
-		splitMD := strings.Split(md, " ")
-		if splitMD[0] != "Skylink" {
-			continue
-		}
-		if len(splitMD) != 2 {
-			return "", errors.New("invalid skylink metadata")
-		}
-		if skylink64 != "" {
-			return "", errors.New("skylink field exists more than once")
-		}
-		skylink64 = splitMD[1]
-	}
-	if skylink64 == "" {
-		return "", errors.New("skylink metadata missing")
-	}
-
-	// Decode skylink.
-	skylink, err := base64.StdEncoding.DecodeString(skylink64)
-	if err != nil {
-		return "", errors.New("failed to decode skylink")
-	}
-	return string(skylink), nil
+	return SkylinkFromTUSUpload(tc, uploader)
 }
 
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
@@ -854,6 +852,54 @@ func (c *Client) RegistryUpdate(spk types.SiaPublicKey, dataKey crypto.Hash, rev
 		return err
 	}
 	return c.post("/skynet/registry", string(reqBytes), nil)
+}
+
+// SkylinkFromTUSUpload is a helper to fetch the skylink of a finished upload.
+func SkylinkFromTUSUpload(tc *tus.Client, uploader *tus.Uploader) (string, error) {
+	// After the upload, fetch the skylink from the metadata.
+	req, err := http.NewRequest("HEAD", uploader.Url(), bytes.NewReader([]byte{}))
+	if err != nil {
+		return "", err
+	}
+	resp, err := tc.Do(req)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to fetch upload info: %v", resp.StatusCode)
+	}
+
+	// Get upload metadata from header.
+	metadata, found := resp.Header["Upload-Metadata"]
+	if !found {
+		return "", errors.New("metadata header not set")
+	}
+
+	// Find the skylink in the metadata.
+	var skylink64 string
+	for _, md := range metadata {
+		splitMD := strings.Split(md, " ")
+		if splitMD[0] != "Skylink" {
+			continue
+		}
+		if len(splitMD) != 2 {
+			return "", errors.New("invalid skylink metadata")
+		}
+		if skylink64 != "" {
+			return "", errors.New("skylink field exists more than once")
+		}
+		skylink64 = splitMD[1]
+	}
+	if skylink64 == "" {
+		return "", errors.New("skylink metadata missing")
+	}
+
+	// Decode skylink.
+	skylink, err := base64.StdEncoding.DecodeString(skylink64)
+	if err != nil {
+		return "", errors.New("failed to decode skylink")
+	}
+	return string(skylink), nil
 }
 
 // skylinkQueryWithValues returns a skylink query based on the given skylink and

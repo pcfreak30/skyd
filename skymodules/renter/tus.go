@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"io"
+	"io/ioutil"
 	"os"
 	"time"
 
@@ -22,7 +23,7 @@ type (
 	skynetTUSUploader struct {
 		uploads map[string]*skynetTUSUpload
 
-		staticRenter skymodules.Renter
+		staticRenter *Renter
 	}
 
 	// skynetTUSUpload implements multiple TUS interfaces for uploads.
@@ -39,7 +40,7 @@ type (
 )
 
 // newSkynetTUSUploader creates a new uploader.
-func newSkynetTUSUploader(renter skymodules.Renter) *skynetTUSUploader {
+func newSkynetTUSUploader(renter *Renter) *skynetTUSUploader {
 	return &skynetTUSUploader{
 		uploads:      make(map[string]*skynetTUSUpload),
 		staticRenter: renter,
@@ -108,9 +109,38 @@ func (r *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler.U
 	return upload, nil
 }
 
+func (u *skynetTUSUpload) writeUnstableTUS(src io.Reader, offset int64) (int64, error) {
+	srcBytes, err := ioutil.ReadAll(src)
+	if err != nil {
+		return 0, err
+	}
+	// If less than 10 bytes are remaining, write all of them.
+	var n int
+	if len(srcBytes) < 10 {
+		n, err = u.staticPipeWriter.Write(srcBytes)
+		return int64(n), err
+	}
+	// Otherwise write half the data.
+	n, err = u.staticPipeWriter.Write(srcBytes[:len(srcBytes)/2])
+	if err != nil {
+		return int64(n), err
+	}
+	return int64(n), errors.New("TUSUnstable")
+}
+
 // WriteChunk writes the chunk to the provided offset.
 func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (int64, error) {
-	written, err := io.Copy(u.staticPipeWriter, src)
+	var written int64
+	var err error
+
+	// Simulate an unstable connection that drops half the data of every write.
+	if u.staticUploader.staticRenter.staticDeps.Disrupt("TUSUnstable") {
+		written, err = u.writeUnstableTUS(src, offset)
+	} else {
+		// Regular upload
+		written, err = io.Copy(u.staticPipeWriter, src)
+	}
+	// Increment offset and return error.
 	u.fi.Offset += written
 	return written, err
 }
