@@ -67,7 +67,7 @@ type unfinishedUploadChunk struct {
 
 	// sourceReader is an optional source for the logical chunk data. If
 	// available it will be tried before the repair path or remote repair.
-	sourceReader io.ReadCloser
+	sourceReader skymodules.ChunkReader
 
 	// Performance information.
 	chunkCreationTime        time.Time
@@ -513,7 +513,7 @@ func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) (er
 	}()
 
 	// Grab the logical data from the reader.
-	n, err := uc.staticReadLogicalData(uc.sourceReader)
+	n, err := uc.sourceReader.ReadChunk()
 	if err != nil {
 		return errors.AddContext(err, "unable to read the chunk data from the source reader")
 	}

@@ -281,14 +281,11 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 // managedPopulateFileNodeFromReader takes the fileNode and a reader and returns
 // a populated filenode without uploading any data. It is used to perform a
 // dry-run of a skyfile upload.
-func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode, reader io.Reader) error {
+func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode, reader skymodules.ChunkReader) error {
 	// Extract some helper variables
 	hpk := types.SiaPublicKey{} // blank host key
-	ec := fileNode.ErasureCode()
-	psize := fileNode.PieceSize()
 	csize := fileNode.ChunkSize()
 
-	var peek []byte
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Grow the SiaFile to the right size.
 		err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1)
@@ -297,18 +294,12 @@ func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode
 		}
 
 		// Allocate data pieces and fill them with data from r.
-		ss := NewStreamShard(reader, peek)
 		err = func() (err error) {
-			defer func() {
-				err = errors.Compose(err, ss.Close())
-			}()
-
-			dataPieces, total, errRead := readDataPieces(ss, ec, psize)
+			dataEncoded, total, errRead := reader.ReadChunk()
 			if errRead != nil {
 				return errRead
 			}
 
-			dataEncoded, _ := ec.EncodeShards(dataPieces)
 			for pieceIndex, dataPieceEnc := range dataEncoded {
 				if err := fileNode.SiaFile.AddPiece(hpk, chunkIndex, uint64(pieceIndex), crypto.MerkleRoot(dataPieceEnc)); err != nil {
 					return err
@@ -321,14 +312,6 @@ func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode
 			}
 			return nil
 		}()
-		if err != nil {
-			return err
-		}
-
-		_, err = ss.Result()
-		if errors.Contains(err, io.EOF) {
-			break
-		}
 		if err != nil {
 			return err
 		}

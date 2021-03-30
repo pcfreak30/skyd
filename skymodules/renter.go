@@ -1054,6 +1054,15 @@ type (
 	}
 )
 
+// ChunkReader is the interface for a reader reading full erasure-coded chunks
+// from a stream.
+type ChunkReader interface {
+	io.Closer
+
+	Peek() bool
+	ReadChunk() ([][]byte, uint64, error)
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -1260,7 +1269,7 @@ type Renter interface {
 
 	// UploadStreamFromReader reads from the provided reader until io.EOF is
 	// reached and upload the data to the Sia network.
-	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
+	UploadStreamFromReader(up FileUploadParams, reader ChunkReader) error
 
 	// CreateDir creates a directory for the renter
 	CreateDir(siaPath SiaPath, mode os.FileMode) error
