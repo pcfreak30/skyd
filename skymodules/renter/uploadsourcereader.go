@@ -13,39 +13,37 @@ import (
 // chunkReader implements the ChunkReader interface by wrapping a io.Reader.
 type chunkReader struct {
 	staticEC        skymodules.ErasureCoder
+	staticMasterKey crypto.CipherKey
 	staticPieceSize uint64
 	staticReader    io.Reader
 
-	peek []byte
+	chunkIndex uint64
+	peek       []byte
 }
 
 // fanoutChunkReader implements the FanoutChunkReader interface by wrapping a
 // ChunkReader.
 type fanoutChunkReader struct {
 	skymodules.ChunkReader
-
-	// fanout related fields
-	chunkIndex      uint64
-	fanout          []byte
-	staticOnePiece  bool
-	staticMasterKey crypto.CipherKey
+	fanout         []byte
+	staticOnePiece bool
 }
 
 // NewChunkReader creates a new chunkReader.
-func NewChunkReader(r io.Reader, ec skymodules.ErasureCoder, ct crypto.CipherType) skymodules.ChunkReader {
+func NewChunkReader(r io.Reader, ec skymodules.ErasureCoder, mk crypto.CipherKey) skymodules.ChunkReader {
 	return &chunkReader{
 		staticReader:    r,
 		staticEC:        ec,
-		staticPieceSize: modules.SectorSize - ct.Overhead(),
+		staticPieceSize: modules.SectorSize - mk.Type().Overhead(),
+		staticMasterKey: mk,
 	}
 }
 
 // NewFanoutChunkReader creates a new fanoutChunkReader.
 func NewFanoutChunkReader(r io.Reader, ec skymodules.ErasureCoder, onePiece bool, mk crypto.CipherKey) skymodules.FanoutChunkReader {
 	return &fanoutChunkReader{
-		ChunkReader:     NewChunkReader(r, ec, mk.Type()),
-		staticOnePiece:  onePiece,
-		staticMasterKey: mk,
+		ChunkReader:    NewChunkReader(r, ec, mk),
+		staticOnePiece: onePiece,
 	}
 }
 
@@ -80,7 +78,11 @@ func (cr *chunkReader) ReadChunk() ([][]byte, uint64, error) {
 	if err != nil {
 		return nil, 0, errors.AddContext(err, "ReadChunk: failed to encode logical chunk data")
 	}
+	for pieceIndex := range logicalChunkData {
+		padAndEncryptPiece(cr.chunkIndex, uint64(pieceIndex), logicalChunkData, cr.staticMasterKey)
+	}
 	cr.peek = nil
+	cr.chunkIndex++
 	return logicalChunkData, n, nil
 }
 
@@ -99,16 +101,10 @@ func (cr *fanoutChunkReader) ReadChunk() ([][]byte, uint64, error) {
 	if err != nil {
 		return chunk, n, err
 	}
-	cr.appendFanout(chunk)
-	return chunk, n, nil
-}
-
-// appendFanout appends the merkle roots of a given logical chunk to the fanout.
-func (cr *fanoutChunkReader) appendFanout(logicalChunkData [][]byte) {
-	for pieceIndex := range logicalChunkData {
+	// Append the root to the fanout.
+	for pieceIndex := range chunk {
 		// Encrypt and pad the piece with the given index.
-		padAndEncryptPiece(cr.chunkIndex, uint64(pieceIndex), logicalChunkData, cr.staticMasterKey)
-		root := crypto.MerkleRoot(logicalChunkData[pieceIndex])
+		root := crypto.MerkleRoot(chunk[pieceIndex])
 		// Unlike in skyfileEncodeFanoutFromFileNode we don't check for an
 		// emptyHash here since if MerkleRoot returned an emptyHash it would
 		// mean that an emptyHash is a valid MerkleRoot and a host should be
@@ -120,5 +116,5 @@ func (cr *fanoutChunkReader) appendFanout(logicalChunkData [][]byte) {
 			break
 		}
 	}
-	cr.chunkIndex++
+	return chunk, n, nil
 }

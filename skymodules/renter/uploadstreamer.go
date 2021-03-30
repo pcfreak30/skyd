@@ -302,7 +302,7 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 	if err != nil {
 		return nil, err
 	}
-	chunkReader := NewChunkReader(reader, fileNode.ErasureCode(), fileNode.MasterKey().Type())
+	chunkReader := NewChunkReader(reader, fileNode.ErasureCode(), fileNode.MasterKey())
 	err = r.callUploadStreamFromReaderWithFileNode(fileNode, chunkReader)
 	if err != nil {
 		err = errors.Compose(err, fileNode.Close())

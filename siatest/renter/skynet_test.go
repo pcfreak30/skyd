@@ -1138,7 +1138,6 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 
 		_, _, err = r.SkynetSkyfileMultiPartPost(mup)
 		if err == nil || (!strings.Contains(err.Error(), skymodules.ErrInvalidPathString.Error()) && !strings.Contains(err.Error(), skymodules.ErrEmptyFilename.Error())) {
-			t.Log("Filename:", subfile.Filename)
 			t.Log("Error:", err)
 			t.Fatal("Expected SkynetSkyfileMultiPartPost to fail due to invalid filename")
 		}
@@ -1868,6 +1867,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 			// Download the sector
 			reader, err := r.SkynetDownloadByRootGet(chunkRoots[i][j], 0, modules.SectorSize, -1)
 			if err != nil {
+				t.Log("root", chunkRoots[i][j])
 				t.Fatal(err)
 			}
 

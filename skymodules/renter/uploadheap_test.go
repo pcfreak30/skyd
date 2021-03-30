@@ -1003,7 +1003,7 @@ func testManagedPushChunkForRepair(t *testing.T) {
 		}
 	}()
 	var buf []byte
-	cr := NewChunkReader(bytes.NewReader(buf), file.ErasureCode(), file.MasterKey().Type())
+	cr := NewChunkReader(bytes.NewReader(buf), file.ErasureCode(), file.MasterKey())
 	sr := NewStreamShard(cr)
 	streamChunk := &unfinishedUploadChunk{
 		id: uploadChunkID{
@@ -1120,7 +1120,8 @@ func testManagedTryUpdate(t *testing.T) {
 
 	// Define test cases
 	var buf []byte
-	cr := NewChunkReader(bytes.NewReader(buf), ec, crypto.TypePlain)
+	sk := crypto.GenerateSiaKey(crypto.TypePlain)
+	cr := NewChunkReader(bytes.NewReader(buf), ec, sk)
 	sr := NewStreamShard(cr)
 	var tests = []struct {
 		name             string

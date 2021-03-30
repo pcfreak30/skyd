@@ -1061,10 +1061,10 @@ type ChunkReader interface {
 	// chunk or if there is no more data.
 	Peek() bool
 
-	// ReadChunk reads the next chunk from the reader. The returned chunk is erasure
-	// coded and will always be a full chunk. It also returns the number of bytes
-	// that this chunk was created from which is useful because the last chunk might
-	// be padded.
+	// ReadChunk reads the next chunk from the reader. The returned chunk is
+	// erasure coded, encrypted and will always be a full chunk ready for
+	// upload. It also returns the number of bytes that this chunk was created
+	// from which is useful because the last chunk might be padded.
 	ReadChunk() ([][]byte, uint64, error)
 }
 
