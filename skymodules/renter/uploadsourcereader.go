@@ -81,6 +81,9 @@ func (cr *chunkReader) ReadChunk() ([][]byte, uint64, error) {
 	if err != nil {
 		return nil, 0, errors.AddContext(err, "ReadChunk: failed to read data pieces")
 	}
+	if n == 0 {
+		return nil, 0, io.EOF
+	}
 	logicalChunkData, err := cr.staticEC.EncodeShards(dataPieces)
 	if err != nil {
 		return nil, 0, errors.AddContext(err, "ReadChunk: failed to encode logical chunk data")

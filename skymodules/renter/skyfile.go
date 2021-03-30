@@ -287,33 +287,34 @@ func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode
 	csize := fileNode.ChunkSize()
 
 	for chunkIndex := uint64(0); ; chunkIndex++ {
+		// Allocate data pieces and fill them with data from r.
+		dataEncoded, total, errRead := reader.ReadChunk()
+		if errors.Contains(errRead, io.EOF) {
+			return nil
+		}
+		if errRead != nil {
+			return errRead
+		}
+		// If no more data is read from the stream we are done.
+		if total == 0 {
+			return nil // done
+		}
+
 		// Grow the SiaFile to the right size.
 		err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1)
 		if err != nil {
 			return err
 		}
 
-		// Allocate data pieces and fill them with data from r.
-		err = func() (err error) {
-			dataEncoded, total, errRead := reader.ReadChunk()
-			if errRead != nil {
-				return errRead
+		for pieceIndex, dataPieceEnc := range dataEncoded {
+			if err := fileNode.SiaFile.AddPiece(hpk, chunkIndex, uint64(pieceIndex), crypto.MerkleRoot(dataPieceEnc)); err != nil {
+				return err
 			}
+		}
 
-			for pieceIndex, dataPieceEnc := range dataEncoded {
-				if err := fileNode.SiaFile.AddPiece(hpk, chunkIndex, uint64(pieceIndex), crypto.MerkleRoot(dataPieceEnc)); err != nil {
-					return err
-				}
-			}
-
-			adjustedSize := fileNode.Size() - csize + total
-			if err := fileNode.SetFileSize(adjustedSize); err != nil {
-				return errors.AddContext(err, "failed to adjust FileSize")
-			}
-			return nil
-		}()
-		if err != nil {
-			return err
+		adjustedSize := fileNode.Size() - csize + total
+		if err := fileNode.SetFileSize(adjustedSize); err != nil {
+			return errors.AddContext(err, "failed to adjust FileSize")
 		}
 	}
 }
