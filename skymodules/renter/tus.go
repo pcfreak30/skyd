@@ -152,6 +152,17 @@ func (u *skynetTUSUpload) FinishUpload(ctx context.Context) error {
 	// Close fileNode.
 	_ = u.staticFN.Close()
 
+	// Create metadata.
+	sup := u.staticSUP
+	_ = skymodules.SkyfileMetadata{
+		Filename:     sup.Filename,
+		Length:       uint64(u.fi.Size),
+		Mode:         sup.Mode,
+		Monetization: sup.Monetization,
+	}
+
+	// Get fanout.
+
 	// TODO: compute skylink.
 	return nil
 }
