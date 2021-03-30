@@ -31,7 +31,14 @@ type fanoutChunkReader struct {
 
 // NewChunkReader creates a new chunkReader.
 func NewChunkReader(r io.Reader, ec skymodules.ErasureCoder, mk crypto.CipherKey) skymodules.ChunkReader {
+	return NewChunkReaderWithChunkIndex(r, ec, mk, 0)
+}
+
+// NewChunkReaderWithChunkIndex creates a new chunkReader that starts encryption
+// at a certain index.
+func NewChunkReaderWithChunkIndex(r io.Reader, ec skymodules.ErasureCoder, mk crypto.CipherKey, chunkIndex uint64) skymodules.ChunkReader {
 	return &chunkReader{
+		chunkIndex:      chunkIndex,
 		staticReader:    r,
 		staticEC:        ec,
 		staticPieceSize: modules.SectorSize - mk.Type().Overhead(),

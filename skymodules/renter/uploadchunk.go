@@ -567,7 +567,7 @@ func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 			err = errors.Compose(err, osFile.Close())
 		}()
 		sr := io.NewSectionReader(osFile, uc.offset, int64(uc.length))
-		cr := NewChunkReader(sr, uc.fileEntry.ErasureCode(), uc.fileEntry.MasterKey())
+		cr := NewChunkReaderWithChunkIndex(sr, uc.fileEntry.ErasureCode(), uc.fileEntry.MasterKey(), uc.staticIndex)
 		uc.logicalChunkData, _, err = cr.ReadChunk()
 		if err != nil {
 			return errors.AddContext(err, "unable to read the data from the local file")
