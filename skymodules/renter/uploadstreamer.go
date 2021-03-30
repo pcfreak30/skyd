@@ -266,10 +266,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 			if !pushed {
 				// The chunk wasn't added to the repair map meaning it must have
 				// already been in the repair map
-				_, err = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
-				if err != nil {
-					return n, err
-				}
+				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				n += int64(fileNode.ChunkSize())
 				if err := ss.Close(); err != nil {
 					return n, err
@@ -281,10 +278,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 			// from the shard though. Otherwise we will upload the wrong chunk
 			// for the next chunkIndex. We don't need to check the error though
 			// since we check that anyway at the end of the loop.
-			_, err = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
-			if err != nil {
-				return n, err
-			}
+			_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 			n += int64(fileNode.ChunkSize())
 			if err := ss.Close(); err != nil {
 				return n, err
@@ -358,7 +352,6 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 	_, err = r.callUploadStreamFromReaderWithFileNode(fileNode, reader, 0)
 	if err != nil {
 		// Delete the file if the upload wasn't successful.
-		err = errors.Compose(err, fileNode.Delete())
 		err = errors.Compose(err, fileNode.Close())
 		return nil, err
 	}
