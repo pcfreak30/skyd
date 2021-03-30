@@ -1063,6 +1063,12 @@ type ChunkReader interface {
 	ReadChunk() ([][]byte, uint64, error)
 }
 
+type FanoutChunkReader interface {
+	ChunkReader
+
+	Fanout() []byte
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -1269,7 +1275,7 @@ type Renter interface {
 
 	// UploadStreamFromReader reads from the provided reader until io.EOF is
 	// reached and upload the data to the Sia network.
-	UploadStreamFromReader(up FileUploadParams, reader ChunkReader) error
+	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
 	CreateDir(siaPath SiaPath, mode os.FileMode) error

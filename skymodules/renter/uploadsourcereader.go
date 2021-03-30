@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
@@ -15,6 +16,10 @@ type chunkReader struct {
 	staticReader    io.Reader
 
 	peek []byte
+}
+
+type fanoutChunkReader struct {
+	skymodules.ChunkReader
 
 	// fanout related fields
 	chunkIndex      uint64
@@ -23,11 +28,17 @@ type chunkReader struct {
 	staticMasterKey crypto.CipherKey
 }
 
-func NewChunkReader(r io.Reader, ec skymodules.ErasureCoder, pieceSize uint64, onePiece bool, mk crypto.CipherKey) skymodules.ChunkReader {
+func NewChunkReader(r io.Reader, ec skymodules.ErasureCoder, ct crypto.CipherType) skymodules.ChunkReader {
 	return &chunkReader{
 		staticReader:    r,
 		staticEC:        ec,
-		staticPieceSize: pieceSize,
+		staticPieceSize: modules.SectorSize - ct.Overhead(),
+	}
+}
+
+func NewFanoutChunkReader(r io.Reader, ec skymodules.ErasureCoder, onePiece bool, mk crypto.CipherKey) skymodules.FanoutChunkReader {
+	return &fanoutChunkReader{
+		ChunkReader:     NewChunkReader(r, ec, mk.Type()),
 		staticOnePiece:  onePiece,
 		staticMasterKey: mk,
 	}
@@ -62,12 +73,25 @@ func (cr *chunkReader) ReadChunk() ([][]byte, uint64, error) {
 	if err != nil {
 		return nil, 0, errors.AddContext(err, "ReadChunk: failed to encode logical chunk data")
 	}
-	cr.appendFanout(logicalChunkData)
 	cr.peek = nil
 	return logicalChunkData, n, nil
 }
 
-func (cr *chunkReader) appendFanout(logicalChunkData [][]byte) {
+func (cr *fanoutChunkReader) Fanout() []byte {
+	return cr.fanout
+}
+
+func (cr *fanoutChunkReader) ReadChunk() ([][]byte, uint64, error) {
+	// If the chunk was read successfully, append the fanout.
+	chunk, n, err := cr.ChunkReader.ReadChunk()
+	if err != nil {
+		return chunk, n, err
+	}
+	cr.appendFanout(chunk)
+	return chunk, n, nil
+}
+
+func (cr *fanoutChunkReader) appendFanout(logicalChunkData [][]byte) {
 	for pieceIndex := range logicalChunkData {
 		// Encrypt and pad the piece with the given index.
 		padAndEncryptPiece(cr.chunkIndex, uint64(pieceIndex), logicalChunkData, cr.staticMasterKey)

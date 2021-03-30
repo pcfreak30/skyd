@@ -316,7 +316,6 @@ func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode
 			return err
 		}
 	}
-	return nil
 }
 
 // Blocklist returns the merkleroots that are on the blocklist
@@ -517,16 +516,15 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
 
 	// The teereader will forward the raw data to the fanoutWriter.
-	fanoutWriter := newFanoutWriter(fileNode, onlyOnePieceNeeded)
-	tr := io.TeeReader(fileReader, fanoutWriter)
+	cr := NewFanoutChunkReader(fileReader, fileNode.ErasureCode(), onlyOnePieceNeeded, fileNode.MasterKey())
 	if sup.DryRun {
 		// In case of a dry-run we don't want to perform the actual upload,
 		// instead we create a filenode that contains all of the data pieces and
 		// their merkle roots.
-		err = r.managedPopulateFileNodeFromReader(fileNode, tr)
+		err = r.managedPopulateFileNodeFromReader(fileNode, cr)
 	} else {
 		// Upload the file using a streamer.
-		err = r.callUploadStreamFromReaderWithFileNode(fileNode, tr)
+		err = r.callUploadStreamFromReaderWithFileNode(fileNode, cr)
 	}
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload file")
@@ -536,7 +534,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	// the fanout from the fileNode in that case.
 	var fanout []byte
 	if fileReader != nil {
-		fanout, err = fanoutWriter.Fanout()
+		fanout = cr.Fanout()
 	} else {
 		fanout, err = skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
 	}

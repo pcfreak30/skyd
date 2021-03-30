@@ -78,12 +78,12 @@ func (ss *StreamShard) ReadChunk() ([][]byte, uint64, error) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
-	return ss.ReadChunk()
+	return ss.r.ReadChunk()
 }
 
 // UploadStreamFromReader reads from the provided reader until io.EOF is reached and
 // upload the data to the Sia network.
-func (r *Renter) UploadStreamFromReader(up skymodules.FileUploadParams, reader skymodules.ChunkReader) error {
+func (r *Renter) UploadStreamFromReader(up skymodules.FileUploadParams, reader io.Reader) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 			if !pushed {
 				// The chunk wasn't added to the repair map meaning it must have
 				// already been in the repair map
-				_, err = ss.ReadChunk()
+				_, _, err = ss.ReadChunk()
 				if err != nil {
 					return errors.AddContext(err, "unable to read pushed chunk")
 				}
@@ -237,7 +237,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 			// from the shard though. Otherwise we will upload the wrong chunk
 			// for the next chunkIndex. We don't need to check the error though
 			// since we check that anyway at the end of the loop.
-			_, err = ss.ReadChunk()
+			_, _, err = ss.ReadChunk()
 			if err != nil {
 				return errors.AddContext(err, "unable to read chunk")
 			}
@@ -299,13 +299,14 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, reader skymodules.ChunkReader) (fileNode *filesystem.FileNode, err error) {
+func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, reader io.Reader) (fileNode *filesystem.FileNode, err error) {
 	// Check the upload params first.
 	fileNode, err = r.managedInitUploadStream(up)
 	if err != nil {
 		return nil, err
 	}
-	err = r.callUploadStreamFromReaderWithFileNode(fileNode, reader)
+	chunkReader := NewChunkReader(reader, fileNode.ErasureCode(), fileNode.MasterKey().Type())
+	err = r.callUploadStreamFromReaderWithFileNode(fileNode, chunkReader)
 	if err != nil {
 		err = errors.Compose(err, fileNode.Close())
 		return nil, err

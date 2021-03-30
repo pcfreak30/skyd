@@ -513,7 +513,8 @@ func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) (er
 	}()
 
 	// Grab the logical data from the reader.
-	n, err := uc.sourceReader.ReadChunk()
+	var n uint64
+	uc.logicalChunkData, n, err = uc.sourceReader.ReadChunk()
 	if err != nil {
 		return errors.AddContext(err, "unable to read the chunk data from the source reader")
 	}
