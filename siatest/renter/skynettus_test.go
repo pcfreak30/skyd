@@ -5,11 +5,13 @@ import (
 	"testing"
 
 	"github.com/eventials/go-tus"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestSkynetTUSUploader runs all skynetTUSUploader related tests.
@@ -48,9 +50,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 // testTUSUploadSmallFile tests uploading a small file using the TUS protocol.
 func testTUSUploaderSmallFile(t *testing.T, r *siatest.TestNode) {
 	// upload a 100 byte file in chunks of 10 bytes.
-	fileSize := 100
-	chunkSize := int64(fileSize / 10)
-	uploadedData := fastrand.Bytes(fileSize)
+	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
+	fileSize := chunkSize*5 + chunkSize/2 // 5 1/2 chunks.
+	uploadedData := fastrand.Bytes(int(fileSize))
 	skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize)
 	if err != nil {
 		t.Fatal(err)

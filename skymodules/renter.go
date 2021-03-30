@@ -689,6 +689,13 @@ func (mrs MerkleRootSet) MarshalJSON() ([]byte, error) {
 	return json.Marshal(fullBytes)
 }
 
+// ChunkSize is a helper to compute the size of a chunk given the used cipher
+// type and data pieces.
+func ChunkSize(ct crypto.CipherType, dataPieces uint64) uint64 {
+	pieceSize := modules.SectorSize - ct.Overhead()
+	return pieceSize * dataPieces
+}
+
 // UnmarshalJSON attempts to decode a MerkleRootSet, falling back on the legacy
 // decoding of a []crypto.Hash if that fails.
 func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {

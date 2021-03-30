@@ -543,7 +543,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		err = r.managedPopulateFileNodeFromReader(fileNode, tr)
 	} else {
 		// Upload the file using a streamer.
-		err = r.callUploadStreamFromReaderWithFileNode(fileNode, tr)
+		_, err = r.callUploadStreamFromReaderWithFileNode(fileNode, tr, 0)
 	}
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload file")

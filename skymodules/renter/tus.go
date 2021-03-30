@@ -5,14 +5,15 @@ import (
 	"context"
 	"encoding/hex"
 	"io"
-	"io/ioutil"
 	"os"
-	"time"
 
 	"github.com/tus/tusd/pkg/handler"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 // TODO: periodically remove old uploads.
@@ -28,14 +29,11 @@ type (
 
 	// skynetTUSUpload implements multiple TUS interfaces for uploads.
 	skynetTUSUpload struct {
-		fi               handler.FileInfo
-		staticPipeWriter *io.PipeWriter
-		staticUploader   *skynetTUSUploader
-
-		// Result
-		finishTime       time.Time
-		staticResultChan chan struct{}
-		err              error
+		fi             handler.FileInfo
+		staticUploader *skynetTUSUploader
+		staticSUP      skymodules.SkyfileUploadParameters
+		staticUP       skymodules.FileUploadParams
+		staticFN       *filesystem.FileNode
 	}
 )
 
@@ -56,12 +54,9 @@ func (r *Renter) SkynetTUSUploader() skymodules.SkynetTUSDataStore {
 func (r *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileInfo) (handler.Upload, error) {
 	// Create the upload object.
 	info.ID = hex.EncodeToString(fastrand.Bytes(16))
-	pipeReader, pipeWriter := io.Pipe()
 	upload := &skynetTUSUpload{
-		fi:               info,
-		staticPipeWriter: pipeWriter,
-		staticResultChan: make(chan struct{}),
-		staticUploader:   r,
+		fi:             info,
+		staticUploader: r,
 	}
 	r.uploads[info.ID] = upload
 
@@ -77,36 +72,32 @@ func (r *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileInfo
 		return nil, err
 	}
 
-	// Create the upload params.
-	// TODO: add a mechanism to stop the upload if no data has been received for
-	// a while.
+	// Create the skyfile upload params.
 	// TODO: use info.metadata to create skyfileuploadparameters different from
 	// the default.
-	sup := skymodules.SkyfileUploadParameters{
-		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
-		Filename:            sp.Name(),
+	upload.staticSUP = skymodules.SkyfileUploadParameters{
 		SiaPath:             sp,
+		Filename:            sp.Name(),
+		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
 	}
 
-	// Run the upload in the background.
-	go func(sup skymodules.SkyfileUploadParameters) {
-		reader := skymodules.NewSkyfileReader(pipeReader, sup)
-		var skylink skymodules.Skylink
-		skylink, upload.err = r.staticRenter.UploadSkyfile(sup, reader)
+	// Create the FileUploadParams
+	upload.staticUP, err = fileUploadParams(sp, skymodules.RenterDefaultDataPieces, skymodules.RenterDefaultParityPieces, upload.staticUP.Force, crypto.TypePlain)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create FileUploadParams for large file")
+	}
 
-		// set the finish time of the upload.
-		upload.finishTime = time.Now()
+	// Generate a Cipher Key for the FileUploadParams.
+	err = generateCipherKey(&upload.staticUP, upload.staticSUP)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
+	}
 
-		// Set skylink in the fileinfo.
-		info.MetaData["Skylink"] = skylink.String()
-
-		// Close the reader. If this happens before the writes are done, the
-		// writer will return the upload.err.
-		pipeReader.CloseWithError(upload.err)
-
-		// Close the result chan.
-		close(upload.staticResultChan)
-	}(sup)
+	// Check the upload params first and create a fileNode.
+	upload.staticFN, err = r.staticRenter.managedInitUploadStream(upload.staticUP)
+	if err != nil {
+		return nil, err
+	}
 	return upload, nil
 }
 
@@ -119,44 +110,31 @@ func (r *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler.U
 	return upload, nil
 }
 
-func (u *skynetTUSUpload) writeUnstableTUS(src io.Reader, offset int64) (int64, error) {
-	srcBytes, err := ioutil.ReadAll(src)
-	if err != nil {
-		return 0, err
-	}
-	// If less than 10 bytes are remaining, write all of them.
-	var n int
-	if len(srcBytes) < 10 {
-		n, err = u.staticPipeWriter.Write(srcBytes)
-		return int64(n), err
-	}
-	// Otherwise write half the data.
-	n, err = u.staticPipeWriter.Write(srcBytes[:len(srcBytes)/2])
-	if err != nil {
-		return int64(n), err
-	}
-	// Then close the pipe writer with an error to simulate cutting off the
-	// connection.
-	err = errors.New("TUSUnstable")
-	u.staticPipeWriter.CloseWithError(err)
-	return int64(n), err
-}
-
 // WriteChunk writes the chunk to the provided offset.
 func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (int64, error) {
-	var written int64
-	var err error
+	uploader := u.staticUploader
+	fileNode := u.staticFN
 
-	// Simulate an unstable connection that drops half the data of every write.
-	if u.staticUploader.staticRenter.staticDeps.Disrupt("TUSUnstable") {
-		written, err = u.writeUnstableTUS(src, offset)
-	} else {
-		// Regular upload
-		written, err = io.Copy(u.staticPipeWriter, src)
+	// Sanity check offset.
+	// NOTE: If the offset is not chunk aligned, it means that a previous call
+	// to WriteChunk read an incomplete chunk from src and padded it. After
+	// uploading a padded chunk, we can't upload more chunks. That's why the
+	// client needs to make sure that the chunkSize they use is aligned with the
+	// chunkSize of the skyfile's fanout.
+	if offset%int64(fileNode.ChunkSize()) != 0 {
+		err := errors.New("can't append chunk to offset that is not chunk aligned")
+		if build.Release == "testing" {
+			// In test builds we want to be aware of this.
+			build.Critical(err)
+		}
+		// Upload failed. Remove and close fileNode.
+		return 0, errors.Compose(err, fileNode.Delete(), fileNode.Close())
 	}
-	// Increment offset and return error.
-	u.fi.Offset += written
-	return written, err
+
+	// Upload
+	n, err := uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, src, offset)
+	u.fi.Offset += n
+	return n, err
 }
 
 // GetInfo returns the file info.
@@ -171,14 +149,9 @@ func (u *skynetTUSUpload) GetReader(ctx context.Context) (io.Reader, error) {
 
 // FinishUpload is called when the upload is done.
 func (u *skynetTUSUpload) FinishUpload(ctx context.Context) error {
-	// Close the writer to indicate that no more data is coming.
-	// We don't care abou the error at this point.
-	_ = u.staticPipeWriter.Close()
-	// Wait for the result.
-	select {
-	case <-ctx.Done():
-		return errors.New("interrupted by shutdown")
-	case <-u.staticResultChan:
-	}
-	return u.err
+	// Close fileNode.
+	_ = u.staticFN.Close()
+
+	// TODO: compute skylink.
+	return nil
 }

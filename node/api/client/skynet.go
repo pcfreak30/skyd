@@ -103,7 +103,9 @@ func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string,
 	}
 
 	// Create the uploader and upload the data.
-	upload := tus.NewUploadFromBytes(data)
+	r := bytes.NewReader(data)
+	fp := crypto.HashBytes(data).String()
+	upload := tus.NewUpload(r, r.Size(), tus.Metadata{}, fp)
 	uploader, err := tc.CreateUpload(upload)
 	if err != nil {
 		return "", err

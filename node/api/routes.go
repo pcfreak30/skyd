@@ -10,7 +10,6 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/tus/tusd/pkg/handler"
 	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/log"
 
 	"gitlab.com/skynetlabs/skyd/build"
 )
@@ -176,7 +175,7 @@ func (api *API) buildHTTPRoutes() {
 			BasePath:      "/skynet/tus",
 			MaxSize:       0, // unlimited upload size
 			StoreComposer: storeComposer,
-			Logger:        log.DiscardLogger.Logger, // discard third party logging
+			//Logger:        log.DiscardLogger.Logger, // discard third party logging
 		})
 		if err != nil {
 			build.Critical("failed to create skynet TUS handler", err)
