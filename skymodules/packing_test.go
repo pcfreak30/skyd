@@ -60,7 +60,7 @@ func TestPackFiles(t *testing.T) {
 				},
 			},
 			num:  1,
-			size: modules.SectorSize + (36 * kib) + (10 * kib),
+			size: (36 * kib) + (10 * kib),
 		},
 		// Test case to ensure that the smallest file, despite being packed
 		// last, does not have the highest offset of all the files if there are
@@ -96,7 +96,7 @@ func TestPackFiles(t *testing.T) {
 				},
 			},
 			num:  1,
-			size: modules.SectorSize + (2*mib + 512*kib) + (1*mib + 499*kib),
+			size: (2*mib + 512*kib) + (1*mib + 499*kib),
 		},
 		{
 			in: map[string]uint64{
@@ -163,7 +163,7 @@ func TestPackFiles(t *testing.T) {
 				},
 			},
 			num:  3,
-			size: 3*modules.SectorSize + (2*mib + 2_004*kib) + (1),
+			size: 2*modules.SectorSize + (2*mib + 2_004*kib) + (1),
 		},
 	}
 

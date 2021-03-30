@@ -145,7 +145,7 @@ func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, uint64, error)
 		// the file was packed in a higher sector, then track the offset
 		if filePlacement.SectorIndex > maxSectorIndex || filePlacement.SectorOffset > maxSectorOffset {
 			maxSectorOffset = filePlacement.SectorOffset
-			totalSize = numSectors*modules.SectorSize + filePlacement.SectorOffset + filePlacement.Size
+			totalSize = (numSectors-1)*modules.SectorSize + filePlacement.SectorOffset + filePlacement.Size
 		}
 		// Track the maxSectorIndex. We update it last since we want to first be
 		// able to check if the filePlacement sectorIndex is larger than the current
