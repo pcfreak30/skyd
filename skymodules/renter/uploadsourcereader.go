@@ -113,12 +113,7 @@ func (cr *fanoutChunkReader) ReadChunk() ([][]byte, uint64, error) {
 	}
 	// Append the root to the fanout.
 	for pieceIndex := range chunk {
-		// Encrypt and pad the piece with the given index.
 		root := crypto.MerkleRoot(chunk[pieceIndex])
-		// Unlike in skyfileEncodeFanoutFromFileNode we don't check for an
-		// emptyHash here since if MerkleRoot returned an emptyHash it would
-		// mean that an emptyHash is a valid MerkleRoot and a host should be
-		// able to return the corresponding data.
 		cr.fanout = append(cr.fanout, root[:]...)
 
 		// If only one piece is needed break out of the inner loop.

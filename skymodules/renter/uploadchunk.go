@@ -459,9 +459,6 @@ func (uc *unfinishedUploadChunk) staticCheckIntegrity() error {
 			continue
 		}
 
-		// Encrypt and pad the piece with the given index.
-		//uc.padAndEncryptPiece(i)
-
 		// Perform the integrity check. Skip the integrity check on this
 		// piece if there is no hash available.
 		if uc.staticExpectedPieceRoots[i] == zeroHash {

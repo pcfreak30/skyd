@@ -516,7 +516,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	dataPieces := fileNode.ErasureCode().MinPieces()
 	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
 
-	// The teereader will forward the raw data to the fanoutWriter.
+	// Wrap the reader in a FanoutChunkReader.
 	cr := NewFanoutChunkReader(fileReader, fileNode.ErasureCode(), onlyOnePieceNeeded, fileNode.MasterKey())
 	if sup.DryRun {
 		// In case of a dry-run we don't want to perform the actual upload,
