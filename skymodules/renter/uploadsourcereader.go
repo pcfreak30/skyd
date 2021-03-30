@@ -10,6 +10,7 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
+// chunkReader implements the ChunkReader interface by wrapping a io.Reader.
 type chunkReader struct {
 	staticEC        skymodules.ErasureCoder
 	staticPieceSize uint64
@@ -18,6 +19,8 @@ type chunkReader struct {
 	peek []byte
 }
 
+// fanoutChunkReader implements the FanoutChunkReader interface by wrapping a
+// ChunkReader.
 type fanoutChunkReader struct {
 	skymodules.ChunkReader
 
@@ -46,6 +49,8 @@ func NewFanoutChunkReader(r io.Reader, ec skymodules.ErasureCoder, onePiece bool
 	}
 }
 
+// Peek returns whether the next call to ReadChunk is expected to return a
+// chunk or if there is no more data.
 func (cr *chunkReader) Peek() bool {
 	// If 'peek' already has data, then there is more data to consume.
 	if len(cr.peek) > 0 {
@@ -61,6 +66,10 @@ func (cr *chunkReader) Peek() bool {
 	return true
 }
 
+// ReadChunk reads the next chunk from the reader. The returned chunk is erasure
+// coded and will always be a full chunk. It also returns the number of bytes
+// that this chunk was created from which is useful because the last chunk might
+// be padded.
 func (cr *chunkReader) ReadChunk() ([][]byte, uint64, error) {
 	r := io.MultiReader(bytes.NewReader(cr.peek), cr.staticReader)
 	dataPieces, n, err := readDataPieces(r, cr.staticEC, cr.staticPieceSize)
@@ -75,10 +84,15 @@ func (cr *chunkReader) ReadChunk() ([][]byte, uint64, error) {
 	return logicalChunkData, n, nil
 }
 
+// Fanout returns the current fanout.
 func (cr *fanoutChunkReader) Fanout() []byte {
 	return cr.fanout
 }
 
+// ReadChunk reads the next chunk from the reader. The returned chunk is erasure
+// coded and will always be a full chunk. It also returns the number of bytes
+// that this chunk was created from which is useful because the last chunk might
+// be padded.
 func (cr *fanoutChunkReader) ReadChunk() ([][]byte, uint64, error) {
 	// If the chunk was read successfully, append the fanout.
 	chunk, n, err := cr.ChunkReader.ReadChunk()
@@ -89,6 +103,7 @@ func (cr *fanoutChunkReader) ReadChunk() ([][]byte, uint64, error) {
 	return chunk, n, nil
 }
 
+// appendFanout appends the merkle roots of a given logical chunk to the fanout.
 func (cr *fanoutChunkReader) appendFanout(logicalChunkData [][]byte) {
 	for pieceIndex := range logicalChunkData {
 		// Encrypt and pad the piece with the given index.

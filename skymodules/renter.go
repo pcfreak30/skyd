@@ -1057,7 +1057,14 @@ type (
 // ChunkReader is the interface for a reader reading full erasure-coded chunks
 // from a stream.
 type ChunkReader interface {
+	// Peek returns whether the next call to ReadChunk is expected to return a
+	// chunk or if there is no more data.
 	Peek() bool
+
+	// ReadChunk reads the next chunk from the reader. The returned chunk is erasure
+	// coded and will always be a full chunk. It also returns the number of bytes
+	// that this chunk was created from which is useful because the last chunk might
+	// be padded.
 	ReadChunk() ([][]byte, uint64, error)
 }
 
@@ -1066,6 +1073,7 @@ type ChunkReader interface {
 type FanoutChunkReader interface {
 	ChunkReader
 
+	// Fanout returns the computed fanout.
 	Fanout() []byte
 }
 
