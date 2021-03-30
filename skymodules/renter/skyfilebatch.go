@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"sort"
 	"sync"
 	"time"
 
@@ -340,7 +339,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 	}
 
 	// Pack Files
-	fps, numSectors, err := skymodules.PackFiles(filesMap)
+	fps, numSectors, totalSize, err := skymodules.PackFiles(filesMap)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to pack files")
 		return
@@ -352,13 +351,6 @@ func (sb *skylinkBatch) threadedUploadData() {
 		build.Critical(sb.err)
 		return
 	}
-
-	// Sort slice by offset
-	sort.Slice(fps, func(i, j int) bool { return fps[i].SectorOffset < fps[j].SectorOffset })
-
-	// Determine the total size of the batch
-	lastFP := fps[len(fps)-1]
-	totalSize := lastFP.SectorOffset + lastFP.Size
 
 	// Move file placements back to skyFileObj and build basesector data based on
 	// packed files.

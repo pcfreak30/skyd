@@ -27,10 +27,11 @@ func TestPackFiles(t *testing.T) {
 	alignmentScaling = uint64(1 << alignmentScalingStandard)
 
 	tests := []struct {
-		in  map[string]uint64
-		out []FilePlacement
-		num uint64
-		err error
+		in   map[string]uint64
+		out  []FilePlacement
+		num  uint64
+		size uint64
+		err  error
 	}{
 		{
 			in: map[string]uint64{
@@ -58,7 +59,8 @@ func TestPackFiles(t *testing.T) {
 					SectorOffset: 36 * kib,
 				},
 			},
-			num: 1,
+			num:  1,
+			size: modules.SectorSize + (36 * kib) + (10 * kib),
 		},
 		// Test case to ensure that the smallest file, despite being packed
 		// last, does not have the highest offset of all the files if there are
@@ -93,7 +95,8 @@ func TestPackFiles(t *testing.T) {
 					SectorOffset: 2*mib + 500*kib,
 				},
 			},
-			num: 1,
+			num:  1,
+			size: modules.SectorSize + (2*mib + 512*kib) + (1*mib + 499*kib),
 		},
 		{
 			in: map[string]uint64{
@@ -101,8 +104,9 @@ func TestPackFiles(t *testing.T) {
 				"test2": 0,
 				"test3": 1,
 			},
-			num: 0,
-			err: ErrZeroSize,
+			num:  0,
+			size: 0,
+			err:  ErrZeroSize,
 		},
 		{
 			in: map[string]uint64{
@@ -158,14 +162,15 @@ func TestPackFiles(t *testing.T) {
 					SectorOffset: 2*mib + 2_004*kib,
 				},
 			},
-			num: 3,
+			num:  3,
+			size: 3*modules.SectorSize + (2*mib + 2_004*kib) + (1),
 		},
 	}
 
 	for _, test := range tests {
-		res, num, err := PackFiles(test.in)
-		if !reflect.DeepEqual(res, test.out) || num != test.num || err != test.err {
-			t.Errorf("PackFiles(%v): expected %v %v %v, got %v %v %v", test.in, test.out, test.num, test.err, res, num, err)
+		res, num, size, err := PackFiles(test.in)
+		if !reflect.DeepEqual(res, test.out) || num != test.num || size != test.size || err != test.err {
+			t.Errorf("PackFiles(%v): expected %v %v %v %v, got %v %v %v %v", test.in, test.out, test.num, test.size, test.err, res, num, size, err)
 		}
 	}
 }
@@ -182,7 +187,7 @@ func TestPackFilesRandom(t *testing.T) {
 
 	files := randomFileMap(numFiles)
 
-	placements, _, err := PackFiles(files)
+	placements, _, _, err := PackFiles(files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +236,7 @@ func overlaps(i1, i2, j1, j2 uint64) bool {
 func benchmarkPackFiles(i int, b *testing.B) {
 	for n := 0; n <= b.N; n++ {
 		files := randomFileMap(i)
-		_, _, err := PackFiles(files)
+		_, _, _, err := PackFiles(files)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -270,7 +275,7 @@ func TestPackingUtilization(t *testing.T) {
 
 		for i := 0; i < iterations; i++ {
 			files := randomFileMap(amount)
-			placements, numSectors, err := PackFiles(files)
+			placements, numSectors, _, err := PackFiles(files)
 			if err != nil {
 				t.Errorf("Error: %v", err)
 			}

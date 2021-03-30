@@ -1,0 +1,1 @@
+- Have `PackFiles` return the total size of the packed files.

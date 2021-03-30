@@ -98,7 +98,7 @@ type (
 // chronologically. Note that they may be out of order positionally, as smaller
 // files may be packed in lower offsets than larger files despite appearing
 // later in the slice.
-func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, error) {
+func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, uint64, error) {
 	filesSorted := sortByFileSizeDescending(files)
 
 	// We can end up with a maximum of 2 buckets created for every file packed,
@@ -106,15 +106,16 @@ func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, error) {
 	buckets := bucketList(make([]*bucket, 0, 2*len(files)))
 	filePlacements := make([]FilePlacement, 0, len(files))
 
-	var numSectors uint64 = 0
+	var numSectors, totalSize uint64 = 0, 0
+	var maxSectorIndex, maxSectorOffset uint64 = 0, 0
 	for _, file := range filesSorted {
 		// Make sure the file fits in a sector.
 		if file.size > modules.SectorSize {
-			return nil, 0, ErrSizeTooLarge
+			return nil, 0, 0, ErrSizeTooLarge
 		}
 		// Zero-sized files are a pathological case and shouldn't be allowed.
 		if file.size == 0 {
-			return nil, 0, ErrZeroSize
+			return nil, 0, 0, ErrZeroSize
 		}
 
 		bucketIndex, err := findBucket(file.size, buckets)
@@ -124,18 +125,35 @@ func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, error) {
 			buckets, numSectors = extendSectors(buckets, numSectors)
 			bucketIndex = len(buckets) - 1
 		} else if err != nil {
-			return nil, 0, err
+			return nil, 0, 0, err
 		}
 
 		var filePlacement FilePlacement
 		filePlacement, buckets, err = packBucket(file, bucketIndex, buckets)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, 0, err
 		}
 		filePlacements = append(filePlacements, filePlacement)
+
+		// Track the max offset
+		//
+		// If the file was packed in a previous sector, ignore it
+		if filePlacement.SectorIndex < maxSectorIndex {
+			continue
+		}
+		// If the file was packed in the current sector with a higher offset, or if
+		// the file was packed in a higher sector, then track the offset
+		if filePlacement.SectorIndex > maxSectorIndex || filePlacement.SectorOffset > maxSectorOffset {
+			maxSectorOffset = filePlacement.SectorOffset
+			totalSize = numSectors*modules.SectorSize + filePlacement.SectorOffset + filePlacement.Size
+		}
+		// Track the maxSectorIndex. We update it last since we want to first be
+		// able to check if the filePlacement sectorIndex is larger than the current
+		// max.
+		maxSectorIndex = filePlacement.SectorIndex
 	}
 
-	return filePlacements, numSectors, nil
+	return filePlacements, numSectors, totalSize, nil
 }
 
 // findBucket selects the most appropriate bucket for the file and returns the
