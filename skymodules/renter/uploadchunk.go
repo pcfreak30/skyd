@@ -480,21 +480,6 @@ func (uc *unfinishedUploadChunk) staticCheckIntegrity() error {
 	return nil
 }
 
-// staticReadLogicalData initializes the chunk's logicalChunkData using data read from
-// r, returning the number of bytes read.
-func (uc *unfinishedUploadChunk) staticReadLogicalData(r io.Reader) (uint64, error) {
-	// Allocate data pieces and fill them with data from r.
-	dataPieces, total, err := readDataPieces(r, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
-	if err != nil {
-		return 0, err
-	}
-	// Encode the data pieces, forming the chunk's logical data.
-	//
-	// TODO: Ideally there is a way to only encode the shards that we need.
-	uc.logicalChunkData, _ = uc.fileEntry.ErasureCode().EncodeShards(dataPieces)
-	return total, nil
-}
-
 // staticFetchLogicalDataFromReader will load the logical data for a chunk from
 // a reader, and perform an integrity check on the chunk to ensure correctness.
 func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) error {
@@ -510,6 +495,11 @@ func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) err
 	err = uc.staticCheckIntegrity()
 	if err != nil {
 		return errors.AddContext(err, "source data does not match previously uploaded data - blocking corrupt repair")
+	}
+
+	// If we read a full chunk, we are done. No need to adjust the file size.
+	if n == uc.fileEntry.ChunkSize() {
+		return nil
 	}
 
 	// Adjust the filesize. Since we don't know the length of the stream
