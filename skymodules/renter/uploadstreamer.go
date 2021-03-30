@@ -59,6 +59,8 @@ func (ss *StreamShard) Close() error {
 	return ss.r.Close()
 }
 
+// Peek returns whether the next call to ReadChunk is expected to return a
+// chunk or if there is no more data.
 func (ss *StreamShard) Peek() bool {
 	return ss.r.Peek()
 }
@@ -70,7 +72,7 @@ func (ss *StreamShard) Result() (int, error) {
 	return ss.n, ss.err
 }
 
-// Read implements the io.Reader interface.
+// ReadChunk implements the ChunkReader interface.
 func (ss *StreamShard) ReadChunk() ([][]byte, uint64, error) {
 	if ss.closed {
 		return nil, 0, errors.New("StreamShard already closed")

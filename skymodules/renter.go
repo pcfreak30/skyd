@@ -1063,6 +1063,8 @@ type ChunkReader interface {
 	ReadChunk() ([][]byte, uint64, error)
 }
 
+// FanoutChunkReader defines a chunk reader that computes a skylink fanout on
+// the fly.
 type FanoutChunkReader interface {
 	ChunkReader
 

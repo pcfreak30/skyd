@@ -28,6 +28,7 @@ type fanoutChunkReader struct {
 	staticMasterKey crypto.CipherKey
 }
 
+// NewChunkReader creates a new chunkReader.
 func NewChunkReader(r io.Reader, ec skymodules.ErasureCoder, ct crypto.CipherType) skymodules.ChunkReader {
 	return &chunkReader{
 		staticReader:    r,
@@ -36,6 +37,7 @@ func NewChunkReader(r io.Reader, ec skymodules.ErasureCoder, ct crypto.CipherTyp
 	}
 }
 
+// NewFanoutChunkReader creates a new fanoutChunkReader.
 func NewFanoutChunkReader(r io.Reader, ec skymodules.ErasureCoder, onePiece bool, mk crypto.CipherKey) skymodules.FanoutChunkReader {
 	return &fanoutChunkReader{
 		ChunkReader:     NewChunkReader(r, ec, mk.Type()),
