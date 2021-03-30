@@ -34,7 +34,7 @@ import (
 // error for that Read. SignalChan will be closed when the shard has been
 // closed.
 type StreamShard struct {
-	n   int
+	n   uint64
 	err error
 
 	r skymodules.ChunkReader
@@ -52,13 +52,6 @@ func NewStreamShard(r skymodules.ChunkReader) *StreamShard {
 	}
 }
 
-// Close closes the underlying channel of the shard.
-func (ss *StreamShard) Close() error {
-	close(ss.signalChan)
-	ss.closed = true
-	return ss.r.Close()
-}
-
 // Peek returns whether the next call to ReadChunk is expected to return a
 // chunk or if there is no more data.
 func (ss *StreamShard) Peek() bool {
@@ -69,7 +62,7 @@ func (ss *StreamShard) Peek() bool {
 func (ss *StreamShard) Result() (int, error) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
-	return ss.n, ss.err
+	return int(ss.n), ss.err
 }
 
 // ReadChunk implements the ChunkReader interface.
@@ -80,7 +73,15 @@ func (ss *StreamShard) ReadChunk() ([][]byte, uint64, error) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
-	return ss.r.ReadChunk()
+	// Read chunk.
+	var chunk [][]byte
+	chunk, ss.n, ss.err = ss.r.ReadChunk()
+
+	// The chunk is read. Mark the shard as closed.
+	ss.closed = true
+	close(ss.signalChan)
+
+	return chunk, ss.n, ss.err
 }
 
 // UploadStreamFromReader reads from the provided reader until io.EOF is reached and
@@ -229,9 +230,6 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 				if err != nil {
 					return errors.AddContext(err, "unable to read pushed chunk")
 				}
-				if err := ss.Close(); err != nil {
-					return err
-				}
 			}
 			chunks = append(chunks, uuc)
 		} else {
@@ -242,9 +240,6 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 			_, _, err = ss.ReadChunk()
 			if err != nil {
 				return errors.AddContext(err, "unable to read chunk")
-			}
-			if err := ss.Close(); err != nil {
-				return err
 			}
 		}
 		// Wait for the shard to be read.

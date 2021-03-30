@@ -46,10 +46,6 @@ func NewFanoutChunkReader(r io.Reader, ec skymodules.ErasureCoder, onePiece bool
 	}
 }
 
-func (cr *chunkReader) Close() error {
-	return nil
-}
-
 func (cr *chunkReader) Peek() bool {
 	// If 'peek' already has data, then there is more data to consume.
 	if len(cr.peek) > 0 {

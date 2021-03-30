@@ -1138,6 +1138,7 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 
 		_, _, err = r.SkynetSkyfileMultiPartPost(mup)
 		if err == nil || (!strings.Contains(err.Error(), skymodules.ErrInvalidPathString.Error()) && !strings.Contains(err.Error(), skymodules.ErrEmptyFilename.Error())) {
+			t.Log("Filename:", subfile.Filename)
 			t.Log("Error:", err)
 			t.Fatal("Expected SkynetSkyfileMultiPartPost to fail due to invalid filename")
 		}

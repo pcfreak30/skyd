@@ -1057,8 +1057,6 @@ type (
 // ChunkReader is the interface for a reader reading full erasure-coded chunks
 // from a stream.
 type ChunkReader interface {
-	io.Closer
-
 	Peek() bool
 	ReadChunk() ([][]byte, uint64, error)
 }

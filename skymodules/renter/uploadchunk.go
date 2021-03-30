@@ -507,13 +507,10 @@ func (uc *unfinishedUploadChunk) staticReadLogicalData(r io.Reader) (uint64, err
 
 // staticFetchLogicalDataFromReader will load the logical data for a chunk from
 // a reader, and perform an integrity check on the chunk to ensure correctness.
-func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) (err error) {
-	defer func() {
-		err = errors.Compose(err, uc.sourceReader.Close())
-	}()
-
+func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) error {
 	// Grab the logical data from the reader.
 	var n uint64
+	var err error
 	uc.logicalChunkData, n, err = uc.sourceReader.ReadChunk()
 	if err != nil {
 		return errors.AddContext(err, "unable to read the chunk data from the source reader")
