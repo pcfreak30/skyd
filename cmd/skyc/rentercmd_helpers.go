@@ -1,19 +1,23 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 // byDirectoryInfo implements sort.Interface for []directoryInfo based on the
@@ -363,6 +367,33 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 	return
 }
 
+// parseLSArgs is a helper that parses the arguments for renter ls and skynet ls
+// and returns the siapath.
+func parseLSArgs(cmd *cobra.Command, args []string) skymodules.SiaPath {
+	var path string
+	switch len(args) {
+	case 0:
+		path = "."
+	case 1:
+		path = args[0]
+	default:
+		_ = cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+	// Parse the input siapath.
+	var sp skymodules.SiaPath
+	var err error
+	if path == "." || path == "" || path == "/" {
+		sp = skymodules.RootSiaPath()
+	} else {
+		sp, err = skymodules.NewSiaPath(path)
+		if err != nil {
+			die("could not parse siapath:", err)
+		}
+	}
+	return sp
+}
+
 // printContractInfo is a helper function for printing the information about a
 // specific contract
 func printContractInfo(cid string, contracts []api.RenterContract) error {
@@ -412,6 +443,37 @@ Contract %v
 
 	fmt.Println("Contract not found")
 	return nil
+}
+
+// printSingleFile is a helper for printing information about a single file
+func printSingleFile(sp skymodules.SiaPath, root, skylinkCheck bool) (tryDir bool, err error) {
+	var rf api.RenterFile
+	if root {
+		rf, err = httpClient.RenterFileRootGet(sp)
+	} else {
+		rf, err = httpClient.RenterFileGet(sp)
+	}
+	if err == nil {
+		if skylinkCheck && len(rf.File.Skylinks) == 0 {
+			err = errors.New("File is not pinning any skylinks")
+			return
+		}
+		var data []byte
+		data, err = json.MarshalIndent(rf.File, "", "  ")
+		if err != nil {
+			return
+		}
+
+		fmt.Println()
+		fmt.Println(string(data))
+		fmt.Println()
+		return
+	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		err = fmt.Errorf("Error getting file %v: %v", sp.Name(), err)
+		return
+	}
+	tryDir = true
+	return
 }
 
 // renterallowancespending prints info about the current period spending

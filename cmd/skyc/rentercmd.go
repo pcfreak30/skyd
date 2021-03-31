@@ -5,9 +5,7 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1713,48 +1711,17 @@ func rentercontractrecoveryscanprogresscmd() {
 // renterfileslistcmd is the handler for the command `skyc renter ls`. Lists
 // files known to the renter on the network.
 func renterfileslistcmd(cmd *cobra.Command, args []string) {
-	var path string
-	switch len(args) {
-	case 0:
-		path = "."
-	case 1:
-		path = args[0]
-	default:
-		_ = cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
-	// Parse the input siapath.
-	var sp skymodules.SiaPath
-	var err error
-	if path == "." || path == "" || path == "/" {
-		sp = skymodules.RootSiaPath()
-	} else {
-		sp, err = skymodules.NewSiaPath(path)
-		if err != nil {
-			die("could not parse siapath:", err)
-		}
-	}
+	// Parse the SiaPath
+	sp := parseLSArgs(cmd, args)
 
 	// Check for file first
 	if !sp.IsRoot() {
-		var rf api.RenterFile
-		if renterListRoot {
-			rf, err = httpClient.RenterFileRootGet(sp)
-		} else {
-			rf, err = httpClient.RenterFileGet(sp)
+		tryDir, err := printSingleFile(sp, renterListRoot, false)
+		if err != nil {
+			die(err)
 		}
-		if err == nil {
-			json, err := json.MarshalIndent(rf.File, "", "  ")
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			fmt.Println()
-			fmt.Println(string(json))
-			fmt.Println()
+		if !tryDir {
 			return
-		} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-			die(fmt.Sprintf("Error getting file %v: %v", path, err))
 		}
 	}
 

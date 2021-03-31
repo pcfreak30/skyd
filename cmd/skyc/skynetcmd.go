@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -362,29 +361,11 @@ func skynetisblockedcmd(_ *cobra.Command, skylinkStrs []string) {
 // similar to 'skyc renter ls' but defaults to the SkynetFolder and only
 // displays files that are pinning skylinks.
 func skynetlscmd(cmd *cobra.Command, args []string) {
-	var path string
-	switch len(args) {
-	case 0:
-		path = "."
-	case 1:
-		path = args[0]
-	default:
-		_ = cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
-	// Parse the input siapath.
-	var sp skymodules.SiaPath
-	var err error
-	if path == "." || path == "" || path == "/" {
-		sp = skymodules.RootSiaPath()
-	} else {
-		sp, err = skymodules.NewSiaPath(path)
-		if err != nil {
-			die("could not parse siapath:", err)
-		}
-	}
+	// Parse the SiaPath
+	sp := parseLSArgs(cmd, args)
 
 	// Check whether the command is based in root or based in the skynet folder.
+	var err error
 	if !skynetLsRoot {
 		if sp.IsRoot() {
 			sp = skymodules.SkynetFolder
@@ -398,23 +379,12 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 	// Check if the command is hitting a single file.
 	if !sp.IsRoot() {
-		rf, err := httpClient.RenterFileRootGet(sp)
-		if err == nil {
-			if len(rf.File.Skylinks) == 0 {
-				fmt.Println("File is not pinning any skylinks")
-				return
-			}
-			json, err := json.MarshalIndent(rf.File, "", "  ")
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			fmt.Println()
-			fmt.Println(string(json))
-			fmt.Println()
+		tryDir, err := printSingleFile(sp, true, true)
+		if err != nil {
+			die(err)
+		}
+		if !tryDir {
 			return
-		} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-			die(fmt.Sprintf("Error getting file %v: %v", path, err))
 		}
 	}
 
