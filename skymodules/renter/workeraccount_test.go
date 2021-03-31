@@ -649,7 +649,7 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 
 	// Wait for first notification.
 	subs := wt.staticSubscriptionInfo.subscriptions
-	sub, exist := subs[modules.RegistrySubscriptionID(spk, rv.Tweak)]
+	sub, exist := subs[modules.DeriveRegistryEntryID(spk, rv.Tweak)]
 	if !exist {
 		t.Fatal("subscribed to entry doesn't have a subscription")
 	}

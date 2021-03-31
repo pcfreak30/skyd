@@ -40,14 +40,14 @@ func (dc *dummyCloser) staticCount() uint64 {
 // testSubscriptionManager is a subscription manager for testing which tracks
 // the whole history of notifications it receives.
 type testSubscriptionManager struct {
-	values map[modules.SubscriptionID][]*modules.SignedRegistryValue
+	values map[modules.RegistryEntryID][]*modules.SignedRegistryValue
 	mu     sync.Mutex
 }
 
 // newTestSubscriptionManager creates a new manager for testing.
 func newTestSubscriptionManager() *testSubscriptionManager {
 	return &testSubscriptionManager{
-		values: make(map[modules.SubscriptionID][]*modules.SignedRegistryValue),
+		values: make(map[modules.RegistryEntryID][]*modules.SignedRegistryValue),
 	}
 }
 
@@ -58,7 +58,7 @@ func (sm *testSubscriptionManager) Notify(rvs ...modules.RPCRegistrySubscription
 	defer sm.mu.Unlock()
 
 	for _, rv := range rvs {
-		sid := modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)
+		sid := modules.DeriveRegistryEntryID(rv.PubKey, rv.Entry.Tweak)
 		sm.values[sid] = append(sm.values[sid], &rv.Entry)
 	}
 }
@@ -425,7 +425,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	}
 	// Add 2 random rvs to subscription map.
 	srv1, spk1, _ := randomRegistryValue()
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk1, srv1.Tweak)] = &subscription{
+	subInfo.subscriptions[modules.DeriveRegistryEntryID(spk1, srv1.Tweak)] = &subscription{
 		staticRequest: &modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk1,
 			Tweak:  srv1.Tweak,
@@ -435,7 +435,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	}
 
 	srv2, spk2, _ := randomRegistryValue()
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = &subscription{
+	subInfo.subscriptions[modules.DeriveRegistryEntryID(spk2, srv2.Tweak)] = &subscription{
 		staticRequest: &modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk2,
 			Tweak:  srv2.Tweak,
@@ -493,7 +493,7 @@ func TestSubscriptionLoop(t *testing.T) {
 
 	// Remove the second subscription.
 	subInfo.mu.Lock()
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)].subscribe = false
+	subInfo.subscriptions[modules.DeriveRegistryEntryID(spk2, srv2.Tweak)].subscribe = false
 
 	// Add a third subscription which should be removed automatically since
 	// "subscribe" is set to false from the beginning. Make sure the channel is
@@ -507,7 +507,7 @@ func TestSubscriptionLoop(t *testing.T) {
 		subscribed: make(chan struct{}),
 		subscribe:  false,
 	}
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = sub3
+	subInfo.subscriptions[modules.DeriveRegistryEntryID(spk2, srv2.Tweak)] = sub3
 	subInfo.mu.Unlock()
 
 	// After a bit of time we should be successfully unsubscribed.
@@ -699,11 +699,11 @@ func TestSubscriptionNotifications(t *testing.T) {
 	subInfo := wt.staticSubscriptionInfo
 	subs := subInfo.subscriptions
 	subInfo.mu.Lock()
-	rv1Sub, exist := subs[modules.RegistrySubscriptionID(spk1, rv1.Tweak)]
+	rv1Sub, exist := subs[modules.DeriveRegistryEntryID(spk1, rv1.Tweak)]
 	if !exist {
 		t.Fatal("subscription for rv1 doesn't exist")
 	}
-	rv2Sub, exist := subs[modules.RegistrySubscriptionID(spk2, rv2.Tweak)]
+	rv2Sub, exist := subs[modules.DeriveRegistryEntryID(spk2, rv2.Tweak)]
 	if !exist {
 		t.Fatal("subscription for rv2 doesn't exist")
 	}
@@ -805,7 +805,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 
 	// The worker should also have updated the subscription.
 	subInfo.mu.Lock()
-	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, rv2a.Tweak)]
+	sub, exists := subInfo.subscriptions[modules.DeriveRegistryEntryID(spk2, rv2a.Tweak)]
 	if !exists {
 		t.Fatal("rv2's subscription doesn't exist")
 	}
@@ -989,7 +989,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Subscribe to a random registry value.
 		rv, spk, _ := randomRegistryValue()
-		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		sid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk,
 			Tweak:  rv.Tweak,
@@ -1025,7 +1025,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Subscribe to a random registry value.
 		rv, spk, sk := randomRegistryValue()
-		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		sid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk,
 			Tweak:  rv.Tweak,
@@ -1067,7 +1067,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Subscribe to a random registry value.
 		rv, spk, _ := randomRegistryValue()
-		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		sid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk,
 			Tweak:  rv.Tweak,
@@ -1104,7 +1104,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Create a random registry entry.
 		rv, spk, _ := randomRegistryValue()
-		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		sid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 		// Send rv.
 		sendRegistryValue(spk, rv)
 		// Check fields.
@@ -1235,7 +1235,7 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	if len(subInfo.subscriptions) != 1 {
 		t.Error("subInfo has wrong length", len(subInfo.subscriptions))
 	}
-	reqSub, exist := subInfo.subscriptions[modules.RegistrySubscriptionID(spk, rv.Tweak)]
+	reqSub, exist := subInfo.subscriptions[modules.DeriveRegistryEntryID(spk, rv.Tweak)]
 	if !exist {
 		t.Fatal("sub doesn't exist")
 	}
@@ -1330,7 +1330,7 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	// Check the subscription manager.
 	sm.mu.Lock()
 	// It should contain one map entry for the subscription.
-	values, exist := sm.values[modules.RegistrySubscriptionID(req.PubKey, req.Tweak)]
+	values, exist := sm.values[modules.DeriveRegistryEntryID(req.PubKey, req.Tweak)]
 	if !exist {
 		t.Fatal("no values exist for subscribed entry")
 	}

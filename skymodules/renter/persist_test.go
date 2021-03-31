@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
@@ -80,6 +81,16 @@ func TestRenterSaveLoad(t *testing.T) {
 	if settings.MaxUploadSpeed != DefaultMaxUploadSpeed {
 		t.Error("default max upload speed not set at init")
 	}
+	if !settings.MonetizationBase.IsZero() {
+		t.Error("monetization base should default to zero")
+	}
+	if len(settings.CurrencyConversionRates) != 1 {
+		t.Error("invalid currency conversion")
+	}
+	usd, exists := settings.CurrencyConversionRates[modules.CurrencyUSD]
+	if !exists || !usd.Equals(types.ZeroCurrency) {
+		t.Error("wrong usd rate")
+	}
 
 	// The registry stats should be seeded.
 	for i := range readRegistryStatsPercentiles {
@@ -98,7 +109,12 @@ func TestRenterSaveLoad(t *testing.T) {
 	newUpSpeed := int64(500e3)
 	settings.MaxDownloadSpeed = newDownSpeed
 	settings.MaxUploadSpeed = newUpSpeed
-	rt.renter.SetSettings(settings)
+	settings.MonetizationBase = types.SiacoinPrecision
+	settings.CurrencyConversionRates[modules.CurrencyUSD] = types.SiacoinPrecision
+	err = rt.renter.SetSettings(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Add a file to the renter
 	entry, err := rt.renter.newRenterTestFile()
@@ -145,6 +161,19 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 	if newSettings.MaxUploadSpeed != newUpSpeed {
 		t.Error("upload settings not being persisted correctly")
+	}
+	if !newSettings.MonetizationBase.Equals(types.SiacoinPrecision) {
+		t.Error("monetization base should be 1")
+	}
+	if len(newSettings.CurrencyConversionRates) != 1 {
+		t.Error("currency conversion should have 1 currency")
+	}
+	usdRate, exists := newSettings.CurrencyConversionRates[modules.CurrencyUSD]
+	if !exists {
+		t.Error("rate doesn't exist")
+	}
+	if !usdRate.Equals(types.SiacoinPrecision) {
+		t.Error("wrong usd rate")
 	}
 
 	// Check that SiaFileSet loaded the renter's file
