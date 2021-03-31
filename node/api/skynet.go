@@ -164,7 +164,7 @@ type (
 
 	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
-	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata) error
+	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error
 )
 
 // skynetBaseSectorHandlerGET accepts a skylink as input and will return the
@@ -662,6 +662,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// Get the renter's settings.
+	settings, err := api.renter.Settings()
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch renter settings: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
 	// Fetch the skyfile's metadata and a streamer to download the file
 	layout, metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
@@ -858,11 +865,16 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 	}
 
+	// Declare a function for monetizing a writer.
+	monetize := func(w io.Writer) io.Writer {
+		return newMonetizedWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
+	}
+
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.
 	if format == skymodules.SkyfileFormatTar {
 		w.Header().Set("Content-Type", "application/x-tar")
-		err = serveArchive(w, streamer, metadata, serveTar)
+		err = serveArchive(w, streamer, metadata, serveTar, monetize)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
 		}
@@ -871,7 +883,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == skymodules.SkyfileFormatTarGz {
 		w.Header().Set("Content-Type", "application/gzip")
 		gzw := gzip.NewWriter(w)
-		err = serveArchive(gzw, streamer, metadata, serveTar)
+		err = serveArchive(gzw, streamer, metadata, serveTar, monetize)
 		err = errors.Compose(err, gzw.Close())
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
@@ -880,7 +892,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	if format == skymodules.SkyfileFormatZip {
 		w.Header().Set("Content-Type", "application/zip")
-		err = serveArchive(w, streamer, metadata, serveZip)
+		err = serveArchive(w, streamer, metadata, serveZip, monetize)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
 		}
@@ -894,7 +906,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Content-Type", responseContentType)
 	}
 
-	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
+	// Monetize the response if necessary by wrapping the response writer in a
+	// monetized one.
+	mrw := newMonetizedResponseWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
+
+	http.ServeContent(mrw, req, metadata.Filename, time.Time{}, streamer)
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
@@ -1228,7 +1244,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 
 	WriteJSON(w, &SkynetStatsGET{
 		PerformanceStats: perfStats,
-		RegistryStats:    registryStats,
+		RegistryStats:    registryStats.ToMS(),
 
 		Uptime:      int64(uptime),
 		UploadStats: stats,

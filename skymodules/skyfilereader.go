@@ -35,7 +35,6 @@ type (
 	// Skyfile data, and adds a method to fetch the SkyfileMetadata.
 	SkyfileUploadReader interface {
 		AddReadBuffer(data []byte)
-		FanoutReader() io.Reader
 		SkyfileMetadata(ctx context.Context) (SkyfileMetadata, error)
 		io.Reader
 	}
@@ -68,8 +67,6 @@ type (
 		reader  io.Reader
 		readBuf []byte
 
-		fanoutReader io.Reader
-
 		currLen uint64
 
 		metadata      SkyfileMetadata
@@ -80,15 +77,9 @@ type (
 // NewSkyfileReader wraps the given reader and metadata and returns a
 // SkyfileUploadReader
 func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUploadReader {
-	// Split the reader using a TeeReader so that the upload is not blocking the
-	// creation of the fanout bytes.
-	var buf bytes.Buffer
-	tr := io.TeeReader(reader, &buf)
-
 	// Define the skyfileReader
 	return &skyfileReader{
-		reader:       tr,
-		fanoutReader: &buf,
+		reader: reader,
 		metadata: SkyfileMetadata{
 			Filename:     sup.Filename,
 			Mode:         sup.Mode,
@@ -103,11 +94,6 @@ func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUplo
 // reading from the underlying reader.
 func (sr *skyfileReader) AddReadBuffer(b []byte) {
 	sr.readBuf = append(sr.readBuf, b...)
-}
-
-// FanoutReader returns the reader to be used for generating the encoded fanout.
-func (sr *skyfileReader) FanoutReader() io.Reader {
-	return sr.fanoutReader
 }
 
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.

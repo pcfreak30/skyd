@@ -89,16 +89,6 @@ func testSkyfileReaderBasic(t *testing.T) {
 	}) {
 		t.Fatal("unexpected metadata", metadata)
 	}
-
-	// Should be able to read the fanout reader now
-	fr := sfReader.FanoutReader()
-	fanoutData, err := ioutil.ReadAll(fr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(fanoutData, data) {
-		t.Fatal("unexpected fanout data")
-	}
 }
 
 // testSkyfileReaderReadBuffer verifies the functionality of the read buffer.
@@ -295,35 +285,6 @@ func testSkyfileMultipartReaderBasic(t *testing.T) {
 	part2Meta, ok := metadata.Subfiles["part2"]
 	if !ok || !reflect.DeepEqual(part2Meta, md2) {
 		t.Fatal("unexpected metadata")
-	}
-
-	// Should be able to read the fanout reader now
-	fr := sfReader.FanoutReader()
-
-	// verify we can read part 1
-	part1Data = make([]byte, 10)
-	n, err = fr.Read(part1Data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 10 || !bytes.Equal(part1Data, data1) {
-		t.Log("bytes read", n)
-		t.Log("bytes read", part1Data)
-		t.Log("bytes expected", data1)
-		t.Fatal("unexpected read")
-	}
-
-	// verify we can read part 2
-	part2Data = make([]byte, 20)
-	n, err = fr.Read(part2Data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 20 || !bytes.Equal(part2Data, data2) {
-		t.Log("bytes read", n)
-		t.Log("bytes read", part2Data)
-		t.Log("bytes expected", data2)
-		t.Fatal("unexpected read")
 	}
 }
 
