@@ -389,15 +389,34 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 	// Get the full set of files and directories. They will be sorted by siapath
 	//
-	// NOTE: Always query recursively so that we can filter out files that are
-	// not tracked by Skynet and get accurate, consistent sizes for dirs when
-	// displaying. If the --recursive flag was not passed, we limit the
-	// directory output later.
-	dirs := getDirSorted(sp, true, true)
+	// NOTE: we always pass in true for root as this is referring to the client
+	// method needed to query the directories, not whether or not the siapath is
+	// relative to root or the skynet folder.
+	//
+	// NOTE: We want to get the directories recursively if we are either checking
+	// from root or the user wants recursive.
+	getRecursive := skynetLsRecursive || skynetLsRoot
+	dirs := getDirSorted(sp, true, getRecursive)
 
-	// TODO: Check if we are listing Skynet directory only, exit early
+	// If we are not starting at the root level then we know all files and
+	// directories are skynet so we can just print the info.
 	if !skynetLsRoot {
-		// Same as renter ls
+		// Get the total number of listings (subdirs and files).
+		root := dirs[0] // Root directory we are querying.
+		var numFilesDirs uint64
+		if skynetLsRecursive {
+			numFilesDirs = root.dir.AggregateSkynetFiles + root.dir.AggregateNumSubDirs
+		} else {
+			numFilesDirs = root.dir.SkynetFiles + root.dir.NumSubDirs
+		}
+		// Print totals.
+		totalStoredStr := modules.FilesizeUnits(root.dir.AggregateSkynetSize)
+		fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
+		err = printSkynetDirs(dirs)
+		if err != nil {
+			die(err)
+		}
+		return
 	}
 
 	// Keep track of the aggregate sizes for dirs as we may be adjusting them.
@@ -453,7 +472,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Print totals.
-	totalStoredStr := modules.FilesizeUnits(sizePerDir[root.dir.SiaPath])
+	totalStoredStr := modules.FilesizeUnits(root.dir.AggregateSkynetSize)
 	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Print dirs.

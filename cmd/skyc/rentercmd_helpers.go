@@ -459,6 +459,79 @@ Contract %v
 	return nil
 }
 
+// printDirs is a helper for printing directoryInfos
+func printDirs(dirs []directoryInfo) error {
+	for _, dir := range dirs {
+		fmt.Printf("%v/\n", dir.dir.SiaPath)
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		for _, subDir := range dir.subDirs {
+			name := subDir.SiaPath.Name() + "/"
+			size := modules.FilesizeUnits(subDir.AggregateSize)
+			fmt.Fprintf(w, "  %v\t%9v\n", name, size)
+		}
+
+		for _, file := range dir.files {
+			name := file.SiaPath.Name()
+			size := modules.FilesizeUnits(file.Filesize)
+			fmt.Fprintf(w, "  %v\t%9v\n", name, size)
+		}
+		if err := w.Flush(); err != nil {
+			return errors.AddContext(err, "failed to flush writer")
+		}
+		fmt.Println()
+	}
+	return nil
+}
+
+// printDirsVerbose is a helper for verbose printing of directoryInfos
+func printDirsVerbose(dirs []directoryInfo) error {
+	for _, dir := range dirs {
+		fmt.Println(dir.dir.SiaPath.String() + "/")
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
+		for _, subDir := range dir.subDirs {
+			name := subDir.SiaPath.Name() + "/"
+			size := modules.FilesizeUnits(subDir.AggregateSize)
+			redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
+			if subDir.AggregateMinRedundancy == -1 {
+				redundancyStr = "-"
+			}
+			healthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(subDir.AggregateHealth))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(subDir.AggregateStuckHealth))
+			stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckHealthStr, stuckStr, "-", "-", "-")
+		}
+
+		for _, file := range dir.files {
+			name := file.SiaPath.Name()
+			size := modules.FilesizeUnits(file.Filesize)
+			availStr := yesNo(file.Available)
+			bytesUploaded := modules.FilesizeUnits(file.UploadedBytes)
+			uploadStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
+			if file.UploadProgress == -1 {
+				uploadStr = "-"
+			}
+			redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
+			if file.Redundancy == -1 {
+				redundancyStr = "-"
+			}
+
+			healthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(file.Health))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(file.StuckHealth))
+			stuckStr := yesNo(file.Stuck)
+			renewStr := yesNo(file.Renewing)
+			onDiskStr := yesNo(file.OnDisk)
+			recoverStr := yesNo(file.Recoverable)
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckHealthStr, stuckStr, renewStr, onDiskStr, recoverStr)
+		}
+		if err := w.Flush(); err != nil {
+			return errors.AddContext(err, "failed to flush writer")
+		}
+		fmt.Println()
+	}
+	return nil
+}
+
 // printSingleFile is a helper for printing information about a single file
 func printSingleFile(sp skymodules.SiaPath, root, skylinkCheck bool) (tryDir bool, err error) {
 	var rf api.RenterFile
@@ -488,6 +561,38 @@ func printSingleFile(sp skymodules.SiaPath, root, skylinkCheck bool) (tryDir boo
 	}
 	tryDir = true
 	return
+}
+
+// printSkynetDirs is a helper for printing skynet directoryInfos
+func printSkynetDirs(dirs []directoryInfo) error {
+	for _, dir := range dirs {
+		fmt.Printf("%v/", dir.dir.SiaPath)
+		fmt.Println()
+
+		// Print subdirs.
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		for _, subDir := range dir.subDirs {
+			subDirName := subDir.SiaPath.Name() + "/"
+			sizeUnits := modules.FilesizeUnits(subDir.SkynetSize)
+			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, sizeUnits)
+		}
+
+		// Print files.
+		for _, file := range dir.files {
+			name := file.SiaPath.Name()
+			firstSkylink := file.Skylinks[0]
+			size := modules.FilesizeUnits(file.Filesize)
+			fmt.Fprintf(w, "  %v\t%v\t%9v\n", name, firstSkylink, size)
+			for _, skylink := range file.Skylinks[1:] {
+				fmt.Fprintf(w, "\t%v\t\n", skylink)
+			}
+		}
+		if err := w.Flush(); err != nil {
+			return errors.AddContext(err, "failed to flush writer")
+		}
+		fmt.Println()
+	}
+	return nil
 }
 
 // renterallowancespending prints info about the current period spending
