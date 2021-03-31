@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -388,19 +387,17 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Get the full set of files and directories.
+	// Get the full set of files and directories. They will be sorted by siapath
 	//
 	// NOTE: Always query recursively so that we can filter out files that are
 	// not tracked by Skynet and get accurate, consistent sizes for dirs when
 	// displaying. If the --recursive flag was not passed, we limit the
 	// directory output later.
-	dirs := getDir(sp, true, true)
+	dirs := getDirSorted(sp, true, true)
 
-	// Sort the directories and the files.
-	sort.Sort(byDirectoryInfo(dirs))
-	for i := 0; i < len(dirs); i++ {
-		sort.Sort(bySiaPathDir(dirs[i].subDirs))
-		sort.Sort(bySiaPathFile(dirs[i].files))
+	// TODO: Check if we are listing Skynet directory only, exit early
+	if !skynetLsRoot {
+		// Same as renter ls
 	}
 
 	// Keep track of the aggregate sizes for dirs as we may be adjusting them.

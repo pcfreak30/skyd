@@ -367,6 +367,20 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 	return
 }
 
+// getDirSorted calls getDir and then sorts the response by siapath
+func getDirSorted(siaPath skymodules.SiaPath, root, recursive bool) []directoryInfo {
+	// Get Dirs
+	dirs := getDir(siaPath, root, recursive)
+
+	// Sort the directories and the files.
+	sort.Sort(byDirectoryInfo(dirs))
+	for i := 0; i < len(dirs); i++ {
+		sort.Sort(bySiaPathDir(dirs[i].subDirs))
+		sort.Sort(bySiaPathFile(dirs[i].files))
+	}
+	return dirs
+}
+
 // parseLSArgs is a helper that parses the arguments for renter ls and skynet ls
 // and returns the siapath.
 func parseLSArgs(cmd *cobra.Command, args []string) skymodules.SiaPath {

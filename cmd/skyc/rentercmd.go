@@ -1725,15 +1725,8 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Get dirs with their corresponding files.
-	dirs := getDir(sp, renterListRoot, renterListRecursive)
-
-	// Sort the directories and the files.
-	sort.Sort(byDirectoryInfo(dirs))
-	for i := 0; i < len(dirs); i++ {
-		sort.Sort(bySiaPathDir(dirs[i].subDirs))
-		sort.Sort(bySiaPathFile(dirs[i].files))
-	}
+	// Get dirs with their corresponding files. They will be sorted by siapath.
+	dirs := getDirSorted(sp, renterListRoot, renterListRecursive)
 
 	// Get the total number of listings (subdirs and files).
 	root := dirs[0] // Root directory we are querying.
