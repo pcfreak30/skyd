@@ -14,17 +14,16 @@ search: true
 # Introduction
 
 ## Welcome to the Skyd API!
-## TODO: update examples to skyd endpoints.
 > Example GET curl call 
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/transactions?startheight=1&endheight=250"
+curl -A "Sia-Agent" "localhost:9980/accounting?start=1234&end=5678"
 ```
 
 > Example POST curl call with data
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
+curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&funds=1000&hosts=50" "localhost:9980/renter"
 ```
 
 > Example POST curl call without data or authentication
@@ -114,11 +113,10 @@ A module that is not reachable due to being disabled, will return the custom
 status code `491 ModuleDisabled`.
 
 # Authentication
-# TODO: Update
 > Example POST curl call with Authentication
 
 ```go
-curl -A "Sia-Agent" --user "":<apipassword> --data "amount=123&destination=abcd" "localhost:9980/wallet/siacoins"
+curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&funds=1000&hosts=50" "localhost:9980/renter"
 ```
 
 API authentication is enabled by default, using a password stored in a flat
