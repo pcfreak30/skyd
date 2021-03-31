@@ -281,59 +281,42 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 // managedPopulateFileNodeFromReader takes the fileNode and a reader and returns
 // a populated filenode without uploading any data. It is used to perform a
 // dry-run of a skyfile upload.
-func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode, reader io.Reader) error {
+func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode, reader skymodules.ChunkReader) error {
 	// Extract some helper variables
 	hpk := types.SiaPublicKey{} // blank host key
-	ec := fileNode.ErasureCode()
-	psize := fileNode.PieceSize()
 	csize := fileNode.ChunkSize()
 
-	var peek []byte
 	for chunkIndex := uint64(0); ; chunkIndex++ {
+		// Allocate data pieces and fill them with data from r.
+		dataEncoded, total, errRead := reader.ReadChunk()
+		if errors.Contains(errRead, io.EOF) {
+			return nil
+		}
+		if errRead != nil {
+			return errRead
+		}
+		// If no more data is read from the stream we are done.
+		if total == 0 {
+			return nil // done
+		}
+
 		// Grow the SiaFile to the right size.
 		err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1)
 		if err != nil {
 			return err
 		}
 
-		// Allocate data pieces and fill them with data from r.
-		ss := NewStreamShard(reader, peek)
-		err = func() (err error) {
-			defer func() {
-				err = errors.Compose(err, ss.Close())
-			}()
-
-			dataPieces, total, errRead := readDataPieces(ss, ec, psize)
-			if errRead != nil {
-				return errRead
+		for pieceIndex, dataPieceEnc := range dataEncoded {
+			if err := fileNode.SiaFile.AddPiece(hpk, chunkIndex, uint64(pieceIndex), crypto.MerkleRoot(dataPieceEnc)); err != nil {
+				return err
 			}
-
-			dataEncoded, _ := ec.EncodeShards(dataPieces)
-			for pieceIndex, dataPieceEnc := range dataEncoded {
-				if err := fileNode.SiaFile.AddPiece(hpk, chunkIndex, uint64(pieceIndex), crypto.MerkleRoot(dataPieceEnc)); err != nil {
-					return err
-				}
-			}
-
-			adjustedSize := fileNode.Size() - csize + total
-			if err := fileNode.SetFileSize(adjustedSize); err != nil {
-				return errors.AddContext(err, "failed to adjust FileSize")
-			}
-			return nil
-		}()
-		if err != nil {
-			return err
 		}
 
-		_, err = ss.Result()
-		if errors.Contains(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return err
+		adjustedSize := fileNode.Size() - csize + total
+		if err := fileNode.SetFileSize(adjustedSize); err != nil {
+			return errors.AddContext(err, "failed to adjust FileSize")
 		}
 	}
-	return nil
 }
 
 // Blocklist returns the merkleroots that are on the blocklist
@@ -533,17 +516,16 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	dataPieces := fileNode.ErasureCode().MinPieces()
 	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
 
-	// The teereader will forward the raw data to the fanoutWriter.
-	fanoutWriter := newFanoutWriter(fileNode, onlyOnePieceNeeded)
-	tr := io.TeeReader(fileReader, fanoutWriter)
+	// Wrap the reader in a FanoutChunkReader.
+	cr := NewFanoutChunkReader(fileReader, fileNode.ErasureCode(), onlyOnePieceNeeded, fileNode.MasterKey())
 	if sup.DryRun {
 		// In case of a dry-run we don't want to perform the actual upload,
 		// instead we create a filenode that contains all of the data pieces and
 		// their merkle roots.
-		err = r.managedPopulateFileNodeFromReader(fileNode, tr)
+		err = r.managedPopulateFileNodeFromReader(fileNode, cr)
 	} else {
 		// Upload the file using a streamer.
-		err = r.callUploadStreamFromReaderWithFileNode(fileNode, tr)
+		err = r.callUploadStreamFromReaderWithFileNode(fileNode, cr)
 	}
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload file")
@@ -553,7 +535,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	// the fanout from the fileNode in that case.
 	var fanout []byte
 	if fileReader != nil {
-		fanout, err = fanoutWriter.Fanout()
+		fanout = cr.Fanout()
 	} else {
 		fanout, err = skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
 	}

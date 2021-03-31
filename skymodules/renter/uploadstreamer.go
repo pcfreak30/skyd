@@ -34,11 +34,10 @@ import (
 // error for that Read. SignalChan will be closed when the shard has been
 // closed.
 type StreamShard struct {
-	n    int
-	peek []byte
-	err  error
+	n   uint64
+	err error
 
-	r io.Reader
+	r skymodules.ChunkReader
 
 	closed     bool
 	mu         sync.Mutex
@@ -46,75 +45,43 @@ type StreamShard struct {
 }
 
 // NewStreamShard creates a new stream shard from a reader.
-func NewStreamShard(r io.Reader, peek []byte) *StreamShard {
+func NewStreamShard(r skymodules.ChunkReader) *StreamShard {
 	return &StreamShard{
-		peek:       peek,
 		r:          r,
 		signalChan: make(chan struct{}),
 	}
 }
 
-// Close closes the underlying channel of the shard.
-func (ss *StreamShard) Close() error {
-	close(ss.signalChan)
-	ss.closed = true
-	return nil
-}
-
-// Peek will check to see if there is more data in the stream.
-func (ss *StreamShard) Peek() ([]byte, error) {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
-
-	// If 'peek' already has data, then there is more data to consume.
-	if len(ss.peek) > 0 {
-		return ss.peek, nil
-	}
-
-	// Read a byte into peek.
-	ss.peek = append(ss.peek, 0)
-	_, err := io.ReadFull(ss.r, ss.peek)
-	if err != nil {
-		ss.err = err
-		return nil, err
-	}
-	return ss.peek, nil
+// Peek returns whether the next call to ReadChunk is expected to return a
+// chunk or if there is no more data.
+func (ss *StreamShard) Peek() bool {
+	return ss.r.Peek()
 }
 
 // Result returns the returned values of calling Read on the shard.
 func (ss *StreamShard) Result() (int, error) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
-	return ss.n, ss.err
+	return int(ss.n), ss.err
 }
 
-// Read implements the io.Reader interface.
-func (ss *StreamShard) Read(b []byte) (int, error) {
+// ReadChunk implements the ChunkReader interface.
+func (ss *StreamShard) ReadChunk() ([][]byte, uint64, error) {
 	if ss.closed {
-		return 0, errors.New("StreamShard already closed")
+		return nil, 0, errors.New("StreamShard already closed")
 	}
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
-	if len(b) < 1 {
-		return 0, nil
-	}
-	var peekBytes int // will be 0 or 1
-	if len(ss.peek) > 0 {
-		// Sanity check - peek should never be more than 1 byte.
-		if len(ss.peek) > 1 {
-			build.Critical("stream shard has too many bytes in the peek field", len(ss.peek))
-		}
-		b[0] = ss.peek[0]
-		b = b[1:]
-		ss.n++
-		ss.peek = ss.peek[:0]
-		peekBytes++
-	}
-	n, err := ss.r.Read(b)
-	ss.n += n
-	ss.err = err
-	return n + peekBytes, err
+	// Read chunk.
+	var chunk [][]byte
+	chunk, ss.n, ss.err = ss.r.ReadChunk()
+
+	// The chunk is read. Mark the shard as closed.
+	ss.closed = true
+	close(ss.signalChan)
+
+	return chunk, ss.n, ss.err
 }
 
 // UploadStreamFromReader reads from the provided reader until io.EOF is reached and
@@ -200,7 +167,7 @@ func (r *Renter) managedInitUploadStream(up skymodules.FileUploadParams) (*files
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.FileNode, reader io.Reader) (err error) {
+func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.FileNode, reader skymodules.ChunkReader) (err error) {
 	// Build a map of host public keys.
 	pks := make(map[string]types.SiaPublicKey)
 	for _, pk := range fileNode.HostPublicKeys() {
@@ -222,7 +189,6 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 	// Read the chunks we want to upload one by one from the input stream using
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
-	var peek []byte
 	var chunks []*unfinishedUploadChunk
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing
@@ -247,7 +213,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 		}
 
 		// Create a new shard set it to be the source reader of the chunk.
-		ss := NewStreamShard(reader, peek)
+		ss := NewStreamShard(reader)
 		uuc.sourceReader = ss
 
 		// Check if the chunk needs any work or if we can skip it.
@@ -260,9 +226,9 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 			if !pushed {
 				// The chunk wasn't added to the repair map meaning it must have
 				// already been in the repair map
-				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
-				if err := ss.Close(); err != nil {
-					return err
+				_, _, err = ss.ReadChunk()
+				if err != nil {
+					return errors.AddContext(err, "unable to read pushed chunk")
 				}
 			}
 			chunks = append(chunks, uuc)
@@ -271,9 +237,9 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 			// from the shard though. Otherwise we will upload the wrong chunk
 			// for the next chunkIndex. We don't need to check the error though
 			// since we check that anyway at the end of the loop.
-			_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
-			if err := ss.Close(); err != nil {
-				return err
+			_, _, err = ss.ReadChunk()
+			if err != nil {
+				return errors.AddContext(err, "unable to read chunk")
 			}
 		}
 		// Wait for the shard to be read.
@@ -293,11 +259,8 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 		}
 
 		// Call Peek to make sure that there's more data for another shard.
-		peek, err = ss.Peek()
-		if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
+		if !ss.Peek() {
 			break
-		} else if err != nil {
-			return ss.err
 		}
 	}
 
@@ -339,7 +302,8 @@ func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, read
 	if err != nil {
 		return nil, err
 	}
-	err = r.callUploadStreamFromReaderWithFileNode(fileNode, reader)
+	chunkReader := NewChunkReader(reader, fileNode.ErasureCode(), fileNode.MasterKey())
+	err = r.callUploadStreamFromReaderWithFileNode(fileNode, chunkReader)
 	if err != nil {
 		err = errors.Compose(err, fileNode.Close())
 		return nil, err

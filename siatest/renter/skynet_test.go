@@ -1867,6 +1867,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 			// Download the sector
 			reader, err := r.SkynetDownloadByRootGet(chunkRoots[i][j], 0, modules.SectorSize, -1)
 			if err != nil {
+				t.Log("root", chunkRoots[i][j])
 				t.Fatal(err)
 			}
 
