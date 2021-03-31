@@ -93,13 +93,13 @@ func (c *Client) SkynetTUSClient(chunkSize int64) (*tus.Client, error) {
 	return tus.NewClient(fmt.Sprintf("http://%v/skynet/tus", c.Address), config)
 }
 
-// SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
-// and the specified chunkSize.
-func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string, error) {
+// SkynetTUSUploaderFromBytes returns a ready-to-use tus uploader for some data
+// and chunkSize.
+func (c *Client) SkynetTUSUploaderFromBytes(data []byte, chunkSize int64) (*tus.Client, *tus.Uploader, error) {
 	// Get client.
 	tc, err := c.SkynetTUSClient(chunkSize)
 	if err != nil {
-		return "", err
+		return nil, nil, err
 	}
 
 	// Create the uploader and upload the data.
@@ -108,6 +108,16 @@ func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string,
 	upload := tus.NewUpload(r, r.Size(), tus.Metadata{}, fp)
 	uploader, err := tc.CreateUpload(upload)
 	if err != nil {
+		return nil, nil, err
+	}
+	return tc, uploader, nil
+}
+
+// SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
+// and the specified chunkSize.
+func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string, error) {
+	tc, uploader, err := c.SkynetTUSUploaderFromBytes(data, chunkSize)
+	if err != nil {
 		return "", err
 	}
 	err = uploader.Upload()
@@ -115,7 +125,8 @@ func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string,
 		return "", err
 	}
 	// After the upload, fetch the skylink from the metadata.
-	return SkylinkFromTUSUpload(tc, uploader)
+	skylink, err := SkylinkFromTUSURL(tc, uploader.Url())
+	return skylink, err
 }
 
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
@@ -856,10 +867,10 @@ func (c *Client) RegistryUpdate(spk types.SiaPublicKey, dataKey crypto.Hash, rev
 	return c.post("/skynet/registry", string(reqBytes), nil)
 }
 
-// SkylinkFromTUSUpload is a helper to fetch the skylink of a finished upload.
-func SkylinkFromTUSUpload(tc *tus.Client, uploader *tus.Uploader) (string, error) {
+// SkylinkFromTUSURL is a helper to fetch the skylink of a finished upload.
+func SkylinkFromTUSURL(tc *tus.Client, url string) (string, error) {
 	// After the upload, fetch the skylink from the metadata.
-	req, err := http.NewRequest("HEAD", uploader.Url(), bytes.NewReader([]byte{}))
+	req, err := http.NewRequest("HEAD", url, bytes.NewReader([]byte{}))
 	if err != nil {
 		return "", err
 	}
@@ -880,20 +891,22 @@ func SkylinkFromTUSUpload(tc *tus.Client, uploader *tus.Uploader) (string, error
 	// Find the skylink in the metadata.
 	var skylink64 string
 	for _, md := range metadata {
-		splitMD := strings.Split(md, " ")
-		if splitMD[0] != "Skylink" {
-			continue
+		for _, entry := range strings.Split(md, ",") {
+			splitEntry := strings.Split(entry, " ")
+			if splitEntry[0] != "Skylink" {
+				continue
+			}
+			if len(splitEntry) != 2 {
+				return "", fmt.Errorf("invalid skylink metadata '%v'", entry)
+			}
+			if skylink64 != "" {
+				return "", errors.New("skylink field exists more than once")
+			}
+			skylink64 = splitEntry[1]
 		}
-		if len(splitMD) != 2 {
-			return "", errors.New("invalid skylink metadata")
-		}
-		if skylink64 != "" {
-			return "", errors.New("skylink field exists more than once")
-		}
-		skylink64 = splitMD[1]
 	}
 	if skylink64 == "" {
-		return "", errors.New("skylink metadata missing")
+		return "", fmt.Errorf("skylink metadata missing")
 	}
 
 	// Decode skylink.

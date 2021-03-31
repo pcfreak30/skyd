@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/eventials/go-tus"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -12,6 +13,7 @@ import (
 	"gitlab.com/skynetlabs/skyd/siatest"
 	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter"
 )
 
 // TestSkynetTUSUploader runs all skynetTUSUploader related tests.
@@ -49,6 +51,13 @@ func TestSkynetTUSUploader(t *testing.T) {
 
 // testTUSUploadSmallFile tests uploading a small file using the TUS protocol.
 func testTUSUploaderSmallFile(t *testing.T, r *siatest.TestNode) {
+	// Get the number of files before the test.
+	dir, err := r.RenterDirRootGet(skymodules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nFilesBefore := dir.Directories[0].AggregateNumFiles
+
 	// upload a 100 byte file in chunks of 10 bytes.
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
 	fileSize := chunkSize*5 + chunkSize/2 // 5 1/2 chunks.
@@ -65,6 +74,24 @@ func testTUSUploaderSmallFile(t *testing.T, r *siatest.TestNode) {
 	}
 	if !bytes.Equal(uploadedData, downloadedData) {
 		t.Fatal("data doesn't match")
+	}
+
+	// Wait for a full pruning interval to implicitly check that we are not
+	// deleting successful uploads from disk.
+	time.Sleep(renter.PruneTUSUploadTimeout)
+
+	// Wait a bit longer to make sure the pruning had time to finish.
+	time.Sleep(100 * time.Millisecond)
+
+	// Check that the number of files increased by 2. One for the regular sia
+	// file and one for the extension.
+	dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nFiles := dir.Directories[0].AggregateNumFiles
+	if nFiles-nFilesBefore != 2 {
+		t.Fatal("expected 2 new files but got", nFiles-nFilesBefore)
 	}
 }
 
@@ -128,7 +155,7 @@ func testTUSUploaderUnstableConnection(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Fetch skylink after upload is done.
-	skylink, err := client.SkylinkFromTUSUpload(tc, uploader)
+	skylink, err := client.SkylinkFromTUSURL(tc, uploader.Url())
 	if err != nil {
 		t.Fatal(err)
 	}

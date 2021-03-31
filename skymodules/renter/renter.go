@@ -1268,6 +1268,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 
+	// Spin up the tus pruning goroutine.
+	if err := r.tg.Launch(r.threadedPruneTUSUploads); err != nil {
+		return nil, err
+	}
+
 	// Unsubscribe on shutdown.
 	err = r.tg.OnStop(func() error {
 		cs.Unsubscribe(r)
