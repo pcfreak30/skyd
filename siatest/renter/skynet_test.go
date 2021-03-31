@@ -4510,7 +4510,7 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 	// Create monetization with a $1 price to guarantee a 100% chance of payment
 	// since that's equal to 100SC which is greater than the base.
 	monetization := &skymodules.Monetization{
-		License: modules.LicenseMonetization,
+		License: skymodules.LicenseMonetization,
 		Monetizers: []skymodules.Monetizer{
 			{
 				Address:  addr,
