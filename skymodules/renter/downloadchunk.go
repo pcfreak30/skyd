@@ -50,6 +50,9 @@ type unfinishedDownloadChunk struct {
 	staticPieceSize   uint64
 	staticWriteOffset int64 // Offset within the writer to write the completed data.
 
+	// Spending details.
+	staticSpendingCategory spendingCategory
+
 	// Fetch + Write instructions - read only or otherwise thread safe.
 	staticDisableDiskFetch bool
 	staticLatencyTarget    time.Duration
@@ -72,9 +75,9 @@ type unfinishedDownloadChunk struct {
 	// Memory management variables.
 	memoryAllocated uint64
 
-	// The download object, mostly to update download progress.
-	download *download
-	mu       sync.Mutex
+	// The staticDownload object, mostly to update staticDownload progress.
+	staticDownload *download
+	mu             sync.Mutex
 
 	// The SiaFile from which data is being downloaded.
 	renterFile *siafile.Snapshot
@@ -89,7 +92,7 @@ func (udc *unfinishedDownloadChunk) fail(err error) {
 	for i := range udc.physicalChunkData {
 		udc.physicalChunkData[i] = nil
 	}
-	udc.download.managedFail(fmt.Errorf("chunk %v failed: %v", udc.staticChunkIndex, err))
+	udc.staticDownload.managedFail(fmt.Errorf("chunk %v failed: %v", udc.staticChunkIndex, err))
 	udc.destination = nil
 }
 
@@ -148,12 +151,12 @@ func (udc *unfinishedDownloadChunk) managedFinalizeRecovery() {
 	udc.mu.Unlock()
 
 	// Update the download and signal completion of this chunk.
-	udc.download.mu.Lock()
-	defer udc.download.mu.Unlock()
-	udc.download.chunksRemaining--
-	if udc.download.chunksRemaining == 0 {
+	udc.staticDownload.mu.Lock()
+	defer udc.staticDownload.mu.Unlock()
+	udc.staticDownload.chunksRemaining--
+	if udc.staticDownload.chunksRemaining == 0 {
 		// Download is complete, send out a notification.
-		udc.download.markComplete()
+		udc.staticDownload.markComplete()
 	}
 }
 

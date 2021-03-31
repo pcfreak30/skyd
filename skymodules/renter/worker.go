@@ -124,10 +124,10 @@ type (
 		staticSubscriptionInfo *subscriptionInfos
 
 		// Utilities.
-		staticTG threadgroup.ThreadGroup
-		mu       sync.Mutex
-		renter   *Renter
-		wakeChan chan struct{} // Worker will check queues if given a wake signal.
+		staticTG     threadgroup.ThreadGroup
+		mu           sync.Mutex
+		staticRenter *Renter
+		wakeChan     chan struct{} // Worker will check queues if given a wake signal.
 	}
 )
 
@@ -180,7 +180,7 @@ func (w *worker) managedKill() {
 
 	err := w.staticTG.Stop()
 	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
-		w.renter.log.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
+		w.staticRenter.staticLog.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
 	}
 }
 
@@ -206,7 +206,7 @@ func (w *worker) staticWake() {
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	_, ok, err := r.hostDB.Host(hostPubKey)
+	_, ok, err := r.staticHostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
@@ -225,7 +225,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	// TODO: check that the balance target  makes sense in function of the
 	// amount of MDM programs it can run with that amount of money
 	balanceTarget := types.SiacoinPrecision
-	if r.deps.Disrupt("DisableFunding") {
+	if r.staticDeps.Disrupt("DisableFunding") {
 		balanceTarget = types.ZeroCurrency
 	}
 
@@ -241,6 +241,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticSubscriptionInfo: &subscriptionInfos{
 			subscriptions:  make(map[modules.SubscriptionID]*subscription),
 			staticWakeChan: make(chan struct{}, 1),
+			staticManager:  r.staticSubscriptionManager,
 		},
 
 		// Initialize the read and write limits for the async worker tasks.
@@ -253,7 +254,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 
 		unprocessedChunks: newUploadChunks(),
 		wakeChan:          make(chan struct{}, 1),
-		renter:            r,
+		staticRenter:      r,
 	}
 	w.newPriceTable()
 	w.newMaintenanceState()

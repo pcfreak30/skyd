@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -431,6 +432,8 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(largeFetchedData, largeData) {
+		t.Log(largeFetchedData)
+		t.Log(largeData)
 		t.Error("upload and download data does not match for large siafiles", len(largeFetchedData), len(largeData))
 	}
 
@@ -611,31 +614,20 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 // testConvertSiaFile tests converting a siafile to a skyfile. This test checks
 // for 1-of-N redundancies and N-of-M redundancies.
 func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
+	t.Run("1-of-N Conversion", func(t *testing.T) {
+		testConversion(t, tg, 1, 2, t.Name())
+	})
+	t.Run("N-of-M Conversion", func(t *testing.T) {
+		testConversion(t, tg, 2, 1, t.Name())
+	})
+}
+
+// testConversion is a subtest for testConvertSiaFile
+func testConversion(t *testing.T, tg *siatest.TestGroup, dp, pp uint64, skykeyName string) {
 	r := tg.Renters()[0]
-
 	// Upload a siafile that will then be converted to a skyfile.
-	//
-	// Set 2 as the datapieces to check for N-of-M redundancy conversions
 	filesize := int(modules.SectorSize) + siatest.Fuzz()
-	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create Skyfile Upload Parameters
-	sup := skymodules.SkyfileUploadParameters{
-		SiaPath: skymodules.RandomSiaPath(),
-	}
-
-	// Try and convert to a Skyfile, this should succeed, even if the original
-	// siafile is of N-of-M redundancy and not 1-N
-	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	if err != nil {
-		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
-	}
-
-	// Upload a new file with a 1-N redundancy by setting the datapieces to 1
-	localFile, remoteFile, err = r.UploadNewFileBlocking(filesize, 1, 2, false)
+	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, dp, pp, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -650,19 +642,19 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Recreate Skyfile Upload Parameters
-	sup = skymodules.SkyfileUploadParameters{
+	// Create Skyfile Upload Parameters
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath: skymodules.RandomSiaPath(),
 	}
 
-	// Convert to a Skyfile
+	// Try and convert to a Skyfile
 	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
 	}
-	skylink := sshp.Skylink
 
 	// Try to download the skylink.
+	skylink := sshp.Skylink
 	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -681,7 +673,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	// ensure we do not panic and we return the expected error
 	//
 	// Add SkyKey
-	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
+	sk, err := r.SkykeyCreateKeyPost(skykeyName, skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -913,6 +905,17 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// Uptime should be non zero
 	if stats.Uptime == 0 {
 		t.Error("Uptime is zero")
+	}
+
+	// Check registry stats are set
+	if stats.RegistryStats.ReadProjectP99 == 0 {
+		t.Error("readregistry p99 is zero")
+	}
+	if stats.RegistryStats.ReadProjectP999 == 0 {
+		t.Error("readregistry p999 is zero")
+	}
+	if stats.RegistryStats.ReadProjectP9999 == 0 {
+		t.Error("readregistry p9999 is zero")
 	}
 
 	// create two test files with sizes below and above the sector size
@@ -4123,12 +4126,30 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatalf("read took too long to time out %v > %v", time.Since(start), 2*time.Second)
 	}
 
-	// Update the registry again, with the same revision. Shouldn't work.
+	// Update the registry again, with the same revision and same PoW. Shouldn't
+	// work.
 	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
 		t.Fatal(err)
 	}
 	if err == nil || !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+		t.Fatal(err)
+	}
+
+	// Update the registry again. With the same revision but higher PoW. Should work.
+	srvHigherPoW := srv2
+	slHigherPow := skylink2
+	for !srvHigherPoW.HasMoreWork(srv2.RegistryValue) {
+		sl, err := skymodules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srvHigherPoW.Data = sl.Bytes()
+		srvHigherPoW = srvHigherPoW.Sign(sk)
+		slHigherPow = sl
+	}
+	err = r.RegistryUpdate(spk, dataKey, srvHigherPoW.Revision, srvHigherPoW.Signature, slHigherPow)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -4486,5 +4507,144 @@ func TestReadUnknownRegistryEntry(t *testing.T) {
 	// than readRegistryBackgroundTimeout.
 	if passed >= renter.MaxRegistryReadTimeout || passed <= renter.ReadRegistryBackgroundTimeout {
 		t.Fatalf("%v not between %v and %v", passed, renter.ReadRegistryBackgroundTimeout, renter.MaxRegistryReadTimeout)
+	}
+
+	// The remainder of the test might take a while. Only execute it in vlong
+	// tests.
+	if !build.VLONG {
+		t.SkipNow()
+	}
+
+	// Run 200 reads to lower the p99 below the seed. Do it in batches of 10
+	// reads.
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		for j := 0; j < 10; j++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := r.RegistryRead(spk, crypto.Hash{})
+				if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+					t.Error(err)
+				}
+			}()
+		}
+		wg.Wait()
+	}
+
+	// Verify that the estimate is lower than the timeout after multiple reads
+	// with slow hosts.
+	err = build.Retry(60, time.Second, func() error {
+		ss, err := r.SkynetStatsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ss.RegistryStats.ReadProjectP99 >= renter.ReadRegistryBackgroundTimeout {
+			return fmt.Errorf("%v >= %v", ss.RegistryStats.ReadProjectP99, renter.ReadRegistryBackgroundTimeout)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSkynetFeePaid tests that the renter calls paySkynetFee. The various edge
+// cases of paySkynetFee and the exact amounts are tested within its unit test.
+func TestSkynetFeePaid(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create an independent wallet node.
+	wallet, err := siatest.NewCleanNode(node.Wallet(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wallet.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Connect it to the group.
+	err = wallet.GatewayConnectPost(tg.Hosts()[0].GatewayAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// It should start with a 0 balance.
+	balance, err := wallet.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !balance.IsZero() {
+		t.Fatal("balance should be 0")
+	}
+
+	// Get an address.
+	wag, err := wallet.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a new renter that thinks the wallet's address is the fee address.
+	rt := node.RenterTemplate
+	deps := &dependencies.DependencyCustomNebulousAddress{}
+	deps.SetAddress(wag.Address)
+	rt.RenterDeps = deps
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Upload a file.
+	_, _, err = r.UploadNewFileBlocking(100, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the next payout.
+	time.Sleep(skymodules.SkynetFeePayoutInterval)
+
+	// Mine a block to confirm the txn.
+	err = tg.Miners()[0].MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for some money to show up on the address.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		balance, err := wallet.ConfirmedBalance()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if balance.IsZero() {
+			return errors.New("balance is zero")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

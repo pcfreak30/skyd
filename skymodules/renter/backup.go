@@ -110,7 +110,7 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) (err error) {
 	// Close tar writer to flush it before writing the allowance.
 	twErr := tw.Close()
 	// Write the allowance.
-	allowanceBytes, err := json.Marshal(r.hostContractor.Allowance())
+	allowanceBytes, err := json.Marshal(r.staticHostContractor.Allowance())
 	if err != nil {
 		gzwErr := gzw.Close()
 		return errors.Compose(err, twErr, gzwErr)
@@ -222,13 +222,13 @@ func (r *Renter) LoadBackup(src string, secret []byte) (err error) {
 	var allowance skymodules.Allowance
 	if err := dec.Decode(&allowance); err != nil {
 		// legacy backup without allowance
-		r.log.Println("WARN: Decoding the backup's allowance failed: ", err)
+		r.staticLog.Println("WARN: Decoding the backup's allowance failed: ", err)
 	}
 	// If the backup contained a valid allowance and we currently don't have an
 	// allowance set, import it.
 	if !reflect.DeepEqual(allowance, skymodules.Allowance{}) &&
-		reflect.DeepEqual(r.hostContractor.Allowance(), skymodules.Allowance{}) {
-		if err := r.hostContractor.SetAllowance(allowance); err != nil {
+		reflect.DeepEqual(r.staticHostContractor.Allowance(), skymodules.Allowance{}) {
+		if err := r.staticHostContractor.SetAllowance(allowance); err != nil {
 			return errors.AddContext(err, "unable to set allowance from backup")
 		}
 	}

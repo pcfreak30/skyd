@@ -1,10 +1,10 @@
 # [![Sia Logo](https://sia.tech/static/assets/svg/sia-green-logo.svg)](http://sia.tech)
 
-[![Build Status](https://gitlab.com/NebulousLabs/Sia/badges/master/pipeline.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
-[![Coverage Report](https://gitlab.com/NebulousLabs/Sia/badges/master/coverage.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
-[![GoDoc](https://godoc.org/gitlab.com/NebulousLabs/Sia?status.svg)](https://godoc.org/gitlab.com/NebulousLabs/Sia)
-[![Go Report Card](https://goreportcard.com/badge/gitlab.com/NebulousLabs/Sia)](https://goreportcard.com/report/gitlab.com/NebulousLabs/Sia)
-[![License MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://img.shields.io/badge/License-MIT-brightgreen.svg)
+[![Build Status](https://gitlab.com/skynetlabs/skyd/badges/master/pipeline.svg)](https://gitlab.com/skynetlabs/skyd/commits/master)
+[![Coverage Report](https://gitlab.com/skynetlabs/skyd/badges/master/coverage.svg)](https://gitlab.com/skynetlabs/skyd/commits/master)
+[![GoDoc](https://godoc.org/gitlab.com/skynetlabs/skyd?status.svg)](https://godoc.org/gitlab.com/skynetlabs/skyd)
+[![Go Report Card](https://goreportcard.com/badge/gitlab.com/skynetlabs/skyd)](https://goreportcard.com/report/gitlab.com/skynetlabs/skyd)
+[![Skynet License](https://img.shields.io/badge/license-skynet%20license-blue)](https://gitlab.com/skynetlabs/skyd/-/blob/master/LICENSE.md)
 
 Sia is a decentralized cloud storage platform that radically alters the
 landscape of cloud storage. By leveraging smart contracts, client-side
@@ -63,6 +63,17 @@ To get started with Sia, check out the guides below:
 - [How to Become a Sia Host](https://blog.sia.tech/how-to-run-a-host-on-sia-2159ebc4725)
 - [Using the Sia API](https://blog.sia.tech/api-quickstart-guide-f1d160c05235)
 
+License
+-----
+
+Skyd uses a custom [License](./LICENSE.md). The Skynet License is a source
+code license that allows you to use, modify and distribute the software, but
+you must preserve the payment mechanism in the software.
+
+For the purposes of complying with our code license, you can use the
+following Siacoin address:
+
+`fb6c9320bc7e01fbb9cd8d8c3caaa371386928793c736837832e634aaaa484650a3177d6714a`
 
 Usage
 -----

@@ -58,10 +58,10 @@ type jobTestMetadata struct {
 // that we should implement precautions on both ends.
 func (j *jobTest) sendResult(result *jobTestResult) {
 	w := j.staticQueue.staticWorker()
-	err := w.renter.tg.Launch(func() {
+	err := w.staticRenter.tg.Launch(func() {
 		select {
 		case j.resultChan <- result:
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		case <-j.staticCtx.Done():
 		}
 	})
@@ -128,7 +128,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 
 	// Create a job queue.
 	w := new(worker)
-	w.renter = new(Renter)
+	w.staticRenter = new(Renter)
 	jq := newJobGenericQueue(w)
 	cancelCtx, cancel := context.WithCancel(context.Background())
 
@@ -487,7 +487,7 @@ func TestQueueMemoryLeak(t *testing.T) {
 
 	// Create queue.
 	w := new(worker)
-	w.renter = new(Renter)
+	w.staticRenter = new(Renter)
 	jq := newJobGenericQueue(w)
 
 	// Prepare a job.

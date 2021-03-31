@@ -1510,3 +1510,108 @@ func TestCalculateHealth(t *testing.T) {
 	}()
 	checkHealth(0, 0, 0, 0)
 }
+
+// TestUpdateMetadata probes the UpdateMetadata method
+func TestUpdateMetadata(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a file
+	rsc, _ := skymodules.NewRSCode(10, 20)
+	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
+	file, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, 0, 0, fileMode)
+
+	// Add a used host to the pubkeyTable
+	pk := types.SiaPublicKey{Key: []byte{byte(0)}}
+	pubkeyTable := []HostPublicKey{{PublicKey: pk, Used: true}}
+	pubkeyTableCopy := make([]HostPublicKey, len(pubkeyTable))
+	copy(pubkeyTableCopy, pubkeyTable)
+
+	// Set all the cached values to values that will be updated when
+	// UpdateMetadata is called
+	file.mu.Lock()
+	// pubKeyTable is updated during UpdateMetadata
+	file.pubKeyTable = pubkeyTable
+	// Cached redundancy fields are updated during UpdateMetadata
+	file.staticMetadata.CachedRedundancy = math.MaxFloat64
+	file.staticMetadata.CachedUserRedundancy = math.MaxFloat64
+	// Cached health fields are updated during UpdateMetadata
+	file.staticMetadata.CachedHealth = math.MaxFloat64
+	file.staticMetadata.CachedStuckHealth = math.MaxFloat64
+	file.staticMetadata.CachedRepairBytes = math.MaxUint64
+	file.staticMetadata.CachedStuckBytes = math.MaxUint64
+	file.staticMetadata.CachedNumStuckChunks = math.MaxUint64
+	// LastHealthCheckTime is updated during UpdateMetadata
+	file.staticMetadata.LastHealthCheckTime = time.Time{}
+	// CachedExpiration is updated during UpdateMetadata
+	file.staticMetadata.CachedExpiration = types.BlockHeight(0)
+	file.mu.Unlock()
+
+	// Define helper function
+	checkMetadata := func(sf *SiaFile) (err error) {
+		// Check PubKeyTable
+		if reflect.DeepEqual(sf.pubKeyTable, pubkeyTableCopy) {
+			err = errors.Compose(err, fmt.Errorf("pubkeyTable not updated; found %v", sf.pubKeyTable))
+		}
+		// Check redundancy
+		if sf.staticMetadata.CachedRedundancy == math.MaxFloat64 {
+			err = errors.Compose(err, fmt.Errorf("CachedRedundancy not updated; found %v", sf.staticMetadata.CachedRedundancy))
+		}
+		if sf.staticMetadata.CachedUserRedundancy == math.MaxFloat64 {
+			err = errors.Compose(err, fmt.Errorf("CachedUserRedundancy not updated; found %v", sf.staticMetadata.CachedUserRedundancy))
+		}
+		// Check health
+		if sf.staticMetadata.CachedHealth == math.MaxFloat64 {
+			err = errors.Compose(err, fmt.Errorf("CachedHealth not updated; found %v", sf.staticMetadata.CachedHealth))
+		}
+		if sf.staticMetadata.CachedStuckHealth == math.MaxFloat64 {
+			err = errors.Compose(err, fmt.Errorf("CachedStuckHealth not updated; found %v", sf.staticMetadata.CachedStuckHealth))
+		}
+		if sf.staticMetadata.CachedRepairBytes == math.MaxUint64 {
+			err = errors.Compose(err, fmt.Errorf("CachedRepairBytes not updated; found %v", sf.staticMetadata.CachedRepairBytes))
+		}
+		if sf.staticMetadata.CachedStuckBytes == math.MaxUint64 {
+			err = errors.Compose(err, fmt.Errorf("CachedStuckBytes not updated; found %v", sf.staticMetadata.CachedStuckBytes))
+		}
+		if sf.staticMetadata.CachedNumStuckChunks == math.MaxUint64 {
+			err = errors.Compose(err, fmt.Errorf("CachedNumStuckChunks not updated; found %v", sf.staticMetadata.CachedNumStuckChunks))
+		}
+		// Check LastHealthCheckTime
+		if sf.staticMetadata.LastHealthCheckTime.IsZero() {
+			err = errors.Compose(err, fmt.Errorf("LastHealthCheckTime not updated; found %v", sf.staticMetadata.LastHealthCheckTime))
+		}
+		// Check Expiration
+		if sf.staticMetadata.CachedExpiration == types.BlockHeight(0) {
+			err = errors.Compose(err, fmt.Errorf("CachedExpiration not updated; found %v", sf.staticMetadata.CachedExpiration))
+		}
+		return
+	}
+	err := checkMetadata(file)
+	if err == nil {
+		t.Fatal("metadata not initialized properly")
+	}
+
+	// Create offline and goodForRenew maps
+	offlineMap := make(map[string]bool)
+	goodForRenewMap := make(map[string]bool)
+
+	// Create list of used Hosts
+	used := []types.SiaPublicKey{}
+
+	// Create contracts map
+	contractsMap := make(map[string]skymodules.RenterContract)
+
+	// UpdateMetadata
+	err = file.UpdateMetadata(offlineMap, goodForRenewMap, contractsMap, used)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check metadata
+	err = checkMetadata(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

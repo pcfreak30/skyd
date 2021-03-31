@@ -118,6 +118,7 @@ type (
 	// GET endpoint
 	SkynetStatsGET struct {
 		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
+		RegistryStats    skymodules.RegistryStats          `json:"registrystats"`
 
 		Uptime      int64                  `json:"uptime"`
 		UploadStats skymodules.SkynetStats `json:"uploadstats"`
@@ -244,6 +245,8 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		return
 	}
 	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
 		_ = streamer.Close()
 	}()
 
@@ -540,6 +543,8 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 	streamer := renter.StreamerFromSlice(sector)
 	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
 		_ = streamer.Close()
 	}()
 
@@ -672,6 +677,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
 		_ = streamer.Close()
 	}()
 
@@ -1212,8 +1219,16 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	// Grab the siad uptime
 	uptime := time.Since(api.StartTime()).Seconds()
 
+	// Get the registry stats.
+	registryStats, err := api.renter.RegistryStats()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter registry status: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
 	WriteJSON(w, &SkynetStatsGET{
 		PerformanceStats: perfStats,
+		RegistryStats:    registryStats.ToMS(),
 
 		Uptime:      int64(uptime),
 		UploadStats: stats,

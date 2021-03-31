@@ -1,0 +1,1 @@
+- Add skyfile batch manager for batching of small skyfiles

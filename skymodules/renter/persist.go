@@ -86,22 +86,22 @@ func (r *Renter) managedLoadSettings() error {
 		// Outdated version, try the 040 to 133 upgrade.
 		err = convertPersistVersionFrom040To133(filepath.Join(r.persistDir, PersistFilename))
 		if err != nil {
-			r.log.Println("WARNING: 040 to 133 renter upgrade failed, trying 133 to 140 next", err)
+			r.staticLog.Println("WARNING: 040 to 133 renter upgrade failed, trying 133 to 140 next", err)
 		}
 		// Then upgrade from 133 to 140.
-		oldContracts := r.hostContractor.OldContracts()
+		oldContracts := r.staticHostContractor.OldContracts()
 		err = r.convertPersistVersionFrom133To140(filepath.Join(r.persistDir, PersistFilename), oldContracts)
 		if err != nil {
-			r.log.Println("WARNING: 133 to 140 renter upgrade failed", err)
+			r.staticLog.Println("WARNING: 133 to 140 renter upgrade failed", err)
 		}
 		// Then upgrade from 140 to 142.
 		err = r.convertPersistVersionFrom140To142(filepath.Join(r.persistDir, PersistFilename))
 		if err != nil {
-			r.log.Println("WARNING: 140 to 142 renter upgrade failed", err)
+			r.staticLog.Println("WARNING: 140 to 142 renter upgrade failed", err)
 			// Nothing left to try.
 			return err
 		}
-		r.log.Println("Renter upgrade successful")
+		r.staticLog.Println("Renter upgrade successful")
 		// Re-load the settings now that the file has been upgraded.
 		return r.managedLoadSettings()
 	} else if err != nil {
@@ -131,7 +131,7 @@ func (r *Renter) managedInitPersist() error {
 
 	// Initialize the writeaheadlog.
 	options := writeaheadlog.Options{
-		StaticLog: r.log.Logger,
+		StaticLog: r.staticLog.Logger,
 		Path:      filepath.Join(r.persistDir, walFile),
 	}
 	txns, wal, err := writeaheadlog.NewWithOptions(options)
@@ -145,19 +145,19 @@ func (r *Renter) managedInitPersist() error {
 	// Apply unapplied wal txns before loading the persistence structure to
 	// avoid loading potentially corrupted files.
 	if len(txns) > 0 {
-		r.log.Println("Wal initialized", len(txns), "transactions to apply")
+		r.staticLog.Println("Wal initialized", len(txns), "transactions to apply")
 	}
 	for _, txn := range txns {
 		applyTxn := true
-		r.log.Println("applying transaction with", len(txn.Updates), "updates")
+		r.staticLog.Println("applying transaction with", len(txn.Updates), "updates")
 		for _, update := range txn.Updates {
 			if siafile.IsSiaFileUpdate(update) {
-				r.log.Println("Applying a siafile update:", update.Name)
+				r.staticLog.Println("Applying a siafile update:", update.Name)
 				if err := siafile.ApplyUpdates(update); err != nil {
 					return errors.AddContext(err, "failed to apply SiaFile update")
 				}
 			} else {
-				r.log.Println("wal update not applied, marking transaction as not applied")
+				r.staticLog.Println("wal update not applied, marking transaction as not applied")
 				applyTxn = false
 			}
 		}
@@ -169,14 +169,14 @@ func (r *Renter) managedInitPersist() error {
 	}
 
 	// Create the filesystem.
-	fs, err := filesystem.New(fsRoot, r.log, wal)
+	fs, err := filesystem.New(fsRoot, r.staticLog, wal)
 	if err != nil {
 		return err
 	}
 
 	// Initialize the wal, staticFileSet and the staticDirSet. With the
 	// staticDirSet finish the initialization of the files directory
-	r.wal = wal
+	r.staticWAL = wal
 	r.staticFileSystem = fs
 
 	// Load the prior persistence structures.

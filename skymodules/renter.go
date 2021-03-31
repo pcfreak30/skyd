@@ -232,6 +232,11 @@ const (
 	// provide the storage proof at the end of the contract duration.
 	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
 
+	// SkynetSpendingHistoryFilename is the name of the file that periodically
+	// tracks the part of the renter spending that is elligible for the skynet
+	// license fee.
+	SkynetSpendingHistoryFilename = "spendinghistory.dat"
+
 	// StreamDownloadSize is the size of downloaded in a single streaming download
 	// request.
 	StreamDownloadSize = uint64(1 << 16) // 64 KiB
@@ -604,6 +609,23 @@ type MemoryManagerStatus struct {
 	PriorityReserve   uint64 `json:"priorityreserve"`
 }
 
+// RegistryStats is some registry related information returned by the renter.
+type RegistryStats struct {
+	ReadProjectP99   time.Duration `json:"readprojectp99"`
+	ReadProjectP999  time.Duration `json:"readprojectp999"`
+	ReadProjectP9999 time.Duration `json:"readprojectp9999"`
+}
+
+// ToMS adjusts all stats in the RegistryStats object to milliseconds and
+// returns a new stats object.
+func (rs RegistryStats) ToMS() RegistryStats {
+	// Adjust stats from nanoseconds to milliseconds.
+	rs.ReadProjectP99 /= time.Millisecond
+	rs.ReadProjectP999 /= time.Millisecond
+	rs.ReadProjectP9999 /= time.Millisecond
+	return rs
+}
+
 // Add combines two MemoryManagerStatus objects into one.
 func (ms MemoryManagerStatus) Add(ms2 MemoryManagerStatus) MemoryManagerStatus {
 	return MemoryManagerStatus{
@@ -818,6 +840,20 @@ func (rc *RenterContract) Size() uint64 {
 		size = rc.Transaction.FileContractRevisions[0].NewFileSize
 	}
 	return size
+}
+
+// SkynetSpending return the sum of all spending of the contract that is subject to
+// skynet fees.
+func (rc *RenterContract) SkynetSpending() (spending types.Currency) {
+	spending = spending.Add(rc.DownloadSpending)
+	spending = spending.Add(rc.FundAccountSpending)
+	spending = spending.Add(rc.MaintenanceSpending.Sum())
+	spending = spending.Add(rc.StorageSpending)
+	spending = spending.Add(rc.UploadSpending)
+	spending = spending.Add(rc.ContractFee)
+	spending = spending.Add(rc.TxnFee)
+	spending = spending.Add(rc.SiafundFee)
+	return
 }
 
 // ContractorSpending contains the metrics about how much the Contractor has
@@ -1113,6 +1149,9 @@ type Renter interface {
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
 
+	// RegistryStats returns some registry related information.
+	RegistryStats() (RegistryStats, error)
+
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
@@ -1270,6 +1309,10 @@ type Renter interface {
 
 	// Skykeys returns a slice containing each Skykey being stored by the renter.
 	Skykeys() ([]skykey.Skykey, error)
+
+	// BatchSkyfile will submit a skyfile to the batch manager to be uploaded as
+	// a batch to skynet.
+	BatchSkyfile(sup SkyfileUploadParameters, reader SkyfileUploadReader) (Skylink, error)
 
 	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector skyfile needs to be uploaded

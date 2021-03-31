@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -767,7 +768,22 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 // RenterWorkersGet uses the /renter/workers endpoint to get the current status
 // of the renter's workers.
 func (c *Client) RenterWorkersGet() (wps skymodules.WorkerPoolStatus, err error) {
+	return c.RenterWorkersSortedGet(false)
+}
+
+// RenterWorkersSortedGet uses the /renter/workers endpoint to get the current
+// status of the renter's workers and sorts them by HostPubKey.
+func (c *Client) RenterWorkersSortedGet(sorted bool) (wps skymodules.WorkerPoolStatus, err error) {
 	err = c.get("/renter/workers", &wps)
+	if !sorted {
+		return
+	}
+
+	// Sort workers by host public key.
+	sort.Slice(wps.Workers, func(i, j int) bool {
+		return wps.Workers[i].HostPubKey.String() < wps.Workers[j].HostPubKey.String()
+	})
+
 	return
 }
 

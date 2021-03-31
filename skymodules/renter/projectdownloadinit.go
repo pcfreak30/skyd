@@ -331,7 +331,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// Consistency check: we should never have more than MinPieces workers
 		// assigned.
 		if totalWorkers > ec.MinPieces() {
-			pdc.workerSet.staticRenter.log.Critical("total workers mistake in download code", totalWorkers, ec.MinPieces())
+			pdc.workerSet.staticRenter.staticLog.Critical("total workers mistake in download code", totalWorkers, ec.MinPieces())
 		}
 		enoughWorkers := totalWorkers == ec.MinPieces()
 
@@ -510,7 +510,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 				if fw == nil {
 					continue
 				}
-				pdc.launchWorker(fw.worker, uint64(i))
+				pdc.launchWorker(fw.worker, uint64(i), false)
 			}
 			return nil
 		}

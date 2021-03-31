@@ -18,16 +18,16 @@ var errNothingMounted = errors.New("nothing mounted at that path")
 type fuseManager struct {
 	mountPoints map[string]*fuseFS
 
-	mu     sync.Mutex
-	renter *Renter
+	mu           sync.Mutex
+	staticRenter *Renter
 }
 
 // newFuseManager returns a new fuseManager.
 func newFuseManager(r *Renter) renterFuseManager {
 	// Create the fuseManager
 	fm := &fuseManager{
-		mountPoints: make(map[string]*fuseFS),
-		renter:      r,
+		mountPoints:  make(map[string]*fuseFS),
+		staticRenter: r,
 	}
 
 	// Close the fuse manager on shutdown.
@@ -70,12 +70,12 @@ func (fm *fuseManager) managedCloseFuseManager() error {
 			fm.mu.Lock()
 			delete(fm.mountPoints, name)
 			fm.mu.Unlock()
-			fm.renter.tg.Done()
-			fm.renter.log.Printf("Unable to unmount %s: %v", name, umountErr)
+			fm.staticRenter.tg.Done()
+			fm.staticRenter.staticLog.Printf("Unable to unmount %s: %v", name, umountErr)
 			fmt.Printf("Unable to unmount %s: %v - use `umount [mountpoint]` or `fusermount -u [mountpoint]` to unmount manually\n", name, umountErr)
 		}
 		if errors.Contains(err, errNothingMounted) {
-			fm.renter.log.Critical("Nothing mounted at the provided mountpoint, even though something was mounted at the beginning of shutdown.", name)
+			fm.staticRenter.staticLog.Critical("Nothing mounted at the provided mountpoint, even though something was mounted at the beginning of shutdown.", name)
 		}
 		err = errors.Compose(err, errors.AddContext(umountErr, "unable to unmount "+name))
 	}
@@ -87,14 +87,14 @@ func (fm *fuseManager) managedCloseFuseManager() error {
 func (fm *fuseManager) Mount(mountPoint string, sp skymodules.SiaPath, opts skymodules.MountOptions) (err error) {
 	// Only release the Add() call if there was no error. Otherwise the Add()
 	// call will be released when Unmount is called.
-	err = fm.renter.tg.Add()
+	err = fm.staticRenter.tg.Add()
 	if err != nil {
 		return err
 	}
 	// Requires use of named variables as function output.
 	defer func() {
 		if err != nil {
-			fm.renter.tg.Done()
+			fm.staticRenter.tg.Done()
 		}
 	}()
 
@@ -104,7 +104,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp skymodules.SiaPath, opts skym
 	}
 
 	// Get the mountpoint's root from the filesystem.
-	rootDirNode, err := fm.renter.staticFileSystem.OpenSiaDir(sp)
+	rootDirNode, err := fm.staticRenter.staticFileSystem.OpenSiaDir(sp)
 	if err != nil {
 		return errors.AddContext(err, "unable to open the mounted siapath in the filesystem")
 	}
@@ -112,7 +112,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp skymodules.SiaPath, opts skym
 	filesystem := &fuseFS{
 		options: opts,
 
-		renter: fm.renter,
+		renter: fm.staticRenter,
 	}
 	// Create the root filesystem object.
 	root := &fuseDirnode{
@@ -149,10 +149,10 @@ func (fm *fuseManager) Mount(mountPoint string, sp skymodules.SiaPath, opts skym
 
 // MountInfo returns the list of currently mounted fuse filesystems.
 func (fm *fuseManager) MountInfo() []skymodules.MountInfo {
-	if err := fm.renter.tg.Add(); err != nil {
+	if err := fm.staticRenter.tg.Add(); err != nil {
 		return nil
 	}
-	defer fm.renter.tg.Done()
+	defer fm.staticRenter.tg.Done()
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
@@ -190,7 +190,7 @@ func (fm *fuseManager) managedUnmount(mountPoint string) error {
 	delete(fm.mountPoints, mountPoint)
 
 	// Release the threadgroup hold for this mountpoint.
-	fm.renter.tg.Done()
+	fm.staticRenter.tg.Done()
 
 	return nil
 }
@@ -200,10 +200,10 @@ func (fm *fuseManager) Unmount(mountPoint string) error {
 	// Use a threadgroup Add to prevent this from being called after shutdown -
 	// during shutdown the renter will be self-unmounting everything and
 	// multiple threads attempting unmounts can cause complications.
-	err := fm.renter.tg.Add()
+	err := fm.staticRenter.tg.Add()
 	if err != nil {
 		return errors.AddContext(err, "unable to unmount")
 	}
-	defer fm.renter.tg.Done()
+	defer fm.staticRenter.tg.Done()
 	return fm.managedUnmount(mountPoint)
 }

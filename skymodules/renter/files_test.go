@@ -37,9 +37,14 @@ func (r *Renter) createRenterTestFile(siaPath skymodules.SiaPath) (*filesystem.F
 }
 
 // createRenterTestFileWithParams creates a test file when the test has a renter
-// so that the file is properly added to the renter. It returns the
-// SiaFileSetEntry that the SiaFile is stored in
+// so that the file is properly added to the renter.
 func (r *Renter) createRenterTestFileWithParams(siaPath skymodules.SiaPath, rsc skymodules.ErasureCoder, ct crypto.CipherType) (*filesystem.FileNode, error) {
+	return r.createRenterTestFileWithParamsAndSize(siaPath, rsc, ct, 1000)
+}
+
+// createRenterTestFileWithParamsAndSize creates a test file when the test has
+// a renter so that the file is properly added to the renter.
+func (r *Renter) createRenterTestFileWithParamsAndSize(siaPath skymodules.SiaPath, rsc skymodules.ErasureCoder, ct crypto.CipherType, size uint64) (*filesystem.FileNode, error) {
 	// create the renter/files dir if it doesn't exist
 	siaFilePath := r.staticFileSystem.FilePath(siaPath)
 	dir, _ := filepath.Split(siaFilePath)
@@ -52,7 +57,7 @@ func (r *Renter) createRenterTestFileWithParams(siaPath skymodules.SiaPath, rsc 
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	err := r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(ct), 1000, persist.DefaultDiskPermissionsTest, false)
+	err := r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(ct), size, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 	if err != nil {
 		return nil, err
 	}

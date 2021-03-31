@@ -59,8 +59,8 @@ type (
 		staticPriority      uint64        // Downloads with higher priority will complete first.
 
 		// Utilities.
-		r  *Renter    // The renter that was used to create the download.
-		mu sync.Mutex // Unique to the download object.
+		staticRenter *Renter    // The renter that was used to create the download.
+		mu           sync.Mutex // Unique to the download object.
 	}
 
 	// downloadParams is the set of parameters to use when downloading a file.
@@ -70,14 +70,18 @@ type (
 		destinationString string              // The string to report to the user for the destination.
 		disableLocalFetch bool                // Whether or not the file can be fetched from disk if available.
 		file              *siafile.Snapshot   // The file to download.
+		latencyTarget     time.Duration       // Workers above this latency will be automatically put on standby initially.
+		length            uint64              // Length of download. Cannot be 0.
+		needsMemory       bool                // Whether new memory needs to be allocated to perform the download.
+		offset            uint64              // Offset within the file to start the download. Must be less than the total filesize.
+		overdrive         int                 // How many extra pieces to download to prevent slow hosts from being a bottleneck.
+		priority          uint64              // Files with a higher priority will be downloaded first.
 
-		latencyTarget       time.Duration // Workers above this latency will be automatically put on standby initially.
-		length              uint64        // Length of download. Cannot be 0.
-		needsMemory         bool          // Whether new memory needs to be allocated to perform the download.
-		offset              uint64        // Offset within the file to start the download. Must be less than the total filesize.
-		overdrive           int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
-		priority            uint64        // Files with a higher priority will be downloaded first.
 		staticMemoryManager *memoryManager
+
+		// staticSpendingCategory specifies what field to update when we track
+		// the amount of money spent from an ephemeral account
+		staticSpendingCategory spendingCategory
 	}
 )
 
@@ -98,7 +102,7 @@ func (d *download) managedFail(err error) {
 	if complete && d.err != nil {
 		return
 	} else if complete && d.err == nil {
-		d.r.log.Critical("download is marked as completed without error, but then managedFail was called with err:", err)
+		d.staticRenter.staticLog.Critical("download is marked as completed without error, but then managedFail was called with err:", err)
 		return
 	}
 
@@ -130,7 +134,7 @@ func (d *download) markComplete() {
 	}
 	// Log potential errors.
 	if err != nil {
-		d.r.log.Println("Failed to execute at least one downloadCompleteFunc", err)
+		d.staticRenter.staticLog.Println("Failed to execute at least one downloadCompleteFunc", err)
 	}
 	// Set downloadCompleteFuncs to nil to avoid executing them multiple times.
 	d.downloadCompleteFuncs = nil
@@ -145,7 +149,7 @@ func (d *download) onComplete(f func(error) error) {
 	select {
 	case <-d.completeChan:
 		if err := f(d.err); err != nil {
-			d.r.log.Println("Failed to execute downloadCompleteFunc", err)
+			d.staticRenter.staticLog.Println("Failed to execute downloadCompleteFunc", err)
 		}
 		return
 	default:
@@ -292,7 +296,7 @@ func (r *Renter) managedDownload(p skymodules.RenterDownloadParameters) (_ *down
 			return nil, err
 		}
 		dw = &downloadDestinationFile{
-			deps:            r.deps,
+			deps:            r.staticDeps,
 			f:               osFile,
 			staticChunkSize: int64(entry.ChunkSize()),
 		}
@@ -328,7 +332,8 @@ func (r *Renter) managedDownload(p skymodules.RenterDownloadParameters) (_ *down
 		overdrive:     3, // TODO: moderate default until full overdrive support is added.
 		priority:      5, // TODO: moderate default until full priority support is added.
 
-		staticMemoryManager: r.userDownloadMemoryManager, // user initiated download
+		staticMemoryManager:    r.staticUserDownloadMemoryManager, // user initiated download
+		staticSpendingCategory: categoryDownload,
 	})
 	if closer, ok := dw.(io.Closer); err != nil && ok {
 		// If the destination can be closed we do so.
@@ -395,7 +400,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 		staticSiaPath:         params.file.SiaPath(),
 		staticPriority:        params.priority,
 
-		r:            r,
+		staticRenter: r,
 		staticParams: params,
 	}
 
@@ -453,7 +458,7 @@ func (d *download) Start() error {
 				// the same chunk.
 				_, exists := chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()]
 				if exists {
-					d.r.log.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.", params.file.SiaPath(), chunkIndex, pieceIndex, piece.HostPubKey.String())
+					d.staticRenter.staticLog.Println("ERROR: Worker has multiple pieces uploaded for the same chunk.", params.file.SiaPath(), chunkIndex, pieceIndex, piece.HostPubKey.String())
 				}
 				chunkMaps[chunkIndex-minChunk][piece.HostPubKey.String()] = downloadPieceInfo{
 					index: uint64(pieceIndex),
@@ -478,6 +483,8 @@ func (d *download) Start() error {
 			staticChunkSize:  params.file.ChunkSize(),
 			staticPieceSize:  params.file.PieceSize(),
 
+			staticSpendingCategory: d.staticParams.staticSpendingCategory,
+
 			// TODO: 25ms is just a guess for a good default. Really, we want to
 			// set the latency target such that slower workers will pick up the
 			// later chunks, but only if there's a very strong chance that
@@ -496,7 +503,7 @@ func (d *download) Start() error {
 			physicalChunkData: make([][]byte, params.file.ErasureCode().NumPieces()),
 			pieceUsage:        make([]bool, params.file.ErasureCode().NumPieces()),
 
-			download:            d,
+			staticDownload:      d,
 			staticMemoryManager: params.staticMemoryManager,
 			renterFile:          params.file,
 		}
@@ -527,9 +534,9 @@ func (d *download) Start() error {
 
 		// Add this chunk to the chunk heap, and notify the download loop that
 		// there is work to do.
-		d.r.managedAddChunkToDownloadHeap(udc)
+		d.staticRenter.managedAddChunkToDownloadHeap(udc)
 		select {
-		case d.r.newDownloads <- struct{}{}:
+		case d.staticRenter.newDownloads <- struct{}{}:
 		default:
 		}
 	}

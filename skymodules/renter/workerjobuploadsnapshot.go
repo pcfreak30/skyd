@@ -101,15 +101,15 @@ func (j *jobUploadSnapshot) callDiscard(err error) {
 		staticErr: errors.Extend(err, ErrJobDiscarded),
 	}
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.renter.tg.Launch(func() {
+	errLaunch := w.staticRenter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Print("callDiscard: launch failed", err)
+		w.staticRenter.staticLog.Print("callDiscard: launch failed", err)
 	}
 }
 
@@ -124,15 +124,15 @@ func (j *jobUploadSnapshot) callExecute() {
 		resp := &jobUploadSnapshotResponse{
 			staticErr: err,
 		}
-		errLaunch := w.renter.tg.Launch(func() {
+		errLaunch := w.staticRenter.tg.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
 			case <-j.staticCtx.Done():
-			case <-w.renter.tg.StopChan():
+			case <-w.staticRenter.tg.StopChan():
 			}
 		})
 		if errLaunch != nil {
-			w.renter.log.Print("callExecute: launch failed", err)
+			w.staticRenter.staticLog.Print("callExecute: launch failed", err)
 		}
 
 		// Report a failure to the queue if this job had an error.
@@ -151,21 +151,21 @@ func (j *jobUploadSnapshot) callExecute() {
 
 	// Perform the actual upload.
 	var sess contractor.Session
-	sess, err = w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
+	sess, err = w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticRenter.tg.StopChan())
 	if err != nil {
-		w.renter.log.Debugln("unable to grab a session to perform an upload snapshot job:", err)
+		w.staticRenter.staticLog.Debugln("unable to grab a session to perform an upload snapshot job:", err)
 		err = errors.AddContext(err, "unable to get host session")
 		return
 	}
 	defer func() {
 		closeErr := sess.Close()
 		if closeErr != nil {
-			w.renter.log.Println("error while closing session:", closeErr)
+			w.staticRenter.staticLog.Println("error while closing session:", closeErr)
 		}
 		err = errors.Compose(err, closeErr)
 	}()
 
-	allowance := w.renter.hostContractor.Allowance()
+	allowance := w.staticRenter.staticHostContractor.Allowance()
 	hostSettings := sess.HostSettings()
 	err = checkUploadSnapshotGouging(allowance, hostSettings)
 	if err != nil {
@@ -181,9 +181,9 @@ func (j *jobUploadSnapshot) callExecute() {
 	}
 
 	// Upload the snapshot to the host.
-	err = w.renter.managedUploadSnapshotHost(meta, j.staticSiaFileData, sess, w)
+	err = w.staticRenter.managedUploadSnapshotHost(meta, j.staticSiaFileData, sess, w)
 	if err != nil {
-		w.renter.log.Debugln("uploading a snapshot to a host failed:", err)
+		w.staticRenter.staticLog.Debugln("uploading a snapshot to a host failed:", err)
 		err = errors.AddContext(err, "uploading a snapshot to a host failed")
 		return
 	}
@@ -201,7 +201,7 @@ func (j *jobUploadSnapshot) callExpectedBandwidth() (ul, dl uint64) {
 // the worker.
 func (w *worker) initJobUploadSnapshotQueue() {
 	if w.staticJobUploadSnapshotQueue != nil {
-		w.renter.log.Critical("should not be double initializng the upload snapshot queue")
+		w.staticRenter.staticLog.Critical("should not be double initializng the upload snapshot queue")
 		return
 	}
 
@@ -213,7 +213,7 @@ func (w *worker) initJobUploadSnapshotQueue() {
 // managedUploadSnapshotHost uploads a snapshot to a single host.
 func (r *Renter) managedUploadSnapshotHost(meta skymodules.UploadedBackup, dotSia []byte, host contractor.Session, w *worker) error {
 	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
+	ws, _, err := r.staticWallet.PrimarySeed()
 	if err != nil {
 		return errors.AddContext(err, "failed to get wallet's primary seed")
 	}

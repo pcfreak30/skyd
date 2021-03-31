@@ -63,7 +63,14 @@ type (
 		staticSectorRoot          crypto.Hash
 		staticPieceRootIndex      uint64
 		staticLaunchedWorkerIndex uint64
-		staticWorker              *worker
+
+		// the category specifies what type of function the read job fulfils,
+		// this is necessary to pass along as the generic MDM executor needs to
+		// be update spending details and read jobs can be used for downloads
+		// but might also be used for snapshots for example
+		staticSpendingCategory spendingCategory
+
+		staticWorker *worker
 	}
 )
 
@@ -80,19 +87,19 @@ func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.renter.tg.Launch(func() {
+	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobReadResponse{
 			staticErr:      errors.Extend(err, ErrJobDiscarded),
 			staticMetadata: j.staticJobReadMetadata(),
 		}
 		select {
 		case j.staticResponseChan <- response:
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		case <-j.staticCtx.Done():
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Print("callDiscard: launch failed", err)
+		w.staticRenter.staticLog.Print("callDiscard: launch failed", err)
 	}
 }
 
@@ -111,15 +118,15 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticJobTime:  readJobTime,
 	}
 	w := j.staticQueue.staticWorker()
-	err := w.renter.tg.Launch(func() {
+	err := w.staticRenter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.renter.tg.StopChan():
+		case <-w.staticRenter.tg.StopChan():
 		}
 	})
 	if err != nil {
-		j.staticQueue.staticWorker().renter.log.Print("managedFinishExecute: launch failed", err)
+		j.staticQueue.staticWorker().staticRenter.staticLog.Print("managedFinishExecute: launch failed", err)
 	}
 
 	// Report success or failure to the queue.
@@ -151,7 +158,7 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 // proof.
 func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
 	// execute it
-	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
 	if err != nil {
 		return []programResponse{}, err
 	}
@@ -260,7 +267,7 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 func (w *worker) initJobReadQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadQueue != nil {
-		w.renter.log.Critical("incorret call on initJobReadQueue")
+		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
@@ -272,7 +279,7 @@ func (w *worker) initJobReadQueue() {
 func (w *worker) initJobLowPrioReadQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobLowPrioReadQueue != nil {
-		w.renter.log.Critical("incorret call on initJobReadQueue")
+		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),

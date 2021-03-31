@@ -112,7 +112,7 @@ func (w *worker) managedNeedsToUpdatePriceTable() bool {
 // newPriceTable will initialize a price table for the worker.
 func (w *worker) newPriceTable() {
 	if w.staticPriceTable() != nil {
-		w.renter.log.Critical("creating a new price table when a new price table already exists")
+		w.staticRenter.staticLog.Critical("creating a new price table when a new price table already exists")
 	}
 	w.staticSetPriceTable(new(workerPriceTable))
 }
@@ -149,7 +149,7 @@ func (w *worker) staticSchedulePriceTableUpdate(forced bool) {
 func (w *worker) staticTryForcePriceTableUpdate() {
 	current := w.staticPriceTable()
 	if time.Now().Before(current.staticLastForcedUpdate.Add(minElapsedTimeSinceLastScheduledUpdate)) {
-		w.renter.log.Debugf("worker for host %v tried scheduling a price table update before the minimum elapsed time", w.staticHostPubKeyStr)
+		w.staticRenter.staticLog.Debugf("worker for host %v tried scheduling a price table update before the minimum elapsed time", w.staticHostPubKeyStr)
 		return
 	}
 	w.staticSchedulePriceTableUpdate(true)
@@ -185,13 +185,13 @@ func (w *worker) staticUpdatePriceTable() {
 	// is after its updateTime.
 	updateTime := w.staticPriceTable().staticUpdateTime
 	if time.Now().Before(updateTime) {
-		w.renter.log.Critical("price table is being updated prematurely")
+		w.staticRenter.staticLog.Critical("price table is being updated prematurely")
 	}
 	// Sanity check - only one price table update should be running at a time.
 	// If multiple are running at a time, there can be a race condition around
 	// 'staticConsecutiveFailures'.
 	if !atomic.CompareAndSwapUint64(&w.atomicPriceTableUpdateRunning, 0, 1) {
-		w.renter.log.Critical("price table is being updated in two threads concurrently")
+		w.staticRenter.staticLog.Critical("price table is being updated in two threads concurrently")
 	}
 	defer atomic.StoreUint64(&w.atomicPriceTableUpdateRunning, 0)
 
@@ -202,7 +202,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// This defer needs to run after the defer which updates the price table.
 	defer func() {
 		updateTime := w.staticPriceTable().staticUpdateTime
-		w.renter.tg.AfterFunc(updateTime.Sub(time.Now()), func() {
+		w.staticRenter.tg.AfterFunc(updateTime.Sub(time.Now()), func() {
 			w.staticWake()
 		})
 	}()
@@ -278,7 +278,7 @@ func (w *worker) staticUpdatePriceTable() {
 		// for the value of 'err', we use a different variable name here.
 		streamCloseErr := stream.Close()
 		if streamCloseErr != nil {
-			w.renter.log.Println("ERROR: failed to close stream", streamCloseErr)
+			w.staticRenter.staticLog.Println("ERROR: failed to close stream", streamCloseErr)
 		}
 	}()
 
@@ -311,7 +311,7 @@ func (w *worker) staticUpdatePriceTable() {
 	err = checkUpdatePriceTableGouging(pt, w.staticCache().staticRenterAllowance)
 	if err != nil {
 		err = errors.Compose(err, errors.AddContext(errPriceTableGouging, fmt.Sprintf("host %v", w.staticHostPubKeyStr)))
-		w.renter.log.Println("ERROR: ", err)
+		w.staticRenter.staticLog.Println("ERROR: ", err)
 		return
 	}
 
@@ -337,7 +337,7 @@ func (w *worker) staticUpdatePriceTable() {
 	}
 
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, &pt, details)
+	err = w.staticRenter.staticHostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		err = errors.AddContext(err, "unable to provide payment")
 		return

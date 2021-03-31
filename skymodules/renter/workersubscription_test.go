@@ -37,6 +37,32 @@ func (dc *dummyCloser) staticCount() uint64 {
 	return atomic.LoadUint64(&dc.atomicClosed)
 }
 
+// testSubscriptionManager is a subscription manager for testing which tracks
+// the whole history of notifications it receives.
+type testSubscriptionManager struct {
+	values map[modules.SubscriptionID][]*modules.SignedRegistryValue
+	mu     sync.Mutex
+}
+
+// newTestSubscriptionManager creates a new manager for testing.
+func newTestSubscriptionManager() *testSubscriptionManager {
+	return &testSubscriptionManager{
+		values: make(map[modules.SubscriptionID][]*modules.SignedRegistryValue),
+	}
+}
+
+// Notify implements the subscriptionManager interface. Every notification is
+// tracked.
+func (sm *testSubscriptionManager) Notify(rvs ...modules.RPCRegistrySubscriptionNotificationEntryUpdate) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	for _, rv := range rvs {
+		sid := modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)
+		sm.values[sid] = append(sm.values[sid], &rv.Entry)
+	}
+}
+
 // randomRegistryValue is a helper to create a signed registry value for
 // testing.
 func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, crypto.SecretKey) {
@@ -658,9 +684,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 	}()
 
 	// Subscribe to both entries.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-	rvs, err := wt.Subscribe(ctx, []modules.RPCRegistrySubscriptionRequest{
+	wt.UpdateSubscriptions([]modules.RPCRegistrySubscriptionRequest{
 		{
 			PubKey: spk1,
 			Tweak:  rv1.Tweak,
@@ -670,19 +694,39 @@ func TestSubscriptionNotifications(t *testing.T) {
 			Tweak:  rv2.Tweak,
 		},
 	}...)
-	if err != nil {
-		t.Fatal(err)
+
+	// Wait for the subscription to be established.
+	subInfo := wt.staticSubscriptionInfo
+	subs := subInfo.subscriptions
+	subInfo.mu.Lock()
+	rv1Sub, exist := subs[modules.RegistrySubscriptionID(spk1, rv1.Tweak)]
+	if !exist {
+		t.Fatal("subscription for rv1 doesn't exist")
+	}
+	rv2Sub, exist := subs[modules.RegistrySubscriptionID(spk2, rv2.Tweak)]
+	if !exist {
+		t.Fatal("subscription for rv2 doesn't exist")
+	}
+	c1, c2 := rv1Sub.subscribed, rv2Sub.subscribed
+	subInfo.mu.Unlock()
+
+	select {
+	case <-time.After(time.Minute):
+		t.Fatal("timeout")
+	case <-c1:
+	}
+	select {
+	case <-time.After(time.Minute):
+		t.Fatal("timeout")
+	case <-c2:
 	}
 
 	// Only 1 value should be returned since the host only knows about 1 entry yet.
-	if len(rvs) != 1 {
-		t.Fatalf("expected len to be 1 but was %v", len(rvs))
-	}
-	if !reflect.DeepEqual(rvs[0].Entry, rv1) {
+	if !reflect.DeepEqual(*rv1Sub.latestRV, rv1) {
 		t.Fatal("wrong entry was returned")
 	}
-	if !rvs[0].PubKey.Equals(spk1) {
-		t.Fatal("wrong pubkey was returned")
+	if rv2Sub.latestRV != nil {
+		t.Fatal("rv2Sub should be nil")
 	}
 
 	// The worker should have updated the cache.
@@ -697,7 +741,6 @@ func TestSubscriptionNotifications(t *testing.T) {
 	}
 
 	// The workers internal state should reflect the subscription.
-	subInfo := wt.staticSubscriptionInfo
 	subInfo.mu.Lock()
 	if len(subInfo.subscriptions) != 2 {
 		t.Fatal("should have 2 subscriptions")
@@ -705,10 +748,10 @@ func TestSubscriptionNotifications(t *testing.T) {
 	subInfo.mu.Unlock()
 
 	// Unsubscribe from rv1.
-	wt.Unsubscribe([]modules.RPCRegistrySubscriptionRequest{
+	wt.UpdateSubscriptions([]modules.RPCRegistrySubscriptionRequest{
 		{
-			PubKey: spk1,
-			Tweak:  rv1.Tweak,
+			PubKey: spk2,
+			Tweak:  rv2.Tweak,
 		},
 	}...)
 
@@ -866,7 +909,7 @@ func TestHandleNotification(t *testing.T) {
 	// Register it.
 	budget := modules.NewBudget(types.SiacoinPrecision.Mul64(1000))
 	limit := modules.NewBudgetLimit(budget, downloadBandwidthCost, uploadBandwidthCost)
-	err = wt.renter.staticMux.NewListener(subscriberStr, func(stream siamux.Stream) {
+	err = wt.staticRenter.staticMux.NewListener(subscriberStr, func(stream siamux.Stream) {
 		nh.managedHandleNotification(stream, budget, limit)
 	})
 	if err != nil {
@@ -876,9 +919,9 @@ func TestHandleNotification(t *testing.T) {
 	// Declare a helper function that creates a stream which triggers the
 	// notification handler when written to.
 	hostStream := func() siamux.Stream {
-		muxAddr := wt.renter.staticMux.Address()
-		pk := wt.renter.staticMux.PublicKey()
-		stream, err := wt.renter.staticMux.NewStream(subscriberStr, muxAddr.String(), pk)
+		muxAddr := wt.staticRenter.staticMux.Address()
+		pk := wt.staticRenter.staticMux.PublicKey()
+		stream, err := wt.staticRenter.staticMux.NewStream(subscriberStr, muxAddr.String(), pk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1166,6 +1209,11 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 		}
 	}()
 
+	wt.staticSubscriptionInfo.mu.Lock()
+	sm := newTestSubscriptionManager()
+	wt.staticSubscriptionInfo.staticManager = sm
+	wt.staticSubscriptionInfo.mu.Unlock()
+
 	// Set a random entry on the host.
 	rv, spk, sk := randomRegistryValue()
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -1178,45 +1226,34 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 		PubKey: spk,
 		Tweak:  rv.Tweak,
 	}
-	resps, err := wt.Subscribe(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resps) != 1 {
-		t.Fatal("invalid length", len(resps))
-	}
-	if !spk.Equals(resps[0].PubKey) {
-		t.Fatal("pubkeys don't match")
-	}
-	if !reflect.DeepEqual(resps[0].Entry, rv) {
-		t.Fatal("entries don't match")
-	}
-
-	// Check that the subscription info has 1 subscription.
 	subInfo := wt.staticSubscriptionInfo
+	wt.UpdateSubscriptions(req)
+
+	// Check that the subscription info has 1 subscription and that it's the
+	// correct one.
 	subInfo.mu.Lock()
 	if len(subInfo.subscriptions) != 1 {
 		t.Error("subInfo has wrong length", len(subInfo.subscriptions))
 	}
+	reqSub, exist := subInfo.subscriptions[modules.RegistrySubscriptionID(spk, rv.Tweak)]
+	if !exist {
+		t.Fatal("sub doesn't exist")
+	}
+	c := reqSub.subscribed
 	subInfo.mu.Unlock()
-
-	// Do it again. This should return the same value. Since we are subscribed
-	// already this will not establish a new subscription.
-	resps, err = wt.Subscribe(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
+	select {
+	case <-time.After(time.Minute):
+		t.Fatal("timeout")
+	case <-c:
 	}
-	if len(resps) != 1 {
-		t.Fatal("invalid length", len(resps))
-	}
-	if !spk.Equals(resps[0].PubKey) {
-		t.Fatal("pubkeys don't match")
-	}
-	if !reflect.DeepEqual(resps[0].Entry, rv) {
+	subInfo.mu.Lock()
+	if !reflect.DeepEqual(*reqSub.latestRV, rv) {
 		t.Fatal("entries don't match")
 	}
+	subInfo.mu.Unlock()
 
 	// Update the entry on the host.
+	oldRV := rv
 	rv.Revision++
 	rv = rv.Sign(sk)
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -1226,17 +1263,9 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 
 	// Do it again. This should return the new value.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		resps, err = wt.Subscribe(context.Background(), req)
-		if err != nil {
-			return err
-		}
-		if len(resps) != 1 {
-			return fmt.Errorf("invalid length %v", len(resps))
-		}
-		if !spk.Equals(resps[0].PubKey) {
-			return errors.New("pubkeys don't match")
-		}
-		if !reflect.DeepEqual(resps[0].Entry, rv) {
+		subInfo.mu.Lock()
+		defer subInfo.mu.Unlock()
+		if !reflect.DeepEqual(*reqSub.latestRV, rv) {
 			return errors.New("entries don't match")
 		}
 		return nil
@@ -1246,7 +1275,7 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	}
 
 	// Unsubscribe from the entry.
-	wt.Unsubscribe(req)
+	wt.UpdateSubscriptions()
 
 	// There should be 0 subscriptions.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -1297,4 +1326,23 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Check the subscription manager.
+	sm.mu.Lock()
+	// It should contain one map entry for the subscription.
+	values, exist := sm.values[modules.RegistrySubscriptionID(req.PubKey, req.Tweak)]
+	if !exist {
+		t.Fatal("no values exist for subscribed entry")
+	}
+	// There should be two values. The initial one and the update.
+	if len(values) != 2 {
+		t.Fatal("wrong number of values", len(values))
+	}
+	if !reflect.DeepEqual(*values[0], oldRV) {
+		t.Fatal("wrong first entry")
+	}
+	if !reflect.DeepEqual(*values[1], rv) {
+		t.Fatal("wrong second entry")
+	}
+	sm.mu.Unlock()
 }

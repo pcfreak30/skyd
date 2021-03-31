@@ -29,6 +29,21 @@ pkgs = \
 	./cmd/skyd \
 	./cmd/skynet-benchmark \
 	./compatibility \
+	./fixtures \
+	./node \
+	./node/api \
+	./node/api/client \
+	./node/api/server \
+	./profile \
+	./siatest \
+	./siatest/accounting \
+	./siatest/daemon \
+	./siatest/dependencies \
+	./siatest/renter \
+	./siatest/renter/contractor \
+	./siatest/renter/hostdb \
+	./siatest/renterhost \
+	./skykey \
 	./skymodules \
 	./skymodules/accounting \
 	./skymodules/renter \
@@ -41,20 +56,6 @@ pkgs = \
 	./skymodules/renter/proto \
 	./skymodules/renter/skynetblocklist \
 	./skymodules/renter/skynetportals \
-	./node \
-	./node/api \
-	./node/api/server \
-	./node/api/client \
-	./profile \
-	./siatest \
-	./siatest/accounting \
-	./siatest/daemon \
-	./siatest/dependencies \
-	./siatest/renter \
-	./siatest/renter/contractor \
-	./siatest/renter/hostdb \
-	./siatest/renterhost \
-	./skykey \
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
@@ -68,15 +69,33 @@ lockcheckpkgs = \
 	./cmd/skyc \
 	./cmd/skyd \
 	./cmd/skynet-benchmark \
+	./compatibility \
+	./fixtures \
 	./node \
 	./node/api \
 	./node/api/client \
 	./node/api/server \
+	./profile \
+	./siatest \
+	./siatest/accounting \
+	./siatest/daemon \
+	./siatest/dependencies \
+	./siatest/renter \
+	./siatest/renter/contractor \
+	./siatest/renter/hostdb \
+	./siatest/renterhost \
+	./skykey \
+	./skymodules \
 	./skymodules/accounting \
 	./skymodules/renter/hostdb \
+	./skymodules/renter/filesystem \
+	./skymodules/renter/filesystem/siadir \
+	./skymodules/renter/filesystem/siafile \
+	./skymodules/renter/hostdb \
+	./skymodules/renter/hostdb/hosttree \
+	./skymodules/renter/proto \
 	./skymodules/renter/skynetblocklist \
-	./siatest/accounting \
-	./skykey \
+	./skymodules/renter/skynetportals \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
@@ -149,13 +168,7 @@ ifneq ("$(OS)","Windows_NT")
 	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release
 else
 # Windows
-# Ignore errors if file doesn't exist
-	- RD /S /Q cover
-	- RD /S /Q doc\whitepaper.aux
-	- RD /S /Q doc\whitepaper.log
-	- RD /S /Q doc\whitepaper.pdf
-	- RD /S /Q fullcover
-	- RD /S /Q release
+	- DEL /F /Q cover doc\whitepaper.aux doc\whitepaper.log doc\whitepaper.pdf fullcover release
 endif
 
 test:
@@ -166,17 +179,16 @@ test-long: clean fmt vet lint
 	@mkdir -p cover
 	GORACE='$(racevars)' go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
+# Use on Linux (and MacOS)
 test-vlong: clean fmt vet lint
-ifneq ("$(OS)","Windows_NT")
-# Linux
 	@mkdir -p cover
 	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
-else
-# Windows
+
+# Use on Windows without fmt, vet, lint
+test-vlong-windows: clean
 	MD cover
 	SET GORACE='$(racevars)'
 	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
-endif
 
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)
