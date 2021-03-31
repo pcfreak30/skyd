@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -181,7 +182,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	// client needs to make sure that the chunkSize they use is aligned with the
 	// chunkSize of the skyfile's fanout.
 	if offset%int64(fileNode.ChunkSize()) != 0 {
-		err := errors.New("can't append chunk to offset that is not chunk aligned")
+		err := fmt.Errorf("offset is not chunk aligned - make sure chunkSize is set to a multiple of %v for these upload params", fileNode.ChunkSize())
 		if build.Release == "testing" {
 			// In test builds we want to be aware of this.
 			build.Critical(err)
