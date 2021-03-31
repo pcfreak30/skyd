@@ -123,8 +123,17 @@ func TestInitialContractFunding(t *testing.T) {
 			contractPrice: 100,
 			txnFee:        200,
 			min:           0,
+			max:           1,
+			result:        1,
+		},
+		{
+			// No max.
+			pcif:          0,
+			contractPrice: 100,
+			txnFee:        200,
+			min:           0,
 			max:           0,
-			result:        0,
+			result:        3000,
 		},
 		{
 			// Hit min.

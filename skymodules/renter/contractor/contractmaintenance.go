@@ -179,7 +179,7 @@ func initialContractFunding(a skymodules.Allowance, host skymodules.HostDBEntry,
 	if min.Cmp(max) > 0 {
 		build.Critical(fmt.Sprintf("WARN: initialContractFunding min > max (%v > %v)", min, max))
 	}
-	if contractFunds.Cmp(max) > 0 {
+	if contractFunds.Cmp(max) > 0 && !max.IsZero() {
 		return max
 	}
 	if contractFunds.Cmp(min) < 0 {
@@ -399,10 +399,10 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract skymodules
 	estimatedCost := afterSiafundFeesEstimate.Add(txnFees)
 	estimatedCost = estimatedCost.Add(estimatedCost.Div64(3))
 
-	// Check for a sane minimum. The contractor should not be forming contracts
-	// with less than 'fileContractMinimumFunding / (num contracts)' of the
-	// value of the allowance.
-	minimum := minimumContractRenewalFunding(allowance, gfrContracts)
+	// Check for a sane minimum that is equal to the initial contract funding
+	// but without an upper cap.
+	minInitialContractFunds := allowance.Funds.Div64(allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
+	minimum := initialContractFunding(allowance, host, maxTxnFee, minInitialContractFunds, types.ZeroCurrency)
 	if estimatedCost.Cmp(minimum) < 0 {
 		estimatedCost = minimum
 		c.log.Printf("Contract renew amount %v below minimum amount %v", estimatedCost, minimum)
