@@ -849,25 +849,15 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 
 	// Create the SkyfileUploadReader for the restoration
 	var restoreReader skymodules.SkyfileUploadReader
-	var buf bytes.Buffer
-	// Define a TeeReader for the underlying io.Reader. This allows the fanout
-	// bytes to be generated before the upload has completed by reading the data
-	// from the buffer rather than the chunks.
-	tee := io.TeeReader(reader, &buf)
 	if len(sm.Subfiles) == 0 {
-		restoreReader = skymodules.NewSkyfileReader(tee, sup)
+		restoreReader = skymodules.NewSkyfileReader(reader, sup)
 	} else {
 		// Create multipart reader from the subfiles
-		multiReader, err := skymodules.NewMultipartReader(tee, sm.Subfiles)
+		multiReader, err := skymodules.NewMultipartReader(reader, sm.Subfiles)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "unable to create multireader")
 		}
-		// Create the multipart reader for the fanout using the TeeReader's buffer.
-		multiReaderFanout, err := skymodules.NewMultipartReader(&buf, sm.Subfiles)
-		if err != nil {
-			return skymodules.Skylink{}, errors.AddContext(err, "unable to create multireader")
-		}
-		restoreReader = skymodules.NewSkyfileMultipartReader(multiReader, multiReaderFanout, sup)
+		restoreReader = skymodules.NewSkyfileMultipartReader(multiReader, sup)
 	}
 
 	// Upload the Base Sector of the skyfile

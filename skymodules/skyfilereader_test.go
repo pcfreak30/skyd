@@ -241,11 +241,8 @@ func testSkyfileMultipartReaderBasic(t *testing.T) {
 
 	// turn it into a skyfile reader
 	reader := bytes.NewReader(buffer.Bytes())
-	var buf bytes.Buffer
-	tr := io.TeeReader(reader, &buf)
-	multipartReader := multipart.NewReader(tr, writer.Boundary())
-	multipartFanout := multipart.NewReader(&buf, writer.Boundary())
-	sfReader := NewSkyfileMultipartReader(multipartReader, multipartFanout, sup)
+	multipartReader := multipart.NewReader(reader, writer.Boundary())
+	sfReader := NewSkyfileMultipartReader(multipartReader, sup)
 
 	// verify we can read part 1
 	part1Data := make([]byte, 10)
@@ -322,7 +319,7 @@ func testSkyfileMultipartReaderIllegalFormName(t *testing.T) {
 	// turn it into a skyfile reader
 	reader := bytes.NewReader(buffer.Bytes())
 	multipartReader := multipart.NewReader(reader, writer.Boundary())
-	sfReader := NewSkyfileMultipartReader(multipartReader, nil, sup)
+	sfReader := NewSkyfileMultipartReader(multipartReader, sup)
 
 	// verify we
 	_, err = ioutil.ReadAll(sfReader)
@@ -373,7 +370,7 @@ func testSkyfileMultipartReaderRandomReadSize(t *testing.T) {
 	// turn it into a skyfile reader
 	reader := bytes.NewReader(buffer.Bytes())
 	multipartReader := multipart.NewReader(reader, writer.Boundary())
-	sfReader := NewSkyfileMultipartReader(multipartReader, nil, sup)
+	sfReader := NewSkyfileMultipartReader(multipartReader, sup)
 
 	// concat all data
 	expected := make([]byte, 0)
@@ -463,7 +460,7 @@ func testSkyfileMultipartReaderEmptyFilename(t *testing.T) {
 	// turn it into a skyfile reader
 	reader := bytes.NewReader(buffer.Bytes())
 	multipartReader := multipart.NewReader(reader, writer.Boundary())
-	sfReader := NewSkyfileMultipartReader(multipartReader, nil, sup)
+	sfReader := NewSkyfileMultipartReader(multipartReader, sup)
 
 	// verify we get ErrEmptyFilename if we do not provide a filename
 	_, err = ioutil.ReadAll(sfReader)
@@ -508,7 +505,7 @@ func testSkyfileMultipartReaderReadBuffer(t *testing.T) {
 	// turn it into a skyfile reader
 	reader := bytes.NewReader(buffer.Bytes())
 	multipartReader := multipart.NewReader(reader, writer.Boundary())
-	sfReader := NewSkyfileMultipartReader(multipartReader, nil, sup)
+	sfReader := NewSkyfileMultipartReader(multipartReader, sup)
 
 	// read 5 bytes
 	data := make([]byte, 5)
@@ -567,7 +564,7 @@ func testSkyfileMultipartReaderMetadataTimeout(t *testing.T) {
 	// turn it into a skyfile reader
 	reader := bytes.NewReader(buffer.Bytes())
 	multipartReader := multipart.NewReader(reader, writer.Boundary())
-	sfReader := NewSkyfileMultipartReader(multipartReader, nil, sup)
+	sfReader := NewSkyfileMultipartReader(multipartReader, sup)
 
 	// read less than dataLen
 	read := make([]byte, dataLen/2)
