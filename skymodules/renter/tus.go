@@ -84,11 +84,7 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 	stu.uploads[info.ID] = upload
 
 	// Get a siapath.
-	// TODO: set a better siapath. Ideally similar to nginx.
-	sp, err := skymodules.SkynetFolder.Join(skymodules.RandomSiaPath().String())
-	if err != nil {
-		return nil, err
-	}
+	sp := skymodules.RandomSkynetFilePath()
 	upload.fi.MetaData["SiaPath"] = sp.String()
 
 	// Create the skyfile upload params.
