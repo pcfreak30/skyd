@@ -147,8 +147,8 @@ func testTUSUploaderPruneIdle(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	// Check that the number of files increased by 2. One for the regular sia
-	// file and one for the extension.
+	// Check that the number of files didn't increase since the new files were
+	// purged.
 	dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
 	if err != nil {
 		t.Fatal(err)
