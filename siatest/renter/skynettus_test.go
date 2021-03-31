@@ -2,11 +2,13 @@ package renter
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/eventials/go-tus"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/node"
 	"gitlab.com/skynetlabs/skyd/node/api/client"
@@ -44,12 +46,16 @@ func TestSkynetTUSUploader(t *testing.T) {
 	t.Run("SimpleUpload", func(t *testing.T) {
 		testTUSUploaderSmallFile(t, tg.Renters()[0])
 	})
+	t.Run("PruneIdle", func(t *testing.T) {
+		testTUSUploaderPruneIdle(t, tg.Renters()[0])
+	})
 	t.Run("UnstableConnection", func(t *testing.T) {
 		testTUSUploaderUnstableConnection(t, tg)
 	})
 }
 
-// testTUSUploadSmallFile tests uploading a small file using the TUS protocol.
+// testTUSUploadSmallFile tests uploading a small file using the TUS protocol
+// and verifies that pruning doesn't delete completed .sia files.
 func testTUSUploaderSmallFile(t *testing.T, r *siatest.TestNode) {
 	// Get the number of files before the test.
 	dir, err := r.RenterDirRootGet(skymodules.SkynetFolder)
@@ -76,12 +82,9 @@ func testTUSUploaderSmallFile(t *testing.T, r *siatest.TestNode) {
 		t.Fatal("data doesn't match")
 	}
 
-	// Wait for a full pruning interval to implicitly check that we are not
-	// deleting successful uploads from disk.
-	time.Sleep(renter.PruneTUSUploadTimeout)
-
-	// Wait a bit longer to make sure the pruning had time to finish.
-	time.Sleep(100 * time.Millisecond)
+	// Wait for two full pruning intervals to make sure pruning ran at least
+	// once.
+	time.Sleep(2 * renter.PruneTUSUploadTimeout)
 
 	// Check that the number of files increased by 2. One for the regular sia
 	// file and one for the extension.
@@ -92,6 +95,67 @@ func testTUSUploaderSmallFile(t *testing.T, r *siatest.TestNode) {
 	nFiles := dir.Directories[0].AggregateNumFiles
 	if nFiles-nFilesBefore != 2 {
 		t.Fatal("expected 2 new files but got", nFiles-nFilesBefore)
+	}
+}
+
+// testTUSUploaderPruneIdle checks that incomplete uploads get pruned after a
+// while and have their .sia files deleted from disk.
+func testTUSUploaderPruneIdle(t *testing.T, r *siatest.TestNode) {
+	// Get the number of files before the test.
+	dir, err := r.RenterDirRootGet(skymodules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nFilesBefore := dir.Directories[0].AggregateNumFiles
+
+	// upload a 100 byte file in chunks of 10 bytes.
+	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
+	fileSize := chunkSize*5 + chunkSize/2 // 5 1/2 chunks.
+	uploadedData := fastrand.Bytes(int(fileSize))
+
+	// Get a tus client and upload.
+	tc, upload, err := r.SkynetTUSNewUploadFromBytes(uploadedData, chunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Start upload.
+	uploader, err := tc.CreateUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a single chunk.
+	err = uploader.UploadChunck()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for two full pruning intervals to make sure pruning ran at least
+	// once.
+	time.Sleep(2 * renter.PruneTUSUploadTimeout)
+
+	// Upload another chunk.
+	err = uploader.UploadChunck()
+	if err == nil || !strings.Contains(err.Error(), "404") {
+		t.Fatal(err)
+	}
+
+	// Try to resume upload.
+	uploader, err = tc.ResumeUpload(upload)
+	if err == nil || !errors.Contains(err, tus.ErrUploadNotFound) {
+		t.Fatal(err)
+	}
+
+	// Check that the number of files increased by 2. One for the regular sia
+	// file and one for the extension.
+	dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nFiles := dir.Directories[0].AggregateNumFiles
+	if nFiles-nFilesBefore != 0 {
+		t.Fatal("expected 0 new files but got", nFiles-nFilesBefore)
 	}
 }
 

@@ -277,8 +277,8 @@ func (u *skynetTUSUpload) managedClose() error {
 // threadedPruneTUSUploads periodically cleans up the uploads launched by the
 // TUS endpoints.
 func (r *Renter) threadedPruneTUSUploads() {
-	// Pay periodically.
-	ticker := time.NewTicker(PruneTUSUploadTimeout)
+	// Call prune twice per PruneTUSUploadTimeout.
+	ticker := time.NewTicker(PruneTUSUploadTimeout / 2)
 	for {
 		select {
 		case <-r.tg.StopChan():

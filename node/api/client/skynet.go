@@ -93,9 +93,9 @@ func (c *Client) SkynetTUSClient(chunkSize int64) (*tus.Client, error) {
 	return tus.NewClient(fmt.Sprintf("http://%v/skynet/tus", c.Address), config)
 }
 
-// SkynetTUSUploaderFromBytes returns a ready-to-use tus uploader for some data
-// and chunkSize.
-func (c *Client) SkynetTUSUploaderFromBytes(data []byte, chunkSize int64) (*tus.Client, *tus.Uploader, error) {
+// SkynetTUSNewUploadFromBytes returns a ready-to-use tus client and upload for
+// some data and chunkSize.
+func (c *Client) SkynetTUSNewUploadFromBytes(data []byte, chunkSize int64) (*tus.Client, *tus.Upload, error) {
 	// Get client.
 	tc, err := c.SkynetTUSClient(chunkSize)
 	if err != nil {
@@ -106,17 +106,17 @@ func (c *Client) SkynetTUSUploaderFromBytes(data []byte, chunkSize int64) (*tus.
 	r := bytes.NewReader(data)
 	fp := crypto.HashBytes(data).String()
 	upload := tus.NewUpload(r, r.Size(), tus.Metadata{}, fp)
-	uploader, err := tc.CreateUpload(upload)
-	if err != nil {
-		return nil, nil, err
-	}
-	return tc, uploader, nil
+	return tc, upload, nil
 }
 
 // SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
 // and the specified chunkSize.
 func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string, error) {
-	tc, uploader, err := c.SkynetTUSUploaderFromBytes(data, chunkSize)
+	tc, upload, err := c.SkynetTUSNewUploadFromBytes(data, chunkSize)
+	if err != nil {
+		return "", err
+	}
+	uploader, err := tc.CreateUpload(upload)
 	if err != nil {
 		return "", err
 	}
