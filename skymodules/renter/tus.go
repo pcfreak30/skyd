@@ -189,7 +189,15 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 		return 0, err
 	}
 
-	// Upload
+	// Simulate unstable connection.
+	if u.staticUploader.staticRenter.staticDeps.Disrupt("TUSUnstable") {
+		// 50% chance that write fails
+		if fastrand.Intn(2) == 0 {
+			return 0, errors.New("TUSUnstable")
+		}
+	}
+
+	// Upload.
 	onlyOnePieceNeeded := ec.MinPieces() == 1 && fileNode.MasterKey().Type() == crypto.TypePlain
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
 	n, err := uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, cr, offset)

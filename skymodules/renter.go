@@ -1081,7 +1081,8 @@ type ChunkReader interface {
 	// ReadChunk reads the next chunk from the reader. The returned chunk is
 	// erasure coded, encrypted and will always be a full chunk ready for
 	// upload. It also returns the number of bytes that this chunk was created
-	// from which is useful because the last chunk might be padded.
+	// from which is useful because the last chunk might be padded. ReadChunk
+	// will only return >0 bytes read if err == nil.
 	ReadChunk() ([][]byte, uint64, error)
 }
 

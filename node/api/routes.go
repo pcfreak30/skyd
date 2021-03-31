@@ -158,19 +158,6 @@ func (api *API) buildHTTPRoutes() {
 		// uploading a file with a known size in chunks.
 		storeComposer.UseCore(sds)
 
-		// TODO: This enables uploads where the length of the upload is not known at
-		// the time the upload starts.
-		// storeComposer.UseLengthDeferrer(sds)
-
-		// TODO: This will enable the uploader to terminate the upload.
-		// storeComposer.UseTerminater(sds)
-
-		// TODO: This will enable combining partial uploads into a full upload.
-		// storeComposer.UseConcater(sds)
-
-		// TODO: This enables accessing an upload from multiple threads.
-		// storeComposer.UseLocker(memorylocker.New())
-
 		// Create the TUS handler and register its routes.
 		tusHandler, err := handler.NewUnroutedHandler(handler.Config{
 			BasePath:      "/skynet/tus",

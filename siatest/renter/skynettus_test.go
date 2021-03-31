@@ -177,14 +177,14 @@ func testTUSUploaderUnstableConnection(t *testing.T, tg *siatest.TestGroup) {
 	}()
 
 	// Get a tus client.
-	chunkSize := int64(10)
+	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
 	tc, err := r.SkynetTUSClient(chunkSize)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// upload a 1000 byte file in chunks of 10 bytes.
-	uploadedData := fastrand.Bytes(1000)
+	// Upload some chunks.
+	uploadedData := fastrand.Bytes(int(chunkSize * 10))
 	src := bytes.NewReader(uploadedData)
 	upload := tus.NewUpload(src, src.Size(), tus.Metadata{}, "test")
 
@@ -194,28 +194,26 @@ func testTUSUploaderUnstableConnection(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Upload, this should fail after the first chunk.
-	err = uploader.Upload()
-	if err == nil {
-		t.Fatal("upload should fail due to the dependency")
-	}
-	var success bool
-	for i := 0; i < 200; i++ {
+	// Upload all the chunks. Whenever we encounter an error we resume the
+	// upload until we run out of retries.
+	remainingChunks := len(uploadedData) / int(chunkSize)
+	remainingTries := 5 * remainingChunks
+	for remainingChunks > 0 {
+		err = uploader.UploadChunck()
+		if err == nil {
+			remainingChunks--
+			continue // continue
+		}
+		// Decrement remaining tries.
+		if remainingTries == 0 {
+			t.Fatal("out of retries")
+		}
+		remainingTries--
+		// Resume upload.
 		uploader, err = tc.ResumeUpload(upload)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Upload
-		err = uploader.Upload()
-		if err != nil {
-			continue // try again
-		}
-		// Success
-		success = true
-		break
-	}
-	if !success {
-		t.Fatal("failed to upload data")
 	}
 
 	// Fetch skylink after upload is done.
