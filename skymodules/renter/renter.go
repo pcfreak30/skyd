@@ -245,6 +245,10 @@ type Renter struct {
 	// staticBatchManager manages batching skyfile uploads for the Renter.
 	staticBatchManager *skylinkBatchManager
 
+	// staticSubscriptionManager is the global manager of registry
+	// subscriptions.
+	staticSubscriptionManager *registrySubscriptionManager
+
 	// The renter's bandwidth ratelimit.
 	staticRL *ratelimit.RateLimit
 
@@ -1111,6 +1115,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		},
 
 		downloadHistory: make(map[skymodules.DownloadID]*download),
+
+		staticSubscriptionManager: newSubscriptionManager(),
 
 		staticConsensusSet:   cs,
 		staticDeps:           deps,

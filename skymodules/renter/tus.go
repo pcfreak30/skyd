@@ -30,6 +30,7 @@ type (
 	// skynetTUSUpload implements multiple TUS interfaces for uploads.
 	skynetTUSUpload struct {
 		fi             handler.FileInfo
+		fanout         []byte
 		staticUploader *skynetTUSUploader
 		staticSUP      skymodules.SkyfileUploadParameters
 		staticUP       skymodules.FileUploadParams
@@ -114,6 +115,7 @@ func (r *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler.U
 func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (int64, error) {
 	uploader := u.staticUploader
 	fileNode := u.staticFN
+	ec := fileNode.ErasureCode()
 
 	// Sanity check offset.
 	// NOTE: If the offset is not chunk aligned, it means that a previous call
@@ -132,8 +134,13 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	}
 
 	// Upload
-	n, err := uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, src, offset)
+	onlyOnePieceNeeded := ec.MinPieces() == 1 && fileNode.MasterKey().Type() == crypto.TypePlain
+	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
+	n, err := uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, cr, offset)
+
+	// Increment offset and append fanout.
 	u.fi.Offset += n
+	u.fanout = append(u.fanout, cr.Fanout()...)
 	return n, err
 }
 

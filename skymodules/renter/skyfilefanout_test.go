@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -42,8 +43,9 @@ func testSkyfileEncodeFanout_Writer(t *testing.T, rt *renterTester) {
 	//
 	// Since we are using test data we don't care about the final result of the
 	// fanout, we just are testing that the panics aren't triggered.
-	fw := newFanoutWriter(file, false)
-	_, err = fw.Write([]byte("this is fine"))
+	r := bytes.NewReader([]byte("this is fine"))
+	cr := NewFanoutChunkReader(r, file.ErasureCode(), false, file.MasterKey())
+	_, _, err = cr.ReadChunk()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,8 +62,9 @@ func testSkyfileEncodeFanout_Writer(t *testing.T, rt *renterTester) {
 	//
 	// Since we are using test data we don't care about the final result of the
 	// fanout, we just are testing that the panics aren't triggered.
-	fw = newFanoutWriter(file, false)
-	_, err = fw.Write([]byte("still fine"))
+	r = bytes.NewReader([]byte("still fine"))
+	cr = NewFanoutChunkReader(r, file.ErasureCode(), false, file.MasterKey())
+	_, _, err = cr.ReadChunk()
 	if err != nil {
 		t.Fatal(err)
 	}
