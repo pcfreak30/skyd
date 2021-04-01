@@ -70,23 +70,6 @@ func TestCheckFormContractGouging(t *testing.T) {
 	}
 }
 
-// TestMinimumContractRenewalFunding is a unit test for
-// minimumContractRenewalFunding.
-func TestMinimumContractRenewalFunding(t *testing.T) {
-	a := skymodules.Allowance{
-		Funds: types.SiacoinPrecision,
-		Hosts: 10,
-	}
-	f := minimumContractRenewalFunding(a, 0)
-	if !f.Equals(a.Funds.MulFloat(fileContractMinimumFunding).Div64(a.Hosts)) {
-		t.Fatal("wrong result")
-	}
-	f = minimumContractRenewalFunding(a, a.Hosts*2)
-	if !f.Equals(a.Funds.MulFloat(fileContractMinimumFunding).Div64(a.Hosts * 2)) {
-		t.Fatal("wrong result")
-	}
-}
-
 // TestInitialContractFunding is a unit test for
 // initialContractFunding.
 func TestInitialContractFunding(t *testing.T) {
@@ -123,8 +106,17 @@ func TestInitialContractFunding(t *testing.T) {
 			contractPrice: 100,
 			txnFee:        200,
 			min:           0,
+			max:           1,
+			result:        1,
+		},
+		{
+			// No max.
+			pcif:          0,
+			contractPrice: 100,
+			txnFee:        200,
+			min:           1,
 			max:           0,
-			result:        0,
+			result:        3000,
 		},
 		{
 			// Hit min.
