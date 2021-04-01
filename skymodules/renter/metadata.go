@@ -211,7 +211,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			// We only count the file towards the number of files if it is in the
 			// skynet folder and is not extended. We do not count files outside of the
 			// skynet folder because they should be treated as an extended file.
-			isSkynetDir := strings.Contains(siaPath.String(), skymodules.SkynetFolder.String())
+			isSkynetDir := skymodules.IsSkynetDir(siaPath)
 			isExtended := strings.Contains(fileSiaPath.String(), skymodules.ExtendedSuffix)
 			hasSkylinks := fileMetadata.NumSkylinks > 0
 			if isSkynetDir || hasSkylinks {

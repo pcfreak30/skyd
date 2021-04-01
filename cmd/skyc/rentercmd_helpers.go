@@ -563,38 +563,6 @@ func printSingleFile(sp skymodules.SiaPath, root, skylinkCheck bool) (tryDir boo
 	return
 }
 
-// printSkynetDirs is a helper for printing skynet directoryInfos
-func printSkynetDirs(dirs []directoryInfo) error {
-	for _, dir := range dirs {
-		fmt.Printf("%v/", dir.dir.SiaPath)
-		fmt.Println()
-
-		// Print subdirs.
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		for _, subDir := range dir.subDirs {
-			subDirName := subDir.SiaPath.Name() + "/"
-			sizeUnits := modules.FilesizeUnits(subDir.SkynetSize)
-			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, sizeUnits)
-		}
-
-		// Print files.
-		for _, file := range dir.files {
-			name := file.SiaPath.Name()
-			firstSkylink := file.Skylinks[0]
-			size := modules.FilesizeUnits(file.Filesize)
-			fmt.Fprintf(w, "  %v\t%v\t%9v\n", name, firstSkylink, size)
-			for _, skylink := range file.Skylinks[1:] {
-				fmt.Fprintf(w, "\t%v\t\n", skylink)
-			}
-		}
-		if err := w.Flush(); err != nil {
-			return errors.AddContext(err, "failed to flush writer")
-		}
-		fmt.Println()
-	}
-	return nil
-}
-
 // renterallowancespending prints info about the current period spending
 // this also get called by 'skyc renter -v' which is why it's in its own
 // function
