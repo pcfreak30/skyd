@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -328,6 +329,11 @@ func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, 
 	return []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}, numStuck, nil
 }
 
+var (
+	totalGetDirs   int = 0
+	totalGetDirsMu sync.Mutex
+)
+
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs, querying the root directory.
 func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryInfo) {
@@ -351,15 +357,69 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 		subDirs: subDirs,
 	})
 
-	// If -R isn't set we are done.
-	if !recursive {
+	// If -R isn't set, or there are no subDirs we are done.
+	if !recursive || len(subDirs) == 0 {
+		totalGetDirsMu.Lock()
+		totalGetDirs++
+		fmt.Printf("\r%v directories queried", totalGetDirs)
+		totalGetDirsMu.Unlock()
 		return
 	}
+
+	// Define number of workers for this call to use.
+	//
+	// NOTE: This is a recursive call so all subsequent calls will also have this
+	// many workers. While go routines themselves are cheap, we want to limit the
+	// chance of a panic due to too many open files.
+	//
+	// There will be numGetDirWorkers^maxDirectoryDepth go routines launched.
+	numGetDirWorkers := 5
+	var dirsMu sync.Mutex
+
+	// Create a siapath chan
+	siaPathChan := make(chan skymodules.SiaPath, numGetDirWorkers)
+
+	// Define getDirWorker function
+	getDirWorkerFunc := func(root, recursive bool) {
+		for siaPath := range siaPathChan {
+			subdirs := getDir(siaPath, root, recursive)
+			dirsMu.Lock()
+			dirs = append(dirs, subdirs...)
+			dirsMu.Unlock()
+		}
+	}
+
+	// Launch workers.
+	var wg sync.WaitGroup
+	for i := 0; i < numGetDirWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			getDirWorkerFunc(root, recursive)
+			wg.Done()
+		}()
+	}
+
 	// Call getDir on subdirs.
 	for _, subDir := range subDirs {
-		rdirs := getDir(subDir.SiaPath, root, recursive)
-		dirs = append(dirs, rdirs...)
+		select {
+		case siaPathChan <- subDir.SiaPath:
+		case <-time.After(time.Minute):
+			// Safety timeout of waiting 1 minute for workers to make room for the
+			// next siapath
+			close(siaPathChan)
+			wg.Wait()
+			die("getDir timed out")
+		}
 	}
+
+	close(siaPathChan)
+	wg.Wait()
+
+	// Print out status update
+	totalGetDirsMu.Lock()
+	totalGetDirs++
+	fmt.Printf("\r%v directories queried", totalGetDirs)
+	totalGetDirsMu.Unlock()
 	return
 }
 
