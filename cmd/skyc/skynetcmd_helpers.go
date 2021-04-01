@@ -24,18 +24,20 @@ func printSkynetDirs(dirs []directoryInfo, recursive bool) error {
 			continue
 		}
 
+		// Initialize a tab writer for the diretory
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
 		// Print the directory SiaPath
-		fmt.Printf("%v/", dir.dir.SiaPath)
+		fmt.Fprintf(w, "%v/", dir.dir.SiaPath)
 
 		// In Skyfile only directories, NumFiles is equal to SkynetFiles
 		omitted := dir.dir.NumFiles - dir.dir.SkynetFiles
 		if omitted > 0 {
-			fmt.Printf("\t(%v omitted)", omitted)
+			fmt.Fprintf(w, "\t(%v omitted)", omitted)
 		}
-		fmt.Println()
+		fmt.Fprintln(w)
 
 		// Print subdirs.
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		for _, subDir := range dir.subDirs {
 			// Don't print directories that have 0 skyfiles if they are outside the
 			// skynet folder.
@@ -43,7 +45,7 @@ func printSkynetDirs(dirs []directoryInfo, recursive bool) error {
 				continue
 			}
 			subDirName := subDir.SiaPath.Name() + "/"
-			sizeUnits := modules.FilesizeUnits(subDir.SkynetSize)
+			sizeUnits := modules.FilesizeUnits(subDir.AggregateSkynetSize)
 			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, sizeUnits)
 		}
 
@@ -52,12 +54,12 @@ func printSkynetDirs(dirs []directoryInfo, recursive bool) error {
 		if dir.dir.SkynetFiles != 0 {
 			printSkyFiles(w, dir.files)
 		}
+		fmt.Fprintln(w)
 
-		// Flush Writer
+		// Flush the writer
 		if err := w.Flush(); err != nil {
 			return errors.AddContext(err, "failed to flush writer")
 		}
-		fmt.Println()
 
 		// Check if this was a recursive request.
 		if !recursive {

@@ -462,23 +462,31 @@ Contract %v
 // printDirs is a helper for printing directoryInfos
 func printDirs(dirs []directoryInfo) error {
 	for _, dir := range dirs {
-		fmt.Printf("%v/\n", dir.dir.SiaPath)
+		// Initialize a tab writer for the diretory
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		// Print the Directory SiaPath
+		fmt.Fprintf(w, "%v/\n", dir.dir.SiaPath)
+
+		// Print SubDirs
 		for _, subDir := range dir.subDirs {
 			name := subDir.SiaPath.Name() + "/"
 			size := modules.FilesizeUnits(subDir.AggregateSize)
 			fmt.Fprintf(w, "  %v\t%9v\n", name, size)
 		}
 
+		// Print files
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
 			size := modules.FilesizeUnits(file.Filesize)
 			fmt.Fprintf(w, "  %v\t%9v\n", name, size)
 		}
+		fmt.Fprintln(w)
+
+		// Flush the writer
 		if err := w.Flush(); err != nil {
 			return errors.AddContext(err, "failed to flush writer")
 		}
-		fmt.Println()
 	}
 	return nil
 }
