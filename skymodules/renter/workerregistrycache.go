@@ -12,7 +12,7 @@ type (
 	// in memory. It decides randomly which entries to evict to make it more
 	// unpredictable for the host.
 	registryRevisionCache struct {
-		entryMap   map[modules.SubscriptionID]*cachedEntry
+		entryMap   map[modules.RegistryEntryID]*cachedEntry
 		entryList  []*cachedEntry
 		maxEntries uint64
 		mu         sync.Mutex
@@ -21,7 +21,7 @@ type (
 	// cachedEntry describes a single cached entry. To make sure we can cache as
 	// many entries as possible, this only contains the necessary information.
 	cachedEntry struct {
-		key      modules.SubscriptionID
+		key      modules.RegistryEntryID
 		revision uint64
 	}
 )
@@ -33,14 +33,14 @@ const cachedEntryEstimatedSize = 32 + 8 + 16
 // newRegistryCache creates a new registry cache.
 func newRegistryCache(size uint64) *registryRevisionCache {
 	return &registryRevisionCache{
-		entryMap:   make(map[modules.SubscriptionID]*cachedEntry),
+		entryMap:   make(map[modules.RegistryEntryID]*cachedEntry),
 		entryList:  nil,
 		maxEntries: size / cachedEntryEstimatedSize,
 	}
 }
 
 // Get fetches an entry from the cache.
-func (rc *registryRevisionCache) Get(sid modules.SubscriptionID) (uint64, bool) {
+func (rc *registryRevisionCache) Get(sid modules.RegistryEntryID) (uint64, bool) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
@@ -53,7 +53,7 @@ func (rc *registryRevisionCache) Get(sid modules.SubscriptionID) (uint64, bool) 
 
 // Set sets an entry in the registry. When 'force' is false, settings a lower
 // revision number will be a no-op.
-func (rc *registryRevisionCache) Set(sid modules.SubscriptionID, rv modules.SignedRegistryValue, force bool) {
+func (rc *registryRevisionCache) Set(sid modules.RegistryEntryID, rv modules.SignedRegistryValue, force bool) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 

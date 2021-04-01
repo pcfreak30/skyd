@@ -15,7 +15,7 @@ import (
 
 // Delete deltes an entry from the cache without replacing it. Should only be
 // used in testing.
-func (rc *registryRevisionCache) Delete(sid modules.SubscriptionID) {
+func (rc *registryRevisionCache) Delete(sid modules.RegistryEntryID) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
@@ -60,27 +60,27 @@ func TestRegistryCache(t *testing.T) {
 
 	// Set an entry.
 	rv := registryValue(0, 0)
-	cache.Set(modules.RegistrySubscriptionID(pk, rv.Tweak), rv, false)
+	cache.Set(modules.DeriveRegistryEntryID(pk, rv.Tweak), rv, false)
 	if len(cache.entryMap) != 1 || len(cache.entryList) != 1 {
 		t.Fatal("map and list should both have 1 element")
 	}
 
 	// Set it again with a higher revision.
 	rv = registryValue(0, 1)
-	cache.Set(modules.RegistrySubscriptionID(pk, rv.Tweak), rv, false)
+	cache.Set(modules.DeriveRegistryEntryID(pk, rv.Tweak), rv, false)
 	if len(cache.entryMap) != 1 || len(cache.entryList) != 1 {
 		t.Fatal("map and list should both have 1 element")
 	}
 
 	// Set it back with force = false. This should be a no-op.
 	rv2 := registryValue(0, 0)
-	cache.Set(modules.RegistrySubscriptionID(pk, rv2.Tweak), rv2, false)
+	cache.Set(modules.DeriveRegistryEntryID(pk, rv2.Tweak), rv2, false)
 	if len(cache.entryMap) != 1 || len(cache.entryList) != 1 {
 		t.Fatal("map and list should both have 1 element")
 	}
 
 	// Make sure the value can be retrieved.
-	readRev, exists := cache.Get(modules.RegistrySubscriptionID(pk, rv.Tweak))
+	readRev, exists := cache.Get(modules.DeriveRegistryEntryID(pk, rv.Tweak))
 	if !exists || readRev != 1 {
 		t.Fatal("get returned wrong value", exists, readRev)
 	}
@@ -89,7 +89,7 @@ func TestRegistryCache(t *testing.T) {
 	// number 1.
 	for i := uint64(1); i < numEntries; i++ {
 		tmpRV := registryValue(i, 1)
-		cache.Set(modules.RegistrySubscriptionID(pk, tmpRV.Tweak), tmpRV, false)
+		cache.Set(modules.DeriveRegistryEntryID(pk, tmpRV.Tweak), tmpRV, false)
 	}
 	if uint64(len(cache.entryMap)) != numEntries || uint64(len(cache.entryList)) != numEntries {
 		t.Fatal("map and list should both have numEntries element")
@@ -101,7 +101,7 @@ func TestRegistryCache(t *testing.T) {
 	// The following code happens in a retry since an element that is added
 	// might get evicted right away.
 	err := build.Retry(1000, time.Millisecond, func() error {
-		cache.Set(modules.RegistrySubscriptionID(pk, rv.Tweak), rv, false)
+		cache.Set(modules.DeriveRegistryEntryID(pk, rv.Tweak), rv, false)
 
 		// The datastructures should still have the same length since a random
 		// element was evicted.
@@ -137,7 +137,7 @@ func TestRegistryCache(t *testing.T) {
 	}
 
 	// Get should return the same entry.
-	readRev, exists = cache.Get(modules.RegistrySubscriptionID(pk, rv.Tweak))
+	readRev, exists = cache.Get(modules.DeriveRegistryEntryID(pk, rv.Tweak))
 	if !exists || readRev != 2 {
 		t.Fatal("get returned wrong value", exists, readRev)
 	}

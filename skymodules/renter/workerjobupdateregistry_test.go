@@ -45,7 +45,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	sid := modules.RegistrySubscriptionID(spk, tweak)
+	sid := modules.DeriveRegistryEntryID(spk, tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -210,7 +210,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	sid := modules.RegistrySubscriptionID(spk, tweak)
+	sid := modules.DeriveRegistryEntryID(spk, tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)

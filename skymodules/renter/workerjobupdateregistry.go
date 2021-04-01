@@ -90,7 +90,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 func (j *jobUpdateRegistry) callExecute() {
 	start := time.Now()
 	w := j.staticQueue.staticWorker()
-	sid := modules.RegistrySubscriptionID(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
+	sid := modules.DeriveRegistryEntryID(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
@@ -214,7 +214,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		}
 		if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
 			// Parse the proof.
-			data, revision, sig, parseErr := parseSignedRegistryValueResponse(resp.Output)
+			_, _, data, revision, sig, parseErr := parseSignedRegistryValueResponse(resp.Output, false)
 			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig)
 			return rv, errors.Compose(err, parseErr)
 		}

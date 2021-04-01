@@ -1,13 +1,15 @@
 package renter
 
 import (
+	"bytes"
 	"context"
-	"encoding/binary"
+	"io"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/skynetlabs/skyd/build"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -31,9 +33,9 @@ const (
 type (
 	// jobReadRegistry contains information about a ReadRegistry query.
 	jobReadRegistry struct {
-		staticSubscriptionID modules.SubscriptionID
-		staticSiaPublicKey   *types.SiaPublicKey
-		staticTweak          *crypto.Hash
+		staticRegistryEntryID modules.RegistryEntryID
+		staticSiaPublicKey    *types.SiaPublicKey
+		staticTweak           *crypto.Hash
 
 		staticResponseChan chan *jobReadRegistryResponse // Channel to send a response down
 
@@ -60,30 +62,37 @@ type (
 
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
-func parseSignedRegistryValueResponse(resp []byte) ([]byte, uint64, crypto.Signature, error) {
-	if len(resp) < crypto.SignatureSize+8 {
-		return nil, 0, crypto.Signature{}, errors.New("failed to parse response due to invalid size")
+func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool) (spk types.SiaPublicKey, tweak crypto.Hash, data []byte, rev uint64, sig crypto.Signature, err error) {
+	dec := encoding.NewDecoder(bytes.NewReader(resp), encoding.DefaultAllocLimit)
+	if needPKAndTweak {
+		err = dec.DecodeAll(&spk, &tweak, &sig, &rev)
+	} else {
+		err = dec.DecodeAll(&sig, &rev)
 	}
-	var sig crypto.Signature
-	copy(sig[:], resp[:crypto.SignatureSize])
-	rev := binary.LittleEndian.Uint64(resp[crypto.SignatureSize:])
-	data := resp[crypto.SignatureSize+8:]
-	return data, rev, sig, nil
+	if err != nil {
+		return
+	}
+	data, err = io.ReadAll(dec)
+	return
 }
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
-func lookupRegistry(w *worker, sid modules.SubscriptionID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*modules.SignedRegistryValue, error) {
+func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*modules.SignedRegistryValue, error) {
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
+	needPKAndTweak := spk == nil || tweak == nil
+
 	var refund types.Currency
 	var err error
-	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
-		refund, err = pb.V154AddReadRegistryInstruction(*spk, *tweak)
+	if build.VersionCmp(w.staticCache().staticHostVersion, minRegistryVersion) < 0 {
+		err = errors.New("lookupRegistry called on host with version < minRegistryVersion")
+		build.Critical(err)
+		return nil, err
 	} else if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 {
 		refund, err = pb.AddReadRegistryInstruction(*spk, *tweak)
 	} else {
-		refund, err = pb.AddReadRegistrySIDInstruction(sid)
+		refund, err = pb.AddReadRegistryEIDInstruction(sid, needPKAndTweak)
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to add read registry instruction")
@@ -121,15 +130,16 @@ func lookupRegistry(w *worker, sid modules.SubscriptionID, spk *types.SiaPublicK
 	}
 
 	// Parse response.
-	data, revision, sig, err := parseSignedRegistryValueResponse(resp.Output)
+	spkHost, tweakHost, data, revision, sig, err := parseSignedRegistryValueResponse(resp.Output, needPKAndTweak)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to parse signed revision response")
 	}
 
-	// If we don't have both the key and tweak, we are done.
-	if spk == nil || tweak == nil {
-		rv := modules.NewSignedRegistryValue(crypto.Hash{}, data, revision, sig)
-		return &rv, nil
+	// If we don't have both the key and tweak, use the ones returned by the
+	// host.
+	if needPKAndTweak {
+		spk = &spkHost
+		tweak = &tweakHost
 	}
 	rv := modules.NewSignedRegistryValue(*tweak, data, revision, sig)
 
@@ -142,18 +152,18 @@ func lookupRegistry(w *worker, sid modules.SubscriptionID, spk *types.SiaPublicK
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
 func (w *worker) newJobReadRegistry(ctx context.Context, responseChan chan *jobReadRegistryResponse, spk types.SiaPublicKey, tweak crypto.Hash) *jobReadRegistry {
-	sid := modules.RegistrySubscriptionID(spk, tweak)
+	sid := modules.DeriveRegistryEntryID(spk, tweak)
 	return w.newJobReadRegistrySID(ctx, responseChan, sid, &spk, &tweak)
 }
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
-func (w *worker) newJobReadRegistrySID(ctx context.Context, responseChan chan *jobReadRegistryResponse, sid modules.SubscriptionID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
+func (w *worker) newJobReadRegistrySID(ctx context.Context, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
 	return &jobReadRegistry{
-		staticSiaPublicKey:   spk,
-		staticSubscriptionID: sid,
-		staticTweak:          tweak,
-		staticResponseChan:   responseChan,
-		jobGeneric:           newJobGeneric(ctx, w.staticJobReadRegistryQueue, nil),
+		staticSiaPublicKey:    spk,
+		staticRegistryEntryID: sid,
+		staticTweak:           tweak,
+		staticResponseChan:    responseChan,
+		jobGeneric:            newJobGeneric(ctx, w.staticJobReadRegistryQueue, nil),
 	}
 }
 
@@ -212,8 +222,8 @@ func (j *jobReadRegistry) callExecute() {
 	}
 	// If both are set, they should match the subscription id.
 	if spk != nil && tweak != nil {
-		sid := modules.RegistrySubscriptionID(*spk, *tweak)
-		if sid != j.staticSubscriptionID {
+		sid := modules.DeriveRegistryEntryID(*spk, *tweak)
+		if sid != j.staticRegistryEntryID {
 			err := errors.New("subscription id doesn't match provided pubkey and tweak")
 			build.Critical(err)
 			sendResponse(nil, err)
@@ -223,7 +233,7 @@ func (j *jobReadRegistry) callExecute() {
 	}
 
 	// Read the value.
-	srv, err := lookupRegistry(w, j.staticSubscriptionID, spk, tweak)
+	srv, err := lookupRegistry(w, j.staticRegistryEntryID, spk, tweak)
 	if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
@@ -236,14 +246,14 @@ func (j *jobReadRegistry) callExecute() {
 	// TODO: update the cache to store the hash in addition to the revision
 	// number for verifying the pow.
 	if srv != nil {
-		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSubscriptionID)
+		cachedRevision, cached := w.staticRegistryCache.Get(j.staticRegistryEntryID)
 		if cached && cachedRevision > srv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-			w.staticRegistryCache.Set(j.staticSubscriptionID, *srv, true) // adjust the cache
+			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, true) // adjust the cache
 			return
 		} else if !cached || srv.Revision > cachedRevision {
-			w.staticRegistryCache.Set(j.staticSubscriptionID, *srv, false) // adjust the cache
+			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, false) // adjust the cache
 		}
 	}
 
@@ -307,7 +317,7 @@ func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 
 // ReadRegistrySID is a helper method to run a ReadRegistry job on a worker
 // without a pubkey or tweak.
-func (w *worker) ReadRegistrySID(ctx context.Context, sid modules.SubscriptionID) (*modules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistrySID(ctx context.Context, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
 	jur := w.newJobReadRegistrySID(ctx, readRegistryRespChan, sid, nil, nil)
 

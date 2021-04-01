@@ -175,7 +175,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	sid := modules.RegistrySubscriptionID(spk, tweak)
+	sid := modules.DeriveRegistryEntryID(spk, tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -190,7 +190,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	}
 
 	// Delete the value from the cache.
-	wt.staticRegistryCache.Delete(modules.RegistrySubscriptionID(spk, rv.Tweak))
+	wt.staticRegistryCache.Delete(modules.DeriveRegistryEntryID(spk, rv.Tweak))
 	_, cached = wt.staticRegistryCache.Get(sid)
 	if cached {
 		t.Fatal("value wasn't removed")

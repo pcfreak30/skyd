@@ -188,7 +188,7 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	}()
 
 	// Check if the host was trying to cheat us with an outdated entry.
-	sid := modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)
+	sid := modules.DeriveRegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)
 	latestRev, exists := w.staticRegistryCache.Get(sid)
 	if exists && sneu.Entry.Revision < latestRev {
 		return fmt.Errorf("host provided outdated entry %v < %v", sneu.Entry.Revision, latestRev)
@@ -510,7 +510,7 @@ func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []modul
 	}
 	// Check that the initial values are not outdated and update the cache.
 	for _, rv := range rvs {
-		sid := modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)
+		sid := modules.DeriveRegistryEntryID(rv.PubKey, rv.Entry.Tweak)
 		cachedRevision, exists := w.staticRegistryCache.Get(sid)
 		if exists && rv.Entry.Revision < cachedRevision {
 			return fmt.Errorf("host returned an entry with revision %v which is smaller than cached revision %v for the same entry", rv.Entry.Revision, cachedRevision)
