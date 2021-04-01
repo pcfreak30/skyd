@@ -28,6 +28,15 @@ var (
 		Standard: 20 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
+
+	// PruneTUSUploadInterval is the time that passes between pruning attempts.
+	// The smaller the interval, the smaller the batches of uploads we prune at
+	// a time.
+	PruneTUSUploadInterval = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: 5 * time.Minute,
+		Testing:  time.Second,
+	}).(time.Duration)
 )
 
 type (
@@ -282,8 +291,7 @@ func (u *skynetTUSUpload) managedClose() error {
 // threadedPruneTUSUploads periodically cleans up the uploads launched by the
 // TUS endpoints.
 func (r *Renter) threadedPruneTUSUploads() {
-	// Call prune twice per PruneTUSUploadTimeout.
-	ticker := time.NewTicker(PruneTUSUploadTimeout / 2)
+	ticker := time.NewTicker(PruneTUSUploadInterval)
 	for {
 		select {
 		case <-r.tg.StopChan():

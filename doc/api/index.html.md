@@ -6195,7 +6195,7 @@ The protocol is implemented on the following endpoints:
 For detailed information about the protocol check out the [specification](https://tus.io/protocols/resumable-upload.html).
 
 For uploads to work with Skyd, you need to make sure that the chunk size of
-your TUS client is configure correctly. Otherwise the upload will return an
+your TUS client is configured correctly. Otherwise, the upload will return an
 error which contains the expected chunk size. Right now the chunk size is
 expected to be a multiple of `40MiB` for the default upload settings.
 
