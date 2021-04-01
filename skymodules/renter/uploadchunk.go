@@ -67,7 +67,7 @@ type unfinishedUploadChunk struct {
 
 	// sourceReader is an optional source for the logical chunk data. If
 	// available it will be tried before the repair path or remote repair.
-	sourceReader io.ReadCloser
+	sourceReader skymodules.ChunkReader
 
 	// Performance information.
 	chunkCreationTime        time.Time
@@ -440,15 +440,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	r.staticUploadChunkDistributionQueue.callAddUploadChunk(chunk)
 }
 
-// staticEncryptAndCheckIntegrity will run through the pieces that are
-// presented, assumed to be already erasure coded. The integrity check will
-// perform the encryption on the pieces and then ensure that the result matches
-// any known roots for the renter.
-func (uc *unfinishedUploadChunk) staticEncryptAndCheckIntegrity() error {
+// staticCheckIntegrity will run through the pieces that are presented, assumed
+// to be already erasure coded and encrypted. The integrity check will ensure
+// that the result matches any known roots for the renter.
+func (uc *unfinishedUploadChunk) staticCheckIntegrity() error {
 	// Verify that all of the shards match the piece roots we are expecting. Use
 	// one thread per piece so that the verification is multicore.
 	var zeroHash crypto.Hash
-	var wg sync.WaitGroup
 	failures := make([]bool, len(uc.logicalChunkData))
 	for i := range uc.logicalChunkData {
 		// Skip if there is no data.
@@ -460,25 +458,17 @@ func (uc *unfinishedUploadChunk) staticEncryptAndCheckIntegrity() error {
 			uc.logicalChunkData[i] = nil
 			continue
 		}
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
 
-			// Encrypt and pad the piece with the given index.
-			uc.padAndEncryptPiece(i)
-
-			// Perform the integrity check. Skip the integrity check on this
-			// piece if there is no hash available.
-			if uc.staticExpectedPieceRoots[i] == zeroHash {
-				return
-			}
-			root := crypto.MerkleRoot(uc.logicalChunkData[i])
-			if root != uc.staticExpectedPieceRoots[i] {
-				failures[i] = true
-			}
-		}(i)
+		// Perform the integrity check. Skip the integrity check on this
+		// piece if there is no hash available.
+		if uc.staticExpectedPieceRoots[i] == zeroHash {
+			continue
+		}
+		root := crypto.MerkleRoot(uc.logicalChunkData[i])
+		if root != uc.staticExpectedPieceRoots[i] {
+			failures[i] = true
+		}
 	}
-	wg.Wait()
 
 	// Scan through and see if there were any failures.
 	for _, failure := range failures {
@@ -490,38 +480,26 @@ func (uc *unfinishedUploadChunk) staticEncryptAndCheckIntegrity() error {
 	return nil
 }
 
-// staticReadLogicalData initializes the chunk's logicalChunkData using data read from
-// r, returning the number of bytes read.
-func (uc *unfinishedUploadChunk) staticReadLogicalData(r io.Reader) (uint64, error) {
-	// Allocate data pieces and fill them with data from r.
-	dataPieces, total, err := readDataPieces(r, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
-	if err != nil {
-		return 0, err
-	}
-	// Encode the data pieces, forming the chunk's logical data.
-	//
-	// TODO: Ideally there is a way to only encode the shards that we need.
-	uc.logicalChunkData, _ = uc.fileEntry.ErasureCode().EncodeShards(dataPieces)
-	return total, nil
-}
-
 // staticFetchLogicalDataFromReader will load the logical data for a chunk from
 // a reader, and perform an integrity check on the chunk to ensure correctness.
-func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) (err error) {
-	defer func() {
-		err = errors.Compose(err, uc.sourceReader.Close())
-	}()
-
+func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) error {
 	// Grab the logical data from the reader.
-	n, err := uc.staticReadLogicalData(uc.sourceReader)
+	var n uint64
+	var err error
+	uc.logicalChunkData, n, err = uc.sourceReader.ReadChunk()
 	if err != nil {
 		return errors.AddContext(err, "unable to read the chunk data from the source reader")
 	}
 
 	// Perform an integrity check on the data that was pulled from the reader.
-	err = uc.staticEncryptAndCheckIntegrity()
+	err = uc.staticCheckIntegrity()
 	if err != nil {
 		return errors.AddContext(err, "source data does not match previously uploaded data - blocking corrupt repair")
+	}
+
+	// If we read a full chunk, we are done. No need to adjust the file size.
+	if n == uc.fileEntry.ChunkSize() {
+		return nil
 	}
 
 	// Adjust the filesize. Since we don't know the length of the stream
@@ -576,12 +554,12 @@ func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 			err = errors.Compose(err, osFile.Close())
 		}()
 		sr := io.NewSectionReader(osFile, uc.offset, int64(uc.length))
-		dataPieces, _, err := readDataPieces(sr, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
+		cr := NewChunkReaderWithChunkIndex(sr, uc.fileEntry.ErasureCode(), uc.fileEntry.MasterKey(), uc.staticIndex)
+		uc.logicalChunkData, _, err = cr.ReadChunk()
 		if err != nil {
 			return errors.AddContext(err, "unable to read the data from the local file")
 		}
-		uc.logicalChunkData, _ = uc.fileEntry.ErasureCode().EncodeShards(dataPieces)
-		err = uc.staticEncryptAndCheckIntegrity()
+		err = uc.staticCheckIntegrity()
 		if err != nil {
 			return errors.AddContext(err, "local file failed the integrity check")
 		}

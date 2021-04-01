@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -1004,7 +1003,8 @@ func testManagedPushChunkForRepair(t *testing.T) {
 		}
 	}()
 	var buf []byte
-	sr := NewStreamShard(bytes.NewReader(buf), buf)
+	cr := NewChunkReader(bytes.NewReader(buf), file.ErasureCode(), file.MasterKey())
+	sr := NewStreamShard(cr)
 	streamChunk := &unfinishedUploadChunk{
 		id: uploadChunkID{
 			fileUID: "streamchunk",
@@ -1113,18 +1113,24 @@ func testManagedTryUpdate(t *testing.T) {
 		}
 	}()
 	uh := &rt.renter.staticUploadHeap
+	ec, err := skymodules.NewRSSubCode(1, 1, crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Define test cases
 	var buf []byte
-	sr := NewStreamShard(bytes.NewReader(buf), buf)
+	sk := crypto.GenerateSiaKey(crypto.TypePlain)
+	cr := NewChunkReader(bytes.NewReader(buf), ec, sk)
+	sr := NewStreamShard(cr)
 	var tests = []struct {
 		name             string
 		ct               chunkType
 		existsUnstuck    bool // Indicates if there should be an existing chunk in the unstuck map
 		existsStuck      bool // Indicates if there should be an existing chunk in the stuck map
 		existsRepairing  bool // Indicates if there should be an existing chunk in the repair map
-		existingChunkSR  io.ReadCloser
-		newChunkSR       io.ReadCloser
+		existingChunkSR  skymodules.ChunkReader
+		newChunkSR       skymodules.ChunkReader
 		existAfterUpdate bool // Indicates if tryUpdate will cancel and remove the chunk from the heap
 		pushAfterUpdate  bool // Indicates if the push to the heap should succeed after tryUpdate
 	}{

@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -198,6 +199,7 @@ type streamBuffer struct {
 	staticStreamBufferSet *streamBufferSet
 	staticStreamID        skymodules.DataSourceID
 	staticPricePerMS      types.Currency
+	staticWallet          modules.SiacoinSenderMulti
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.

@@ -671,6 +671,9 @@ type RenterSettings struct {
 	MaxUploadSpeed   int64         `json:"maxuploadspeed"`
 	MaxDownloadSpeed int64         `json:"maxdownloadspeed"`
 	UploadsStatus    UploadsStatus `json:"uploadsstatus"`
+
+	CurrencyConversionRates map[string]types.Currency `json:"currencyconversionrates"`
+	MonetizationBase        types.Currency            `json:"monetizationbase"`
 }
 
 // UploadsStatus contains information about the Renter's Uploads
@@ -1064,6 +1067,29 @@ type (
 	}
 )
 
+// ChunkReader is the interface for a reader reading full erasure-coded chunks
+// from a stream.
+type ChunkReader interface {
+	// Peek returns whether the next call to ReadChunk is expected to return a
+	// chunk or if there is no more data.
+	Peek() bool
+
+	// ReadChunk reads the next chunk from the reader. The returned chunk is
+	// erasure coded, encrypted and will always be a full chunk ready for
+	// upload. It also returns the number of bytes that this chunk was created
+	// from which is useful because the last chunk might be padded.
+	ReadChunk() ([][]byte, uint64, error)
+}
+
+// FanoutChunkReader defines a chunk reader that computes a skylink fanout on
+// the fly.
+type FanoutChunkReader interface {
+	ChunkReader
+
+	// Fanout returns the computed fanout.
+	Fanout() []byte
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -1395,6 +1421,15 @@ type Renter interface {
 type Streamer interface {
 	io.ReadSeeker
 	io.Closer
+}
+
+// SkyfileStreamer is the interface implemented by the Renter's skyfile type
+// which allows for streaming files uploaded to the Sia network.
+type SkyfileStreamer interface {
+	io.ReadSeeker
+	io.Closer
+
+	Metadata() SkyfileMetadata
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's
