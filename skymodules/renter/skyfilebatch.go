@@ -474,15 +474,15 @@ func (sb *skylinkBatch) threadedUploadData() {
 		return
 	}
 	defer func() {
+		// If there was an error, delete the file
+		if sb.err != nil {
+			sb.err = errors.Compose(sb.err, r.DeleteFile(siaPath))
+		}
 		sb.err = errors.Compose(sb.err, fileNode.Close())
 	}()
 
 	// Add all the skylinks to the Siafile. We have already checked if any of the
 	// are blocked so we can safely add them all
-	//
-	// TODO: currently we don't try and clean up the file if adding a skylink
-	// fails. Should we? If we return an error we don't return the skylink
-	// resulting in lost files that users don't have access to.
 	err = fileNode.AddSkylink(baseSectorSkylink)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to add basesector skylink to the file node")
