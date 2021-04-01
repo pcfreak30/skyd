@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"sort"
 	"sync"
 	"time"
 
@@ -340,7 +339,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 	}
 
 	// Pack Files
-	fps, numSectors, err := skymodules.PackFiles(filesMap)
+	fps, numSectors, totalSize, err := skymodules.PackFiles(filesMap)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to pack files")
 		return
@@ -352,13 +351,6 @@ func (sb *skylinkBatch) threadedUploadData() {
 		build.Critical(sb.err)
 		return
 	}
-
-	// Sort slice by offset
-	sort.Slice(fps, func(i, j int) bool { return fps[i].SectorOffset < fps[j].SectorOffset })
-
-	// Determine the total size of the batch
-	lastFP := fps[len(fps)-1]
-	totalSize := lastFP.SectorOffset + lastFP.Size
 
 	// Move file placements back to skyFileObj and build basesector data based on
 	// packed files.
@@ -482,15 +474,15 @@ func (sb *skylinkBatch) threadedUploadData() {
 		return
 	}
 	defer func() {
+		// If there was an error, delete the file
+		if sb.err != nil {
+			sb.err = errors.Compose(sb.err, r.DeleteFile(siaPath))
+		}
 		sb.err = errors.Compose(sb.err, fileNode.Close())
 	}()
 
 	// Add all the skylinks to the Siafile. We have already checked if any of the
 	// are blocked so we can safely add them all
-	//
-	// TODO: currently we don't try and clean up the file if adding a skylink
-	// fails. Should we? If we return an error we don't return the skylink
-	// resulting in lost files that users don't have access to.
 	err = fileNode.AddSkylink(baseSectorSkylink)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to add basesector skylink to the file node")

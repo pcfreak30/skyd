@@ -51,21 +51,22 @@ func (emptyWorkerPool) Worker(_ types.SiaPublicKey) (skymodules.Worker, error) {
 // contracts.
 type Contractor struct {
 	// dependencies
-	cs            modules.ConsensusSet
-	hdb           skymodules.HostDB
-	log           *persist.Logger
-	mu            sync.RWMutex
-	persistDir    string
-	staticAlerter *modules.GenericAlerter
-	staticDeps    modules.Dependencies
-	tg            threadgroup.ThreadGroup
-	tpool         modules.TransactionPool
-	wallet        modules.Wallet
-	workerPool    skymodules.WorkerPool
+	staticAlerter    *modules.GenericAlerter
+	staticCS         modules.ConsensusSet
+	staticDeps       modules.Dependencies
+	staticHDB        skymodules.HostDB
+	staticLog        *persist.Logger
+	staticTG         threadgroup.ThreadGroup
+	staticTPool      modules.TransactionPool
+	staticWallet     modules.Wallet
+	staticWorkerPool skymodules.WorkerPool
+
+	mu         sync.RWMutex
+	persistDir string
 
 	// Only one thread should be performing contract maintenance at a time.
-	interruptMaintenance chan struct{}
-	maintenanceLock      siasync.TryMutex
+	staticInterruptMaintenance chan struct{}
+	maintenanceLock            siasync.TryMutex
 
 	// Only one thread should be scanning the blockchain for recoverable
 	// contracts at a time.
@@ -148,10 +149,10 @@ func (c *Contractor) ContractPublicKey(pk types.SiaPublicKey) (crypto.PublicKey,
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
 // contracts within a separate thread.
 func (c *Contractor) InitRecoveryScan() (err error) {
-	if err := c.tg.Add(); err != nil {
+	if err := c.staticTG.Add(); err != nil {
 		return err
 	}
-	defer c.tg.Done()
+	defer c.staticTG.Done()
 	return c.callInitRecoveryScan(modules.ConsensusChangeBeginning)
 }
 
@@ -191,7 +192,7 @@ func (c *Contractor) PeriodSpending() (skymodules.ContractorSpending, error) {
 			continue
 		}
 
-		host, exist, err := c.hdb.Host(contract.HostPublicKey)
+		host, exist, err := c.staticHDB.Host(contract.HostPublicKey)
 		if contract.StartHeight >= c.currentPeriod {
 			// Calculate spending from contracts that were renewed during the current period
 			// Calculate ContractFees
@@ -249,7 +250,7 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 func (c *Contractor) UpdateWorkerPool(wp skymodules.WorkerPool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.workerPool = wp
+	c.staticWorkerPool = wp
 }
 
 // ProvidePayment takes a stream and a set of payment details and handles
@@ -318,10 +319,10 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 	var payByResponse modules.PayByContractResponse
 	if err := modules.RPCRead(stream, &payByResponse); err != nil {
 		if strings.Contains(err.Error(), "storage obligation not found") {
-			c.log.Printf("Marking contract %v as bad because host %v did not recognize it: %v", contract.ID, host, err)
+			c.staticLog.Printf("Marking contract %v as bad because host %v did not recognize it: %v", contract.ID, host, err)
 			mbcErr := c.managedMarkContractBad(sc)
 			if mbcErr != nil {
-				c.log.Printf("Unable to mark contract %v on host %v as bad: %v", contract.ID, host, mbcErr)
+				c.staticLog.Printf("Unable to mark contract %v on host %v as bad: %v", contract.ID, host, mbcErr)
 			}
 		}
 		return errors.AddContext(err, "unable to read the pay by contract response")
@@ -362,10 +363,10 @@ func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
 // Both the old and the new contract have the same end height
 func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	// Add thread and acquire lock
-	if err := c.tg.Add(); err != nil {
+	if err := c.staticTG.Add(); err != nil {
 		return false
 	}
-	defer c.tg.Done()
+	defer c.staticTG.Done()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -379,7 +380,7 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	// Grab the contract to check its end height
 	contract, ok := c.oldContracts[fcid]
 	if !ok {
-		c.log.Debugln("Contract not found in oldContracts, despite there being a renewal to the contract")
+		c.staticLog.Debugln("Contract not found in oldContracts, despite there being a renewal to the contract")
 		return false
 	}
 
@@ -388,7 +389,7 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	if !ok {
 		newContract, ok = c.oldContracts[newFCID]
 		if !ok {
-			c.log.Debugln("Contract was not found in the database, despite their being another contract that claims to have renewed to it.")
+			c.staticLog.Debugln("Contract was not found in the database, despite their being another contract that claims to have renewed to it.")
 			return false
 		}
 	}
@@ -407,7 +408,7 @@ func (c *Contractor) Synced() <-chan struct{} {
 
 // Close closes the Contractor.
 func (c *Contractor) Close() error {
-	return c.tg.Stop()
+	return c.staticTG.Stop()
 }
 
 // newWithDeps returns a new Contractor.
@@ -472,16 +473,16 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 	// Create the Contractor object.
 	c := &Contractor{
 		staticAlerter: modules.NewAlerter("contractor"),
-		cs:            cs,
+		staticCS:      cs,
 		staticDeps:    deps,
-		hdb:           hdb,
-		log:           l,
+		staticHDB:     hdb,
+		staticLog:     l,
 		persistDir:    persistDir,
-		tpool:         tp,
-		wallet:        w,
+		staticTPool:   tp,
+		staticWallet:  w,
 
-		interruptMaintenance: make(chan struct{}),
-		synced:               make(chan struct{}),
+		staticInterruptMaintenance: make(chan struct{}),
+		synced:                     make(chan struct{}),
 
 		staticContracts:      contractSet,
 		downloaders:          make(map[types.FileContractID]*hostDownloader),
@@ -493,17 +494,17 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
-		workerPool:           emptyWorkerPool{},
+		staticWorkerPool:     emptyWorkerPool{},
 	}
 	c.staticChurnLimiter = newChurnLimiter(c)
 	c.staticWatchdog = newWatchdog(c)
 
 	// Close the contract set and logger upon shutdown.
-	err := c.tg.AfterStop(func() error {
+	err := c.staticTG.AfterStop(func() error {
 		if err := c.staticContracts.Close(); err != nil {
 			return errors.AddContext(err, "failed to close contract set")
 		}
-		if err := c.log.Close(); err != nil {
+		if err := c.staticLog.Close(); err != nil {
 			return errors.AddContext(err, "failed to close the contractor logger")
 		}
 		return nil
@@ -522,7 +523,7 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 	c.managedUpdatePubKeyToContractIDMap()
 
 	// Unsubscribe from the consensus set upon shutdown.
-	err = c.tg.OnStop(func() error {
+	err = c.staticTG.OnStop(func() error {
 		cs.Unsubscribe(c)
 		return nil
 	})
@@ -541,7 +542,7 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 
 	// Update the allowance in the hostdb with the one that was loaded from
 	// disk.
-	err = c.hdb.SetAllowance(c.allowance)
+	err = c.staticHDB.SetAllowance(c.allowance)
 	if err != nil {
 		return nil, err
 	}
@@ -553,13 +554,13 @@ func contractorAsyncStartup(c *Contractor, cs modules.ConsensusSet) error {
 	if c.staticDeps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
-	err := cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
+	err := cs.ConsensusSetSubscribe(c, c.lastChange, c.staticTG.StopChan())
 	if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		// Reset the contractor consensus variables and try rescanning.
 		c.blockHeight = 0
 		c.lastChange = modules.ConsensusChangeBeginning
 		c.recentRecoveryChange = modules.ConsensusChangeBeginning
-		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
+		err = cs.ConsensusSetSubscribe(c, c.lastChange, c.staticTG.StopChan())
 	}
 	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 		return nil
@@ -585,11 +586,11 @@ func NewCustomContractor(cs modules.ConsensusSet, w modules.Wallet, tp modules.T
 	go func() {
 		// Subscribe to the consensus set in a separate goroutine.
 		defer close(errChan)
-		if err := c.tg.Add(); err != nil {
+		if err := c.staticTG.Add(); err != nil {
 			errChan <- err
 			return
 		}
-		defer c.tg.Done()
+		defer c.staticTG.Done()
 		err := contractorAsyncStartup(c, cs)
 		if err != nil {
 			errChan <- err
@@ -613,7 +614,7 @@ func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (
 		}
 	}()
 	// Get the wallet seed.
-	s, _, err := c.wallet.PrimarySeed()
+	s, _, err := c.staticWallet.PrimarySeed()
 	if err != nil {
 		return errors.AddContext(err, "failed to get wallet seed")
 	}
@@ -622,17 +623,17 @@ func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (
 	// Reset the scan progress before starting the scan.
 	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
 	// Create the scanner.
-	scanner := c.newRecoveryScanner(rs)
+	scanner := newRecoveryScanner(c, rs)
 	// Start the scan.
 	go func() {
 		// Add scanning thread to threadgroup.
-		if err := c.tg.Add(); err != nil {
+		if err := c.staticTG.Add(); err != nil {
 			return
 		}
-		defer c.tg.Done()
+		defer c.staticTG.Done()
 		// Scan blockchain.
-		if err := scanner.threadedScan(c.cs, scanStart, c.tg.StopChan()); err != nil {
-			c.log.Println("Scan failed", err)
+		if err := scanner.threadedScan(c.staticCS, scanStart, c.staticTG.StopChan()); err != nil {
+			c.staticLog.Println("Scan failed", err)
 		}
 		if c.staticDeps.Disrupt("disableRecoveryStatusReset") {
 			return

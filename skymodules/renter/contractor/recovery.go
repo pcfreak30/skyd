@@ -34,7 +34,7 @@ type recoveryScanner struct {
 }
 
 // newRecoveryScanner creates a new scanner from a seed.
-func (c *Contractor) newRecoveryScanner(rs skymodules.RenterSeed) *recoveryScanner {
+func newRecoveryScanner(c *Contractor, rs skymodules.RenterSeed) *recoveryScanner {
 	return &recoveryScanner{
 		c:  c,
 		rs: rs,
@@ -46,10 +46,10 @@ func (c *Contractor) newRecoveryScanner(rs skymodules.RenterSeed) *recoveryScann
 // contracts should be known to the contractor after which it will periodically
 // try to recover them.
 func (rs *recoveryScanner) threadedScan(cs modules.ConsensusSet, scanStart modules.ConsensusChangeID, cancel <-chan struct{}) error {
-	if err := rs.c.tg.Add(); err != nil {
+	if err := rs.c.staticTG.Add(); err != nil {
 		return err
 	}
-	defer rs.c.tg.Done()
+	defer rs.c.staticTG.Done()
 	// Check that the scanStart matches the recently missed change id.
 	rs.c.mu.RLock()
 	if scanStart != rs.c.recentRecoveryChange && scanStart != modules.ConsensusChangeBeginning {
@@ -120,7 +120,7 @@ func (c *Contractor) findRecoverableContracts(renterSeed skymodules.RenterSeed, 
 			// Validate the identifier.
 			hostKey, valid, err := csi.IsValid(rs, txn, encryptedHostKey)
 			if err != nil && !errors.Contains(err, skymodules.ErrCSIDoesNotMatchSeed) {
-				c.log.Println("WARN: error validating the identifier:", err)
+				c.staticLog.Println("WARN: error validating the identifier:", err)
 				continue
 			}
 			if !valid {
@@ -169,7 +169,7 @@ func (c *Contractor) findRecoverableContracts(renterSeed skymodules.RenterSeed, 
 // was formed with and retrieving the latest revision and sector roots.
 func (c *Contractor) managedRecoverContract(rc skymodules.RecoverableContract, rs skymodules.EphemeralRenterSeed, blockHeight types.BlockHeight) (err error) {
 	// Get the corresponding host.
-	host, ok, err := c.hdb.Host(rc.HostPublicKey)
+	host, ok, err := c.staticHDB.Host(rc.HostPublicKey)
 	if err != nil {
 		return errors.AddContext(err, "error getting host from hostdb:")
 	}
@@ -180,7 +180,7 @@ func (c *Contractor) managedRecoverContract(rc skymodules.RecoverableContract, r
 	sk, _ := skymodules.GenerateContractKeyPairWithOutputID(rs, rc.InputParentID)
 	defer fastrand.Read(sk[:])
 	// Start a new RPC session.
-	s, err := c.staticContracts.NewRawSession(host, blockHeight, c.hdb, c.tg.StopChan())
+	s, err := c.staticContracts.NewRawSession(host, blockHeight, c.staticHDB, c.staticTG.StopChan())
 	if err != nil {
 		return err
 	}
@@ -234,7 +234,7 @@ func (c *Contractor) managedRecoverContract(rc skymodules.RecoverableContract, r
 	}
 	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
 	if errors.Contains(err, errAlreadyWatchingContract) {
-		c.log.Debugln("Watchdog already aware of recovered contract")
+		c.staticLog.Debugln("Watchdog already aware of recovered contract")
 		err = nil
 	}
 	return err
@@ -246,9 +246,9 @@ func (c *Contractor) callRecoverContracts() {
 		return
 	}
 	// Get the wallet seed.
-	ws, _, err := c.wallet.PrimarySeed()
+	ws, _, err := c.staticWallet.PrimarySeed()
 	if err != nil {
-		c.log.Println("Can't recover contracts", err)
+		c.staticLog.Println("Can't recover contracts", err)
 		return
 	}
 	// Get the renter seed and wipe it once we are done with it.
@@ -275,13 +275,13 @@ func (c *Contractor) callRecoverContracts() {
 			if blockHeight >= rc.WindowEnd {
 				// No need to recover a contract if we are beyond the WindowEnd.
 				deleteContract[j] = true
-				c.log.Printf("Not recovering contract since the current blockheight %v is >= the WindowEnd %v: %v",
+				c.staticLog.Printf("Not recovering contract since the current blockheight %v is >= the WindowEnd %v: %v",
 					blockHeight, rc.WindowEnd, rc.ID)
 				return
 			}
 			_, exists := c.staticContracts.View(rc.ID)
 			if exists {
-				c.log.Debugln("Don't recover contract we already know", rc.ID)
+				c.staticLog.Debugln("Don't recover contract we already know", rc.ID)
 				return
 			}
 			// Get the ephemeral renter seed and wipe it after using it.
@@ -290,12 +290,12 @@ func (c *Contractor) callRecoverContracts() {
 			// Recover contract.
 			err := c.managedRecoverContract(rc, ers, blockHeight)
 			if err != nil {
-				c.log.Println("Failed to recover contract", rc.ID, err)
+				c.staticLog.Println("Failed to recover contract", rc.ID, err)
 				return
 			}
 			// Recovery was successful.
 			deleteContract[j] = true
-			c.log.Println("Successfully recovered contract", rc.ID)
+			c.staticLog.Println("Successfully recovered contract", rc.ID)
 		}(i, recoverableContract)
 	}
 
@@ -307,12 +307,12 @@ func (c *Contractor) callRecoverContracts() {
 	for i, rc := range recoverableContracts {
 		if deleteContract[i] {
 			delete(c.recoverableContracts, rc.ID)
-			c.log.Println("Deleted contract from recoverable contracts:", rc.ID)
+			c.staticLog.Println("Deleted contract from recoverable contracts:", rc.ID)
 		}
 	}
 	err = c.save()
 	if err != nil {
-		c.log.Println("Unable to save while recovering contracts:", err)
+		c.staticLog.Println("Unable to save while recovering contracts:", err)
 	}
 	c.mu.Unlock()
 }

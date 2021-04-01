@@ -46,11 +46,11 @@ type hostDownloader struct {
 	mu           sync.Mutex
 }
 
-// invalidate sets the invalid flag and closes the underlying
-// proto.Downloader. Once invalidate returns, the hostDownloader is guaranteed
-// to not further revise its contract. This is used during contract renewal to
-// prevent a Downloader from revising a contract mid-renewal.
-func (hd *hostDownloader) invalidate() {
+// callInvalidate sets the invalid flag and closes the underlying
+// proto.Downloader. Once callInvalidate returns, the hostDownloader is
+// guaranteed to not further revise its contract. This is used during contract
+// renewal to prevent a Downloader from revising a contract mid-renewal.
+func (hd *hostDownloader) callInvalidate() {
 	hd.mu.Lock()
 	defer hd.mu.Unlock()
 	if !hd.invalid {
@@ -136,7 +136,7 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 	if !haveContract {
 		return nil, errors.New("contract not found in renter's contract set")
 	}
-	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
+	host, haveHost, err := c.staticHDB.Host(contract.HostPublicKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	}
@@ -154,7 +154,7 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 	}
 
 	// create downloader
-	d, err := c.staticContracts.NewDownloader(host, contract.ID, height, c.hdb, cancel)
+	d, err := c.staticContracts.NewDownloader(host, contract.ID, height, c.staticHDB, cancel)
 	if err != nil {
 		return nil, err
 	}

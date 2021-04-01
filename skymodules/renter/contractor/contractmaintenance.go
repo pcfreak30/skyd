@@ -176,10 +176,10 @@ func initialContractFunding(a skymodules.Allowance, host skymodules.HostDBEntry,
 	// allowances being used up to fast and not being able to spread the
 	// funds across new contracts properly, as well as protecting against
 	// contracts renewing too quickly
-	if min.Cmp(max) > 0 {
+	if min.Cmp(max) > 0 && !max.IsZero() {
 		build.Critical(fmt.Sprintf("WARN: initialContractFunding min > max (%v > %v)", min, max))
 	}
-	if contractFunds.Cmp(max) > 0 {
+	if contractFunds.Cmp(max) > 0 && !max.IsZero() {
 		return max
 	}
 	if contractFunds.Cmp(min) < 0 {
@@ -188,25 +188,12 @@ func initialContractFunding(a skymodules.Allowance, host skymodules.HostDBEntry,
 	return contractFunds
 }
 
-// minimumContractFunding determines the minimun amount of money that goes into
-// a refreshed/renewed contract. To account for portals, the gfrContracts are
-// passed in and are used instead of allowance.Hosts for the computation.
-// That way, a portal with 150 contracts and an allowance of 50 hosts will have
-// a minimum that is 1/3 of a renter with 50 contracts and 50 hosts.
-func minimumContractRenewalFunding(allowance skymodules.Allowance, gfrContracts uint64) types.Currency {
-	numHosts := gfrContracts
-	if numHosts < allowance.Hosts {
-		numHosts = allowance.Hosts
-	}
-	return allowance.Funds.MulFloat(fileContractMinimumFunding).Div64(numHosts)
-}
-
 // callNotifyDoubleSpend is used by the watchdog to alert the contractor
 // whenever a monitored file contract input is double-spent. This function
 // marks down the host score, and marks the contract as !GoodForRenew and
 // !GoodForUpload.
 func (c *Contractor) callNotifyDoubleSpend(fcID types.FileContractID, blockHeight types.BlockHeight) {
-	c.log.Println("Watchdog found a double-spend: ", fcID, blockHeight)
+	c.staticLog.Println("Watchdog found a double-spend: ", fcID, blockHeight)
 
 	// Mark the contract as double-spent. This will cause the contract to be
 	// excluded in period spending.
@@ -216,7 +203,7 @@ func (c *Contractor) callNotifyDoubleSpend(fcID types.FileContractID, blockHeigh
 
 	err := c.MarkContractBad(fcID)
 	if err != nil {
-		c.log.Println("callNotifyDoubleSpend error in MarkContractBad", err)
+		c.staticLog.Println("callNotifyDoubleSpend error in MarkContractBad", err)
 	}
 }
 
@@ -240,7 +227,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			} else {
 				newContract, oldContract = contract, rc
 			}
-			c.log.Printf("Duplicate contract found. New contract is %x and old contract is %v", newContract.ID, oldContract.ID)
+			c.staticLog.Printf("Duplicate contract found. New contract is %x and old contract is %v", newContract.ID, oldContract.ID)
 
 			// Get SafeContract
 			oldSC, ok := c.staticContracts.Acquire(oldContract.ID)
@@ -273,7 +260,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			// error and continue
 			err := c.save()
 			if err != nil {
-				c.log.Println("Failed to save the contractor after updating renewed maps.")
+				c.staticLog.Println("Failed to save the contractor after updating renewed maps.")
 			}
 			c.mu.Unlock()
 			c.staticContracts.Delete(oldSC)
@@ -290,7 +277,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 // contract has been.
 func (c *Contractor) managedEstimateRenewFundingRequirements(contract skymodules.RenterContract, gfrContracts uint64, blockHeight types.BlockHeight, allowance skymodules.Allowance) (types.Currency, error) {
 	// Fetch the host pricing to use in the estimate.
-	host, exists, err := c.hdb.Host(contract.HostPublicKey)
+	host, exists, err := c.staticHDB.Host(contract.HostPublicKey)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "error getting host from hostdb:")
 	}
@@ -329,7 +316,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract skymodules
 		// nothing to do otherwise.
 		currentContract, exists := c.oldContracts[currentID]
 		if !exists {
-			c.log.Println("WARN: A known previous contract is not found in c.oldContracts")
+			c.staticLog.Println("WARN: A known previous contract is not found in c.oldContracts")
 			break
 		}
 
@@ -391,7 +378,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract skymodules
 
 	// Get an estimate for how much money we will be charged before going into
 	// the transaction pool.
-	_, maxTxnFee := c.tpool.FeeEstimation()
+	_, maxTxnFee := c.staticTPool.FeeEstimation()
 	txnFees := maxTxnFee.Mul64(skymodules.EstimatedFileContractTransactionSetSize)
 
 	// Add them all up and then return the estimate plus 33% for error margin
@@ -399,13 +386,13 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract skymodules
 	estimatedCost := afterSiafundFeesEstimate.Add(txnFees)
 	estimatedCost = estimatedCost.Add(estimatedCost.Div64(3))
 
-	// Check for a sane minimum. The contractor should not be forming contracts
-	// with less than 'fileContractMinimumFunding / (num contracts)' of the
-	// value of the allowance.
-	minimum := minimumContractRenewalFunding(allowance, gfrContracts)
+	// Check for a sane minimum that is equal to the initial contract funding
+	// but without an upper cap.
+	minInitialContractFunds := allowance.Funds.Div64(allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
+	minimum := initialContractFunding(allowance, host, txnFees, minInitialContractFunds, types.ZeroCurrency)
 	if estimatedCost.Cmp(minimum) < 0 {
 		estimatedCost = minimum
-		c.log.Printf("Contract renew amount %v below minimum amount %v", estimatedCost, minimum)
+		c.staticLog.Printf("Contract renew amount %v below minimum amount %v", estimatedCost, minimum)
 	}
 	return estimatedCost, nil
 }
@@ -430,8 +417,8 @@ func (c *Contractor) callInterruptContractMaintenance() {
 		select {
 		case <-gotLock:
 			return
-		case c.interruptMaintenance <- struct{}{}:
-			c.log.Debugln("Signal sent to interrupt contract maintenance")
+		case c.staticInterruptMaintenance <- struct{}{}:
+			c.staticLog.Debugln("Signal sent to interrupt contract maintenance")
 		}
 	}
 }
@@ -446,7 +433,7 @@ func (c *Contractor) managedFindMinAllowedHostScores() (types.Currency, types.Cu
 	c.mu.RLock()
 	hostCount := int(c.allowance.Hosts)
 	c.mu.RUnlock()
-	hosts, err := c.hdb.RandomHosts(hostCount+randomHostsBufferForScore, nil, nil)
+	hosts, err := c.staticHDB.RandomHosts(hostCount+randomHostsBufferForScore, nil, nil)
 	if err != nil {
 		return types.Currency{}, types.Currency{}, err
 	}
@@ -458,14 +445,14 @@ func (c *Contractor) managedFindMinAllowedHostScores() (types.Currency, types.Cu
 	// Find the minimum score that a host is allowed to have to be considered
 	// good for upload.
 	var minScoreGFR, minScoreGFU types.Currency
-	sb, err := c.hdb.ScoreBreakdown(hosts[0])
+	sb, err := c.staticHDB.ScoreBreakdown(hosts[0])
 	if err != nil {
 		return types.Currency{}, types.Currency{}, err
 	}
 
 	lowestScore := sb.Score
 	for i := 1; i < len(hosts); i++ {
-		score, err := c.hdb.ScoreBreakdown(hosts[i])
+		score, err := c.staticHDB.ScoreBreakdown(hosts[i])
 		if err != nil {
 			return types.Currency{}, types.Currency{}, err
 		}
@@ -481,7 +468,7 @@ func (c *Contractor) managedFindMinAllowedHostScores() (types.Currency, types.Cu
 	if c.staticDeps.Disrupt("HighMinHostScore") {
 		var maxScore types.Currency
 		for i := 1; i < len(hosts); i++ {
-			score, err := c.hdb.ScoreBreakdown(hosts[i])
+			score, err := c.staticHDB.ScoreBreakdown(hosts[i])
 			if err != nil {
 				return types.Currency{}, types.Currency{}, err
 			}
@@ -529,18 +516,18 @@ func (c *Contractor) managedNewContract(host skymodules.HostDBEntry, contractFun
 	}
 
 	// get an address to use for negotiation
-	uc, err := c.wallet.NextAddress()
+	uc, err := c.staticWallet.NextAddress()
 	if err != nil {
 		return types.ZeroCurrency, skymodules.RenterContract{}, err
 	}
 	defer func() {
 		if err != nil {
-			err = errors.Compose(err, c.wallet.MarkAddressUnused(uc))
+			err = errors.Compose(err, c.staticWallet.MarkAddressUnused(uc))
 		}
 	}()
 
 	// get the wallet seed.
-	seed, _, err := c.wallet.PrimarySeed()
+	seed, _, err := c.staticWallet.PrimarySeed()
 	if err != nil {
 		return types.ZeroCurrency, skymodules.RenterContract{}, err
 	}
@@ -565,12 +552,12 @@ func (c *Contractor) managedNewContract(host skymodules.HostDBEntry, contractFun
 	defer fastrand.Read(params.RenterSeed[:])
 
 	// create transaction builder and trigger contract formation.
-	txnBuilder, err := c.wallet.StartTransaction()
+	txnBuilder, err := c.staticWallet.StartTransaction()
 	if err != nil {
 		return types.ZeroCurrency, skymodules.RenterContract{}, err
 	}
 
-	contract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.FormContract(params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	contract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.FormContract(params, txnBuilder, c.staticTPool, c.staticHDB, c.staticTG.StopChan())
 	if err != nil {
 		txnBuilder.Drop()
 		return types.ZeroCurrency, skymodules.RenterContract{}, err
@@ -598,19 +585,19 @@ func (c *Contractor) managedNewContract(host skymodules.HostDBEntry, contractFun
 		txnBuilder.Drop()
 		// We need to return a funding value because money was spent on this
 		// host, even though the full process could not be completed.
-		c.log.Println("WARN: Attempted to form a new contract with a host that we already have a contrat with.")
+		c.staticLog.Println("WARN: Attempted to form a new contract with a host that we already have a contrat with.")
 		return contractFunding, skymodules.RenterContract{}, fmt.Errorf("We already have a contract with host %v", contract.HostPublicKey)
 	}
 	c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
 	c.mu.Unlock()
 
 	contractValue := contract.RenterFunds
-	c.log.Printf("Formed contract %v with %v for %v", contract.ID, host.NetAddress, contractValue.HumanString())
+	c.staticLog.Printf("Formed contract %v with %v for %v", contract.ID, host.NetAddress, contractValue.HumanString())
 
 	// Update the hostdb to include the new contract.
-	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	err = c.staticHDB.UpdateContracts(c.staticContracts.ViewAll())
 	if err != nil {
-		c.log.Println("Unable to update hostdb contracts:", err)
+		c.staticLog.Println("Unable to update hostdb contracts:", err)
 	}
 	return contractFunding, contract, nil
 }
@@ -639,14 +626,14 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 
 	// Let the hostdb filter out bad hosts and cancel contracts with those
 	// hosts.
-	badHosts, err := c.hdb.CheckForIPViolations(pks)
+	badHosts, err := c.staticHDB.CheckForIPViolations(pks)
 	if err != nil {
-		c.log.Println("WARN: error checking for IP violations:", err)
+		c.staticLog.Println("WARN: error checking for IP violations:", err)
 		return
 	}
 	for _, host := range badHosts {
 		if err := c.managedCancelContract(cids[host.String()]); err != nil {
-			c.log.Print("WARNING: Wasn't able to cancel contract in managedPrunedRedundantAddressRange", err)
+			c.staticLog.Print("WARNING: Wasn't able to cancel contract in managedPrunedRedundantAddressRange", err)
 		}
 	}
 }
@@ -667,14 +654,14 @@ func (c *Contractor) managedLimitGFUHosts() {
 		if !contract.Utility.GoodForUpload {
 			continue
 		}
-		host, ok, err := c.hdb.Host(contract.HostPublicKey)
+		host, ok, err := c.staticHDB.Host(contract.HostPublicKey)
 		if !ok || err != nil {
-			c.log.Print("managedLimitGFUHosts was run after updating contract utility but found contract without host in hostdb that's GFU", contract.HostPublicKey)
+			c.staticLog.Print("managedLimitGFUHosts was run after updating contract utility but found contract without host in hostdb that's GFU", contract.HostPublicKey)
 			continue
 		}
-		score, err := c.hdb.ScoreBreakdown(host)
+		score, err := c.staticHDB.ScoreBreakdown(host)
 		if err != nil {
-			c.log.Print("managedLimitGFUHosts: failed to get score breakdown for GFU host")
+			c.staticLog.Print("managedLimitGFUHosts: failed to get score breakdown for GFU host")
 			continue
 		}
 		gfuContracts = append(gfuContracts, gfuContract{
@@ -692,7 +679,7 @@ func (c *Contractor) managedLimitGFUHosts() {
 		contract, gfuContracts = gfuContracts[0], gfuContracts[1:]
 		sc, ok := c.staticContracts.Acquire(contract.c.ID)
 		if !ok {
-			c.log.Print("managedLimitGFUHosts: failed to acquire GFU contract")
+			c.staticLog.Print("managedLimitGFUHosts: failed to acquire GFU contract")
 			continue
 		}
 		u := sc.Utility()
@@ -700,7 +687,7 @@ func (c *Contractor) managedLimitGFUHosts() {
 		err := c.managedUpdateContractUtility(sc, u)
 		c.staticContracts.Return(sc)
 		if err != nil {
-			c.log.Print("managedLimitGFUHosts: failed to update GFU contract utility")
+			c.staticLog.Print("managedLimitGFUHosts: failed to update GFU contract utility")
 			continue
 		}
 	}
@@ -752,7 +739,7 @@ func checkFormContractGouging(allowance skymodules.Allowance, hostSettings modul
 // I/O.
 func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKey, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (_ skymodules.RenterContract, err error) {
 	// Fetch the host associated with this contract.
-	host, ok, err := c.hdb.Host(hpk)
+	host, ok, err := c.staticHDB.Host(hpk)
 	if err != nil {
 		return skymodules.RenterContract{}, errors.AddContext(err, "error getting host from hostdb:")
 	}
@@ -760,7 +747,7 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 	host.HostExternalSettings = hostSettings
 
 	if c.staticDeps.Disrupt("DefaultRenewSettings") {
-		c.log.Debugln("Using default host settings")
+		c.staticLog.Debugln("Using default host settings")
 		host.HostExternalSettings = modules.DefaultHostExternalSettings()
 		// Reset some specific settings, not available through the default.
 		host.HostExternalSettings.NetAddress = hostSettings.NetAddress
@@ -772,12 +759,12 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 	}
 
 	c.mu.Lock()
-	if reflect.DeepEqual(c.allowance, skymodules.Allowance{}) {
-		c.mu.Unlock()
+	a := c.allowance
+	c.mu.Unlock()
+	if reflect.DeepEqual(a, skymodules.Allowance{}) {
 		return skymodules.RenterContract{}, errors.New("called managedRenew but allowance isn't set")
 	}
-	period := c.allowance.Period
-	c.mu.Unlock()
+	period := a.Period
 
 	if !ok {
 		return skymodules.RenterContract{}, errHostNotFound
@@ -795,24 +782,24 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 	}
 
 	// Check for price gouging on the renewal.
-	err = checkFormContractGouging(c.allowance, host.HostExternalSettings)
+	err = checkFormContractGouging(a, host.HostExternalSettings)
 	if err != nil {
 		return skymodules.RenterContract{}, errors.AddContext(err, "unable to renew - price gouging protection enabled")
 	}
 
 	// get an address to use for negotiation
-	uc, err := c.wallet.NextAddress()
+	uc, err := c.staticWallet.NextAddress()
 	if err != nil {
 		return skymodules.RenterContract{}, err
 	}
 	defer func() {
 		if err != nil {
-			err = errors.Compose(err, c.wallet.MarkAddressUnused(uc))
+			err = errors.Compose(err, c.staticWallet.MarkAddressUnused(uc))
 		}
 	}()
 
 	// get the wallet seed
-	seed, _, err := c.wallet.PrimarySeed()
+	seed, _, err := c.staticWallet.PrimarySeed()
 	if err != nil {
 		return skymodules.RenterContract{}, err
 	}
@@ -837,7 +824,7 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 	defer fastrand.Read(params.RenterSeed[:])
 
 	// create a transaction builder with the correct amount of funding for the renewal.
-	txnBuilder, err := c.wallet.StartTransaction()
+	txnBuilder, err := c.staticWallet.StartTransaction()
 	if err != nil {
 		return skymodules.RenterContract{}, err
 	}
@@ -866,16 +853,16 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 			return skymodules.RenterContract{}, errContractNotGFR
 		}
 		// RHP2 renewal.
-		newContract, formationTxnSet, err = c.staticContracts.Renew(oldContract, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+		newContract, formationTxnSet, err = c.staticContracts.Renew(oldContract, params, txnBuilder, c.staticTPool, c.staticHDB, c.staticTG.StopChan())
 		c.staticContracts.Return(oldContract)
 	} else {
 		var w skymodules.Worker
-		w, err = c.workerPool.Worker(hpk)
+		w, err = c.staticWorkerPool.Worker(hpk)
 		if err != nil {
 			txnBuilder.Drop() // return unused outputs to wallet
 			return skymodules.RenterContract{}, err
 		}
-		newContract, formationTxnSet, err = w.RenewContract(c.tg.StopCtx(), id, params, txnBuilder)
+		newContract, formationTxnSet, err = w.RenewContract(c.staticTG.StopCtx(), id, params, txnBuilder)
 	}
 	if err != nil {
 		txnBuilder.Drop() // return unused outputs to wallet
@@ -904,9 +891,9 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 	c.mu.Unlock()
 
 	// Update the hostdb to include the new contract.
-	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	err = c.staticHDB.UpdateContracts(c.staticContracts.ViewAll())
 	if err != nil {
-		c.log.Println("Unable to update hostdb contracts:", err)
+		c.staticLog.Println("Unable to update hostdb contracts:", err)
 	}
 
 	return newContract, nil
@@ -925,7 +912,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	hostPubKey := renewInstructions.hostPubKey
 
 	// Get a session with the host, before marking it as being renewed.
-	hs, err := c.Session(hostPubKey, c.tg.StopChan())
+	hs, err := c.Session(hostPubKey, c.staticTG.StopChan())
 	if err != nil {
 		err = errors.AddContext(err, "Unable to establish session with host")
 		return
@@ -934,12 +921,12 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 
 	// Mark the contract as being renewed, and defer logic to unmark it
 	// once renewing is complete.
-	c.log.Debugln("Marking a contract for renew:", id)
+	c.staticLog.Debugln("Marking a contract for renew:", id)
 	c.mu.Lock()
 	c.renewing[id] = true
 	c.mu.Unlock()
 	defer func() {
-		c.log.Debugln("Unmarking the contract for renew", id)
+		c.staticLog.Debugln("Unmarking the contract for renew", id)
 		c.mu.Lock()
 		delete(c.renewing, id)
 		c.mu.Unlock()
@@ -953,14 +940,14 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	d, dok := c.downloaders[id]
 	c.mu.RUnlock()
 	if eok {
-		c.log.Debugln("Waiting for editor invalidation")
-		e.invalidate()
-		c.log.Debugln("Got editor invalidation")
+		c.staticLog.Debugln("Waiting for editor invalidation")
+		e.callInvalidate()
+		c.staticLog.Debugln("Got editor invalidation")
 	}
 	if dok {
-		c.log.Debugln("Waiting for downloader invalidation")
-		d.invalidate()
-		c.log.Debugln("Got downloader invalidation")
+		c.staticLog.Debugln("Waiting for downloader invalidation")
+		d.callInvalidate()
+		c.staticLog.Debugln("Got downloader invalidation")
 	}
 
 	// Use the Settings RPC with the host and then invalidate the session.
@@ -969,18 +956,18 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		err = errors.AddContext(err, "Unable to get host settings")
 		return
 	}
-	c.log.Debugln("Waiting for session invalidation")
-	s.invalidate()
-	c.log.Debugln("Got session invalidation")
+	c.staticLog.Debugln("Waiting for session invalidation")
+	s.callInvalidate()
+	c.staticLog.Debugln("Got session invalidation")
 
 	// Perform the actual renew. If the renew fails, return the
 	// contract. If the renew fails we check how often it has failed
 	// before. Once it has failed for a certain number of blocks in a
 	// row and reached its second half of the renew window, we give up
 	// on renewing it and set goodForRenew to false.
-	c.log.Debugln("calling managedRenew on contract", id)
+	c.staticLog.Debugln("calling managedRenew on contract", id)
 	newContract, errRenew := c.managedRenew(id, hostPubKey, amount, endHeight, hostSettings)
-	c.log.Debugln("managedRenew has returned with error:", errRenew)
+	c.staticLog.Debugln("managedRenew has returned with error:", errRenew)
 	oldContract, exists := c.staticContracts.Acquire(id)
 	if !exists {
 		return types.ZeroCurrency, errors.AddContext(errContractNotFound, "failed to acquire oldContract after renewal")
@@ -994,7 +981,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 			c.numFailedRenews[oldContract.Metadata().ID]++
 			totalFailures := c.numFailedRenews[oldContract.Metadata().ID]
 			c.mu.Unlock()
-			c.log.Debugln("remote host determined to be at fault, tallying up failed renews", totalFailures, id)
+			c.staticLog.Debugln("remote host determined to be at fault, tallying up failed renews", totalFailures, id)
 		}
 
 		// Check if contract has to be replaced.
@@ -1010,9 +997,9 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 			oldUtility.Locked = true
 			err := c.callUpdateUtility(oldContract, oldUtility, true)
 			if err != nil {
-				c.log.Println("WARN: failed to mark contract as !goodForRenew:", err)
+				c.staticLog.Println("WARN: failed to mark contract as !goodForRenew:", err)
 			}
-			c.log.Printf("WARN: consistently failed to renew %v, marked as bad and locked: %v\n",
+			c.staticLog.Printf("WARN: consistently failed to renew %v, marked as bad and locked: %v\n",
 				oldContract.Metadata().HostPublicKey, errRenew)
 			c.staticContracts.Return(oldContract)
 			return types.ZeroCurrency, errors.AddContext(errRenew, "contract marked as bad for too many consecutive failed renew attempts")
@@ -1020,12 +1007,12 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 
 		// Seems like it doesn't have to be replaced yet. Log the
 		// failure and number of renews that have failed so far.
-		c.log.Printf("WARN: failed to renew contract %v [%v]: '%v', current height: %v, proposed end height: %v, max duration: %v",
+		c.staticLog.Printf("WARN: failed to renew contract %v [%v]: '%v', current height: %v, proposed end height: %v, max duration: %v",
 			oldContract.Metadata().HostPublicKey, numRenews, errRenew, blockHeight, endHeight, hostSettings.MaxDuration)
 		c.staticContracts.Return(oldContract)
 		return types.ZeroCurrency, errors.AddContext(errRenew, "contract renewal with host was unsuccessful")
 	}
-	c.log.Printf("Renewed contract %v\n", id)
+	c.staticLog.Printf("Renewed contract %v\n", id)
 
 	// Skip the deletion of the old contract if required and delete the new
 	// contract to make sure we keep using the old one even though it has been
@@ -1046,7 +1033,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		GoodForRenew:  true,
 	}
 	if err := c.managedAcquireAndUpdateContractUtility(newContract.ID, newUtility); err != nil {
-		c.log.Println("Failed to update the contract utilities", err)
+		c.staticLog.Println("Failed to update the contract utilities", err)
 		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
 	}
@@ -1054,7 +1041,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	oldUtility.GoodForUpload = false
 	oldUtility.Locked = true
 	if err := c.callUpdateUtility(oldContract, oldUtility, true); err != nil {
-		c.log.Println("Failed to update the contract utilities", err)
+		c.staticLog.Println("Failed to update the contract utilities", err)
 		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
 	}
@@ -1074,7 +1061,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// Save the contractor.
 	err = c.save()
 	if err != nil {
-		c.log.Println("Failed to save the contractor after creating a new contract.")
+		c.staticLog.Println("Failed to save the contractor after creating a new contract.")
 	}
 	c.mu.Unlock()
 	// Delete the old contract.
@@ -1097,7 +1084,7 @@ func (c *Contractor) managedFindRecoverableContracts() {
 	cc := c.recentRecoveryChange
 	c.mu.RUnlock()
 	if err := c.callInitRecoveryScan(cc); err != nil {
-		c.log.Debug(err)
+		c.staticLog.Debug(err)
 		return
 	}
 }
@@ -1123,7 +1110,7 @@ func (c *Contractor) managedUpdateContractUtility(safeContract *proto.SafeContra
 	_, exists := c.renewedTo[safeContract.Metadata().ID]
 	c.mu.Unlock()
 	if exists && (utility.GoodForRenew || utility.GoodForUpload) {
-		c.log.Critical("attempting to update contract utility on a contract that has been renewed")
+		c.staticLog.Critical("attempting to update contract utility on a contract that has been renewed")
 	}
 
 	return c.callUpdateUtility(safeContract, utility, false)
@@ -1154,18 +1141,18 @@ func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtil
 // signal is being sent. If so, maintenance returns, yielding to whatever thread
 // issued the interrupt.
 func (c *Contractor) threadedContractMaintenance() {
-	err := c.tg.Add()
+	err := c.staticTG.Add()
 	if err != nil {
 		return
 	}
-	defer c.tg.Done()
+	defer c.staticTG.Done()
 
 	// No contract maintenance unless contractor is synced.
 	if !c.managedSynced() {
-		c.log.Debugln("Skipping contract maintenance since consensus isn't synced yet")
+		c.staticLog.Debugln("Skipping contract maintenance since consensus isn't synced yet")
 		return
 	}
-	c.log.Debugln("starting contract maintenance")
+	c.staticLog.Debugln("starting contract maintenance")
 
 	// Only one instance of this thread should be running at a time. Under
 	// normal conditions, fine to return early if another thread is already
@@ -1175,7 +1162,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	if build.Release == "testing" {
 		c.maintenanceLock.Lock()
 	} else if !c.maintenanceLock.TryLock() {
-		c.log.Debugln("maintenance lock could not be obtained")
+		c.staticLog.Debugln("maintenance lock could not be obtained")
 		return
 	}
 	defer c.maintenanceLock.Unlock()
@@ -1201,12 +1188,12 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.managedPrunedRedundantAddressRange()
 	err = c.managedMarkContractsUtility()
 	if err != nil {
-		c.log.Debugln("Unable to mark contract utilities:", err)
+		c.staticLog.Debugln("Unable to mark contract utilities:", err)
 		return
 	}
-	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	err = c.staticHDB.UpdateContracts(c.staticContracts.ViewAll())
 	if err != nil {
-		c.log.Println("Unable to update hostdb contracts:", err)
+		c.staticLog.Println("Unable to update hostdb contracts:", err)
 		return
 	}
 	c.managedLimitGFUHosts()
@@ -1217,7 +1204,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	wantedHosts := c.allowance.Hosts
 	c.mu.RUnlock()
 	if wantedHosts <= 0 {
-		c.log.Debugln("Exiting contract maintenance because the number of desired hosts is <= zero.")
+		c.staticLog.Debugln("Exiting contract maintenance because the number of desired hosts is <= zero.")
 		return
 	}
 
@@ -1239,6 +1226,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 	}
 
+	// Calculate the anticipated transaction fee.
+	_, maxFee := c.tpool.FeeEstimation()
+	txnFee := maxFee.Mul64(skymodules.EstimatedFileContractTransactionSetSize)
+
 	// Create the renewSet and refreshSet. Each is a list of contracts that need
 	// to be renewed, paired with the amount of money to use in each renewal.
 	//
@@ -1256,21 +1247,21 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Iterate through the contracts again, figuring out which contracts to
 	// renew and how much extra funds to renew them with.
 	for _, contract := range c.staticContracts.ViewAll() {
-		c.log.Debugln("Examining a contract:", contract.HostPublicKey, contract.ID)
+		c.staticLog.Debugln("Examining a contract:", contract.HostPublicKey, contract.ID)
 		// Skip any host that does not match our whitelist/blacklist filter
 		// settings.
-		host, _, err := c.hdb.Host(contract.HostPublicKey)
+		host, _, err := c.staticHDB.Host(contract.HostPublicKey)
 		if err != nil {
-			c.log.Println("WARN: error getting host", err)
+			c.staticLog.Println("WARN: error getting host", err)
 			continue
 		}
 		if host.Filtered {
-			c.log.Debugln("Contract skipped because it is filtered")
+			c.staticLog.Debugln("Contract skipped because it is filtered")
 			continue
 		}
 		// Skip hosts that can't use the current renter-host protocol.
 		if build.VersionCmp(host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
-			c.log.Debugln("Contract skipped because host is using an outdated version", host.Version)
+			c.staticLog.Debugln("Contract skipped because host is using an outdated version", host.Version)
 			continue
 		}
 
@@ -1279,9 +1270,9 @@ func (c *Contractor) threadedContractMaintenance() {
 		utility, ok := c.managedContractUtility(contract.ID)
 		if !ok || !utility.GoodForRenew {
 			if blockHeight-contract.StartHeight < types.BlocksPerWeek {
-				c.log.Debugln("Contract did not last 1 week and is not being renewed", contract.ID)
+				c.staticLog.Debugln("Contract did not last 1 week and is not being renewed", contract.ID)
 			}
-			c.log.Debugln("Contract skipped because it is not good for renew (utility.GoodForRenew, exists)", utility.GoodForRenew, ok)
+			c.staticLog.Debugln("Contract skipped because it is not good for renew (utility.GoodForRenew, exists)", utility.GoodForRenew, ok)
 			continue
 		}
 
@@ -1292,7 +1283,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if blockHeight+allowance.RenewWindow >= contract.EndHeight && !c.staticDeps.Disrupt("disableRenew") {
 			renewAmount, err := c.managedEstimateRenewFundingRequirements(contract, gfrContracts, blockHeight, allowance)
 			if err != nil {
-				c.log.Debugln("Contract skipped because there was an error estimating renew funding requirements", renewAmount, err)
+				c.staticLog.Debugln("Contract skipped because there was an error estimating renew funding requirements", renewAmount, err)
 				continue
 			}
 			renewSet = append(renewSet, fileContractRenewal{
@@ -1300,7 +1291,7 @@ func (c *Contractor) threadedContractMaintenance() {
 				amount:     renewAmount,
 				hostPubKey: contract.HostPublicKey,
 			})
-			c.log.Debugln("Contract has been added to the renew set for being past the renew height")
+			c.staticLog.Debugln("Contract has been added to the renew set for being past the renew height")
 			continue
 		}
 
@@ -1330,23 +1321,24 @@ func (c *Contractor) threadedContractMaintenance() {
 			// the user in the event that the user stops uploading immediately
 			// after the renew.
 			refreshAmount := contract.TotalCost.Mul64(2)
-			minimum := minimumContractRenewalFunding(allowance, gfrContracts)
+			minInitialContractFunds := allowance.Funds.Div64(allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
+			minimum := initialContractFunding(allowance, host, txnFee, minInitialContractFunds, types.ZeroCurrency)
 			if refreshAmount.Cmp(minimum) < 0 {
 				refreshAmount = minimum
-				c.log.Printf("Contract refresh amount %v below minimum amount %v", refreshAmount, minimum)
+				c.staticLog.Printf("Contract refresh amount %v below minimum amount %v", refreshAmount, minimum)
 			}
 			refreshSet = append(refreshSet, fileContractRenewal{
 				id:         contract.ID,
 				amount:     refreshAmount,
 				hostPubKey: contract.HostPublicKey,
 			})
-			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
+			c.staticLog.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		} else {
-			c.log.Debugln("Contract did not get added to the refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
+			c.staticLog.Debugln("Contract did not get added to the refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		}
 	}
 	if len(renewSet) != 0 || len(refreshSet) != 0 {
-		c.log.Printf("renewing %v contracts and refreshing %v contracts", len(renewSet), len(refreshSet))
+		c.staticLog.Printf("renewing %v contracts and refreshing %v contracts", len(renewSet), len(refreshSet))
 	}
 
 	// Update the failed renew map so that it only contains contracts which we
@@ -1374,7 +1366,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	spending, err := c.PeriodSpending()
 	if err != nil {
 		// This should only error if the contractor is shutting down
-		c.log.Println("WARN: error getting period spending:", err)
+		c.staticLog.Println("WARN: error getting period spending:", err)
 		return
 	}
 	var fundsRemaining types.Currency
@@ -1383,7 +1375,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	if spending.TotalAllocated.Cmp(allowance.Funds) < 0 {
 		fundsRemaining = allowance.Funds.Sub(spending.TotalAllocated)
 	}
-	c.log.Debugln("Remaining funds in allowance:", fundsRemaining.HumanString())
+	c.staticLog.Debugln("Remaining funds in allowance:", fundsRemaining.HumanString())
 
 	// Keep track of the total number of renews that failed for any reason.
 	var numRenewFails int
@@ -1406,8 +1398,8 @@ func (c *Contractor) threadedContractMaintenance() {
 			alertSeverity = modules.SeverityCritical
 		}
 		if renewErr != nil {
-			c.log.Debugln("SEVERE", numRenewFails, float64(allowance.Hosts)*MaxCriticalRenewFailThreshold)
-			c.log.Debugln("alert err: ", renewErr)
+			c.staticLog.Debugln("SEVERE", numRenewFails, float64(allowance.Hosts)*MaxCriticalRenewFailThreshold)
+			c.staticLog.Debugln("alert err: ", renewErr)
 			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.AlertSeverity(alertSeverity))
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterContractRenewalError)
@@ -1421,26 +1413,26 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, renewal := range renewSet {
 		// Return here if an interrupt or kill signal has been sent.
 		select {
-		case <-c.tg.StopChan():
-			c.log.Println("returning because the renter was stopped")
+		case <-c.staticTG.StopChan():
+			c.staticLog.Println("returning because the renter was stopped")
 			return
-		case <-c.interruptMaintenance:
-			c.log.Println("returning because maintenance was interrupted")
+		case <-c.staticInterruptMaintenance:
+			c.staticLog.Println("returning because maintenance was interrupted")
 			return
 		default:
 		}
 
-		unlocked, err := c.wallet.Unlocked()
+		unlocked, err := c.staticWallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
-			c.log.Println("Contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
+			c.staticLog.Println("Contractor is attempting to renew contracts that are about to expire, however the wallet is locked")
 			return
 		}
 
-		c.log.Println("Attempting to perform a renewal:", renewal.id)
+		c.staticLog.Println("Attempting to perform a renewal:", renewal.id)
 		// Skip this renewal if we don't have enough funds remaining.
 		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRenewal") {
-			c.log.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
+			c.staticLog.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
 			registerLowFundsAlert = true
 			continue
 		}
@@ -1451,39 +1443,39 @@ func (c *Contractor) threadedContractMaintenance() {
 		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
 		if errors.Contains(err, errContractNotGFR) {
 			// Do not add a renewal error.
-			c.log.Debugln("Contract skipped because it is not good for renew", renewal.id)
+			c.staticLog.Debugln("Contract skipped because it is not good for renew", renewal.id)
 		} else if err != nil {
-			c.log.Println("Error renewing a contract", renewal.id, err)
+			c.staticLog.Println("Error renewing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
 			numRenewFails++
 		} else {
-			c.log.Println("Renewal completed without error")
+			c.staticLog.Println("Renewal completed without error")
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 	}
 	for _, renewal := range refreshSet {
 		// Return here if an interrupt or kill signal has been sent.
 		select {
-		case <-c.tg.StopChan():
-			c.log.Println("returning because the renter was stopped")
+		case <-c.staticTG.StopChan():
+			c.staticLog.Println("returning because the renter was stopped")
 			return
-		case <-c.interruptMaintenance:
-			c.log.Println("returning because maintenance was interrupted")
+		case <-c.staticInterruptMaintenance:
+			c.staticLog.Println("returning because maintenance was interrupted")
 			return
 		default:
 		}
 
-		unlocked, err := c.wallet.Unlocked()
+		unlocked, err := c.staticWallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
-			c.log.Println("contractor is attempting to refresh contracts that have run out of funds, however the wallet is locked")
+			c.staticLog.Println("contractor is attempting to refresh contracts that have run out of funds, however the wallet is locked")
 			return
 		}
 
 		// Skip this renewal if we don't have enough funds remaining.
-		c.log.Debugln("Attempting to perform a contract refresh:", renewal.id)
+		c.staticLog.Debugln("Attempting to perform a contract refresh:", renewal.id)
 		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRefresh") {
-			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount.HumanString(), fundsRemaining.HumanString())
+			c.staticLog.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount.HumanString(), fundsRemaining.HumanString())
 			registerLowFundsAlert = true
 			continue
 		}
@@ -1493,11 +1485,11 @@ func (c *Contractor) threadedContractMaintenance() {
 		// 'fundsSpent' will return '0'.
 		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
 		if err != nil {
-			c.log.Println("Error refreshing a contract", renewal.id, err)
+			c.staticLog.Println("Error refreshing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
 			numRenewFails++
 		} else {
-			c.log.Println("Refresh completed without error")
+			c.staticLog.Println("Refresh completed without error")
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 	}
@@ -1522,25 +1514,25 @@ func (c *Contractor) threadedContractMaintenance() {
 // managedHostsForPortalFormation returns the hosts to form contracts with for a
 // portal.
 func (c *Contractor) managedHostsForPortalFormation(allowance skymodules.Allowance) (int, []skymodules.HostDBEntry) {
-	hosts, err := c.hdb.ActiveHosts()
+	hosts, err := c.staticHDB.ActiveHosts()
 	if err != nil {
-		c.log.Printf("Error fetching list of active hosts when attempting to form view contracts: %v", err)
+		c.staticLog.Printf("Error fetching list of active hosts when attempting to form view contracts: %v", err)
 		return 0, nil
 	}
-	return hostsForPortalFormation(allowance, c.staticContracts.ViewAll(), c.RecoverableContracts(), hosts, c.log, c.hdb.ScoreBreakdown)
+	return hostsForPortalFormation(allowance, c.staticContracts.ViewAll(), c.RecoverableContracts(), hosts, c.staticLog, c.staticHDB.ScoreBreakdown)
 }
 
 // managedHostsForRegularFormation returns the number of hosts needed for
 // non-portal contract formation plus a set of hosts to use.
 func (c *Contractor) managedHostsForRegularFormation(allowance skymodules.Allowance) (int, []skymodules.HostDBEntry) {
-	return hostsForRegularFormation(allowance, c.staticContracts.ViewAll(), c.RecoverableContracts(), c.hdb.RandomHosts, c.log)
+	return hostsForRegularFormation(allowance, c.staticContracts.ViewAll(), c.RecoverableContracts(), c.staticHDB.RandomHosts, c.staticLog)
 }
 
 // managedFormContracts tries to form up to neededContracts with the hosts given
 // by hosts and the provided budget, allowance and endHeight.
 func (c *Contractor) managedFormContracts(budget types.Currency, hosts []skymodules.HostDBEntry, neededContracts int, allowance skymodules.Allowance, endHeight types.BlockHeight) (lowFunds, walletLocked bool) {
 	// Calculate the anticipated transaction fee.
-	_, maxFee := c.tpool.FeeEstimation()
+	_, maxFee := c.staticTPool.FeeEstimation()
 	txnFee := maxFee.Mul64(skymodules.EstimatedFileContractTransactionSetSize)
 
 	// Determine the max and min initial contract funding based on the allowance
@@ -1559,11 +1551,11 @@ func (c *Contractor) managedFormContracts(budget types.Currency, hosts []skymodu
 	for _, host := range hosts {
 		// Return here if an interrupt or kill signal has been sent.
 		select {
-		case <-c.tg.StopChan():
-			c.log.Println("returning because the renter was stopped")
+		case <-c.staticTG.StopChan():
+			c.staticLog.Println("returning because the renter was stopped")
 			return
-		case <-c.interruptMaintenance:
-			c.log.Println("returning because maintenance was interrupted")
+		case <-c.staticInterruptMaintenance:
+			c.staticLog.Println("returning because maintenance was interrupted")
 			return
 		default:
 		}
@@ -1577,17 +1569,17 @@ func (c *Contractor) managedFormContracts(budget types.Currency, hosts []skymodu
 		contractFunds := initialContractFunding(allowance, host, txnFee, minInitialContractFunds, maxInitialContractFunds)
 
 		// Confirm the wallet is still unlocked
-		unlocked, err := c.wallet.Unlocked()
+		unlocked, err := c.staticWallet.Unlocked()
 		if !unlocked || err != nil {
 			walletLocked = true
-			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
+			c.staticLog.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
 			return
 		}
 
 		// Determine if we have enough money to form a new contract.
 		if budget.Cmp(contractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
 			lowFunds = true
-			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
+			c.staticLog.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
 		}
 
@@ -1602,26 +1594,26 @@ func (c *Contractor) managedFormContracts(budget types.Currency, hosts []skymodu
 		start := time.Now()
 		fundsSpent, newContract, err := c.managedNewContract(host, contractFunds, endHeight)
 		if err != nil {
-			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
+			c.staticLog.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
 			continue
 		}
 		budget = budget.Sub(fundsSpent)
 		neededContracts--
 
-		sb, err := c.hdb.ScoreBreakdown(host)
+		sb, err := c.staticHDB.ScoreBreakdown(host)
 		if err == nil {
-			c.log.Println("A new contract has been formed with a host:", newContract.ID)
-			c.log.Println("Score:    ", sb.Score)
-			c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
-			c.log.Println("Base Price Adjustment: ", sb.BasePriceAdjustment)
-			c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
-			c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
-			c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
-			c.log.Println("Interaction Adjustment:", sb.InteractionAdjustment)
-			c.log.Println("Price Adjustment:      ", sb.PriceAdjustment)
-			c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
-			c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
-			c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
+			c.staticLog.Println("A new contract has been formed with a host:", newContract.ID)
+			c.staticLog.Println("Score:    ", sb.Score)
+			c.staticLog.Println("Age Adjustment:        ", sb.AgeAdjustment)
+			c.staticLog.Println("Base Price Adjustment: ", sb.BasePriceAdjustment)
+			c.staticLog.Println("Burn Adjustment:       ", sb.BurnAdjustment)
+			c.staticLog.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
+			c.staticLog.Println("Duration Adjustment:   ", sb.DurationAdjustment)
+			c.staticLog.Println("Interaction Adjustment:", sb.InteractionAdjustment)
+			c.staticLog.Println("Price Adjustment:      ", sb.PriceAdjustment)
+			c.staticLog.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
+			c.staticLog.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
+			c.staticLog.Println("Version Adjustment:    ", sb.VersionAdjustment)
 		}
 
 		// Add this contract to the contractor and save.
@@ -1630,14 +1622,14 @@ func (c *Contractor) managedFormContracts(budget types.Currency, hosts []skymodu
 			GoodForRenew:  true,
 		})
 		if err != nil {
-			c.log.Println("Failed to update the contract utilities", err)
+			c.staticLog.Println("Failed to update the contract utilities", err)
 			return
 		}
 		c.mu.Lock()
 		err = c.save()
 		c.mu.Unlock()
 		if err != nil {
-			c.log.Println("Unable to save the contractor:", err)
+			c.staticLog.Println("Unable to save the contractor:", err)
 		}
 	}
 	return

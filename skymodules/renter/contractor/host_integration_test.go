@@ -229,14 +229,14 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps, cdeps modules.
 
 	// wait for hostdb to scan host
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		activeHosts, err := c.hdb.ActiveHosts()
+		activeHosts, err := c.staticHDB.ActiveHosts()
 		if err != nil {
 			return err
 		}
 		if len(activeHosts) == 0 {
 			return errors.New("no active hosts")
 		}
-		complete, scanCheckErr := c.hdb.InitialScanComplete()
+		complete, scanCheckErr := c.staticHDB.InitialScanComplete()
 		if scanCheckErr != nil {
 			return scanCheckErr
 		}
@@ -274,7 +274,7 @@ func TestIntegrationFormContract(t *testing.T) {
 	defer c.maintenanceLock.Unlock()
 
 	// get the host's entry from the db
-	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.staticHDB.Host(h.PublicKey())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestFormContractSmallAllowance(t *testing.T) {
 	defer tryClose(cf, t)
 
 	// get the host's entry from the db
-	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.staticHDB.Host(h.PublicKey())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +354,7 @@ func TestIntegrationReviseContract(t *testing.T) {
 	defer c.maintenanceLock.Unlock()
 
 	// get the host's entry from the db
-	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.staticHDB.Host(h.PublicKey())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +405,7 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	defer tryClose(cf, t)
 
 	// get the host's entry from the db
-	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.staticHDB.Host(h.PublicKey())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -824,7 +824,7 @@ func TestContractPresenceLeak(t *testing.T) {
 	defer tryClose(cf, t)
 
 	// get the host's entry from the db
-	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.staticHDB.Host(h.PublicKey())
 	if err != nil {
 		t.Fatal(err)
 	}

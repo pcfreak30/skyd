@@ -8,7 +8,7 @@ import (
 // IsOffline indicates whether a contract's host should be considered offline,
 // based on its scan metrics.
 func (c *Contractor) IsOffline(pk types.SiaPublicKey) bool {
-	host, ok, err := c.hdb.Host(pk)
+	host, ok, err := c.staticHDB.Host(pk)
 	if !ok || err != nil {
 		// No host or error, assume offline.
 		return true
