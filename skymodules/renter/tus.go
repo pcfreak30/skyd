@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/tus/tusd/pkg/handler"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/build"
@@ -76,7 +76,7 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 	defer stu.mu.Unlock()
 
 	// Create the upload object.
-	info.ID = hex.EncodeToString(fastrand.Bytes(16))
+	info.ID = persist.UID()
 	upload := &skynetTUSUpload{
 		fi:             info,
 		lastWrite:      time.Now(),

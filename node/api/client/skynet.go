@@ -81,8 +81,19 @@ func (c *Client) SkynetDownloadByRootGet(root crypto.Hash, offset, length uint64
 	return reader, err
 }
 
-// SkynetTUSClient creates a ready-to-use TUS client.
+// SkynetTUSClient creates a ready-to-use TUS client assuming the default upload
+// params.
 func (c *Client) SkynetTUSClient(chunkSize int64) (*tus.Client, error) {
+	return c.SkynetTUSClientCustom(chunkSize, crypto.TypeDefaultRenter, skymodules.RenterDefaultDataPieces)
+}
+
+// SkynetTUSClientCustom creates a ready-to-use TUS client with a custom
+// cipherType and dataPieces.
+func (c *Client) SkynetTUSClientCustom(chunkSize int64, ct crypto.CipherType, dataPieces int) (*tus.Client, error) {
+	fileChunkSize := skymodules.ChunkSize(ct, uint64(dataPieces))
+	if chunkSize%int64(fileChunkSize) != 0 {
+		return nil, fmt.Errorf("chunkSize needs to be a multiple of file's chunkSize %v", fileChunkSize)
+	}
 	// Create config for client.
 	config := tus.DefaultConfig()
 	config.ChunkSize = chunkSize
