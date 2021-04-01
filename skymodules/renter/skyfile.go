@@ -122,6 +122,13 @@ type streamerFromReader struct {
 	*bytes.Reader
 }
 
+// skylinkStreamerFromReader wraps a streamerFromReader to give it a Metadata()
+// method, which allows it to satisfy the modules.SkyfileStreamer interface.
+type skylinkStreamerFromReader struct {
+	modules.Streamer
+	staticMD skymodules.SkyfileMetadata
+}
+
 // Close is a no-op because a bytes.Reader doesn't need to be closed.
 func (sfr *streamerFromReader) Close() error {
 	return nil
@@ -134,6 +141,20 @@ func StreamerFromSlice(b []byte) skymodules.Streamer {
 	return &streamerFromReader{
 		Reader: reader,
 	}
+}
+
+// SkylinkStreamerFromSlice creates a modules.SkyfileStreamer from a byte slice.
+func SkylinkStreamerFromSlice(b []byte, md skymodules.SkyfileMetadata) skymodules.SkyfileStreamer {
+	streamer := StreamerFromSlice(b)
+	return &skylinkStreamerFromReader{
+		Streamer: streamer,
+		staticMD: md,
+	}
+}
+
+// Metadata implements the modules.SkyfileStreamer interface.
+func (sfr *skylinkStreamerFromReader) Metadata() skymodules.SkyfileMetadata {
+	return sfr.staticMD
 }
 
 // CreateSkylinkFromSiafile creates a skyfile from a siafile. This requires
@@ -165,7 +186,17 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 		Monetization: sup.Monetization,
 		Length:       fileNode.Size(),
 	}
-	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, nil)
+
+	// Generate the fanoutBytes
+	dataPieces := fileNode.ErasureCode().MinPieces()
+	cipherType := fileNode.Metadata().StaticMasterKeyType
+	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
+	fanoutBytes, err := skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
+	if err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "unable to generate the fanout bytes")
+	}
+
+	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fanoutBytes)
 }
 
 // managedCreateSkylinkFromFileNode creates a skylink from a file node.
@@ -173,7 +204,7 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 // The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutReader io.Reader) (skymodules.Skylink, error) {
+func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := skymodules.ValidateSkyfileMetadata(skyfileMetadata)
 	if err != nil {
@@ -205,11 +236,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 		return skymodules.Skylink{}, errors.AddContext(err, "error retrieving skyfile metadata bytes")
 	}
 
-	// Create the fanout for the siafile.
-	fanoutBytes, err := skyfileEncodeFanout(fileNode, fanoutReader)
-	if err != nil {
-		return skymodules.Skylink{}, errors.AddContext(err, "unable to encode the fanout of the siafile")
-	}
+	// Check the header size.
 	headerSize := uint64(skymodules.SkyfileLayoutSize + len(metadataBytes) + len(fanoutBytes))
 	if headerSize > modules.SectorSize {
 		return skymodules.Skylink{}, errors.AddContext(ErrMetadataTooBig, fmt.Sprintf("skyfile does not fit in leading chunk - metadata size plus fanout size must be less than %v bytes, metadata size is %v bytes and fanout size is %v bytes", modules.SectorSize-skymodules.SkyfileLayoutSize, len(metadataBytes), len(fanoutBytes)))
@@ -272,69 +299,45 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
 }
 
-// managedCreateFileNodeFromReader takes the file upload parameters and a reader
-// and returns a filenode. This method turns the reader into a FileNode without
-// effectively uploading the data. It is used to perform a dry-run of a skyfile
-// upload.
-func (r *Renter) managedCreateFileNodeFromReader(up skymodules.FileUploadParams, reader io.Reader) (*filesystem.FileNode, error) {
-	// Check the upload params first.
-	fileNode, err := r.managedInitUploadStream(up)
-	if err != nil {
-		return nil, err
-	}
-
+// managedPopulateFileNodeFromReader takes the fileNode and a reader and returns
+// a populated filenode without uploading any data. It is used to perform a
+// dry-run of a skyfile upload.
+func (r *Renter) managedPopulateFileNodeFromReader(fileNode *filesystem.FileNode, reader skymodules.ChunkReader) error {
 	// Extract some helper variables
 	hpk := types.SiaPublicKey{} // blank host key
-	ec := fileNode.ErasureCode()
-	psize := fileNode.PieceSize()
 	csize := fileNode.ChunkSize()
 
-	var peek []byte
 	for chunkIndex := uint64(0); ; chunkIndex++ {
+		// Allocate data pieces and fill them with data from r.
+		dataEncoded, total, errRead := reader.ReadChunk()
+		if errors.Contains(errRead, io.EOF) {
+			return nil
+		}
+		if errRead != nil {
+			return errRead
+		}
+		// If no more data is read from the stream we are done.
+		if total == 0 {
+			return nil // done
+		}
+
 		// Grow the SiaFile to the right size.
 		err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		// Allocate data pieces and fill them with data from r.
-		ss := NewStreamShard(reader, peek)
-		err = func() (err error) {
-			defer func() {
-				err = errors.Compose(err, ss.Close())
-			}()
-
-			dataPieces, total, errRead := readDataPieces(ss, ec, psize)
-			if errRead != nil {
-				return errRead
+		for pieceIndex, dataPieceEnc := range dataEncoded {
+			if err := fileNode.SiaFile.AddPiece(hpk, chunkIndex, uint64(pieceIndex), crypto.MerkleRoot(dataPieceEnc)); err != nil {
+				return err
 			}
-
-			dataEncoded, _ := ec.EncodeShards(dataPieces)
-			for pieceIndex, dataPieceEnc := range dataEncoded {
-				if err := fileNode.SiaFile.AddPiece(hpk, chunkIndex, uint64(pieceIndex), crypto.MerkleRoot(dataPieceEnc)); err != nil {
-					return err
-				}
-			}
-
-			adjustedSize := fileNode.Size() - csize + total
-			if err := fileNode.SetFileSize(adjustedSize); err != nil {
-				return errors.AddContext(err, "failed to adjust FileSize")
-			}
-			return nil
-		}()
-		if err != nil {
-			return nil, err
 		}
 
-		_, err = ss.Result()
-		if errors.Contains(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, err
+		adjustedSize := fileNode.Size() - csize + total
+		if err := fileNode.SetFileSize(adjustedSize); err != nil {
+			return errors.AddContext(err, "failed to adjust FileSize")
 		}
 	}
-	return fileNode, nil
 }
 
 // Blocklist returns the merkleroots that are on the blocklist
@@ -514,21 +517,10 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
 	}
 
-	var fileNode *filesystem.FileNode
-	if sup.DryRun {
-		// In case of a dry-run we don't want to perform the actual upload,
-		// instead we create a filenode that contains all of the data pieces and
-		// their merkle roots.
-		fileNode, err = r.managedCreateFileNodeFromReader(fup, fileReader)
-		if err != nil {
-			return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
-		}
-	} else {
-		// Upload the file using a streamer.
-		fileNode, err = r.callUploadStreamFromReader(fup, fileReader)
-		if err != nil {
-			return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
-		}
+	// Check the upload params first and create a fileNode.
+	fileNode, err := r.managedInitUploadStream(fup)
+	if err != nil {
+		return skymodules.Skylink{}, err
 	}
 
 	// Defer closing the file
@@ -539,6 +531,39 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		}
 	}()
 
+	// Figure out how to create the fanout. If only one piece is needed, we
+	// create it from the node directly after the upload.
+	cipherType := fileNode.MasterKey().Type()
+	dataPieces := fileNode.ErasureCode().MinPieces()
+	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
+
+	// Wrap the reader in a FanoutChunkReader.
+	cr := NewFanoutChunkReader(fileReader, fileNode.ErasureCode(), onlyOnePieceNeeded, fileNode.MasterKey())
+	if sup.DryRun {
+		// In case of a dry-run we don't want to perform the actual upload,
+		// instead we create a filenode that contains all of the data pieces and
+		// their merkle roots.
+		err = r.managedPopulateFileNodeFromReader(fileNode, cr)
+	} else {
+		// Upload the file using a streamer.
+		err = r.callUploadStreamFromReaderWithFileNode(fileNode, cr)
+	}
+	if err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload file")
+	}
+
+	// If there was no reader then the fanout creation failed. We need to create
+	// the fanout from the fileNode in that case.
+	var fanout []byte
+	if fileReader != nil {
+		fanout = cr.Fanout()
+	} else {
+		fanout, err = skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
+	}
+	if err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "failed to compute fanout")
+	}
+
 	// Get the SkyfileMetadata from the reader object.
 	metadata, err := fileReader.SkyfileMetadata(r.tg.StopCtx())
 	if err != nil {
@@ -547,7 +572,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	skylink, err := r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fileReader.FanoutReader())
+	skylink, err := r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fanout)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create skylink from filenode")
 	}
@@ -638,13 +663,13 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
-func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileLayout, skymodules.SkyfileMetadata, skymodules.Streamer, error) {
+func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileLayout, skymodules.SkyfileMetadata, skymodules.SkyfileStreamer, error) {
 	if r.staticDeps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
 			return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to fetch fixture")
 		}
-		return skymodules.SkyfileLayout{}, sf.Metadata, StreamerFromSlice(sf.Content), nil
+		return skymodules.SkyfileLayout{}, sf.Metadata, SkylinkStreamerFromSlice(sf.Content, sf.Metadata), nil
 	}
 
 	// Check if this skylink is already in the stream buffer set. If so, we can
@@ -845,25 +870,15 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 
 	// Create the SkyfileUploadReader for the restoration
 	var restoreReader skymodules.SkyfileUploadReader
-	var buf bytes.Buffer
-	// Define a TeeReader for the underlying io.Reader. This allows the fanout
-	// bytes to be generated before the upload has completed by reading the data
-	// from the buffer rather than the chunks.
-	tee := io.TeeReader(reader, &buf)
 	if len(sm.Subfiles) == 0 {
-		restoreReader = skymodules.NewSkyfileReader(tee, sup)
+		restoreReader = skymodules.NewSkyfileReader(reader, sup)
 	} else {
 		// Create multipart reader from the subfiles
-		multiReader, err := skymodules.NewMultipartReader(tee, sm.Subfiles)
+		multiReader, err := skymodules.NewMultipartReader(reader, sm.Subfiles)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "unable to create multireader")
 		}
-		// Create the multipart reader for the fanout using the TeeReader's buffer.
-		multiReaderFanout, err := skymodules.NewMultipartReader(&buf, sm.Subfiles)
-		if err != nil {
-			return skymodules.Skylink{}, errors.AddContext(err, "unable to create multireader")
-		}
-		restoreReader = skymodules.NewSkyfileMultipartReader(multiReader, multiReaderFanout, sup)
+		restoreReader = skymodules.NewSkyfileMultipartReader(multiReader, sup)
 	}
 
 	// Upload the Base Sector of the skyfile

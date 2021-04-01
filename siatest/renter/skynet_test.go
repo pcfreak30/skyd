@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -83,7 +84,8 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
-		{Name: "MetadataMonetization", Test: testSkynetMonetizers},
+		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
+		{Name: "Monetization", Test: testSkynetMonetization},
 	}
 
 	// Run tests
@@ -431,6 +433,8 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(largeFetchedData, largeData) {
+		t.Log(largeFetchedData)
+		t.Log(largeData)
 		t.Error("upload and download data does not match for large siafiles", len(largeFetchedData), len(largeData))
 	}
 
@@ -611,31 +615,20 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 // testConvertSiaFile tests converting a siafile to a skyfile. This test checks
 // for 1-of-N redundancies and N-of-M redundancies.
 func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
+	t.Run("1-of-N Conversion", func(t *testing.T) {
+		testConversion(t, tg, 1, 2, t.Name())
+	})
+	t.Run("N-of-M Conversion", func(t *testing.T) {
+		testConversion(t, tg, 2, 1, t.Name())
+	})
+}
+
+// testConversion is a subtest for testConvertSiaFile
+func testConversion(t *testing.T, tg *siatest.TestGroup, dp, pp uint64, skykeyName string) {
 	r := tg.Renters()[0]
-
 	// Upload a siafile that will then be converted to a skyfile.
-	//
-	// Set 2 as the datapieces to check for N-of-M redundancy conversions
 	filesize := int(modules.SectorSize) + siatest.Fuzz()
-	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create Skyfile Upload Parameters
-	sup := skymodules.SkyfileUploadParameters{
-		SiaPath: skymodules.RandomSiaPath(),
-	}
-
-	// Try and convert to a Skyfile, this should succeed, even if the original
-	// siafile is of N-of-M redundancy and not 1-N
-	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	if err != nil {
-		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
-	}
-
-	// Upload a new file with a 1-N redundancy by setting the datapieces to 1
-	localFile, remoteFile, err = r.UploadNewFileBlocking(filesize, 1, 2, false)
+	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, dp, pp, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -650,19 +643,19 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Recreate Skyfile Upload Parameters
-	sup = skymodules.SkyfileUploadParameters{
+	// Create Skyfile Upload Parameters
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath: skymodules.RandomSiaPath(),
 	}
 
-	// Convert to a Skyfile
+	// Try and convert to a Skyfile
 	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
 	}
-	skylink := sshp.Skylink
 
 	// Try to download the skylink.
+	skylink := sshp.Skylink
 	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -681,7 +674,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	// ensure we do not panic and we return the expected error
 	//
 	// Add SkyKey
-	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
+	sk, err := r.SkykeyCreateKeyPost(skykeyName, skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1875,6 +1868,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 			// Download the sector
 			reader, err := r.SkynetDownloadByRootGet(chunkRoots[i][j], 0, modules.SectorSize, -1)
 			if err != nil {
+				t.Log("root", chunkRoots[i][j])
 				t.Fatal(err)
 			}
 
@@ -4288,9 +4282,9 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 }
 
-// testSkynetMonetizers verifies that skynet uploads correctly set the
+// testSkynetMetadataMonetizers verifies that skynet uploads correctly set the
 // monetizers in the skyfile's metadata.
-func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
+func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create monetization.
@@ -4305,6 +4299,16 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		},
 	}
 	fastrand.Read(monetization.Monetizers[0].Address[:])
+
+	// Set conversion rate and monetization base to some value to avoid error.
+	err := r.RenterSetUSDConversionRate(types.NewCurrency64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterSetMonetizationBase(types.NewCurrency64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Test regular small file.
 	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("TestRegularSmall", fastrand.Bytes(1), false, monetization)
@@ -4468,6 +4472,158 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetMonetization tests the payout mechanism of the monetization code.
+func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Prepare a base of 1SC and a usd conversion rate of USD 1 == 100SC.
+	mb := types.SiacoinPrecision
+	cr := types.SiacoinPrecision.Mul64(100)
+	err := r.RenterSetMonetizationBase(mb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterSetUSDConversionRate(cr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare a clean node.
+	testDir := renterTestDir(t.Name())
+	monetizer, err := siatest.NewCleanNode(node.Wallet(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Connect it to the renter.
+	err = monetizer.GatewayConnectPost(r.GatewayAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get an address from the monetizer.
+	wag, err := monetizer.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := wag.Address
+
+	// Create monetization with a $1 price to guarantee a 100% chance of payment
+	// since that's equal to 100SC which is greater than the base.
+	monetization := &skymodules.Monetization{
+		License: skymodules.LicenseMonetization,
+		Monetizers: []skymodules.Monetizer{
+			{
+				Address:  addr,
+				Amount:   types.SiacoinPrecision, // $1
+				Currency: modules.CurrencyUSD,
+			},
+		},
+	}
+
+	// Upload a file.
+	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("Test", fastrand.Bytes(100), false, monetization)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download it raw.
+	_, _, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download it with the concat format.
+	_, _, err = r.SkynetSkylinkConcatGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download it as tar.
+	_, reader, err := r.SkynetSkylinkTarReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(ioutil.Discard, reader); err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Download it as tar gz.
+	_, reader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(ioutil.Discard, reader); err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Download it as zip.
+	_, reader, err = r.SkynetSkylinkZipReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(ioutil.Discard, reader); err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the miner to become aware of the txns.
+	m := tg.Miners()[0]
+	nTxns := 5
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		tgtg, err := m.TransactionPoolTransactionsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		nFound := 0
+		for _, txn := range tgtg.Transactions {
+			for _, sco := range txn.SiacoinOutputs {
+				if sco.UnlockHash == addr {
+					nFound++
+				}
+			}
+		}
+		if nFound < nTxns {
+			return fmt.Errorf("found %v out of %v txns", nFound, nTxns)
+		}
+		return nil
+	})
+
+	// Wait a bit more just to be safe. This catches the case where we try to
+	// pay the same monetizer multiple times.
+	time.Sleep(time.Second)
+
+	// Mine a block to confirm the txn.
+	err = tg.Miners()[0].MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the balance to be updated.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get balance.
+		wg, err := monetizer.WalletGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The balance should be $5 == 500SC due to 5 downloads.
+		expectedBalance := types.SiacoinPrecision.Mul64(100).Mul64(uint64(nTxns))
+		if !wg.ConfirmedSiacoinBalance.Equals(expectedBalance) {
+			return fmt.Errorf("wrong balance: %v != %v", wg.ConfirmedSiacoinBalance, expectedBalance)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestReadUnknownRegistryEntry makes sure that reading an unknown entry takes
 // the appropriate amount of time.
 func TestReadUnknownRegistryEntry(t *testing.T) {
@@ -4515,6 +4671,45 @@ func TestReadUnknownRegistryEntry(t *testing.T) {
 	// than readRegistryBackgroundTimeout.
 	if passed >= renter.MaxRegistryReadTimeout || passed <= renter.ReadRegistryBackgroundTimeout {
 		t.Fatalf("%v not between %v and %v", passed, renter.ReadRegistryBackgroundTimeout, renter.MaxRegistryReadTimeout)
+	}
+
+	// The remainder of the test might take a while. Only execute it in vlong
+	// tests.
+	if !build.VLONG {
+		t.SkipNow()
+	}
+
+	// Run 200 reads to lower the p99 below the seed. Do it in batches of 10
+	// reads.
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		for j := 0; j < 10; j++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := r.RegistryRead(spk, crypto.Hash{})
+				if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+					t.Error(err)
+				}
+			}()
+		}
+		wg.Wait()
+	}
+
+	// Verify that the estimate is lower than the timeout after multiple reads
+	// with slow hosts.
+	err = build.Retry(60, time.Second, func() error {
+		ss, err := r.SkynetStatsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ss.RegistryStats.ReadProjectP99 >= renter.ReadRegistryBackgroundTimeout {
+			return fmt.Errorf("%v >= %v", ss.RegistryStats.ReadProjectP99, renter.ReadRegistryBackgroundTimeout)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

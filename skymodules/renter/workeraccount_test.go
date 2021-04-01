@@ -643,9 +643,20 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 		PubKey: spk,
 		Tweak:  rv.Tweak,
 	}
-	_, err = wt.Subscribe(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
+
+	// Subscribe
+	wt.UpdateSubscriptions(req)
+
+	// Wait for first notification.
+	subs := wt.staticSubscriptionInfo.subscriptions
+	sub, exist := subs[modules.DeriveRegistryEntryID(spk, rv.Tweak)]
+	if !exist {
+		t.Fatal("subscribed to entry doesn't have a subscription")
+	}
+	select {
+	case <-time.After(time.Minute):
+		t.Fatal("timeout")
+	case <-sub.subscribed:
 	}
 
 	// Update the entry on the host.
@@ -657,7 +668,7 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	}
 
 	// Unsubscribe
-	wt.Unsubscribe(req)
+	wt.UpdateSubscriptions()
 
 	// Stop the loop by shutting down the worker.
 	err = wt.staticTG.Stop()

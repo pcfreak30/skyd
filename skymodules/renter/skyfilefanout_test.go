@@ -1,12 +1,10 @@
 package renter
 
 import (
-	"io"
-	"strings"
+	"bytes"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 // TestSkyfileFanout probes the fanout encoding.
@@ -27,44 +25,12 @@ func TestSkyfileFanout(t *testing.T) {
 		}
 	}()
 
-	t.Run("Panics", func(t *testing.T) { testSkyfileEncodeFanout_Panic(t, rt) })
-	t.Run("Reader", func(t *testing.T) { testSkyfileEncodeFanout_Reader(t, rt) })
+	t.Run("Writer", func(t *testing.T) { testSkyfileEncodeFanout_Writer(t, rt) })
 }
 
-// testSkyfileEncodeFanout_Panic probes the panic conditions for generating the
-// fanout
-func testSkyfileEncodeFanout_Panic(t *testing.T, rt *renterTester) {
-	// Create a file for the renter with erasure coding of 1-of-N and a PlainText
-	// cipher type.
-	siaPath, rsc := testingFileParamsCustom(1, 2)
-	file, err := rt.renter.createRenterTestFileWithParams(siaPath, rsc, crypto.TypePlain)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testPanic(t, file, nil)
-
-	// Create a file for the renter with erasure coding of N-of-M and a non
-	// PlainText cipher type.
-	siaPath, rsc = testingFileParamsCustom(2, 3)
-	file, err = rt.renter.createRenterTestFileWithParams(siaPath, rsc, crypto.TypeDefaultRenter)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testPanic(t, file, nil)
-}
-
-// testPanic executes the function and recovers from the expected panic.
-func testPanic(t *testing.T, fileNode *filesystem.FileNode, reader io.Reader) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected build critical for empty hash in fanout")
-		}
-	}()
-	skyfileEncodeFanout(fileNode, reader)
-}
-
-// testSkyfileEncodeFanout_Reader probes generating the fanout from a reader
-func testSkyfileEncodeFanout_Reader(t *testing.T, rt *renterTester) {
+// testSkyfileEncodeFanout_Writer probes generating the fanout with a
+// fanoutWriter.
+func testSkyfileEncodeFanout_Writer(t *testing.T, rt *renterTester) {
 	// Create a file with N-of-M erasure coding and a non PlainText cipher type
 	siaPath, rsc := testingFileParamsCustom(2, 3)
 	file, err := rt.renter.createRenterTestFileWithParams(siaPath, rsc, crypto.TypeDefaultRenter)
@@ -72,15 +38,14 @@ func testSkyfileEncodeFanout_Reader(t *testing.T, rt *renterTester) {
 		t.Fatal(err)
 	}
 
-	// Create a mock reader to the file on disk
-	reader := strings.NewReader("this is fine")
-
 	// Even though the file is not uploaded, we should be able to create the
 	// fanout from the file on disk.
 	//
 	// Since we are using test data we don't care about the final result of the
 	// fanout, we just are testing that the panics aren't triggered.
-	_, err = skyfileEncodeFanout(file, reader)
+	r := bytes.NewReader([]byte("this is fine"))
+	cr := NewFanoutChunkReader(r, file.ErasureCode(), false, file.MasterKey())
+	_, _, err = cr.ReadChunk()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,15 +57,14 @@ func testSkyfileEncodeFanout_Reader(t *testing.T, rt *renterTester) {
 		t.Fatal(err)
 	}
 
-	// Create a mock reader to the file on disk
-	reader = strings.NewReader("still fine")
-
 	// Even though the file is not uploaded, we should be able to create the
 	// fanout from the file on disk.
 	//
 	// Since we are using test data we don't care about the final result of the
 	// fanout, we just are testing that the panics aren't triggered.
-	_, err = skyfileEncodeFanout(file, reader)
+	r = bytes.NewReader([]byte("still fine"))
+	cr = NewFanoutChunkReader(r, file.ErasureCode(), false, file.MasterKey())
+	_, _, err = cr.ReadChunk()
 	if err != nil {
 		t.Fatal(err)
 	}

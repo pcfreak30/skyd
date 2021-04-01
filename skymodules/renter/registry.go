@@ -177,13 +177,6 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		return // nothing to do
 	}
 
-	// Check for shutdown since collect might have blocked for a while.
-	select {
-	case <-ctx.Done():
-		return // shutdown
-	default:
-	}
-
 	// Find the fastest timing with the highest revision number.
 	var best *jobReadRegistryResponse
 	for _, resp := range resps {
@@ -228,6 +221,13 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 
 	// Add the duration to the estimate.
 	d := best.staticCompleteTime.Sub(startTime)
+
+	// Sanity check duration is not zero.
+	if d == 0 {
+		err := errors.New("zero duration was passed to AddDatum")
+		build.Critical(err)
+		return
+	}
 
 	// The error is ignored since it only returns an error if the measurement is
 	// outside of the 5 minute bounds the stats were created with.

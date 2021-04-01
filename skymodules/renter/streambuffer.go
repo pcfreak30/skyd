@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -84,7 +85,7 @@ var (
 	// parts are prioritized, but we don't have control over that at the moment.
 	minimumLookahead = build.Select(build.Var{
 		Dev:      uint64(1 << 21), // 2 MiB
-		Standard: uint64(1 << 21), // 2 MiB
+		Standard: uint64(1 << 23), // 8 MiB
 		Testing:  uint64(1 << 6),  // 64 bytes
 	}).(uint64)
 )
@@ -198,6 +199,7 @@ type streamBuffer struct {
 	staticStreamBufferSet *streamBufferSet
 	staticStreamID        skymodules.DataSourceID
 	staticPricePerMS      types.Currency
+	staticWallet          modules.SiacoinSenderMulti
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.
@@ -379,7 +381,9 @@ func (s *stream) Read(b []byte) (int, error) {
 	dataSection, exists := sb.dataSections[currentSection]
 	sb.mu.Unlock()
 	if !exists {
-		build.Critical("data section should always in the stream buffer for the current offset of a stream")
+		err := errors.New("data section should always in the stream buffer for the current offset of a stream")
+		build.Critical(err)
+		return 0, err
 	}
 
 	// Block until the data is available.
@@ -492,6 +496,7 @@ func (sb *streamBuffer) callRemoveDataSection(index uint64) {
 	dataSection, exists := sb.dataSections[index]
 	if !exists {
 		build.Critical("remove called on data section that does not exist")
+		return
 	}
 	// Decrement the refcount.
 	dataSection.refCount--
