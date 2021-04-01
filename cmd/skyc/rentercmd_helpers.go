@@ -580,6 +580,7 @@ func printSingleFile(sp skymodules.SiaPath, root, skylinkCheck bool) (tryDir boo
 		return
 	}
 	tryDir = true
+	err = nil
 	return
 }
 
