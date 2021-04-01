@@ -129,7 +129,7 @@ type RenterStats struct {
 	PassiveContractData uint64 `json:"passivecontractdata"`
 	WastedContractData  uint64 `json:"wastedcontractdata"`
 
-	AggregateLastHealthCheckTime time.Time `json:"aggregateLastHealthCheckTime"`
+	AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
 	TotalRepairSize              uint64    `json:"totalrepairsize"`
 	TotalSiafiles                uint64    `json:"totalsiafiles"`
 	TotalSiadirs                 uint64    `json:"totalsiadirs"`
