@@ -3,7 +3,7 @@ package renter
 import (
 	"bytes"
 	"context"
-	"io"
+	"io/ioutil"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -72,7 +72,7 @@ func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool) (spk typ
 	if err != nil {
 		return
 	}
-	data, err = io.ReadAll(dec)
+	data, err = ioutil.ReadAll(dec)
 	return
 }
 
