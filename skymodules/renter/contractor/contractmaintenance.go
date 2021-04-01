@@ -1227,7 +1227,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 
 	// Calculate the anticipated transaction fee.
-	_, maxFee := c.tpool.FeeEstimation()
+	_, maxFee := c.staticTPool.FeeEstimation()
 	txnFee := maxFee.Mul64(skymodules.EstimatedFileContractTransactionSetSize)
 
 	// Create the renewSet and refreshSet. Each is a list of contracts that need
