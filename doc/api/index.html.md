@@ -33,6 +33,7 @@ curl -A "Sia-Agent" -X POST "localhost:9980/gateway/connect/123.456.789.0:9981"
 ```
 
 Skyd uses semantic versioning and is backwards compatible to Sia version v1.0.0.
+The Siad API can be found [here](https://sia.tech/docs).
 
 API calls return either JSON or no content. Success is indicated by 2xx HTTP
 status codes, while errors are indicated by 4xx and 5xx HTTP status codes. If an

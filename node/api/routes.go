@@ -39,9 +39,6 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/accounting", api.accountingHandlerGet)
 	}
 
-	// TODO: should these be refactored? This is duplicating the siad daemon
-	// endpoints right?
-	//
 	// Daemon API Calls
 	router.GET("/daemon/alerts", api.daemonAlertsHandlerGET)
 	router.GET("/daemon/constants", api.daemonConstantsHandler)
