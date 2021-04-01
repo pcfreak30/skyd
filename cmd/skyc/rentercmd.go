@@ -1712,7 +1712,12 @@ func rentercontractrecoveryscanprogresscmd() {
 // files known to the renter on the network.
 func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	// Parse the SiaPath
-	sp := parseLSArgs(cmd, args)
+	sp, err := parseLSArgs(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		_ = cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
 
 	// Check for file first
 	if !sp.IsRoot() {
@@ -1752,7 +1757,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Handle the verbose output.
-	err := printDirsVerbose(dirs)
+	err = printDirsVerbose(dirs)
 	if err != nil {
 		die(err)
 	}

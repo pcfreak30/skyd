@@ -10,7 +10,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -18,6 +17,12 @@ import (
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+)
+
+var (
+	// errIncorrectNumArgs is the error return if there is an incorrect number of
+	// arguments
+	errIncorrectNumArgs = errors.New("incorrect number of arguments")
 )
 
 // byDirectoryInfo implements sort.Interface for []directoryInfo based on the
@@ -383,7 +388,7 @@ func getDirSorted(siaPath skymodules.SiaPath, root, recursive bool) []directoryI
 
 // parseLSArgs is a helper that parses the arguments for renter ls and skynet ls
 // and returns the siapath.
-func parseLSArgs(cmd *cobra.Command, args []string) skymodules.SiaPath {
+func parseLSArgs(args []string) (skymodules.SiaPath, error) {
 	var path string
 	switch len(args) {
 	case 0:
@@ -391,8 +396,7 @@ func parseLSArgs(cmd *cobra.Command, args []string) skymodules.SiaPath {
 	case 1:
 		path = args[0]
 	default:
-		_ = cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
+		return skymodules.SiaPath{}, errIncorrectNumArgs
 	}
 	// Parse the input siapath.
 	var sp skymodules.SiaPath
@@ -402,10 +406,10 @@ func parseLSArgs(cmd *cobra.Command, args []string) skymodules.SiaPath {
 	} else {
 		sp, err = skymodules.NewSiaPath(path)
 		if err != nil {
-			die("could not parse siapath:", err)
+			return skymodules.SiaPath{}, errors.AddContext(err, "could not parse siaPath")
 		}
 	}
-	return sp
+	return sp, nil
 }
 
 // printContractInfo is a helper function for printing the information about a

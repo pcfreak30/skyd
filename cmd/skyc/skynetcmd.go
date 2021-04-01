@@ -361,10 +361,14 @@ func skynetisblockedcmd(_ *cobra.Command, skylinkStrs []string) {
 // displays files that are pinning skylinks.
 func skynetlscmd(cmd *cobra.Command, args []string) {
 	// Parse the SiaPath
-	sp := parseLSArgs(cmd, args)
+	sp, err := parseLSArgs(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		_ = cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
 
 	// Check whether the command is based in root or based in the skynet folder.
-	var err error
 	if !skynetLsRoot {
 		if sp.IsRoot() {
 			sp = skymodules.SkynetFolder
