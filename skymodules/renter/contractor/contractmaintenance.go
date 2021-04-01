@@ -188,19 +188,6 @@ func initialContractFunding(a skymodules.Allowance, host skymodules.HostDBEntry,
 	return contractFunds
 }
 
-// minimumContractFunding determines the minimun amount of money that goes into
-// a refreshed/renewed contract. To account for portals, the gfrContracts are
-// passed in and are used instead of allowance.Hosts for the computation.
-// That way, a portal with 150 contracts and an allowance of 50 hosts will have
-// a minimum that is 1/3 of a renter with 50 contracts and 50 hosts.
-func minimumContractRenewalFunding(allowance skymodules.Allowance, gfrContracts uint64) types.Currency {
-	numHosts := gfrContracts
-	if numHosts < allowance.Hosts {
-		numHosts = allowance.Hosts
-	}
-	return allowance.Funds.MulFloat(fileContractMinimumFunding).Div64(numHosts)
-}
-
 // callNotifyDoubleSpend is used by the watchdog to alert the contractor
 // whenever a monitored file contract input is double-spent. This function
 // marks down the host score, and marks the contract as !GoodForRenew and
@@ -402,7 +389,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract skymodules
 	// Check for a sane minimum that is equal to the initial contract funding
 	// but without an upper cap.
 	minInitialContractFunds := allowance.Funds.Div64(allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
-	minimum := initialContractFunding(allowance, host, maxTxnFee, minInitialContractFunds, types.ZeroCurrency)
+	minimum := initialContractFunding(allowance, host, txnFees, minInitialContractFunds, types.ZeroCurrency)
 	if estimatedCost.Cmp(minimum) < 0 {
 		estimatedCost = minimum
 		c.log.Printf("Contract renew amount %v below minimum amount %v", estimatedCost, minimum)
@@ -1239,6 +1226,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 	}
 
+	// Calculate the anticipated transaction fee.
+	_, maxFee := c.tpool.FeeEstimation()
+	txnFee := maxFee.Mul64(skymodules.EstimatedFileContractTransactionSetSize)
+
 	// Create the renewSet and refreshSet. Each is a list of contracts that need
 	// to be renewed, paired with the amount of money to use in each renewal.
 	//
@@ -1330,7 +1321,8 @@ func (c *Contractor) threadedContractMaintenance() {
 			// the user in the event that the user stops uploading immediately
 			// after the renew.
 			refreshAmount := contract.TotalCost.Mul64(2)
-			minimum := minimumContractRenewalFunding(allowance, gfrContracts)
+			minInitialContractFunds := allowance.Funds.Div64(allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
+			minimum := initialContractFunding(allowance, host, txnFee, minInitialContractFunds, types.ZeroCurrency)
 			if refreshAmount.Cmp(minimum) < 0 {
 				refreshAmount = minimum
 				c.log.Printf("Contract refresh amount %v below minimum amount %v", refreshAmount, minimum)
