@@ -176,7 +176,7 @@ func initialContractFunding(a skymodules.Allowance, host skymodules.HostDBEntry,
 	// allowances being used up to fast and not being able to spread the
 	// funds across new contracts properly, as well as protecting against
 	// contracts renewing too quickly
-	if min.Cmp(max) > 0 {
+	if min.Cmp(max) > 0 && !max.IsZero() {
 		build.Critical(fmt.Sprintf("WARN: initialContractFunding min > max (%v > %v)", min, max))
 	}
 	if contractFunds.Cmp(max) > 0 && !max.IsZero() {
