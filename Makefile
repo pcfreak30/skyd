@@ -19,48 +19,6 @@ count = 1
 # at a time, unfortunately.
 cpkg = ./skymodules/renter
 
-# pkgs changes which packages the makefile calls operate on. run changes which
-# tests are run during testing.
-pkgs = \
-	./benchmark \
-	./build \
-	./cmd/sia-node-scanner \
-	./cmd/skyc \
-	./cmd/skyd \
-	./cmd/skynet-benchmark \
-	./compatibility \
-	./fixtures \
-	./node \
-	./node/api \
-	./node/api/client \
-	./node/api/server \
-	./profile \
-	./siatest \
-	./siatest/accounting \
-	./siatest/daemon \
-	./siatest/dependencies \
-	./siatest/renter \
-	./siatest/renter/contractor \
-	./siatest/renter/hostdb \
-	./siatest/renterhost \
-	./skykey \
-	./skymodules \
-	./skymodules/accounting \
-	./skymodules/renter \
-	./skymodules/renter/contractor \
-	./skymodules/renter/filesystem \
-	./skymodules/renter/filesystem/siadir \
-	./skymodules/renter/filesystem/siafile \
-	./skymodules/renter/hostdb \
-	./skymodules/renter/hostdb/hosttree \
-	./skymodules/renter/proto \
-	./skymodules/renter/skynetblocklist \
-	./skymodules/renter/skynetportals \
-
-# release-pkgs determine which packages are built for release and distribution
-# when running a 'make release' command.
-release-pkgs = ./cmd/skyc ./cmd/skyd
-
 # lockcheckpkgs are the packages that are checked for locking violations.
 lockcheckpkgs = \
 	./benchmark \
@@ -87,7 +45,7 @@ lockcheckpkgs = \
 	./skykey \
 	./skymodules \
 	./skymodules/accounting \
-	./skymodules/renter/hostdb \
+	./skymodules/renter/contractor \
 	./skymodules/renter/filesystem \
 	./skymodules/renter/filesystem/siadir \
 	./skymodules/renter/filesystem/siafile \
@@ -96,6 +54,17 @@ lockcheckpkgs = \
 	./skymodules/renter/proto \
 	./skymodules/renter/skynetblocklist \
 	./skymodules/renter/skynetportals \
+
+# pkgs changes which packages the makefile calls operate on. run changes which
+# tests are run during testing.
+pkgs = \
+  $(lockcheckpkgs) \
+	./skymodules/renter \
+
+# release-pkgs determine which packages are built for release and distribution
+# when running a 'make release' command.
+release-pkgs = ./cmd/skyc ./cmd/skyd
+
 
 # run determines which tests run when running any variation of 'make test'.
 run = .

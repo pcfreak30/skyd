@@ -43,42 +43,44 @@ type Editor interface {
 // implements the Editor interface. hostEditors are safe for use by
 // multiple goroutines.
 type hostEditor struct {
-	clients    int // safe to Close when 0
-	contractor *Contractor
-	editor     *proto.Editor
-	endHeight  types.BlockHeight
-	id         types.FileContractID
-	invalid    bool // true if invalidate has been called
-	netAddress modules.NetAddress
+	clients int  // safe to Close when 0
+	invalid bool // true if invalidate has been called
+
+	// Static Fields
+	staticContractor *Contractor
+	staticEditor     *proto.Editor
+	staticEndHeight  types.BlockHeight
+	staticID         types.FileContractID
+	staticNetAddress modules.NetAddress
 
 	mu sync.Mutex
 }
 
-// invalidate sets the invalid flag and closes the underlying proto.Editor.
-// Once invalidate returns, the hostEditor is guaranteed to not further revise
-// its contract. This is used during contract renewal to prevent an Editor
-// from revising a contract mid-renewal.
-func (he *hostEditor) invalidate() {
+// callInvalidate sets the invalid flag and closes the underlying proto.Editor.
+// Once callInvalidate returns, the hostEditor is guaranteed to not further
+// revise its contract. This is used during contract renewal to prevent an
+// Editor from revising a contract mid-renewal.
+func (he *hostEditor) callInvalidate() {
 	he.mu.Lock()
 	defer he.mu.Unlock()
 	if !he.invalid {
-		he.editor.Close()
+		he.staticEditor.Close()
 		he.invalid = true
 	}
-	he.contractor.mu.Lock()
-	delete(he.contractor.editors, he.id)
-	he.contractor.mu.Unlock()
+	he.staticContractor.mu.Lock()
+	delete(he.staticContractor.editors, he.staticID)
+	he.staticContractor.mu.Unlock()
 }
 
 // Address returns the NetAddress of the host.
-func (he *hostEditor) Address() modules.NetAddress { return he.netAddress }
+func (he *hostEditor) Address() modules.NetAddress { return he.staticNetAddress }
 
 // ContractID returns the id of the contract being revised.
-func (he *hostEditor) ContractID() types.FileContractID { return he.id }
+func (he *hostEditor) ContractID() types.FileContractID { return he.staticID }
 
 // EndHeight returns the height at which the host is no longer obligated to
 // store the file.
-func (he *hostEditor) EndHeight() types.BlockHeight { return he.endHeight }
+func (he *hostEditor) EndHeight() types.BlockHeight { return he.staticEndHeight }
 
 // Close cleanly terminates the revision loop with the host and closes the
 // connection.
@@ -92,16 +94,16 @@ func (he *hostEditor) Close() error {
 		return nil
 	}
 	he.invalid = true
-	he.contractor.mu.Lock()
-	delete(he.contractor.editors, he.id)
-	he.contractor.mu.Unlock()
-	return he.editor.Close()
+	he.staticContractor.mu.Lock()
+	delete(he.staticContractor.editors, he.staticID)
+	he.staticContractor.mu.Unlock()
+	return he.staticEditor.Close()
 }
 
 // HostSettings returns the host settings that are currently active for the
 // underlying session.
 func (he *hostEditor) HostSettings() modules.HostExternalSettings {
-	return he.editor.HostSettings()
+	return he.staticEditor.HostSettings()
 }
 
 // Upload negotiates a revision that adds a sector to a file contract.
@@ -113,7 +115,7 @@ func (he *hostEditor) Upload(data []byte) (_ crypto.Hash, err error) {
 	}
 
 	// Perform the upload.
-	_, sectorRoot, err := he.editor.Upload(data)
+	_, sectorRoot, err := he.staticEditor.Upload(data)
 	if err != nil {
 		return crypto.Hash{}, err
 	}
@@ -157,7 +159,7 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	if !haveContract {
 		return nil, errors.New("contract was not found in the renter's contract set")
 	}
-	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
+	host, haveHost, err := c.staticHDB.Host(contract.HostPublicKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	} else if height > contract.EndHeight {
@@ -178,19 +180,19 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	}
 
 	// Create the editor.
-	e, err := c.staticContracts.NewEditor(host, contract.ID, height, c.hdb, cancel)
+	e, err := c.staticContracts.NewEditor(host, contract.ID, height, c.staticHDB, cancel)
 	if err != nil {
 		return nil, err
 	}
 
 	// cache editor
 	he := &hostEditor{
-		clients:    1,
-		contractor: c,
-		editor:     e,
-		endHeight:  contract.EndHeight,
-		id:         id,
-		netAddress: host.NetAddress,
+		clients:          1,
+		staticContractor: c,
+		staticEditor:     e,
+		staticEndHeight:  contract.EndHeight,
+		staticID:         id,
+		staticNetAddress: host.NetAddress,
 	}
 	c.mu.Lock()
 	c.editors[contract.ID] = he

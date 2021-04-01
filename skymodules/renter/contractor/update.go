@@ -55,7 +55,7 @@ func (c *Contractor) managedArchiveContracts() {
 			c.oldContracts[id] = contract
 			c.mu.Unlock()
 			expired = append(expired, id)
-			c.log.Println("INFO: archived expired contract", id)
+			c.staticLog.Println("INFO: archived expired contract", id)
 		}
 	}
 
@@ -78,7 +78,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Get the wallet's seed for contract recovery.
 	haveSeed := true
 	missedRecovery := false
-	s, _, err := c.wallet.PrimarySeed()
+	s, _, err := c.staticWallet.PrimarySeed()
 	if err != nil {
 		haveSeed = false
 	}
@@ -153,7 +153,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	c.lastChange = cc.ID
 	err = c.save()
 	if err != nil {
-		c.log.Println("Unable to save while processing a consensus change:", err)
+		c.staticLog.Println("Unable to save while processing a consensus change:", err)
 	}
 	c.mu.Unlock()
 

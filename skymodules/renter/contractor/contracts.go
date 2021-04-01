@@ -96,7 +96,7 @@ func (c *Contractor) tryAddContractToPubKeyMap(newContract skymodules.RenterCont
 	if exists {
 		gfu, gfr := newContract.Utility.GoodForUpload, newContract.Utility.GoodForRenew
 		if gfu || gfr {
-			c.log.Critical("renewed contract is marked as good for upload or good for renew", gfu, gfr)
+			c.staticLog.Critical("renewed contract is marked as good for upload or good for renew", gfu, gfr)
 		}
 		return
 	}
@@ -107,7 +107,7 @@ func (c *Contractor) tryAddContractToPubKeyMap(newContract skymodules.RenterCont
 	if exists {
 		// Sanity check - the contractor should not have multiple contract tips for the
 		// same contract.
-		c.log.Critical("Contractor has multiple contracts that don't form a renewedTo line for the same host")
+		c.staticLog.Critical("Contractor has multiple contracts that don't form a renewedTo line for the same host")
 	}
 	c.pubKeysToContractID[pk] = newContract.ID
 }
@@ -122,10 +122,10 @@ func (c *Contractor) ContractByPublicKey(pk types.SiaPublicKey) (skymodules.Rent
 // CancelContract cancels the Contractor's contract by marking it !GoodForRenew
 // and !GoodForUpload
 func (c *Contractor) CancelContract(id types.FileContractID) error {
-	if err := c.tg.Add(); err != nil {
+	if err := c.staticTG.Add(); err != nil {
 		return err
 	}
-	defer c.tg.Done()
+	defer c.staticTG.Done()
 	defer c.threadedContractMaintenance()
 	return c.managedCancelContract(id)
 }
@@ -150,10 +150,10 @@ func (c *Contractor) ContractUtility(pk types.SiaPublicKey) (skymodules.Contract
 
 // MarkContractBad will mark a specific contract as bad.
 func (c *Contractor) MarkContractBad(id types.FileContractID) error {
-	if err := c.tg.Add(); err != nil {
+	if err := c.staticTG.Add(); err != nil {
 		return err
 	}
-	defer c.tg.Done()
+	defer c.staticTG.Done()
 
 	sc, exists := c.staticContracts.Acquire(id)
 	if !exists {
