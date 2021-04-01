@@ -498,8 +498,13 @@ func printDirs(dirs []directoryInfo) error {
 // printDirsVerbose is a helper for verbose printing of directoryInfos
 func printDirsVerbose(dirs []directoryInfo) error {
 	for _, dir := range dirs {
-		fmt.Println(dir.dir.SiaPath.String() + "/")
+		// Create a tab writer for the directory
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		// Print the Directory SiaPath
+		fmt.Fprintf(w, "%v/\n", dir.dir.SiaPath)
+
+		// Print SubDirs
 		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
 		for _, subDir := range dir.subDirs {
 			name := subDir.SiaPath.Name() + "/"
@@ -514,6 +519,7 @@ func printDirsVerbose(dirs []directoryInfo) error {
 			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckHealthStr, stuckStr, "-", "-", "-")
 		}
 
+		// Print files
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
 			size := modules.FilesizeUnits(file.Filesize)
@@ -536,10 +542,12 @@ func printDirsVerbose(dirs []directoryInfo) error {
 			recoverStr := yesNo(file.Recoverable)
 			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckHealthStr, stuckStr, renewStr, onDiskStr, recoverStr)
 		}
+		fmt.Fprintln(w)
+
+		// Flush the writer
 		if err := w.Flush(); err != nil {
 			return errors.AddContext(err, "failed to flush writer")
 		}
-		fmt.Println()
 	}
 	return nil
 }
