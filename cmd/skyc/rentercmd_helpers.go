@@ -330,6 +330,8 @@ func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, 
 }
 
 var (
+	// totalGetDirs is a helper for printing out the status of the getDir function
+	// call.
 	totalGetDirs   int = 0
 	totalGetDirsMu sync.Mutex
 )
@@ -337,6 +339,7 @@ var (
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs, querying the root directory.
 func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryInfo) {
+	// Query the directory
 	var rd api.RenterDirectory
 	var err error
 	if root {
@@ -347,6 +350,16 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 	if err != nil {
 		die("failed to get dir info:", err)
 	}
+
+	// Defer print status update
+	defer func() {
+		totalGetDirsMu.Lock()
+		totalGetDirs++
+		fmt.Printf("\r%v directories queried", totalGetDirs)
+		totalGetDirsMu.Unlock()
+	}()
+
+	// Split the directory and sub directory information
 	dir := rd.Directories[0]
 	subDirs := rd.Directories[1:]
 
@@ -359,10 +372,6 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 
 	// If -R isn't set, or there are no subDirs we are done.
 	if !recursive || len(subDirs) == 0 {
-		totalGetDirsMu.Lock()
-		totalGetDirs++
-		fmt.Printf("\r%v directories queried", totalGetDirs)
-		totalGetDirsMu.Unlock()
 		return
 	}
 
@@ -393,10 +402,10 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 	var wg sync.WaitGroup
 	for i := 0; i < numGetDirWorkers; i++ {
 		wg.Add(1)
-		go func() {
+		go func(root, recursive bool) {
 			getDirWorkerFunc(root, recursive)
 			wg.Done()
-		}()
+		}(root, recursive)
 	}
 
 	// Call getDir on subdirs.
@@ -414,12 +423,6 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 
 	close(siaPathChan)
 	wg.Wait()
-
-	// Print out status update
-	totalGetDirsMu.Lock()
-	totalGetDirs++
-	fmt.Printf("\r%v directories queried", totalGetDirs)
-	totalGetDirsMu.Unlock()
 	return
 }
 
