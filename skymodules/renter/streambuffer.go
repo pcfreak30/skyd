@@ -317,6 +317,7 @@ func (s *stream) Close() error {
 		sbs.managedRemoveStream(sb)
 
 		// Log the trace results.
+		/*
 		dst := s.staticDownloadSkylinkTrace
 		sdst := dst.skylinkDataSourceTrace
 		start := dst.staticStart
@@ -335,6 +336,7 @@ Stream Available:      %v ms,
 		for _, request := range requestTimes {
 			dst.staticRenter.staticLog.Printf("Request: %v ::: %v ::: %v", request.staticStart.Sub(start)/time.Millisecond, request.staticLaunch.Sub(start)/time.Millisecond, request.staticComplete.Sub(start)/time.Millisecond)
 		}
+		*/
 	})
 	return nil
 }
