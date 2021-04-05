@@ -1299,7 +1299,11 @@ func (api *API) renterContractorChurnStatus(w http.ResponseWriter, _ *http.Reque
 func (api *API) renterDownloadsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var downloads []DownloadInfo
 	var err error
-	dis := api.renter.DownloadHistory()
+	dis, err := api.renter.DownloadHistory()
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
+		return
+	}
 	root, err := scanBool(req.FormValue("root"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)

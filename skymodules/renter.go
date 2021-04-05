@@ -1218,7 +1218,7 @@ type Renter interface {
 	DownloadByUID(uid DownloadID) (DownloadInfo, bool)
 
 	// DownloadHistory lists all the files that have been scheduled for download.
-	DownloadHistory() []DownloadInfo
+	DownloadHistory() ([]DownloadInfo, error)
 
 	// File returns information on specific file queried by user
 	File(siaPath SiaPath) (FileInfo, error)

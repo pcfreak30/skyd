@@ -216,13 +216,11 @@ type Renter struct {
 	downloadHeap   *downloadChunkHeap // A heap of priority-sorted chunks to download.
 	newDownloads   chan struct{}      // Used to notify download loop that new downloads are available.
 
-	// Download history. The history list has its own mutex because it is always
-	// accessed in isolation.
+	// Download history.
 	//
 	// TODO: Currently the download history doesn't include repair-initiated
 	// downloads, and instead only contains user-initiated downloads.
-	downloadHistory   map[skymodules.DownloadID]*download
-	downloadHistoryMu sync.Mutex
+	staticDownloadHistory *downloadHistory
 
 	// Upload and repair management.
 	staticDirectoryHeap directoryHeap
@@ -1121,8 +1119,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			heapDirectories: make(map[skymodules.SiaPath]*directory),
 		},
 
-		downloadHistory: make(map[skymodules.DownloadID]*download),
-
 		staticSubscriptionManager: newSubscriptionManager(),
 
 		staticConsensusSet:   cs,
@@ -1139,6 +1135,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticTPool:          tpool,
 	}
 	r.staticBubbleScheduler = newBubbleScheduler(r)
+	r.staticDownloadHistory = newDownloadHistory()
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)

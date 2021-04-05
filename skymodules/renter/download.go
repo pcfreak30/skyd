@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,7 +15,6 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
@@ -357,9 +355,7 @@ func (r *Renter) managedDownload(p skymodules.RenterDownloadParameters) (_ *down
 
 	// Add the download object to the download history if it's not a stream.
 	if destinationType != destinationTypeSeekStream {
-		r.downloadHistoryMu.Lock()
-		r.downloadHistory[d.UID()] = d
-		r.downloadHistoryMu.Unlock()
+		r.staticDownloadHistory.callAddDownload(d)
 	}
 
 	// Return the download object
@@ -545,9 +541,7 @@ func (d *download) Start() error {
 
 // DownloadByUID returns a single download from the history by it's UID.
 func (r *Renter) DownloadByUID(uid skymodules.DownloadID) (skymodules.DownloadInfo, bool) {
-	r.downloadHistoryMu.Lock()
-	d, exists := r.downloadHistory[uid]
-	r.downloadHistoryMu.Unlock()
+	d, exists := r.staticDownloadHistory.callFetchDownload(uid)
 	if !exists {
 		return skymodules.DownloadInfo{}, false
 	}
@@ -567,103 +561,4 @@ func (r *Renter) DownloadByUID(uid skymodules.DownloadID) (skymodules.DownloadIn
 		StartTimeUnix:        d.staticStartTime.UnixNano(),
 		TotalDataTransferred: atomic.LoadUint64(&d.atomicTotalDataTransferred),
 	}, true
-}
-
-// DownloadHistory returns the list of downloads that have been performed. Will
-// include downloads that have not yet completed. Downloads will be roughly,
-// but not precisely, sorted according to start time.
-//
-// TODO: Currently the DownloadHistory only contains downloads from this
-// session, does not contain downloads that were executed for the purposes of
-// repairing, and has no way to clear the download history if it gets long or
-// unwieldy. It's not entirely certain which of the missing features are
-// actually desirable, please consult core team + app dev community before
-// deciding what to implement.
-func (r *Renter) DownloadHistory() []skymodules.DownloadInfo {
-	r.downloadHistoryMu.Lock()
-	defer r.downloadHistoryMu.Unlock()
-
-	// Get a slice of the history sorted from least recent to most recent.
-	downloadHistory := make([]*download, 0, len(r.downloadHistory))
-	for _, d := range r.downloadHistory {
-		downloadHistory = append(downloadHistory, d)
-	}
-	sort.Slice(downloadHistory, func(i, j int) bool {
-		return downloadHistory[i].staticStartTime.Before(downloadHistory[j].staticStartTime)
-	})
-
-	downloads := make([]skymodules.DownloadInfo, len(downloadHistory))
-	for i := range downloadHistory {
-		// Order from most recent to least recent.
-		d := downloadHistory[len(r.downloadHistory)-i-1]
-		d.mu.Lock() // Lock required for d.endTime only.
-		downloads[i] = skymodules.DownloadInfo{
-			Destination:     d.destinationString,
-			DestinationType: d.staticDestinationType,
-			Length:          d.staticLength,
-			Offset:          d.staticOffset,
-			SiaPath:         d.staticSiaPath,
-
-			Completed:            d.staticComplete(),
-			EndTime:              d.endTime,
-			Received:             atomic.LoadUint64(&d.atomicDataReceived),
-			StartTime:            d.staticStartTime,
-			StartTimeUnix:        d.staticStartTime.UnixNano(),
-			TotalDataTransferred: atomic.LoadUint64(&d.atomicTotalDataTransferred),
-		}
-		// Release download lock before calling d.Err(), which will acquire the
-		// lock. The error needs to be checked separately because we need to
-		// know if it's 'nil' before grabbing the error string.
-		d.mu.Unlock()
-		if d.Err() != nil {
-			downloads[i].Error = d.Err().Error()
-		} else {
-			downloads[i].Error = ""
-		}
-	}
-	return downloads
-}
-
-// ClearDownloadHistory clears the renter's download history inclusive of the
-// provided before and after timestamps
-//
-// TODO: This function can be improved by implementing a binary search, the
-// trick will be making the binary search be just as readable while handling
-// all the edge cases
-func (r *Renter) ClearDownloadHistory(after, before time.Time) error {
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-	r.downloadHistoryMu.Lock()
-	defer r.downloadHistoryMu.Unlock()
-
-	// Check to confirm there are downloads to clear
-	if len(r.downloadHistory) == 0 {
-		return nil
-	}
-
-	// Timestamp validation
-	if before.Before(after) {
-		return errors.New("before timestamp can not be newer then after timestamp")
-	}
-
-	// Clear download history if both before and after timestamps are zero values
-	if before.Equal(types.EndOfTime) && after.IsZero() {
-		r.downloadHistory = make(map[skymodules.DownloadID]*download)
-		return nil
-	}
-
-	// Find and return downloads that are not within the given range
-	withinTimespan := func(t time.Time) bool {
-		return (t.After(after) || t.Equal(after)) && (t.Before(before) || t.Equal(before))
-	}
-	filtered := make(map[skymodules.DownloadID]*download)
-	for _, d := range r.downloadHistory {
-		if !withinTimespan(d.staticStartTime) {
-			filtered[d.UID()] = d
-		}
-	}
-	r.downloadHistory = filtered
-	return nil
 }
