@@ -23,7 +23,10 @@ type limitStreamer struct {
 	limit  uint64
 }
 
-// NewLimitStreamer wraps the given skymodules.Streamer and ensures it can only be read from within the given offset and size boundary. It does this by wrapping both the Read and Seek calls and adjusting the offset and size of the returned byte slice appropriately.
+// NewLimitStreamer wraps the given skymodules.Streamer and ensures it can only
+// be read from within the given offset and size boundary. It does this by
+// wrapping both the Read and Seek calls and adjusting the offset and size of
+// the returned byte slice appropriately.
 func NewLimitStreamer(s skymodules.Streamer, offset, size uint64) (skymodules.Streamer, error) {
 	ls := &limitStreamer{
 		stream: s,

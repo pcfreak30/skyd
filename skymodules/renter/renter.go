@@ -251,11 +251,6 @@ type Renter struct {
 	// The renter's bandwidth ratelimit.
 	staticRL *ratelimit.RateLimit
 
-	// stats cache related fields.
-	stats     *skymodules.SkynetStats
-	statsChan chan struct{}
-	statsMu   sync.Mutex
-
 	// read registry stats
 	staticRRS *readRegistryStats
 
@@ -1156,11 +1151,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 	r.staticSpendingHistory = sh
-
-	// Init the statsChan and close it right away to signal that no scan is
-	// going on.
-	r.statsChan = make(chan struct{})
-	close(r.statsChan)
 
 	// Initialize the loggers so that they are available for the components as
 	// the components start up.
