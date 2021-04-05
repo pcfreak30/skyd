@@ -251,8 +251,9 @@ type Renter struct {
 	// The renter's bandwidth ratelimit.
 	staticRL *ratelimit.RateLimit
 
-	// read registry stats
-	staticRRS *readRegistryStats
+	// Stats collection and management.
+	downloadSkylinkStats *downloadSkylinkStats
+	staticRRS            *readRegistryStats
 
 	// Memory management
 	//

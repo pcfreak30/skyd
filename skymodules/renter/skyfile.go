@@ -626,7 +626,10 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 
 	// Download the data
-	layout, metadata, streamer, err := r.managedDownloadSkylink(link, timeout, pricePerMS)
+	dst := r.NewDownloadSkylinkTrace()
+	dst.staticStart = time.Now()
+	layout, metadata, streamer, err := r.managedDownloadSkylink(link, timeout, pricePerMS, dst)
+	dst.staticStreamerAvailable = time.Now()
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -667,7 +670,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
-func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileLayout, skymodules.SkyfileMetadata, skymodules.SkyfileStreamer, error) {
+func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency, dst *downloadSkylinkTrace) (skymodules.SkyfileLayout, skymodules.SkyfileMetadata, skymodules.SkyfileStreamer, error) {
 	if r.staticDeps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
@@ -680,17 +683,17 @@ func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Du
 	// skip the lookup procedure and use any data that other threads have
 	// cached.
 	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, timeout)
+	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, timeout, dst)
 	if exists {
 		return streamer.Layout(), streamer.Metadata(), streamer, nil
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.skylinkDataSource(link, timeout, pricePerMS)
+	dataSource, err := r.skylinkDataSource(link, timeout, pricePerMS, &dst.skylinkDataSourceTrace)
 	if err != nil {
 		return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
+	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS, dst)
 	return dataSource.Layout(), dataSource.Metadata(), stream, nil
 }
 
@@ -785,11 +788,15 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.skylinkDataSource(skylink, timeout, pricePerMS)
+	//
+	// NOTE: tracing elements aren't really used here, need to set up a
+	// PinSkylink tracer, which is not high priority at this time.
+	dst := r.NewDownloadSkylinkTrace()
+	dataSource, err := r.skylinkDataSource(skylink, timeout, pricePerMS, &dst.skylinkDataSourceTrace)
 	if err != nil {
 		return errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
+	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS, dst)
 
 	// Upload directly from the stream.
 	fileNode, err := r.callUploadStreamFromReader(fup, stream)

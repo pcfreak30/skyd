@@ -175,8 +175,9 @@ type stream struct {
 	mu                 sync.Mutex
 	staticStreamBuffer *streamBuffer
 
-	staticContext     context.Context
-	staticReadTimeout time.Duration
+	staticContext              context.Context
+	staticReadTimeout          time.Duration
+	staticDownloadSkylinkTrace *downloadSkylinkTrace
 }
 
 // streamBuffer is a buffer for a single dataSource.
@@ -235,7 +236,7 @@ func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
 // Each stream has a separate LRU for determining what data to buffer. Because
 // the LRU is distinct to the stream, the shared cache feature will not result
 // in one stream evicting data from another stream's LRU.
-func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency) *stream {
+func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency, dst *downloadSkylinkTrace) *stream {
 	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
 	// the sourceID exists, create a new one.
 	sourceID := dataSource.ID()
@@ -260,14 +261,14 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset, timeout)
+	return streamBuf.managedPrepareNewStream(initialOffset, timeout, dst)
 }
 
 // callNewStreamFromID will check the stream buffer set to see if a stream
 // buffer exists for the given data source id. If so, a new stream will be
 // created using the data source, and the bool will be set to 'true'. Otherwise,
 // the stream returned will be nil and the bool will be set to 'false'.
-func (sbs *streamBufferSet) callNewStreamFromID(id skymodules.DataSourceID, initialOffset uint64, timeout time.Duration) (*stream, bool) {
+func (sbs *streamBufferSet) callNewStreamFromID(id skymodules.DataSourceID, initialOffset uint64, timeout time.Duration, dst *downloadSkylinkTrace) (*stream, bool) {
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[id]
 	if !exists {
@@ -276,7 +277,7 @@ func (sbs *streamBufferSet) callNewStreamFromID(id skymodules.DataSourceID, init
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset, timeout), true
+	return streamBuf.managedPrepareNewStream(initialOffset, timeout, dst), true
 }
 
 // managedData will block until the data for a data section is available, and
@@ -314,6 +315,26 @@ func (s *stream) Close() error {
 
 		// Remove the stream from the streamBuffer.
 		sbs.managedRemoveStream(sb)
+
+		// Log the trace results.
+		dst := s.staticDownloadSkylinkTrace
+		sdst := dst.skylinkDataSourceTrace
+		start := dst.staticStart
+		dbrTime := sdst.staticDownloadByRootTime.Sub(start) / time.Millisecond
+		streamAvailableTime := dst.staticStreamerAvailable.Sub(start) / time.Millisecond
+		dst.staticRenter.staticLog.Printf(`Trace Results:
+Download Start:        %v,
+Download By Root Time: %v ms,
+Stream Available:      %v ms,
+`, start, dbrTime, streamAvailableTime)
+		// Grab the request times for the data source.
+		sdst.mu.Lock()
+		requestTimes := make([]skylinkDataSourceReadTrace, len(sdst.allRequests))
+		copy(requestTimes, sdst.allRequests)
+		sdst.mu.Unlock()
+		for _, request := range requestTimes {
+			dst.staticRenter.staticLog.Printf("Request: %v ::: %v ::: %v", request.staticStart.Sub(start)/time.Millisecond, request.staticLaunch.Sub(start)/time.Millisecond, request.staticComplete.Sub(start)/time.Millisecond)
+		}
 	})
 	return nil
 }
@@ -509,7 +530,7 @@ func (sb *streamBuffer) callRemoveDataSection(index uint64) {
 // managedPrepareNewStream creates a new stream from an existing stream buffer.
 // The ref count for the buffer needs to be incremented under the
 // streamBufferSet lock, before this method is called.
-func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout time.Duration) *stream {
+func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout time.Duration, dst *downloadSkylinkTrace) *stream {
 	// Determine how many data sections the stream should cache.
 	dataSectionsToCache := bytesBufferedPerStream / sb.staticDataSectionSize
 	if dataSectionsToCache < minimumDataSections {
@@ -521,8 +542,10 @@ func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout ti
 		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, sb),
 		offset: initialOffset,
 
-		staticContext:      sb.staticTG.StopCtx(),
-		staticReadTimeout:  timeout,
+		staticContext:              sb.staticTG.StopCtx(),
+		staticReadTimeout:          timeout,
+		staticDownloadSkylinkTrace: dst,
+
 		staticStreamBuffer: sb,
 	}
 	stream.prepareOffset()

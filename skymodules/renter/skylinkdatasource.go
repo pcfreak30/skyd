@@ -12,6 +12,7 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -44,9 +45,10 @@ type (
 		staticChunkFetchers []chunkFetcher
 
 		// Utilities
-		staticCtx        context.Context
-		staticCancelFunc context.CancelFunc
-		staticRenter     *Renter
+		staticCtx                    context.Context
+		staticCancelFunc             context.CancelFunc
+		staticRenter                 *Renter
+		staticSkylinkDataSourceTrace *skylinkDataSourceTrace
 	}
 )
 
@@ -85,6 +87,10 @@ func (sds *skylinkDataSource) SilentClose() {
 
 // ReadStream implements streamBufferDataSource
 func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uint64, pricePerMS types.Currency) chan *readResponse {
+	// Set up the tracing
+	var sdsrt skylinkDataSourceReadTrace
+	sdsrt.staticStart = time.Now()
+
 	// Prepare the response channel
 	responseChan := make(chan *readResponse, 1)
 	if off+fetchSize > sds.staticLayout.Filesize {
@@ -152,6 +158,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 
 	// Launch a goroutine that collects all download responses, aggregates them
 	// and sends it as a single response over the response channel.
+	sdsrt.staticLaunch = time.Now()
 	err := sds.staticRenter.tg.Launch(func() {
 		data := make([]byte, fetchSize)
 		offset := 0
@@ -174,6 +181,21 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		if !failed {
 			responseChan <- &readResponse{staticData: data}
 			close(responseChan)
+			sdsrt.staticComplete = time.Now()
+
+			// Update the stats in the data source trace.
+			timeElapsed := sdsrt.staticComplete.Sub(sdsrt.staticStart)
+			sdst := sds.staticSkylinkDataSourceTrace
+			sdst.mu.Lock()
+			if fastrand.Intn(sdst.totalReadRequests+1) == 0 {
+				sdst.randomRequest = sdsrt
+			}
+			sdst.totalReadRequests++
+			if timeElapsed > time.Second {
+				sdst.slowRequests = append(sdst.slowRequests, sdsrt)
+			}
+			sdst.allRequests = append(sdst.allRequests, sdsrt) // TODO: Remove, this is just for initial debugging
+			sdst.mu.Unlock()
 		}
 	})
 	if err != nil {
@@ -236,7 +258,8 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // timeout. This can be optimized to always create the data source when it was
 // requested, but we should only do so after gathering some real world feedback
 // that indicates we would benefit from this.
-func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (streamBufferDataSource, error) {
+func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency, sdst *skylinkDataSourceTrace) (streamBufferDataSource, error) {
+	sdst.staticStart = time.Now()
 	// Create the context using the given timeout, this timeout should only be
 	// applicable to downloading the base sector because the data source might
 	// outlive the request.
@@ -263,6 +286,7 @@ func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duratio
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to download base sector")
 	}
+	sdst.staticDownloadByRootTime = time.Now()
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
@@ -316,6 +340,8 @@ func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duratio
 			fanoutChunkFetchers = append(fanoutChunkFetchers, pcws)
 		}
 	}
+	sdst.staticChunkFetchersCreated = time.Now()
+	sdst.staticNumChunkFetchers = len(fanoutChunkFetchers)
 
 	sds := &skylinkDataSource{
 		staticID:       link.DataSourceID(),
@@ -328,6 +354,8 @@ func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duratio
 		staticCtx:        dsCtx,
 		staticCancelFunc: cancelFunc,
 		staticRenter:     r,
+
+		staticSkylinkDataSourceTrace: sdst,
 	}
 	return sds, nil
 }
