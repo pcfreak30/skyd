@@ -1551,3 +1551,26 @@ func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Reques
 		Skylink: skylink.String(),
 	})
 }
+
+// skynetSkylinkUnpinHandlerPOST will unpin a skylink from this Sia node.
+func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+	strLink := ps.ByName("skylink")
+	var skylink skymodules.Skylink
+	err := skylink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Unpin the Skylink
+	err = api.renter.UnpinSkylink(skylink)
+	if errors.Contains(err, renter.ErrSkylinkBlocked) {
+		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+		return
+	} else if err != nil {
+		WriteError(w, Error{fmt.Sprintf("Failed to unpin skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
+}

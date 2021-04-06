@@ -4812,3 +4812,136 @@ func TestSkynetFeePaid(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestSkynetPinUnpin tests pinning and unpinning a skylink
+func TestSkynetPinUnpin(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create group
+	// Create a testgroup with 2 portals.
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Miners:  1,
+		Portals: 2,
+	}
+	groupDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = tg.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Grab the portals
+	portals := tg.Portals()
+	p1 := portals[0]
+	p2 := portals[1]
+
+	// Test small Skyfile
+	t.Run("SmallFile", func(t *testing.T) {
+		testSkynetPinUnpin(t, p1, p2, 100)
+	})
+	// Test Large Skyfile
+	t.Run("LargeFile", func(t *testing.T) {
+		testSkynetPinUnpin(t, p1, p2, 2*modules.SectorSize)
+	})
+}
+
+// testSkynetPinUnpin tests pinning and unpinning a skylink
+func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64) {
+	// Upload from one portal
+	skylink, sup, _, err := p1.UploadNewSkyfileBlocking("pinnedfile", fileSize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath := sup.SiaPath
+
+	// Pin to the other
+	spp := skymodules.SkyfilePinParameters{
+		SiaPath: siaPath,
+	}
+	err = p2.SkynetSkylinkPinPost(skylink, spp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download from both
+	//
+	// NOTE: This helper also verified the bytes are equal
+	err = verifyDownloadByAll(p1, p2, skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the siafile exists on both portals
+	fullSiaPath, err := skymodules.SkynetFolder.Join(siaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	extendedPath, err := skymodules.NewSiaPath(fullSiaPath.String() + skymodules.ExtendedSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p1.RenterFileRootGet(fullSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p2.RenterFileRootGet(fullSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	isLargeFile := fileSize > modules.SectorSize
+	if isLargeFile {
+		_, err = p1.RenterFileRootGet(extendedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p2.RenterFileRootGet(extendedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Unpin from both portals
+	err = p1.SkynetSkylinkUnpinPost(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = p2.SkynetSkylinkUnpinPost(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download from all. This still works because the data is still on the hosts.
+	err = verifyDownloadByAll(p1, p2, skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the siafile no longer exists on both portals
+	_, err = p1.RenterFileRootGet(fullSiaPath)
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("unexpected")
+	}
+	_, err = p2.RenterFileRootGet(fullSiaPath)
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("unexpected")
+	}
+	if isLargeFile {
+		_, err = p1.RenterFileRootGet(extendedPath)
+		if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			t.Fatal("unexpected")
+		}
+		_, err = p2.RenterFileRootGet(extendedPath)
+		if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			t.Fatal("unexpected")
+		}
+	}
+}

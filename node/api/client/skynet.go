@@ -1017,3 +1017,10 @@ func urlEncodeSkyfileUploadParameters(sup skymodules.SkyfileUploadParameters) (s
 	}
 	return values.Encode(), nil
 }
+
+// SkynetSkylinkUnpinPost uses the /skynet/unpin endpoint to remove the any
+// files associated with the given skylink from the renter.
+func (c *Client) SkynetSkylinkUnpinPost(skylink string) error {
+	_, _, err := c.postRawResponse(fmt.Sprintf("/skynet/unpin/%s", skylink), nil)
+	return err
+}

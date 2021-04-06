@@ -1400,6 +1400,10 @@ type Renter interface {
 	// allowed to spend on faster hosts.
 	PinSkylink(link Skylink, sup SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) error
 
+	// UnpinSkylink unpins a skylink from the renter by removing the underlying
+	// siafile.
+	UnpinSkylink(skylink Skylink) error
+
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortal, error)
 
