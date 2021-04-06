@@ -578,7 +578,7 @@ func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
 
 // IsSkynetDir is a helper that tells if the siapath is in the Skynet Folder
 func IsSkynetDir(sp SiaPath) bool {
-	return strings.Contains(sp.String(), SkynetFolder.String())
+	return strings.HasPrefix(sp.String(), SkynetFolder.String())
 }
 
 // PayMonetizers is a helper method for paying out monetizers.

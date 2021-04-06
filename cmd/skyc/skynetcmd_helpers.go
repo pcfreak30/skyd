@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -71,7 +72,7 @@ func printSkynetDirs(dirs []directoryInfo, recursive bool) error {
 }
 
 // printSkyFiles is a helper for printing out Skyfile information
-func printSkyFiles(w *tabwriter.Writer, files []skymodules.FileInfo) {
+func printSkyFiles(w io.Writer, files []skymodules.FileInfo) {
 	fmt.Fprintf(w, "  Filename\tSkylink\tFilesize\n")
 	for _, file := range files {
 		// Skip any non skyfiles

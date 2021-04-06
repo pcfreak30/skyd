@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	// errIncorrectNumArgs is the error return if there is an incorrect number of
-	// arguments
+	// errIncorrectNumArgs is the error returned if there is an incorrect number
+	// of arguments
 	errIncorrectNumArgs = errors.New("incorrect number of arguments")
 )
 
@@ -505,7 +505,7 @@ func printDirsVerbose(dirs []directoryInfo) error {
 		fmt.Fprintf(w, "%v/\n", dir.dir.SiaPath)
 
 		// Print SubDirs
-		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
+		fmt.Fprintf(w, "  Name\tFilesize\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
 		for _, subDir := range dir.subDirs {
 			name := subDir.SiaPath.Name() + "/"
 			size := modules.FilesizeUnits(subDir.AggregateSize)
