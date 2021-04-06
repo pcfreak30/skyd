@@ -395,9 +395,13 @@ func (r *Renter) managedUploadBaseSector(sup skymodules.SkyfileUploadParameters,
 	// Perform the actual upload.
 	fileNode, err := r.callUploadStreamFromReader(uploadParams, reader)
 	if err != nil {
-		return errors.AddContext(err, "failed to stream upload small skyfile")
+		return errors.AddContext(err, "failed to stream upload base sector")
 	}
 	defer func() {
+		// If there was an error, try and delete the file that was created
+		if err != nil {
+			err = errors.Compose(err, r.DeleteFile(sup.SiaPath))
+		}
 		err = errors.Compose(err, fileNode.Close())
 	}()
 
@@ -497,7 +501,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 // data to a large siafile and upload it to the Sia network using
 // 'callUploadStreamFromReader'. The final skylink is created by calling
 // 'CreateSkylinkFromSiafile' on the resulting siafile.
-func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (skymodules.Skylink, error) {
+func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (_ skymodules.Skylink, err error) {
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
 	siaPath, err := skymodules.NewSiaPath(sup.SiaPath.String() + skymodules.ExtendedSuffix)
@@ -522,13 +526,13 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	if err != nil {
 		return skymodules.Skylink{}, err
 	}
-
 	// Defer closing the file
 	defer func() {
-		err := fileNode.Close()
+		// If there was an error, try and delete the file that was created
 		if err != nil {
-			r.staticLog.Printf("Could not close node, err: %s\n", err.Error())
+			err = errors.Compose(err, r.DeleteFile(sup.SiaPath))
 		}
+		err = errors.Compose(err, fileNode.Close())
 	}()
 
 	// Figure out how to create the fanout. If only one piece is needed, we
@@ -546,7 +550,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		err = r.managedPopulateFileNodeFromReader(fileNode, cr)
 	} else {
 		// Upload the file using a streamer.
-		err = r.callUploadStreamFromReaderWithFileNode(fileNode, cr)
+		_, err = r.callUploadStreamFromReaderWithFileNode(fileNode, cr, 0)
 	}
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload file")
@@ -995,7 +999,7 @@ func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader sk
 
 	// Check if skylink is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) && !sup.DryRun {
-		return skymodules.Skylink{}, ErrSkylinkBlocked
+		return skymodules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
 	}
 
 	return skylink, nil

@@ -3240,6 +3240,30 @@ Details of the workers' read jobs queue
 **hassectorjobsstatus** | object
 Details of the workers' has sector jobs queue
 
+## Resumable Uploads
+
+Skyd supports resumable uploads using the [TUS protocol](https://tus.io/).
+The protocol is implemented on the following endpoints:
+
+- [POST]  /skynet/tus
+- [HEAD]  /skynet/tus/:id
+- [PATCH] /skynet/tus/:id
+- [GET]   /skynet/tus/:id
+
+For detailed information about the protocol check out the [specification](https://tus.io/protocols/resumable-upload.html).
+
+For uploads to work with Skyd, you need to make sure that the chunk size of
+your TUS client is configured correctly. Otherwise, the upload will return an
+error which contains the expected chunk size. Right now the chunk size is
+expected to be a multiple of `40MiB` for the default upload settings.
+
+The formula for computing the chunk size is:
+`chunkSize = (4MiB - encryptionOverhead) * dataPieces`
+
+When using the defaults, the overhead is 0 and the dataPieces are 10. That's
+because all files uploaded using this protocol are automatically considered
+large uploads.
+
 # Skynet
 
 ## /skynet/basesector/*skylink* [GET]

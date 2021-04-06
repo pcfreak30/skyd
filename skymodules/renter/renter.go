@@ -206,9 +206,10 @@ type cachedUtilities struct {
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
 	// Skynet Management
-	staticSkynetBlocklist *skynetblocklist.SkynetBlocklist
-	staticSkynetPortals   *skynetportals.SkynetPortals
-	staticSpendingHistory *spendingHistory
+	staticSkynetBlocklist   *skynetblocklist.SkynetBlocklist
+	staticSkynetPortals     *skynetportals.SkynetPortals
+	staticSpendingHistory   *spendingHistory
+	staticSkynetTUSUploader *skynetTUSUploader
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -1138,6 +1139,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
 	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
@@ -1271,6 +1273,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Spin up the skynet fee paying goroutine.
 	if err := r.tg.Launch(r.threadedPaySkynetFee); err != nil {
+		return nil, err
+	}
+
+	// Spin up the tus pruning goroutine.
+	if err := r.tg.Launch(r.threadedPruneTUSUploads); err != nil {
 		return nil, err
 	}
 

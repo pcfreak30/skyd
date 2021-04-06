@@ -30,8 +30,8 @@ type churnLimiter struct {
 	// churned in the current period.
 	aggregateCurrentPeriodChurn uint64
 
-	mu         sync.Mutex
-	contractor *Contractor
+	mu               sync.Mutex
+	staticContractor *Contractor
 }
 
 // churnLimiterPersist is the persisted state of a churnLimiter.
@@ -42,7 +42,7 @@ type churnLimiterPersist struct {
 
 // managedMaxPeriodChurn returns the MaxPeriodChurn of the churnLimiter.
 func (cl *churnLimiter) managedMaxPeriodChurn() uint64 {
-	return cl.contractor.Allowance().MaxPeriodChurn
+	return cl.staticContractor.Allowance().MaxPeriodChurn
 }
 
 // callPersistData returns the churnLimiterPersist corresponding to this
@@ -56,7 +56,7 @@ func (cl *churnLimiter) callPersistData() churnLimiterPersist {
 // newChurnLimiterFromPersist creates a new churnLimiter using persisted state.
 func newChurnLimiterFromPersist(contractor *Contractor, persistData churnLimiterPersist) *churnLimiter {
 	return &churnLimiter{
-		contractor:                  contractor,
+		staticContractor:            contractor,
 		aggregateCurrentPeriodChurn: persistData.AggregateCurrentPeriodChurn,
 		remainingChurnBudget:        persistData.RemainingChurnBudget,
 	}
@@ -64,7 +64,7 @@ func newChurnLimiterFromPersist(contractor *Contractor, persistData churnLimiter
 
 // newChurnLimiter returns a new churnLimiter.
 func newChurnLimiter(contractor *Contractor) *churnLimiter {
-	return &churnLimiter{contractor: contractor}
+	return &churnLimiter{staticContractor: contractor}
 }
 
 // ChurnStatus returns the current period's aggregate churn and the max churn
@@ -81,7 +81,7 @@ func (c *Contractor) ChurnStatus() skymodules.ContractorChurnStatus {
 // method must be called at the beginning of every new period.
 func (cl *churnLimiter) callResetAggregateChurn() {
 	cl.mu.Lock()
-	cl.contractor.log.Println("Aggregate Churn for last period: ", cl.aggregateCurrentPeriodChurn)
+	cl.staticContractor.staticLog.Println("Aggregate Churn for last period: ", cl.aggregateCurrentPeriodChurn)
 	cl.aggregateCurrentPeriodChurn = 0
 	cl.mu.Unlock()
 }
@@ -100,8 +100,8 @@ func (cl *churnLimiter) callNotifyChurnedContract(contract skymodules.RenterCont
 
 	cl.aggregateCurrentPeriodChurn += size
 	cl.remainingChurnBudget -= int(size)
-	cl.contractor.log.Debugf("Increasing aggregate churn by %d to %d (MaxPeriodChurn: %d)", size, cl.aggregateCurrentPeriodChurn, maxPeriodChurn)
-	cl.contractor.log.Debugf("Remaining churn budget: %d", cl.remainingChurnBudget)
+	cl.staticContractor.staticLog.Debugf("Increasing aggregate churn by %d to %d (MaxPeriodChurn: %d)", size, cl.aggregateCurrentPeriodChurn, maxPeriodChurn)
+	cl.staticContractor.staticLog.Debugf("Remaining churn budget: %d", cl.remainingChurnBudget)
 }
 
 // callBumpChurnBudget increases the churn budget by a fraction of the max churn
@@ -124,7 +124,7 @@ func (cl *churnLimiter) callBumpChurnBudget(numBlocksAdded int, period types.Blo
 	if cl.remainingChurnBudget > maxChurnBudget {
 		cl.remainingChurnBudget = maxChurnBudget
 	}
-	cl.contractor.log.Debugf("Updated churn budget: %d", cl.remainingChurnBudget)
+	cl.staticContractor.staticLog.Debugf("Updated churn budget: %d", cl.remainingChurnBudget)
 }
 
 // managedMaxChurnBudget returns the max allowed value for remainingChurnBudget.
@@ -153,18 +153,18 @@ func (cl *churnLimiter) managedProcessSuggestedUpdates(queue []contractScoreAndU
 		turnedNotGFR := queuedContract.contract.Utility.GoodForRenew && !queuedContract.util.GoodForRenew
 		churningThisContract := turnedNotGFR && cl.managedCanChurnContract(queuedContract.contract)
 		if turnedNotGFR && !churningThisContract {
-			cl.contractor.log.Debugln("Avoiding churn on contract: ", queuedContract.contract.ID)
+			cl.staticContractor.staticLog.Debugln("Avoiding churn on contract: ", queuedContract.contract.ID)
 			currentBudget, periodBudget := cl.managedChurnBudget()
-			cl.contractor.log.Debugf("Remaining Churn Budget: %d. Remaining Period Budget: %d", currentBudget, periodBudget)
+			cl.staticContractor.staticLog.Debugf("Remaining Churn Budget: %d. Remaining Period Budget: %d", currentBudget, periodBudget)
 			queuedContract.util.GoodForRenew = true
 		}
 
 		if churningThisContract {
-			cl.contractor.log.Println("Churning contract for bad score: ", queuedContract.contract.ID, queuedContract.score)
+			cl.staticContractor.staticLog.Println("Churning contract for bad score: ", queuedContract.contract.ID, queuedContract.score)
 		}
 
 		// Apply changes.
-		err := cl.contractor.managedAcquireAndUpdateContractUtility(queuedContract.contract.ID, queuedContract.util)
+		err := cl.staticContractor.managedAcquireAndUpdateContractUtility(queuedContract.contract.ID, queuedContract.util)
 		if err != nil {
 			return err
 		}
@@ -236,7 +236,7 @@ func (c *Contractor) managedMarkContractUtility(contract skymodules.RenterContra
 	host, u, needsUpdate := c.managedHostInHostDBCheck(contract)
 	if needsUpdate {
 		if err := c.managedUpdateContractUtility(sc, u); err != nil {
-			c.log.Println("Unable to acquire and update contract utility:", err)
+			c.staticLog.Println("Unable to acquire and update contract utility:", err)
 			return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after hostdb check")
 		}
 		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil
@@ -247,15 +247,15 @@ func (c *Contractor) managedMarkContractUtility(contract skymodules.RenterContra
 	if needsUpdate {
 		err := c.managedUpdateContractUtility(sc, u)
 		if err != nil {
-			c.log.Println("Unable to acquire and update contract utility:", err)
+			c.staticLog.Println("Unable to acquire and update contract utility:", err)
 			return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after criticalUtilityChecks")
 		}
 		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil
 	}
 
-	sb, err := c.hdb.ScoreBreakdown(host)
+	sb, err := c.staticHDB.ScoreBreakdown(host)
 	if err != nil {
-		c.log.Println("Unable to get ScoreBreakdown for", host.PublicKey.String(), "got err:", err)
+		c.staticLog.Println("Unable to get ScoreBreakdown for", host.PublicKey.String(), "got err:", err)
 		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil // it may just be this host that has an issue.
 	}
 
@@ -267,32 +267,32 @@ func (c *Contractor) managedMarkContractUtility(contract skymodules.RenterContra
 	// suggestedUtilityUpdates are applied selectively by the churnLimiter.
 	// These are contracts with acceptable, but not very good host scores.
 	case suggestedUtilityUpdate:
-		c.log.Debugln("Queueing utility update", contract.ID, sb.Score)
+		c.staticLog.Debugln("Queueing utility update", contract.ID, sb.Score)
 		return sb, u, true, nil
 
 	case necessaryUtilityUpdate:
 		// Apply changes.
 		err = c.managedUpdateContractUtility(sc, u)
 		if err != nil {
-			c.log.Println("Unable to acquire and update contract utility:", err)
+			c.staticLog.Println("Unable to acquire and update contract utility:", err)
 			return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after checkHostScore")
 		}
 		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil
 
 	default:
-		c.log.Critical("Undefined checkHostScore utilityUpdateStatus", utilityUpdateStatus, contract.ID)
+		c.staticLog.Critical("Undefined checkHostScore utilityUpdateStatus", utilityUpdateStatus, contract.ID)
 	}
 
 	// All checks passed, marking contract as GFU and GFR.
 	if !u.GoodForUpload || !u.GoodForRenew {
-		c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", u.GoodForUpload, u.GoodForRenew, contract.ID)
+		c.staticLog.Println("Marking contract as being both GoodForUpload and GoodForRenew", u.GoodForUpload, u.GoodForRenew, contract.ID)
 	}
 	u.GoodForUpload = true
 	u.GoodForRenew = true
 	// Apply changes.
 	err = c.managedUpdateContractUtility(sc, u)
 	if err != nil {
-		c.log.Println("Unable to acquire and update contract utility:", err)
+		c.staticLog.Println("Unable to acquire and update contract utility:", err)
 		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after all checks passed.")
 	}
 	return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil
@@ -324,7 +324,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 	// Process the suggested updates through the churn limiter.
 	err = c.staticChurnLimiter.managedProcessSuggestedUpdates(suggestedUpdateQueue)
 	if err != nil {
-		c.log.Println("Unable process suggested utility updates:", err)
+		c.staticLog.Println("Unable process suggested utility updates:", err)
 		return errors.AddContext(err, "churnLimiter processSuggestedUpdates err")
 	}
 

@@ -61,7 +61,11 @@ func (c *Contractor) SetAllowance(a skymodules.Allowance) error {
 	if reflect.DeepEqual(a, skymodules.Allowance{}) {
 		return c.managedCancelAllowance()
 	}
-	if reflect.DeepEqual(a, c.allowance) {
+
+	c.mu.Lock()
+	noChange := reflect.DeepEqual(a, c.allowance)
+	c.mu.Unlock()
+	if noChange {
 		return nil
 	}
 
@@ -84,10 +88,10 @@ func (c *Contractor) SetAllowance(a skymodules.Allowance) error {
 		return ErrAllowanceZeroExpectedRedundancy
 	} else if a.MaxPeriodChurn == 0 {
 		return ErrAllowanceZeroMaxPeriodChurn
-	} else if !c.cs.Synced() {
+	} else if !c.staticCS.Synced() {
 		return errAllowanceNotSynced
 	}
-	c.log.Println("INFO: setting allowance to", a)
+	c.staticLog.Println("INFO: setting allowance to", a)
 
 	// Set the current period if the existing allowance is empty.
 	//
@@ -120,7 +124,7 @@ func (c *Contractor) SetAllowance(a skymodules.Allowance) error {
 	err := c.save()
 	c.mu.Unlock()
 	if err != nil {
-		c.log.Println("Unable to save contractor after setting allowance:", err)
+		c.staticLog.Println("Unable to save contractor after setting allowance:", err)
 	}
 
 	// Cycle through all contracts and unlock them again since they might have
@@ -146,18 +150,18 @@ func (c *Contractor) SetAllowance(a skymodules.Allowance) error {
 	c.staticWatchdog.callAllowanceUpdated(a)
 
 	// We changed the allowance successfully. Update the hostdb.
-	err = c.hdb.SetAllowance(a)
+	err = c.staticHDB.SetAllowance(a)
 	if err != nil {
 		return err
 	}
 
 	// Interrupt any existing maintenance and launch a new round of
 	// maintenance.
-	if err := c.tg.Add(); err != nil {
+	if err := c.staticTG.Add(); err != nil {
 		return err
 	}
 	go func() {
-		defer c.tg.Done()
+		defer c.staticTG.Done()
 		c.callInterruptContractMaintenance()
 		c.threadedContractMaintenance()
 	}()
@@ -166,7 +170,7 @@ func (c *Contractor) SetAllowance(a skymodules.Allowance) error {
 
 // managedCancelAllowance handles the special case where the allowance is empty.
 func (c *Contractor) managedCancelAllowance() error {
-	c.log.Println("INFO: canceling allowance")
+	c.staticLog.Println("INFO: canceling allowance")
 	// first need to invalidate any active editors
 	// NOTE: this code is the same as in managedRenewContracts
 	ids := c.staticContracts.IDs()
@@ -190,10 +194,10 @@ func (c *Contractor) managedCancelAllowance() error {
 		s, sok := c.sessions[id]
 		c.mu.RUnlock()
 		if eok {
-			e.invalidate()
+			e.callInvalidate()
 		}
 		if sok {
-			s.invalidate()
+			s.callInvalidate()
 		}
 	}
 

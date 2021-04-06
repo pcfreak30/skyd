@@ -9,6 +9,11 @@ import (
 )
 
 type (
+	// DependencyUnstableTUSUpload causes every TUS upload to fail and to only
+	// append half the uploaded data.
+	DependencyUnstableTUSUpload struct {
+		modules.ProductionDependencies
+	}
 	// DependencyReadRegistryBlocking will block the read registry call by
 	// making it think that it got one more worker than it actually has.
 	// Therefore, waiting for a response that never comes.
@@ -383,6 +388,11 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyReadRegistryBlocking) Disrupt(s string) bool {
 	return s == "ReadRegistryBlocking"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyUnstableTUSUpload) Disrupt(s string) bool {
+	return s == "TUSUnstable"
 }
 
 // Disrupt returns true if the correct string is provided.
