@@ -1119,6 +1119,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			heapDirectories: make(map[skymodules.SiaPath]*directory),
 		},
 
+		staticDownloadHistory: newDownloadHistory(),
+
 		staticSubscriptionManager: newSubscriptionManager(),
 
 		staticConsensusSet:   cs,
@@ -1135,7 +1137,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticTPool:          tpool,
 	}
 	r.staticBubbleScheduler = newBubbleScheduler(r)
-	r.staticDownloadHistory = newDownloadHistory()
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
