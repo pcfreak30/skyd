@@ -115,6 +115,9 @@ func (sr *skyfileReader) Read(p []byte) (n int, err error) {
 	if len(sr.readBuf) > 0 {
 		n = copy(p, sr.readBuf)
 		sr.readBuf = sr.readBuf[n:]
+		if len(sr.readBuf) == 0 {
+			sr.readBuf = nil // reset for GC
+		}
 	}
 
 	// check if we've already read until EOF, that will be the case if
@@ -286,6 +289,9 @@ func (sr *skyfileMultipartReader) Read(p []byte) (n int, err error) {
 	if len(sr.readBuf) > 0 {
 		n = copy(p, sr.readBuf)
 		sr.readBuf = sr.readBuf[n:]
+		if len(sr.readBuf) == 0 {
+			sr.readBuf = nil // reset for GC
+		}
 	}
 
 	// check if we've already read until EOF, that will be the case if
