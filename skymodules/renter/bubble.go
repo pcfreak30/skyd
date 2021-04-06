@@ -41,15 +41,15 @@ type (
 	// for managing the number of concurrent bubble updates as well as ensuring
 	// that all bubble updates are processed.
 	bubbleScheduler struct {
-		// bubbleNeeded is a channel used to signal the bubbleScheduler that a bubble
-		// is needed
-		bubbleNeeded chan struct{}
-
 		// bubbleUpdates is a map of the requested bubble updates
 		bubbleUpdates map[skymodules.SiaPath]*bubbleUpdate
 
 		// fifo is a First In Fist Out queue of bubble updates
 		fifo *bubbleQueue
+
+		// staticBubbleNeeded is a channel used to signal the bubbleScheduler that
+		// a bubble is needed
+		staticBubbleNeeded chan struct{}
 
 		// Utilities
 		mu           sync.Mutex
@@ -82,9 +82,9 @@ func newBubbleQueue() *bubbleQueue {
 // newBubbleScheduler returns an initialized bubbleScheduler
 func newBubbleScheduler(r *Renter) *bubbleScheduler {
 	return &bubbleScheduler{
-		bubbleNeeded:  make(chan struct{}, 1),
-		bubbleUpdates: make(map[skymodules.SiaPath]*bubbleUpdate),
-		fifo:          newBubbleQueue(),
+		staticBubbleNeeded: make(chan struct{}, 1),
+		bubbleUpdates:      make(map[skymodules.SiaPath]*bubbleUpdate),
+		fifo:               newBubbleQueue(),
 
 		staticRenter: r,
 	}
@@ -113,7 +113,7 @@ func (bs *bubbleScheduler) callQueueBubble(siaPath skymodules.SiaPath) chan stru
 	// request we trigger the bubbleNeeded channel
 	defer func() {
 		select {
-		case bs.bubbleNeeded <- struct{}{}:
+		case bs.staticBubbleNeeded <- struct{}{}:
 		default:
 		}
 	}()
@@ -188,7 +188,7 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 		select {
 		case <-bs.staticRenter.tg.StopChan():
 			return
-		case <-bs.bubbleNeeded:
+		case <-bs.staticBubbleNeeded:
 		}
 
 		// Launch a group of bubble workers

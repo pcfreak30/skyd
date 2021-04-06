@@ -430,7 +430,7 @@ func testManagedAddChunksToHeap(t *testing.T) {
 
 	// Create files in multiple directories
 	var numChunks uint64
-	dirSiaPaths := rt.renter.newUniqueRefreshPaths()
+	dirSiaPaths := rt.renter.callNewUniqueRefreshPaths()
 	names := []string{"rootFile", "subdir/File", "subdir2/file"}
 	for _, name := range names {
 		siaPath, err := skymodules.NewSiaPath(name)
@@ -548,7 +548,7 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 
 	// Create local and remote files in the root directory an a sub directory
 	var numChunks int
-	dirSiaPaths := rt.renter.newUniqueRefreshPaths()
+	dirSiaPaths := rt.renter.callNewUniqueRefreshPaths()
 	names := []string{"remoteFile", "localFile", "sub/remoteFile", "sub/localFile"}
 	for _, name := range names {
 		// Create the SiaPath for the file

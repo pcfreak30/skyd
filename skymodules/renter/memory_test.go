@@ -35,7 +35,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted1)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 
 	// Request some priority memory.
 	for i := 0; i < 25; i++ {
@@ -55,7 +55,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted2)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 
 	// Return 26 memory, which should not be enough for either open request to
 	// complete. The request for 1 will remain blocked because it is not allowed
@@ -95,7 +95,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted3)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 	// Create a couple of future requests, both priority and non priority.
 	//
 	// NOTE: We make the low priority requests first to ensure that the FIFO is
@@ -107,7 +107,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted6)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 	memoryCompleted7 := make(chan struct{})
 	go func() {
 		if !mm.Request(context.Background(), 1, memoryPriorityLow) {
@@ -115,7 +115,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted7)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 	memoryCompleted4 := make(chan struct{})
 	go func() {
 		if !mm.Request(context.Background(), 30, memoryPriorityHigh) {
@@ -123,7 +123,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted4)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 	memoryCompleted5 := make(chan struct{})
 	go func() {
 		if !mm.Request(context.Background(), 1, memoryPriorityHigh) {
@@ -131,7 +131,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted5)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 
 	// Return 75 memory to get the mm back to zero, unblocking the big request.
 	// All little requests should remain blocked.
@@ -246,7 +246,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted8)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 
 	// Do some priority requests.
 	if !mm.Request(context.Background(), 10, memoryPriorityHigh) {
@@ -278,7 +278,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted9)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 
 	// The high priority request should not have been granted even though there
 	// is enough high priority memory available, because the low priority
@@ -313,7 +313,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted10)
 	}()
-	<-mm.blocking
+	<-mm.staticBlocking
 	memoryCompleted11 := make(chan struct{})
 	go func() {
 		if !mm.Request(context.Background(), 10, memoryPriorityLow) {
@@ -321,7 +321,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted11)
 	}()
-	<-mm.blocking
+	<-mm.staticBlocking
 	memoryCompleted12 := make(chan struct{})
 	go func() {
 		if !mm.Request(context.Background(), 10, memoryPriorityLow) {
@@ -329,7 +329,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted12)
 	}()
-	<-mm.blocking
+	<-mm.staticBlocking
 	// Add another low priority request, this should be unblocked by the
 	// starvation detector much later than the previous 3.
 	memoryCompleted13 := make(chan struct{})
@@ -339,7 +339,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted13)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 
 	// Add high priority requests and release previous high priority items.
 	// These should all unblock as soon as memory is returned.
@@ -351,7 +351,7 @@ func TestMemoryManager(t *testing.T) {
 			}
 			close(memoryCompletedL)
 		}()
-		<-mm.blocking // wait until the goroutine is in the fifo.
+		<-mm.staticBlocking // wait until the goroutine is in the fifo.
 		mm.Return(100)
 		<-memoryCompletedL
 	}
@@ -365,7 +365,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted14)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 	mm.Return(100)
 	// First set of low priority requests should have gone through.
 	<-memoryCompleted10
@@ -390,7 +390,7 @@ func TestMemoryManager(t *testing.T) {
 			}
 			close(memoryCompletedL)
 		}()
-		<-mm.blocking // wait until the goroutine is in the fifo.
+		<-mm.staticBlocking // wait until the goroutine is in the fifo.
 		mm.Return(100)
 		<-memoryCompletedL
 
@@ -408,7 +408,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 		close(memoryCompleted15)
 	}()
-	<-mm.blocking // wait until the goroutine is in the fifo.
+	<-mm.staticBlocking // wait until the goroutine is in the fifo.
 	mm.Return(100)
 	// Second set of low priority requests should have gone through.
 	<-memoryCompleted13
