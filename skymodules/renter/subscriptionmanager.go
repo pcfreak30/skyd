@@ -23,11 +23,16 @@ type (
 		staticWorkers *workerPool
 
 		subscriptions map[modules.RegistryEntryID]*renterSubscription
-		subscribers   map[subscriberID][]*renterSubscription
+		subscribers   map[subscriberID]*renterSubscriber
+	}
+
+	renterSubscriber struct {
+		subscriptions map[modules.RegistryEntryID]*renterSubscription
 	}
 
 	renterSubscription struct {
 		latestValue *modules.SignedRegistryValue
+		refcount    int64
 		staticSPK   types.SiaPublicKey
 		staticTweak crypto.Hash
 	}
@@ -36,8 +41,12 @@ type (
 )
 
 // newSubscriptionManager creates a new subscription manager.
-func newSubscriptionManager() *registrySubscriptionManager {
-	return &registrySubscriptionManager{}
+func newSubscriptionManager(workerPool *workerPool) *registrySubscriptionManager {
+	return &registrySubscriptionManager{
+		staticWorkers: workerPool,
+		subscriptions: make(map[modules.RegistryEntryID]*renterSubscription),
+		subscribers:   make(map[subscriberID]*renterSubscriber),
+	}
 }
 
 // Notify implements subscriptionManager. It is called by workers whenever they
@@ -99,13 +108,52 @@ func (sm *registrySubscriptionManager) Get(eid modules.RegistryEntryID) (modules
 	return *sub.latestValue, true
 }
 
-func (sm *registrySubscriptionManager) Subscribe(spk types.SiaPublicKey, tweak crypto.Hash, sid subscriberID) {
+func (sm *registrySubscriptionManager) Subscribe(spk types.SiaPublicKey, tweak crypto.Hash, sid subscriberID) *modules.SignedRegistryValue {
+	eid := modules.DeriveRegistryEntryID(spk, tweak)
 
+	// Check if the subscription exists already. If not, create it.
+	sm.mu.Lock()
+	rs, subExists := sm.subscriptions[eid]
+	if !subExists {
+		rs = &renterSubscription{
+			staticSPK:   spk,
+			staticTweak: tweak,
+		}
+		sm.subscriptions[eid] = rs
+	}
+
+	// Check if subscriber exists already. If not, create it.
+	subscriber, exists := sm.subscribers[sid]
+	if !exists {
+		subscriber = &renterSubscriber{
+			subscriptions: make(map[modules.RegistryEntryID]*renterSubscription),
+		}
+		sm.subscribers[sid] = subscriber
+	}
+
+	// Add the subscription to the subscriber if it doesn't exist yet.
+	// Also increment the refcount in that case.
+	_, exists = subscriber.subscriptions[eid]
+	if !exists {
+		subscriber.subscriptions[eid] = rs
+		rs.refcount++
+	}
+
+	// If the sub wasn't new, return the latest known value.
+	if subExists {
+		sm.mu.Unlock()
+		return rs.latestValue
+	}
+	requests := sm.buildSubscriptionRequests()
+	sm.mu.Unlock()
+
+	// Otherwise, update the workers. They will notify us as soon as a value
+	// becomes availeble.
+	sm.staticUpdateWorkers(requests)
+	return nil
 }
 
-func (sm *registrySubscriptionManager) managedUpdateWorkers() {
-	// Build requests.
-	sm.mu.Lock()
+func (sm *registrySubscriptionManager) buildSubscriptionRequests() []modules.RPCRegistrySubscriptionRequest {
 	requests := make([]modules.RPCRegistrySubscriptionRequest, 0, len(sm.subscriptions))
 	for _, sub := range sm.subscriptions {
 		requests = append(requests, modules.RPCRegistrySubscriptionRequest{
@@ -113,8 +161,17 @@ func (sm *registrySubscriptionManager) managedUpdateWorkers() {
 			Tweak:  sub.staticTweak,
 		})
 	}
-	sm.mu.Unlock()
+	return requests
+}
 
+func (sm *registrySubscriptionManager) managedUpdateWorkers() {
+	sm.mu.Lock()
+	requests := sm.buildSubscriptionRequests()
+	sm.mu.Unlock()
+	sm.staticUpdateWorkers(requests)
+}
+
+func (sm *registrySubscriptionManager) staticUpdateWorkers(requests []modules.RPCRegistrySubscriptionRequest) {
 	// Update workers.
 	for _, w := range sm.staticWorkers.callWorkers() {
 		w.UpdateSubscriptions(requests...)

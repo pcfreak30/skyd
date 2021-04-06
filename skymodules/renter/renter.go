@@ -1124,8 +1124,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		downloadHistory: make(map[skymodules.DownloadID]*download),
 
-		staticSubscriptionManager: newSubscriptionManager(),
-
 		staticConsensusSet:   cs,
 		staticDeps:           deps,
 		staticGateway:        g,
@@ -1217,6 +1215,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
+
+	r.staticSubscriptionManager = newSubscriptionManager(r.staticWorkerPool)
 
 	// Set the worker pool on the contractor.
 	r.staticHostContractor.UpdateWorkerPool(r.staticWorkerPool)
