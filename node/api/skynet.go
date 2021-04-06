@@ -244,6 +244,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+	isErr = false
 	defer func() {
 		// At this point we have already responded so we can't write a potential
 		// error here.
@@ -516,6 +517,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+	isErr = false
 
 	// Stop the time here for TTFB.
 	skynetPerformanceStatsMu.Lock()
