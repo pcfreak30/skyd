@@ -15,7 +15,7 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/tus/tusd v1.5.1
 	github.com/vbauerster/mpb/v5 v5.0.3
-	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210329185456-d12941ec3d24
+	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210401191347-421e34473fc0
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
 	gitlab.com/NebulousLabs/errors v0.0.0-20200929122200-06c536cf6975
