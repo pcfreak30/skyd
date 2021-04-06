@@ -128,7 +128,7 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	// Sanity check the number of monetized bytes against the total.
 	rw.count += len(b)
 	if rw.count > int(rw.staticMD.Length) {
-		build.Critical("monetized more data than the total data of the skylink")
+		build.Critical(fmt.Sprintf("monetized more data than the total data of the skylink: %v > %v", rw.count, rw.staticMD.Length))
 		return rw.staticW.Write(b) // forward without monetizing
 	}
 
