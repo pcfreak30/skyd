@@ -395,7 +395,7 @@ func (r *Renter) managedUploadBaseSector(sup skymodules.SkyfileUploadParameters,
 	// Perform the actual upload.
 	fileNode, err := r.callUploadStreamFromReader(uploadParams, reader)
 	if err != nil {
-		return errors.AddContext(err, "failed to stream upload small skyfile")
+		return errors.AddContext(err, "failed to stream upload base sector")
 	}
 	defer func() {
 		// If there was an error, try and delete the file that was created
@@ -550,7 +550,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 		err = r.managedPopulateFileNodeFromReader(fileNode, cr)
 	} else {
 		// Upload the file using a streamer.
-		err = r.callUploadStreamFromReaderWithFileNode(fileNode, cr)
+		_, err = r.callUploadStreamFromReaderWithFileNode(fileNode, cr, 0)
 	}
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload file")
