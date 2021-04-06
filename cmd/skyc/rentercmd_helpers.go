@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
@@ -329,12 +330,9 @@ func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, 
 	return []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}, numStuck, nil
 }
 
-var (
-	// totalGetDirs is a helper for printing out the status of the getDir function
-	// call.
-	totalGetDirs   int = 0
-	totalGetDirsMu sync.Mutex
-)
+// atomicTotalGetDirs is a helper for printing out the status of the getDir
+// function call.
+var atomicTotalGetDirs uint64
 
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs, querying the root directory.
@@ -353,10 +351,7 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 
 	// Defer print status update
 	defer func() {
-		totalGetDirsMu.Lock()
-		totalGetDirs++
-		fmt.Printf("\r%v directories queried", totalGetDirs)
-		totalGetDirsMu.Unlock()
+		fmt.Printf("\r%v directories queried", atomic.AddUint64(&atomicTotalGetDirs, 1))
 	}()
 
 	// Split the directory and sub directory information
@@ -410,15 +405,7 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 
 	// Call getDir on subdirs.
 	for _, subDir := range subDirs {
-		select {
-		case siaPathChan <- subDir.SiaPath:
-		case <-time.After(time.Minute):
-			// Safety timeout of waiting 1 minute for workers to make room for the
-			// next siapath
-			close(siaPathChan)
-			wg.Wait()
-			die("getDir timed out")
-		}
+		siaPathChan <- subDir.SiaPath
 	}
 
 	close(siaPathChan)
