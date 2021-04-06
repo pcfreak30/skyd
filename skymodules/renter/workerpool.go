@@ -26,8 +26,17 @@ import (
 // information around.
 type workerPool struct {
 	workers      map[string]*worker // The string is the host's public key.
+	changeChan   chan struct{}
 	mu           sync.RWMutex
 	staticRenter *Renter
+}
+
+// callUpdateChan returns a channel that is closed the next time the worker pool
+// is updated.
+func (wp *workerPool) callChangeChan() <-chan struct{} {
+	wp.mu.Lock()
+	defer wp.mu.Unlock()
+	return wp.changeChan
 }
 
 // callStatus returns the status of the workers in the worker pool.
@@ -84,12 +93,24 @@ func (wp *workerPool) callUpdate() {
 	wp.mu.Lock()
 	defer wp.mu.Unlock()
 
+	// Replace the update chan if the set changed.
+	var setChanged bool
+	defer func() {
+		if !setChanged {
+			return
+		}
+		oldChan := wp.changeChan
+		wp.changeChan = make(chan struct{})
+		close(oldChan)
+	}()
+
 	// Add a worker for any contract that does not already have a worker.
 	for id, contract := range contractMap {
 		_, exists := wp.workers[id]
 		if exists {
 			continue
 		}
+		setChanged = true
 
 		// Create a new worker and add it to the map
 		w, err := wp.staticRenter.newWorker(contract.HostPublicKey)
@@ -121,12 +142,15 @@ func (wp *workerPool) callUpdate() {
 		default:
 		}
 		_, exists := contractMap[id]
-		if !exists {
-			delete(wp.workers, id)
-			// Kill the worker in a goroutine. This avoids locking issues, as
-			// wp.mu is currently locked.
-			go worker.managedKill()
+		if exists {
+			continue
 		}
+		setChanged = true
+		delete(wp.workers, id)
+
+		// Kill the worker in a goroutine. This avoids locking issues, as
+		// wp.mu is currently locked.
+		go worker.managedKill()
 	}
 }
 
@@ -185,6 +209,7 @@ func (r *Renter) newWorkerPool() *workerPool {
 	wp := &workerPool{
 		workers:      make(map[string]*worker),
 		staticRenter: r,
+		changeChan:   make(chan struct{}),
 	}
 	wp.staticRenter.tg.OnStop(func() error {
 		wp.mu.RLock()

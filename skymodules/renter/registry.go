@@ -298,6 +298,13 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // response. Otherwise the response with the highest revision number will be
 // used.
 func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+	// Check if we are subscribed to the entry first.
+	subscribedRV, ok := r.staticSubscriptionManager.Get(modules.DeriveRegistryEntryID(spk, tweak))
+	if ok {
+		// We are, no need to look it up.
+		return subscribedRV, nil
+	}
+
 	// Specify a sane timeout for jobs that is independent of the user specified
 	// timeout. It is the maximum time that we let a job execute in the
 	// background before cancelling it.
