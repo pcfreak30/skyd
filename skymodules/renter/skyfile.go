@@ -449,7 +449,7 @@ func (r *Renter) managedUploadSkyfile(sup skymodules.SkyfileUploadParameters, re
 	// if we reach this point it means either we have not reached the EOF or the
 	// data combined with the header exceeds a single sector, we add the data we
 	// already read and upload as a large file
-	reader.AddReadBuffer(buf)
+	reader.SetReadBuffer(buf)
 	return r.managedUploadSkyfileLargeFile(sup, reader)
 }
 
