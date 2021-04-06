@@ -607,9 +607,9 @@ func (r *Renter) managedUpdateRenterContractsAndUtilities() {
 	r.mu.Unlock(id)
 }
 
-// setBandwidthLimits will change the bandwidth limits of the renter based on
-// the persist values for the bandwidth.
-func (r *Renter) setBandwidthLimits(downloadSpeed int64, uploadSpeed int64) error {
+// staticSetBandwidthLimits will change the bandwidth limits of the renter based
+// on the persist values for the bandwidth.
+func (r *Renter) staticSetBandwidthLimits(downloadSpeed int64, uploadSpeed int64) error {
 	// Input validation.
 	if downloadSpeed < 0 || uploadSpeed < 0 {
 		return errors.New("download/upload rate limit can't be below 0")
@@ -652,7 +652,7 @@ func (r *Renter) SetSettings(s skymodules.RenterSettings) error {
 	r.staticHostDB.SetIPViolationCheck(s.IPViolationCheck)
 
 	// Set the bandwidth limits.
-	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
+	err = r.staticSetBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
 	if err != nil {
 		return err
 	}

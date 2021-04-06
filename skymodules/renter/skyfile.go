@@ -212,7 +212,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 	}
 
 	// Check if any of the skylinks associated with the siafile are blocked
-	if r.isFileNodeBlocked(fileNode) {
+	if r.managedIsFileNodeBlocked(fileNode) {
 		// Skylink is blocked, return error and try and delete file
 		return skymodules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
 	}
@@ -686,7 +686,7 @@ func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Du
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.skylinkDataSource(link, timeout, pricePerMS)
+	dataSource, err := r.managedSkylinkDataSource(link, timeout, pricePerMS)
 	if err != nil {
 		return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
@@ -715,7 +715,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	var fileSpecificSkykey skykey.Skykey
 	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
 	if encrypted {
-		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
+		fileSpecificSkykey, err = r.managedDecryptBaseSector(baseSector)
 		if err != nil {
 			return errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}
@@ -785,7 +785,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.skylinkDataSource(skylink, timeout, pricePerMS)
+	dataSource, err := r.managedSkylinkDataSource(skylink, timeout, pricePerMS)
 	if err != nil {
 		return errors.AddContext(err, "unable to create data source for skylink")
 	}
@@ -829,7 +829,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	var fileSpecificSkykey skykey.Skykey
 	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
 	if encrypted {
-		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
+		fileSpecificSkykey, err = r.managedDecryptBaseSector(baseSector)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}
@@ -942,7 +942,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}()
 
 	// Check if any of the skylinks associated with the siafile are blocked
-	if r.isFileNodeBlocked(fileNode) {
+	if r.managedIsFileNodeBlocked(fileNode) {
 		// Skylink is blocked, return error and try and delete file
 		return skymodules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
 	}
@@ -967,7 +967,7 @@ func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader sk
 
 	// If a skykey name or ID was specified, generate a file-specific key for
 	// this upload.
-	err = r.generateFilekey(&sup, nil)
+	err = r.managedGenerateFilekey(&sup, nil)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
@@ -1005,9 +1005,9 @@ func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader sk
 	return skylink, nil
 }
 
-// isFileNodeBlocked checks if any of the skylinks associated with the siafile
-// are blocked
-func (r *Renter) isFileNodeBlocked(fileNode *filesystem.FileNode) bool {
+// managedIsFileNodeBlocked checks if any of the skylinks associated with the
+// siafile are blocked
+func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 	skylinkstrs := fileNode.Metadata().Skylinks
 	for _, skylinkstr := range skylinkstrs {
 		var skylink skymodules.Skylink

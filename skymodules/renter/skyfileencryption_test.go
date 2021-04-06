@@ -143,19 +143,19 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 
 	// Now decrypt all the base sectors. They should all be equal to the original
 	// now.
-	sk, err := r.decryptBaseSector(bsCopy1)
+	sk, err := r.managedDecryptBaseSector(bsCopy1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.decryptBaseSector(bsCopy2)
+	_, err = r.managedDecryptBaseSector(bsCopy2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.decryptBaseSector(bsCopy3)
+	_, err = r.managedDecryptBaseSector(bsCopy3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.decryptBaseSector(otherBSCopy)
+	_, err = r.managedDecryptBaseSector(otherBSCopy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 	if err != nil {
 		t.Fatal(err)
 	}
-	fanoutKey, err := r.deriveFanoutKey(&layoutForFanout, sk)
+	fanoutKey, err := skymodules.DeriveFanoutKey(&layoutForFanout, sk)
 	if err != nil {
 		t.Fatal(err)
 	}
