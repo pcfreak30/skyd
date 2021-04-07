@@ -38,9 +38,9 @@ type skylinkDataSourceTrace struct {
 
 	// Timings for satisfying datasource requests.
 	totalReadRequests int
-	randomRequest     skylinkDataSourceReadTrace
-	slowRequests      []skylinkDataSourceReadTrace
-	allRequests       []skylinkDataSourceReadTrace // TODO: Remove this, we just have it for initial debugging.
+	randomRequest     *skylinkDataSourceReadTrace
+	slowRequests      []*skylinkDataSourceReadTrace
+	allRequests       []*skylinkDataSourceReadTrace // TODO: Remove this, we just have it for initial debugging.
 	mu                sync.Mutex
 }
 
@@ -76,7 +76,7 @@ type skylinkDataSourceReadTrace struct {
 	staticLaunch   time.Duration
 	staticComplete time.Duration
 
-	staticPDCDownloadTraces []pdcDownloadTrace
+	staticPDCDownloadTraces []*pdcDownloadTrace
 }
 
 // skyfileStreamerTrace traces calls to a SkyfileStreamer.

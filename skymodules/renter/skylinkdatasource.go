@@ -144,8 +144,8 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 
 		// Schedule the download.
 		i := len(sdsrt.staticPDCDownloadTraces)
-		sdsrt.staticPDCDownloadTraces = append(sdsrt.staticPDCDownloadTraces, pdcDownloadTrace{})
-		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize, &sdsrt.staticPDCDownloadTraces[i])
+		sdsrt.staticPDCDownloadTraces = append(sdsrt.staticPDCDownloadTraces, new(pdcDownloadTrace))
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize, sdsrt.staticPDCDownloadTraces[i])
 		if err != nil {
 			responseChan <- &readResponse{
 				staticErr: errors.AddContext(err, "unable to start download"),
@@ -189,13 +189,13 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 			sdst := sds.staticSkylinkDataSourceTrace
 			sdst.mu.Lock()
 			if fastrand.Intn(sdst.totalReadRequests+1) == 0 {
-				sdst.randomRequest = sdsrt
+				sdst.randomRequest = &sdsrt
 			}
 			sdst.totalReadRequests++
 			if sdsrt.staticComplete > time.Second {
-				sdst.slowRequests = append(sdst.slowRequests, sdsrt)
+				sdst.slowRequests = append(sdst.slowRequests, &sdsrt)
 			}
-			sdst.allRequests = append(sdst.allRequests, sdsrt) // TODO: Remove, this is just for initial debugging
+			sdst.allRequests = append(sdst.allRequests, &sdsrt) // TODO: Remove, this is just for initial debugging
 			sdst.mu.Unlock()
 		}
 	})

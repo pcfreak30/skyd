@@ -361,7 +361,7 @@ Download Skylink Trace Results: %v
 		}
 		// Grab the request times for the data source.
 		sdst.mu.Lock()
-		requestTimes := make([]skylinkDataSourceReadTrace, len(sdst.allRequests))
+		requestTimes := make([]*skylinkDataSourceReadTrace, len(sdst.allRequests))
 		copy(requestTimes, sdst.allRequests)
 		sdst.mu.Unlock()
 		for _, request := range requestTimes {
