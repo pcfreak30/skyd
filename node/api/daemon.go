@@ -1,30 +1,17 @@
 package api
 
 import (
-	"archive/zip"
-	"bytes"
-	"crypto/sha256"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"math/big"
 	"net/http"
 	"os"
-	"path"
-	"path/filepath"
 	"runtime"
 	"strings"
 
-	"github.com/inconshreveable/go-update"
-
 	"github.com/julienschmidt/httprouter"
-	"github.com/kardianos/osext"
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/clearsign"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/profile"
 	"gitlab.com/skynetlabs/skyd/skymodules"
@@ -147,159 +134,6 @@ type (
 	}
 )
 
-// fetchLatestVersion returns the version of the latest release.
-func fetchLatestVersion() (string, error) {
-	resp, err := http.Get("https://sia.tech/releases/siad/latest")
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	versionBytes, err := ioutil.ReadAll(io.LimitReader(resp.Body, 100))
-	if err != nil {
-		return "", err
-	}
-	version := string(bytes.TrimSpace(versionBytes))
-	if !build.IsVersion(version) {
-		return "", fmt.Errorf("sia.tech reported non-version release %q", version)
-	}
-	return version, nil
-}
-
-// updateToRelease updates siad and siac to the release specified. siac is
-// assumed to be in the same folder as siad.
-func updateToRelease(version string) (err error) {
-	binaryFolder, err := osext.ExecutableFolder()
-	if err != nil {
-		return err
-	}
-
-	// Download file of signed hashes.
-	resp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/siad/Sia-v%s-SHA256SUMS.txt.asc", version))
-	if err != nil {
-		return err
-	}
-
-	// The file should be small enough to store in memory (<1 MiB); use
-	// MaxBytesReader to ensure we don't download more than 8 MiB
-	signatureBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, resp.Body, 1<<23))
-	err = errors.Compose(err, resp.Body.Close())
-	if err != nil {
-		return err
-	}
-	sigBlock, _ := clearsign.Decode(signatureBytes)
-	if sigBlock == nil {
-		return errors.New("No signature found in checksums file")
-	}
-
-	// Open the developer key for verifying signatures.
-	keyring, err := openpgp.ReadArmoredKeyRing(strings.NewReader(developerKey))
-	if err != nil {
-		return errors.AddContext(err, "Error reading keyring")
-	}
-	// Verify the signature.
-	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(sigBlock.Bytes), sigBlock.ArmoredSignature.Body)
-	if err != nil {
-		return errors.AddContext(err, "signature verification error")
-	}
-
-	// Build a map of signed binary checksums.
-	checksumsPlaintext := strings.TrimSpace(string(sigBlock.Plaintext))
-	checksums := make(map[string]string) // maps GOOS-GOARCH to SHA-256 checksum.
-	for _, line := range strings.Split(checksumsPlaintext, "\n") {
-		splitBySpace := strings.Split(line, "  ")
-		if len(splitBySpace) != 2 {
-			continue
-		}
-		checksum := splitBySpace[0]
-		fileName := splitBySpace[1]
-		checksums[fileName] = checksum
-	}
-
-	// download release archive
-	releaseFilePrefix := fmt.Sprintf("Sia-v%s-%s-%s", version, runtime.GOOS, runtime.GOARCH)
-	zipResp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/siad/%s.zip", releaseFilePrefix))
-	if err != nil {
-		return err
-	}
-	// release should be small enough to store in memory (<10 MiB); use
-	// LimitReader to ensure we don't download more than 32 MiB
-	content, err := ioutil.ReadAll(http.MaxBytesReader(nil, zipResp.Body, 1<<25))
-	err = errors.Compose(err, resp.Body.Close())
-	if err != nil {
-		return err
-	}
-	r := bytes.NewReader(content)
-	z, err := zip.NewReader(r, r.Size())
-	if err != nil {
-		return err
-	}
-	zipChecksum := fmt.Sprintf("%x", sha256.Sum256(content))
-	expectedZipChecksum, ok := checksums[releaseFilePrefix+".zip"]
-	if !ok {
-		return errors.New("No checksum for zip file found")
-	}
-	if strings.TrimSpace(zipChecksum) != strings.TrimSpace(expectedZipChecksum) {
-		return errors.New("Expected zip file checksums to match")
-	}
-
-	// Process zip, finding siad/siac binaries and validate the checksum against
-	// the signed checksums file.
-	for _, binary := range []string{"skyd", "skyc"} {
-		var binData io.ReadCloser
-		var binaryName string // needed for TargetPath below
-		for _, zf := range z.File {
-			fileName := path.Base(zf.Name)
-			if (fileName != binary) && (fileName != binary+".exe") {
-				continue
-			}
-			binaryName = fileName
-			binData, err = zf.Open()
-			if err != nil {
-				return err
-			}
-			defer func() {
-				err = errors.Compose(err, binData.Close())
-			}()
-		}
-		if binData == nil {
-			return errors.New("could not find " + binary + " binary")
-		}
-
-		// Verify the checksum matches the signed checksum.
-		// Use io.LimitReader to ensure we don't download more than 32 MiB
-		binaryBytes, err := ioutil.ReadAll(io.LimitReader(binData, 1<<25))
-		if err != nil {
-			return err
-		}
-		// binData (an io.ReadCloser) is still needed to update the binary.
-		binData = ioutil.NopCloser(bytes.NewBuffer(binaryBytes))
-
-		// Check that the checksums match.
-		binChecksum := fmt.Sprintf("%x", sha256.Sum256(binaryBytes))
-		expectedChecksum, ok := checksums[releaseFilePrefix+"/"+binary]
-		if !ok {
-			errors.New("No checksum found for binary")
-		}
-		if strings.TrimSpace(binChecksum) != strings.TrimSpace(expectedChecksum) {
-			return errors.New("Expected binary checksums to match")
-		}
-
-		updateOpts := update.Options{
-			Signature:  nil,  // Signature verification is skipped because we already verified the signature of the checksum.
-			TargetMode: 0775, // executable
-			TargetPath: filepath.Join(binaryFolder, binaryName),
-		}
-
-		// apply update
-		err = update.Apply(binData, updateOpts)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // daemonAlertsHandlerGET handles the API call that returns the alerts of all
 // loaded skymodules.
 func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
@@ -351,41 +185,6 @@ func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _
 		ErrorAlerts:    err,
 		WarningAlerts:  warn,
 	})
-}
-
-// daemonUpdateHandlerGET handles the API call that checks for an update.
-func (api *API) daemonUpdateHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	version, err := fetchLatestVersion()
-	if err != nil {
-		WriteError(w, Error{Message: "Failed to fetch latest release: " + err.Error()}, http.StatusInternalServerError)
-		return
-	}
-	WriteJSON(w, UpdateInfo{
-		Available: build.VersionCmp(version, build.Version) > 0,
-		Version:   version,
-	})
-}
-
-// daemonUpdateHandlerPOST handles the API call that updates siad and siac.
-// There is no safeguard to prevent "updating" to the same release, so callers
-// should always check the latest version via daemonUpdateHandlerGET first.
-// TODO: add support for specifying version to update to.
-func (api *API) daemonUpdateHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	version, err := fetchLatestVersion()
-	if err != nil {
-		WriteError(w, Error{Message: "Failed to fetch latest release: " + err.Error()}, http.StatusInternalServerError)
-		return
-	}
-	err = updateToRelease(version)
-	if err != nil {
-		if rerr := update.RollbackError(err); rerr != nil {
-			WriteError(w, Error{Message: "Serious error: Failed to rollback from bad update: " + rerr.Error()}, http.StatusInternalServerError)
-		} else {
-			WriteError(w, Error{Message: "Failed to apply update: " + err.Error()}, http.StatusInternalServerError)
-		}
-		return
-	}
-	WriteSuccess(w)
 }
 
 // debugConstantsHandler prints a json file containing all of the constants.
