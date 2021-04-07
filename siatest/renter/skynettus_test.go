@@ -98,19 +98,22 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	// Upload a small file.
 	uploadTest(1)
 
+	// Upload empty file.
+	uploadTest(0)
+
 	// Wait for two full pruning intervals to make sure pruning ran at least
 	// once.
 	time.Sleep(2 * renter.PruneTUSUploadTimeout)
 
-	// Check that the number of files increased by 5. One for the small upload
-	// and 2 for each of the large ones.
+	// Check that the number of files increased by 6. One for the small and zero
+	// uploads and 2 for each of the large ones.
 	dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
 	if err != nil {
 		t.Fatal(err)
 	}
 	nFiles := dir.Directories[0].AggregateNumFiles
-	if nFiles-nFilesBefore != 5 {
-		t.Fatal("expected 5 new files but got", nFiles-nFilesBefore)
+	if nFiles-nFilesBefore != 6 {
+		t.Fatal("expected 6 new files but got", nFiles-nFilesBefore)
 	}
 }
 

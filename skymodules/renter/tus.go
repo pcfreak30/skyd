@@ -264,7 +264,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 			return 0, err
 		}
 	}
-	// If the offset is not 0 and the file is small, something is wrong.
+	// If we get to this point with a small file, something is wrong.
 	// Theoretically this is not possible but return an error for extra safety.
 	if u.isSmall {
 		return 0, errors.New("can't upload another chunk to a small file upload")
@@ -353,6 +353,13 @@ func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymod
 func (u *skynetTUSUpload) finishUploadSmall(_ context.Context) (skylink skymodules.Skylink, err error) {
 	r := u.staticUploader.staticRenter
 	sup := u.staticSUP
+	// edge case 0 byte file
+	if u.fi.Size == 0 {
+		u.smBytes, err = skymodules.SkyfileMetadataBytes(u.sm)
+		if err != nil {
+			return
+		}
+	}
 	return r.managedUploadSkyfileSmallFile(sup, u.smBytes, u.buf)
 }
 
@@ -367,7 +374,7 @@ func (u *skynetTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	defer u.mu.Unlock()
 
 	var skylink skymodules.Skylink
-	if u.isSmall {
+	if u.isSmall || u.fi.Size == 0 {
 		skylink, err = u.finishUploadSmall(ctx)
 	} else {
 		skylink, err = u.finishUploadLarge(ctx)
