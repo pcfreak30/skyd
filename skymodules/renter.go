@@ -702,6 +702,13 @@ func (mrs MerkleRootSet) MarshalJSON() ([]byte, error) {
 	return json.Marshal(fullBytes)
 }
 
+// ChunkSize is a helper to compute the size of a chunk given the used cipher
+// type and data pieces.
+func ChunkSize(ct crypto.CipherType, dataPieces uint64) uint64 {
+	pieceSize := modules.SectorSize - ct.Overhead()
+	return pieceSize * dataPieces
+}
+
 // UnmarshalJSON attempts to decode a MerkleRootSet, falling back on the legacy
 // decoding of a []crypto.Hash if that fails.
 func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
@@ -1077,7 +1084,8 @@ type ChunkReader interface {
 	// ReadChunk reads the next chunk from the reader. The returned chunk is
 	// erasure coded, encrypted and will always be a full chunk ready for
 	// upload. It also returns the number of bytes that this chunk was created
-	// from which is useful because the last chunk might be padded.
+	// from which is useful because the last chunk might be padded. ReadChunk
+	// will only return >0 bytes read if err == nil.
 	ReadChunk() ([][]byte, uint64, error)
 }
 
@@ -1181,6 +1189,10 @@ type Renter interface {
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
 
+	// SkynetTUSUploader returns the TUSUploader that can be used to initiate
+	// resumable uploads to skynet.
+	SkynetTUSUploader() SkynetTUSDataStore
+
 	// UploadBackup uploads a backup to hosts, such that it can be retrieved
 	// using only the seed.
 	UploadBackup(src string, name string) error
@@ -1218,7 +1230,7 @@ type Renter interface {
 	DownloadByUID(uid DownloadID) (DownloadInfo, bool)
 
 	// DownloadHistory lists all the files that have been scheduled for download.
-	DownloadHistory() []DownloadInfo
+	DownloadHistory() ([]DownloadInfo, error)
 
 	// File returns information on specific file queried by user
 	File(siaPath SiaPath) (FileInfo, error)

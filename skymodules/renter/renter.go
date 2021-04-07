@@ -206,9 +206,10 @@ type cachedUtilities struct {
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
 	// Skynet Management
-	staticSkynetBlocklist *skynetblocklist.SkynetBlocklist
-	staticSkynetPortals   *skynetportals.SkynetPortals
-	staticSpendingHistory *spendingHistory
+	staticSkynetBlocklist   *skynetblocklist.SkynetBlocklist
+	staticSkynetPortals     *skynetportals.SkynetPortals
+	staticSpendingHistory   *spendingHistory
+	staticSkynetTUSUploader *skynetTUSUploader
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -216,13 +217,11 @@ type Renter struct {
 	downloadHeap   *downloadChunkHeap // A heap of priority-sorted chunks to download.
 	newDownloads   chan struct{}      // Used to notify download loop that new downloads are available.
 
-	// Download history. The history list has its own mutex because it is always
-	// accessed in isolation.
+	// Download history.
 	//
 	// TODO: Currently the download history doesn't include repair-initiated
 	// downloads, and instead only contains user-initiated downloads.
-	downloadHistory   map[skymodules.DownloadID]*download
-	downloadHistoryMu sync.Mutex
+	staticDownloadHistory *downloadHistory
 
 	// Upload and repair management.
 	staticDirectoryHeap directoryHeap
@@ -607,9 +606,9 @@ func (r *Renter) managedUpdateRenterContractsAndUtilities() {
 	r.mu.Unlock(id)
 }
 
-// setBandwidthLimits will change the bandwidth limits of the renter based on
-// the persist values for the bandwidth.
-func (r *Renter) setBandwidthLimits(downloadSpeed int64, uploadSpeed int64) error {
+// staticSetBandwidthLimits will change the bandwidth limits of the renter based
+// on the persist values for the bandwidth.
+func (r *Renter) staticSetBandwidthLimits(downloadSpeed int64, uploadSpeed int64) error {
 	// Input validation.
 	if downloadSpeed < 0 || uploadSpeed < 0 {
 		return errors.New("download/upload rate limit can't be below 0")
@@ -652,7 +651,7 @@ func (r *Renter) SetSettings(s skymodules.RenterSettings) error {
 	r.staticHostDB.SetIPViolationCheck(s.IPViolationCheck)
 
 	// Set the bandwidth limits.
-	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
+	err = r.staticSetBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
 	if err != nil {
 		return err
 	}
@@ -1121,7 +1120,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			heapDirectories: make(map[skymodules.SiaPath]*directory),
 		},
 
-		downloadHistory: make(map[skymodules.DownloadID]*download),
+		staticDownloadHistory: newDownloadHistory(),
 
 		staticSubscriptionManager: newSubscriptionManager(),
 
@@ -1138,6 +1137,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
 	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
@@ -1271,6 +1271,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Spin up the skynet fee paying goroutine.
 	if err := r.tg.Launch(r.threadedPaySkynetFee); err != nil {
+		return nil, err
+	}
+
+	// Spin up the tus pruning goroutine.
+	if err := r.tg.Launch(r.threadedPruneTUSUploads); err != nil {
 		return nil, err
 	}
 

@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -25,6 +26,9 @@ type (
 		staticSectors []crypto.Hash
 
 		staticResponseChan chan *jobHasSectorResponse
+
+		staticPostExecutionHook func(*jobHasSectorResponse)
+		once                    sync.Once
 
 		*jobGeneric
 	}
@@ -57,10 +61,18 @@ type (
 
 // newJobHasSector is a helper method to create a new HasSector job.
 func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasSectorResponse, roots ...crypto.Hash) *jobHasSector {
+	return w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, nil, roots...)
+}
+
+// newJobHasSectorWithPostExecutionHook is a helper method to create a new
+// HasSector job with a post execution hook that is executed after the response
+// is available but before sending it over the channel.
+func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, responseChan chan *jobHasSectorResponse, hook func(*jobHasSectorResponse), roots ...crypto.Hash) *jobHasSector {
 	return &jobHasSector{
-		staticSectors:      roots,
-		staticResponseChan: responseChan,
-		jobGeneric:         newJobGeneric(ctx, w.staticJobHasSectorQueue, nil),
+		staticSectors:           roots,
+		staticResponseChan:      responseChan,
+		staticPostExecutionHook: hook,
+		jobGeneric:              newJobGeneric(ctx, w.staticJobHasSectorQueue, nil),
 	}
 }
 
@@ -73,6 +85,7 @@ func (j *jobHasSector) callDiscard(err error) {
 
 			staticWorker: w,
 		}
+		j.managedCallPostExecutionHook(response)
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
@@ -99,6 +112,7 @@ func (j *jobHasSector) callExecute() {
 		staticWorker:     w,
 	}
 	err2 := w.staticRenter.tg.Launch(func() {
+		j.managedCallPostExecutionHook(response)
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
@@ -219,6 +233,18 @@ func (w *worker) initJobHasSectorQueue() {
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 	}
+}
+
+// managedCallPostExecutionHook calls a post execution hook if registered. The
+// hook will only be called the first time this method is executed. Subsequent
+// calls are no-ops.
+func (j *jobHasSector) managedCallPostExecutionHook(resp *jobHasSectorResponse) {
+	if j.staticPostExecutionHook == nil {
+		return // nothing to do
+	}
+	j.once.Do(func() {
+		j.staticPostExecutionHook(resp)
+	})
 }
 
 // hasSectorJobExpectedBandwidth is a helper function that returns the expected

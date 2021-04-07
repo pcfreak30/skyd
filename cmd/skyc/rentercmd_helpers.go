@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
@@ -337,9 +339,14 @@ func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, 
 	return []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}, numStuck, nil
 }
 
+// atomicTotalGetDirs is a helper for printing out the status of the getDir
+// function call.
+var atomicTotalGetDirs uint64
+
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs, querying the root directory.
 func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryInfo) {
+	// Query the directory
 	var rd api.RenterDirectory
 	var err error
 	if root {
@@ -350,6 +357,13 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 	if err != nil {
 		die("failed to get dir info:", err)
 	}
+
+	// Defer print status update
+	defer func() {
+		fmt.Printf("\r%v directories queried", atomic.AddUint64(&atomicTotalGetDirs, 1))
+	}()
+
+	// Split the directory and sub directory information
 	dir := rd.Directories[0]
 	subDirs := rd.Directories[1:]
 
@@ -360,15 +374,51 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 		subDirs: subDirs,
 	})
 
-	// If -R isn't set we are done.
-	if !recursive {
+	// If -R isn't set, or there are no subDirs we are done.
+	if !recursive || len(subDirs) == 0 {
 		return
 	}
+
+	// Define number of workers for this call to use.
+	//
+	// NOTE: This is a recursive call so all subsequent calls will also have this
+	// many workers. While go routines themselves are cheap, we want to limit the
+	// chance of a panic due to too many open files.
+	//
+	// There will be numGetDirWorkers^maxDirectoryDepth go routines launched.
+	numGetDirWorkers := 5
+	var dirsMu sync.Mutex
+
+	// Create a siapath chan
+	siaPathChan := make(chan skymodules.SiaPath, numGetDirWorkers)
+
+	// Define getDirWorker function
+	getDirWorkerFunc := func(root, recursive bool) {
+		for siaPath := range siaPathChan {
+			subdirs := getDir(siaPath, root, recursive)
+			dirsMu.Lock()
+			dirs = append(dirs, subdirs...)
+			dirsMu.Unlock()
+		}
+	}
+
+	// Launch workers.
+	var wg sync.WaitGroup
+	for i := 0; i < numGetDirWorkers; i++ {
+		wg.Add(1)
+		go func(root, recursive bool) {
+			getDirWorkerFunc(root, recursive)
+			wg.Done()
+		}(root, recursive)
+	}
+
 	// Call getDir on subdirs.
 	for _, subDir := range subDirs {
-		rdirs := getDir(subDir.SiaPath, root, recursive)
-		dirs = append(dirs, rdirs...)
+		siaPathChan <- subDir.SiaPath
 	}
+
+	close(siaPathChan)
+	wg.Wait()
 	return
 }
 
