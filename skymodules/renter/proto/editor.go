@@ -146,6 +146,12 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 	if err != nil {
 		return skymodules.RenterContract{}, crypto.Hash{}, err
 	}
+	defer func() {
+		// In the event of an error, make sure all unapplied txns are cleared.
+		if err != nil {
+			err = errors.Compose(err, sc.ClearUnappliedTxns())
+		}
+	}()
 
 	// send actions
 	extendDeadline(he.conn, modules.NegotiateFileContractRevisionTime)

@@ -256,7 +256,7 @@ func (c *Contractor) UpdateWorkerPool(wp skymodules.WorkerPool) {
 // ProvidePayment takes a stream and a set of payment details and handles
 // the payment for an RPC by sending and processing payment request and
 // response objects to the host. It returns an error in case of failure.
-func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details PaymentDetails) error {
+func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details PaymentDetails) (err error) {
 	// convenience variables
 	host := details.Host
 	refundAccount := details.RefundAccount
@@ -293,6 +293,12 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 	if err != nil {
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
+	defer func() {
+		// In the event of an error, make sure all unapplied txns are cleared.
+		if err != nil {
+			err = errors.Compose(err, sc.ClearUnappliedTxns())
+		}
+	}()
 
 	// prepare a buffer so we can optimize our writes
 	buffer := bytes.NewBuffer(nil)

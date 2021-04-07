@@ -181,6 +181,14 @@ type SafeContract struct {
 	revisionMu sync.Mutex
 }
 
+// ClearUnappliedTxns marks all unapplied transactions as completed without
+// applying them.
+func (c *SafeContract) ClearUnappliedTxns() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.clearUnappliedTxns()
+}
+
 // CommitPaymentIntent will commit the intent to pay a host for an rpc by
 // committing the signed txn in the contract's header.
 func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.Transaction, amount types.Currency, details skymodules.SpendingDetails) error {

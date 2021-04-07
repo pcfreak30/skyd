@@ -77,6 +77,12 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ skymo
 	if err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
+	defer func() {
+		// In the event of an error, make sure all unapplied txns are cleared.
+		if err != nil {
+			err = errors.Compose(err, sc.ClearUnappliedTxns())
+		}
+	}()
 
 	// send download action
 	extendDeadline(hd.conn, 2*time.Minute) // TODO: Constant.

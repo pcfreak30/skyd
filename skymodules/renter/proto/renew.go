@@ -125,6 +125,12 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	if err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
+	defer func() {
+		// In the event of an error, make sure all unapplied txns are cleared.
+		if err != nil {
+			err = errors.Compose(err, oldContract.ClearUnappliedTxns())
+		}
+	}()
 
 	// Read the host's response.
 	var resp modules.LoopContractAdditions
@@ -432,6 +438,12 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	if err != nil {
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "failed to record clear contract intent")
 	}
+	defer func() {
+		// In the event of an error, make sure all unapplied txns are cleared.
+		if err != nil {
+			err = errors.Compose(err, oldSC.ClearUnappliedTxns())
+		}
+	}()
 
 	// Create the new file contract.
 	uc := createFileContractUnlockConds(host.PublicKey, ourPKNew)

@@ -293,6 +293,12 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	if err != nil {
 		return skymodules.RenterContract{}, err
 	}
+	defer func() {
+		// In the event of an error, make sure all unapplied txns are cleared.
+		if err != nil {
+			err = errors.Compose(err, sc.ClearUnappliedTxns())
+		}
+	}()
 
 	defer func() {
 		// Increase Successful/Failed interactions accordingly
@@ -495,6 +501,12 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	if err != nil {
 		return skymodules.RenterContract{}, err
 	}
+	defer func() {
+		// In the event of an error, make sure all unapplied txns are cleared.
+		if err != nil {
+			err = errors.Compose(err, sc.ClearUnappliedTxns())
+		}
+	}()
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
@@ -679,6 +691,12 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ skymodules.
 	if err != nil {
 		return skymodules.RenterContract{}, nil, err
 	}
+	defer func() {
+		// In the event of an error, make sure all unapplied txns are cleared.
+		if err != nil {
+			err = errors.Compose(err, sc.ClearUnappliedTxns())
+		}
+	}()
 
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
