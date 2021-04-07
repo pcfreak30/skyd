@@ -612,6 +612,20 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		return nil, errors.Compose(err, ErrRootNotFound)
 	}
 
+	// Immediately after launching the initial workers we might want to launch
+	// some overdrive workers, depending on the erasure coder. Emperically we've
+	// found this to drastically improve the TTFB. For skyfiles that were
+	// uploaded with a 10-30 schema, we want to launch 2 workers. We do not care
+	// about the return values as the actual overdrive process will handle cases
+	// where an overdrive worker could not be found, or a worker could not be
+	// launched.
+	minWorkers := pdc.workerSet.staticErasureCoder.MinPieces()
+	for i := 0; i < minWorkers/5; i++ {
+		pdc.workerState.staticRenter.tg.Launch(func() {
+			pdc.tryLaunchOverdriveWorker()
+		})
+	}
+
 	// All initial workers have been launched. The function can return now,
 	// unblocking the caller. A background thread will be launched to collect
 	// the responses and launch overdrive workers when necessary.
