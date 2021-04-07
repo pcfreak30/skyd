@@ -8,6 +8,7 @@ import (
 
 	"github.com/eventials/go-tus"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/skynetlabs/skyd/node"
@@ -43,8 +44,8 @@ func TestSkynetTUSUploader(t *testing.T) {
 	}()
 
 	// Run tests.
-	t.Run("SimpleUpload", func(t *testing.T) {
-		testTUSUploaderSmallFile(t, tg.Renters()[0])
+	t.Run("Basic", func(t *testing.T) {
+		testTUSUploaderBasic(t, tg.Renters()[0])
 	})
 	t.Run("PruneIdle", func(t *testing.T) {
 		testTUSUploaderPruneIdle(t, tg.Renters()[0])
@@ -54,9 +55,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 	})
 }
 
-// testTUSUploadSmallFile tests uploading a small file using the TUS protocol
-// and verifies that pruning doesn't delete completed .sia files.
-func testTUSUploaderSmallFile(t *testing.T, r *siatest.TestNode) {
+// testTUSUploadBasic tests uploading multiple files using the TUS protocol and
+// verifies that pruning doesn't delete completed .sia files.
+func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	// Get the number of files before the test.
 	dir, err := r.RenterDirRootGet(skymodules.SkynetFolder)
 	if err != nil {
@@ -64,37 +65,52 @@ func testTUSUploaderSmallFile(t *testing.T, r *siatest.TestNode) {
 	}
 	nFilesBefore := dir.Directories[0].AggregateNumFiles
 
-	// upload a 100 byte file in chunks of 10 bytes.
+	// Declare the chunkSize.
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
-	fileSize := chunkSize*5 + chunkSize/2 // 5 1/2 chunks.
-	uploadedData := fastrand.Bytes(int(fileSize))
-	skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize)
-	if err != nil {
-		t.Fatal(err)
+
+	// Declare a test helper that uploads a file and downloads it.
+	uploadTest := func(fileSize int64) {
+		uploadedData := fastrand.Bytes(int(fileSize))
+		skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Download the uploaded data and compare it to the uploaded data.
+		downloadedData, sm, err := r.SkynetSkylinkGet(skylink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(uploadedData, downloadedData) {
+			t.Fatal("data doesn't match")
+		}
+		if sm.Length != uint64(len(uploadedData)) {
+			t.Fatal("wrong length in metadata")
+		}
 	}
 
-	// Download the uploaded data and compare it to the uploaded data.
-	downloadedData, _, err := r.SkynetSkylinkGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(uploadedData, downloadedData) {
-		t.Fatal("data doesn't match")
-	}
+	// Upload a large file.
+	uploadTest(chunkSize*5 + chunkSize/2)
+
+	// Upload a byte that's smaller than a sector but still a large file.
+	uploadTest(int64(modules.SectorSize) - 1)
+
+	// Upload a small file.
+	uploadTest(1)
 
 	// Wait for two full pruning intervals to make sure pruning ran at least
 	// once.
 	time.Sleep(2 * renter.PruneTUSUploadTimeout)
 
-	// Check that the number of files increased by 2. One for the regular sia
-	// file and one for the extension.
+	// Check that the number of files increased by 5. One for the small upload
+	// and 2 for each of the large ones.
 	dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
 	if err != nil {
 		t.Fatal(err)
 	}
 	nFiles := dir.Directories[0].AggregateNumFiles
-	if nFiles-nFilesBefore != 2 {
-		t.Fatal("expected 2 new files but got", nFiles-nFilesBefore)
+	if nFiles-nFilesBefore != 5 {
+		t.Fatal("expected 5 new files but got", nFiles-nFilesBefore)
 	}
 }
 
