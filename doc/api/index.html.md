@@ -3399,16 +3399,6 @@ the first chunk of the file, and is always uploaded using 1-of-N redundancy.
 If the pinned skyfile should overwrite any file currently at the provided
 siapath.
 
-**root** | bool\
-If the siapath should reference the root of the renter's filesystem.
-
-**timeout** | int\
-If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved
-before it expires. Note that this timeout does not cover the actual download
-time, but rather covers the TTFB. Timeout is specified in seconds, a timeout
-value of 0 will be ignored. If no timeout is given, the default will be used,
-which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
-
 **priceperms** | string\
 'price per millisecond' is a value that helps the downloader determine whether
 to download from cheaper hosts or faster hosts. For a ppms of '0', the
@@ -3419,6 +3409,16 @@ and only if the total cost of the download increases by less than 10 SC,
 otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
 "uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
 value will be treated as hastings. The default ppms is 100nS.
+
+**root** | bool\
+If the siapath should reference the root of the renter's filesystem.
+
+**timeout** | int\
+If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved
+before it expires. Note that this timeout does not cover the actual download
+time, but rather covers the TTFB. Timeout is specified in seconds, a timeout
+value of 0 will be ignored. If no timeout is given, the default will be used,
+which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
 
 ### Http Headers
 ### OPTIONAL

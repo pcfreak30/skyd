@@ -1055,7 +1055,8 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 // SkyfileMetadata, we have to iterate over the entire filesystem to try and
 // find the filenode(s) that contain the skylink.
 func (r *Renter) managedUnpinSkylink(skylink skymodules.Skylink) error {
-	// Check if skylink is blocked
+	// Check if skylink is blocked. If it is we can return early since the bubble
+	// code will handle deletion of blocked files.
 	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return ErrSkylinkBlocked
 	}

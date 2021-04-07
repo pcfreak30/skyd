@@ -4890,7 +4890,7 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 	}
 	siaPath := sup.SiaPath
 
-	// Pin to the other portal an random number of times
+	// Pin to the other portal a random number of times.
 	//
 	// This will test the case of the skylink being associated with multiple
 	// files.
@@ -4933,12 +4933,12 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 		t.Fatal(err)
 	}
 
-	// Verify that the siafile exists on both portals
+	// Verify that each portal has the expected number of files.
 	p1Expected := uint64(1)
 	p2Expected := uint64(numPins)
 	isLargeFile := fileSize > modules.SectorSize
 	if isLargeFile {
-		p1Expected++
+		p1Expected *= 2
 		p2Expected *= 2
 	}
 	err = fileCheck(p1Expected, p2Expected)
