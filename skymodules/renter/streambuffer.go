@@ -14,6 +14,7 @@ package renter
 import (
 	"context"
 	"io"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -303,6 +304,9 @@ func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
 // of a resource substantially improves performance in practice, in many cases
 // causing a 4x reduction in response latency.
 func (s *stream) Close() error {
+	dst := s.staticDownloadSkylinkTrace
+	dst.staticRenter.staticLog.Println("\n", string(debug.Stack()))
+
 	s.staticStreamBuffer.staticStreamBufferSet.staticTG.Launch(func() {
 		// Convenience variables.
 		sb := s.staticStreamBuffer
