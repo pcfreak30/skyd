@@ -338,6 +338,7 @@ func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duratio
 				return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
 			}
 			fanoutChunkFetchers = append(fanoutChunkFetchers, pcws)
+			sdst.staticFetcherCreateTimes = append(sdst.staticFetcherCreateTimes, time.Now())
 		}
 	}
 	sdst.staticChunkFetchersCreated = time.Now()

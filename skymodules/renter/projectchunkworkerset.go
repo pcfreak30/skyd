@@ -346,6 +346,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 		pcws.staticRenter.staticLog.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
 		return err
 	}
+	// TODO: Not sure this is correct.
 	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
 
 	// Create the unresolved worker for this job.

@@ -29,6 +29,7 @@ type skylinkDataSourceTrace struct {
 	// Timings for initializing the data source.
 	staticStart                time.Time
 	staticDownloadByRootTime   time.Time
+	staticFetcherCreateTimes   []time.Time
 	staticChunkFetchersCreated time.Time
 	staticNumChunkFetchers     int
 

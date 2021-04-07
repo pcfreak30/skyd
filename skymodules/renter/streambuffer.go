@@ -320,20 +320,30 @@ func (s *stream) Close() error {
 		dst := s.staticDownloadSkylinkTrace
 		sdst := dst.skylinkDataSourceTrace
 		start := dst.staticStart
-		dbrTime := sdst.staticDownloadByRootTime.Sub(start) / time.Millisecond
-		streamAvailableTime := dst.staticStreamerAvailable.Sub(start) / time.Millisecond
-		dst.staticRenter.staticLog.Printf(`Trace Results:
-Download Start:        %v,
-Download By Root Time: %v ms,
-Stream Available:      %v ms,
-`, start, dbrTime, streamAvailableTime)
+		dbrTime := int(sdst.staticDownloadByRootTime.Sub(start) / time.Millisecond)
+		fetchersTime := int(sdst.staticChunkFetchersCreated.Sub(start) / time.Millisecond)
+		streamAvailableTime := int(dst.staticStreamerAvailable.Sub(start) / time.Millisecond)
+		if dbrTime > 0 {
+			dst.staticRenter.staticLog.Printf(`\nTrace Results:
+Download Start:         %v
+Download By Root Time:  %vms
+Chunk Fetchers Created: %vms
+Stream Available:       %vms`, start, dbrTime, fetchersTime, streamAvailableTime)
+			for _, fct := range sdst.staticFetcherCreateTimes {
+				elapsed := int(fct.Sub(start)/time.Millisecond)
+				dst.staticRenter.staticLog.Printf("\tFetcher Create Time: %vms", elapsed)
+			}
+		}
 		// Grab the request times for the data source.
 		sdst.mu.Lock()
 		requestTimes := make([]skylinkDataSourceReadTrace, len(sdst.allRequests))
 		copy(requestTimes, sdst.allRequests)
 		sdst.mu.Unlock()
 		for _, request := range requestTimes {
-			dst.staticRenter.staticLog.Printf("Request: %v ::: %v ::: %v", request.staticStart.Sub(start)/time.Millisecond, request.staticLaunch.Sub(start)/time.Millisecond, request.staticComplete.Sub(start)/time.Millisecond)
+			timeSinceDownloadStart := int(request.staticStart.Sub(start)/time.Millisecond)
+			timeToLaunch := int(request.staticLaunch.Sub(request.staticStart)/time.Millisecond)
+			timeToComplete := int(request.staticComplete.Sub(request.staticStart)/time.Millisecond)
+			dst.staticRenter.staticLog.Printf("Data source read request trace: %v ::: %vms ::: %vms", timeSinceDownloadStart, timeToLaunch, timeToComplete)
 		}
 	})
 	return nil
