@@ -4856,6 +4856,33 @@ func TestSkynetPinUnpin(t *testing.T) {
 
 // testSkynetPinUnpin tests pinning and unpinning a skylink
 func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64) {
+	// Define helper function for checking the number of files
+	fileCheck := func(p1Expected, p2Expected uint64) error {
+		return build.Retry(100, 100*time.Millisecond, func() error {
+			rdg, err := p1.RenterDirRootGet(skymodules.RootSiaPath())
+			if err != nil {
+				return err
+			}
+			if rdg.Directories[0].AggregateNumFiles != p1Expected {
+				return fmt.Errorf("Portal 1 should have %v files but has %v", p1Expected, rdg.Directories[0].AggregateNumFiles)
+			}
+			rdg, err = p2.RenterDirRootGet(skymodules.RootSiaPath())
+			if err != nil {
+				return err
+			}
+			if rdg.Directories[0].AggregateNumFiles != p2Expected {
+				return fmt.Errorf("Portal 2 should have %v files but has %v", p2Expected, rdg.Directories[0].AggregateNumFiles)
+			}
+			return nil
+		})
+	}
+
+	// Verify that the portals are starting with 0 files
+	err := fileCheck(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Upload from one portal
 	skylink, sup, _, err := p1.UploadNewSkyfileBlocking("pinnedfile", fileSize, false)
 	if err != nil {
@@ -4863,11 +4890,37 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 	}
 	siaPath := sup.SiaPath
 
-	// Pin to the other
-	spp := skymodules.SkyfilePinParameters{
-		SiaPath: siaPath,
+	// Pin to the other portal an random number of times
+	//
+	// This will test the case of the skylink being associated with multiple
+	// files.
+	numPins := 1 + fastrand.Intn(3)
+	var wg sync.WaitGroup
+	for i := 0; i < numPins; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			spp := skymodules.SkyfilePinParameters{
+				SiaPath: skymodules.RandomSiaPath(),
+			}
+			err := p2.SkynetSkylinkPinPost(skylink, spp)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+		}()
 	}
-	err = p2.SkynetSkylinkPinPost(skylink, spp)
+	wg.Wait()
+
+	// Rename the file on Portal 1
+	//
+	// This will test the case of the siapath changing after upload. This also
+	// pulls the siafile out of the skynet folder.
+	fullSiaPath, err := skymodules.SkynetFolder.Join(siaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = p1.RenterRenamePost(fullSiaPath, skymodules.RandomSiaPath(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4881,32 +4934,16 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 	}
 
 	// Verify that the siafile exists on both portals
-	fullSiaPath, err := skymodules.SkynetFolder.Join(siaPath.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	extendedPath, err := skymodules.NewSiaPath(fullSiaPath.String() + skymodules.ExtendedSuffix)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = p1.RenterFileRootGet(fullSiaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = p2.RenterFileRootGet(fullSiaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p1Expected := uint64(1)
+	p2Expected := uint64(numPins)
 	isLargeFile := fileSize > modules.SectorSize
 	if isLargeFile {
-		_, err = p1.RenterFileRootGet(extendedPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = p2.RenterFileRootGet(extendedPath)
-		if err != nil {
-			t.Fatal(err)
-		}
+		p1Expected++
+		p2Expected *= 2
+	}
+	err = fileCheck(p1Expected, p2Expected)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Unpin from both portals
@@ -4925,23 +4962,9 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 		t.Fatal(err)
 	}
 
-	// Verify that the siafile no longer exists on both portals
-	_, err = p1.RenterFileRootGet(fullSiaPath)
-	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-		t.Fatal("unexpected")
-	}
-	_, err = p2.RenterFileRootGet(fullSiaPath)
-	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-		t.Fatal("unexpected")
-	}
-	if isLargeFile {
-		_, err = p1.RenterFileRootGet(extendedPath)
-		if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-			t.Fatal("unexpected")
-		}
-		_, err = p2.RenterFileRootGet(extendedPath)
-		if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-			t.Fatal("unexpected")
-		}
+	// Verify that all the siafiles have been deleted on both portals
+	err = fileCheck(0, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
