@@ -549,7 +549,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		// TODO - once bubbling metadata has been updated to be more I/O
 		// efficient this code should be removed and we should call bubble when
 		// we clean up the upload chunk after a successful repair.
-		bubblePaths := r.newUniqueRefreshPaths()
+		bubblePaths := r.callNewUniqueRefreshPaths()
 		for _, dirSiaPath := range dirSiaPaths {
 			err = bubblePaths.callAdd(dirSiaPath)
 			if err != nil {
@@ -645,6 +645,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			}
 			continue
 		}
+		r.staticLog.Debugf("Calling bubble on the subtree '%v', # bubbles %v", siaPath, urp.callNumChildDirs())
 		urp.callRefreshAllBlocking()
 	}
 }
@@ -661,7 +662,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 // will be ignored so all directories will be considered.
 func (r *Renter) callPrepareForBubble(rootDir skymodules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
 	// Initiate helpers
-	urp := r.newUniqueRefreshPaths()
+	urp := r.callNewUniqueRefreshPaths()
 	aggregateLastHealthCheckTime := time.Now()
 
 	// Add the rootDir to urp.

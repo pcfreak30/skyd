@@ -12,246 +12,244 @@ import (
 
 // TestClearDownloads tests all the edge cases of the ClearDownloadHistory Method
 func TestClearDownloads(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := rt.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	t.Parallel()
+
+	// Create a downloadHistory
+	dh := newDownloadHistory()
 
 	// Test clearing empty download history
-	if err := rt.renter.ClearDownloadHistory(time.Time{}, time.Time{}); err != nil {
+	if err := dh.managedClearHistory(time.Time{}, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check Clearing individual download from history
 	// doesn't exist - before
-	length, err := clearDownloadHistory(rt, 1, 1)
+	length, err := clearDownloadHistory(dh, 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
+	if dh.managedLength() != length {
 		t.Fatal("Download should not have been cleared")
 	}
 	// doesn't exist - after
-	length, err = clearDownloadHistory(rt, 10, 10)
+	length, err = clearDownloadHistory(dh, 10, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
+	if dh.managedLength() != length {
 		t.Fatal("Download should not have been cleared")
 	}
 	// doesn't exist - within range
-	length, err = clearDownloadHistory(rt, 5, 5)
+	length, err = clearDownloadHistory(dh, 5, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
+	if dh.managedLength() != length {
 		t.Fatal("Download should not have been cleared")
 	}
 	// Remove Last Download
-	length, err = clearDownloadHistory(rt, 9, 9)
+	length, err = clearDownloadHistory(dh, 9, 9)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length-1 {
+	if dh.managedLength() != length-1 {
 		t.Fatal("Download should have been cleared")
 	}
-	for _, d := range rt.renter.downloadHistory {
+	dh.mu.Lock()
+	for _, d := range dh.history {
 		if d.staticStartTime.Unix() == 9 {
 			t.Fatal("Download not removed")
 		}
 	}
+	dh.mu.Unlock()
 	// Remove First Download
-	length, err = clearDownloadHistory(rt, 2, 2)
+	length, err = clearDownloadHistory(dh, 2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length-1 {
+	if dh.managedLength() != length-1 {
 		t.Fatal("Download should have been cleared")
 	}
-	for _, d := range rt.renter.downloadHistory {
+	dh.mu.Lock()
+	for _, d := range dh.history {
 		if d.staticStartTime.Unix() == 2 {
 			t.Fatal("Download not removed")
 		}
 	}
+	dh.mu.Unlock()
 	// Remove download from middle of history
-	length, err = clearDownloadHistory(rt, 6, 6)
+	length, err = clearDownloadHistory(dh, 6, 6)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length-1 {
+	if dh.managedLength() != length-1 {
 		t.Fatal("Download should have been cleared")
 	}
-	for _, d := range rt.renter.downloadHistory {
+	dh.mu.Lock()
+	for _, d := range dh.history {
 		if d.staticStartTime.Unix() == 6 {
 			t.Fatal("Download not removed")
 		}
 	}
+	dh.mu.Unlock()
 
 	// Check Clearing range
 	// both exist - first and last
-	_, err = clearDownloadHistory(rt, 2, 9)
+	_, err = clearDownloadHistory(dh, 2, 9)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if dh.managedLength() != 0 {
 		t.Fatal("Download history should have been cleared")
 	}
 	// both exist - within range
-	_, err = clearDownloadHistory(rt, 3, 8)
+	_, err = clearDownloadHistory(dh, 3, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{9, 2}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{9, 2}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 	// exist - within range and doesn't exist - before
-	_, err = clearDownloadHistory(rt, 1, 4)
+	_, err = clearDownloadHistory(dh, 1, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{9, 8, 6}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{9, 8, 6}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 	// exist - within range and doesn't exist - after
-	_, err = clearDownloadHistory(rt, 6, 10)
+	_, err = clearDownloadHistory(dh, 6, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{4, 3, 2}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{4, 3, 2}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 	// neither exist - within range and before
-	_, err = clearDownloadHistory(rt, 1, 5)
+	_, err = clearDownloadHistory(dh, 1, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{9, 8, 6}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{9, 8, 6}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 	// neither exist - within range and after
-	_, err = clearDownloadHistory(rt, 5, 10)
+	_, err = clearDownloadHistory(dh, 5, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{4, 3, 2}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{4, 3, 2}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 	// neither exist - outside
-	_, err = clearDownloadHistory(rt, 1, 10)
+	_, err = clearDownloadHistory(dh, 1, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if dh.managedLength() != 0 {
 		t.Fatal("Download history should have been cleared")
 	}
 	// neither exist - inside
-	_, err = clearDownloadHistory(rt, 5, 7)
+	_, err = clearDownloadHistory(dh, 5, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{9, 8, 4, 3, 2}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{9, 8, 4, 3, 2}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 
 	// Check Clear Before
 	// exists - within range
-	_, err = clearDownloadHistory(rt, 0, 6)
+	_, err = clearDownloadHistory(dh, 0, 6)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{9, 8}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{9, 8}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 	// exists - last
-	_, err = clearDownloadHistory(rt, 0, 9)
+	_, err = clearDownloadHistory(dh, 0, 9)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if dh.managedLength() != 0 {
 		t.Fatal("Download history should have been cleared")
 	}
 	// doesn't exist - within range
-	_, err = clearDownloadHistory(rt, 0, 7)
+	_, err = clearDownloadHistory(dh, 0, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{9, 8}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{9, 8}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 	// doesn't exist - before
-	length, err = clearDownloadHistory(rt, 0, 1)
+	length, err = clearDownloadHistory(dh, 0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
+	if dh.managedLength() != length {
 		t.Fatal("No downloads should not have been cleared")
 	}
 	// doesn't exist - after
-	_, err = clearDownloadHistory(rt, 0, 10)
+	_, err = clearDownloadHistory(dh, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if dh.managedLength() != 0 {
 		t.Fatal("Download history should have been cleared")
 	}
 
 	// Check Clear After
 	// exists - within range
-	_, err = clearDownloadHistory(rt, 6, 0)
+	_, err = clearDownloadHistory(dh, 6, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{4, 3, 2}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{4, 3, 2}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 	// exist - first
-	_, err = clearDownloadHistory(rt, 2, 0)
+	_, err = clearDownloadHistory(dh, 2, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if dh.managedLength() != 0 {
 		t.Fatal("Download history should have been cleared")
 	}
 	// doesn't exist - within range
-	_, err = clearDownloadHistory(rt, 5, 0)
+	_, err = clearDownloadHistory(dh, 5, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !checkDownloadHistory(rt.renter.DownloadHistory(), []int64{4, 3, 2}) {
+	if !checkDownloadHistory(dh.managedHistory(), []int64{4, 3, 2}) {
 		t.Fatal("Download history not cleared as expected")
 	}
 	// doesn't exist - after
-	length, err = clearDownloadHistory(rt, 10, 0)
+	length, err = clearDownloadHistory(dh, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != length {
+	if dh.managedLength() != length {
 		t.Fatal("No downloads should not have been cleared")
 	}
 	// doesn't exist - before
-	_, err = clearDownloadHistory(rt, 1, 0)
+	_, err = clearDownloadHistory(dh, 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if dh.managedLength() != 0 {
 		t.Fatal("Download history should have been cleared")
 	}
 
 	// Check clearing entire download history
-	_, err = clearDownloadHistory(rt, 0, 0)
+	_, err = clearDownloadHistory(dh, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.renter.downloadHistory) != 0 {
+	if dh.managedLength() != 0 {
 		t.Fatal("Download History not cleared")
 	}
 }
@@ -259,11 +257,11 @@ func TestClearDownloads(t *testing.T) {
 // clearDownloadHistory is a helper function for TestClearDownloads, it builds and resets the download
 // history of the renter and then calls ClearDownloadHistory and returns the length
 // of the original download history
-func clearDownloadHistory(rt *renterTester, after, before int) (int, error) {
+func clearDownloadHistory(dh *downloadHistory, after, before int) (int, error) {
 	// Build/Reset download History
 	// Skipping 5 and 7 so there are clear times missing that can
 	// be referenced
-	rt.renter.downloadHistoryMu.Lock()
+	dh.mu.Lock()
 	downloads := make(map[skymodules.DownloadID]*download)
 	for i := 2; i < 10; i++ {
 		if i != 5 && i != 7 {
@@ -274,9 +272,9 @@ func clearDownloadHistory(rt *renterTester, after, before int) (int, error) {
 			downloads[d.UID()] = d
 		}
 	}
-	rt.renter.downloadHistory = downloads
-	length := len(rt.renter.downloadHistory)
-	rt.renter.downloadHistoryMu.Unlock()
+	dh.history = downloads
+	length := len(dh.history)
+	dh.mu.Unlock()
 
 	// clear download history
 	var afterTime time.Time
@@ -287,7 +285,7 @@ func clearDownloadHistory(rt *renterTester, after, before int) (int, error) {
 	if after != 0 {
 		afterTime = time.Unix(int64(after), 0)
 	}
-	if err := rt.renter.ClearDownloadHistory(afterTime, beforeTime); err != nil {
+	if err := dh.managedClearHistory(afterTime, beforeTime); err != nil {
 		return 0, err
 	}
 	return length, nil

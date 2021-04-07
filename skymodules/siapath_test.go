@@ -40,6 +40,10 @@ func TestRandomSiaPath(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		err = RandomSkynetFilePath().Validate(false)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

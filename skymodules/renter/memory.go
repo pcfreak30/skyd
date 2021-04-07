@@ -77,13 +77,14 @@ type memoryManager struct {
 	fifo         *memoryQueue
 	priorityFifo *memoryQueue
 
-	// The blocking channel receives a message (sent in a non-blocking way)
+	// The staticBlocking channel receives a message (sent in a non-staticBlocking way)
 	// every time a request blocks for more memory. This is used in testing to
 	// ensure that requests which are made in goroutines can be received in a
 	// deterministic order.
-	blocking chan struct{}
-	mu       sync.Mutex
-	stop     <-chan struct{}
+	staticBlocking chan struct{}
+	staticStop     <-chan struct{}
+
+	mu sync.Mutex
 }
 
 // memoryRequest is a single thread that is blocked while waiting for memory.
@@ -221,7 +222,7 @@ func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bo
 	// which block in a determinstic order.
 	if build.Release == "testing" {
 		select {
-		case mm.blocking <- struct{}{}:
+		case mm.staticBlocking <- struct{}{}:
 		default:
 		}
 	}
@@ -249,7 +250,7 @@ func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bo
 		}
 		mm.mu.Unlock()
 		return false
-	case <-mm.stop:
+	case <-mm.staticStop:
 		return false
 	}
 }
@@ -376,7 +377,7 @@ func newMemoryManager(baseMemory uint64, priorityMemory uint64, stopChan <-chan 
 		fifo:         newMemoryQueue(),
 		priorityFifo: newMemoryQueue(),
 
-		blocking: make(chan struct{}, 1),
-		stop:     stopChan,
+		staticBlocking: make(chan struct{}, 1),
+		staticStop:     stopChan,
 	}
 }

@@ -131,7 +131,7 @@ func testBasic(t *testing.T, wt *workerTester) {
 
 	// expect we found sector at index 0
 	if len(resolved) != 1 || len(resolved[0].pieceIndices) != 1 {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected", len(resolved), len(resolved[0].pieceIndices))
 	}
 }
 
@@ -504,7 +504,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 
 	// launch the worker
 	responseChan := make(chan *jobHasSectorResponse, 0)
-	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws)
+	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws, ws.managedHandleResponse)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +527,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	// tweak the maintenancestate, putting it on a cooldown
 	minuteFromNow := time.Now().Add(time.Minute)
 	w.staticMaintenanceState.cooldownUntil = minuteFromNow
-	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws)
+	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws, ws.managedHandleResponse)
 	if err != nil {
 		t.Fatal(err)
 	}

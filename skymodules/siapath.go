@@ -2,6 +2,7 @@ package skymodules
 
 import (
 	"encoding/base32"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -93,6 +94,13 @@ func NewGlobalSiaPath(s string) SiaPath {
 func RandomSiaPath() (sp SiaPath) {
 	sp.Path = base32.StdEncoding.EncodeToString(fastrand.Bytes(20))
 	sp.Path = sp.Path[:20]
+	return
+}
+
+// RandomSkynetFilePath returns a random path that a Skyfile can be uploaded to.
+func RandomSkynetFilePath() (sp SiaPath) {
+	raw := hex.EncodeToString(fastrand.Bytes(16))
+	sp.Path = fmt.Sprintf("%v/%v/%v/%v", SkynetFolder.Path, raw[0:2], raw[2:4], raw[4:])
 	return
 }
 

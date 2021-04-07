@@ -48,7 +48,7 @@ func TestRefreshPaths(t *testing.T) {
 	}
 
 	// Create a map of directories to be refreshed
-	dirsToRefresh := rt.renter.newUniqueRefreshPaths()
+	dirsToRefresh := rt.renter.callNewUniqueRefreshPaths()
 
 	// Test adding a single child and making sure all the parents are added
 	child := paths[len(paths)-1]
@@ -74,7 +74,7 @@ func TestRefreshPaths(t *testing.T) {
 	dirsToRefresh.mu.Unlock()
 
 	// Reset
-	dirsToRefresh = rt.renter.newUniqueRefreshPaths()
+	dirsToRefresh = rt.renter.callNewUniqueRefreshPaths()
 
 	// Add all paths to map
 	for _, path := range paths {

@@ -121,7 +121,7 @@ func (r *Renter) managedLoadSettings() error {
 
 	// Set the bandwidth limits on the contractor, which was already initialized
 	// without bandwidth limits.
-	return r.setBandwidthLimits(r.persist.MaxDownloadSpeed, r.persist.MaxUploadSpeed)
+	return r.staticSetBandwidthLimits(r.persist.MaxDownloadSpeed, r.persist.MaxUploadSpeed)
 }
 
 // managedInitPersist handles all of the persistence initialization, such as creating

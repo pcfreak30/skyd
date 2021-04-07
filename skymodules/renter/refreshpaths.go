@@ -22,8 +22,8 @@ type uniqueRefreshPaths struct {
 	mu sync.Mutex
 }
 
-// newUniqueRefreshPaths returns an initialized uniqueRefreshPaths struct
-func (r *Renter) newUniqueRefreshPaths() *uniqueRefreshPaths {
+// callNewUniqueRefreshPaths returns an initialized uniqueRefreshPaths struct
+func (r *Renter) callNewUniqueRefreshPaths() *uniqueRefreshPaths {
 	return &uniqueRefreshPaths{
 		childDirs:  make(map[skymodules.SiaPath]struct{}),
 		parentDirs: make(map[skymodules.SiaPath]struct{}),

@@ -769,7 +769,7 @@ func (r *Renter) managedBlockUntilSynced() bool {
 // that directory to the upload heap. If the worst health directory found is
 // sufficiently healthy then we return.
 func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefreshPaths, error) {
-	siaPaths := r.newUniqueRefreshPaths()
+	siaPaths := r.callNewUniqueRefreshPaths()
 	prevHeapLen := r.staticUploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
