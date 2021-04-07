@@ -524,6 +524,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	if pcws.staticRenter.staticDeps.Disrupt("timeoutProjectDownloadByRoot") {
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
+	pdt.staticStart = time.Now()
 
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
