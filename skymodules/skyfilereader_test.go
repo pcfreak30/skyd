@@ -118,7 +118,7 @@ func testSkyfileReaderReadBuffer(t *testing.T) {
 	}
 
 	// set that data is read buffer
-	sfReader.AddReadBuffer(buf)
+	sfReader.SetReadBuffer(buf)
 
 	// read the rest of the data
 	rest := make([]byte, 100)
@@ -515,7 +515,7 @@ func testSkyfileMultipartReaderReadBuffer(t *testing.T) {
 	}
 
 	// set them as buffer
-	sfReader.AddReadBuffer(data)
+	sfReader.SetReadBuffer(data)
 
 	// read 20 bytes and compare them to what we expect to receive
 	expected := append(data1, data2[:10]...)

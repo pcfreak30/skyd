@@ -34,7 +34,7 @@ type (
 	// SkyfileUploadReader is an interface that wraps a reader, containing the
 	// Skyfile data, and adds a method to fetch the SkyfileMetadata.
 	SkyfileUploadReader interface {
-		AddReadBuffer(data []byte)
+		SetReadBuffer(data []byte)
 		SkyfileMetadata(ctx context.Context) (SkyfileMetadata, error)
 		io.Reader
 	}
@@ -87,11 +87,11 @@ func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUplo
 	}
 }
 
-// AddReadBuffer adds the given bytes to the read buffer. The next reads will
+// SetReadBuffer sets the given bytes as the read buffer. The next reads will
 // read from this buffer until it is entirely consumed, after which we continue
 // reading from the underlying reader.
-func (sr *skyfileReader) AddReadBuffer(b []byte) {
-	sr.readBuf = append(sr.readBuf, b...)
+func (sr *skyfileReader) SetReadBuffer(b []byte) {
+	sr.readBuf = b
 }
 
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.
@@ -115,6 +115,9 @@ func (sr *skyfileReader) Read(p []byte) (n int, err error) {
 	if len(sr.readBuf) > 0 {
 		n = copy(p, sr.readBuf)
 		sr.readBuf = sr.readBuf[n:]
+		if len(sr.readBuf) == 0 {
+			sr.readBuf = nil // reset for GC
+		}
 	}
 
 	// check if we've already read until EOF, that will be the case if
@@ -238,11 +241,11 @@ func newSkyfileMultipartReader(reader *multipart.Reader, sup SkyfileUploadParame
 	}
 }
 
-// AddReadBuffer adds the given bytes to the read buffer. The next reads will
+// SetReadBuffer sets the given bytes as the read buffer. The next reads will
 // read from this buffer until it is entirely consumed, after which we continue
 // reading from the underlying reader.
-func (sr *skyfileMultipartReader) AddReadBuffer(b []byte) {
-	sr.readBuf = append(sr.readBuf, b...)
+func (sr *skyfileMultipartReader) SetReadBuffer(b []byte) {
+	sr.readBuf = b
 }
 
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.
@@ -286,6 +289,9 @@ func (sr *skyfileMultipartReader) Read(p []byte) (n int, err error) {
 	if len(sr.readBuf) > 0 {
 		n = copy(p, sr.readBuf)
 		sr.readBuf = sr.readBuf[n:]
+		if len(sr.readBuf) == 0 {
+			sr.readBuf = nil // reset for GC
+		}
 	}
 
 	// check if we've already read until EOF, that will be the case if
