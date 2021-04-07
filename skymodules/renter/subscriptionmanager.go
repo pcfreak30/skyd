@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 type (
@@ -26,17 +27,27 @@ type (
 		subscribers   map[subscriberID]*renterSubscriber
 	}
 
+	// renterSubscriber contains information about a subscriber.
 	renterSubscriber struct {
-		subscriptions map[modules.RegistryEntryID]*renterSubscription
+		subscriptions map[modules.RegistryEntryID]*userSubscription
 	}
 
+	// renterSubscription contains information related to the renter's
+	// subscription.
 	renterSubscription struct {
 		latestValue *modules.SignedRegistryValue
-		refcount    int64
+		subscribers map[subscriberID]struct{}
 		staticSPK   types.SiaPublicKey
 		staticTweak crypto.Hash
 	}
 
+	// userSubscription contains information about an individual user's
+	// subscription.
+	userSubscription struct {
+		latestValue *modules.SignedRegistryValue
+	}
+
+	// subscriberID is a helper type to uniquely identify a subscriber.
 	subscriberID types.Specifier
 )
 
@@ -84,13 +95,20 @@ func (sm *registrySubscriptionManager) Notify(notifications ...modules.RPCRegist
 	sm.mu.Unlock()
 
 	// Notify subscribers.
-	for _, sub := range changedSubs {
-		sub.managedNotifySubscribers()
+	for eid, sub := range changedSubs {
+		for sid := range sub.subscribers {
+			subscriber, exists := sm.subscribers[sid]
+			if !exists {
+				continue
+			}
+			go subscriber.threadedNotify(eid)
+		}
 	}
 }
 
-func (sub *renterSubscription) managedNotifySubscribers() {
-	panic("implement")
+// threadedNotify notifies a subscriber about an updated entry.
+func (subscriber *renterSubscriber) threadedNotify(eid modules.RegistryEntryID) {
+	panic("not implemented")
 }
 
 // Get allows for fetching the latest value of a subscribed entry from the
@@ -108,6 +126,7 @@ func (sm *registrySubscriptionManager) Get(eid modules.RegistryEntryID) (modules
 	return *sub.latestValue, true
 }
 
+// Subscribe subscribes a subscriber to an entry.
 func (sm *registrySubscriptionManager) Subscribe(spk types.SiaPublicKey, tweak crypto.Hash, sid subscriberID) *modules.SignedRegistryValue {
 	eid := modules.DeriveRegistryEntryID(spk, tweak)
 
@@ -118,6 +137,7 @@ func (sm *registrySubscriptionManager) Subscribe(spk types.SiaPublicKey, tweak c
 		rs = &renterSubscription{
 			staticSPK:   spk,
 			staticTweak: tweak,
+			subscribers: make(map[subscriberID]struct{}),
 		}
 		sm.subscriptions[eid] = rs
 	}
@@ -126,17 +146,18 @@ func (sm *registrySubscriptionManager) Subscribe(spk types.SiaPublicKey, tweak c
 	subscriber, exists := sm.subscribers[sid]
 	if !exists {
 		subscriber = &renterSubscriber{
-			subscriptions: make(map[modules.RegistryEntryID]*renterSubscription),
+			subscriptions: make(map[modules.RegistryEntryID]*userSubscription),
 		}
 		sm.subscribers[sid] = subscriber
 	}
 
 	// Add the subscription to the subscriber if it doesn't exist yet.
-	// Also increment the refcount in that case.
 	_, exists = subscriber.subscriptions[eid]
 	if !exists {
-		subscriber.subscriptions[eid] = rs
-		rs.refcount++
+		subscriber.subscriptions[eid] = &userSubscription{
+			latestValue: rs.latestValue,
+		}
+		rs.subscribers[sid] = struct{}{}
 	}
 
 	// If the sub wasn't new, return the latest known value.
@@ -144,15 +165,66 @@ func (sm *registrySubscriptionManager) Subscribe(spk types.SiaPublicKey, tweak c
 		sm.mu.Unlock()
 		return rs.latestValue
 	}
-	requests := sm.buildSubscriptionRequests()
-	sm.mu.Unlock()
 
 	// Otherwise, update the workers. They will notify us as soon as a value
 	// becomes availeble.
-	sm.staticUpdateWorkers(requests)
+	requests := sm.buildSubscriptionRequests()
+	sm.mu.Unlock()
+	sm.managedUpdateWorkersWithRequests(requests)
 	return nil
 }
 
+// Unsubscribe unsubscribes a subscriber from a single entry.
+func (sm *registrySubscriptionManager) Unsubscribe(sid subscriberID, eid modules.RegistryEntryID) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.unsubscribe(sid, eid)
+}
+
+// unsubscribe unsubscribes a subscriber from a single entry.
+func (sm *registrySubscriptionManager) unsubscribe(sid subscriberID, eid modules.RegistryEntryID) {
+	// Get subscriber.
+	rs, exists := sm.subscribers[sid]
+	if !exists {
+		build.Critical("unsubscribing from unknown sid")
+		return
+	}
+	delete(rs.subscriptions, eid)
+
+	// Unsubscribe. If this was the last the last subscriber, delete the
+	// subscription.
+	sub, exists := sm.subscriptions[eid]
+	if !exists {
+		return // nothing to do
+	}
+	delete(sub.subscribers, sid)
+	if len(sub.subscribers) == 0 {
+		delete(sm.subscriptions, eid)
+	}
+}
+
+// UnsubscribeAll completely unsubsribes a subscriber and all related
+// subscriptions.
+func (sm *registrySubscriptionManager) UnsubscribeAll(sid subscriberID) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Get subscriber.
+	us, exists := sm.subscribers[sid]
+	if !exists {
+		build.Critical("unsubscribing unknown subscriber")
+		return
+	}
+	// Unsubscribe from all subscribed entries.
+	for eid := range us.subscriptions {
+		sm.unsubscribe(sid, eid)
+	}
+	// Remove subscriber from sm.subscribers.
+	delete(sm.subscribers, sid)
+}
+
+// builSubscriptionRequests creates subscription requests from all currently
+// active subscriptions.
 func (sm *registrySubscriptionManager) buildSubscriptionRequests() []modules.RPCRegistrySubscriptionRequest {
 	requests := make([]modules.RPCRegistrySubscriptionRequest, 0, len(sm.subscriptions))
 	for _, sub := range sm.subscriptions {
@@ -164,14 +236,17 @@ func (sm *registrySubscriptionManager) buildSubscriptionRequests() []modules.RPC
 	return requests
 }
 
+// managedUpdateWorkers updates the subscription on all workers from the current
+// active subscriptions.
 func (sm *registrySubscriptionManager) managedUpdateWorkers() {
 	sm.mu.Lock()
 	requests := sm.buildSubscriptionRequests()
 	sm.mu.Unlock()
-	sm.staticUpdateWorkers(requests)
+	sm.managedUpdateWorkersWithRequests(requests)
 }
 
-func (sm *registrySubscriptionManager) staticUpdateWorkers(requests []modules.RPCRegistrySubscriptionRequest) {
+// managedUpdateWorkersWithRequests updates all workers with the given requests.
+func (sm *registrySubscriptionManager) managedUpdateWorkersWithRequests(requests []modules.RPCRegistrySubscriptionRequest) {
 	// Update workers.
 	for _, w := range sm.staticWorkers.callWorkers() {
 		w.UpdateSubscriptions(requests...)
