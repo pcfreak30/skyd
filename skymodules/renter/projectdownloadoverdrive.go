@@ -295,7 +295,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 // channels, one of which will fire when tryOverdrive should be called again. If
 // there are no more overdrive workers to try, these channels may both be 'nil'
 // and therefore will never fire.
-func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) tryOverdrive(pdt *pdcDownloadTrace) (<-chan struct{}, <-chan time.Time) {
 	// Fetch the number of overdrive workers that are needed, and the latest
 	// return time of any active worker.
 	neededOverdriveWorkers, latestReturn := pdc.overdriveStatus()
@@ -312,6 +312,7 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 		if !workerLaunched {
 			return wakeChan, expectedReadyChan
 		}
+		pdt.staticOverdriveLaunchTimes = append(pdt.staticOverdriveLaunchTimes, time.Since(pdt.staticStart).Milliseconds())
 
 		// Worker launched successfully, update the latestReturnTime to account
 		// for the new worker.

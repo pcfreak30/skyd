@@ -319,20 +319,45 @@ func (s *stream) Close() error {
 		// Log the trace results.
 		dst := s.staticDownloadSkylinkTrace
 		sdst := dst.skylinkDataSourceTrace
-		start := dst.staticStart
-		dbrTime := int(sdst.staticDownloadByRootTime.Sub(start) / time.Millisecond)
-		fetchersTime := int(sdst.staticChunkFetchersCreated.Sub(start) / time.Millisecond)
-		streamAvailableTime := int(dst.staticStreamerAvailable.Sub(start) / time.Millisecond)
-		if dbrTime > 0 {
-			dst.staticRenter.staticLog.Printf(`\nTrace Results:
-Download Start:         %v
-Download By Root Time:  %vms
-Chunk Fetchers Created: %vms
-Stream Available:       %vms`, start, dbrTime, fetchersTime, streamAvailableTime)
-			for _, fct := range sdst.staticFetcherCreateTimes {
-				elapsed := int(fct.Sub(start)/time.Millisecond)
-				dst.staticRenter.staticLog.Printf("\tFetcher Create Time: %vms", elapsed)
-			}
+		dbrt := sdst.downloadByRootTrace
+		pdt := dbrt.pdcDownloadTrace
+
+		if !dst.staticStart.IsZero() {
+			start := dst.staticStart
+			dataSourceStart := sdst.staticStart.Sub(start).Milliseconds()
+			dbrStart := dbrt.staticStart.Sub(start).Milliseconds()-dataSourceStart
+			pcwsCreated := dbrt.staticPCWSCreated.Milliseconds()
+			downloadQueued := dbrt.staticDownloadQueued.Milliseconds()
+			downloadCompleted := dbrt.staticDownloadCompleted.Milliseconds()
+			pdcStart := pdt.staticStart.Sub(start).Milliseconds()-dbrStart
+			pdcBuilt := pdt.staticPDCBuilt.Milliseconds()
+			expectedCompleteTime := pdt.staticExpectedCompleteTime.Milliseconds()
+			workersLaunched := pdt.staticWorkersLaunched.Milliseconds()
+			failureTimes := pdt.staticWorkerFailureTimes
+			successTimes := pdt.staticWorkerSuccessTimes
+			overdriveTimes := pdt.staticOverdriveLaunchTimes
+			dbrTime := sdst.staticDownloadByRootTime.Milliseconds()
+			fetcherTimes := sdst.staticFetcherCreateTimes
+			fetchersCreated := sdst.staticChunkFetchersCreated.Milliseconds()
+			streamAvailable := dst.staticStreamerAvailable.Milliseconds()
+			dst.staticRenter.staticLog.Printf(`
+Download Skylink Trace Results: %v
+		Data Source Start: %vms
+			Download By Root Start: %vms
+				PCWS Created:       %vms
+				Download Queued:    %vms
+				Download Completed: %vms
+				PDC Start: %vms
+					PDC Built:              %vms
+					Expected Complete Time: %vms
+					Workers Launched:       %vms
+					Failures:               %v
+					Successes:              %v
+					Overdrive Launch times: %v
+			Download By Root Time: %vms
+			Chunk Fetcher Times:    %v
+			Chunk Fetchers Created: %vms
+		Stream Available:       %vms`, start, dataSourceStart, dbrStart, pcwsCreated, downloadQueued, downloadCompleted, pdcStart, pdcBuilt, expectedCompleteTime, workersLaunched, failureTimes, successTimes, overdriveTimes, dbrTime, fetcherTimes, fetchersCreated, streamAvailable)
 		}
 		// Grab the request times for the data source.
 		sdst.mu.Lock()
@@ -340,10 +365,28 @@ Stream Available:       %vms`, start, dbrTime, fetchersTime, streamAvailableTime
 		copy(requestTimes, sdst.allRequests)
 		sdst.mu.Unlock()
 		for _, request := range requestTimes {
-			timeSinceDownloadStart := int(request.staticStart.Sub(start)/time.Millisecond)
-			timeToLaunch := int(request.staticLaunch.Sub(request.staticStart)/time.Millisecond)
-			timeToComplete := int(request.staticComplete.Sub(request.staticStart)/time.Millisecond)
-			dst.staticRenter.staticLog.Printf("Data source read request trace: %v ::: %vms ::: %vms", timeSinceDownloadStart, timeToLaunch, timeToComplete)
+			start := request.staticStart
+			launch := request.staticLaunch.Milliseconds()
+			completion := request.staticComplete.Milliseconds()
+			pdcStart := pdt.staticStart.Sub(start).Milliseconds()
+			pdcBuilt := pdt.staticPDCBuilt.Milliseconds()
+			expectedCompleteTime := pdt.staticExpectedCompleteTime.Milliseconds()
+			workersLaunched := pdt.staticWorkersLaunched.Milliseconds()
+			failureTimes := pdt.staticWorkerFailureTimes
+			successTimes := pdt.staticWorkerSuccessTimes
+			overdriveTimes := pdt.staticOverdriveLaunchTimes
+			dst.staticRenter.staticLog.Printf(`
+Data source read trace: %v
+	Launch:     %vms
+	Completion: %vms
+	PDC Start:  %vms
+		PDC Built:              %vms
+		Expected Complete Time: %vms
+		Workers Launched:       %vms
+		Failures:               %v
+		Successes:              %v
+		Overdrive Launch times: %v
+`, start, launch, completion, pdcStart, pdcBuilt, expectedCompleteTime, workersLaunched, failureTimes, successTimes, overdriveTimes)
 		}
 	})
 	return nil

@@ -237,7 +237,7 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 
 // handleJobReadResponse will take a jobReadResponse from a worker job
 // and integrate it into the set of pieces.
-func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
+func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse, pdt *pdcDownloadTrace) {
 	// Prevent a production panic.
 	if jrr == nil {
 		pdc.workerSet.staticRenter.staticLog.Critical("received nil job read response in handleJobReadResponse")
@@ -261,6 +261,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	if jrr.staticErr != nil {
 		// The download failed, update the pdc available pieces to reflect the
 		// failure.
+		pdt.staticWorkerFailureTimes = append(pdt.staticWorkerFailureTimes, time.Since(pdt.staticStart).Milliseconds())
 		pieceFound := false
 		for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
 			if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == worker.staticHostPubKeyStr {
@@ -295,6 +296,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 			}
 			pieceFound = true
 			pdc.availablePieces[pieceIndex][i].completed = true
+			pdt.staticWorkerSuccessTimes = append(pdt.staticWorkerSuccessTimes, time.Since(pdt.staticStart).Milliseconds())
 		}
 	}
 }
@@ -468,7 +470,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 // threadedCollectAndOverdrivePieces will wait for responses from the workers.
 // If workers fail or are late, additional workers will be launched to ensure
 // that the download still completes.
-func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
+func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(pdt *pdcDownloadTrace) {
 	// Loop until the download has either failed or completed.
 	for {
 		// Check whether the download is comlete. An error means that the
@@ -488,7 +490,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// code will determine whether launching an overdrive worker is
 		// necessary, and will return a channel that will be closed when enough
 		// time has elapsed that another overdrive worker should be considered.
-		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
+		workersUpdatedChan, workersLateChan := pdc.tryOverdrive(pdt)
 
 		// Determine when the next overdrive check needs to run.
 		select {
@@ -496,7 +498,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 			pdc.fail(errors.New("download timed out"))
 			return
 		case jrr := <-pdc.workerResponseChan:
-			pdc.handleJobReadResponse(jrr)
+			pdc.handleJobReadResponse(jrr, pdt)
 		case <-workersLateChan:
 		case <-workersUpdatedChan:
 		}

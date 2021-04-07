@@ -605,7 +605,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	}
 
 	// Fetch the data
-	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
+	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS, new(downloadByRootTrace))
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -629,7 +629,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	dst := r.NewDownloadSkylinkTrace()
 	dst.staticStart = time.Now()
 	layout, metadata, streamer, err := r.managedDownloadSkylink(link, timeout, pricePerMS, dst)
-	dst.staticStreamerAvailable = time.Now()
+	dst.staticStreamerAvailable = time.Since(dst.staticStart)
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -664,7 +664,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	}
 
 	// Download the base sector
-	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
+	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS, new(downloadByRootTrace))
 	return StreamerFromSlice(baseSector), err
 }
 

@@ -143,7 +143,9 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		}
 
 		// Schedule the download.
-		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize)
+		i := len(sdsrt.staticPDCDownloadTraces)
+		sdsrt.staticPDCDownloadTraces = append(sdsrt.staticPDCDownloadTraces, pdcDownloadTrace{})
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize, &sdsrt.staticPDCDownloadTraces[i])
 		if err != nil {
 			responseChan <- &readResponse{
 				staticErr: errors.AddContext(err, "unable to start download"),
@@ -158,7 +160,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 
 	// Launch a goroutine that collects all download responses, aggregates them
 	// and sends it as a single response over the response channel.
-	sdsrt.staticLaunch = time.Now()
+	sdsrt.staticLaunch = time.Since(sdsrt.staticStart)
 	err := sds.staticRenter.tg.Launch(func() {
 		data := make([]byte, fetchSize)
 		offset := 0
@@ -181,17 +183,16 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		if !failed {
 			responseChan <- &readResponse{staticData: data}
 			close(responseChan)
-			sdsrt.staticComplete = time.Now()
+			sdsrt.staticComplete = time.Since(sdsrt.staticStart)
 
 			// Update the stats in the data source trace.
-			timeElapsed := sdsrt.staticComplete.Sub(sdsrt.staticStart)
 			sdst := sds.staticSkylinkDataSourceTrace
 			sdst.mu.Lock()
 			if fastrand.Intn(sdst.totalReadRequests+1) == 0 {
 				sdst.randomRequest = sdsrt
 			}
 			sdst.totalReadRequests++
-			if timeElapsed > time.Second {
+			if sdsrt.staticComplete > time.Second {
 				sdst.slowRequests = append(sdst.slowRequests, sdsrt)
 			}
 			sdst.allRequests = append(sdst.allRequests, sdsrt) // TODO: Remove, this is just for initial debugging
@@ -205,7 +206,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 }
 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
-func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, error) {
+func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency, dbrt *downloadByRootTrace) ([]byte, error) {
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -226,17 +227,20 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create the worker set for this skylink")
 	}
+	dbrt.staticPCWSCreated = time.Since(dbrt.staticStart)
 
 	// Download the base sector. The base sector contains the metadata, without
 	// it we can't provide a completed data source.
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length)
+	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length, &dbrt.pdcDownloadTrace)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to start download")
 	}
+	dbrt.staticDownloadQueued = time.Since(dbrt.staticStart)
 	resp := <-respChan
+	dbrt.staticDownloadCompleted = time.Since(dbrt.staticStart)
 	if resp.err != nil {
 		return nil, errors.AddContext(resp.err, "base sector download did not succeed")
 	}
@@ -282,11 +286,11 @@ func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duratio
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
+	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS, &sdst.downloadByRootTrace)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to download base sector")
 	}
-	sdst.staticDownloadByRootTime = time.Now()
+	sdst.staticDownloadByRootTime = time.Since(sdst.staticStart)
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
@@ -338,11 +342,10 @@ func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duratio
 				return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
 			}
 			fanoutChunkFetchers = append(fanoutChunkFetchers, pcws)
-			sdst.staticFetcherCreateTimes = append(sdst.staticFetcherCreateTimes, time.Now())
+			sdst.staticFetcherCreateTimes = append(sdst.staticFetcherCreateTimes, time.Since(sdst.staticStart).Milliseconds())
 		}
 	}
-	sdst.staticChunkFetchersCreated = time.Now()
-	sdst.staticNumChunkFetchers = len(fanoutChunkFetchers)
+	sdst.staticChunkFetchersCreated = time.Since(sdst.staticStart)
 
 	sds := &skylinkDataSource{
 		staticID:       link.DataSourceID(),
