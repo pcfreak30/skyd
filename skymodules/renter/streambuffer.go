@@ -323,7 +323,7 @@ func (s *stream) Close() error {
 		dbrt := sdst.downloadByRootTrace
 		pdt := dbrt.pdcDownloadTrace
 
-		if !dst.staticStart.IsZero() {
+		if !dst.staticStart.IsZero() && dst.staticStreamerAvailable.Milliseconds() > 5 {
 			start := dst.staticStart
 			dataSourceStart := sdst.staticStart.Sub(start).Milliseconds()
 			dbrStart := dbrt.staticStart.Sub(start).Milliseconds() - dataSourceStart
@@ -370,7 +370,7 @@ Download Skylink Trace Results: %v`, start)
 		requestTimes := make([]*skylinkDataSourceReadTrace, len(sdst.allRequests))
 		copy(requestTimes, sdst.allRequests)
 		sdst.mu.Unlock()
-		for _, request := range requestTimes {
+		for i, request := range requestTimes {
 			start := request.staticStart
 			launch := request.staticLaunch.Milliseconds()
 			completion := request.staticComplete.Milliseconds()
@@ -383,6 +383,7 @@ Download Skylink Trace Results: %v`, start)
 			overdriveTimes := pdt.staticOverdriveLaunchTimes
 			dst.staticRenter.staticLog.Printf(`
 Data source read trace: %v
+	i:          %v
 	Launch:     %vms
 	Completion: %vms
 	PDC Start:  %vms
@@ -392,7 +393,7 @@ Data source read trace: %v
 		Failures:               %v
 		Successes:              %v
 		Overdrive Launch times: %v
-`, start, launch, completion, pdcStart, pdcBuilt, expectedCompleteTime, workersLaunched, failureTimes, successTimes, overdriveTimes)
+`, start, i, launch, completion, pdcStart, pdcBuilt, expectedCompleteTime, workersLaunched, failureTimes, successTimes, overdriveTimes)
 		}
 	})
 	return nil
