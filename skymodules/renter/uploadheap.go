@@ -26,6 +26,7 @@ import (
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 // repairTarget is a helper type for telling the repair heap what type of
@@ -709,7 +710,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// accessed without error. If there is an error accessing the file then
 		// it is likely that we can not read the file in which case it can not
 		// be used for repair.
-		repairable := chunk.health <= 1 || chunk.onDisk
+		repairable := !siafile.Unrecoverable(chunk.health, chunk.onDisk)
 		needsRepair := skymodules.NeedsRepair(chunk.health)
 
 		if r.staticDeps.Disrupt("AddUnrepairableChunks") && needsRepair {

@@ -339,7 +339,10 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 	// Check if original file is on disk
 	_, err = os.Stat(sf.LocalPath())
 	onDisk := err == nil
-	if !onDisk && md.CachedRedundancy < 1 {
+
+	// Check if file is unrecoverable and log it
+	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
+	if siafile.Unrecoverable(maxHealth, onDisk) {
 		r.staticLog.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
 

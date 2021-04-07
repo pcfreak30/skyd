@@ -133,6 +133,17 @@ func CalculateHealth(goodPieces, minPieces, numPieces int) float64 {
 	return health
 }
 
+// Unrecoverable returns whether or not a siafile should be considered
+// unrecoverable based on the provided health and ondisk status.
+func Unrecoverable(health float64, onDisk bool) bool {
+	// If the health of the health is <= 1 it means it has at least data pieces
+	// available. So a health of > 1 would require a localfile to repair from.
+	//
+	// If the file is ondisk, then it can always be repaired from the localfile so
+	// it is always recoverable.
+	return health > 1 && !onDisk
+}
+
 // MarshalSia implements the encoding.SiaMarshaler interface.
 func (hpk HostPublicKey) MarshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)
