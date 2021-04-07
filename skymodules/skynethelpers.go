@@ -276,7 +276,7 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 	}
 
 	// Make sure the returned metadata has valid monetization settings.
-	if err := ValidateMonetization(sm.Monetization); err != nil {
+	if err := ValidateSkyfileMetadata(sm); err != nil {
 		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, err
 	}
 	return sl, fanoutBytes, sm, baseSectorPayload, nil
@@ -331,6 +331,10 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		}
 	}
 
+	// Make sure the returned metadata has valid monetization settings.
+	if err := ValidateMonetization(metadata.Monetization); err != nil {
+		return errors.AddContext(err, "metadata has invalid monetization")
+	}
 	return nil
 }
 
