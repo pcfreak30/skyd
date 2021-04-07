@@ -76,7 +76,7 @@ type skylinkDataSourceReadTrace struct {
 	staticLaunch   time.Duration
 	staticComplete time.Duration
 
-	staticPDCDownloadTraces []*pdcDownloadTrace
+	staticPDCDownloadTraces []pdcDownloadTrace
 }
 
 // skyfileStreamerTrace traces calls to a SkyfileStreamer.

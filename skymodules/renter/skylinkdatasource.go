@@ -124,11 +124,13 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		numChunks += 1
 	}
 	downloadChans := make([]chan *downloadResponse, 0, numChunks)
+	sdsrt.staticPDCDownloadTraces = make([]pdcDownloadTrace, numChunks)
 
 	// Otherwise we are dealing with a large skyfile and have to aggregate the
 	// download responses for every chunk in the fanout. We keep reading from
 	// chunks until all the data has been read.
 	var n uint64
+	var i int
 	for n < fetchSize && off < sds.staticLayout.Filesize {
 		// Determine which chunk the offset is currently in.
 		chunkIndex := off / chunkSize
@@ -143,9 +145,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		}
 
 		// Schedule the download.
-		i := len(sdsrt.staticPDCDownloadTraces)
-		sdsrt.staticPDCDownloadTraces = append(sdsrt.staticPDCDownloadTraces, new(pdcDownloadTrace))
-		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize, sdsrt.staticPDCDownloadTraces[i])
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize, &sdsrt.staticPDCDownloadTraces[i])
 		if err != nil {
 			responseChan <- &readResponse{
 				staticErr: errors.AddContext(err, "unable to start download"),
@@ -156,6 +156,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 
 		off += downloadSize
 		n += downloadSize
+		i++
 	}
 
 	// Launch a goroutine that collects all download responses, aggregates them
