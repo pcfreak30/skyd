@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -598,5 +599,36 @@ func TestPayMonetizers(t *testing.T) {
 	err = PayMonetizers(w, m, 100, 100, conversionRates, base)
 	if !errors.Contains(err, ErrZeroConversionRate) {
 		t.Fatal(err)
+	}
+}
+
+// TestIsSkynetDir probes the IsSkynetDir function
+func TestIsSkynetDir(t *testing.T) {
+	// Define tests
+	var tests = []struct {
+		sp  SiaPath
+		res bool
+	}{
+		// Valid Cases
+		{SkynetFolder, true},
+		{NewGlobalSiaPath("/var/skynet"), true},
+		{NewGlobalSiaPath("/var/skynet/skynet"), true},
+		{NewGlobalSiaPath("/var/skynet/" + persist.RandomSuffix()), true},
+
+		// Invalid Cases
+		{VarFolder, false},
+		{HomeFolder, false},
+		{UserFolder, false},
+		{BackupFolder, false},
+		{RootSiaPath(), false},
+		{NewGlobalSiaPath("/home/var/skynet"), false},
+		{NewGlobalSiaPath("/var"), false},
+		{NewGlobalSiaPath("/skynet"), false},
+	}
+	// Execute tests
+	for _, test := range tests {
+		if IsSkynetDir(test.sp) != test.res {
+			t.Error("unexpected", test)
+		}
 	}
 }
