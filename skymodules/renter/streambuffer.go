@@ -13,6 +13,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -325,11 +326,11 @@ func (s *stream) Close() error {
 		if !dst.staticStart.IsZero() {
 			start := dst.staticStart
 			dataSourceStart := sdst.staticStart.Sub(start).Milliseconds()
-			dbrStart := dbrt.staticStart.Sub(start).Milliseconds()-dataSourceStart
+			dbrStart := dbrt.staticStart.Sub(start).Milliseconds() - dataSourceStart
 			pcwsCreated := dbrt.staticPCWSCreated.Milliseconds()
 			downloadQueued := dbrt.staticDownloadQueued.Milliseconds()
 			downloadCompleted := dbrt.staticDownloadCompleted.Milliseconds()
-			pdcStart := pdt.staticStart.Sub(start).Milliseconds()-dbrStart
+			pdcStart := pdt.staticStart.Sub(start).Milliseconds() - dbrStart
 			pdcBuilt := pdt.staticPDCBuilt.Milliseconds()
 			expectedCompleteTime := pdt.staticExpectedCompleteTime.Milliseconds()
 			workersLaunched := pdt.staticWorkersLaunched.Milliseconds()
@@ -340,8 +341,10 @@ func (s *stream) Close() error {
 			fetcherTimes := sdst.staticFetcherCreateTimes
 			fetchersCreated := sdst.staticChunkFetchersCreated.Milliseconds()
 			streamAvailable := dst.staticStreamerAvailable.Milliseconds()
-			dst.staticRenter.staticLog.Printf(`
-Download Skylink Trace Results: %v
+			logStr := fmt.Sprintf(`
+Download Skylink Trace Results: %v`, start)
+			if !sdst.staticStart.IsZero() {
+				logStr += fmt.Sprintf(`
 		Data Source Start: %vms
 			Download By Root Start: %vms
 				PCWS Created:       %vms
@@ -356,8 +359,11 @@ Download Skylink Trace Results: %v
 					Overdrive Launch times: %v
 			Download By Root Time: %vms
 			Chunk Fetcher Times:    %v
-			Chunk Fetchers Created: %vms
-		Stream Available:       %vms`, start, dataSourceStart, dbrStart, pcwsCreated, downloadQueued, downloadCompleted, pdcStart, pdcBuilt, expectedCompleteTime, workersLaunched, failureTimes, successTimes, overdriveTimes, dbrTime, fetcherTimes, fetchersCreated, streamAvailable)
+			Chunk Fetchers Created: %vms`, dataSourceStart, dbrStart, pcwsCreated, downloadQueued, downloadCompleted, pdcStart, pdcBuilt, expectedCompleteTime, workersLaunched, failureTimes, successTimes, overdriveTimes, dbrTime, fetcherTimes, fetchersCreated)
+			}
+			logStr += fmt.Sprintf(`
+		Stream Available:       %vms`, streamAvailable)
+			dst.staticRenter.staticLog.Println(logStr)
 		}
 		// Grab the request times for the data source.
 		sdst.mu.Lock()

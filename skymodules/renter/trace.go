@@ -52,7 +52,7 @@ type downloadByRootTrace struct {
 	staticDownloadQueued    time.Duration
 	staticDownloadCompleted time.Duration
 
-	pdcDownloadTrace        pdcDownloadTrace
+	pdcDownloadTrace pdcDownloadTrace
 }
 
 // pdcDownloadTrace traces a call to managedDownload on a PCWS.
