@@ -207,6 +207,9 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
 func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency, dbrt *downloadByRootTrace) ([]byte, error) {
+	// Init the tracing.
+	dbrt.staticStart = time.Now()
+
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -263,6 +266,9 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // requested, but we should only do so after gathering some real world feedback
 // that indicates we would benefit from this.
 func (r *Renter) managedSkylinkDataSource(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency, sdst *skylinkDataSourceTrace) (streamBufferDataSource, error) {
+	// Initialize tracing.
+	sdst.staticStart = time.Now()
+
 	// Create the context using the given timeout, this timeout should only be
 	// applicable to downloading the base sector because the data source might
 	// outlive the request.

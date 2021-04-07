@@ -630,7 +630,6 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 
 	// Download the data
 	dst := r.NewDownloadSkylinkTrace()
-	dst.staticStart = time.Now()
 	layout, metadata, streamer, err := r.managedDownloadSkylink(link, timeout, pricePerMS, dst)
 	dst.staticStreamerAvailable = time.Since(dst.staticStart)
 	if errors.Contains(err, ErrProjectTimedOut) {
