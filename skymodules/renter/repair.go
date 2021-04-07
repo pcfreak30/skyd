@@ -29,6 +29,17 @@ var (
 	errNoStuckChunks = errors.New("no stuck chunks")
 )
 
+var (
+	// minHealthCheckSleepTime exists to prevent rapid cycling in the health
+	// loop, if a health loop is completed and all files are of good health,
+	// it'll sleep for a minimum of this amount of time.
+	minHealthCheckSleepTime = build.Select(build.Var{
+		Dev:      time.Second * 15,
+		Standard: time.Minute * 5,
+		Testing:  time.Second,
+	}).(time.Duration)
+)
+
 // managedAddRandomStuckChunks will try and add up to
 // maxRandomStuckChunksAddToHeap random stuck chunks to the upload heap
 func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymodules.SiaPath, error) {
@@ -590,7 +601,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
 		if timeSinceLastCheck < healthCheckInterval {
 			// Sleep until the least recent check is outside the check interval.
-			sleepDuration := healthCheckInterval - timeSinceLastCheck
+			sleepDuration := healthCheckInterval - timeSinceLastCheck + minHealthCheckSleepTime
 			r.staticLog.Printf("Health loop sleeping for %v, lastHealthCheckTime %v, directory %v", sleepDuration, lastHealthCheckTime, siaPath)
 			wakeSignal := time.After(sleepDuration)
 			select {
@@ -634,7 +645,6 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			}
 			continue
 		}
-		r.staticLog.Printf("Calling bubble on the subtree '%v', # bubbles %v", siaPath, urp.callNumChildDirs())
 		urp.callRefreshAllBlocking()
 	}
 }

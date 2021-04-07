@@ -14,7 +14,6 @@ package renter
 import (
 	"context"
 	"io"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -304,9 +303,6 @@ func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
 // of a resource substantially improves performance in practice, in many cases
 // causing a 4x reduction in response latency.
 func (s *stream) Close() error {
-	dst := s.staticDownloadSkylinkTrace
-	dst.staticRenter.staticLog.Println("\n", string(debug.Stack()))
-
 	s.staticStreamBuffer.staticStreamBufferSet.staticTG.Launch(func() {
 		// Convenience variables.
 		sb := s.staticStreamBuffer
@@ -321,7 +317,6 @@ func (s *stream) Close() error {
 		sbs.managedRemoveStream(sb)
 
 		// Log the trace results.
-		/*
 		dst := s.staticDownloadSkylinkTrace
 		sdst := dst.skylinkDataSourceTrace
 		start := dst.staticStart
@@ -340,7 +335,6 @@ Stream Available:      %v ms,
 		for _, request := range requestTimes {
 			dst.staticRenter.staticLog.Printf("Request: %v ::: %v ::: %v", request.staticStart.Sub(start)/time.Millisecond, request.staticLaunch.Sub(start)/time.Millisecond, request.staticComplete.Sub(start)/time.Millisecond)
 		}
-		*/
 	})
 	return nil
 }
