@@ -374,26 +374,31 @@ Download Skylink Trace Results: %v`, start)
 			start := request.staticStart
 			launch := request.staticLaunch.Milliseconds()
 			completion := request.staticComplete.Milliseconds()
-			pdcStart := pdt.staticStart.Sub(start).Milliseconds()
-			pdcBuilt := pdt.staticPDCBuilt.Milliseconds()
-			expectedCompleteTime := pdt.staticExpectedCompleteTime.Milliseconds()
-			workersLaunched := pdt.staticWorkersLaunched.Milliseconds()
-			failureTimes := pdt.staticWorkerFailureTimes
-			successTimes := pdt.staticWorkerSuccessTimes
-			overdriveTimes := pdt.staticOverdriveLaunchTimes
-			dst.staticRenter.staticLog.Printf(`
+			logStr := fmt.Sprintf(`
 Data source read trace: %v
-	i:          %v
+	I:          %vms
 	Launch:     %vms
-	Completion: %vms
+	Completion: %vms`, start, i, launch, completion)
+			for j, pdt := range request.staticPDCDownloadTraces {
+				pdcStart := pdt.staticStart.Sub(start).Milliseconds()
+				pdcBuilt := pdt.staticPDCBuilt.Milliseconds()
+				expectedCompleteTime := pdt.staticExpectedCompleteTime.Milliseconds()
+				workersLaunched := pdt.staticWorkersLaunched.Milliseconds()
+				failureTimes := pdt.staticWorkerFailureTimes
+				successTimes := pdt.staticWorkerSuccessTimes
+				overdriveTimes := pdt.staticOverdriveLaunchTimes
+				logStr += fmt.Sprintf(`
 	PDC Start:  %vms
+		J:                      %vms
 		PDC Built:              %vms
 		Expected Complete Time: %vms
 		Workers Launched:       %vms
 		Failures:               %v
 		Successes:              %v
 		Overdrive Launch times: %v
-`, start, i, launch, completion, pdcStart, pdcBuilt, expectedCompleteTime, workersLaunched, failureTimes, successTimes, overdriveTimes)
+`, pdcStart, j, pdcBuilt, expectedCompleteTime, workersLaunched, failureTimes, successTimes, overdriveTimes)
+			}
+			dst.staticRenter.staticLog.Println(logStr)
 		}
 	})
 	return nil
