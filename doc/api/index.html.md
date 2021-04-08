@@ -4110,6 +4110,18 @@ curl -A "Sia-Agent" "localhost:9980/skynet/unpin/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtF
 Unpinning a skylink will delete the underlying skyfile(s) from the portal. This
 will delete any skyfile that has the skylink associated with it.
 
+**NOTE:** There is no siapath stored in the layout or metadata of a skylink
+because skyfiles can be pinned to different siapaths on the same or different
+portals. Because of this, all skyfiles and siafiles on a portal will need to be
+checked to see if the skylink is contained in the file's metadata. For
+performance reasons, this process is handled in a background thread and is not
+ACID. This means, if there is a shutdown of any kind before all the files have
+been checked, the unpin request may not be successfully executed and will need
+to be resubmitted. Submitting an unpin request multiple times for the same
+skylink is OK and does not duplicate the background unpinning process. If two
+`healthCheckInterval`s have passed, it can be assumed that the unpin was
+successful. 
+
 ### Path Parameters
 ### REQUIRED
 **skylink** | string\

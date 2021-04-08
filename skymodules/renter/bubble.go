@@ -179,6 +179,11 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 			if err != nil {
 				bs.staticRenter.staticLog.Printf("WARN: error queuing bubble for parent directory on '%v': %v", siaPath, err)
 			}
+
+			// If we are at root, prune the unpin requests
+			if siaPath.IsRoot() {
+				bs.staticRenter.staticSkylinkManager.callPruneUnpinRequests()
+			}
 		}
 	}
 	var wg sync.WaitGroup

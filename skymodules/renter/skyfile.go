@@ -34,8 +34,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"gitlab.com/skynetlabs/skyd/build"
@@ -74,10 +72,6 @@ var (
 
 	// ErrSkylinkBlocked is the error returned when a skylink is blocked
 	ErrSkylinkBlocked = errors.New("skylink is blocked")
-
-	// ErrSkylinkNotPinned is the error returned when a skylink is not found to be
-	// pinned to the renter
-	ErrSkylinkNotPinned = errors.New("skylink is not pinned")
 )
 
 // skyfileEstablishDefaults will set any zero values in the lup to be equal to
@@ -966,17 +960,6 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	return skylink, nil
 }
 
-// UnpinSkylink unpins a skylink from the renter by removing the underlying
-// siafile.
-func (r *Renter) UnpinSkylink(skylink skymodules.Skylink) error {
-	err := r.tg.Add()
-	if err != nil {
-		return err
-	}
-	defer r.tg.Done()
-	return r.managedUnpinSkylink(skylink)
-}
-
 // UploadSkyfile will upload the provided data with the provided metadata,
 // returning a skylink which can be used by any portal to recover the full
 // original file and metadata. The skylink will be unique to the combination of
@@ -1046,51 +1029,4 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 		}
 	}
 	return false
-}
-
-// managedUnpinSkylink unpins a skyfile from the renter by removing the
-// underlying siafile.
-//
-// NOTE: Since the SiaPath is not stored in the SkyfileLayout or the
-// SkyfileMetadata, we have to iterate over the entire filesystem to try and
-// find the filenode(s) that contain the skylink.
-func (r *Renter) managedUnpinSkylink(skylink skymodules.Skylink) error {
-	// Check if skylink is blocked. If it is we can return early since the bubble
-	// code will handle deletion of blocked files.
-	if r.staticSkynetBlocklist.IsBlocked(skylink) {
-		return ErrSkylinkBlocked
-	}
-
-	// Define skylink check function
-	var atomicFound uint64
-	var deleteErr error
-	var deleteErrMu sync.Mutex
-	hasSkylink := func(fi skymodules.FileInfo) {
-		for _, link := range fi.Skylinks {
-			if skylink.String() == link {
-				// Record that at least one file was found with the skylink
-				atomic.StoreUint64(&atomicFound, 1)
-
-				// Delete the siafile
-				err := r.staticFileSystem.DeleteFile(fi.SiaPath)
-				if err != nil {
-					deleteErrMu.Lock()
-					deleteErr = errors.Compose(deleteErr, err)
-					deleteErrMu.Unlock()
-				}
-				return
-			}
-		}
-	}
-
-	// Iterate over the filesystem and remove all files that contain the skylink.
-	err := r.staticFileSystem.CachedList(skymodules.RootSiaPath(), true, hasSkylink, func(skymodules.DirectoryInfo) {})
-	if atomic.LoadUint64(&atomicFound) == 0 {
-		err = errors.Compose(err, ErrSkylinkNotPinned)
-	}
-	err = errors.Compose(err, deleteErr)
-	if err != nil {
-		return errors.AddContext(err, "error while unpinning skylink")
-	}
-	return nil
 }

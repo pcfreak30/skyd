@@ -17,6 +17,10 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
+// ErrSkylinkUnpinned is the error returned when an unpinned skylink is found
+// during a bubble.
+var ErrSkylinkUnpinned = errors.New("skylink is unpinned")
+
 // bubbledSiaDirMetadata is a wrapper for siadir.Metadata that also contains the
 // siapath for convenience.
 type bubbledSiaDirMetadata struct {
@@ -333,6 +337,13 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)
 	}
 
+	// Check if there is a pending unpin request
+	if r.staticSkylinkManager.callIsUnpinned(sf) {
+		// Delete the file
+		r.staticLog.Println("Deleting unpinned fileNode at:", siaPath)
+		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkUnpinned)
+	}
+
 	// Grab the metadata to pull the cached information from
 	md := sf.Metadata()
 
@@ -384,6 +395,10 @@ func (r *Renter) managedCachedFileMetadatas(siaPaths []skymodules.SiaPath) (_ []
 			md, err := r.managedCachedFileMetadata(siaPath)
 			if errors.Contains(err, ErrSkylinkBlocked) {
 				// If the fileNode is blocked we ignore the error and continue.
+				continue
+			}
+			if errors.Contains(err, ErrSkylinkUnpinned) {
+				// If the fileNode is unpinned we ignore the error and continue.
 				continue
 			}
 			if err != nil {
