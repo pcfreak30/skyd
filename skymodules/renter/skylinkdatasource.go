@@ -41,7 +41,14 @@ type (
 		// staticChunkFetchers contains one pcws for every chunk in the fanout.
 		// The worker sets are spun up in advance so that the HasSector queries
 		// have completed by the time that someone needs to fetch the data.
+		//
+		// a staticChunkFetcher cannot be used until the corresponding
+		// staticChunksReady channel has been closed, it will not exist until
+		// that point. After it is known to exist, the error needs to be
+		// checked.
 		staticChunkFetchers []chunkFetcher
+		staticChunksReady []chan struct{}
+		staticChunkErrs  []error
 
 		// Utilities
 		staticCtx        context.Context
@@ -134,6 +141,16 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		downloadSize := remainingInChunk
 		if remainingInChunk > remainingBytes {
 			downloadSize = remainingBytes
+		}
+
+		// Wait until the chunk fetcher is ready, and check if there was any
+		// error in initializing the chunk fetcher.
+		<-sds.staticChunksReady[chunkIndex]
+		if sds.staticChunkErrs[chunkIndex] != nil {
+			responseChan <- &readResponse{
+				staticErr: errors.AddContext(sds.staticChunkErrs[chunkIndex], "unable to start download"),
+			}
+			return responseChan
 		}
 
 		// Schedule the download.
@@ -286,6 +303,8 @@ func (r *Renter) managedSkylinkDataSource(link skymodules.Skylink, timeout time.
 
 	// If there's a fanout create a PCWS for every chunk.
 	var fanoutChunkFetchers []chunkFetcher
+	var fanoutChunksReady []chan struct{}
+	var fanoutChunkErrs []error
 	if len(fanoutBytes) > 0 {
 		// Derive the fanout key
 		fanoutKey, err := skymodules.DeriveFanoutKey(&layout, fileSpecificSkykey)
@@ -301,20 +320,40 @@ func (r *Renter) managedSkylinkDataSource(link skymodules.Skylink, timeout time.
 			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
 		}
 
-		// Create a PCWS for every chunk
+		// Create the list of chunks from the fanout.
 		fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
 		if err != nil {
 			cancelFunc()
 			return nil, errors.AddContext(err, "error parsing skyfile fanout")
 		}
-		for i, chunk := range fanoutChunks {
-			pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
-			if err != nil {
-				cancelFunc()
-				return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
-			}
-			fanoutChunkFetchers = append(fanoutChunkFetchers, pcws)
+		// Initialize the fanout chunk fetchers. To improve TTFB, the list is
+		// returned prior to all of the PCWS objects actually being created,
+		// because the pcws objects will sometimes block on network connections
+		// before returning. That blocking is desirable behavior, because it
+		// ensures that earlier chunks are ready first. What's not desirable is
+		// blocking any downloads at all until the final PCWS has been
+		// scheduled, so instead we allocate an array of blank chunk fetchers
+		// and update them one at a time, then close channels to specify when
+		// they are ready for use.
+		fanoutChunkFetchers = make([]chunkFetcher, len(fanoutChunks))
+		fanoutChunksReady = make([]chan struct{}, len(fanoutChunks))
+		fanoutChunkErrs = make([]error, len(fanoutChunks))
+		for i := 0; i < len(fanoutChunksReady); i++ {
+			fanoutChunksReady[i] = make(chan struct{})
 		}
+
+		// Initialize all of the PCWS objects in a goroutine, closing the
+		// channels as they are ready.
+		go func() {
+			for i, chunk := range fanoutChunks {
+				pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
+				if err != nil {
+					fanoutChunkErrs[i] = err
+				}
+				fanoutChunkFetchers[i] = pcws
+				close(fanoutChunksReady[i])
+			}
+		}()
 	}
 
 	sds := &skylinkDataSource{
@@ -324,6 +363,8 @@ func (r *Renter) managedSkylinkDataSource(link skymodules.Skylink, timeout time.
 
 		staticBaseSectorPayload: baseSectorPayload,
 		staticChunkFetchers:     fanoutChunkFetchers,
+		staticChunksReady:       fanoutChunksReady,
+		staticChunkErrs:         fanoutChunkErrs,
 
 		staticCtx:        dsCtx,
 		staticCancelFunc: cancelFunc,
