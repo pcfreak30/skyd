@@ -211,11 +211,9 @@ type Renter struct {
 	staticSpendingHistory   *spendingHistory
 	staticSkynetTUSUploader *skynetTUSUploader
 
-	// Download management. The heap has a separate mutex because it is always
-	// accessed in isolation.
-	downloadHeapMu sync.Mutex         // Used to protect the downloadHeap.
-	downloadHeap   *downloadChunkHeap // A heap of priority-sorted chunks to download.
-	newDownloads   chan struct{}      // Used to notify download loop that new downloads are available.
+	// Download management.
+	staticDownloadHeap *downloadHeap
+	newDownloads       chan struct{} // Used to notify download loop that new downloads are available.
 
 	// Download history.
 	//
@@ -1101,8 +1099,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		// download heap loop, searching for a chunk that's not there. This is
 		// preferable to the alternative, where in rare cases the download heap
 		// will miss work altogether.
-		newDownloads: make(chan struct{}, 1),
-		downloadHeap: new(downloadChunkHeap),
+		newDownloads:       make(chan struct{}, 1),
+		staticDownloadHeap: &downloadHeap{},
 
 		staticUploadHeap: uploadHeap{
 			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
