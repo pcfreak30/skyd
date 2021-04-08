@@ -204,7 +204,7 @@ func testUpdateMetadata(t *testing.T) {
 
 	// Check that the metadata was updated properly in memory and on disk
 	md = siaDir.metadata
-	err = equalMetadatas(md, metadataUpdate)
+	err = EqualMetadatas(md, metadataUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func testUpdateMetadata(t *testing.T) {
 	}
 	metadataUpdate.ModTime = md.ModTime
 	// Check the rest of the metadata
-	err = equalMetadatas(md, metadataUpdate)
+	err = EqualMetadatas(md, metadataUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
