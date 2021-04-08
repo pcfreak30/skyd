@@ -5,38 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
 )
-
-// checkMetadataInit is a helper that verifies that the metadata was initialized
-// properly
-func checkMetadataInit(md siadir.Metadata) error {
-	// Check that the modTimes are not Zero
-	if md.AggregateModTime.IsZero() {
-		return errors.New("AggregateModTime not initialized")
-	}
-	if md.ModTime.IsZero() {
-		return errors.New("ModTime not initialized")
-	}
-
-	initMetadata := siadir.Metadata{
-		AggregateHealth:        siadir.DefaultDirHealth,
-		AggregateMinRedundancy: siadir.DefaultDirRedundancy,
-		AggregateModTime:       md.AggregateModTime,
-		AggregateRemoteHealth:  siadir.DefaultDirHealth,
-		AggregateStuckHealth:   siadir.DefaultDirHealth,
-
-		Health:        siadir.DefaultDirHealth,
-		MinRedundancy: siadir.DefaultDirRedundancy,
-		ModTime:       md.ModTime,
-		RemoteHealth:  siadir.DefaultDirHealth,
-		StuckHealth:   siadir.DefaultDirHealth,
-	}
-
-	return siadir.EqualMetadatas(md, initMetadata)
-}
 
 // TestHealthPercentage checks the values returned from HealthPercentage
 func TestHealthPercentage(t *testing.T) {
@@ -85,7 +56,7 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkMetadataInit(md); err != nil {
+	if err = siadir.VerifyMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 

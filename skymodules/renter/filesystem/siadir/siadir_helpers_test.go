@@ -8,38 +8,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
-
-// checkMetadataInit is a helper that verifies that the metadata was initialized
-// properly
-func checkMetadataInit(md Metadata) error {
-	// Check that the modTimes are not Zero
-	if md.AggregateModTime.IsZero() {
-		return errors.New("AggregateModTime not initialized")
-	}
-	if md.ModTime.IsZero() {
-		return errors.New("ModTime not initialized")
-	}
-
-	// All the rest of the metadata should be default values
-	initMetadata := Metadata{
-		AggregateHealth:        DefaultDirHealth,
-		AggregateMinRedundancy: DefaultDirRedundancy,
-		AggregateModTime:       md.AggregateModTime,
-		AggregateRemoteHealth:  DefaultDirHealth,
-		AggregateStuckHealth:   DefaultDirHealth,
-
-		Health:        DefaultDirHealth,
-		MinRedundancy: DefaultDirRedundancy,
-		ModTime:       md.ModTime,
-		RemoteHealth:  DefaultDirHealth,
-		StuckHealth:   DefaultDirHealth,
-	}
-
-	return EqualMetadatas(md, initMetadata)
-}
 
 // newRootDir creates a root directory for the test and removes old test files
 func newRootDir(t *testing.T) (string, error) {

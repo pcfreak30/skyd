@@ -384,6 +384,7 @@ type DirectoryInfo struct {
 	AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
 	AggregateMostRecentModTime   time.Time `json:"aggregatemostrecentmodtime"`
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+	AggregateNumLostFiles        uint64    `json:"aggregatenumlostfiles"`
 	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
 	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
@@ -405,6 +406,7 @@ type DirectoryInfo struct {
 	DirMode             os.FileMode `json:"mode,siamismatch"` // Field is called DirMode for fuse compatibility
 	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
 	NumFiles            uint64      `json:"numfiles"`
+	NumLostFiles        uint64      `json:"numlostfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
 	RepairSize          uint64      `json:"repairsize"`

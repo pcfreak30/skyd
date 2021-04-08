@@ -49,6 +49,9 @@ type (
 		//
 		// NumFiles is the total number of siafiles in a siadir
 		//
+		// NumLostFiles is the total number of siafiles in a siadir that are not on
+		// disk and have a health of <= 0
+		//
 		// NumStuckChunks is the sum of all the Stuck Chunks of any of the
 		// siafiles in the siadir
 		//
@@ -67,6 +70,7 @@ type (
 		AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
 		AggregateModTime             time.Time `json:"aggregatemodtime"`
 		AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+		AggregateNumLostFiles        uint64    `json:"aggregatenumlostfiles"`
 		AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 		AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
 		AggregateRemoteHealth        float64   `json:"aggregateremotehealth"`
@@ -87,6 +91,7 @@ type (
 		Mode                os.FileMode `json:"mode"`
 		ModTime             time.Time   `json:"modtime"`
 		NumFiles            uint64      `json:"numfiles"`
+		NumLostFiles        uint64      `json:"numlostfiles"`
 		NumStuckChunks      uint64      `json:"numstuckchunks"`
 		NumSubDirs          uint64      `json:"numsubdirs"`
 		RemoteHealth        float64     `json:"remotehealth"`
@@ -206,6 +211,34 @@ func EqualMetadatas(md1, md2 Metadata) (err error) {
 		err = errors.Compose(err, fmt.Errorf("SkynetSize not equal, %v and %v", md1.SkynetSize, md2.SkynetSize))
 	}
 	return
+}
+
+// VerifyMetadataInit verifies that metadata was properly initialized.
+func VerifyMetadataInit(md Metadata) error {
+	// Check that the modTimes are not Zero
+	if md.AggregateModTime.IsZero() {
+		return errors.New("AggregateModTime not initialized")
+	}
+	if md.ModTime.IsZero() {
+		return errors.New("ModTime not initialized")
+	}
+
+	// All the rest of the metadata should be default values
+	initMetadata := Metadata{
+		AggregateHealth:        DefaultDirHealth,
+		AggregateMinRedundancy: DefaultDirRedundancy,
+		AggregateModTime:       md.AggregateModTime,
+		AggregateRemoteHealth:  DefaultDirHealth,
+		AggregateStuckHealth:   DefaultDirHealth,
+
+		Health:        DefaultDirHealth,
+		MinRedundancy: DefaultDirRedundancy,
+		ModTime:       md.ModTime,
+		RemoteHealth:  DefaultDirHealth,
+		StuckHealth:   DefaultDirHealth,
+	}
+
+	return EqualMetadatas(md, initMetadata)
 }
 
 // mdPath returns the path of the SiaDir's metadata on disk.
