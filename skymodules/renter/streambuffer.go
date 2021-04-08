@@ -376,7 +376,7 @@ Download Skylink Trace Results: %v`, start)
 			completion := request.staticComplete.Milliseconds()
 			logStr := fmt.Sprintf(`
 Data source read trace: %v
-	I:          %vms
+	I:          %v
 	Launch:     %vms
 	Completion: %vms`, start, i, launch, completion)
 			for j, pdt := range request.staticPDCDownloadTraces {
@@ -389,7 +389,7 @@ Data source read trace: %v
 				overdriveTimes := pdt.staticOverdriveLaunchTimes
 				logStr += fmt.Sprintf(`
 	PDC Start:  %vms
-		J:                      %vms
+		J:                      %v
 		PDC Built:              %vms
 		Expected Complete Time: %vms
 		Workers Launched:       %vms
