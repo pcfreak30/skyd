@@ -101,8 +101,12 @@ github.com/kisielk/errcheck v1.1.0/go.mod h1:EZBBE59ingxPouuu3KfxchcWSUPOHkagtvW
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
 github.com/klauspost/cpuid v1.2.2 h1:1xAgYebNnsb9LKCdLOvFWtAxGU/33mjJtyOVbmUa0Us=
 github.com/klauspost/cpuid v1.2.2/go.mod h1:Pj4uuM528wm8OyEC2QMXAi2YiTZ96dNQPGgoMS4s3ek=
-github.com/klauspost/reedsolomon v1.9.3 h1:N/VzgeMfHmLc+KHMD1UL/tNkfXAt8FnUqlgXGIduwAY=
+github.com/klauspost/cpuid/v2 v2.0.2/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
+github.com/klauspost/cpuid/v2 v2.0.6 h1:dQ5ueTiftKxp0gyjKSx5+8BtPWkyQbd95m8Gys/RarI=
+github.com/klauspost/cpuid/v2 v2.0.6/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
 github.com/klauspost/reedsolomon v1.9.3/go.mod h1:CwCi+NUr9pqSVktrkN+Ondf06rkhYZ/pcNv7fu+8Un4=
+github.com/klauspost/reedsolomon v1.9.12 h1:EyOucRmcrLH+2hqKGdoA5SM8pwPKR6BJsf3r6zpYOA0=
+github.com/klauspost/reedsolomon v1.9.12/go.mod h1:nLvuzNvy1ZDNQW30IuMc2ZWCbiqrJgdLoUS2X8HAUVg=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
 github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515/go.mod h1:+0opPa2QZZtGFBFZlji/RkVcI2GknAs/DXo4wKdlNEc=
 github.com/kr/pretty v0.1.0 h1:L/CwN0zerZDmRFUapSPitk6f+Q3+0za1rQkzVuMiMFI=
@@ -185,8 +189,8 @@ github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
 github.com/xtaci/smux v1.3.3 h1:+vnzZHTLGHrj+LzUZEkKmvu4KkG7fj4jwMPqhawvErg=
 github.com/xtaci/smux v1.3.3/go.mod h1:f+nYm6SpuHMy/SH0zpbvAFHT1QoMcgLOsWcFip5KfPw=
-gitlab.com/NebulousLabs/Sia v1.5.6-0.20210329185456-d12941ec3d24 h1:oR6zwfdNroOtphZ0YPms4ceJfJIBwmC2DP906YETTr0=
-gitlab.com/NebulousLabs/Sia v1.5.6-0.20210329185456-d12941ec3d24/go.mod h1:IOY7Ubflshr5lRYbyL6Ap444YTu9/+Wpu3nQG+xm8kg=
+gitlab.com/NebulousLabs/Sia v1.5.6-0.20210408043250-c949c8cd5bca h1:wtCYljtI0W4UOXNqXBGBE7pbIm8YvDaROWFWjKv9f8g=
+gitlab.com/NebulousLabs/Sia v1.5.6-0.20210408043250-c949c8cd5bca/go.mod h1:IOY7Ubflshr5lRYbyL6Ap444YTu9/+Wpu3nQG+xm8kg=
 gitlab.com/NebulousLabs/bolt v1.4.4 h1:3UhpR2qtHs87dJBE3CIzhw48GYSoUUNByJmic0cbu1w=
 gitlab.com/NebulousLabs/bolt v1.4.4/go.mod h1:ZL02cwhpLNif6aruxvUMqu/Bdy0/lFY21jMFfNAA+O8=
 gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40 h1:IbucNi8u1a1ErgVFVgg8pERhSyzYe5l+o8krDMnNjWA=
