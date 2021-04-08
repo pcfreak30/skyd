@@ -1216,8 +1216,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
 
-	r.staticSubscriptionManager = newSubscriptionManager(r.staticWorkerPool)
-
 	// Set the worker pool on the contractor.
 	r.staticHostContractor.UpdateWorkerPool(r.staticWorkerPool)
 
@@ -1269,6 +1267,14 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to add initial spending")
 		}
+	}
+
+	// Create the subscription manager and launch the thread that updates the
+	// workers.
+	r.staticSubscriptionManager = newSubscriptionManager(r)
+	err = r.tg.Launch(r.staticSubscriptionManager.threadedUpdateWorkers)
+	if err != nil {
+		return nil, err
 	}
 
 	// Spin up the skynet fee paying goroutine.

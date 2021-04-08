@@ -3,10 +3,16 @@ package renter
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/skynetlabs/skyd/build"
 )
+
+func (sm *registrySubscriptionManager) newSubscriber() *renterSubscriber {
+	return sm.NewSubscriber(func(*modules.SignedRegistryValue) error { return nil })
+}
 
 // TestSubscriptionManager runs all subscription manager related unit tests.
 func TestSubscriptionManager(t *testing.T) {
@@ -22,14 +28,17 @@ func TestSubscriptionManager(t *testing.T) {
 	}
 
 	t.Run("Subscribe", func(t *testing.T) {
-		testSubscriptionManagerSubscribeUnsubscribe(t, rt.renter.staticWorkerPool)
+		testSubscriptionManagerSubscribeUnsubscribe(t, rt.renter)
+	})
+	t.Run("Notify", func(t *testing.T) {
+		testSubscriptionManagerNotify(t, rt.renter)
 	})
 }
 
-// testSubscriptionManagerSubscribeUnsubscribe is a unit test for the manager's
-// Subscribe and Unsubscribe methods.
-func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, wp *workerPool) {
-	sm := newSubscriptionManager(wp)
+// testSubscriptionManagerSubscribeUnsubscribe is a unit test for subscribing to
+// and unsubscribing from the manager.
+func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
+	sm := newSubscriptionManager(r)
 
 	// Create random pubkey tweak pair.
 	srv, spk, _ := randomRegistryValue()
@@ -43,18 +52,18 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, wp *workerPool) {
 		staticTweak: tweak,
 		subscribers: make(map[subscriberID]struct{}),
 	}
-	expectedUS := &userSubscription{}
+	var expectedSRV *modules.SignedRegistryValue
 
-	// Get a subscriber id.
-	var sid subscriberID
-	fastrand.Read(sid[:])
+	// Get a subscriber.
+	subscriber1 := sm.newSubscriber()
+	sid1 := subscriber1.staticSubscriberID
 
 	// Subscribe to it. This should return nil.
-	rv := sm.Subscribe(spk, tweak, sid)
+	rv := subscriber1.Subscribe(spk, tweak)
 	if rv != nil {
 		t.Fatal("rv should be nil")
 	}
-	expectedRS.subscribers[sid] = struct{}{}
+	expectedRS.subscribers[sid1] = struct{}{}
 
 	// Expect 1 subscription and 1 subscriber.
 	if len(sm.subscriptions) != 1 || len(sm.subscribers) != 1 {
@@ -67,15 +76,15 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, wp *workerPool) {
 	if len(rs.subscribers) != 1 {
 		t.Fatal("expected 1 subscriber")
 	}
-	if _, exists := rs.subscribers[sid]; !exists {
+	if _, exists := rs.subscribers[sid1]; !exists {
 		t.Fatal("wrong subscriber")
 	}
-	subscriber, exists := sm.subscribers[sid]
+	subscriber, exists := sm.subscribers[sid1]
 	if !exists || len(subscriber.subscriptions) != 1 {
 		t.Fatal("missing subscriber")
 	}
-	us, exists := subscriber.subscriptions[eid]
-	if !exists || !reflect.DeepEqual(us, expectedUS) {
+	sub, exists := subscriber.subscriptions[eid]
+	if !exists || !reflect.DeepEqual(sub, expectedSRV) {
 		t.Fatal("wrong us")
 	}
 
@@ -85,7 +94,7 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, wp *workerPool) {
 
 	// Subscribe again as the same subscriber. This is a no-op but returns the
 	// new latest value.
-	rv = sm.Subscribe(spk, tweak, sid)
+	rv = subscriber1.Subscribe(spk, tweak)
 	if !reflect.DeepEqual(*rv, srv) {
 		t.Fatal("wrong rv")
 	}
@@ -100,22 +109,22 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, wp *workerPool) {
 	if len(rs.subscribers) != 1 {
 		t.Fatal("expected 1 subscribers")
 	}
-	if _, exists := rs.subscribers[sid]; !exists {
+	if _, exists := rs.subscribers[sid1]; !exists {
 		t.Fatal("wrong subscriber")
 	}
-	subscriber, exists = sm.subscribers[sid]
+	subscriber, exists = sm.subscribers[sid1]
 	if !exists || len(subscriber.subscriptions) != 1 {
 		t.Fatal("missing subscriber")
 	}
-	us, exists = subscriber.subscriptions[eid]
-	if !exists || !reflect.DeepEqual(us, expectedUS) {
+	sub, exists = subscriber.subscriptions[eid]
+	if !exists || !reflect.DeepEqual(sub, expectedSRV) {
 		t.Fatal("wrong rs")
 	}
 
 	// Subscribe again as a different subscriber.
-	var sid2 subscriberID
-	fastrand.Read(sid2[:])
-	rv = sm.Subscribe(spk, tweak, sid2)
+	subscriber2 := sm.newSubscriber()
+	sid2 := subscriber2.staticSubscriberID
+	rv = subscriber2.Subscribe(spk, tweak)
 	if !reflect.DeepEqual(*rv, srv) {
 		t.Fatal("wrong rv")
 	}
@@ -133,19 +142,19 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, wp *workerPool) {
 	if len(rs.subscribers) != 2 {
 		t.Fatal("expected 2 subscribers")
 	}
-	if _, exists := rs.subscribers[sid]; !exists {
+	if _, exists := rs.subscribers[sid1]; !exists {
 		t.Fatal("wrong subscriber")
 	}
 	if _, exists := rs.subscribers[sid2]; !exists {
 		t.Fatal("wrong subscriber")
 	}
 	// Check first subscriber.
-	subscriber, exists = sm.subscribers[sid]
+	subscriber, exists = sm.subscribers[sid1]
 	if !exists || len(subscriber.subscriptions) != 1 {
 		t.Fatal("missing subscriber")
 	}
-	us, exists = subscriber.subscriptions[eid]
-	if !exists || !reflect.DeepEqual(us, expectedUS) {
+	sub, exists = subscriber.subscriptions[eid]
+	if !exists || !reflect.DeepEqual(sub, expectedSRV) {
 		t.Fatal("wrong rs")
 	}
 	// Check second subscriber. This one should have the latest value set in the
@@ -154,15 +163,17 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, wp *workerPool) {
 	if !exists || len(subscriber.subscriptions) != 1 {
 		t.Fatal("missing subscriber")
 	}
-	expectedUS.latestValue = rs.latestValue
-	us, exists = subscriber.subscriptions[eid]
-	if !exists || !reflect.DeepEqual(us, expectedUS) {
+	expectedSRV = rs.latestValue
+	sub, exists = subscriber.subscriptions[eid]
+	if !exists || !reflect.DeepEqual(sub, expectedSRV) {
 		t.Fatal("wrong rs")
 	}
 
 	// Unsubscribe the first subscriber.
-	sm.UnsubscribeAll(sid)
-	delete(expectedRS.subscribers, sid)
+	if err := subscriber1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedRS.subscribers, sid1)
 
 	// Expect 1 subscription and 1 subscriber. The refcount should be decreased.
 	if len(sm.subscriptions) != 1 || len(sm.subscribers) != 1 {
@@ -182,14 +193,156 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, wp *workerPool) {
 	if !exists || len(subscriber.subscriptions) != 1 {
 		t.Fatal("missing subscriber")
 	}
-	us, exists = subscriber.subscriptions[eid]
-	if !exists || !reflect.DeepEqual(us, expectedUS) {
+	sub, exists = subscriber.subscriptions[eid]
+	if !exists || !reflect.DeepEqual(sub, expectedSRV) {
 		t.Fatal("wrong rs")
 	}
 
 	// Unsubscribe the second subscriber.
-	sm.UnsubscribeAll(sid2)
+	if err := subscriber2.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if len(sm.subscriptions) != 0 || len(sm.subscribers) != 0 {
 		t.Fatal("wrong number of subscriptions and/or subscribers")
+	}
+}
+
+// testSubscriptionManagerNotify is a unit test for notifying the subscribers of
+// new values.
+func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
+	sm := newSubscriptionManager(r)
+
+	// Create random pubkey tweak pair.
+	srv1, spk, sk := randomRegistryValue()
+	tweak := srv1.Tweak
+	eid := modules.DeriveRegistryEntryID(spk, tweak)
+
+	// Prepare more revisions of the srv.
+	srv2 := srv1
+	srv2.Revision++
+	srv2.Sign(sk)
+	srv3 := srv2
+	srv3.Revision++
+	srv3.Sign(sk)
+
+	// Notify the manager of this pair before subscribing.
+	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+		Entry:  srv1,
+		PubKey: spk,
+	})
+
+	// Create a subscriber for that pair which counts the number of updates and
+	// allows for returning a custom error.
+	var updates []*modules.SignedRegistryValue
+	var notifyErr error
+	subscriber := sm.NewSubscriber(func(srv *modules.SignedRegistryValue) error {
+		updates = append(updates, srv)
+		return notifyErr
+	})
+
+	latestValue := subscriber.Subscribe(spk, tweak)
+	if latestValue != nil {
+		t.Fatal("value should be nil")
+	}
+
+	// Notify the manager again after subscribing.
+	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+		Entry:  srv1,
+		PubKey: spk,
+	})
+	// Latest values should be updated.
+	err := build.Retry(100, 100*time.Millisecond, func() error {
+		sm.mu.Lock()
+		defer sm.mu.Unlock()
+		if !reflect.DeepEqual(*sm.subscriptions[eid].latestValue, srv1) {
+			return errors.New("wrong latest value")
+		}
+		subscriber.notificationMu.Lock()
+		defer subscriber.notificationMu.Unlock()
+		if !reflect.DeepEqual(*subscriber.subscriptions[eid], srv1) {
+			return errors.New("wrong latest value")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Notify the manager of the same entry again.
+	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+		Entry:  srv1,
+		PubKey: spk,
+	})
+	// Latest values should be the same.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		sm.mu.Lock()
+		defer sm.mu.Unlock()
+		if !reflect.DeepEqual(*sm.subscriptions[eid].latestValue, srv1) {
+			return errors.New("wrong latest value")
+		}
+		subscriber.notificationMu.Lock()
+		defer subscriber.notificationMu.Unlock()
+		if !reflect.DeepEqual(*subscriber.subscriptions[eid], srv1) {
+			return errors.New("wrong latest value")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Notify the manager of a higher revision entry.
+	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+		Entry:  srv2,
+		PubKey: spk,
+	})
+	// Latest values should be updated.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		sm.mu.Lock()
+		defer sm.mu.Unlock()
+		if !reflect.DeepEqual(*sm.subscriptions[eid].latestValue, srv2) {
+			return errors.New("wrong latest value")
+		}
+		subscriber.notificationMu.Lock()
+		defer subscriber.notificationMu.Unlock()
+		if !reflect.DeepEqual(*subscriber.subscriptions[eid], srv2) {
+			return errors.New("wrong latest value")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Notify the manager of a higher revision entry but make the notification
+	// function fail.
+	notifyErr = errors.New("failure")
+	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+		Entry:  srv3,
+		PubKey: spk,
+	})
+	// The manager's value should be updated but not the subscriber's.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		sm.mu.Lock()
+		defer sm.mu.Unlock()
+		if !reflect.DeepEqual(*sm.subscriptions[eid].latestValue, srv3) {
+			return errors.New("wrong latest value")
+		}
+		subscriber.notificationMu.Lock()
+		defer subscriber.notificationMu.Unlock()
+		if !reflect.DeepEqual(*subscriber.subscriptions[eid], srv2) {
+			return errors.New("wrong latest value")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check if the right updates were sent. They should have been sent in the
+	// right order and only once per revision.
+	expectedUpdates := []*modules.SignedRegistryValue{&srv1, &srv2, &srv3}
+	if !reflect.DeepEqual(updates, expectedUpdates) {
+		t.Fatal("updates don't match")
 	}
 }
