@@ -4956,14 +4956,14 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 		t.Fatal(err)
 	}
 
-	// Download from all. This still works because the data is still on the hosts.
-	err = verifyDownloadByAll(p1, p2, skylink)
+	// Verify that all the siafiles have been deleted on both portals
+	err = fileCheck(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify that all the siafiles have been deleted on both portals
-	err = fileCheck(0, 0)
+	// Download from all. This still works because the data is still on the hosts.
+	err = verifyDownloadByAll(p1, p2, skylink)
 	if err != nil {
 		t.Fatal(err)
 	}

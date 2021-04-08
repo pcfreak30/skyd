@@ -596,8 +596,7 @@ unpinned by the bubble code while it iterates over the filesystem.
  - `callIsUnpinned` is used in `managedCachedFileMetadata` to decide if the file
      needs to be deleted. 
  - `callPruneUnpinRequests` is used by the bubble subsystem in
- - `callThreadedProcessBubbleUpdates` to clear outdated unpin requests. 
-
+    `callThreadedProcessBubbleUpdates` to clear outdated unpin requests.
 
 ### Stream Buffer Subsystem
 **Key Files**
