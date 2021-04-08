@@ -313,6 +313,7 @@ func TestParseSkyfileMetadata(t *testing.T) {
 	ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
 	// Make sure monetization is validated.
 	sm := SkyfileMetadata{
+		Filename: "test",
 		Monetization: &Monetization{
 			License: "", // invalid license
 		},
