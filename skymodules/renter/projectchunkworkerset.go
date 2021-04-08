@@ -619,9 +619,12 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// were uploaded with a 10-30 schema we want to launch 2 workers.
 	minWorkers := pdc.workerSet.staticErasureCoder.MinPieces()
 	for i := 0; i < minWorkers/5; i++ {
-		_ = pdc.workerState.staticRenter.tg.Launch(func() {
+		err := pdc.workerState.staticRenter.tg.Launch(func() {
 			pdc.tryLaunchOverdriveWorker()
 		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// All initial workers have been launched. The function can return now,
