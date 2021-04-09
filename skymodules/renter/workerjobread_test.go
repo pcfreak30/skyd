@@ -157,7 +157,7 @@ func TestReadQueueAddWithEstimate(t *testing.T) {
 
 		// Compute the estimate.
 		var estimate time.Duration
-		for elem := queue.jobs.Front(); elem != queue.jobs.Back(); elem = elem.Next() {
+		for elem := queue.jobs.Front(); elem != nil; elem = elem.Next() {
 			estimate += wjt
 		}
 

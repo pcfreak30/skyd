@@ -394,8 +394,9 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	if !added {
 		t.Fatal("unexpected")
 	}
-	if expectedCompleteTime.Before(time.Now()) {
-		t.Fatal("unexpected")
+	n := time.Now()
+	if expectedCompleteTime.Before(n) {
+		t.Fatal("unexpected", expectedCompleteTime, n)
 	}
 
 	// mention of the launched worker should be present in the PDC's launched

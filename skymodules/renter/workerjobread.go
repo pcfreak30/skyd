@@ -200,7 +200,7 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 		return time.Time{}, false
 	}
 	var estimate time.Duration
-	for elem := jq.jobs.Front(); elem != jq.jobs.Back(); elem = elem.Next() {
+	for elem := jq.jobs.Front(); elem != nil; elem = elem.Next() {
 		jrs, ok := elem.Value.(*jobReadSector)
 		if ok {
 			estimate += jq.expectedJobTime(jrs.staticLength)
