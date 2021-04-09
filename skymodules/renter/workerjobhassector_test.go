@@ -2,6 +2,7 @@ package renter
 
 import (
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -98,5 +99,46 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 	dl, ul = numPacketsRequiredForSectors(17)
 	if dl != 2 || ul != 2 {
 		t.Fatal("unexpected")
+	}
+}
+
+// TestAddWithEstimate is a unit test for the hasSector job queue's
+// callAddWithEstimate method.
+func TestAddWithEstimate(t *testing.T) {
+	t.Parallel()
+
+	wjt := time.Millisecond * 100 // 100 ms
+	queue := jobHasSectorQueue{
+		weightedJobTime: float64(wjt),
+		jobGenericQueue: newJobGenericQueue(&worker{}),
+	}
+	j := &jobHasSector{
+		jobGeneric: &jobGeneric{},
+	}
+
+	for i := 0; i < 10; i++ {
+		// Get the current time.
+		n := time.Now()
+
+		// Add the job.
+		endTime, err := queue.callAddWithEstimate(j)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The job's start time should be after n.
+		if j.externJobStartTime.Before(n) {
+			t.Fatal("start not set correctly")
+		}
+
+		// endTime should be start + estimate.
+		if endTime != j.externJobStartTime.Add(j.externEstimatedJobDuration) {
+			t.Fatal("wrong end time")
+		}
+
+		// The estimate should be correct.
+		if j.externEstimatedJobDuration != wjt*time.Duration(queue.callLen()-1)+wjt {
+			t.Fatal("wrong estimate", j.externEstimatedJobDuration, wjt)
+		}
 	}
 }
