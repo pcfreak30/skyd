@@ -110,7 +110,7 @@ func (r *Renter) RenameFile(currentName, newName skymodules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	bubblePaths := r.newUniqueRefreshPaths()
+	bubblePaths := r.callNewUniqueRefreshPaths()
 	err = bubblePaths.callAdd(oldDirSiaPath)
 	if err != nil {
 		r.staticLog.Printf("failed to add old directory '%v' to bubble paths:  %v", oldDirSiaPath, err)

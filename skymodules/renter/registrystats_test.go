@@ -125,6 +125,12 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 
 // TestReadRegistryStatsDecay tests the decay of the read registry stats object.
 func TestReadRegistryStatsDecay(t *testing.T) {
+	// Long test because of sleeps.
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	decay := 0.5
 	percentile := []float64{0.5}
 	interval := time.Millisecond

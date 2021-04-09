@@ -346,7 +346,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
 	// dirsToUpdate are all the directories that will need bubble to be called
 	// on them so that the renter's directory metadata from the back up is
 	// updated
-	dirsToUpdate := r.newUniqueRefreshPaths()
+	dirsToUpdate := r.callNewUniqueRefreshPaths()
 	defer func() {
 		err = errors.Compose(err, dirsToUpdate.callRefreshAll())
 	}()

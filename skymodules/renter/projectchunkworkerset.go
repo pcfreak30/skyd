@@ -316,15 +316,14 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 // managedLaunchWorker will launch a job to determine which sectors of a chunk
 // are available through that worker. The resulting unresolved worker is
 // returned so it can be added to the pending worker state.
-func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *worker, responseChan chan *jobHasSectorResponse, ws *pcwsWorkerState) error {
+func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *worker, responseChan chan *jobHasSectorResponse, ws *pcwsWorkerState, hook func(*jobHasSectorResponse)) error {
 	// Check for gouging.
 	cache := w.staticCache()
 	pt := w.staticPriceTable().staticPriceTable
 	numWorkers := pcws.staticRenter.staticWorkerPool.callNumWorkers()
 	err := checkPCWSGouging(pt, cache.staticRenterAllowance, numWorkers, len(pcws.staticPieceRoots))
 	if err != nil {
-		pcws.staticRenter.staticLog.Debugf("price gouging for chunk worker set detected in worker %v, err %v", w.staticHostPubKeyStr, err)
-		return err
+		return errors.AddContext(err, fmt.Sprintf("price gouging for chunk worker set detected in worker %v", w.staticHostPubKeyStr))
 	}
 
 	// Check whether the worker is on a cooldown. Because the PCWS is cached, we
@@ -340,11 +339,10 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	}
 
 	// Create and launch the job.
-	jhs := w.newJobHasSector(ctx, responseChan, pcws.staticPieceRoots...)
+	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, hook, pcws.staticPieceRoots...)
 	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
 	if err != nil {
-		pcws.staticRenter.staticLog.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
-		return err
+		return errors.AddContext(err, fmt.Sprintf("unable to add has sector job to %v", w.staticHostPubKeyStr))
 	}
 	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
 
@@ -364,64 +362,25 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	return nil
 }
 
-// threadedFindWorkers will spin up a bunch of jobs to determine which workers
+// managedLaunchWorkers will spin up a bunch of jobs to determine which workers
 // have what pieces for the pcws, and then update the input worker state with
 // the results.
-func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan chan<- struct{}, ws *pcwsWorkerState) {
-	err := pcws.staticRenter.tg.Add()
-	if err != nil {
-		return
-	}
-	defer pcws.staticRenter.tg.Done()
-
-	// Create a context for finding jobs which has a timeout for waiting on
-	// HasSector requests to return.
-	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
-	defer cancel()
-
+func (pcws *projectChunkWorkerSet) managedLaunchWorkers(ws *pcwsWorkerState) {
 	// Launch all of the HasSector jobs for each worker. A channel is needed to
 	// receive the responses, and the channel needs to be buffered to be equal
 	// in size to the number of queries so that none of the workers sending
 	// reponses get blocked sending down the channel.
 	workers := ws.staticRenter.staticWorkerPool.callWorkers()
-	workersLaunched := 0
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
-		err := pcws.managedLaunchWorker(ctx, w, responseChan, ws)
-		if err == nil {
-			workersLaunched++
+		ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
+		err := pcws.managedLaunchWorker(ctx, w, responseChan, ws, func(resp *jobHasSectorResponse) {
+			ws.managedHandleResponse(resp)
+			cancel()
+		})
+		if err != nil {
+			pcws.staticRenter.staticLog.Debugf("failed to launch worker: %v", err)
 		}
-	}
-
-	// Signal that all of the workers have launched.
-	close(allWorkersLaunchedChan)
-
-	// Because there are timeouts on the HasSector programs, the longest that
-	// this loop should be active is a little bit longer than the full timeout
-	// for a single HasSector job.
-	workersResponded := 0
-	for workersResponded < workersLaunched {
-		// Block until there is a worker response. Give up if the context times
-		// out.
-		var resp *jobHasSectorResponse
-		select {
-		case resp = <-responseChan:
-			workersResponded++
-		case <-ctx.Done():
-			return
-		case <-pcws.staticRenter.tg.StopChan():
-			return
-		}
-
-		// Consistency check - should not be getting nil responses from the
-		// workers.
-		if resp == nil {
-			ws.staticRenter.staticLog.Critical("nil response received")
-			continue
-		}
-
-		// Parse the response.
-		ws.managedHandleResponse(resp)
 	}
 }
 
@@ -461,7 +420,6 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	// worker jobs needs to be created in the same thread that listens for the
 	// responses. Though there are a lot of concurrency patterns at play here,
 	// it was the cleanest thing I could come up with.
-	allWorkersLaunchedChan := make(chan struct{})
 	ws := &pcwsWorkerState{
 		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
 
@@ -469,24 +427,10 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	}
 
 	// Launch the thread to find the workers for this launch state.
-	err := pcws.staticRenter.tg.Launch(func() {
-		pcws.threadedFindWorkers(allWorkersLaunchedChan, ws)
-	})
-	if err != nil {
-		// If there is an error, need to reset the in-progress fields. This will
-		// result in the worker set continuing to use the previous worker state.
-		pcws.mu.Lock()
-		pcws.updateInProgress = false
-		pcws.mu.Unlock()
-		close(pcws.updateFinishedChan)
-		return errors.AddContext(err, "unable to launch worker set")
-	}
+	pcws.managedLaunchWorkers(ws)
 
-	// Wait for the thread to indicate that all jobs are launched, the worker
-	// state is not ready for use until all jobs have been launched. After that,
-	// update the pcws so that the workerState in the pcws is the newest worker
+	// Update the pcws so that the workerState in the pcws is the newest worker
 	// state.
-	<-allWorkersLaunchedChan
 	pcws.mu.Lock()
 	pcws.updateInProgress = false
 	pcws.workerState = ws
@@ -610,6 +554,21 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	err = pdc.launchInitialWorkers()
 	if err != nil {
 		return nil, errors.Compose(err, ErrRootNotFound)
+	}
+
+	// Empirically we've found that launching a couple of overdrive workers
+	// immediately after the initial workers have launched drastically improves
+	// the TTFB on large downloads. The amount of workers we want to launch
+	// depends on the data pieces used by the erasure coder, for skyfiles that
+	// were uploaded with a 10-30 schema we want to launch 2 workers.
+	minWorkers := pdc.workerSet.staticErasureCoder.MinPieces()
+	for i := 0; i < minWorkers/5; i++ {
+		err := pdc.workerState.staticRenter.tg.Launch(func() {
+			pdc.tryLaunchOverdriveWorker()
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// All initial workers have been launched. The function can return now,
