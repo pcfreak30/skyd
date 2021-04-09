@@ -116,7 +116,7 @@ func TestAddWithEstimate(t *testing.T) {
 		jobGeneric: &jobGeneric{},
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1200; i++ {
 		// Get the current time.
 		n := time.Now()
 
@@ -131,14 +131,26 @@ func TestAddWithEstimate(t *testing.T) {
 			t.Fatal("start not set correctly")
 		}
 
-		// endTime should be start + estimate.
-		if endTime != j.externJobStartTime.Add(j.externEstimatedJobDuration) {
-			t.Fatal("wrong end time")
+		estimate := queue.expectedJobTime()
+		if queue.jobs.Len() > hasSectorEstimatePenaltyThreshold {
+			penalizedJobs := queue.jobs.Len() - hasSectorEstimatePenaltyThreshold
+			for i := 0; i < penalizedJobs-1; i++ {
+				multiplier := hasSectorEstimatePenalty * float64(i+1) // +0.1%
+				if multiplier > 1.0 {
+					multiplier = 1.0 // cap it at 100%
+				}
+				estimate += time.Duration(float64(wjt) * multiplier)
+			}
 		}
 
 		// The estimate should be correct.
-		if j.externEstimatedJobDuration != wjt*time.Duration(queue.callLen()-1)+wjt {
-			t.Fatal("wrong estimate", j.externEstimatedJobDuration, wjt)
+		if j.externEstimatedJobDuration != estimate {
+			t.Fatal("wrong estimate", j.externEstimatedJobDuration, estimate)
+		}
+
+		// endTime should be start + estimate.
+		if endTime != j.externJobStartTime.Add(estimate) {
+			t.Fatal("wrong end time", endTime, j.externJobStartTime.Add(estimate))
 		}
 	}
 }

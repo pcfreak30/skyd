@@ -14,6 +14,20 @@ import (
 )
 
 const (
+	// hasSectorEstimatePenaltyThreshold is a threshold for estimating how long it
+	// takes a hasSector job to complete. If the length of the job queue is <100 we
+	// don't apply a penalty to the estimate since the worker can easily execute 100
+	// lookups in parallel. For each additional job, we add 0.1% more of the
+	// estimate for a single job to the total estimate. So once we have 1100 jobs in
+	// the queue, each additional job will have its full estimate added to the
+	// total.
+	hasSectorEstimatePenaltyThreshold = 100
+
+	// hostSectorEstimatePenalty is the percentage we add for every job when
+	// computing the estimate once the number of jobs in the queue is above the
+	// threshold.
+	hasSectorEstimatePenalty = 0.001
+
 	// jobHasSectorPerformanceDecay defines how much the average performance is
 	// decayed each time a new datapoint is added. The jobs use an exponential
 	// weighted average.
@@ -188,7 +202,22 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	now := time.Now()
-	estimate := jq.expectedJobTime() + jq.expectedJobTime()*time.Duration(jq.jobs.Len())
+
+	// The new new job gets 100% of the estimate.
+	estimate := jq.expectedJobTime()
+
+	// If we have more than 100 jobs in the queue, give them a penalty.
+	if jq.jobs.Len() > hasSectorEstimatePenaltyThreshold {
+		penalizedJobs := jq.jobs.Len() - hasSectorEstimatePenaltyThreshold
+		for i := 0; i < penalizedJobs; i++ {
+			multiplier := hasSectorEstimatePenalty * float64(i+1) // +0.1%
+			if multiplier > 1.0 {
+				multiplier = 1.0 // cap it at 100%
+			}
+			estimate += time.Duration(float64(jq.expectedJobTime()) * multiplier)
+		}
+	}
+
 	j.externJobStartTime = now
 	j.externEstimatedJobDuration = estimate
 	if !jq.add(j) {
