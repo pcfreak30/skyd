@@ -688,13 +688,15 @@ func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Du
 		return streamer.Layout(), streamer.Metadata(), streamer, nil
 	}
 
-	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.managedSkylinkDataSource(link, timeout, pricePerMS)
-	if err != nil {
-		return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
+	// Prepare a method to create a datasource.
+	dataSourceFunc := func() (streamBufferDataSource, error) {
+		return r.managedSkylinkDataSource(link, timeout, pricePerMS)
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
-	return dataSource.Layout(), dataSource.Metadata(), stream, nil
+	stream, err := r.staticStreamBufferSet.callNewStream(link.DataSourceID(), dataSourceFunc, 0, timeout, pricePerMS)
+	if err != nil {
+		return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, err
+	}
+	return stream.Layout(), stream.Metadata(), stream, nil
 }
 
 // PinSkylink will fetch the file associated with the Skylink, and then pin all
@@ -787,12 +789,14 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 		return errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
 
-	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.managedSkylinkDataSource(skylink, timeout, pricePerMS)
-	if err != nil {
-		return errors.AddContext(err, "unable to create data source for skylink")
+	// Prepare a method to create a datasource.
+	dataSourceFunc := func() (streamBufferDataSource, error) {
+		return r.managedSkylinkDataSource(skylink, timeout, pricePerMS)
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
+	stream, err := r.staticStreamBufferSet.callNewStream(skylink.DataSourceID(), dataSourceFunc, 0, timeout, pricePerMS)
+	if err != nil {
+		return errors.AddContext(err, "unable to get stream for downloading skyfile")
+	}
 
 	// Upload directly from the stream.
 	fileNode, err := r.callUploadStreamFromReader(fup, stream)

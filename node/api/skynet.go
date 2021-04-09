@@ -503,7 +503,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 		}
 	}
 
-	// Fetch the skyfile's  streamer to serve the basesector of the file
+	// Fetch the skyfile's streamer to serve the basesector of the file
 	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)

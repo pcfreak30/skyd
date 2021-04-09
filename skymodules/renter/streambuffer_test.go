@@ -119,8 +119,14 @@ func TestStreamSmoke(t *testing.T) {
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSectionSize := uint64(16)
 	dataSource := newMockDataSource(data, dataSectionSize)
+	dataSourceFunc := func() (streamBufferDataSource, error) {
+		return dataSource, nil
+	}
 	sbs := newStreamBufferSet(&tg)
-	stream := sbs.callNewStream(dataSource, 0, 0, types.ZeroCurrency)
+	stream, err := sbs.callNewStream(dataSource.ID(), dataSourceFunc, 0, 0, types.ZeroCurrency)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Check that there is one reference in the stream buffer.
 	sbs.mu.Lock()
@@ -143,14 +149,20 @@ func TestStreamSmoke(t *testing.T) {
 	// Create a second, different data source with the same id and try to use
 	// that.
 	dataSource2 := newMockDataSource(data, dataSectionSize)
-	repeatStream := sbs.callNewStream(dataSource2, 0, 0, types.ZeroCurrency)
+	dataSourceFunc2 := func() (streamBufferDataSource, error) {
+		return dataSource2, nil
+	}
+	repeatStream, err := sbs.callNewStream(dataSource2.ID(), dataSourceFunc2, 0, 0, types.ZeroCurrency)
+	if err != nil {
+		t.Fatal(err)
+	}
 	sbs.mu.Lock()
 	refs = stream.staticStreamBuffer.externRefCount
 	sbs.mu.Unlock()
 	if refs != 3 {
 		t.Fatal("bad")
 	}
-	err := repeatStream.Close()
+	err = repeatStream.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +326,13 @@ func TestStreamSmoke(t *testing.T) {
 	// the same ID, they are actually separate objects which need to be closed
 	// individually.
 	dataSource3 := newMockDataSource(data, dataSectionSize)
-	stream2 := sbs.callNewStream(dataSource3, 0, 0, types.ZeroCurrency)
+	dataSourceFunc3 := func() (streamBufferDataSource, error) {
+		return dataSource3, nil
+	}
+	stream2, err := sbs.callNewStream(dataSource3.ID(), dataSourceFunc3, 0, 0, types.ZeroCurrency)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bytesRead, err = io.ReadFull(stream2, buf)
 	if err != nil {
 		t.Fatal(err)
@@ -442,7 +460,13 @@ func TestStreamSmoke(t *testing.T) {
 
 	// Check that if the tg is stopped, the stream closes immediately.
 	dataSource4 := newMockDataSource(data, dataSectionSize)
-	stream3 := sbs.callNewStream(dataSource4, 0, 0, types.ZeroCurrency)
+	dataSourceFunc4 := func() (streamBufferDataSource, error) {
+		return dataSource4, nil
+	}
+	stream3, err := sbs.callNewStream(dataSource4.ID(), dataSourceFunc4, 0, 0, types.ZeroCurrency)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bytesRead, err = io.ReadFull(stream3, buf)
 	if err != nil {
 		t.Fatal(err)

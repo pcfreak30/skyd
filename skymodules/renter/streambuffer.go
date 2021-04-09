@@ -135,6 +135,10 @@ type streamBufferDataSource interface {
 	ReadStream(context.Context, uint64, uint64, types.Currency) chan *readResponse
 }
 
+// dataSourceFunc is the type for a function that can construct a
+// streamBufferDataSource.
+type dataSourceFunc func() (streamBufferDataSource, error)
+
 // readResponse is a helper struct that is returned when reading from the data
 // source. It contains the data being downloaded and an error in case of
 // failure.
@@ -235,13 +239,16 @@ func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
 // Each stream has a separate LRU for determining what data to buffer. Because
 // the LRU is distinct to the stream, the shared cache feature will not result
 // in one stream evicting data from another stream's LRU.
-func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency) *stream {
+func (sbs *streamBufferSet) callNewStream(sourceID skymodules.DataSourceID, dataSourceFunc dataSourceFunc, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency) (*stream, error) {
 	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
 	// the sourceID exists, create a new one.
-	sourceID := dataSource.ID()
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[sourceID]
 	if !exists {
+		dataSource, err := dataSourceFunc()
+		if err != nil {
+			return nil, err
+		}
 		streamBuf = &streamBuffer{
 			dataSections: make(map[uint64]*dataSection),
 
@@ -253,14 +260,10 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 			staticStreamID:        sourceID,
 		}
 		sbs.streams[sourceID] = streamBuf
-	} else {
-		// Another data source already exists for this content which will be
-		// used instead of the input data source. Close the input source.
-		dataSource.SilentClose()
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset, timeout)
+	return streamBuf.managedPrepareNewStream(initialOffset, timeout), nil
 }
 
 // callNewStreamFromID will check the stream buffer set to see if a stream
