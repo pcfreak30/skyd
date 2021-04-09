@@ -26,7 +26,7 @@ const (
 	// hostSectorEstimatePenalty is the percentage we add for every job when
 	// computing the estimate once the number of jobs in the queue is above the
 	// threshold.
-	hasSectorEstimatePenalty = 0.001
+	hasSectorEstimatePenalty = 0.0001
 
 	// jobHasSectorPerformanceDecay defines how much the average performance is
 	// decayed each time a new datapoint is added. The jobs use an exponential
