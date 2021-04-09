@@ -316,7 +316,7 @@ func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, 
 					fmt.Println(file.SiaPath)
 				}
 			default:
-				die("unexpected file conditition", file.MaxHealthPercent, file.OnDisk)
+				return nil, 0, fmt.Errorf("unexpected file conditition; Health %v, OnDisk %v", file.MaxHealthPercent, file.OnDisk)
 			}
 		}
 	}

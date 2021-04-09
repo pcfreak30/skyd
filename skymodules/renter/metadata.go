@@ -168,6 +168,13 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			metadata.RepairSize += fileMetadata.RepairBytes
 			metadata.StuckSize += fileMetadata.StuckBytes
 
+			// Check if the files is unrecoverable and should be considered lost
+			maxFileHealth := math.Max(fileMetadata.Health, fileMetadata.StuckHealth)
+			if siafile.Unrecoverable(maxFileHealth, fileMetadata.OnDisk) {
+				metadata.NumLostFiles++
+				metadata.AggregateNumLostFiles++
+			}
+
 			// Record Values that compare against sub directories
 			aggregateHealth = fileMetadata.Health
 			aggregateStuckHealth = fileMetadata.StuckHealth
@@ -259,6 +266,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 
 			// Update aggregate fields.
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
+			metadata.AggregateNumLostFiles += dirMetadata.AggregateNumLostFiles
 			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateRepairSize += dirMetadata.AggregateRepairSize
