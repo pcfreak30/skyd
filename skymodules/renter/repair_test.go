@@ -807,6 +807,9 @@ func TestCalculateFileMetadata(t *testing.T) {
 	if fileMetadata.NumSkylinks != 1 {
 		t.Fatalf("NumSkylinks incorrect, expected %v got %v", 1, fileMetadata.NumSkylinks)
 	}
+	if !fileMetadata.Unrecoverable {
+		t.Fatal("expected file to be unrecoverable")
+	}
 }
 
 // TestCreateMissingSiaDir confirms that the repair code creates a siadir file

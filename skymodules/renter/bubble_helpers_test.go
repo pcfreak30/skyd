@@ -97,67 +97,6 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata, delta time.Duration) (err er
 	return errors.Compose(err, siadir.EqualMetadatas(md1, md2Copy))
 }
 
-// equalBubbledAggregateMetadata is a helper that checks for equality in the
-// aggregate siadir metadata fields that gets bubbled
-//
-// Since we can't check timestamps for equality cause they are often set to
-// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
-func equalBubbledAggregateMetadata(md1, md2 siadir.Metadata, delta time.Duration) (err error) {
-	return
-}
-
-// equalBubbledDirectoryMetadata is a helper that checks for equality in the
-// non-aggregate siadir metadata fields that gets bubbled
-//
-// Since we can't check timestamps for equality cause they are often set to
-// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
-func equalBubbledDirectoryMetadata(md1, md2 siadir.Metadata, delta time.Duration) (err error) {
-	// Check NumFiles
-	if md1.NumFiles != md2.NumFiles {
-		err = errors.Compose(err, fmt.Errorf("NumFiles not equal, %v and %v", md1.NumFiles, md2.NumFiles))
-	}
-	// Check NumStuckChunks
-	if md1.NumStuckChunks != md2.NumStuckChunks {
-		err = errors.Compose(err, fmt.Errorf("NumStuckChunks not equal, %v and %v", md1.NumStuckChunks, md2.NumStuckChunks))
-	}
-	// Check NumSubDirs
-	if md1.NumSubDirs != md2.NumSubDirs {
-		err = errors.Compose(err, fmt.Errorf("NumSubDirs not equal, %v and %v", md1.NumSubDirs, md2.NumSubDirs))
-	}
-	// Check RemoteHealth
-	if md1.RemoteHealth != md2.RemoteHealth {
-		err = errors.Compose(err, fmt.Errorf("RemoteHealth not equal, %v and %v", md1.RemoteHealth, md2.RemoteHealth))
-	}
-	// Check RepairSize
-	if md1.RepairSize != md2.RepairSize {
-		err = errors.Compose(err, fmt.Errorf("RepairSize not equal, %v and %v", md1.RepairSize, md2.RepairSize))
-	}
-	// Check Size
-	if md1.Size != md2.Size {
-		err = errors.Compose(err, fmt.Errorf("Size not equal, %v and %v", md1.Size, md2.Size))
-	}
-	// Check StuckHealth
-	if md1.StuckHealth != md2.StuckHealth {
-		err = errors.Compose(err, fmt.Errorf("StuckHealth not equal, %v and %v", md1.StuckHealth, md2.StuckHealth))
-	}
-	// Check StuckSize
-	if md1.StuckSize != md2.StuckSize {
-		err = errors.Compose(err, fmt.Errorf("StuckSize not equal, %v and %v", md1.StuckSize, md2.StuckSize))
-	}
-
-	// Skynet Fields
-	//
-	// Check SkynetFiles
-	if md1.SkynetFiles != md2.SkynetFiles {
-		err = errors.Compose(err, fmt.Errorf("SkynetFiles not equal, %v and %v", md1.SkynetFiles, md2.SkynetFiles))
-	}
-	// Check SkynetSize
-	if md1.SkynetSize != md2.SkynetSize {
-		err = errors.Compose(err, fmt.Errorf("SkynetSize not equal, %v and %v", md1.SkynetSize, md2.SkynetSize))
-	}
-	return
-}
-
 // timeEquals is a helper function for checking if two times are equal
 //
 // Since we can't check timestamps for equality cause they are often set to

@@ -67,6 +67,10 @@ func safeRandomMetadata() siadir.Metadata {
 	md.NumFiles = 0
 	md.AggregateNumStuckChunks = 0
 	md.NumStuckChunks = 0
+	// Set LostFiles to zero as well since we can't have zero files but non zero
+	// lost files.
+	md.AggregateNumLostFiles = 0
+	md.NumLostFiles = 0
 	return md
 }
 

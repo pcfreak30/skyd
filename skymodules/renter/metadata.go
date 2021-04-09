@@ -169,8 +169,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			metadata.StuckSize += fileMetadata.StuckBytes
 
 			// Check if the files is unrecoverable and should be considered lost
-			maxFileHealth := math.Max(fileMetadata.Health, fileMetadata.StuckHealth)
-			if siafile.Unrecoverable(maxFileHealth, fileMetadata.OnDisk) {
+			if fileMetadata.Unrecoverable {
 				metadata.NumLostFiles++
 				metadata.AggregateNumLostFiles++
 			}
@@ -352,7 +351,8 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 
 	// Check if file is unrecoverable and log it
 	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
-	if siafile.Unrecoverable(maxHealth, onDisk) {
+	unrecoverable := siafile.Unrecoverable(maxHealth, onDisk)
+	if unrecoverable {
 		r.staticLog.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
 
@@ -375,6 +375,7 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 			StuckHealth:         md.CachedStuckHealth,
 			StuckBytes:          md.CachedStuckBytes,
 			UID:                 sf.UID(),
+			Unrecoverable:       unrecoverable,
 		},
 	}, nil
 }
