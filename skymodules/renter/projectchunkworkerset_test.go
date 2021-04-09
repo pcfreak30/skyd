@@ -536,7 +536,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	uw = ws.unresolvedWorkers["myworker"]
 	expectedDur = time.Until(uw.staticExpectedResolvedTime)
 	expectedDurInS = math.Round(expectedDur.Seconds())
-	if expectedDurInS != 2*123+60 {
+	if expectedDurInS != 123+60 {
 		t.Log(expectedDurInS)
 		t.Fatal("unexpected")
 	}
