@@ -132,3 +132,38 @@ func TestJobReadMetadata(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 }
+
+// TestReadQueueAddWithEstimate is a unit test for the read queue's
+// callAddWithEstimate method.
+func TestReadQueueAddWithEstimate(t *testing.T) {
+	t.Parallel()
+
+	wjt := time.Millisecond * 100
+	queue := &jobReadQueue{
+		weightedJobTime64k: float64(wjt),
+		jobGenericQueue:    newJobGenericQueue(&worker{}),
+	}
+	j := &jobReadSector{}
+
+	for i := 0; i < 10; i++ {
+		// Get current time.
+		n := time.Now()
+
+		// Add job.
+		endTime, ok := queue.callAddWithEstimate(j)
+		if !ok {
+			t.Fatal("not ok")
+		}
+
+		// Compute the estimate.
+		var estimate time.Duration
+		for elem := queue.jobs.Front(); elem != queue.jobs.Back(); elem = elem.Next() {
+			estimate += wjt
+		}
+
+		// endTime should be after n + estimate.
+		if endTime.Before(n.Add(estimate)) {
+			t.Fatal("endTime is too low")
+		}
+	}
+}

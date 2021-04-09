@@ -196,10 +196,22 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-
-	estimate := jq.expectedJobTime(j.staticLength)
 	if !jq.add(j) {
 		return time.Time{}, false
+	}
+	var estimate time.Duration
+	for elem := jq.jobs.Front(); elem != jq.jobs.Back(); elem = elem.Next() {
+		jrs, ok := elem.Value.(*jobReadSector)
+		if ok {
+			estimate += jq.expectedJobTime(jrs.staticLength)
+			continue
+		}
+		jro, ok := elem.Value.(*jobReadOffset)
+		if ok {
+			estimate += jq.expectedJobTime(jro.staticLength)
+			continue
+		}
+		build.Critical("read job is neither read sector job nor read offset job")
 	}
 	return time.Now().Add(estimate), true
 }
