@@ -363,6 +363,7 @@ func (r *Renter) managedSkylinkDataSource(link skymodules.Skylink, timeout time.
 			}
 		})
 		if err != nil {
+			cancelFunc()
 			return nil, errors.AddContext(err, "unable to launch thread to create chunk fetchers")
 		}
 	}
