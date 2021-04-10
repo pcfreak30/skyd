@@ -47,8 +47,8 @@ type (
 		// that point. After it is known to exist, the error needs to be
 		// checked.
 		staticChunkFetchers []chunkFetcher
-		staticChunksReady []chan struct{}
-		staticChunkErrs  []error
+		staticChunksReady   []chan struct{}
+		staticChunkErrs     []error
 
 		// Utilities
 		staticCtx        context.Context
@@ -145,7 +145,14 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 
 		// Wait until the chunk fetcher is ready, and check if there was any
 		// error in initializing the chunk fetcher.
-		<-sds.staticChunksReady[chunkIndex]
+		select {
+		case <-sds.staticChunksReady[chunkIndex]:
+		case <-sds.staticRenter.tg.StopChan():
+			responseChan <- &readResponse{
+				staticErr: errors.New("stream fetch aborted because of renter shutdown"),
+			}
+			return responseChan
+		}
 		if sds.staticChunkErrs[chunkIndex] != nil {
 			responseChan <- &readResponse{
 				staticErr: errors.AddContext(sds.staticChunkErrs[chunkIndex], "unable to start download"),
@@ -335,16 +342,17 @@ func (r *Renter) managedSkylinkDataSource(link skymodules.Skylink, timeout time.
 		// scheduled, so instead we allocate an array of blank chunk fetchers
 		// and update them one at a time, then close channels to specify when
 		// they are ready for use.
-		fanoutChunkFetchers = make([]chunkFetcher, len(fanoutChunks))
-		fanoutChunksReady = make([]chan struct{}, len(fanoutChunks))
-		fanoutChunkErrs = make([]error, len(fanoutChunks))
-		for i := 0; i < len(fanoutChunksReady); i++ {
+		numChunks := len(fanoutChunks)
+		fanoutChunkFetchers = make([]chunkFetcher, numChunks)
+		fanoutChunksReady = make([]chan struct{}, numChunks)
+		fanoutChunkErrs = make([]error, numChunks)
+		for i := 0; i < numChunks; i++ {
 			fanoutChunksReady[i] = make(chan struct{})
 		}
 
 		// Initialize all of the PCWS objects in a goroutine, closing the
 		// channels as they are ready.
-		go func() {
+		err = r.tg.Launch(func() {
 			for i, chunk := range fanoutChunks {
 				pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
 				if err != nil {
@@ -353,7 +361,10 @@ func (r *Renter) managedSkylinkDataSource(link skymodules.Skylink, timeout time.
 				fanoutChunkFetchers[i] = pcws
 				close(fanoutChunksReady[i])
 			}
-		}()
+		})
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to launch thread to create chunk fetchers")
+		}
 	}
 
 	sds := &skylinkDataSource{
