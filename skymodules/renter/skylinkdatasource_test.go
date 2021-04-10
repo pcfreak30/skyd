@@ -175,7 +175,7 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 			newChunkFetcher(fanoutChunk2, nil),
 		},
 		staticChunksReady: make([]chan struct{}, 2),
-		staticChunkErrs: []error{nil, nil},
+		staticChunkErrs:   []error{nil, nil},
 
 		staticCancelFunc: cancel,
 		staticCtx:        ctx,
