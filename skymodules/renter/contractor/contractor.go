@@ -102,6 +102,7 @@ type Contractor struct {
 	// either the renter or host.
 	staticContracts      *proto.ContractSet
 	oldContracts         map[types.FileContractID]skymodules.RenterContract
+	preferredContracts   map[types.FileContractID]struct{}
 	doubleSpentContracts map[types.FileContractID]types.BlockHeight
 	recoverableContracts map[types.FileContractID]skymodules.RecoverableContract
 	renewedFrom          map[types.FileContractID]types.FileContractID
@@ -490,6 +491,7 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		sessions:             make(map[types.FileContractID]*hostSession),
 		oldContracts:         make(map[types.FileContractID]skymodules.RenterContract),
 		doubleSpentContracts: make(map[types.FileContractID]types.BlockHeight),
+		preferredContracts:   make(map[types.FileContractID]struct{}),
 		recoverableContracts: make(map[types.FileContractID]skymodules.RecoverableContract),
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),

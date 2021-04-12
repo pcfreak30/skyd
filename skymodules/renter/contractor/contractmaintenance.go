@@ -9,7 +9,6 @@ import (
 	"math"
 	"math/big"
 	"reflect"
-	"sort"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -638,48 +637,93 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
-// managedLimitGFUHosts caps the number of GFU hosts for non-portals to
-// allowance.Hosts.
+// managedLimitGFUHosts caps the number of GFU hosts to allowance.Hosts.
 func (c *Contractor) managedLimitGFUHosts() {
 	c.mu.Lock()
-	wantedHosts := c.allowance.Hosts
+	wantedHosts := int(c.allowance.Hosts)
+	// Store the preferred contracts in a temporary map.
+	preferredContracts := make(map[types.FileContractID]struct{})
+	for fcid := range c.preferredContracts {
+		preferredContracts[fcid] = struct{}{}
+	}
 	c.mu.Unlock()
-	// Get all GFU contracts and their score.
-	type gfuContract struct {
-		c     skymodules.RenterContract
-		score types.Currency
-	}
-	var gfuContracts []gfuContract
+
+	potentialHosts := make(map[string]types.FileContractID)
 	for _, contract := range c.Contracts() {
+		// If the contract is not gfu, remove it from the preferred set.
 		if !contract.Utility.GoodForUpload {
-			continue
+			delete(preferredContracts, contract.ID)
 		}
-		host, ok, err := c.staticHDB.Host(contract.HostPublicKey)
-		if !ok || err != nil {
-			c.staticLog.Print("managedLimitGFUHosts was run after updating contract utility but found contract without host in hostdb that's GFU", contract.HostPublicKey)
-			continue
+		// If it is gfu but not in the preferred set yet, consider it a
+		// potential candidate for the set.
+		if _, isPreferred := preferredContracts[contract.ID]; !isPreferred {
+			potentialHosts[contract.HostPublicKey.String()] = contract.ID
 		}
-		score, err := c.staticHDB.ScoreBreakdown(host)
-		if err != nil {
-			c.staticLog.Print("managedLimitGFUHosts: failed to get score breakdown for GFU host")
-			continue
-		}
-		gfuContracts = append(gfuContracts, gfuContract{
-			c:     contract,
-			score: score.Score,
-		})
 	}
-	// Sort gfuContracts by score.
-	sort.Slice(gfuContracts, func(i, j int) bool {
-		return gfuContracts[i].score.Cmp(gfuContracts[j].score) < 0
-	})
-	// Mark them bad for upload until we are below the expected number of hosts.
-	var contract gfuContract
-	for uint64(len(gfuContracts)) > wantedHosts {
-		contract, gfuContracts = gfuContracts[0], gfuContracts[1:]
-		sc, ok := c.staticContracts.Acquire(contract.c.ID)
+
+	// Now we are only left with the preferred contracts that are gfu.
+	// If they are too many, trim them.
+	toTrim := len(preferredContracts) - int(wantedHosts)
+	for fcid := range preferredContracts {
+		if toTrim <= 0 {
+			break
+		}
+		delete(preferredContracts, fcid)
+		toTrim--
+	}
+	// If toTrim is 0, we are done. Only if it's a negative number, we need to
+	// fill the set up.
+	if toTrim == 0 {
+		return
+	}
+	toAdd := toTrim * -1
+
+	// Grab a good amount of random hosts.
+	var blacklist []types.SiaPublicKey
+	var addressBlacklist []types.SiaPublicKey
+	for _, contract := range c.Contracts() {
+		if _, alreadyPreferred := preferredContracts[contract.ID]; !alreadyPreferred {
+			continue
+		}
+		// Ignore hosts that are already in the preferred set.
+		blacklist = append(blacklist, contract.HostPublicKey)
+		if !contract.Utility.Locked || contract.Utility.GoodForRenew || contract.Utility.GoodForUpload {
+			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)
+		}
+	}
+	hosts, err := c.staticHDB.RandomHosts(wantedHosts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
+	if err != nil {
+		c.staticLog.Print("managedLimitGFUHosts: failed to get random hosts:", err)
+		return
+	}
+
+	// Add contracts for the chosen hosts to fill up the set.
+	for i := 0; i < len(hosts) && toAdd > 0; i++ {
+		host := hosts[i]
+		fcid, exists := potentialHosts[host.PublicKey.String()]
+		if !exists {
+			continue // try next
+		}
+		preferredContracts[fcid] = struct{}{}
+	}
+
+	// Sanity check length of set.
+	if len(preferredContracts) > wantedHosts {
+		build.Critical("too many contracts in the set of preferred contracts")
+	}
+
+	// Mark all contracts as !gfu if they are not in the preferred set.
+	for _, contract := range c.Contracts() {
+		_, isPreferred := preferredContracts[contract.ID]
+		if isPreferred {
+			continue // nothing to do
+		}
+		if !contract.Utility.GoodForUpload {
+			continue // nothing to do
+		}
+		sc, ok := c.staticContracts.Acquire(contract.ID)
 		if !ok {
-			c.staticLog.Print("managedLimitGFUHosts: failed to acquire GFU contract")
+			c.staticLog.Print("managedLimitGFUHosts: failed to acquire contract", err)
 			continue
 		}
 		u := sc.Utility()
@@ -691,6 +735,11 @@ func (c *Contractor) managedLimitGFUHosts() {
 			continue
 		}
 	}
+
+	// Update the preferred contracts.
+	c.mu.Lock()
+	c.preferredContracts = preferredContracts
+	c.mu.Unlock()
 }
 
 // staticCheckFormPaymentContractGouging will check whether the pricing from the
