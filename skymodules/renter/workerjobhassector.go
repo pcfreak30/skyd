@@ -172,15 +172,18 @@ func (j jobHasSectorBatch) callExecute() {
 	availables, err := j.managedHasSector()
 	jobTime := time.Since(start)
 
-	for i, available := range availables {
-		hsj := j.staticJobs[i]
-		// Send the response.
+	for i, hsj := range j.staticJobs {
+		// Create the response.
 		response := &jobHasSectorResponse{
-			staticAvailables: available,
-			staticErr:        err,
-			staticJobTime:    jobTime,
-			staticWorker:     w,
+			staticErr:     err,
+			staticJobTime: jobTime,
+			staticWorker:  w,
 		}
+		// If it was successful, attach the result.
+		if err == nil {
+			response.staticAvailables = availables[i]
+		}
+		// Send the response.
 		err2 := w.staticRenter.tg.Launch(func() {
 			hsj.managedCallPostExecutionHook(response)
 			select {
@@ -192,7 +195,7 @@ func (j jobHasSectorBatch) callExecute() {
 		// Report success or failure to the queue.
 		if err != nil {
 			hsj.staticQueue.callReportFailure(err)
-			return
+			continue
 		}
 		hsj.staticQueue.callReportSuccess()
 
@@ -200,7 +203,7 @@ func (j jobHasSectorBatch) callExecute() {
 		jq := hsj.staticQueue.(*jobHasSectorQueue)
 		jq.callUpdateJobTimeMetrics(jobTime)
 		if err2 != nil {
-			w.staticRenter.staticLog.Println("callExececute: launch failed", err)
+			w.staticRenter.staticLog.Println("callExecute: launch failed", err)
 		}
 	}
 }
