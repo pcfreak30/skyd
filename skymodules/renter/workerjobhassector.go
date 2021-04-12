@@ -84,6 +84,9 @@ func (jq *jobHasSectorQueue) callNext() workerJob {
 		j := next.(*jobHasSector)
 		jobs = append(jobs, j)
 	}
+	if len(jobs) == 0 {
+		return nil
+	}
 	return &jobHasSectorBatch{
 		staticJobs: jobs,
 	}
@@ -157,7 +160,8 @@ func (j *jobHasSector) callExecute() {
 // callExecute will run the has sector job.
 func (j jobHasSectorBatch) callExecute() {
 	if len(j.staticJobs) == 0 {
-		return // nothing to do
+		build.Critical("empty hasSectorBatch")
+		return
 	}
 
 	start := time.Now()
