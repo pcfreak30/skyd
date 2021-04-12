@@ -26,13 +26,6 @@ var (
 		Run:   wrap(stopcmd),
 	}
 
-	updateCheckCmd = &cobra.Command{
-		Use:   "check",
-		Short: "Check for available updates",
-		Long:  "Check for available updates.",
-		Run:   wrap(updatecheckcmd),
-	}
-
 	globalRatelimitCmd = &cobra.Command{
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
 		Short: "set the global maxdownloadspeed and maxuploadspeed",
@@ -73,13 +66,6 @@ directory in the siad data directory.`,
 		Short: "Get current stack trace for the daemon",
 		Long:  "Get current stack trace for the daemon",
 		Run:   wrap(stackcmd),
-	}
-
-	updateCmd = &cobra.Command{
-		Use:   "update",
-		Short: "Update Sia",
-		Long:  "Check for (and/or download) available updates for Sia.",
-		Run:   wrap(updatecmd),
 	}
 
 	versionCmd = &cobra.Command{
@@ -237,42 +223,6 @@ func stackcmd() {
 	}
 
 	fmt.Println("Current stack trace written to:", daemonStackOutputFile)
-}
-
-// updatecmd is the handler for the command `skyc update`.
-// Updates the daemon version to latest general release.
-func updatecmd() {
-	update, err := httpClient.DaemonUpdateGet()
-	if err != nil {
-		fmt.Println("Could not check for update:", err)
-		return
-	}
-	if !update.Available {
-		fmt.Println("Already up to date.")
-		return
-	}
-
-	err = httpClient.DaemonUpdatePost()
-	if err != nil {
-		fmt.Println("Could not apply update:", err)
-		return
-	}
-	fmt.Printf("Updated to version %s! Restart siad now.\n", update.Version)
-}
-
-// updatecheckcmd is the handler for the command `skyc check`.
-// Checks is there is an newer daemon version available.
-func updatecheckcmd() {
-	update, err := httpClient.DaemonUpdateGet()
-	if err != nil {
-		fmt.Println("Could not check for update:", err)
-		return
-	}
-	if update.Available {
-		fmt.Printf("A new release (v%s) is available! Run 'skyc update' to install it.\n", update.Version)
-	} else {
-		fmt.Println("Up to date.")
-	}
 }
 
 // globalratelimitcmd is the handler for the command `skyc ratelimit`.
