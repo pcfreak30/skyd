@@ -642,33 +642,41 @@ func (c *Contractor) managedLimitGFUHosts() {
 	c.mu.Lock()
 	wantedHosts := int(c.allowance.Hosts)
 	// Store the preferred contracts in a temporary map.
-	preferredContracts := make(map[types.FileContractID]struct{})
-	for fcid := range c.preferredContracts {
-		preferredContracts[fcid] = struct{}{}
+	preferredHosts := make(map[string]struct{})
+	for hk := range c.preferredHosts {
+		preferredHosts[hk] = struct{}{}
 	}
 	c.mu.Unlock()
 
-	potentialHosts := make(map[string]types.FileContractID)
+	potentialHosts := make(map[string]struct{})
 	for _, contract := range c.Contracts() {
-		// If the contract is not gfu, remove it from the preferred set.
+		// If the contract is !gfu ignore it.
 		if !contract.Utility.GoodForUpload {
-			delete(preferredContracts, contract.ID)
+			continue
 		}
-		// If it is gfu but not in the preferred set yet, consider it a
-		// potential candidate for the set.
-		if _, isPreferred := preferredContracts[contract.ID]; !isPreferred {
-			potentialHosts[contract.HostPublicKey.String()] = contract.ID
+		// If it is gfu, mark the corresponding host as a potential candidate.
+		potentialHosts[contract.HostPublicKey.String()] = struct{}{}
+	}
+
+	// If a preferred host is not part of the potential hosts, it's no longer
+	// preferred so we delete it. We also delete hosts that are in the preferred
+	// hosts from the potential ones.
+	for host := range preferredHosts {
+		_, exists := potentialHosts[host]
+		delete(potentialHosts, host)
+		if !exists {
+			delete(preferredHosts, host)
 		}
 	}
 
-	// Now we are only left with the preferred contracts that are gfu.
+	// Now we are only left with the preferred hosts that are gfu.
 	// If they are too many, trim them.
-	toTrim := len(preferredContracts) - int(wantedHosts)
-	for fcid := range preferredContracts {
+	toTrim := len(preferredHosts) - int(wantedHosts)
+	for host := range preferredHosts {
 		if toTrim <= 0 {
 			break
 		}
-		delete(preferredContracts, fcid)
+		delete(preferredHosts, host)
 		toTrim--
 	}
 	// If toTrim is 0, we are done. Only if it's a negative number, we need to
@@ -680,41 +688,43 @@ func (c *Contractor) managedLimitGFUHosts() {
 
 	// Grab a good amount of random hosts.
 	var blacklist []types.SiaPublicKey
-	var addressBlacklist []types.SiaPublicKey
-	for _, contract := range c.Contracts() {
-		if _, alreadyPreferred := preferredContracts[contract.ID]; !alreadyPreferred {
+	for host := range preferredHosts {
+		if _, alreadyPreferred := preferredHosts[host]; !alreadyPreferred {
+			continue
+		}
+		var spk types.SiaPublicKey
+		err := spk.LoadString(host)
+		if err != nil {
+			build.Critical("managedLimitGFUHosts: failed to marshal hostkey", err)
 			continue
 		}
 		// Ignore hosts that are already in the preferred set.
-		blacklist = append(blacklist, contract.HostPublicKey)
-		if !contract.Utility.Locked || contract.Utility.GoodForRenew || contract.Utility.GoodForUpload {
-			addressBlacklist = append(addressBlacklist, contract.HostPublicKey)
-		}
+		blacklist = append(blacklist, spk)
 	}
-	hosts, err := c.staticHDB.RandomHosts(wantedHosts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
+	hosts, err := c.staticHDB.RandomHosts(wantedHosts*4+randomHostsBufferForScore, blacklist, blacklist)
 	if err != nil {
 		c.staticLog.Print("managedLimitGFUHosts: failed to get random hosts:", err)
 		return
 	}
 
-	// Add contracts for the chosen hosts to fill up the set.
+	// Add hosts to fill the set.
 	for i := 0; i < len(hosts) && toAdd > 0; i++ {
-		host := hosts[i]
-		fcid, exists := potentialHosts[host.PublicKey.String()]
+		host := hosts[i].PublicKey.String()
+		_, exists := potentialHosts[host]
 		if !exists {
 			continue // try next
 		}
-		preferredContracts[fcid] = struct{}{}
+		preferredHosts[host] = struct{}{}
 	}
 
 	// Sanity check length of set.
-	if len(preferredContracts) > wantedHosts {
+	if len(preferredHosts) > wantedHosts {
 		build.Critical("too many contracts in the set of preferred contracts")
 	}
 
 	// Mark all contracts as !gfu if they are not in the preferred set.
 	for _, contract := range c.Contracts() {
-		_, isPreferred := preferredContracts[contract.ID]
+		_, isPreferred := preferredHosts[contract.HostPublicKey.String()]
 		if isPreferred {
 			continue // nothing to do
 		}
@@ -738,7 +748,7 @@ func (c *Contractor) managedLimitGFUHosts() {
 
 	// Update the preferred contracts.
 	c.mu.Lock()
-	c.preferredContracts = preferredContracts
+	c.preferredHosts = preferredHosts
 	c.mu.Unlock()
 }
 
