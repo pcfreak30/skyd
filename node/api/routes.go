@@ -12,7 +12,7 @@ import (
 	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/log"
 
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/build"
 )
 
 var (

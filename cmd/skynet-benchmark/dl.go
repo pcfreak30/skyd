@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/montanaflynn/stats"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/skymodules/renter/filesystem"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"

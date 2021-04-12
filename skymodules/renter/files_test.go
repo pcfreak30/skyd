@@ -14,8 +14,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/skymodules/renter/filesystem"
 )
 
 // newSiaPath returns a new SiaPath for testing and panics on error
