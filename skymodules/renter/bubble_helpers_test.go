@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/SkynetHQ/skyd/skymodules"
-	"gitlab.com/SkynetHQ/skyd/skymodules/renter/filesystem/siadir"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
 )
 
 var (

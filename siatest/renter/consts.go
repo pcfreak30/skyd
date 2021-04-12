@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/SkynetHQ/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/siatest"
 )
 
 // renterTestDir creates a temporary testing directory for a renter test. This

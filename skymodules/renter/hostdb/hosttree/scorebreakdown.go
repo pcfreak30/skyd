@@ -4,7 +4,7 @@ import (
 	"math/big"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // ScoreBreakdown is an interface that allows us to mock the hostAdjustments
