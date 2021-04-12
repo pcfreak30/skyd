@@ -4,8 +4,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/SkynetHQ/skyd/skymodules"
-	"gitlab.com/SkynetHQ/skyd/skymodules/renter/hostdb/hosttree"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb/hosttree"
 )
 
 // RandomHosts implements the HostDB interface's RandomHosts() method. It takes

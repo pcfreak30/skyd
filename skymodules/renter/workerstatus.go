@@ -3,7 +3,7 @@ package renter
 import (
 	"time"
 
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // callStatus returns the status of the worker.

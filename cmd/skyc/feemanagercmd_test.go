@@ -8,7 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/SkynetHQ/skyd/siatest"
+	"gitlab.com/skynetlabs/skyd/siatest"
 )
 
 // TestParseFees tests the parseFees function to ensure expected return values

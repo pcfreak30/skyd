@@ -9,7 +9,7 @@ import (
 
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"

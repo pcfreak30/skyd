@@ -3,7 +3,7 @@ package renter
 import (
 	"sync"
 
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (

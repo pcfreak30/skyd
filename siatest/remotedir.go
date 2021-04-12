@@ -1,7 +1,7 @@
 package siatest
 
 import (
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (

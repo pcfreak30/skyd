@@ -17,8 +17,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
-	"gitlab.com/SkynetHQ/skyd/build"
-	"gitlab.com/SkynetHQ/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 )
 
 // dummyCloser is a helper type that counts the number of times Close is called.

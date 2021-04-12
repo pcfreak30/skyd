@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io/ioutil"
 
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 const (

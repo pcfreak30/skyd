@@ -1,7 +1,7 @@
 package siatest
 
 import (
-	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 // hasPeer checks if peer is a peer of tn.
