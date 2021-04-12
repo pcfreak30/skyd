@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/node/api"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // HostDbGet requests the /hostdb endpoint's resources.

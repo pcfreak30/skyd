@@ -17,8 +17,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/skykey"
 )
 
 var (

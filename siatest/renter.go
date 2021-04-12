@@ -11,9 +11,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/node/api"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 var (

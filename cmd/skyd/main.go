@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/build"
 )
 
 var (

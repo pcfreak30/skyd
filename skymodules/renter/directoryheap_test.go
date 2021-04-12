@@ -7,8 +7,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/siatest/dependencies"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // updateSiaDirHealth is a helper method to update the health and the aggregate

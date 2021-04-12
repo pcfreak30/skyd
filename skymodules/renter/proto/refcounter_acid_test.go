@@ -16,9 +16,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/siatest/dependencies"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // errTestTimeout is returned when the time allotted for testing runs out. It's

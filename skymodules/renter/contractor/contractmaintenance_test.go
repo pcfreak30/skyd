@@ -11,7 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // TestCheckFormContractGouging checks that the upload price gouging checker is

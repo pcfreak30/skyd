@@ -13,9 +13,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
+	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/skymodules/renter/proto"
 )
 
 // TestSaveLoad tests that the contractor can save and load itself.

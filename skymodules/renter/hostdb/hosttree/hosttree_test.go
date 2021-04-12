@@ -15,7 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // customScoreBreakdown is a helper struct to create scoreBreakdown's for

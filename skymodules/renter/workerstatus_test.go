@@ -12,8 +12,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/siatest/dependencies"
 )
 
 // TestWorkerAccountStatus is a small unit test that verifies the output of the

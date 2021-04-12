@@ -8,7 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/build"
 
 	"gitlab.com/NebulousLabs/errors"
 )

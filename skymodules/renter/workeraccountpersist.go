@@ -29,7 +29,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/build"
 )
 
 const (
