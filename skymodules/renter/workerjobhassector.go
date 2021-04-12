@@ -188,7 +188,7 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	now := time.Now()
-	estimate := jq.expectedJobTime() + jq.expectedJobTime()*time.Duration(jq.jobs.Len())
+	estimate := jq.expectedJobTime()
 	j.externJobStartTime = now
 	j.externEstimatedJobDuration = estimate
 	if !jq.add(j) {
@@ -197,8 +197,11 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 	return now.Add(estimate), nil
 }
 
-// callExpectedJobTime will return the amount of time that a single job is
-// expected to take.
+// callExpectedJobTime returns the expected amount of time that this job will
+// take to complete.
+//
+// TODO: idealy we pass `numSectors` here and get the expected job time
+// depending on the amount of instructions in the program.
 func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
@@ -213,8 +216,8 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
 }
 
-// expectedJobTime will return the amount of time that a single job is expected
-// to take.
+// expectedJobTime will return the amount of time that a job is expected to
+// take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
 	return time.Duration(jq.weightedJobTime)
 }
