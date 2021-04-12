@@ -9,8 +9,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // hostEstimateScoreGET handles the POST request to /host/estimatescore and

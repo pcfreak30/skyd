@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/SkynetHQ/skyd/siatest"
 )
 
 // daemonTestDir creates a temporary testing directory for daemon tests. This

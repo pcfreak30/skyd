@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/siatest/dependencies"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // TestAccounting tests the basic functionality of the accounting package
