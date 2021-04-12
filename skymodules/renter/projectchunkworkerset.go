@@ -345,8 +345,13 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		cancel()
 	}, pcws.staticPieceRoots...)
 
-	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
+	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs, pcwsHasSectorTimeout)
+	if errors.Contains(err, errEstimateAboveMax) {
+		cancel()
+		return nil
+	}
 	if err != nil {
+		cancel()
 		return errors.AddContext(err, fmt.Sprintf("unable to add has sector job to %v", w.staticHostPubKeyStr))
 	}
 	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
@@ -364,14 +369,6 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	ws.mu.Lock()
 	ws.unresolvedWorkers[w.staticHostPubKeyStr] = uw
 	ws.mu.Unlock()
-
-	// If the resolve time is greater than the timeout, cancel the job right
-	// away. The worker is still in the map but we don't bother waiting for it.
-	// Ideally this is almost never the case except for stuck workers since the
-	// worker selection algorithm should load balance the jobs between workers.
-	if time.Until(expectedResolveTime) > pcwsHasSectorTimeout {
-		cancel()
-	}
 	return nil
 }
 

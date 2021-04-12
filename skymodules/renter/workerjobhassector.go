@@ -20,6 +20,10 @@ const (
 	jobHasSectorPerformanceDecay = 0.9
 )
 
+// errEstimateAboveMax is returned if a HasSector job wasn't added due to the
+// estimate exceeding the max.
+var errEstimateAboveMax = errors.New("can't add job since estimate is above max timeout")
+
 type (
 	// jobHasSector contains information about a hasSector query.
 	jobHasSector struct {
@@ -184,11 +188,14 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 // callAddWithEstimate will add a job to the queue and return a timestamp for
 // when the job is estimated to complete. An error will be returned if the job
 // is not successfully queued.
-func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, error) {
+func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate time.Duration) (time.Time, error) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	now := time.Now()
 	estimate := jq.expectedJobTime()
+	if estimate > maxEstimate {
+		return time.Time{}, errEstimateAboveMax
+	}
 	j.externJobStartTime = now
 	j.externEstimatedJobDuration = estimate
 	if !jq.add(j) {
