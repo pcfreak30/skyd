@@ -12,7 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // mockProjectChunkWorkerSet is a mock object implementing the chunkFetcher

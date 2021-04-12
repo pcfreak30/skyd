@@ -8,8 +8,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/SkynetHQ/skyd/siatest/dependencies"
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // TestCheckUploadGouging checks that the upload price gouging checker is

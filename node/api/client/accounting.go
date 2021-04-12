@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // AccountingGet requests the /accounting resource

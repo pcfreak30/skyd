@@ -10,9 +10,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/SkynetHQ/skyd/build"
-	"gitlab.com/SkynetHQ/skyd/node/api"
-	"gitlab.com/SkynetHQ/skyd/node/api/client"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/skynetlabs/skyd/node/api/client"
 )
 
 var (
