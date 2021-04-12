@@ -1,4 +1,4 @@
-module gitlab.com/skynetlabs/skyd
+module gitlab.com/SkynetHQ/skyd
 
 go 1.13
 

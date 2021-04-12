@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // TestRenterUploadDirectory verifies that the renter returns an error if a

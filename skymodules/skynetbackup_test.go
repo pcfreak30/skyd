@@ -12,7 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/build"
 )
 
 const (

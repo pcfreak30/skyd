@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/build"
 )
 
 var (

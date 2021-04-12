@@ -11,9 +11,9 @@ import (
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/SkynetHQ/skyd/node"
+	"gitlab.com/SkynetHQ/skyd/node/api/client"
+	"gitlab.com/SkynetHQ/skyd/siatest"
 )
 
 // outputCatcher is a helper struct enabling to catch stdout and stderr during

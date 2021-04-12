@@ -3,7 +3,7 @@ package renter
 import (
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // TestWritePiecesPanic is a regression test that ensures WritePieces does not

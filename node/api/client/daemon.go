@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/SkynetHQ/skyd/node/api"
 )
 
 // DaemonGlobalRateLimitPost uses the /daemon/settings endpoint to change the
