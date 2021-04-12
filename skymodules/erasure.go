@@ -12,7 +12,7 @@ import (
 
 	"github.com/klauspost/reedsolomon"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 var (

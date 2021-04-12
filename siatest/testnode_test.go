@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"gitlab.com/SkynetHQ/skyd/node"
+	"gitlab.com/skynetlabs/skyd/node"
 )
 
 // TestNextNodeAddress probes nextNodeAddress to verify that the addresses are

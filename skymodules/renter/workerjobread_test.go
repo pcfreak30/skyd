@@ -9,7 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 // TestJobExpectedJobTime is a small unit test that verifies the result of

@@ -8,7 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 type (

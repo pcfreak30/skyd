@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/skynetlabs/skyd/build"
 
 	"gitlab.com/NebulousLabs/errors"
 )

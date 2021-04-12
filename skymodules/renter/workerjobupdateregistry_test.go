@@ -12,7 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/SkynetHQ/skyd/siatest/dependencies"
+	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
 )
 
 // TestUpdateRegistryJob tests the various cases of running an UpdateRegistry

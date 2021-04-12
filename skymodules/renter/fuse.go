@@ -13,8 +13,8 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/SkynetHQ/skyd/skymodules"
-	"gitlab.com/SkynetHQ/skyd/skymodules/renter/filesystem"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
 )
 
 // fuseDirnode is a fuse node for the fs package that covers a siadir.

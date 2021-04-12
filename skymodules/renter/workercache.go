@@ -6,8 +6,8 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/SkynetHQ/skyd/build"
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 var (

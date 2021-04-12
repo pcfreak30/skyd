@@ -15,13 +15,13 @@ import (
 
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/skynetlabs/skyd/build"
 )
 
 // testWAL is the WAL instance we're going to use across this test. This would
