@@ -4,7 +4,7 @@ import (
 	"io"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/SkynetHQ/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
 // limitStreamer is a helper struct that wraps a skymodules.Streamer so it starts

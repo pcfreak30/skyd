@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"gitlab.com/SkynetHQ/skyd/node"
+	"gitlab.com/skynetlabs/skyd/node"
 )
 
 // createNodeParams parses the provided config and creates the corresponding

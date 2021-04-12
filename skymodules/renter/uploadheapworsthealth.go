@@ -1,6 +1,6 @@
 package renter
 
-import "gitlab.com/SkynetHQ/skyd/skymodules"
+import "gitlab.com/skynetlabs/skyd/skymodules"
 
 type (
 	// worstIgnoredHealth is a helper struct for the callBuildAndPushChunks
