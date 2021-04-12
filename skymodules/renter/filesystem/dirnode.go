@@ -13,9 +13,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/SkynetHQ/skyd/skymodules"
-	"gitlab.com/SkynetHQ/skyd/skymodules/renter/filesystem/siadir"
-	"gitlab.com/SkynetHQ/skyd/skymodules/renter/filesystem/siafile"
+	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 type (

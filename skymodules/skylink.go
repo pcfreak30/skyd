@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/skynetlabs/skyd/build"
 
 	"gitlab.com/NebulousLabs/errors"
 )

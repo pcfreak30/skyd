@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/julienschmidt/httprouter"
-	"gitlab.com/SkynetHQ/skyd/skymodules/accounting"
+	"gitlab.com/skynetlabs/skyd/skymodules/accounting"
 )
 
 // accountingHandlerGet handles the API call for /accounting
