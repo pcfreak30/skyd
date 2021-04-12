@@ -222,15 +222,15 @@ func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
 // by the job.
 func (j jobHasSectorBatch) callExpectedBandwidth() (ul, dl uint64) {
+	var totalSectors int
 	for _, hsj := range j.staticJobs {
 		// sanity check
 		if len(hsj.staticSectors) == 0 {
 			build.Critical("expected bandwidth requested for a job that has no staticSectors set")
 		}
-		up, down := hsj.callExpectedBandwidth()
-		ul += up
-		dl += down
+		totalSectors += len(hsj.staticSectors)
 	}
+	ul, dl = hasSectorJobExpectedBandwidth(totalSectors)
 	return
 }
 
