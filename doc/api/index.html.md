@@ -6,7 +6,7 @@ language_tabs: # must be one of https://git.io/vQNgJ
 
 toc_footers:
   - <a href='https://siasky.net'>The Official Skynet Website
-  - <a href='https://gitlab.com/skynetlabs/skyd'>Skyd on GitLab</a>
+  - <a href='https://gitlab.com/SkynetHQ/skyd'>Skyd on GitLab</a>
 
 search: true
 ---
@@ -78,7 +78,7 @@ The following details the documentation standards for the API endpoints.
 Contributors should follow these standards when submitting updates to the API
 documentation.  If you find API endpoints that do not adhere to these
 documentation standards please let the Skyd team know by submitting an issue
-[here](https://gitlab.com/skynetlabs/skyd/issues)
+[here](https://gitlab.com/SkynetHQ/skyd/issues)
 
 # Standard Responses
 

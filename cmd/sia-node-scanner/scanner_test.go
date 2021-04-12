@@ -10,7 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siaPersist "gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/build"
 )
 
 const numTestingGateways = 3

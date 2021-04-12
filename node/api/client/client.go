@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strings"
 
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/node/api"
 
 	"gitlab.com/NebulousLabs/errors"
 )

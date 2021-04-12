@@ -12,11 +12,11 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/build"
+	"gitlab.com/SkynetHQ/skyd/node"
+	"gitlab.com/SkynetHQ/skyd/siatest"
+	"gitlab.com/SkynetHQ/skyd/siatest/dependencies"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // TestRenterDownloadStreamCache checks that the download stream caching is
