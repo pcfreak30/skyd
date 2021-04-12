@@ -172,7 +172,8 @@ func (j jobHasSectorBatch) callExecute() {
 	availables, err := j.managedHasSector()
 	jobTime := time.Since(start)
 
-	for i, hsj := range j.staticJobs {
+	for i := range j.staticJobs {
+		hsj := j.staticJobs[i]
 		// Create the response.
 		response := &jobHasSectorResponse{
 			staticErr:     err,
