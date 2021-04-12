@@ -21,7 +21,10 @@ const (
 
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
 	// calling callNext.
-	hasSectorBatchSize = 1000
+	// This number is the result of empirical testing which determined that 13
+	// requests can be batched together without increasing the required
+	// upload or download bandwidth.
+	hasSectorBatchSize = 13
 )
 
 type (
