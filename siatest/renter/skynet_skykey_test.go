@@ -9,11 +9,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/node/api"
+	"gitlab.com/SkynetHQ/skyd/node/api/client"
+	"gitlab.com/SkynetHQ/skyd/siatest"
+	"gitlab.com/SkynetHQ/skyd/skykey"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // TestSkykey verifies the functionality of the Skykeys.

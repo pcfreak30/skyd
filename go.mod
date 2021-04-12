@@ -1,4 +1,4 @@
-module gitlab.com/skynetlabs/skyd
+module gitlab.com/SkynetHQ/skyd
 
 go 1.13
 
@@ -21,7 +21,7 @@ require (
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
 	gitlab.com/NebulousLabs/log v0.0.0-20200604091839-0ba4a941cdc2
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200811080431-99b8f0768b2e
-	gitlab.com/NebulousLabs/siamux v0.0.0-20210301103357-b3e1da6f3ee1
+	gitlab.com/NebulousLabs/siamux v0.0.0-20210409140711-e667c5f458e4
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899

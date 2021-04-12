@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetHQ/skyd/node"
+	"gitlab.com/SkynetHQ/skyd/siatest"
+	"gitlab.com/SkynetHQ/skyd/skymodules"
 )
 
 // TestAccounting probes the /accounting endpoint
