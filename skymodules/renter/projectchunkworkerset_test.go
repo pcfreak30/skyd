@@ -504,7 +504,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 
 	// launch the worker
 	responseChan := make(chan *jobHasSectorResponse, 0)
-	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws, ws.managedHandleResponse)
+	err = pcws.managedLaunchWorker(w, responseChan, ws)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +527,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	// tweak the maintenancestate, putting it on a cooldown
 	minuteFromNow := time.Now().Add(time.Minute)
 	w.staticMaintenanceState.cooldownUntil = minuteFromNow
-	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws, ws.managedHandleResponse)
+	err = pcws.managedLaunchWorker(w, responseChan, ws)
 	if err != nil {
 		t.Fatal(err)
 	}
