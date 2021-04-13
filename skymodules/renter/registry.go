@@ -238,7 +238,7 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 // jobs have 'timeout' amount of time to finish their jobs and return a
 // response. Otherwise the response with the highest revision number will be
 // used.
-func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error) {
+func (r *Renter) ReadRegistry(rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error) {
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
 	ctx := r.tg.StopCtx()
@@ -297,7 +297,7 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // jobs have 'timeout' amount of time to finish their jobs and return a
 // response. Otherwise the response with the highest revision number will be
 // used.
-func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (modules.SignedRegistryValue, error) {
 	// Specify a sane timeout for jobs that is independent of the user specified
 	// timeout. It is the maximum time that we let a job execute in the
 	// background before cancelling it.
