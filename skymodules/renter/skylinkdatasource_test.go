@@ -89,7 +89,11 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 	if sds.ID() != skymodules.DataSourceID(crypto.Hash{1, 2, 3}) {
 		t.Fatal("unexpected")
 	}
-	if !reflect.DeepEqual(sds.Metadata(), skymodules.SkyfileMetadata{
+	md, err := sds.Metadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(md, skymodules.SkyfileMetadata{
 		Filename: "thisisafilename",
 		Length:   datasize,
 	}) {
@@ -186,7 +190,11 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 	if sds.ID() != skymodules.DataSourceID(crypto.Hash{1, 2, 3}) {
 		t.Fatal("unexpected")
 	}
-	if !reflect.DeepEqual(sds.Metadata(), skymodules.SkyfileMetadata{
+	md, err := sds.Metadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(md, skymodules.SkyfileMetadata{
 		Filename: "thisisafilename",
 		Length:   datasize,
 	}) {

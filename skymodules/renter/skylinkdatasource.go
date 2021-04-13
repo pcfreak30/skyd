@@ -61,13 +61,13 @@ func (sds *skylinkDataSource) ID() skymodules.DataSourceID {
 }
 
 // Layout implements streamBufferDataSource
-func (sds *skylinkDataSource) Layout() skymodules.SkyfileLayout {
-	return sds.staticLayout
+func (sds *skylinkDataSource) Layout() (skymodules.SkyfileLayout, error) {
+	return sds.staticLayout, nil
 }
 
 // Metadata implements streamBufferDataSource
-func (sds *skylinkDataSource) Metadata() skymodules.SkyfileMetadata {
-	return sds.staticMetadata
+func (sds *skylinkDataSource) Metadata() (skymodules.SkyfileMetadata, error) {
+	return sds.staticMetadata, nil
 }
 
 // RequestSize implements streamBufferDataSource

@@ -55,13 +55,13 @@ func (mds *mockDataSource) ID() skymodules.DataSourceID {
 }
 
 // Metadata implements streamBufferDataSource
-func (mds *mockDataSource) Metadata() skymodules.SkyfileMetadata {
-	return skymodules.SkyfileMetadata{}
+func (mds *mockDataSource) Metadata() (skymodules.SkyfileMetadata, error) {
+	return skymodules.SkyfileMetadata{}, nil
 }
 
 // Layout implements streamBufferDataSource
-func (mds *mockDataSource) Layout() skymodules.SkyfileLayout {
-	return skymodules.SkyfileLayout{}
+func (mds *mockDataSource) Layout() (skymodules.SkyfileLayout, error) {
+	return skymodules.SkyfileLayout{}, nil
 }
 
 // RequestSize implements streamBufferDataSource.

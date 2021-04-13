@@ -153,8 +153,8 @@ func SkylinkStreamerFromSlice(b []byte, md skymodules.SkyfileMetadata) skymodule
 }
 
 // Metadata implements the modules.SkyfileStreamer interface.
-func (sfr *skylinkStreamerFromReader) Metadata() skymodules.SkyfileMetadata {
-	return sfr.staticMD
+func (sfr *skylinkStreamerFromReader) Metadata() (skymodules.SkyfileMetadata, error) {
+	return sfr.staticMD, nil
 }
 
 // CreateSkylinkFromSiafile creates a skyfile from a siafile. This requires
@@ -685,7 +685,9 @@ func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Du
 	id := link.DataSourceID()
 	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, timeout)
 	if exists {
-		return streamer.Layout(), streamer.Metadata(), streamer, nil
+		layout, errLayout := streamer.Layout()
+		md, errMD := streamer.Metadata()
+		return layout, md, streamer, errors.Compose(errLayout, errMD)
 	}
 
 	// Prepare a method to create a datasource.
@@ -696,7 +698,9 @@ func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Du
 	if err != nil {
 		return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, err
 	}
-	return stream.Layout(), stream.Metadata(), stream, nil
+	layout, errLayout := stream.Layout()
+	md, errMD := stream.Metadata()
+	return layout, md, stream, errors.Compose(errLayout, errMD)
 }
 
 // PinSkylink will fetch the file associated with the Skylink, and then pin all

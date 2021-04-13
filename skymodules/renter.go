@@ -1445,7 +1445,7 @@ type SkyfileStreamer interface {
 	io.ReadSeeker
 	io.Closer
 
-	Metadata() SkyfileMetadata
+	Metadata() (SkyfileMetadata, error)
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

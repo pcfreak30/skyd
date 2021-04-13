@@ -259,7 +259,7 @@ func (c *Client) skynetSkylinkGetWithParametersRaw(skylink string, params map[st
 
 	getQuery := skylinkQueryWithValues(skylink, values)
 	header, fileData, err := c.getRawResponse(getQuery)
-	return header, fileData, errors.AddContext(err, "skynetSkylnkGet with parameters failed getRawResponse")
+	return header, fileData, errors.AddContext(err, "skynetSkylinkGet with parameters failed getRawResponse")
 }
 
 // SkynetSkylinkHead uses the /skynet/skylink endpoint to get the headers that

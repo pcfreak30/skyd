@@ -105,10 +105,10 @@ type streamBufferDataSource interface {
 	ID() skymodules.DataSourceID
 
 	// Metadata returns the Skyfile metadata of a data source.
-	Metadata() skymodules.SkyfileMetadata
+	Metadata() (skymodules.SkyfileMetadata, error)
 
 	// Layout returns the Skyfile layout of a data source.
-	Layout() skymodules.SkyfileLayout
+	Layout() (skymodules.SkyfileLayout, error)
 
 	// RequestSize should return the request size that the dataSource expects
 	// the streamBuffer to use. The streamBuffer will always make ReadAt calls
@@ -195,11 +195,14 @@ type streamBuffer struct {
 	// creation and deletion of the streamBuffer.
 	externRefCount uint64
 
+	externDataSource      streamBufferDataSource
+	externDataSize        uint64
+	externDataSectionSize uint64
+	externDataSourceErr   error
+	externDataSourceReady <-chan struct{}
+
 	mu                    sync.Mutex
 	staticTG              threadgroup.ThreadGroup
-	staticDataSize        uint64
-	staticDataSource      streamBufferDataSource
-	staticDataSectionSize uint64
 	staticStreamBufferSet *streamBufferSet
 	staticStreamID        skymodules.DataSourceID
 	staticPricePerMS      types.Currency
@@ -245,21 +248,33 @@ func (sbs *streamBufferSet) callNewStream(sourceID skymodules.DataSourceID, data
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[sourceID]
 	if !exists {
-		dataSource, err := dataSourceFunc()
-		if err != nil {
-			return nil, err
-		}
+		c := make(chan struct{})
 		streamBuf = &streamBuffer{
 			dataSections: make(map[uint64]*dataSection),
 
-			staticDataSize:        dataSource.DataSize(),
-			staticDataSource:      dataSource,
-			staticDataSectionSize: dataSource.RequestSize(),
+			externDataSourceReady: c,
+
 			staticPricePerMS:      pricePerMS,
 			staticStreamBufferSet: sbs,
 			staticStreamID:        sourceID,
 		}
 		sbs.streams[sourceID] = streamBuf
+
+		// Launch dataSourceFunc in separate thread to avoid violating lock
+		// conventions.
+		err := sbs.staticTG.Launch(func() {
+			dataSource, err := dataSourceFunc()
+			streamBuf.externDataSource = dataSource
+			streamBuf.externDataSourceErr = err
+			if err != nil {
+				streamBuf.externDataSectionSize = dataSource.RequestSize()
+				streamBuf.externDataSize = dataSource.DataSize()
+			}
+			close(c)
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
@@ -321,14 +336,34 @@ func (s *stream) Close() error {
 	return nil
 }
 
+func (sb *streamBuffer) staticDataSource() (streamBufferDataSource, error) {
+	select {
+	case <-sb.staticTG.StopCtx().Done():
+		return nil, threadgroup.ErrStopped
+	case <-sb.externDataSourceReady:
+	}
+	if sb.externDataSourceErr != nil {
+		return nil, sb.externDataSourceErr
+	}
+	return sb.externDataSource, nil
+}
+
 // Metadata returns the skyfile metadata associated with this stream.
-func (s *stream) Metadata() skymodules.SkyfileMetadata {
-	return s.staticStreamBuffer.staticDataSource.Metadata()
+func (s *stream) Metadata() (skymodules.SkyfileMetadata, error) {
+	ds, err := s.staticStreamBuffer.staticDataSource()
+	if err != nil {
+		return skymodules.SkyfileMetadata{}, err
+	}
+	return ds.Metadata()
 }
 
 // Layout returns the skyfile layout associated with this stream.
-func (s *stream) Layout() skymodules.SkyfileLayout {
-	return s.staticStreamBuffer.staticDataSource.Layout()
+func (s *stream) Layout() (skymodules.SkyfileLayout, error) {
+	ds, err := s.staticStreamBuffer.staticDataSource()
+	if err != nil {
+		return skymodules.SkyfileLayout{}, err
+	}
+	return ds.Layout()
 }
 
 // Read will read data into 'b', returning the number of bytes read and any
@@ -347,8 +382,8 @@ func (s *stream) Read(b []byte) (int, error) {
 	}
 
 	// Convenience variables.
-	dataSize := s.staticStreamBuffer.staticDataSize
-	dataSectionSize := s.staticStreamBuffer.staticDataSectionSize
+	dataSize := s.staticStreamBuffer.externDataSize
+	dataSectionSize := s.staticStreamBuffer.externDataSectionSize
 	sb := s.staticStreamBuffer
 
 	// Check for EOF.
@@ -409,11 +444,12 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 	if offset < 0 {
 		return int64(s.offset), errors.New("offset cannot be negative in call to seek")
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Update the offset of the stream according to the inputs.
-	dataSize := s.staticStreamBuffer.staticDataSize
+	dataSize := s.staticStreamBuffer.externDataSize
 	switch whence {
 	case io.SeekStart:
 		s.offset = uint64(offset)
@@ -441,8 +477,8 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 // available in the LRU, and that the following dataSection is also available.
 func (s *stream) prepareOffset() {
 	// Convenience variables.
-	dataSize := s.staticStreamBuffer.staticDataSize
-	dataSectionSize := s.staticStreamBuffer.staticDataSectionSize
+	dataSize := s.staticStreamBuffer.externDataSize
+	dataSectionSize := s.staticStreamBuffer.externDataSectionSize
 
 	// If the offset is already at the end of the data, there is nothing to do.
 	if s.offset == dataSize {
@@ -514,7 +550,7 @@ func (sb *streamBuffer) callRemoveDataSection(index uint64) {
 // streamBufferSet lock, before this method is called.
 func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout time.Duration) *stream {
 	// Determine how many data sections the stream should cache.
-	dataSectionsToCache := bytesBufferedPerStream / sb.staticDataSectionSize
+	dataSectionsToCache := bytesBufferedPerStream / sb.externDataSectionSize
 	if dataSectionsToCache < minimumDataSections {
 		dataSectionsToCache = minimumDataSections
 	}
@@ -536,8 +572,8 @@ func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout ti
 // up a goroutine to pull the data from the data source.
 func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	// Convenience variables.
-	dataSize := sb.staticDataSize
-	dataSectionSize := sb.staticDataSectionSize
+	dataSize := sb.externDataSize
+	dataSectionSize := sb.externDataSectionSize
 
 	// Determine the fetch size for the data section. The fetch size should be
 	// equal to the dataSectionSize unless this is the final section, in which
@@ -571,8 +607,14 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		}
 		defer sb.staticTG.Done()
 
+		dataSource, err := sb.staticDataSource()
+		if err != nil {
+			ds.externErr = errors.AddContext(err, "failed to get data source")
+			return
+		}
+
 		// Grab the data from the data source.
-		responseChan := sb.staticDataSource.ReadStream(sb.staticTG.StopCtx(), index*dataSectionSize, fetchSize, sb.staticPricePerMS)
+		responseChan := dataSource.ReadStream(sb.staticTG.StopCtx(), index*dataSectionSize, fetchSize, sb.staticPricePerMS)
 
 		select {
 		case response := <-responseChan:
@@ -609,5 +651,9 @@ func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
 	// calls are completed. This prevents any issues that could be caused by the
 	// data source being accessed after it has been closed.
 	sb.staticTG.Stop()
-	sb.staticDataSource.SilentClose()
+
+	dataSource, err := sb.staticDataSource()
+	if err == nil {
+		dataSource.SilentClose()
+	}
 }
