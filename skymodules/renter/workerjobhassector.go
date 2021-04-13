@@ -77,11 +77,11 @@ func (jq *jobHasSectorQueue) callNext() workerJob {
 	var jobs []*jobHasSector
 
 	for {
-		next := jq.jobGenericQueue.callNext()
-		if next == nil {
+		if len(jobs) >= hasSectorBatchSize {
 			break
 		}
-		if len(jobs) > hasSectorBatchSize {
+		next := jq.jobGenericQueue.callNext()
+		if next == nil {
 			break
 		}
 		j := next.(*jobHasSector)
