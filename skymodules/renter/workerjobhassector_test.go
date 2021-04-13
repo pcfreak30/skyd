@@ -121,7 +121,7 @@ func TestAddWithEstimate(t *testing.T) {
 		n := time.Now()
 
 		// Add the job.
-		endTime, err := queue.callAddWithEstimate(j)
+		endTime, err := queue.callAddWithEstimate(j, time.Hour)
 		if err != nil {
 			t.Fatal(err)
 		}

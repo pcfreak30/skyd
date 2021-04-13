@@ -34,6 +34,10 @@ const (
 	jobHasSectorPerformanceDecay = 0.9
 )
 
+// errEstimateAboveMax is returned if a HasSector job wasn't added due to the
+// estimate exceeding the max.
+var errEstimateAboveMax = errors.New("can't add job since estimate is above max timeout")
+
 type (
 	// jobHasSector contains information about a hasSector query.
 	jobHasSector struct {
@@ -198,7 +202,7 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 // callAddWithEstimate will add a job to the queue and return a timestamp for
 // when the job is estimated to complete. An error will be returned if the job
 // is not successfully queued.
-func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, error) {
+func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate time.Duration) (time.Time, error) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	now := time.Now()
@@ -217,7 +221,9 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 			estimate += time.Duration(float64(jq.expectedJobTime()) * multiplier)
 		}
 	}
-
+	if estimate > maxEstimate {
+		return time.Time{}, errEstimateAboveMax
+	}
 	j.externJobStartTime = now
 	j.externEstimatedJobDuration = estimate
 	if !jq.add(j) {
@@ -226,8 +232,11 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 	return now.Add(estimate), nil
 }
 
-// callExpectedJobTime will return the amount of time that a single job is
-// expected to take.
+// callExpectedJobTime returns the expected amount of time that this job will
+// take to complete.
+//
+// TODO: idealy we pass `numSectors` here and get the expected job time
+// depending on the amount of instructions in the program.
 func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
@@ -242,8 +251,8 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
 }
 
-// expectedJobTime will return the amount of time that a single job is expected
-// to take.
+// expectedJobTime will return the amount of time that a job is expected to
+// take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
 	return time.Duration(jq.weightedJobTime)
 }

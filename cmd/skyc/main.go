@@ -417,14 +417,13 @@ func initCmds() *cobra.Command {
 	skykeyListCmd.Flags().BoolVar(&skykeyShowPrivateKeys, "show-priv-keys", false, "Show private key data.")
 
 	// Daemon Commands
-	root.AddCommand(alertsCmd, globalRatelimitCmd, profileCmd, stackCmd, stopCmd, updateCmd, versionCmd)
+	root.AddCommand(alertsCmd, globalRatelimitCmd, profileCmd, stackCmd, stopCmd, versionCmd)
 	profileCmd.AddCommand(profileStartCmd, profileStopCmd)
 	profileStartCmd.Flags().BoolVarP(&daemonCPUProfile, "cpu", "c", false, "Start the CPU profile")
 	profileStartCmd.Flags().BoolVarP(&daemonMemoryProfile, "memory", "m", false, "Start the Memory profile")
 	profileStartCmd.Flags().StringVar(&daemonProfileDirectory, "profileDir", "", "Specify the directory where the profile logs are to be saved")
 	profileStartCmd.Flags().BoolVarP(&daemonTraceProfile, "trace", "t", false, "Start the Trace profile")
 	stackCmd.Flags().StringVarP(&daemonStackOutputFile, "filename", "f", "stack.txt", "Specify the output file for the stack trace")
-	updateCmd.AddCommand(updateCheckCmd)
 
 	root.AddCommand(utilsCmd)
 	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsBruteForceSeedCmd, utilsCheckSigCmd,

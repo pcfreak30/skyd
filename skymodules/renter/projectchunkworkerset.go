@@ -345,8 +345,9 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		cancel()
 	}, pcws.staticPieceRoots...)
 
-	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
+	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs, pcwsHasSectorTimeout)
 	if err != nil {
+		cancel()
 		return errors.AddContext(err, fmt.Sprintf("unable to add has sector job to %v", w.staticHostPubKeyStr))
 	}
 	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
@@ -387,7 +388,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorkers(ws *pcwsWorkerState) {
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
 		err := pcws.managedLaunchWorker(w, responseChan, ws)
-		if err != nil {
+		if err != nil && !errors.Contains(err, errEstimateAboveMax) {
 			pcws.staticRenter.staticLog.Debugf("failed to launch worker: %v", err)
 		}
 	}

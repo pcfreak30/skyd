@@ -7,9 +7,7 @@ require (
 	github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf
 	github.com/eventials/go-tus v0.0.0-20200718001131-45c7ec8f5d59
 	github.com/hanwen/go-fuse/v2 v2.0.2
-	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
 	github.com/julienschmidt/httprouter v1.3.0
-	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
 	github.com/klauspost/cpuid/v2 v2.0.6 // indirect
 	github.com/klauspost/reedsolomon v1.9.12
 	github.com/montanaflynn/stats v0.6.3
