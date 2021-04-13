@@ -365,14 +365,6 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	ws.mu.Lock()
 	ws.unresolvedWorkers[w.staticHostPubKeyStr] = uw
 	ws.mu.Unlock()
-
-	// If the resolve time is greater than the timeout, cancel the job right
-	// away. The worker is still in the map but we don't bother waiting for it.
-	// Ideally this is almost never the case except for stuck workers since the
-	// worker selection algorithm should load balance the jobs between workers.
-	if time.Until(expectedResolveTime) > pcwsHasSectorTimeout {
-		cancel()
-	}
 	return nil
 }
 
