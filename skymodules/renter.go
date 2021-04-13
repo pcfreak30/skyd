@@ -1271,11 +1271,11 @@ type Renter interface {
 	// settings, assuming perfect age and uptime adjustments
 	EstimateHostScore(entry HostDBEntry, allowance Allowance) (HostScoreBreakdown, error)
 
-	// ReadRegistry starts a registry lookup on all available workers. The
-	// jobs have 'timeout' amount of time to finish their jobs and return a
-	// response. Otherwise the response with the highest revision number will be
+	// ReadRegistry starts a registry lookup on all available workers. The jobs
+	// have time to finish their jobs and return a response until the context is
+	// closed. Otherwise the response with the highest revision number will be
 	// used.
-	ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error)
+	ReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (modules.SignedRegistryValue, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
