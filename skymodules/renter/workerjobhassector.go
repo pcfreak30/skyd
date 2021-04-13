@@ -32,6 +32,13 @@ const (
 	// decayed each time a new datapoint is added. The jobs use an exponential
 	// weighted average.
 	jobHasSectorPerformanceDecay = 0.9
+
+	// hasSectorBatchSize is the number of has sector jobs batched together upon
+	// calling callNext.
+	// This number is the result of empirical testing which determined that 13
+	// requests can be batched together without increasing the required
+	// upload or download bandwidth.
+	hasSectorBatchSize = 13
 )
 
 // errEstimateAboveMax is returned if a HasSector job wasn't added due to the
@@ -49,6 +56,11 @@ type (
 		once                    sync.Once
 
 		*jobGeneric
+	}
+
+	// jobHasSectorBatch is a batch of has sector lookups.
+	jobHasSectorBatch struct {
+		staticJobs []*jobHasSector
 	}
 
 	// jobHasSectorQueue is a list of hasSector queries that have been assigned
@@ -76,6 +88,30 @@ type (
 		staticJobTime time.Duration
 	}
 )
+
+// callNext overwrites the generic call next and batches a certain number of has
+// sector jobs together.
+func (jq *jobHasSectorQueue) callNext() workerJob {
+	var jobs []*jobHasSector
+
+	for {
+		if len(jobs) >= hasSectorBatchSize {
+			break
+		}
+		next := jq.jobGenericQueue.callNext()
+		if next == nil {
+			break
+		}
+		j := next.(*jobHasSector)
+		jobs = append(jobs, j)
+	}
+	if len(jobs) == 0 {
+		return nil
+	}
+	return &jobHasSectorBatch{
+		staticJobs: jobs,
+	}
+}
 
 // newJobHasSector is a helper method to create a new HasSector job.
 func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasSectorResponse, roots ...crypto.Hash) *jobHasSector {
@@ -115,42 +151,80 @@ func (j *jobHasSector) callDiscard(err error) {
 	}
 }
 
+// callDiscard discards all jobs within the batch.
+func (j jobHasSectorBatch) callDiscard(err error) {
+	for _, hsj := range j.staticJobs {
+		hsj.callDiscard(err)
+	}
+}
+
+// staticCanceled always returns false. A batched job never resides in the
+// queue. It's constructed right before being executed.
+func (j jobHasSectorBatch) staticCanceled() bool {
+	return false
+}
+
+// staticGetMetadata return an empty struct. A batched has sector job doesn't
+// contain any metadata.
+func (j jobHasSectorBatch) staticGetMetadata() interface{} {
+	return struct{}{}
+}
+
 // callExecute will run the has sector job.
 func (j *jobHasSector) callExecute() {
+	batch := jobHasSectorBatch{
+		staticJobs: []*jobHasSector{j},
+	}
+	batch.callExecute()
+}
+
+// callExecute will run the has sector job.
+func (j jobHasSectorBatch) callExecute() {
+	if len(j.staticJobs) == 0 {
+		build.Critical("empty hasSectorBatch")
+		return
+	}
+
 	start := time.Now()
-	w := j.staticQueue.staticWorker()
+	w := j.staticJobs[0].staticQueue.staticWorker()
 	availables, err := j.managedHasSector()
 	jobTime := time.Since(start)
 
-	// Send the response.
-	response := &jobHasSectorResponse{
-		staticAvailables: availables,
-		staticErr:        err,
-		staticJobTime:    jobTime,
-		staticWorker:     w,
-	}
-	err2 := w.staticRenter.tg.Launch(func() {
-		j.managedCallPostExecutionHook(response)
-		select {
-		case j.staticResponseChan <- response:
-		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+	for i := range j.staticJobs {
+		hsj := j.staticJobs[i]
+		// Create the response.
+		response := &jobHasSectorResponse{
+			staticErr:     err,
+			staticJobTime: jobTime,
+			staticWorker:  w,
 		}
-	})
-	if err2 != nil {
-		w.staticRenter.staticLog.Println("callExececute: launch failed", err)
-	}
+		// If it was successful, attach the result.
+		if err == nil {
+			response.staticAvailables = availables[i]
+		}
+		// Send the response.
+		err2 := w.staticRenter.tg.Launch(func() {
+			hsj.managedCallPostExecutionHook(response)
+			select {
+			case hsj.staticResponseChan <- response:
+			case <-hsj.staticCtx.Done():
+			case <-w.staticRenter.tg.StopChan():
+			}
+		})
+		// Report success or failure to the queue.
+		if err != nil {
+			hsj.staticQueue.callReportFailure(err)
+			continue
+		}
+		hsj.staticQueue.callReportSuccess()
 
-	// Report success or failure to the queue.
-	if err != nil {
-		j.staticQueue.callReportFailure(err)
-		return
+		// Job was a success, update the performance stats on the queue.
+		jq := hsj.staticQueue.(*jobHasSectorQueue)
+		jq.callUpdateJobTimeMetrics(jobTime)
+		if err2 != nil {
+			w.staticRenter.staticLog.Println("callExecute: launch failed", err)
+		}
 	}
-	j.staticQueue.callReportSuccess()
-
-	// Job was a success, update the performance stats on the queue.
-	jq := j.staticQueue.(*jobHasSectorQueue)
-	jq.callUpdateJobTimeMetrics(jobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
@@ -163,14 +237,34 @@ func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
 	return hasSectorJobExpectedBandwidth(len(j.staticSectors))
 }
 
+// callExpectedBandwidth returns the bandwidth that is expected to be consumed
+// by the job.
+func (j jobHasSectorBatch) callExpectedBandwidth() (ul, dl uint64) {
+	var totalSectors int
+	for _, hsj := range j.staticJobs {
+		// sanity check
+		if len(hsj.staticSectors) == 0 {
+			build.Critical("expected bandwidth requested for a job that has no staticSectors set")
+		}
+		totalSectors += len(hsj.staticSectors)
+	}
+	ul, dl = hasSectorJobExpectedBandwidth(totalSectors)
+	return
+}
+
 // managedHasSector returns whether or not the host has a sector with given root
-func (j *jobHasSector) managedHasSector() ([]bool, error) {
-	w := j.staticQueue.staticWorker()
+func (j *jobHasSectorBatch) managedHasSector() ([][]bool, error) {
+	if len(j.staticJobs) == 0 {
+		return nil, nil
+	}
+	w := j.staticJobs[0].staticQueue.staticWorker()
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since HasSector doesn't depend on it.
-	for _, sector := range j.staticSectors {
-		pb.AddHasSectorInstruction(sector)
+	for _, hsj := range j.staticJobs {
+		for _, sector := range hsj.staticSectors {
+			pb.AddHasSectorInstruction(sector)
+		}
 	}
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
@@ -196,7 +290,12 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	if len(responses) != len(program) {
 		return nil, errors.New("received invalid number of responses but no error")
 	}
-	return hasSectors, nil
+	results := make([][]bool, 0, len(j.staticJobs))
+	for _, hsj := range j.staticJobs {
+		results = append(results, hasSectors[:len(hsj.staticSectors)])
+		hasSectors = hasSectors[len(hsj.staticSectors):]
+	}
+	return results, nil
 }
 
 // callAddWithEstimate will add a job to the queue and return a timestamp for
