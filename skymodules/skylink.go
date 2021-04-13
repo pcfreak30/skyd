@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/skynetlabs/skyd/build"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -76,6 +78,15 @@ func NewSkylinkV1(merkleRoot crypto.Hash, offset, length uint64) (Skylink, error
 // isSkylinkV1 returns a boolean indicating if the Skylink is a V1 skylink
 func isSkylinkV1(bitfield uint16) bool {
 	return bitfield&3 == 0
+}
+
+// NewSkylinkV2 creates a version 2 skylink.
+func NewSkylinkV2(spk types.SiaPublicKey, tweak crypto.Hash) Skylink {
+	var sl Skylink
+	version := uint16(2)
+	sl.bitfield |= (version - 1)
+	sl.merkleRoot = crypto.Hash(modules.DeriveRegistryEntryID(spk, tweak))
+	return sl
 }
 
 // validateAndParseV1Bitfield is a helper method which validates that a bitfield
@@ -194,6 +205,9 @@ func (sl *Skylink) LoadString(s string) error {
 
 // MerkleRoot returns the merkle root of the Skylink.
 func (sl Skylink) MerkleRoot() crypto.Hash {
+	if sl.Version() != 1 {
+		build.Critical("MerkleRoot should only be called on v1 skylink")
+	}
 	return sl.merkleRoot
 }
 
@@ -304,6 +318,14 @@ func (sl Skylink) MerkleRoot() crypto.Hash {
 // still have mostly sane behavior.
 func (sl Skylink) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err error) {
 	return validateAndParseV1Bitfield(sl.bitfield)
+}
+
+// RegistryEntryID returns the RegistryEntryID of a v2 skylink.
+func (sl Skylink) RegistryEntryID() modules.RegistryEntryID {
+	if sl.Version() != 2 {
+		build.Critical("RegistryEntryID should only be called on v2 skylink")
+	}
+	return modules.RegistryEntryID(sl.merkleRoot)
 }
 
 // String converts Skylink to a string.

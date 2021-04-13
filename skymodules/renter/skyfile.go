@@ -623,6 +623,11 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 	defer r.tg.Done()
 
+	// Check if link needs to be resolved from V2 to V1.
+	if link.Version() == 2 {
+		panic("not implemented yet")
+	}
+
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(link) {
 		return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, ErrSkylinkBlocked
