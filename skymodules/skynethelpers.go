@@ -318,7 +318,8 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 			// note that we do not check the length property of a subfile as it
 			// is possible a user might have uploaded an empty part
 		}
-		if metadata.Length != totalLength {
+		legacyFile := len(metadata.Subfiles) == 1 && metadata.Length == 0 && metadata.Monetization == nil
+		if !legacyFile && metadata.Length != totalLength {
 			return errors.New("invalid length set on metadata")
 		}
 	}
