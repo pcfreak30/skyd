@@ -14,14 +14,14 @@ import (
 )
 
 const (
-	// hasSectorEstimatePenaltyThreshold is a threshold for estimating how long it
-	// takes a hasSector job to complete. If the length of the job queue is <100 we
-	// don't apply a penalty to the estimate since the worker can easily execute 100
-	// lookups in parallel. For each additional job, we add 0.1% more of the
-	// estimate for a single job to the total estimate. So once we have 1100 jobs in
-	// the queue, each additional job will have its full estimate added to the
-	// total.
-	hasSectorEstimatePenaltyThreshold = 100
+	// hasSectorEstimatePenaltyThreshold is a threshold for estimating how long
+	// it takes a hasSector job to complete. If the length of the job queue is
+	// <100*batchSize we don't apply a penalty to the estimate since the worker
+	// can easily execute 100 lookups in parallel. For each additional job, we
+	// add 0.1% more of the estimate for a single job to the total estimate. So
+	// once we have 1100 jobs in the queue, each additional job will have its
+	// full estimate added to the total.
+	hasSectorEstimatePenaltyThreshold = 100 * hasSectorBatchSize
 
 	// hostSectorEstimatePenalty is the percentage we add for every job when
 	// computing the estimate once the number of jobs in the queue is above the
@@ -309,11 +309,13 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate ti
 	// The new new job gets 100% of the estimate.
 	estimate := jq.expectedJobTime()
 
-	// If we have more than 100 jobs in the queue, give them a penalty.
+	// If we have more than hasSectorEstimatePenaltyThreshold jobs in the queue,
+	// give them a penalty.
 	if jq.jobs.Len() > hasSectorEstimatePenaltyThreshold {
 		penalizedJobs := jq.jobs.Len() - hasSectorEstimatePenaltyThreshold
-		for i := 0; i < penalizedJobs; i++ {
-			multiplier := hasSectorEstimatePenalty * float64(i+1) // +0.1%
+		for i := 0; i < penalizedJobs; i += hasSectorBatchSize {
+			// For every hasSectorBatchSize jobs we increment the penalty.
+			multiplier := hasSectorEstimatePenalty * float64(i+1)
 			if multiplier > 1.0 {
 				multiplier = 1.0 // cap it at 100%
 			}

@@ -189,7 +189,7 @@ func TestAddWithEstimate(t *testing.T) {
 		estimate := queue.expectedJobTime()
 		if queue.jobs.Len() > hasSectorEstimatePenaltyThreshold {
 			penalizedJobs := queue.jobs.Len() - hasSectorEstimatePenaltyThreshold
-			for i := 0; i < penalizedJobs-1; i++ {
+			for i := 0; i < penalizedJobs-1; i += hasSectorBatchSize {
 				multiplier := hasSectorEstimatePenalty * float64(i+1) // +0.1%
 				if multiplier > 1.0 {
 					multiplier = 1.0 // cap it at 100%
