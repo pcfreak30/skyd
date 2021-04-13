@@ -206,7 +206,7 @@ func TestSkylink(t *testing.T) {
 
 	// Try loading a base32 encoded string with invalid bitfield
 	var slInvalidBitfield Skylink
-	slInvalidBitfield.bitfield = 1
+	slInvalidBitfield.bitfield = 2
 	b32BadBitfield := slInvalidBitfield.Base32EncodedString()
 	err = slMaxB32Decoded.LoadString(b32BadBitfield)
 	if err == nil {
