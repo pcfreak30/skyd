@@ -731,11 +731,11 @@ func TestSubscriptionNotifications(t *testing.T) {
 
 	// The worker should have updated the cache.
 	cache := wt.staticRegistryCache
-	cachedRev, exists := cache.Get(spk1, rv1.Tweak)
+	cachedRev, exists := cache.Get(modules.DeriveRegistryEntryID(spk1, rv1.Tweak))
 	if !exists || cachedRev != rv1.Revision {
 		t.Fatal("cache wasn't updated correctyl")
 	}
-	_, exists = cache.Get(spk2, rv2.Tweak)
+	_, exists = cache.Get(modules.DeriveRegistryEntryID(spk2, rv2.Tweak))
 	if exists {
 		t.Fatal("cache shouldn't be updated for rv2")
 	}
@@ -782,7 +782,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 	// update the cache.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// rv1 should still be the same
-		cachedRev, exists := cache.Get(spk1, rv1.Tweak)
+		cachedRev, exists := cache.Get(modules.DeriveRegistryEntryID(spk1, rv1.Tweak))
 		if !exists {
 			return errors.New("rv1: cached entry doesn't exist")
 		}
@@ -790,7 +790,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 			return fmt.Errorf("rv1: wrong cached value %v != %v", cachedRev, rv1.Revision)
 		}
 		// rv2 should be updated to rv2a
-		cachedRev, exists = cache.Get(spk2, rv2.Tweak)
+		cachedRev, exists = cache.Get(modules.DeriveRegistryEntryID(spk2, rv2.Tweak))
 		if !exists {
 			return errors.New("rv2: cached entry doesn't exist")
 		}
@@ -999,7 +999,7 @@ func TestHandleNotification(t *testing.T) {
 		// The worker cache and subscription should be updated.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache.
-			if revNum, found := wt.staticRegistryCache.Get(spk, rv.Tweak); !found || revNum != rv.Revision {
+			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv.Revision {
 				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
 			}
 			// Check subscription.
@@ -1041,7 +1041,7 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv2.
-			if revNum, found := wt.staticRegistryCache.Get(spk, rv.Tweak); !found || revNum != rv2.Revision {
+			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv2.Revision {
 				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv2.Revision, found)
 			}
 			// Check subscription. Should be set to rv2.
@@ -1078,7 +1078,7 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv.
-			if revNum, found := wt.staticRegistryCache.Get(spk, rv.Tweak); !found || revNum != rv.Revision {
+			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv.Revision {
 				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
 			}
 			// Check subscription. Should be set to rv.
@@ -1110,7 +1110,7 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv.
-			if revNum, found := wt.staticRegistryCache.Get(spk, rv.Tweak); !found || revNum != rv.Revision {
+			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv.Revision {
 				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
 			}
 			// Check subscription. Should be set to rv.
