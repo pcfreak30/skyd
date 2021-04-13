@@ -80,6 +80,13 @@ func isSkylinkV1(bitfield uint16) bool {
 	return bitfield&3 == 0
 }
 
+// isSkylinkV2 returns a boolean indicating if the Skylink is a V2 skylink
+func isSkylinkV2(bitfield uint16) bool {
+	// We compare against 1 here because a V2 skylink only uses the version
+	// bits. All other bits should be set to 0.
+	return bitfield == 1
+}
+
 // NewSkylinkV2 creates a version 2 skylink.
 func NewSkylinkV2(spk types.SiaPublicKey, tweak crypto.Hash) Skylink {
 	var sl Skylink
@@ -354,9 +361,13 @@ func (sl *Skylink) LoadBytes(data []byte) error {
 	// Skylink so that the Skylink remains unchanged if there is any error
 	// parsing the string.
 	bitfield := binary.LittleEndian.Uint16(data)
-	_, _, err := validateAndParseV1Bitfield(bitfield)
-	if err != nil {
-		return errors.AddContext(err, "skylink failed verification")
+
+	// V2 links are not verified since the bitfield isn't used.
+	if !isSkylinkV2(bitfield) {
+		_, _, err := validateAndParseV1Bitfield(bitfield)
+		if err != nil {
+			return errors.AddContext(err, "skylink failed verification")
+		}
 	}
 
 	// Load the raw data.
