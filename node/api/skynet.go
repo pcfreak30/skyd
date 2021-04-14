@@ -1517,7 +1517,7 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	// Read registry.
 	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
-	srv, err := api.renter.ReadRegistry(ctx, modules.DeriveRegistryEntryID(spk, dataKey), &spk, &dataKey)
+	srv, err := api.renter.ReadRegistry(ctx, spk, dataKey)
 	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
 		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
 		WriteError(w, Error{err.Error()}, http.StatusNotFound)

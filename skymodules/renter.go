@@ -1275,7 +1275,13 @@ type Renter interface {
 	// have time to finish their jobs and return a response until the context is
 	// closed. Otherwise the response with the highest revision number will be
 	// used.
-	ReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (modules.SignedRegistryValue, error)
+	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error)
+
+	// ReadRegistry starts a registry lookup on all available workers. The jobs
+	// have time to finish their jobs and return a response until the context is
+	// closed. Otherwise the response with the highest revision number will be
+	// used.
+	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.

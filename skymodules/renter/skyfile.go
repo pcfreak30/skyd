@@ -632,7 +632,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 
 	// Check if link needs to be resolved from V2 to V1.
 	if link.Version() == 2 {
-		srv, err := r.ReadRegistry(ctx, link.RegistryEntryID(), nil, nil)
+		srv, err := r.ReadRegistryRID(ctx, link.RegistryEntryID())
 		if err != nil {
 			return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, err
 		}

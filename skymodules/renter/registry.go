@@ -234,22 +234,24 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 	_ = rs.AddDatum(d)
 }
 
-// ReadRegistry starts a registry lookup on all available workers. The
-// jobs have 'timeout' amount of time to finish their jobs and return a
-// response. Otherwise the response with the highest revision number will be
-// used.
-func (r *Renter) ReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (modules.SignedRegistryValue, error) {
-	// Block until there is memory available, and then ensure the memory gets
-	// returned.
-	// Since registry entries are very small we use a fairly generous multiple.
-	if !r.staticRegistryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
-		return modules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
-	}
-	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
-
-	// Start the ReadRegistry jobs.
+// ReadRegistry starts a registry lookup on all available workers. The jobs have
+// until ctx is closed to return a response. Otherwise the response with the
+// highest revision number will be used.
+func (r *Renter) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
 	start := time.Now()
-	srv, err := r.managedReadRegistry(ctx, rid, spk, tweak)
+	srv, err := r.managedReadRegistry(ctx, modules.DeriveRegistryEntryID(spk, tweak), &spk, &tweak)
+	if errors.Contains(err, ErrRegistryLookupTimeout) {
+		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", time.Since(start).Seconds()))
+	}
+	return srv, err
+}
+
+// ReadRegistryRID starts a registry lookup on all available workers. The jobs
+// have until ctx is closed to return a response. Otherwise the response with
+// the highest revision number will be used.
+func (r *Renter) ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error) {
+	start := time.Now()
+	srv, err := r.managedReadRegistry(ctx, rid, nil, nil)
 	if errors.Contains(err, ErrRegistryLookupTimeout) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", time.Since(start).Seconds()))
 	}
@@ -289,6 +291,14 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // response. Otherwise the response with the highest revision number will be
 // used.
 func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (modules.SignedRegistryValue, error) {
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	// Since registry entries are very small we use a fairly generous multiple.
+	if !r.staticRegistryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
+		return modules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
+	}
+	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
+
 	// Specify a sane timeout for jobs that is independent of the user specified
 	// timeout. It is the maximum time that we let a job execute in the
 	// background before cancelling it.
