@@ -1,12 +1,55 @@
 package renter
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// TestHasSectorJobBatchCallNext makes sure that multiple has sector jobs are
+// batched together correctly.
+func TestHasSectorJobBatchCallNext(t *testing.T) {
+	t.Parallel()
+
+	// Create queue and job.
+	queue := jobHasSectorQueue{
+		jobGenericQueue: newJobGenericQueue(&worker{}),
+	}
+	jhs := &jobHasSector{
+		jobGeneric: &jobGeneric{
+			staticQueue: queue,
+			staticCtx:   context.Background(),
+		},
+	}
+
+	// add jobs
+	for i := 0; i < int(hasSectorBatchSize)+1; i++ {
+		if !queue.callAdd(jhs) {
+			t.Fatal("job wasn't added")
+		}
+	}
+
+	// call callNext 3 times.
+	next1 := queue.callNext()
+	next2 := queue.callNext()
+	next3 := queue.callNext()
+
+	// the first should contain hasSectorBatchSize jobs, the second one 1 job and the
+	// third one should be nil.
+	if l := len(next1.(*jobHasSectorBatch).staticJobs); l != int(hasSectorBatchSize) {
+		t.Fatal("wrong size", l, hasSectorBatchSize)
+	}
+	if len(next2.(*jobHasSectorBatch).staticJobs) != 1 {
+		t.Fatal("wrong size")
+	}
+	if next3 != nil {
+		t.Fatal("should be nil")
+	}
+}
 
 // TestHasSectorJobExpectedBandwidth is a unit test that verifies our HS job
 // bandwidth estimates are given in a way we never execute a program and run out
@@ -54,10 +97,23 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 		jhs := new(jobHasSector)
 		jhs.staticSectors = sectors
 
+		// build a batch from the job for comparison
+		jhsb := *&jobHasSectorBatch{
+			staticJobs: []*jobHasSector{
+				jhs,
+			},
+		}
+
 		// calculate cost
 		ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
 		bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 		cost = cost.Add(bandwidthCost)
+
+		// cost of batch should match.
+		ulb, dlb := jhsb.callExpectedBandwidth()
+		if ulb != ulBandwidth || dlb != dlBandwidth {
+			t.Fatal("batch bandwidth doesn't match job bandwidth")
+		}
 
 		// execute the program
 		_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
@@ -98,5 +154,58 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 	dl, ul = numPacketsRequiredForSectors(17)
 	if dl != 2 || ul != 2 {
 		t.Fatal("unexpected")
+	}
+}
+
+// TestAddWithEstimate is a unit test for the hasSector job queue's
+// callAddWithEstimate method.
+func TestAddWithEstimate(t *testing.T) {
+	t.Parallel()
+
+	wjt := time.Millisecond * 100 // 100 ms
+	queue := jobHasSectorQueue{
+		weightedJobTime: float64(wjt),
+		jobGenericQueue: newJobGenericQueue(&worker{}),
+	}
+	j := &jobHasSector{
+		jobGeneric: &jobGeneric{},
+	}
+
+	for i := 0; i < 1200; i++ {
+		// Get the current time.
+		n := time.Now()
+
+		// Add the job.
+		endTime, err := queue.callAddWithEstimate(j, time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The job's start time should be after n.
+		if j.externJobStartTime.Before(n) {
+			t.Fatal("start not set correctly")
+		}
+
+		estimate := queue.expectedJobTime()
+		if queue.jobs.Len() > hasSectorEstimatePenaltyThreshold {
+			penalizedJobs := queue.jobs.Len() - hasSectorEstimatePenaltyThreshold
+			for i := 0; i < penalizedJobs-1; i += hasSectorBatchSize {
+				multiplier := hasSectorEstimatePenalty * float64(i+1) // +0.1%
+				if multiplier > 1.0 {
+					multiplier = 1.0 // cap it at 100%
+				}
+				estimate += time.Duration(float64(wjt) * multiplier)
+			}
+		}
+
+		// The estimate should be correct.
+		if j.externEstimatedJobDuration != estimate {
+			t.Fatal("wrong estimate", j.externEstimatedJobDuration, estimate)
+		}
+
+		// endTime should be start + estimate.
+		if endTime != j.externJobStartTime.Add(estimate) {
+			t.Fatal("wrong end time", endTime, j.externJobStartTime.Add(estimate))
+		}
 	}
 }

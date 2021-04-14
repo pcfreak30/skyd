@@ -1,0 +1,2 @@
+- download code won't schedule a hasSector job if it's expected completion time is too high
+- hasSector job expected completion time now considers the queue length
