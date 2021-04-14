@@ -1097,7 +1097,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
 	if params.convertPath == "" {
-		skylink, err := api.renter.UploadSkyfile(sup, reader)
+		skylink, err := api.renter.UploadSkyfile(req.Context(), sup, reader)
 		if errors.Contains(err, renter.ErrSkylinkBlocked) {
 			WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 			return

@@ -412,7 +412,7 @@ func (r *Renter) managedUploadBaseSector(sup skymodules.SkyfileUploadParameters,
 
 // managedUploadSkyfile uploads a file and returns the skylink and whether or
 // not it was a large file.
-func (r *Renter) managedUploadSkyfile(sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skymodules.Skylink, error) {
+func (r *Renter) managedUploadSkyfile(ctx context.Context, sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skymodules.Skylink, error) {
 	// see if we can fit the entire upload in a single chunk
 	buf := make([]byte, modules.SectorSize)
 	numBytes, err := io.ReadFull(reader, buf)
@@ -423,7 +423,7 @@ func (r *Renter) managedUploadSkyfile(sup skymodules.SkyfileUploadParameters, re
 	// Skyfile as a small file
 	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 		// get the skyfile metadata from the reader
-		metadata, err := reader.SkyfileMetadata(r.tg.StopCtx())
+		metadata, err := reader.SkyfileMetadata(ctx)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata")
 		}
@@ -453,7 +453,7 @@ func (r *Renter) managedUploadSkyfile(sup skymodules.SkyfileUploadParameters, re
 	// set buffer nil to allow for GC to pick it up before starting the upload.
 	// That way it won't stick around until the upload is done.
 	buf = nil
-	return r.managedUploadSkyfileLargeFile(sup, reader)
+	return r.managedUploadSkyfileLargeFile(ctx, sup, reader)
 }
 
 // managedUploadSkyfileSmallFile uploads a file that fits entirely in the
@@ -504,7 +504,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 // data to a large siafile and upload it to the Sia network using
 // 'callUploadStreamFromReader'. The final skylink is created by calling
 // 'CreateSkylinkFromSiafile' on the resulting siafile.
-func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (_ skymodules.Skylink, err error) {
+func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (_ skymodules.Skylink, err error) {
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
 	siaPath, err := skymodules.NewSiaPath(sup.SiaPath.String() + skymodules.ExtendedSuffix)
@@ -572,7 +572,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	}
 
 	// Get the SkyfileMetadata from the reader object.
-	metadata, err := fileReader.SkyfileMetadata(r.tg.StopCtx())
+	metadata, err := fileReader.SkyfileMetadata(ctx)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata")
 	}
@@ -964,7 +964,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 // returning a skylink which can be used by any portal to recover the full
 // original file and metadata. The skylink will be unique to the combination of
 // both the file data and metadata.
-func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skylink skymodules.Skylink, err error) {
+func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skylink skymodules.Skylink, err error) {
 	// Set reasonable default values for any sup fields that are blank.
 	skyfileEstablishDefaults(&sup)
 
@@ -992,7 +992,7 @@ func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader sk
 	}()
 
 	// Upload the skyfile
-	skylink, err = r.managedUploadSkyfile(sup, reader)
+	skylink, err = r.managedUploadSkyfile(ctx, sup, reader)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
