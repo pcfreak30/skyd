@@ -23,9 +23,9 @@ import (
 	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
 )
 
-// MaxCriticalRenewFailThreshold is the maximum number of contracts failing to renew as
-// fraction of the total hosts in the allowance before renew alerts are made
-// critical.
+// MaxCriticalRenewFailThreshold is the maximum number of contracts failing to
+// renew as fraction of the total gfr contracts in the allowance before renew
+// alerts are made critical.
 const MaxCriticalRenewFailThreshold = 0.2
 
 var (
@@ -1392,9 +1392,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		alertSeverity := modules.SeverityError
-		// Increase the alert severity for renewal fails to critical if the number of
-		// contracts which failed to renew is more than 20% of the number of hosts.
-		if float64(numRenewFails) > math.Ceil(float64(allowance.Hosts)*MaxCriticalRenewFailThreshold) {
+		// Increase the alert severity for renewal fails to critical if the
+		// number of contracts which failed to renew is more than 20% of the
+		// number of gfr contracts.
+		if float64(numRenewFails) > math.Ceil(float64(gfrContracts)*MaxCriticalRenewFailThreshold) {
 			alertSeverity = modules.SeverityCritical
 		}
 		if renewErr != nil {
