@@ -2273,7 +2273,7 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	// Check for alert
 	expectedAlert := modules.Alert{
 		Severity: modules.SeverityCritical,
-		Cause:    "Renew failure due to dependency",
+		Cause:    "2 out of 2 renewals failed - number of total gfr contracts is 2 - see contractor.log for details",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
 	}
