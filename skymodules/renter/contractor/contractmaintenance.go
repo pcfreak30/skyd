@@ -1401,7 +1401,8 @@ func (c *Contractor) threadedContractMaintenance() {
 		if renewErr != nil {
 			c.staticLog.Debugln("SEVERE", numRenewFails, float64(allowance.Hosts)*MaxCriticalRenewFailThreshold)
 			c.staticLog.Debugln("alert err: ", renewErr)
-			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.AlertSeverity(alertSeverity))
+			alertMSG := fmt.Sprintf("%v out of %v renewals failed - number of total gfr contracts is %v - see contractor.log for details", numRenewFails, len(renewSet), gfrContracts)
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, alertMSG, modules.AlertSeverity(alertSeverity))
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterContractRenewalError)
 		}
