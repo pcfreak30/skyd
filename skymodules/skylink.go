@@ -361,13 +361,16 @@ func (sl *Skylink) LoadBytes(data []byte) error {
 	// Skylink so that the Skylink remains unchanged if there is any error
 	// parsing the string.
 	bitfield := binary.LittleEndian.Uint16(data)
-
-	// V2 links are not verified since the bitfield isn't used.
-	if !isSkylinkV2(bitfield) {
-		_, _, err := validateAndParseV1Bitfield(bitfield)
-		if err != nil {
-			return errors.AddContext(err, "skylink failed verification")
-		}
+	var err error
+	if isSkylinkV1(bitfield) {
+		_, _, err = validateAndParseV1Bitfield(bitfield)
+	} else if isSkylinkV2(bitfield) {
+		// nothing to check for V2 skylinks
+	} else {
+		err = errors.New("unknown skylink version")
+	}
+	if err != nil {
+		return errors.AddContext(err, "skylink failed verification")
 	}
 
 	// Load the raw data.
