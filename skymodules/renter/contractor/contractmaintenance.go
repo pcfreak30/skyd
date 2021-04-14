@@ -686,8 +686,8 @@ func (c *Contractor) managedLimitGFUHosts() {
 	}
 	toAdd := toTrim * -1
 
-	// Grab a good amount of random hosts from the potential set that are not
-	// already in the preferred set.
+	// Grab random hosts from the potential set that are not already in the
+	// preferred set.
 	var blacklist []types.SiaPublicKey
 	for host := range preferredHosts {
 		if _, alreadyPreferred := preferredHosts[host]; !alreadyPreferred {
