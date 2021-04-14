@@ -686,7 +686,8 @@ func (c *Contractor) managedLimitGFUHosts() {
 	}
 	toAdd := toTrim * -1
 
-	// Grab a good amount of random hosts.
+	// Grab a good amount of random hosts from the potential set that are not
+	// already in the preferred set.
 	var blacklist []types.SiaPublicKey
 	for host := range preferredHosts {
 		if _, alreadyPreferred := preferredHosts[host]; !alreadyPreferred {
@@ -701,7 +702,7 @@ func (c *Contractor) managedLimitGFUHosts() {
 		// Ignore hosts that are already in the preferred set.
 		blacklist = append(blacklist, spk)
 	}
-	hosts, err := c.staticHDB.RandomHosts(wantedHosts*4+randomHostsBufferForScore, blacklist, blacklist)
+	hosts, err := c.staticHDB.RandomHostsWithWhitelist(toAdd, blacklist, blacklist, potentialHosts)
 	if err != nil {
 		c.staticLog.Print("managedLimitGFUHosts: failed to get random hosts:", err)
 		return
@@ -715,6 +716,8 @@ func (c *Contractor) managedLimitGFUHosts() {
 			continue // try next
 		}
 		preferredHosts[host] = struct{}{}
+		delete(potentialHosts, host)
+		toAdd--
 	}
 
 	// Sanity check length of set.
