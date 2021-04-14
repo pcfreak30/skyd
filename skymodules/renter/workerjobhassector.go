@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	// hasSectorEstimatePenaltyThreshold is a threshold for estimating how long
-	// it takes a hasSector job to complete. If the length of the job queue is
-	// <100*batchSize we don't apply a penalty to the estimate since the worker
-	// can easily execute 100 lookups in parallel. For each additional job, we
-	// add 0.1% more of the estimate for a single job to the total estimate. So
-	// once we have 1100 jobs in the queue, each additional job will have its
-	// full estimate added to the total.
+	// hasSectorEstimatePenaltyThreshold is the threshold at which point a
+	// penalty is added to the estimate for how long it takes a hasSector job to
+	// complete. If the length of the job queue is <100*batchSize we don't apply
+	// a penalty to the estimate since the worker can easily execute 100 lookups
+	// in parallel. For each additional job, we add 0.1% more of the estimate
+	// for a single job to the total estimate. So once we have 1100 jobs in the
+	// queue, each additional job will have its full estimate added to the
+	// total.
 	hasSectorEstimatePenaltyThreshold = 100 * hasSectorBatchSize
 
 	// hostSectorEstimatePenalty is the percentage we add for every job when
@@ -306,7 +307,7 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate ti
 	defer jq.mu.Unlock()
 	now := time.Now()
 
-	// The new new job gets 100% of the estimate.
+	// The new job gets 100% of the estimate.
 	estimate := jq.expectedJobTime()
 
 	// If we have more than hasSectorEstimatePenaltyThreshold jobs in the queue,
