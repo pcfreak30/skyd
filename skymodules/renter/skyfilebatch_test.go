@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -305,12 +306,19 @@ func testBuildBaseSector(t *testing.T) {
 	}
 
 	// Parse the base sector
-	sl, fanout, sm, data, err := skymodules.ParseSkyfileMetadata(baseSector)
+	sl, fanout, sm, smRaw, data, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(fanout) != 0 {
 		t.Fatal("expected no fanout")
+	}
+	smRaw2, err := json.Marshal(sm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(smRaw, smRaw2) {
+		t.Fatal("mismatch")
 	}
 
 	// Build Expected metadata and baseSectorData

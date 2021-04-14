@@ -354,7 +354,7 @@ func TestParseSkyfileMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, _, err = ParseSkyfileMetadata(baseSector)
+	_, _, _, _, _, err = ParseSkyfileMetadata(baseSector)
 	if !errors.Contains(err, ErrUnknownLicense) {
 		t.Fatal("wrong error:", err)
 	}

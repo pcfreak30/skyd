@@ -366,7 +366,7 @@ func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) err
 	// return early.
 	if !skymodules.IsEncryptedBaseSector(baseSector) {
 		// Parse the layout from the baseSector
-		sl, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+		sl, _, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 		if err != nil {
 			return errors.AddContext(err, "unable to parse baseSector")
 		}

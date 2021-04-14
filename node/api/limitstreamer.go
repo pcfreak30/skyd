@@ -17,14 +17,14 @@ import (
 // Further more, it is advised to only wrap a skymodules.Streamer once, wrapping it
 // multiple times might lead to unexpected behavior and was not tested.
 type limitStreamer struct {
-	stream skymodules.Streamer
+	stream skymodules.SkyfileStreamer
 	base   uint64
 	off    uint64
 	limit  uint64
 }
 
 // NewLimitStreamer wraps the given skymodules.Streamer and ensures it can only be read from within the given offset and size boundary. It does this by wrapping both the Read and Seek calls and adjusting the offset and size of the returned byte slice appropriately.
-func NewLimitStreamer(s skymodules.Streamer, offset, size uint64) (skymodules.Streamer, error) {
+func NewLimitStreamer(s skymodules.SkyfileStreamer, offset, size uint64) (skymodules.SkyfileStreamer, error) {
 	ls := &limitStreamer{
 		stream: s,
 		base:   offset,
@@ -50,6 +50,16 @@ func (ls *limitStreamer) Read(p []byte) (n int, err error) {
 	n, err = ls.stream.Read(p)
 	ls.off += uint64(n)
 	return
+}
+
+// Metadata implements the skymodules.SkyfileStreamer interface.
+func (ls *limitStreamer) Metadata() skymodules.SkyfileMetadata {
+	return ls.stream.Metadata()
+}
+
+// RawMetadata implements the skymodules.SkyfileStreamer interface.
+func (ls *limitStreamer) RawMetadata() []byte {
+	return ls.stream.RawMetadata()
 }
 
 // Seek implements the io.Seeker interface

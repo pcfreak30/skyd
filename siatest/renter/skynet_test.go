@@ -1598,7 +1598,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 
 	// Parse the skyfile metadata from the baseSector
-	_, fanoutBytes, metadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, fanoutBytes, metadata, _, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1653,7 +1653,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 
 	// Parse the skyfile metadata from the rootSector
-	_, fanoutBytes, metadata, rootSectorPayload, err := skymodules.ParseSkyfileMetadata(rootSector)
+	_, fanoutBytes, metadata, _, rootSectorPayload, err := skymodules.ParseSkyfileMetadata(rootSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1773,7 +1773,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Parse the information from the BaseSector
-	layout, fanoutBytes, metadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, _, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1963,7 +1963,7 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, fanoutBytes, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, fanoutBytes, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}

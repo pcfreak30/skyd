@@ -672,7 +672,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
-	layout, metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
+	layout, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 		return
@@ -692,6 +692,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}()
 
 	// Validate Metadata
+	metadata := streamer.Metadata()
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)
 		return
@@ -796,12 +797,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		format = skymodules.SkyfileFormatZip
 	}
 
-	// Encode the metadata
-	encMetadata, err := json.Marshal(metadata)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
-		return
-	}
 	// Encode the Layout
 	encLayout := layout.Encode()
 
@@ -864,7 +859,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set the Skynet-File-Metadata
 	includeMetadata := !noResponseMetadata
 	if includeMetadata {
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		w.Header().Set("Skynet-File-Metadata", string(streamer.RawMetadata()))
 	}
 
 	// Declare a function for monetizing a writer.

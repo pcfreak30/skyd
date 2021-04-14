@@ -162,11 +162,11 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 
 	// All baseSectors should be equal in everything except their keydata.
 	equalExceptKeyData := func(x, y []byte) error {
-		xLayout, xFanoutBytes, xSM, xPayload, err := skymodules.ParseSkyfileMetadata(x)
+		xLayout, xFanoutBytes, xSM, _, xPayload, err := skymodules.ParseSkyfileMetadata(x)
 		if err != nil {
 			return err
 		}
-		yLayout, yFanoutBytes, ySM, yPayload, err := skymodules.ParseSkyfileMetadata(y)
+		yLayout, yFanoutBytes, ySM, _, yPayload, err := skymodules.ParseSkyfileMetadata(y)
 		if err != nil {
 			return err
 		}
@@ -255,7 +255,7 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 	}
 
 	// Testing fanout key derivation.
-	layoutForFanout, _, _, _, err := skymodules.ParseSkyfileMetadata(bsCopy1)
+	layoutForFanout, _, _, _, _, err := skymodules.ParseSkyfileMetadata(bsCopy1)
 	if err != nil {
 		t.Fatal(err)
 	}
