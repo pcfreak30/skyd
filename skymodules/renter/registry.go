@@ -312,6 +312,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 
 	// Filter out hosts that don't support the registry.
 	numRegistryWorkers := 0
+	startTime := time.Now()
 	for _, worker := range workers {
 		cache := worker.staticCache()
 		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
@@ -357,7 +358,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	responseSet := newReadResponseSet(staticResponseChan, numWorkers)
 
 	// Add the response set to the stats after this method is done.
-	startTime := time.Now()
 	defer func() {
 		_ = r.tg.Launch(func() {
 			r.staticRRS.threadedAddResponseSet(backgroundCtx, startTime, responseSet)

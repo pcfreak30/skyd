@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 )
 
@@ -37,6 +38,13 @@ type readRegistryStats struct {
 func (rrs *readRegistryStats) AddDatum(duration time.Duration) error {
 	rrs.mu.Lock()
 	defer rrs.mu.Unlock()
+
+	// A negative duration is invalid.
+	if duration < 0 {
+		err := errors.New("AddDatum: can't add negative duration")
+		build.Critical(err)
+		return err
+	}
 
 	// Figure out if we need to decay this time by checking the time since the
 	// last decay against the interval.
