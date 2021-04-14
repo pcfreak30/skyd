@@ -422,6 +422,44 @@ func (c *Contractor) callInterruptContractMaintenance() {
 	}
 }
 
+// managedAddPreferredHosts adds toAdd hosts to the preferredHosts set from the
+// potentialHosts set and removes them from the potentialHosts.
+func (c *Contractor) managedAddPreferredHosts(toAdd int, preferredHosts, potentialHosts map[string]struct{}) {
+	// Grab random hosts from the potential set that are not already in the
+	// preferred set.
+	var blacklist []types.SiaPublicKey
+	for host := range preferredHosts {
+		if _, alreadyPreferred := preferredHosts[host]; !alreadyPreferred {
+			continue
+		}
+		var spk types.SiaPublicKey
+		err := spk.LoadString(host)
+		if err != nil {
+			build.Critical("managedLimitGFUHosts: failed to marshal hostkey", err)
+			continue
+		}
+		// Ignore hosts that are already in the preferred set.
+		blacklist = append(blacklist, spk)
+	}
+	hosts, err := c.staticHDB.RandomHostsWithWhitelist(toAdd, blacklist, blacklist, potentialHosts)
+	if err != nil {
+		c.staticLog.Print("managedLimitGFUHosts: failed to get random hosts:", err)
+		return
+	}
+
+	// Add hosts to fill the set.
+	for i := 0; i < len(hosts) && toAdd > 0; i++ {
+		host := hosts[i].PublicKey.String()
+		_, exists := potentialHosts[host]
+		if !exists {
+			continue // try next
+		}
+		preferredHosts[host] = struct{}{}
+		delete(potentialHosts, host)
+		toAdd--
+	}
+}
+
 // managedFindMinAllowedHostScores uses a set of random hosts from the hostdb to
 // calculate minimum acceptable score for a host to be marked GFR and GFU.
 func (c *Contractor) managedFindMinAllowedHostScores() (types.Currency, types.Currency, error) {
@@ -679,45 +717,10 @@ func (c *Contractor) managedLimitGFUHosts() {
 		delete(preferredHosts, host)
 		toTrim--
 	}
-	// If toTrim is 0, we are done. Only if it's a negative number, we need to
-	// fill the set up.
-	if toTrim == 0 {
-		return
-	}
-	toAdd := toTrim * -1
-
-	// Grab random hosts from the potential set that are not already in the
-	// preferred set.
-	var blacklist []types.SiaPublicKey
-	for host := range preferredHosts {
-		if _, alreadyPreferred := preferredHosts[host]; !alreadyPreferred {
-			continue
-		}
-		var spk types.SiaPublicKey
-		err := spk.LoadString(host)
-		if err != nil {
-			build.Critical("managedLimitGFUHosts: failed to marshal hostkey", err)
-			continue
-		}
-		// Ignore hosts that are already in the preferred set.
-		blacklist = append(blacklist, spk)
-	}
-	hosts, err := c.staticHDB.RandomHostsWithWhitelist(toAdd, blacklist, blacklist, potentialHosts)
-	if err != nil {
-		c.staticLog.Print("managedLimitGFUHosts: failed to get random hosts:", err)
-		return
-	}
-
-	// Add hosts to fill the set.
-	for i := 0; i < len(hosts) && toAdd > 0; i++ {
-		host := hosts[i].PublicKey.String()
-		_, exists := potentialHosts[host]
-		if !exists {
-			continue // try next
-		}
-		preferredHosts[host] = struct{}{}
-		delete(potentialHosts, host)
-		toAdd--
+	// If toTrim is >=0, we are done. Only if it's a negative number, we need to
+	// fill the set up with more hosts.
+	if toTrim < 0 {
+		c.managedAddPreferredHosts(toTrim*-1, preferredHosts, potentialHosts)
 	}
 
 	// Sanity check length of set.
@@ -725,7 +728,7 @@ func (c *Contractor) managedLimitGFUHosts() {
 		build.Critical("too many contracts in the set of preferred contracts")
 	}
 
-	// Mark all contracts as !gfu if they are not in the preferred set.
+	// Mark all contracts that are not in the preferred set as !gfu.
 	for _, contract := range c.Contracts() {
 		_, isPreferred := preferredHosts[contract.HostPublicKey.String()]
 		if isPreferred {
@@ -736,7 +739,7 @@ func (c *Contractor) managedLimitGFUHosts() {
 		}
 		sc, ok := c.staticContracts.Acquire(contract.ID)
 		if !ok {
-			c.staticLog.Print("managedLimitGFUHosts: failed to acquire contract", err)
+			c.staticLog.Print("managedLimitGFUHosts: failed to acquire contract")
 			continue
 		}
 		u := sc.Utility()
