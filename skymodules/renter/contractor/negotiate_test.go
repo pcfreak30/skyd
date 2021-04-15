@@ -13,9 +13,9 @@ import (
 	modWallet "gitlab.com/NebulousLabs/Sia/modules/wallet" // name conflicts with type
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
 
 	"gitlab.com/NebulousLabs/errors"
 )

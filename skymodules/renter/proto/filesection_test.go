@@ -10,7 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 // SafeReadAt is a wrapper for ReadAt that recovers from a potential panic and
