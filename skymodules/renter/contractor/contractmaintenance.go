@@ -715,10 +715,10 @@ func (c *Contractor) managedLimitGFUHosts() {
 		delete(preferredHosts, host)
 		toTrim--
 	}
-	// If toTrim is >=0, we are done. Only if it's a negative number, we need to
-	// fill the set up with more hosts.
-	if toTrim < 0 {
-		c.managedAddPreferredHosts(toTrim*-1, preferredHosts, potentialHosts)
+	// If there are too few, add some.
+	toAdd := int(wantedHosts) - len(preferredHosts)
+	if toAdd > 0 {
+		c.managedAddPreferredHosts(toAdd, preferredHosts, potentialHosts)
 	}
 
 	// Sanity check length of set.
