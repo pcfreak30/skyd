@@ -2273,7 +2273,7 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	// Check for alert
 	expectedAlert := modules.Alert{
 		Severity: modules.SeverityCritical,
-		Cause:    "Renew failure due to dependency",
+		Cause:    "2 out of 2 renewals failed - number of total gfr contracts is 2 - see contractor.log for details",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
 	}
@@ -2760,7 +2760,7 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 	// Check for alert
 	expectedAlert := modules.Alert{
 		Severity: modules.SeverityError,
-		Cause:    "rejected for low paying host valid output",
+		Cause:    "1 out of 1 renewals failed - number of total gfr contracts is 1 - see contractor.log for details",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
 	}
