@@ -19,6 +19,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 var (
@@ -309,11 +310,13 @@ func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, 
 				greater25++
 			case file.MaxHealthPercent > 0 || file.OnDisk:
 				greater0++
-			default:
+			case siafile.Unrecoverable(file.MaxHealth, file.OnDisk):
 				unrecoverable++
 				if printLostFiles {
 					fmt.Println(file.SiaPath)
 				}
+			default:
+				return nil, 0, fmt.Errorf("unexpected file conditition; Health %v, OnDisk %v", file.MaxHealthPercent, file.OnDisk)
 			}
 		}
 	}

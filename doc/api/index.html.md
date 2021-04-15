@@ -1895,6 +1895,7 @@ relative to 'home/user/'.
       "aggregateminredundancy":       2.6,  // float64
       "aggregatemostrecentmodtime":   "2018-09-23T08:00:00.000000000+04:00" // timestamp
       "aggregatenumfiles":            2,    // uint64
+      "aggregatenumlostfiles":        0,    // uint64
       "aggregatenumstuckchunks":      4,    // uint64
       "aggregatenumsubdirs":          4,    // uint64
       "aggregaterepairsize":          4096, // uint64
@@ -1913,6 +1914,7 @@ relative to 'home/user/'.
       "mode":                0666,     // uint32
       "mostrecentmodtime":   "2018-09-23T08:00:00.000000000+04:00" // timestamp
       "numfiles":            3,        // uint64
+      "numlostfiles":        0,        // uint64
       "numstuckchunks":      3,        // uint64
       "numsubdirs":          2,        // uint64
       "repairsize":          4096,     // uint64
@@ -1967,6 +1969,11 @@ The most recent mod time of any file or directory in the sub directory tree
 
 **aggregatenumfiles** | **numfiles** | uint64\
 The total number of files in the sub directory tree
+
+**aggregatenumlostfiles** | **numlostfiles** | uint64\
+The total number of lost files in the sub directory tree. A file is considered
+lost if the redundancy has dropped below 1 and there is not a local file to
+repair from.
 
 **aggregatenumstuckchunks** | **aggregatenumstuckchunks** | uint64\
 The total number of stuck chunks in the sub directory tree

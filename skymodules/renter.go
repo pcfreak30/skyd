@@ -384,6 +384,7 @@ type DirectoryInfo struct {
 	AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
 	AggregateMostRecentModTime   time.Time `json:"aggregatemostrecentmodtime"`
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+	AggregateNumLostFiles        uint64    `json:"aggregatenumlostfiles"`
 	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
 	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
@@ -405,6 +406,7 @@ type DirectoryInfo struct {
 	DirMode             os.FileMode `json:"mode,siamismatch"` // Field is called DirMode for fuse compatibility
 	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
 	NumFiles            uint64      `json:"numfiles"`
+	NumLostFiles        uint64      `json:"numlostfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
 	RepairSize          uint64      `json:"repairsize"`
@@ -1271,11 +1273,17 @@ type Renter interface {
 	// settings, assuming perfect age and uptime adjustments
 	EstimateHostScore(entry HostDBEntry, allowance Allowance) (HostScoreBreakdown, error)
 
-	// ReadRegistry starts a registry lookup on all available workers. The
-	// jobs have 'timeout' amount of time to finish their jobs and return a
-	// response. Otherwise the response with the highest revision number will be
+	// ReadRegistry starts a registry lookup on all available workers. The jobs
+	// have time to finish their jobs and return a response until the context is
+	// closed. Otherwise the response with the highest revision number will be
 	// used.
-	ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error)
+	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error)
+
+	// ReadRegistry starts a registry lookup on all available workers. The jobs
+	// have time to finish their jobs and return a response until the context is
+	// closed. Otherwise the response with the highest revision number will be
+	// used.
+	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.

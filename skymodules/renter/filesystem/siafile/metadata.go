@@ -185,6 +185,7 @@ type (
 		StuckBytes          uint64
 		StuckHealth         float64
 		UID                 SiafileUID
+		Unrecoverable       bool
 	}
 )
 

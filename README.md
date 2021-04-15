@@ -1,4 +1,4 @@
-# [![Sia Logo](https://sia.tech/static/assets/svg/sia-green-logo.svg)](http://sia.tech)
+# [<img src='https://siasky.net/AAAm79DFoiOyJXiFmPqDr-GFUNwgytYK3VAVy67cFTG7-A' width="75%" >](http://siasky.net)
 
 [![Build Status](https://gitlab.com/SkynetLabs/skyd/badges/master/pipeline.svg)](https://gitlab.com/SkynetLabs/skyd/commits/master)
 [![Coverage Report](https://gitlab.com/SkynetLabs/skyd/badges/master/coverage.svg)](https://gitlab.com/SkynetLabs/skyd/commits/master)
@@ -6,62 +6,17 @@
 [![Go Report Card](https://goreportcard.com/badge/gitlab.com/SkynetLabs/skyd)](https://goreportcard.com/report/gitlab.com/SkynetLabs/skyd)
 [![Skynet License](https://img.shields.io/badge/license-skynet%20license-blue)](https://gitlab.com/SkynetLabs/skyd/-/blob/master/LICENSE.md)
 
-Sia is a decentralized cloud storage platform that radically alters the
-landscape of cloud storage. By leveraging smart contracts, client-side
-encryption, and sophisticated redundancy (via Reed-Solomon codes), Sia allows
-users to safely store their data with hosts that they do not know or trust.
-The result is a cloud storage marketplace where hosts compete to offer the
-best service at the lowest price. And since there is no barrier to entry for
-hosts, anyone with spare storage capacity can join the network and start
-making money.
+Skynet is a content and application hosting platform bringing
+decentralized storage to users, creators and app developers.
 
-![UI](https://i.imgur.com/BFMQwhg.png)
+Skynet is build on [Sia](https://github.com/SiaFoundation), the leading
+decentralized data storage platform.
 
-Traditional cloud storage has a number of shortcomings. Users are limited to a
-few big-name offerings: Google, Microsoft, Amazon. These companies have little
-incentive to encrypt your data or make it easy to switch services later. Their
-code is closed-source, and they can lock you out of your account at any time.
-
-We believe that users should own their data. Sia achieves this by replacing
-the traditional monolithic cloud storage provider with a blockchain and a
-swarm of hosts, each of which stores an encrypted fragment of your data. Since
-the fragments are redundant, no single host can hold your data hostage: if
-they jack up their price or go offline, you can simply download from a
-different host. In other words, trust is removed from the equation, and
-switching to a different host is painless. Stripped of these unfair
-advantages, hosts must compete solely on the quality and price of the storage
-they provide.
-
-Sia can serve as a replacement for personal backups, bulk archiving, content
-distribution, and more. For developers, Sia is a low-cost alternative to
-Amazon S3. Storage on Sia is a full order of magnitude cheaper than on S3,
-with comparable bandwidth, latency, and durability. Sia works best for static
-content, especially media like videos, music, and photos.
-
-Distributing data across many hosts automatically confers several advantages.
-The most obvious is that, just like BitTorrent, uploads and downloads are
-highly parallel. Given enough hosts, Sia can saturate your bandwidth. Another
-advantage is that your data is spread across a wide geographic area, reducing
-latency and safeguarding your data against a range of attacks.
-
-It is important to note that users have full control over which hosts they
-use. You can tailor your host set for minimum latency, lowest price, widest
-geographic coverage, or even a strict whitelist of IP addresses or public
-keys.
-
-At the core of Sia is a blockchain that closely resembles Bitcoin. Transactions
-are conducted in Siacoin, a cryptocurrency. The blockchain is what allows Sia to
-enforce its smart contracts without relying on centralized authority. To acquire
-siacoins, use an exchange such as [Binance](https://binance.com),
-[Bittrex](https://bittrex.com), [Shapeshift](https://shapeshift.io), or
-[Poloniex](https://poloniex.com).
-
-To get started with Sia, check out the guides below:
-
-- [Storing files with Sia-UI](https://blog.sia.tech/a-guide-to-sia-ui-v1-4-0-7ec3dfcae35a)
-- [How to Store Data on Sia](https://blog.sia.tech/getting-started-with-private-decentralized-cloud-storage-c9565dc8c854)
-- [How to Become a Sia Host](https://blog.sia.tech/how-to-run-a-host-on-sia-2159ebc4725)
-- [Using the Sia API](https://blog.sia.tech/api-quickstart-guide-f1d160c05235)
+This repo contains the code for `skyd` which is required for running a minimum
+Skynet Portal. For more information on what a portal is and how it interacts
+with the rest of the Skynet ecosytem, head over to the [Skynet Support
+Docs](https://support.siasky.net/getting-started/skynet-basics) for the most up
+to date documentation. 
 
 License
 -----
@@ -78,43 +33,50 @@ following Siacoin address:
 Usage
 -----
 
-Sia is ready for use with small sums of money and non-critical files, but
-until the network has a more proven track record, we advise against using it
-as a sole means of storing important data.
+The majority of Skynet users don't need to interact with `skyd`. If you are
+looking to get started using Skynet, we recommended heading over to our
+[Public Web Portal](https://siasky.net) and sign up for an account
+[here](https://account.siasky.net). For developers, check out our information
+on our [Developers page](https://siasky.net/developers).
 
-This release comes with 2 binaries, siad and siac. siad is a background service,
-or "daemon," that runs the Sia protocol and exposes an HTTP API on port 9980.
-siac is a command-line client that can be used to interact with siad in a
-user-friendly way. There is also a graphical client,
-[Sia-UI](https://gitlab.com/NebulousLabs/Sia-UI), which is the preferred way of
-using Sia for most users. For interested developers, the siad API is documented
-at [sia.tech/docs](https://sia.tech/docs/).
+This repo and README are for those looking to contribute to `skyd` development,
+or are interested in running their own Skynet Portal.
 
-siad and siac are run via command prompt. On Windows, you can just double-
-click siad.exe if you don't need to specify any command-line arguments.
+`skyd` releases comes with 2 binaries, `skyd` and `skyc`. `skyd` is a
+background service, or "daemon," that runs the `skyd` protocol and exposes an
+HTTP API on port 9980.  `skyc` is a command-line client that can be used to
+interact with `skyd` in a user-friendly way. For interested developers, the
+`skyd` API is documented
+[here](https://gitlab.com/SkynetLabs/skyd/-/blob/master/doc/api/index.html.md).
+**NOTE:** this API is for building directly on `skyd`. Most Skynet developers
+will only need to interact with the [Skynet SDK](https://siasky.net/docs).
+
+`skyd` and `skyc` are run via command prompt. On Windows, you can just double-
+click `skyd`.exe if you don't need to specify any command-line arguments.
 Otherwise, navigate to its containing folder and click File->Open command
-prompt. Then, start the siad service by entering `siad` and pressing Enter.
-The command prompt may appear to freeze; this means siad is waiting for
+prompt. Then, start the `skyd` service by entering `skyd` and pressing Enter.
+The command prompt may appear to freeze; this means `skyd` is waiting for
 requests. Windows users may see a warning from the Windows Firewall; be sure
 to check both boxes ("Private networks" and "Public networks") and click
-"Allow access." You can now run `siac` (in a separate command prompt) or Sia-
-UI to interact with siad. From here, you can send money, upload and download
+"Allow access." You can now run `skyc` (in a separate command prompt) or Sia-
+UI to interact with `skyd`. From here, you can send money, upload and download
 files, and advertise yourself as a host.
 
 Building From Source
 --------------------
 
 To build from source, [Go 1.13 or above must be
-installed](https://golang.org/doc/install) on the system. Clone the repo and run
-`make`:
+installed](https://golang.org/doc/install) on the system. Clone the repo and
+run `make`:
 
 ```
-git clone https://gitlab.com/NebulousLabs/Sia
-cd Sia && make dependencies && make
+git clone https://gitlab.com/SkynetLabs/skyd
+cd skyd && make dependencies && make
 ```
 
-This will install the `siad` and `siac` binaries in your `$GOPATH/bin` folder.
-(By default, this is `$HOME/go/bin`.)
+This will install the `skyd` and `skyc` binaries in your `$GOPATH/bin` folder.
+(By default, this is `$HOME/go/bin`.) You can find more information about
+`$GOPATH` [here](https://github.com/golang/go/wiki/GOPATH).
 
 You can also run `make test` and `make test-long` to run the short and full test
 suites, respectively. Finally, `make cover` will generate code coverage reports
@@ -124,8 +86,7 @@ your browser.
 Official Releases
 --------------------
 Official binaries can be found under
-[Releases](https://gitlab.com/NebulousLabs/Sia/-/releases) or on
-[sia.tech](https://sia.tech/get-started).
+[Releases](https://gitlab.com/SkynetLabs/skyd/-/releases)
 
 Additionally, an official Docker image can be found
-[here](https://hub.docker.com/r/nebulouslabs/sia).
+[here](https://hub.docker.com/r/skynetlabs/skyd).
