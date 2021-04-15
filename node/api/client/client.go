@@ -167,7 +167,7 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 
 // getReaderResponse requests the specified resource. The response, if provided,
 // will be returned as an io.Reader.
-func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser, error) {
+func (c *Client) getReaderResponse(resource string) (_ http.Header, _ io.ReadCloser, err error) {
 	req, err := c.NewRequest("GET", resource, nil)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to construct GET request")
@@ -177,6 +177,12 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "GET request failed")
 	}
+	defer func() {
+		// close body on error
+		if err != nil {
+			err = errors.Compose(err, res.Body.Close())
+		}
+	}()
 
 	// Add ErrAPICallNotRecognized if StatusCode is StatusModuleNotLoaded to
 	// allow for handling of modules that are not loaded
@@ -211,6 +217,7 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", from, to-1))
 
 	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
+	// nolint:bodyclose // body is closed by drainAndClose
 	res, err := httpClient.Do(req)
 	if err != nil {
 		return nil, errors.AddContext(err, "GET request failed")
@@ -272,7 +279,7 @@ func (c *Client) head(resource string) (int, http.Header, error) {
 	if err != nil {
 		return 0, nil, errors.AddContext(err, "HEAD request failed")
 	}
-	return res.StatusCode, res.Header, nil
+	return res.StatusCode, res.Header, res.Body.Close()
 }
 
 // postRawResponse requests the specified resource. The response, if provided,
@@ -302,6 +309,7 @@ func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, hea
 	}
 
 	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
+	// nolint:bodyclose // body is closed by drainAndClose
 	res, err := httpClient.Do(req)
 	if err != nil {
 		return http.Header{}, nil, errors.AddContext(err, "POST request failed")

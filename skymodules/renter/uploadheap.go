@@ -35,8 +35,7 @@ type repairTarget int
 // targetStuckChunks tells the repair loop to target stuck chunks for repair and
 // targetUnstuckChunks tells the repair loop to target unstuck chunks for repair
 const (
-	targetError repairTarget = iota
-	targetStuckChunks
+	targetStuckChunks repairTarget = iota + 1
 	targetUnstuckChunks
 	targetBackupChunks
 )

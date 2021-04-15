@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -196,14 +195,4 @@ func newSiaDirTestDir(testDir string) (string, error) {
 		return "", err
 	}
 	return rootPath, os.MkdirAll(rootPath, persist.DefaultDiskPermissionsTest)
-}
-
-// newTestDir creates a new SiaDir for testing, the test Name should be passed
-// in as the rootDir
-func newTestDir(rootDir string) (*SiaDir, error) {
-	rootPath, err := newSiaDirTestDir(rootDir)
-	if err != nil {
-		return nil, err
-	}
-	return New(modules.RandomSiaPath().SiaDirSysPath(rootPath), rootPath, modules.DefaultDirPerm)
 }

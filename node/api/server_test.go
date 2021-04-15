@@ -94,6 +94,11 @@ func TestServerTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Verify status code
 	if resp.StatusCode != http.StatusServiceUnavailable {
@@ -142,6 +147,11 @@ func TestAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatal("unauthenticated API call succeeded on a server that requires authentication")
 	}
@@ -150,6 +160,11 @@ func TestAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatal("unauthenticated API call succeeded on a server that requires authentication")
 	}
@@ -160,6 +175,11 @@ func TestAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatal("authenticated API call succeeded with an incorrect password")
 	}
@@ -168,6 +188,11 @@ func TestAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatal("authenticated API call succeeded with an incorrect password")
 	}
@@ -178,6 +203,11 @@ func TestAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if non2xx(resp.StatusCode) {
 		t.Fatal("authenticated API call failed with the correct password")
 	}
@@ -186,6 +216,11 @@ func TestAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if non2xx(resp.StatusCode) {
 		t.Fatal("authenticated API call failed with the correct password")
 	}

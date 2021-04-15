@@ -296,7 +296,7 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 		}
 		reader = resp.Body
 		defer func() {
-			err = reader.Close()
+			err = resp.Body.Close()
 			if err != nil {
 				die("unable to close reader:", err)
 			}
@@ -463,7 +463,7 @@ func skynetPin(skylink string, siaPath skymodules.SiaPath) (string, error) {
 	}
 	reader := resp.Body
 	defer func() {
-		err = reader.Close()
+		err = resp.Body.Close()
 		if err != nil {
 			die("unable to close reader:", err)
 		}

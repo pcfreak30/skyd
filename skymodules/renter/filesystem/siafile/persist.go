@@ -213,17 +213,6 @@ func createDeleteUpdate(path string) writeaheadlog.Update {
 	}
 }
 
-// createDeletePartialUpdate is a helper method that creates a writeaheadlog for
-// deleting a .partial file.
-//
-//lint:ignore U1000 Ignore unused code, it's prep for partial uploads
-func createDeletePartialUpdate(path string) writeaheadlog.Update {
-	return writeaheadlog.Update{
-		Name:         updateDeletePartialName,
-		Instructions: []byte(path),
-	}
-}
-
 // loadSiaFile loads a SiaFile from disk.
 func loadSiaFile(path string, wal *writeaheadlog.WAL, deps modules.Dependencies) (*SiaFile, error) {
 	// Open the file.

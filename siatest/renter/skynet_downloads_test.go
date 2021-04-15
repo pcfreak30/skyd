@@ -575,6 +575,11 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatal("Unexpected status code")
 	}
@@ -602,6 +607,11 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// verify status code is 304 and no data was returned
 	if resp.StatusCode != http.StatusNotModified {

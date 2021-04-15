@@ -92,6 +92,18 @@ linters:
     - misspell
     - typecheck
     - whitespace
+    - asciicheck
+    - bodyclose
+
+    - deadcode
+  #  - errorlint
+  #  - exhaustive
+  #  - goconst
+  #  - structcheck
+  #  - staticcheck
+  #  - unused
+  #  - varcheck
+  #  - wsl
 
 issues:
   # Maximum issues count per one linter. Set to 0 to disable. Default is 50.

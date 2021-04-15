@@ -9,11 +9,6 @@ import (
 // These interfaces define the HostDB's dependencies. Using the smallest
 // interface possible makes it easier to mock these dependencies in testing.
 type (
-	consensusSet interface {
-		ConsensusSetSubscribe(modules.ConsensusSetSubscriber, modules.ConsensusChangeID, <-chan struct{}) error
-		Synced() bool
-		Unsubscribe(modules.ConsensusSetSubscriber)
-	}
 	// In order to restrict the modules.TransactionBuilder interface, we must
 	// provide a shim to bridge the gap between modules.Wallet and
 	// transactionBuilder.
@@ -62,11 +57,6 @@ type (
 		UpdateContracts([]skymodules.RenterContract) error
 		ScoreBreakdown(skymodules.HostDBEntry) (skymodules.HostScoreBreakdown, error)
 		SetAllowance(allowance skymodules.Allowance) error
-	}
-
-	persister interface {
-		save(contractorPersist) error
-		load(*contractorPersist) error
 	}
 )
 
