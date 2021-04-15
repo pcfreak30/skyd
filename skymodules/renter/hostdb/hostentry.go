@@ -5,7 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // updateHostDBEntry updates a HostDBEntries's historic interactions if more

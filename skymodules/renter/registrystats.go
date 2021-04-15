@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 // readRegistryStatsDecayInterval is the interval after which the registry stats

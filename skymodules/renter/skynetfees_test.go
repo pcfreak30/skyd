@@ -10,7 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 // TestSpendingHistory tests the spending history persistence.

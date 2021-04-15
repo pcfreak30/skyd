@@ -45,14 +45,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetblocklist"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetportals"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetblocklist"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
 )
 
 var (

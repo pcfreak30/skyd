@@ -10,9 +10,9 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TestSkynetHelpers is a convenience function that wraps all of the Skynet
