@@ -426,12 +426,10 @@ func (c *Contractor) callInterruptContractMaintenance() {
 // potentialHosts set and removes them from the potentialHosts.
 func (c *Contractor) managedAddPreferredHosts(toAdd int, preferredHosts, potentialHosts map[string]struct{}) {
 	// Grab random hosts from the potential set that are not already in the
-	// preferred set.
+	// preferred set. To do so, we use the preferred hosts as the blacklist and
+	// the potential hosts as the whitelist.
 	var blacklist []types.SiaPublicKey
 	for host := range preferredHosts {
-		if _, alreadyPreferred := preferredHosts[host]; !alreadyPreferred {
-			continue
-		}
 		var spk types.SiaPublicKey
 		err := spk.LoadString(host)
 		if err != nil {
