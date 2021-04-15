@@ -638,13 +638,35 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 	defer r.tg.Done()
 
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+		defer cancel()
+	}
+
+	// Check if link needs to be resolved from V2 to V1.
+	if link.Version() == 2 {
+		srv, err := r.ReadRegistryRID(ctx, link.RegistryEntryID())
+		if err != nil {
+			return nil, err
+		}
+		if len(srv.Data) == 0 {
+			return nil, errors.New("failed to resolve skylink")
+		}
+		err = link.LoadBytes(srv.Data)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to parse skylink")
+		}
+	}
+
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(link) {
 		return nil, ErrSkylinkBlocked
 	}
 
 	// Download the data
-	streamer, err := r.managedDownloadSkylink(link, timeout, pricePerMS)
+	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -685,7 +707,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
-func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileStreamer, error) {
+func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Skylink, streamReadTimeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileStreamer, error) {
 	if r.staticDeps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
@@ -702,17 +724,17 @@ func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Du
 	// skip the lookup procedure and use any data that other threads have
 	// cached.
 	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, timeout)
+	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, streamReadTimeout)
 	if exists {
 		return streamer, nil
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.managedSkylinkDataSource(link, timeout, pricePerMS)
+	dataSource, err := r.managedSkylinkDataSource(ctx, link, pricePerMS)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
+	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, streamReadTimeout, pricePerMS)
 	return stream, nil
 }
 
@@ -722,6 +744,13 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return ErrSkylinkBlocked
+	}
+
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
 	// Fetch the leading chunk.
@@ -807,7 +836,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.managedSkylinkDataSource(skylink, timeout, pricePerMS)
+	dataSource, err := r.managedSkylinkDataSource(ctx, skylink, pricePerMS)
 	if err != nil {
 		return errors.AddContext(err, "unable to create data source for skylink")
 	}

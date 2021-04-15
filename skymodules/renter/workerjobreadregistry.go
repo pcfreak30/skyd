@@ -138,6 +138,9 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 	// If we don't have both the key and tweak, use the ones returned by the
 	// host.
 	if needPKAndTweak {
+		if sid != modules.DeriveRegistryEntryID(spkHost, tweakHost) {
+			return nil, errors.New("spk and tweak returned by host don't match requested sid")
+		}
 		spk = &spkHost
 		tweak = &tweakHost
 	}

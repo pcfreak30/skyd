@@ -60,6 +60,7 @@ func TestSkynetSuite(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "Basic", Test: testSkynetBasic},
+		{Name: "SkylinkV2Download", Test: testSkylinkV2Download},
 		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
 		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
@@ -4810,5 +4811,61 @@ func TestSkynetFeePaid(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkylinkV2Download tests downloading a file by its version 2 skylink.
+func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload some data.
+	data := fastrand.Bytes(100)
+	slStr, _, _, err := r.UploadNewSkyfileWithDataBlocking(t.Name(), data, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var skylink skymodules.Skylink
+	err = skylink.LoadString(slStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the registry with that link.
+	sk, pk := crypto.GenerateKeyPair()
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+	srv := modules.NewRegistryValue(dataKey, skylink.Bytes(), fastrand.Uint64n(100)).Sign(sk)
+
+	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a v2 link.
+	skylinkV2 := skymodules.NewSkylinkV2(spk, dataKey)
+
+	// Download the file using that link.
+	downloadedDataV2, _, err := r.SkynetSkylinkGet(skylinkV2.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download it using the v1 link.
+	downloadedDataV1, _, err := r.SkynetSkylinkGet(slStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Data should match.
+	if !bytes.Equal(downloadedDataV1, downloadedDataV2) {
+		t.Fatal("data doesn't match")
+	}
+	if !bytes.Equal(downloadedDataV1, data) {
+		t.Fatal("data doesn't match")
 	}
 }

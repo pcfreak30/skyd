@@ -2,6 +2,7 @@ package api
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1509,7 +1510,9 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	}
 
 	// Read registry.
-	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+	srv, err := api.renter.ReadRegistry(ctx, spk, dataKey)
 	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
 		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
 		WriteError(w, Error{err.Error()}, http.StatusNotFound)
