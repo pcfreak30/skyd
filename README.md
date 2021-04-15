@@ -33,9 +33,9 @@ following Siacoin address:
 Usage
 -----
 
-The majority of Skynet users don't need to interact with `skyd`. If you are a
-looking to get started using Skynet, we recommended heading over to our [Public
-Web Portal](https://siasky.net) and sign up for an account
+The majority of Skynet users don't need to interact with `skyd`. If you are
+looking to get started using Skynet, we recommended heading over to our
+[Public Web Portal](https://siasky.net) and sign up for an account
 [here](https://account.siasky.net). For developers, check out our information
 on our [Developers page](https://siasky.net/developers).
 
