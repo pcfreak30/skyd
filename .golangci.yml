@@ -94,16 +94,17 @@ linters:
     - whitespace
     - asciicheck
     - bodyclose
-
     - deadcode
-  #  - errorlint
-  #  - exhaustive
-  #  - goconst
-  #  - structcheck
-  #  - staticcheck
-  #  - unused
-  #  - varcheck
-  #  - wsl
+    - varcheck
+
+  # f/u: suggestions for more linters. programming task?
+  #  - prealloc - checks for slices that can be preallocated
+  #  - gosimple - checks for code that can be simplified
+  #  - exhaustive - checks for switch cases that are not exhaustive
+  #  - goconst - checks for hardcoded values that could be made constants
+  #  - structcheck - checks for unused fields in structs
+  #  - staticcheck - huge number of useful checks
+  #  - unused - checks for unused code
 
 issues:
   # Maximum issues count per one linter. Set to 0 to disable. Default is 50.

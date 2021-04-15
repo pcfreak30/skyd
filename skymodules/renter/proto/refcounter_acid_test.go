@@ -77,6 +77,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
 	// Create the faulty disk dependency
 	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
+	fdd.Enable()
 	// Attach it to the refcounter
 	rc, err := newCustomRefCounter(rcFilePath, 200, wal, fdd)
 	if err != nil {
