@@ -231,7 +231,7 @@ type (
 	// extended without breaking compatibility.
 	SkyfileMetadata struct {
 		Filename           string          `json:"filename"`
-		Length             uint64          `json:"length"`
+		Length             uint64          `json:"length,omitempty"`
 		Mode               os.FileMode     `json:"mode,omitempty"`
 		Subfiles           SkyfileSubfiles `json:"subfiles,omitempty"`
 		DefaultPath        string          `json:"defaultpath,omitempty"`
