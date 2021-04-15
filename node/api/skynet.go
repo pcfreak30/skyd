@@ -765,7 +765,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, offset, size)
+		streamer, err = NewLimitStreamer(streamer, metaForPath, offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -781,7 +781,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, offset, size)
+		streamer, err = NewLimitStreamer(streamer, metadataForPath, offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return

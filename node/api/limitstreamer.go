@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"io"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -17,24 +18,33 @@ import (
 // Further more, it is advised to only wrap a skymodules.Streamer once, wrapping it
 // multiple times might lead to unexpected behavior and was not tested.
 type limitStreamer struct {
-	stream skymodules.SkyfileStreamer
-	base   uint64
-	off    uint64
-	limit  uint64
+	stream      skymodules.SkyfileStreamer
+	base        uint64
+	off         uint64
+	limit       uint64
+	staticMD    skymodules.SkyfileMetadata
+	staticRawMD []byte
 }
 
-// NewLimitStreamer wraps the given skymodules.Streamer and ensures it can only be read from within the given offset and size boundary. It does this by wrapping both the Read and Seek calls and adjusting the offset and size of the returned byte slice appropriately.
-func NewLimitStreamer(s skymodules.SkyfileStreamer, offset, size uint64) (skymodules.SkyfileStreamer, error) {
+// NewLimitStreamer wraps the given skymodules.Streamer and ensures it can only
+// be read from within the given offset and size boundary. It does this by
+// wrapping both the Read and Seek calls and adjusting the offset and size of
+// the returned byte slice appropriately. It also replaces the metadata with the
+// provided metadata. That's because we return a different sub-metadata when
+// downloading subfiles.
+func NewLimitStreamer(s skymodules.SkyfileStreamer, md skymodules.SkyfileMetadata, offset, size uint64) (skymodules.SkyfileStreamer, error) {
 	ls := &limitStreamer{
-		stream: s,
-		base:   offset,
-		off:    offset,
-		limit:  offset + size,
+		stream:   s,
+		base:     offset,
+		off:      offset,
+		limit:    offset + size,
+		staticMD: md,
 	}
 	_, err := ls.Seek(0, io.SeekStart) // SeekStart to ensure the initial offset
 	if err != nil {
 		return nil, err
 	}
+	ls.staticRawMD, err = json.Marshal(md)
 	return ls, err
 }
 
@@ -54,12 +64,12 @@ func (ls *limitStreamer) Read(p []byte) (n int, err error) {
 
 // Metadata implements the skymodules.SkyfileStreamer interface.
 func (ls *limitStreamer) Metadata() skymodules.SkyfileMetadata {
-	return ls.stream.Metadata()
+	return ls.staticMD
 }
 
 // RawMetadata implements the skymodules.SkyfileStreamer interface.
 func (ls *limitStreamer) RawMetadata() []byte {
-	return ls.stream.RawMetadata()
+	return ls.staticRawMD
 }
 
 // Seek implements the io.Seeker interface
