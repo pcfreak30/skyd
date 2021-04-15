@@ -24,7 +24,7 @@ const (
 	// total.
 	hasSectorEstimatePenaltyThreshold = 100 * hasSectorBatchSize
 
-	// hostSectorEstimatePenalty is the percentage we add for every job when
+	// hasSectorEstimatePenalty is the percentage we add for every job when
 	// computing the estimate once the number of jobs in the queue is above the
 	// threshold.
 	hasSectorEstimatePenalty = 0.0001

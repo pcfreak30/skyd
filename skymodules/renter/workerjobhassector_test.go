@@ -171,7 +171,7 @@ func TestAddWithEstimate(t *testing.T) {
 		jobGeneric: &jobGeneric{},
 	}
 
-	for i := 0; i < 1200; i++ {
+	for i := 0; i < 10000; i++ {
 		// Get the current time.
 		n := time.Now()
 
