@@ -127,8 +127,9 @@ type streamerFromReader struct {
 // method, which allows it to satisfy the modules.SkyfileStreamer interface.
 type skylinkStreamerFromReader struct {
 	modules.Streamer
-	staticMD    skymodules.SkyfileMetadata
-	staticRawMD []byte
+	staticLayout skymodules.SkyfileLayout
+	staticMD     skymodules.SkyfileMetadata
+	staticRawMD  []byte
 }
 
 // Close is a no-op because a bytes.Reader doesn't need to be closed.
@@ -146,16 +147,22 @@ func StreamerFromSlice(b []byte) skymodules.Streamer {
 }
 
 // SkylinkStreamerFromSlice creates a modules.SkyfileStreamer from a byte slice.
-func SkylinkStreamerFromSlice(b []byte, md skymodules.SkyfileMetadata, rawMD []byte) skymodules.SkyfileStreamer {
+func SkylinkStreamerFromSlice(b []byte, md skymodules.SkyfileMetadata, rawMD []byte, layout skymodules.SkyfileLayout) skymodules.SkyfileStreamer {
 	streamer := StreamerFromSlice(b)
 	return &skylinkStreamerFromReader{
-		Streamer:    streamer,
-		staticMD:    md,
-		staticRawMD: rawMD,
+		Streamer:     streamer,
+		staticLayout: layout,
+		staticMD:     md,
+		staticRawMD:  rawMD,
 	}
 }
 
-// Metadata implements the modules.SkyfileStreamer interface.
+// Layout implements the skymodules.SkyfileStreamer interface.
+func (sfr *skylinkStreamerFromReader) Layout() skymodules.SkyfileLayout {
+	return sfr.staticLayout
+}
+
+// Metadata implements the skymodules.SkyfileStreamer interface.
 func (sfr *skylinkStreamerFromReader) Metadata() skymodules.SkyfileMetadata {
 	return sfr.staticMD
 }
@@ -625,23 +632,23 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
-func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileLayout, skymodules.SkyfileStreamer, error) {
+func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileStreamer, error) {
 	if err := r.tg.Add(); err != nil {
-		return skymodules.SkyfileLayout{}, nil, err
+		return nil, err
 	}
 	defer r.tg.Done()
 
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(link) {
-		return skymodules.SkyfileLayout{}, nil, ErrSkylinkBlocked
+		return nil, ErrSkylinkBlocked
 	}
 
 	// Download the data
-	layout, streamer, err := r.managedDownloadSkylink(link, timeout, pricePerMS)
+	streamer, err := r.managedDownloadSkylink(link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
-	return layout, streamer, err
+	return streamer, err
 }
 
 // DownloadSkylinkBaseSector will take a link and turn it into the data of
@@ -678,17 +685,17 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
-func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileLayout, skymodules.SkyfileStreamer, error) {
+func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileStreamer, error) {
 	if r.staticDeps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
-			return skymodules.SkyfileLayout{}, nil, errors.AddContext(err, "failed to fetch fixture")
+			return nil, errors.AddContext(err, "failed to fetch fixture")
 		}
 		rawMD, err := json.Marshal(sf.Metadata)
 		if err != nil {
-			return skymodules.SkyfileLayout{}, nil, errors.AddContext(err, "failed to fetch fixture")
+			return nil, errors.AddContext(err, "failed to fetch fixture")
 		}
-		return skymodules.SkyfileLayout{}, SkylinkStreamerFromSlice(sf.Content, sf.Metadata, rawMD), err
+		return SkylinkStreamerFromSlice(sf.Content, sf.Metadata, rawMD, skymodules.SkyfileLayout{}), err
 	}
 
 	// Check if this skylink is already in the stream buffer set. If so, we can
@@ -697,16 +704,16 @@ func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Du
 	id := link.DataSourceID()
 	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, timeout)
 	if exists {
-		return streamer.Layout(), streamer, nil
+		return streamer, nil
 	}
 
 	// Create the data source and add it to the stream buffer set.
 	dataSource, err := r.managedSkylinkDataSource(link, timeout, pricePerMS)
 	if err != nil {
-		return skymodules.SkyfileLayout{}, nil, errors.AddContext(err, "unable to create data source for skylink")
+		return nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
 	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
-	return dataSource.Layout(), stream, nil
+	return stream, nil
 }
 
 // PinSkylink will fetch the file associated with the Skylink, and then pin all

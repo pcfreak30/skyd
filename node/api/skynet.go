@@ -672,7 +672,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
-	layout, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
+	streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 		return
@@ -765,7 +765,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, metaForPath, offset, size)
+		streamer, err = NewLimitStreamer(streamer, metaForPath, streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -781,7 +781,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, metadataForPath, offset, size)
+		streamer, err = NewLimitStreamer(streamer, metadataForPath, streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -798,7 +798,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Encode the Layout
-	encLayout := layout.Encode()
+	encLayout := streamer.Layout().Encode()
 
 	// Metadata and layout has been parsed successfully, stop the time here for
 	// TTFB.  Metadata was fetched from Skynet itself.

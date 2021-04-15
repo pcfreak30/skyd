@@ -107,7 +107,7 @@ type streamBufferDataSource interface {
 	// Metadata returns the Skyfile metadata of a data source.
 	Metadata() skymodules.SkyfileMetadata
 
-	// Metadata returns the raw Skyfile metadata of a data source.
+	// RawMetadata returns the raw metadata of a data source.
 	RawMetadata() []byte
 
 	// Layout returns the Skyfile layout of a data source.

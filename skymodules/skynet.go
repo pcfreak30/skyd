@@ -467,7 +467,7 @@ func (sl *SkyfileLayout) DecodeFanoutIntoChunks(fanoutBytes []byte) ([][]crypto.
 
 // Encode will return a []byte that has compactly encoded all of the layout
 // data.
-func (sl *SkyfileLayout) Encode() []byte {
+func (sl SkyfileLayout) Encode() []byte {
 	b := make([]byte, SkyfileLayoutSize)
 	offset := 0
 	b[offset] = sl.Version

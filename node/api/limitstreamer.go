@@ -18,12 +18,13 @@ import (
 // Further more, it is advised to only wrap a skymodules.Streamer once, wrapping it
 // multiple times might lead to unexpected behavior and was not tested.
 type limitStreamer struct {
-	stream      skymodules.SkyfileStreamer
-	base        uint64
-	off         uint64
-	limit       uint64
-	staticMD    skymodules.SkyfileMetadata
-	staticRawMD []byte
+	stream       skymodules.SkyfileStreamer
+	base         uint64
+	off          uint64
+	limit        uint64
+	staticLayout skymodules.SkyfileLayout
+	staticMD     skymodules.SkyfileMetadata
+	staticRawMD  []byte
 }
 
 // NewLimitStreamer wraps the given skymodules.Streamer and ensures it can only
@@ -32,13 +33,14 @@ type limitStreamer struct {
 // the returned byte slice appropriately. It also replaces the metadata with the
 // provided metadata. That's because we return a different sub-metadata when
 // downloading subfiles.
-func NewLimitStreamer(s skymodules.SkyfileStreamer, md skymodules.SkyfileMetadata, offset, size uint64) (skymodules.SkyfileStreamer, error) {
+func NewLimitStreamer(s skymodules.SkyfileStreamer, md skymodules.SkyfileMetadata, layout skymodules.SkyfileLayout, offset, size uint64) (skymodules.SkyfileStreamer, error) {
 	ls := &limitStreamer{
-		stream:   s,
-		base:     offset,
-		off:      offset,
-		limit:    offset + size,
-		staticMD: md,
+		stream:       s,
+		base:         offset,
+		off:          offset,
+		limit:        offset + size,
+		staticLayout: layout,
+		staticMD:     md,
 	}
 	_, err := ls.Seek(0, io.SeekStart) // SeekStart to ensure the initial offset
 	if err != nil {
@@ -60,6 +62,11 @@ func (ls *limitStreamer) Read(p []byte) (n int, err error) {
 	n, err = ls.stream.Read(p)
 	ls.off += uint64(n)
 	return
+}
+
+// Layout implements the skymodules.SkyfileStreamer interface.
+func (ls *limitStreamer) Layout() skymodules.SkyfileLayout {
+	return ls.staticLayout
 }
 
 // Metadata implements the skymodules.SkyfileStreamer interface.
