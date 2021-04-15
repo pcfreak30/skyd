@@ -1,12 +1,54 @@
 package renter
 
 import (
+	"context"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// TestHasSectorJobBatchCallNext makes sure that multiple has sector jobs are
+// batched together correctly.
+func TestHasSectorJobBatchCallNext(t *testing.T) {
+	t.Parallel()
+
+	// Create queue and job.
+	queue := jobHasSectorQueue{
+		jobGenericQueue: newJobGenericQueue(&worker{}),
+	}
+	jhs := &jobHasSector{
+		jobGeneric: &jobGeneric{
+			staticQueue: queue,
+			staticCtx:   context.Background(),
+		},
+	}
+
+	// add jobs
+	for i := 0; i < int(hasSectorBatchSize)+1; i++ {
+		if !queue.callAdd(jhs) {
+			t.Fatal("job wasn't added")
+		}
+	}
+
+	// call callNext 3 times.
+	next1 := queue.callNext()
+	next2 := queue.callNext()
+	next3 := queue.callNext()
+
+	// the first should contain hasSectorBatchSize jobs, the second one 1 job and the
+	// third one should be nil.
+	if l := len(next1.(*jobHasSectorBatch).staticJobs); l != int(hasSectorBatchSize) {
+		t.Fatal("wrong size", l, hasSectorBatchSize)
+	}
+	if len(next2.(*jobHasSectorBatch).staticJobs) != 1 {
+		t.Fatal("wrong size")
+	}
+	if next3 != nil {
+		t.Fatal("should be nil")
+	}
+}
 
 // TestHasSectorJobExpectedBandwidth is a unit test that verifies our HS job
 // bandwidth estimates are given in a way we never execute a program and run out
@@ -54,10 +96,23 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 		jhs := new(jobHasSector)
 		jhs.staticSectors = sectors
 
+		// build a batch from the job for comparison
+		jhsb := *&jobHasSectorBatch{
+			staticJobs: []*jobHasSector{
+				jhs,
+			},
+		}
+
 		// calculate cost
 		ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
 		bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 		cost = cost.Add(bandwidthCost)
+
+		// cost of batch should match.
+		ulb, dlb := jhsb.callExpectedBandwidth()
+		if ulb != ulBandwidth || dlb != dlBandwidth {
+			t.Fatal("batch bandwidth doesn't match job bandwidth")
+		}
 
 		// execute the program
 		_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)

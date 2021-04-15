@@ -33,7 +33,7 @@ const (
 
 	// minRegistryVersion defines the minimum version that is required for a
 	// host to support the registry.
-	minRegistryVersion = "1.5.1"
+	minRegistryVersion = "1.5.5"
 
 	// registryCacheSize is the cache size used by a single worker for the
 	// registry cache.

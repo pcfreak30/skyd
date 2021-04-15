@@ -16,6 +16,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -55,6 +56,36 @@ func (dch *downloadChunkHeap) Pop() interface{} {
 	x := old[n-1]
 	*dch = old[0 : n-1]
 	return x
+}
+
+// downloadHeap contains a priority-sorted heap of all the chunks being
+// downloaded by the renter.
+type downloadHeap struct {
+	// A heap of priority-sorted chunks to download.
+	heap downloadChunkHeap
+	mu   sync.Mutex
+}
+
+// managedPopIncomplete pops the next incomplete chunk from the download heap.
+func (dh *downloadHeap) managedPopIncomplete() *unfinishedDownloadChunk {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+	for {
+		if dh.heap.Len() <= 0 {
+			return nil
+		}
+		nextChunk := heap.Pop(&dh.heap).(*unfinishedDownloadChunk)
+		if !nextChunk.staticDownload.staticComplete() {
+			return nextChunk
+		}
+	}
+}
+
+// managedPush pushes a chunk onto the downloadHeap's heap
+func (dh *downloadHeap) managedPush(chunk *unfinishedDownloadChunk) {
+	dh.mu.Lock()
+	defer dh.mu.Unlock()
+	dh.heap.Push(chunk)
 }
 
 // acquireMemoryForDownloadChunk will block until memory is available for the
@@ -102,9 +133,7 @@ func (r *Renter) managedAddChunkToDownloadHeap(udc *unfinishedDownloadChunk) {
 	}
 
 	// Put the chunk into the chunk heap.
-	r.downloadHeapMu.Lock()
-	r.downloadHeap.Push(udc)
-	r.downloadHeapMu.Unlock()
+	r.staticDownloadHeap.managedPush(udc)
 }
 
 // managedBlockUntilOnline will block until the renter is online. The renter
@@ -144,18 +173,7 @@ func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownload
 // managedNextDownloadChunk will fetch the next chunk from the download heap. If
 // the download heap is empty, 'nil' will be returned.
 func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
-	r.downloadHeapMu.Lock()
-	defer r.downloadHeapMu.Unlock()
-
-	for {
-		if r.downloadHeap.Len() <= 0 {
-			return nil
-		}
-		nextChunk := heap.Pop(r.downloadHeap).(*unfinishedDownloadChunk)
-		if !nextChunk.staticDownload.staticComplete() {
-			return nextChunk
-		}
-	}
+	return r.staticDownloadHeap.managedPopIncomplete()
 }
 
 // managedTryFetchChunkFromDisk will try to fetch the chunk from disk if

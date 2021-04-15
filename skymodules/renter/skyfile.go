@@ -212,7 +212,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 	}
 
 	// Check if any of the skylinks associated with the siafile are blocked
-	if r.isFileNodeBlocked(fileNode) {
+	if r.managedIsFileNodeBlocked(fileNode) {
 		// Skylink is blocked, return error and try and delete file
 		return skymodules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
 	}
@@ -412,7 +412,7 @@ func (r *Renter) managedUploadBaseSector(sup skymodules.SkyfileUploadParameters,
 
 // managedUploadSkyfile uploads a file and returns the skylink and whether or
 // not it was a large file.
-func (r *Renter) managedUploadSkyfile(sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skymodules.Skylink, error) {
+func (r *Renter) managedUploadSkyfile(ctx context.Context, sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skymodules.Skylink, error) {
 	// see if we can fit the entire upload in a single chunk
 	buf := make([]byte, modules.SectorSize)
 	numBytes, err := io.ReadFull(reader, buf)
@@ -423,7 +423,7 @@ func (r *Renter) managedUploadSkyfile(sup skymodules.SkyfileUploadParameters, re
 	// Skyfile as a small file
 	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 		// get the skyfile metadata from the reader
-		metadata, err := reader.SkyfileMetadata(r.tg.StopCtx())
+		metadata, err := reader.SkyfileMetadata(ctx)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata")
 		}
@@ -449,8 +449,11 @@ func (r *Renter) managedUploadSkyfile(sup skymodules.SkyfileUploadParameters, re
 	// if we reach this point it means either we have not reached the EOF or the
 	// data combined with the header exceeds a single sector, we add the data we
 	// already read and upload as a large file
-	reader.AddReadBuffer(buf)
-	return r.managedUploadSkyfileLargeFile(sup, reader)
+	reader.SetReadBuffer(buf)
+	// set buffer nil to allow for GC to pick it up before starting the upload.
+	// That way it won't stick around until the upload is done.
+	buf = nil
+	return r.managedUploadSkyfileLargeFile(ctx, sup, reader)
 }
 
 // managedUploadSkyfileSmallFile uploads a file that fits entirely in the
@@ -501,7 +504,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 // data to a large siafile and upload it to the Sia network using
 // 'callUploadStreamFromReader'. The final skylink is created by calling
 // 'CreateSkylinkFromSiafile' on the resulting siafile.
-func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (_ skymodules.Skylink, err error) {
+func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (_ skymodules.Skylink, err error) {
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
 	siaPath, err := skymodules.NewSiaPath(sup.SiaPath.String() + skymodules.ExtendedSuffix)
@@ -569,7 +572,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup skymodules.SkyfileUploadParam
 	}
 
 	// Get the SkyfileMetadata from the reader object.
-	metadata, err := fileReader.SkyfileMetadata(r.tg.StopCtx())
+	metadata, err := fileReader.SkyfileMetadata(ctx)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata")
 	}
@@ -620,13 +623,35 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 	defer r.tg.Done()
 
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+		defer cancel()
+	}
+
+	// Check if link needs to be resolved from V2 to V1.
+	if link.Version() == 2 {
+		srv, err := r.ReadRegistryRID(ctx, link.RegistryEntryID())
+		if err != nil {
+			return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, err
+		}
+		if len(srv.Data) == 0 {
+			return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, errors.New("failed to resolve skylink")
+		}
+		err = link.LoadBytes(srv.Data)
+		if err != nil {
+			return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to parse skylink")
+		}
+	}
+
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(link) {
 		return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, ErrSkylinkBlocked
 	}
 
 	// Download the data
-	layout, metadata, streamer, err := r.managedDownloadSkylink(link, timeout, pricePerMS)
+	layout, metadata, streamer, err := r.managedDownloadSkylink(ctx, timeout, link, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -667,7 +692,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
-func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileLayout, skymodules.SkyfileMetadata, skymodules.SkyfileStreamer, error) {
+func (r *Renter) managedDownloadSkylink(ctx context.Context, streamReadTimeout time.Duration, link skymodules.Skylink, pricePerMS types.Currency) (skymodules.SkyfileLayout, skymodules.SkyfileMetadata, skymodules.SkyfileStreamer, error) {
 	if r.staticDeps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
@@ -680,17 +705,17 @@ func (r *Renter) managedDownloadSkylink(link skymodules.Skylink, timeout time.Du
 	// skip the lookup procedure and use any data that other threads have
 	// cached.
 	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, timeout)
+	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, streamReadTimeout)
 	if exists {
 		return streamer.Layout(), streamer.Metadata(), streamer, nil
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.skylinkDataSource(link, timeout, pricePerMS)
+	dataSource, err := r.managedSkylinkDataSource(ctx, link, pricePerMS)
 	if err != nil {
 		return skymodules.SkyfileLayout{}, skymodules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
+	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, streamReadTimeout, pricePerMS)
 	return dataSource.Layout(), dataSource.Metadata(), stream, nil
 }
 
@@ -700,6 +725,13 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return ErrSkylinkBlocked
+	}
+
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
 	// Fetch the leading chunk.
@@ -715,7 +747,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	var fileSpecificSkykey skykey.Skykey
 	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
 	if encrypted {
-		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
+		fileSpecificSkykey, err = r.managedDecryptBaseSector(baseSector)
 		if err != nil {
 			return errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}
@@ -785,7 +817,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.skylinkDataSource(skylink, timeout, pricePerMS)
+	dataSource, err := r.managedSkylinkDataSource(ctx, skylink, pricePerMS)
 	if err != nil {
 		return errors.AddContext(err, "unable to create data source for skylink")
 	}
@@ -829,7 +861,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	var fileSpecificSkykey skykey.Skykey
 	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
 	if encrypted {
-		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
+		fileSpecificSkykey, err = r.managedDecryptBaseSector(baseSector)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}
@@ -942,7 +974,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}()
 
 	// Check if any of the skylinks associated with the siafile are blocked
-	if r.isFileNodeBlocked(fileNode) {
+	if r.managedIsFileNodeBlocked(fileNode) {
 		// Skylink is blocked, return error and try and delete file
 		return skymodules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
 	}
@@ -961,13 +993,13 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 // returning a skylink which can be used by any portal to recover the full
 // original file and metadata. The skylink will be unique to the combination of
 // both the file data and metadata.
-func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skylink skymodules.Skylink, err error) {
+func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUploadParameters, reader skymodules.SkyfileUploadReader) (skylink skymodules.Skylink, err error) {
 	// Set reasonable default values for any sup fields that are blank.
 	skyfileEstablishDefaults(&sup)
 
 	// If a skykey name or ID was specified, generate a file-specific key for
 	// this upload.
-	err = r.generateFilekey(&sup, nil)
+	err = r.managedGenerateFilekey(&sup, nil)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
@@ -989,7 +1021,7 @@ func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader sk
 	}()
 
 	// Upload the skyfile
-	skylink, err = r.managedUploadSkyfile(sup, reader)
+	skylink, err = r.managedUploadSkyfile(ctx, sup, reader)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
@@ -1005,9 +1037,9 @@ func (r *Renter) UploadSkyfile(sup skymodules.SkyfileUploadParameters, reader sk
 	return skylink, nil
 }
 
-// isFileNodeBlocked checks if any of the skylinks associated with the siafile
-// are blocked
-func (r *Renter) isFileNodeBlocked(fileNode *filesystem.FileNode) bool {
+// managedIsFileNodeBlocked checks if any of the skylinks associated with the
+// siafile are blocked
+func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 	skylinkstrs := fileNode.Metadata().Skylinks
 	for _, skylinkstr := range skylinkstrs {
 		var skylink skymodules.Skylink

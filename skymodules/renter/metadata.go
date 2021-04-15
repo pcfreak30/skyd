@@ -211,7 +211,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			// We only count the file towards the number of files if it is in the
 			// skynet folder and is not extended. We do not count files outside of the
 			// skynet folder because they should be treated as an extended file.
-			isSkynetDir := strings.Contains(siaPath.String(), skymodules.SkynetFolder.String())
+			isSkynetDir := skymodules.IsSkynetDir(siaPath)
 			isExtended := strings.Contains(fileSiaPath.String(), skymodules.ExtendedSuffix)
 			hasSkylinks := fileMetadata.NumSkylinks > 0
 			if isSkynetDir || hasSkylinks {
@@ -327,7 +327,7 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 
 	// First check if the fileNode is blocked. Blocking a file does not remove the
 	// file so this is required to ensuring the node is purging blocked files.
-	if r.isFileNodeBlocked(sf) && !r.staticDeps.Disrupt("DisableDeleteBlockedFiles") {
+	if r.managedIsFileNodeBlocked(sf) && !r.staticDeps.Disrupt("DisableDeleteBlockedFiles") {
 		// Delete the file
 		r.staticLog.Println("Deleting blocked fileNode at:", siaPath)
 		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)

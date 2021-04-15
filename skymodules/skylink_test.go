@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -204,7 +206,7 @@ func TestSkylink(t *testing.T) {
 
 	// Try loading a base32 encoded string with invalid bitfield
 	var slInvalidBitfield Skylink
-	slInvalidBitfield.bitfield = 1
+	slInvalidBitfield.bitfield = 2
 	b32BadBitfield := slInvalidBitfield.Base32EncodedString()
 	err = slMaxB32Decoded.LoadString(b32BadBitfield)
 	if err == nil {
@@ -282,7 +284,7 @@ func TestSkylink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sl.MerkleRoot() != mr {
+	if sl.merkleRoot != mr {
 		t.Fatal("root mismatch")
 	}
 }
@@ -375,6 +377,27 @@ func TestSkylinkAutoExamples(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestNewSkylinkV2 is a unit test for NewSkylinkV2.
+func TestNewSkylinkV2(t *testing.T) {
+	var spk types.SiaPublicKey
+	fastrand.Read(spk.Key[:])
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	sid := modules.DeriveRegistryEntryID(spk, tweak)
+
+	// Create skylink and check fields.
+	sl := NewSkylinkV2(spk, tweak)
+	if sl.merkleRoot != crypto.Hash(sid) {
+		t.Fatal("wrong merkle root")
+	}
+	if sl.RegistryEntryID() != sid {
+		t.Fatal("wrong merkle root")
+	}
+	if sl.Version() != 2 {
+		t.Fatal("skylink has wrong version")
 	}
 }
 

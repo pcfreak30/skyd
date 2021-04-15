@@ -129,9 +129,13 @@ type RenterStats struct {
 	PassiveContractData uint64 `json:"passivecontractdata"`
 	WastedContractData  uint64 `json:"wastedcontractdata"`
 
-	TotalSiafiles uint64 `json:"totalsiafiles"`
-	TotalSiadirs  uint64 `json:"totalsiadirs"`
-	TotalSize     uint64 `json:"totalsize"`
+	AggregateLastHealthCheckTime time.Time `json:"aggregatelasthealthchecktime"`
+	TotalRepairSize              uint64    `json:"totalrepairsize"`
+	TotalSiafiles                uint64    `json:"totalsiafiles"`
+	TotalSiadirs                 uint64    `json:"totalsiadirs"`
+	TotalSize                    uint64    `json:"totalsize"`
+	TotalStuckChunks             uint64    `json:"totalstuckchunks"`
+	TotalStuckSize               uint64    `json:"totalstucksize"`
 
 	TotalContractSpentFunds     types.Currency `json:"totalcontractspentfunds"` // Includes fees
 	TotalContractSpentFees      types.Currency `json:"totalcontractspentfees"`
@@ -1230,7 +1234,7 @@ type Renter interface {
 	DownloadByUID(uid DownloadID) (DownloadInfo, bool)
 
 	// DownloadHistory lists all the files that have been scheduled for download.
-	DownloadHistory() []DownloadInfo
+	DownloadHistory() ([]DownloadInfo, error)
 
 	// File returns information on specific file queried by user
 	File(siaPath SiaPath) (FileInfo, error)
@@ -1267,11 +1271,17 @@ type Renter interface {
 	// settings, assuming perfect age and uptime adjustments
 	EstimateHostScore(entry HostDBEntry, allowance Allowance) (HostScoreBreakdown, error)
 
-	// ReadRegistry starts a registry lookup on all available workers. The
-	// jobs have 'timeout' amount of time to finish their jobs and return a
-	// response. Otherwise the response with the highest revision number will be
+	// ReadRegistry starts a registry lookup on all available workers. The jobs
+	// have time to finish their jobs and return a response until the context is
+	// closed. Otherwise the response with the highest revision number will be
 	// used.
-	ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error)
+	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error)
+
+	// ReadRegistry starts a registry lookup on all available workers. The jobs
+	// have time to finish their jobs and return a response until the context is
+	// closed. Otherwise the response with the highest revision number will be
+	// used.
+	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
@@ -1388,7 +1398,7 @@ type Renter interface {
 	// skyfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadSkyfile(SkyfileUploadParameters, SkyfileUploadReader) (Skylink, error)
+	UploadSkyfile(context.Context, SkyfileUploadParameters, SkyfileUploadReader) (Skylink, error)
 
 	// Blocklist returns the merkleroots that are blocked
 	Blocklist() ([]crypto.Hash, error)

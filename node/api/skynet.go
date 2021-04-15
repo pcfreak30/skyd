@@ -2,6 +2,7 @@ package api
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1097,7 +1098,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
 	if params.convertPath == "" {
-		skylink, err := api.renter.UploadSkyfile(sup, reader)
+		skylink, err := api.renter.UploadSkyfile(req.Context(), sup, reader)
 		if errors.Contains(err, renter.ErrSkylinkBlocked) {
 			WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 			return
@@ -1514,7 +1515,9 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	}
 
 	// Read registry.
-	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+	srv, err := api.renter.ReadRegistry(ctx, spk, dataKey)
 	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
 		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
 		WriteError(w, Error{err.Error()}, http.StatusNotFound)

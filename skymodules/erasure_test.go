@@ -30,7 +30,6 @@ func testRSCode(t *testing.T) {
 		{0, -1},
 		{0, 0},
 		{0, 1},
-		{1, 0},
 	}
 	for _, ps := range badParams {
 		if _, err := NewRSCode(ps.data, ps.parity); err == nil {

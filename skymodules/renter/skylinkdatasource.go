@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -226,9 +225,9 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	return baseSector, nil
 }
 
-// skylinkDataSource will create a streamBufferDataSource for the data contained
-// inside of a Skylink. The function will not return until the base sector and
-// all skyfile metadata has been retrieved.
+// managedSkylinkDataSource will create a streamBufferDataSource for the data
+// contained inside of a Skylink. The function will not return until the base
+// sector and all skyfile metadata has been retrieved.
 //
 // NOTE: Skylink data sources are cached and outlive the user's request because
 // multiple different callers may want to use the same data source. We do have
@@ -236,18 +235,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // timeout. This can be optimized to always create the data source when it was
 // requested, but we should only do so after gathering some real world feedback
 // that indicates we would benefit from this.
-func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (streamBufferDataSource, error) {
-	// Create the context using the given timeout, this timeout should only be
-	// applicable to downloading the base sector because the data source might
-	// outlive the request.
-	// Create the context
-	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
-
+func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
@@ -268,7 +256,7 @@ func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duratio
 	// This will fail if we don't have the decryption key.
 	var fileSpecificSkykey skykey.Skykey
 	if skymodules.IsEncryptedBaseSector(baseSector) {
-		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
+		fileSpecificSkykey, err = r.managedDecryptBaseSector(baseSector)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to decrypt skyfile base sector")
 		}
@@ -288,7 +276,7 @@ func (r *Renter) skylinkDataSource(link skymodules.Skylink, timeout time.Duratio
 	var fanoutChunkFetchers []chunkFetcher
 	if len(fanoutBytes) > 0 {
 		// Derive the fanout key
-		fanoutKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
+		fanoutKey, err := skymodules.DeriveFanoutKey(&layout, fileSpecificSkykey)
 		if err != nil {
 			cancelFunc()
 			return nil, errors.AddContext(err, "unable to derive encryption key")

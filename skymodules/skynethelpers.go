@@ -275,8 +275,8 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 		baseSectorPayload = baseSector[offset : offset+sl.Filesize]
 	}
 
-	// Make sure the returned metadata has valid monetization settings.
-	if err := ValidateMonetization(sm.Monetization); err != nil {
+	// Make sure the returned metadata is valid.
+	if err := ValidateSkyfileMetadata(sm); err != nil {
 		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, err
 	}
 	return sl, fanoutBytes, sm, baseSectorPayload, nil
@@ -318,7 +318,8 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 			// note that we do not check the length property of a subfile as it
 			// is possible a user might have uploaded an empty part
 		}
-		if metadata.Length != totalLength {
+		legacyFile := len(metadata.Subfiles) == 1 && metadata.Length == 0 && metadata.Monetization == nil
+		if !legacyFile && metadata.Length != totalLength {
 			return errors.New("invalid length set on metadata")
 		}
 	}
@@ -331,6 +332,10 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		}
 	}
 
+	// Make sure the returned metadata has valid monetization settings.
+	if err := ValidateMonetization(metadata.Monetization); err != nil {
+		return errors.AddContext(err, "metadata has invalid monetization")
+	}
 	return nil
 }
 

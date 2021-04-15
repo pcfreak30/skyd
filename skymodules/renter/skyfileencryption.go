@@ -6,7 +6,6 @@ package renter
 import (
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/skykey"
@@ -17,16 +16,10 @@ import (
 
 var errNoSkykeyMatchesSkyfileEncryptionID = errors.New("Unable to find matching skykey for public ID encryption")
 
-// deriveFanoutKey returns the crypto.CipherKey that should be used for
-// decrypting the fanout stream from the skyfile stored using this layout.
-func (r *Renter) deriveFanoutKey(sl *skymodules.SkyfileLayout, fileSkykey skykey.Skykey) (crypto.CipherKey, error) {
-	return skymodules.DeriveFanoutKey(sl, fileSkykey)
-}
-
-// checkSkyfileEncryptionIDMatch tries to find a Skykey that can decrypt the
-// identifier and be used for decrypting the associated skyfile. It returns an
-// error if it is not found.
-func (r *Renter) checkSkyfileEncryptionIDMatch(encryptionIdentifier []byte, nonce []byte) (skykey.Skykey, error) {
+// managedCheckSkyfileEncryptionIDMatch tries to find a Skykey that can decrypt
+// the identifier and be used for decrypting the associated skyfile. It returns
+// an error if it is not found.
+func (r *Renter) managedCheckSkyfileEncryptionIDMatch(encryptionIdentifier []byte, nonce []byte) (skykey.Skykey, error) {
 	allSkykeys := r.staticSkykeyManager.Skykeys()
 	for _, sk := range allSkykeys {
 		matches, err := sk.MatchesSkyfileEncryptionID(encryptionIdentifier, nonce)
@@ -41,10 +34,11 @@ func (r *Renter) checkSkyfileEncryptionIDMatch(encryptionIdentifier []byte, nonc
 	return skykey.Skykey{}, errNoSkykeyMatchesSkyfileEncryptionID
 }
 
-// decryptBaseSector attempts to decrypt the baseSector. If it has the necessary
-// Skykey, it will decrypt the baseSector in-place. It returns the file-specific
-// skykey to be used for decrypting the rest of the associated skyfile.
-func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
+// managedDecryptBaseSector attempts to decrypt the baseSector. If it has the
+// necessary Skykey, it will decrypt the baseSector in-place. It returns the
+// file-specific skykey to be used for decrypting the rest of the associated
+// skyfile.
+func (r *Renter) managedDecryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 	// Sanity check - baseSector should not be more than modules.SectorSize.
 	// Note that the base sector may be smaller in the event of a packed
 	// skyfile.
@@ -73,7 +67,7 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 	// If the ID is unknown, use the key ID as an encryption identifier and try
 	// finding the associated skykey.
 	if errors.Contains(err, skykey.ErrNoSkykeysWithThatID) {
-		masterSkykey, err = r.checkSkyfileEncryptionIDMatch(keyID[:], nonce)
+		masterSkykey, err = r.managedCheckSkyfileEncryptionIDMatch(keyID[:], nonce)
 	}
 	if err != nil {
 		return skykey.Skykey{}, errors.AddContext(err, "Unable to find associated skykey")
@@ -200,9 +194,9 @@ func generateCipherKey(fup *skymodules.FileUploadParams, sup skymodules.SkyfileU
 	return nil
 }
 
-// generateFilekey generates the FileSpecificSkykey to be used for encryption
-// and sets it in the SkyfileUploadParameters
-func (r *Renter) generateFilekey(sup *skymodules.SkyfileUploadParameters, nonce []byte) error {
+// managedGenerateFilekey generates the FileSpecificSkykey to be used for
+// encryption and sets it in the SkyfileUploadParameters
+func (r *Renter) managedGenerateFilekey(sup *skymodules.SkyfileUploadParameters, nonce []byte) error {
 	// If encryption is not enabled then nothing to do.
 	if !encryptionEnabled(sup) {
 		return nil

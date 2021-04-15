@@ -5,9 +5,7 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1713,60 +1711,27 @@ func rentercontractrecoveryscanprogresscmd() {
 // renterfileslistcmd is the handler for the command `skyc renter ls`. Lists
 // files known to the renter on the network.
 func renterfileslistcmd(cmd *cobra.Command, args []string) {
-	var path string
-	switch len(args) {
-	case 0:
-		path = "."
-	case 1:
-		path = args[0]
-	default:
+	// Parse the SiaPath
+	sp, err := parseLSArgs(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
-	}
-	// Parse the input siapath.
-	var sp skymodules.SiaPath
-	var err error
-	if path == "." || path == "" || path == "/" {
-		sp = skymodules.RootSiaPath()
-	} else {
-		sp, err = skymodules.NewSiaPath(path)
-		if err != nil {
-			die("could not parse siapath:", err)
-		}
 	}
 
 	// Check for file first
 	if !sp.IsRoot() {
-		var rf api.RenterFile
-		if renterListRoot {
-			rf, err = httpClient.RenterFileRootGet(sp)
-		} else {
-			rf, err = httpClient.RenterFileGet(sp)
+		tryDir, err := printSingleFile(sp, renterListRoot, false)
+		if err != nil {
+			die(err)
 		}
-		if err == nil {
-			json, err := json.MarshalIndent(rf.File, "", "  ")
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			fmt.Println()
-			fmt.Println(string(json))
-			fmt.Println()
+		if !tryDir {
 			return
-		} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-			die(fmt.Sprintf("Error getting file %v: %v", path, err))
 		}
 	}
 
-	// Get dirs with their corresponding files.
-	dirs := getDir(sp, renterListRoot, renterListRecursive)
-
-	// Sort the directories and the files.
-	sort.Sort(byDirectoryInfo(dirs))
-	for i := 0; i < len(dirs); i++ {
-		sort.Sort(bySiaPathDir(dirs[i].subDirs))
-		sort.Sort(bySiaPathFile(dirs[i].files))
-	}
+	// Get dirs with their corresponding files. They will be sorted by siapath.
+	dirs := getDirSorted(sp, renterListRoot, renterListRecursive)
 
 	// Get the total number of listings (subdirs and files).
 	root := dirs[0] // Root directory we are querying.
@@ -1784,72 +1749,17 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 
 	// Handle the non verbose output.
 	if !verbose {
-		for _, dir := range dirs {
-			fmt.Printf("%v/\n", dir.dir.SiaPath)
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			for _, subDir := range dir.subDirs {
-				name := subDir.SiaPath.Name() + "/"
-				size := modules.FilesizeUnits(subDir.AggregateSize)
-				fmt.Fprintf(w, "  %v\t%9v\n", name, size)
-			}
-
-			for _, file := range dir.files {
-				name := file.SiaPath.Name()
-				size := modules.FilesizeUnits(file.Filesize)
-				fmt.Fprintf(w, "  %v\t%9v\n", name, size)
-			}
-			if err := w.Flush(); err != nil {
-				die("failed to flush writer:", err)
-			}
-			fmt.Println()
+		err := printDirs(dirs)
+		if err != nil {
+			die(err)
 		}
 		return
 	}
 
 	// Handle the verbose output.
-	for _, dir := range dirs {
-		fmt.Println(dir.dir.SiaPath.String() + "/")
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
-		for _, subDir := range dir.subDirs {
-			name := subDir.SiaPath.Name() + "/"
-			size := modules.FilesizeUnits(subDir.AggregateSize)
-			redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
-			if subDir.AggregateMinRedundancy == -1 {
-				redundancyStr = "-"
-			}
-			healthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(subDir.AggregateHealth))
-			stuckHealthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(subDir.AggregateStuckHealth))
-			stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
-			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckHealthStr, stuckStr, "-", "-", "-")
-		}
-
-		for _, file := range dir.files {
-			name := file.SiaPath.Name()
-			size := modules.FilesizeUnits(file.Filesize)
-			availStr := yesNo(file.Available)
-			bytesUploaded := modules.FilesizeUnits(file.UploadedBytes)
-			uploadStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
-			if file.UploadProgress == -1 {
-				uploadStr = "-"
-			}
-			redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
-			if file.Redundancy == -1 {
-				redundancyStr = "-"
-			}
-
-			healthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(file.Health))
-			stuckHealthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(file.StuckHealth))
-			stuckStr := yesNo(file.Stuck)
-			renewStr := yesNo(file.Renewing)
-			onDiskStr := yesNo(file.OnDisk)
-			recoverStr := yesNo(file.Recoverable)
-			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckHealthStr, stuckStr, renewStr, onDiskStr, recoverStr)
-		}
-		if err := w.Flush(); err != nil {
-			die("failed to flush writer:", err)
-		}
-		fmt.Println()
+	err = printDirsVerbose(dirs)
+	if err != nil {
+		die(err)
 	}
 }
 

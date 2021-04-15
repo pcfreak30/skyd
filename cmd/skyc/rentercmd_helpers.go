@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
@@ -14,6 +18,13 @@ import (
 	"gitlab.com/skynetlabs/skyd/build"
 	"gitlab.com/skynetlabs/skyd/node/api"
 	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+)
+
+var (
+	// errIncorrectNumArgs is the error returned if there is an incorrect number
+	// of arguments
+	errIncorrectNumArgs = errors.New("incorrect number of arguments")
 )
 
 // byDirectoryInfo implements sort.Interface for []directoryInfo based on the
@@ -328,9 +339,14 @@ func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, 
 	return []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}, numStuck, nil
 }
 
+// atomicTotalGetDirs is a helper for printing out the status of the getDir
+// function call.
+var atomicTotalGetDirs uint64
+
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs, querying the root directory.
 func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryInfo) {
+	// Query the directory
 	var rd api.RenterDirectory
 	var err error
 	if root {
@@ -341,6 +357,13 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 	if err != nil {
 		die("failed to get dir info:", err)
 	}
+
+	// Defer print status update
+	defer func() {
+		fmt.Printf("\r%v directories queried", atomic.AddUint64(&atomicTotalGetDirs, 1))
+	}()
+
+	// Split the directory and sub directory information
 	dir := rd.Directories[0]
 	subDirs := rd.Directories[1:]
 
@@ -351,16 +374,92 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 		subDirs: subDirs,
 	})
 
-	// If -R isn't set we are done.
-	if !recursive {
+	// If -R isn't set, or there are no subDirs we are done.
+	if !recursive || len(subDirs) == 0 {
 		return
 	}
+
+	// Define number of workers for this call to use.
+	//
+	// NOTE: This is a recursive call so all subsequent calls will also have this
+	// many workers. While go routines themselves are cheap, we want to limit the
+	// chance of a panic due to too many open files.
+	//
+	// There will be numGetDirWorkers^maxDirectoryDepth go routines launched.
+	numGetDirWorkers := 5
+	var dirsMu sync.Mutex
+
+	// Create a siapath chan
+	siaPathChan := make(chan skymodules.SiaPath, numGetDirWorkers)
+
+	// Define getDirWorker function
+	getDirWorkerFunc := func(root, recursive bool) {
+		for siaPath := range siaPathChan {
+			subdirs := getDir(siaPath, root, recursive)
+			dirsMu.Lock()
+			dirs = append(dirs, subdirs...)
+			dirsMu.Unlock()
+		}
+	}
+
+	// Launch workers.
+	var wg sync.WaitGroup
+	for i := 0; i < numGetDirWorkers; i++ {
+		wg.Add(1)
+		go func(root, recursive bool) {
+			getDirWorkerFunc(root, recursive)
+			wg.Done()
+		}(root, recursive)
+	}
+
 	// Call getDir on subdirs.
 	for _, subDir := range subDirs {
-		rdirs := getDir(subDir.SiaPath, root, recursive)
-		dirs = append(dirs, rdirs...)
+		siaPathChan <- subDir.SiaPath
 	}
+
+	close(siaPathChan)
+	wg.Wait()
 	return
+}
+
+// getDirSorted calls getDir and then sorts the response by siapath
+func getDirSorted(siaPath skymodules.SiaPath, root, recursive bool) []directoryInfo {
+	// Get Dirs
+	dirs := getDir(siaPath, root, recursive)
+
+	// Sort the directories and the files.
+	sort.Sort(byDirectoryInfo(dirs))
+	for i := 0; i < len(dirs); i++ {
+		sort.Sort(bySiaPathDir(dirs[i].subDirs))
+		sort.Sort(bySiaPathFile(dirs[i].files))
+	}
+	return dirs
+}
+
+// parseLSArgs is a helper that parses the arguments for renter ls and skynet ls
+// and returns the siapath.
+func parseLSArgs(args []string) (skymodules.SiaPath, error) {
+	var path string
+	switch len(args) {
+	case 0:
+		path = "."
+	case 1:
+		path = args[0]
+	default:
+		return skymodules.SiaPath{}, errIncorrectNumArgs
+	}
+	// Parse the input siapath.
+	var sp skymodules.SiaPath
+	var err error
+	if path == "." || path == "" || path == "/" {
+		sp = skymodules.RootSiaPath()
+	} else {
+		sp, err = skymodules.NewSiaPath(path)
+		if err != nil {
+			return skymodules.SiaPath{}, errors.AddContext(err, "could not parse siaPath")
+		}
+	}
+	return sp, nil
 }
 
 // printContractInfo is a helper function for printing the information about a
@@ -412,6 +511,127 @@ Contract %v
 
 	fmt.Println("Contract not found")
 	return nil
+}
+
+// printDirs is a helper for printing directoryInfos
+func printDirs(dirs []directoryInfo) error {
+	for _, dir := range dirs {
+		// Initialize a tab writer for the diretory
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		// Print the Directory SiaPath
+		fmt.Fprintf(w, "%v/\n", dir.dir.SiaPath)
+
+		// Print SubDirs
+		for _, subDir := range dir.subDirs {
+			name := subDir.SiaPath.Name() + "/"
+			size := modules.FilesizeUnits(subDir.AggregateSize)
+			fmt.Fprintf(w, "  %v\t%9v\n", name, size)
+		}
+
+		// Print files
+		for _, file := range dir.files {
+			name := file.SiaPath.Name()
+			size := modules.FilesizeUnits(file.Filesize)
+			fmt.Fprintf(w, "  %v\t%9v\n", name, size)
+		}
+		fmt.Fprintln(w)
+
+		// Flush the writer
+		if err := w.Flush(); err != nil {
+			return errors.AddContext(err, "failed to flush writer")
+		}
+	}
+	return nil
+}
+
+// printDirsVerbose is a helper for verbose printing of directoryInfos
+func printDirsVerbose(dirs []directoryInfo) error {
+	for _, dir := range dirs {
+		// Create a tab writer for the directory
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		// Print the Directory SiaPath
+		fmt.Fprintf(w, "%v/\n", dir.dir.SiaPath)
+
+		// Print SubDirs
+		fmt.Fprintf(w, "  Name\tFilesize\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
+		for _, subDir := range dir.subDirs {
+			name := subDir.SiaPath.Name() + "/"
+			size := modules.FilesizeUnits(subDir.AggregateSize)
+			redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
+			if subDir.AggregateMinRedundancy == -1 {
+				redundancyStr = "-"
+			}
+			healthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(subDir.AggregateHealth))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(subDir.AggregateStuckHealth))
+			stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckHealthStr, stuckStr, "-", "-", "-")
+		}
+
+		// Print files
+		for _, file := range dir.files {
+			name := file.SiaPath.Name()
+			size := modules.FilesizeUnits(file.Filesize)
+			availStr := yesNo(file.Available)
+			bytesUploaded := modules.FilesizeUnits(file.UploadedBytes)
+			uploadStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
+			if file.UploadProgress == -1 {
+				uploadStr = "-"
+			}
+			redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
+			if file.Redundancy == -1 {
+				redundancyStr = "-"
+			}
+
+			healthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(file.Health))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", skymodules.HealthPercentage(file.StuckHealth))
+			stuckStr := yesNo(file.Stuck)
+			renewStr := yesNo(file.Renewing)
+			onDiskStr := yesNo(file.OnDisk)
+			recoverStr := yesNo(file.Recoverable)
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckHealthStr, stuckStr, renewStr, onDiskStr, recoverStr)
+		}
+		fmt.Fprintln(w)
+
+		// Flush the writer
+		if err := w.Flush(); err != nil {
+			return errors.AddContext(err, "failed to flush writer")
+		}
+	}
+	return nil
+}
+
+// printSingleFile is a helper for printing information about a single file
+func printSingleFile(sp skymodules.SiaPath, root, skylinkCheck bool) (tryDir bool, err error) {
+	var rf api.RenterFile
+	if root {
+		rf, err = httpClient.RenterFileRootGet(sp)
+	} else {
+		rf, err = httpClient.RenterFileGet(sp)
+	}
+	if err == nil {
+		if skylinkCheck && len(rf.File.Skylinks) == 0 {
+			err = errors.New("File is not pinning any skylinks")
+			return
+		}
+		var data []byte
+		data, err = json.MarshalIndent(rf.File, "", "  ")
+		if err != nil {
+			return
+		}
+
+		fmt.Println()
+		fmt.Println(string(data))
+		fmt.Println()
+		return
+	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		err = fmt.Errorf("Error getting file %v: %v", sp.Name(), err)
+		return
+	}
+	tryDir = true
+	err = nil
+	return
 }
 
 // renterallowancespending prints info about the current period spending
