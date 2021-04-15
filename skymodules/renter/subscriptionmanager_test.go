@@ -2,10 +2,13 @@ package renter
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/build"
 )
@@ -32,6 +35,9 @@ func TestSubscriptionManager(t *testing.T) {
 	})
 	t.Run("Notify", func(t *testing.T) {
 		testSubscriptionManagerNotify(t, rt.renter)
+	})
+	t.Run("Parallel", func(t *testing.T) {
+		testSubscriptionManagerSubscribeUnsubscribeParallel(t, rt.renter)
 	})
 }
 
@@ -344,5 +350,126 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	expectedUpdates := []*modules.SignedRegistryValue{&srv1, &srv2, &srv3}
 	if !reflect.DeepEqual(updates, expectedUpdates) {
 		t.Fatal("updates don't match")
+	}
+}
+
+// testSubscriptionManagerSubscribeUnsubscribeParallel subscribes, unsubscribes
+// and notifies in parallel to have the go race checker verify that the locking
+// in the subscription manager is sound and we don't have any race conditions.
+func testSubscriptionManagerSubscribeUnsubscribeParallel(t *testing.T, r *Renter) {
+	sm := newSubscriptionManager(r)
+
+	// Declare a helper type.
+	type request struct {
+		staticSPK types.SiaPublicKey
+		staticSK  crypto.SecretKey
+
+		srv modules.SignedRegistryValue
+		mu  sync.RWMutex
+	}
+
+	// Create random pubkey tweak pairs.
+	var requests []*request
+	n := 100
+	for i := 0; i < n; i++ {
+		srv, spk, sk := randomRegistryValue()
+		requests = append(requests, &request{
+			staticSPK: spk,
+			srv:       srv,
+			staticSK:  sk,
+		})
+	}
+
+	// Create a goroutine for each entry that updates the entry.
+	ticker := time.NewTicker(10 * time.Millisecond)
+	stopTicker := make(chan struct{})
+	var wgTicker sync.WaitGroup
+	for i := range requests {
+		wgTicker.Add(1)
+		go func(i int) {
+			defer wgTicker.Done()
+			for {
+				select {
+				case <-ticker.C:
+				case <-stopTicker:
+					return
+				}
+				requests[i].mu.Lock()
+				requests[i].srv.Revision++
+				requests[i].srv = requests[i].srv.Sign(requests[i].staticSK)
+				requests[i].mu.Unlock()
+
+				sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+					PubKey: requests[i].staticSPK,
+					Entry:  requests[i].srv,
+				})
+			}
+		}(i)
+	}
+
+	var wg sync.WaitGroup
+	var wgUnsubscribe sync.WaitGroup
+	start := make(chan struct{})
+	unsubscribe := make(chan struct{})
+	for _, req := range requests {
+		wg.Add(1)
+		wgUnsubscribe.Add(1)
+		go func(req *request) {
+			defer wg.Done()
+
+			// Wait for the start signal.
+			<-start
+
+			// Create the subscriber and subscribe
+			subscriber := sm.newSubscriber()
+			req.mu.RLock()
+			tweak := req.srv.Tweak
+			req.mu.RUnlock()
+			_ = subscriber.Subscribe(req.staticSPK, tweak)
+
+			// Wait for the unsubscribe signal.
+			wgUnsubscribe.Done()
+			<-unsubscribe
+
+			// Wait a second and then unsubscribe.
+			err := subscriber.Close()
+			if err != nil {
+				t.Error(err)
+			}
+		}(req)
+	}
+
+	// Start the threads.
+	close(start)
+
+	// Wait for them to reach the unsubscribe chan.
+	wgUnsubscribe.Wait()
+
+	// Check subscribers and subscriptions.
+	if len(sm.subscribers) != n {
+		t.Errorf("subscribers %v != %v", len(sm.subscribers), n)
+	}
+	if len(sm.subscriptions) != n {
+		t.Errorf("subscriptions %v != %v", len(sm.subscriptions), n)
+	}
+
+	// Unblock them.
+	close(unsubscribe)
+
+	// Wait for them to finish.
+	wg.Wait()
+
+	// Stop the ticker.
+	close(stopTicker)
+
+	// Wait for it to be done.
+	wgTicker.Wait()
+
+	// Check subscribers and subscriptions.
+	if len(sm.subscribers) != 0 {
+		t.Errorf("subscribers %v != %v", len(sm.subscribers), 0)
+	}
+	if len(sm.subscriptions) != 0 {
+		t.Errorf("subscriptions %v != %v", len(sm.subscriptions), 0)
 	}
 }
