@@ -24,6 +24,7 @@ func randomMetadata() siadir.Metadata {
 		AggregateMinRedundancy:       float64(fastrand.Intn(100)),
 		AggregateModTime:             time.Now(),
 		AggregateNumFiles:            fastrand.Uint64n(100),
+		AggregateNumLostFiles:        fastrand.Uint64n(100),
 		AggregateNumStuckChunks:      fastrand.Uint64n(100),
 		AggregateNumSubDirs:          fastrand.Uint64n(100),
 		AggregateRemoteHealth:        float64(fastrand.Intn(100)),
@@ -40,6 +41,7 @@ func randomMetadata() siadir.Metadata {
 		MinRedundancy:       float64(fastrand.Intn(100)),
 		ModTime:             time.Now(),
 		NumFiles:            fastrand.Uint64n(100),
+		NumLostFiles:        fastrand.Uint64n(100),
 		NumStuckChunks:      fastrand.Uint64n(100),
 		NumSubDirs:          fastrand.Uint64n(100),
 		RemoteHealth:        float64(fastrand.Intn(100)),
@@ -65,6 +67,10 @@ func safeRandomMetadata() siadir.Metadata {
 	md.NumFiles = 0
 	md.AggregateNumStuckChunks = 0
 	md.NumStuckChunks = 0
+	// Set LostFiles to zero as well since we can't have zero files but non zero
+	// lost files.
+	md.AggregateNumLostFiles = 0
+	md.NumLostFiles = 0
 	return md
 }
 
@@ -280,6 +286,7 @@ func TestCalculateDirectoryMetadata(t *testing.T) {
 		AggregateMinRedundancy:       0,
 		AggregateModTime:             beforeUpdate,
 		AggregateNumFiles:            3,
+		AggregateNumLostFiles:        2,
 		AggregateNumStuckChunks:      0,
 		AggregateNumSubDirs:          5,
 		AggregateRemoteHealth:        worstFileHealth,
@@ -296,6 +303,7 @@ func TestCalculateDirectoryMetadata(t *testing.T) {
 		MinRedundancy:       0,
 		ModTime:             beforeUpdate,
 		NumFiles:            2,
+		NumLostFiles:        2,
 		NumStuckChunks:      0,
 		NumSubDirs:          3,
 		RemoteHealth:        worstFileHealth,

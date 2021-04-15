@@ -44,7 +44,7 @@ func testSiaDirBasic(t *testing.T) {
 	//
 	// Check that the metadata was initialized properly
 	md := siaDir.metadata
-	if err = checkMetadataInit(md); err != nil {
+	if err = VerifyMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 	// Check that the directory and .siadir file were created on disk
@@ -75,7 +75,7 @@ func testSiaDirBasic(t *testing.T) {
 	}
 	// Check that the metadata was initialized properly
 	md = topSiaDir.metadata
-	if err = checkMetadataInit(md); err != nil {
+	if err = VerifyMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 
@@ -88,7 +88,7 @@ func testSiaDirBasic(t *testing.T) {
 	}
 	// Check that the metadata was initialized properly
 	md = rootSiaDir.metadata
-	if err = checkMetadataInit(md); err != nil {
+	if err = VerifyMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 
@@ -182,7 +182,7 @@ func testUpdateMetadata(t *testing.T) {
 
 	// Check metadata was initialized properly in memory and on disk
 	md := siaDir.metadata
-	if err = checkMetadataInit(md); err != nil {
+	if err = VerifyMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 	siaDir, err = LoadSiaDir(siaDirSysPath, modules.ProdDependencies)
@@ -190,7 +190,7 @@ func testUpdateMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	md = siaDir.metadata
-	if err = checkMetadataInit(md); err != nil {
+	if err = VerifyMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
 
@@ -204,7 +204,7 @@ func testUpdateMetadata(t *testing.T) {
 
 	// Check that the metadata was updated properly in memory and on disk
 	md = siaDir.metadata
-	err = equalMetadatas(md, metadataUpdate)
+	err = EqualMetadatas(md, metadataUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func testUpdateMetadata(t *testing.T) {
 	}
 	metadataUpdate.ModTime = md.ModTime
 	// Check the rest of the metadata
-	err = equalMetadatas(md, metadataUpdate)
+	err = EqualMetadatas(md, metadataUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}

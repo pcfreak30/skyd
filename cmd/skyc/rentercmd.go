@@ -486,12 +486,10 @@ func rentercmd() {
 
 // renterlostcmd is the handler for displaying the renter's lost files.
 func renterlostcmd() {
-	// Print out the lost files of the renter
-	dirs := getDir(skymodules.RootSiaPath(), true, true)
-	_, _, err := fileHealthBreakdown(dirs, true)
-	if err != nil {
-		die("Unable to display lost files:", err)
-	}
+	// Grab the root directory information
+	dirs := getDir(skymodules.RootSiaPath(), true, false)
+	// Print the Aggregate Lost files
+	fmt.Println(dirs[0].dir.AggregateNumLostFiles, "lost files found.")
 }
 
 // renterhealthsummarycmd is the handler for displaying the overall health
