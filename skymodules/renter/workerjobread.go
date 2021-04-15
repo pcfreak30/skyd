@@ -235,17 +235,24 @@ func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
 // callExpectedJobCost returns an estimate for the price of performing a read
 // job with the given length.
 func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
-	// create a dummy read program to get at the estimated cost
-	w := jq.staticWorker()
-	pt := w.staticPriceTable().staticPriceTable
-	pb := modules.NewProgramBuilder(&pt, 0)
-	pb.AddReadSectorInstruction(length, 0, crypto.Hash{}, true)
-	cost, _, _ := pb.Cost(true)
+	pt := &jq.staticWorker().staticPriceTable().staticPriceTable
 
-	// take into account bandwidth costs
+	// Calculate init cost. The program we use has a 48 byte program data and 1
+	// instruction. 48 = 8 bytes length + 8 bytes offset + 32 bytes merkle root
+	cost := modules.MDMInitCost(pt, 48, 1)
+
+	// Add the execution cost.
+	cost = cost.Add(modules.MDMReadCost(pt, length))
+
+	// Add the memory cost.
+	memory := modules.MDMInitMemory() + modules.MDMReadMemory()
+	time := uint64(modules.MDMTimeReadSector)
+	cost = cost.Add(modules.MDMMemoryCost(pt, memory, time))
+
+	// Add the bandwidth cost.
 	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
-	return cost.Add(bandwidthCost)
+	cost = cost.Add(modules.MDMBandwidthCost(*pt, ulBandwidth, dlBandwidth))
+	return cost
 }
 
 // callUpdateJobTimeMetrics takes a length and the duration it took to fulfil
