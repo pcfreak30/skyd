@@ -757,6 +757,9 @@ func (w *worker) threadedSubscriptionLoop() {
 
 		// Get a valid price table.
 		pt := w.managedPriceTableForSubscription(modules.SubscriptionPeriod)
+		if pt == nil {
+			return // shutdown
+		}
 
 		// Compute the initial deadline.
 		deadline := time.Now().Add(modules.SubscriptionPeriod)
