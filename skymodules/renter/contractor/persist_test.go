@@ -126,6 +126,9 @@ func TestSaveLoad(t *testing.T) {
 	if _, exists := c.preferredHosts["host"]; !exists {
 		t.Fatal("preferred host wasn't loaded")
 	}
+	if len(c.preferredHosts) != 1 {
+		t.Fatal("wrong length")
+	}
 	select {
 	case <-c.synced:
 	default:
@@ -173,6 +176,9 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if _, exists := c.preferredHosts["host"]; !exists {
 		t.Fatal("preferred host wasn't loaded")
+	}
+	if len(c.preferredHosts) != 1 {
+		t.Fatal("wrong length")
 	}
 	select {
 	case <-c.synced:
