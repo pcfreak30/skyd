@@ -1557,6 +1557,11 @@ type HostDB interface {
 	// any offline or inactive hosts.
 	RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]HostDBEntry, error)
 
+	// RandomHosts returns a set of random hosts, weighted by their estimated
+	// usefulness / attractiveness to the renter. RandomHosts will not return
+	// any offline or inactive hosts.
+	RandomHostsWithWhitelist(int, []types.SiaPublicKey, []types.SiaPublicKey, map[string]struct{}) ([]HostDBEntry, error)
+
 	// RandomHostsWithAllowance is the same as RandomHosts but accepts an
 	// allowance as an argument to be used instead of the allowance set in the
 	// renter.

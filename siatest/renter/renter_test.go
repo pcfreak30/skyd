@@ -5262,7 +5262,7 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 	renter := tg.Renters()[0]
 
 	// Helper to check the number of GFU contracts.
-	test := func(hosts uint64, portalMode bool) error {
+	test := func(hosts uint64, portalMode bool, preferredHosts map[string]struct{}) error {
 		// Update the allowance.
 		allowance := siatest.DefaultAllowance
 		allowance.Hosts = hosts
@@ -5293,6 +5293,12 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 			for _, contract := range rcg.ActiveContracts {
 				if contract.GoodForUpload {
 					gfuContracts++
+
+					// The gfu contract should be part of the preferred hosts
+					// set.
+					if _, ok := preferredHosts[contract.HostPublicKey.String()]; !ok {
+						return errors.New("found gfu contract that is not part of the preferred hosts")
+					}
 				}
 			}
 			if gfuContracts != hosts {
@@ -5302,16 +5308,41 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 		})
 	}
 
+	// Helper to get the set of preferred hosts which are the hosts we have gfu
+	// contracts with.
+	preferredHosts := func() map[string]struct{} {
+		ph := make(map[string]struct{})
+		rcg, err := renter.RenterAllContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, contract := range rcg.ActiveContracts {
+			if contract.GoodForUpload {
+				ph[contract.HostPublicKey.String()] = struct{}{}
+			}
+		}
+		return ph
+	}
+	if len(preferredHosts()) != len(tg.Hosts()) {
+		t.Fatal("all hosts should be in the initial set of preferred hosts")
+	}
+
 	// Run for default allowance and then one less every time until we reach 0
 	// hosts.
+	phs := preferredHosts()
 	for hosts := siatest.DefaultAllowance.Hosts; hosts > 0; hosts-- {
 		// Run for regular node.
-		if err := test(hosts, false); err != nil {
+		if err := test(hosts, false, phs); err != nil {
 			t.Fatal(err)
 		}
 		// Run for portal.
-		if err := test(hosts, true); err != nil {
+		if err := test(hosts, true, phs); err != nil {
 			t.Fatal(err)
+		}
+		// Update the preferred hosts to match the smaller allowance.
+		phs = preferredHosts()
+		if len(phs) != int(hosts) {
+			t.Fatalf("%v != %v", len(phs), hosts)
 		}
 	}
 }

@@ -307,6 +307,13 @@ func (ht *HostTree) Select(spk types.SiaPublicKey) (skymodules.HostDBEntry, bool
 // intentionally being given a low score to indicate that the host should not be
 // used.
 func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaPublicKey) []skymodules.HostDBEntry {
+	return ht.SelectRandomWithWhitelist(n, blacklist, addressBlacklist, nil)
+}
+
+// SelectRandomWithWhitelist is the same as SelectRandom with the additional
+// whitelist parameter that guarantees that only whitelisted hosts can be
+// returned.
+func (ht *HostTree) SelectRandomWithWhitelist(n int, blacklist, addressBlacklist []types.SiaPublicKey, whitelist map[string]struct{}) []skymodules.HostDBEntry {
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 
@@ -337,6 +344,22 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 
 		// Remember the host to insert it again later.
 		removedEntries = append(removedEntries, node.entry)
+	}
+	// Remove hosts that are not on the whitelist but remember them to make sure
+	// we can insert them later.
+	if len(whitelist) > 0 {
+		for pubkey, node := range ht.hosts {
+			_, whitelisted := whitelist[pubkey]
+			if whitelisted {
+				continue
+			}
+			// Remove the host from the tree.
+			node.remove()
+			delete(ht.hosts, pubkey)
+
+			// Remember the host to insert it again later.
+			removedEntries = append(removedEntries, node.entry)
+		}
 	}
 
 	var hosts []skymodules.HostDBEntry

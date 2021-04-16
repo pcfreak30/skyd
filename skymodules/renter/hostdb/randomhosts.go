@@ -13,6 +13,12 @@ import (
 // returns a slice of entries. If the IP violation check was disabled, the
 // addressBlacklist is ignored.
 func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]skymodules.HostDBEntry, error) {
+	return hdb.RandomHostsWithWhitelist(n, blacklist, addressBlacklist, nil)
+}
+
+// RandomHostsWithWhitelist is the same as RandomHosts with an additional
+// whitelist parameter that guarantees that only whitelisted hosts are returned.
+func (hdb *HostDB) RandomHostsWithWhitelist(n int, blacklist, addressBlacklist []types.SiaPublicKey, whitelist map[string]struct{}) ([]skymodules.HostDBEntry, error) {
 	hdb.mu.RLock()
 	initialScanComplete := hdb.initialScanComplete
 	ipCheckDisabled := hdb.disableIPViolationCheck
@@ -21,9 +27,9 @@ func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPub
 		return []skymodules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
 	if ipCheckDisabled {
-		return hdb.staticFilteredTree.SelectRandom(n, blacklist, nil), nil
+		return hdb.staticFilteredTree.SelectRandomWithWhitelist(n, blacklist, nil, whitelist), nil
 	}
-	return hdb.staticFilteredTree.SelectRandom(n, blacklist, addressBlacklist), nil
+	return hdb.staticFilteredTree.SelectRandomWithWhitelist(n, blacklist, addressBlacklist, whitelist), nil
 }
 
 // RandomHostsWithAllowance works as RandomHosts but uses a temporary hosttree
