@@ -3,7 +3,7 @@ package client
 import (
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TestEscapeSiaPath probes the escapeSiaPath function

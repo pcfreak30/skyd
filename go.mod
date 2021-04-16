@@ -1,4 +1,4 @@
-module gitlab.com/skynetlabs/skyd
+module gitlab.com/SkynetLabs/skyd
 
 go 1.13
 
@@ -10,8 +10,11 @@ require (
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/klauspost/cpuid/v2 v2.0.6 // indirect
 	github.com/klauspost/reedsolomon v1.9.12
+	github.com/kr/text v0.2.0 // indirect
 	github.com/montanaflynn/stats v0.6.3
-	github.com/spf13/cobra v1.0.0
+	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
+	github.com/spf13/cobra v1.1.3
+	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/tus/tusd v1.5.1
 	github.com/vbauerster/mpb/v5 v5.0.3
 	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210408043250-c949c8cd5bca
@@ -25,5 +28,8 @@ require (
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899
-	golang.org/x/net v0.0.0-20200707034311-ab3426394381
+	golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb
+	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4 // indirect
+	golang.org/x/text v0.3.4 // indirect
+	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 )

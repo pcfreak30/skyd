@@ -80,7 +80,11 @@ func testCallLoadSiaDirMetadata(t *testing.T) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	err = saveDir(testDir, newMetadata(), modules.ProdDependencies)
+	mdNew, err := newMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = saveDir(testDir, mdNew, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +142,10 @@ func testNewMetadata(t *testing.T) {
 		StuckHealth:   DefaultDirHealth,
 		Version:       metadataVersion,
 	}
-	mdNew := newMetadata()
+	mdNew, err := newMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Sync the time fields
 	md.AggregateModTime = mdNew.AggregateModTime

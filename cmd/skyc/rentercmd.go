@@ -21,11 +21,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 )
 
 const (
@@ -486,12 +486,10 @@ func rentercmd() {
 
 // renterlostcmd is the handler for displaying the renter's lost files.
 func renterlostcmd() {
-	// Print out the lost files of the renter
-	dirs := getDir(skymodules.RootSiaPath(), true, true)
-	_, _, err := fileHealthBreakdown(dirs, true)
-	if err != nil {
-		die("Unable to display lost files:", err)
-	}
+	// Grab the root directory information
+	dirs := getDir(skymodules.RootSiaPath(), true, false)
+	// Print the Aggregate Lost files
+	fmt.Println(dirs[0].dir.AggregateNumLostFiles, "lost files found.")
 }
 
 // renterhealthsummarycmd is the handler for displaying the overall health

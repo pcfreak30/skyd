@@ -2,6 +2,7 @@ package api
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,11 +20,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetportals"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
 )
 
 // The SkynetPerformanceStats are stateful and tracked globally, bound by a
@@ -1514,7 +1515,9 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	}
 
 	// Read registry.
-	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+	srv, err := api.renter.ReadRegistry(ctx, spk, dataKey)
 	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
 		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
 		WriteError(w, Error{err.Error()}, http.StatusNotFound)

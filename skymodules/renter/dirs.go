@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // CreateDir creates a directory for the renter

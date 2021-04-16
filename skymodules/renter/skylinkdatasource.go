@@ -2,14 +2,13 @@ package renter
 
 import (
 	"context"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -236,18 +235,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // timeout. This can be optimized to always create the data source when it was
 // requested, but we should only do so after gathering some real world feedback
 // that indicates we would benefit from this.
-func (r *Renter) managedSkylinkDataSource(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (streamBufferDataSource, error) {
-	// Create the context using the given timeout, this timeout should only be
-	// applicable to downloading the base sector because the data source might
-	// outlive the request.
-	// Create the context
-	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
-
+func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {

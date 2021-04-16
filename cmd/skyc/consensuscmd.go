@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/node/api"
 )
 
 var (

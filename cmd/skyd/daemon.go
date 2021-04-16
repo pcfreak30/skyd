@@ -15,9 +15,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"golang.org/x/crypto/ssh/terminal"
 
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node/api/server"
-	"gitlab.com/skynetlabs/skyd/profile"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node/api/server"
+	"gitlab.com/SkynetLabs/skyd/profile"
 )
 
 // passwordPrompt securely reads a password from stdin.
