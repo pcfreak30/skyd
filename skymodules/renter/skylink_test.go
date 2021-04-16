@@ -1,9 +1,11 @@
 package renter
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/skynetlabs/skyd/skymodules"
 )
 
@@ -110,49 +112,57 @@ func testSkylinkBasic(t *testing.T) {
 	// Define a helper to verify state. This basic test will be adding 1 skylink
 	// at a time and we want to make sure that the time is set to be far enough in
 	// the future.
-	verifyState := func(skylink skymodules.Skylink) {
+	verifyState := func(skylink skymodules.Skylink) error {
 		sm.mu.Lock()
+		defer sm.mu.Unlock()
 		if len(sm.unpinRequests) != 1 {
-			t.Fatalf("Prune result unexpected; have %v expected %v", len(sm.unpinRequests), 1)
+			return fmt.Errorf("Prune result unexpected; have %v expected %v", len(sm.unpinRequests), 1)
 		}
 		urt, ok := sm.unpinRequests[skylink.String()]
 		if !ok {
-			t.Fatal("skylink not in unpinRequests")
+			return errors.New("skylink not in unpinRequests")
 		}
 		if urt.Before(start.Add(2 * healthCheckInterval)) {
-			t.Error("t not far enough in the future")
+			return errors.New("time not far enough in the future")
 		}
-		sm.mu.Unlock()
+		return nil
 	}
 
 	// Verify state
-	verifyState(skylink1)
+	err := verifyState(skylink1)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Grab the unpinRequest time
 	sm.mu.Lock()
-	urt, _ := sm.unpinRequests[skylink1.String()]
+	urt := sm.unpinRequests[skylink1.String()]
 	sm.mu.Unlock()
 
-	// Call prune, nothing should happen since not enough time has passed.
+	// Call prune, nothing should happen since the pruneTimeThreshold is still 0
+	// so no time is before it.
 	sm.callPruneUnpinRequests()
-	verifyState(skylink1)
+	err = verifyState(skylink1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the pruneTimeThreshold to now plus 2 * healthCheckInterval. This
+	// will cause the first skylink to be pruned.
+	sm.callUpdatePruneTimeThreshold(time.Now().Add(2 * healthCheckInterval))
 
 	// Add skylink again should be a no-op
 	sm.managedAddUnpinRequest(skylink1)
-	verifyState(skylink1)
+	err = verifyState(skylink1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	sm.mu.Lock()
-	urt2, _ := sm.unpinRequests[skylink1.String()]
+	urt2 := sm.unpinRequests[skylink1.String()]
 	sm.mu.Unlock()
 	if !urt.Equal(urt2) {
 		t.Error("times shouldn't have been changed")
 	}
-
-	// Modify the times in the map to mimic sleeping into the future
-	sm.mu.Lock()
-	for sl := range sm.unpinRequests {
-		sm.unpinRequests[sl] = time.Now().Add(-3 * healthCheckInterval)
-	}
-	sm.mu.Unlock()
 
 	// Add a new skylink
 	sm.managedAddUnpinRequest(skylink2)
@@ -162,5 +172,8 @@ func testSkylinkBasic(t *testing.T) {
 	sm.callPruneUnpinRequests()
 
 	// Only the last skylink should be in the unpinRequests
-	verifyState(skylink2)
+	err = verifyState(skylink2)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

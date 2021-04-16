@@ -10,6 +10,9 @@ import (
 
 // skylinkManager manages skylink requests
 type skylinkManager struct {
+	// pruneTimeThreshold is the time threshold for pruning unpin requests.
+	pruneTimeThreshold time.Time
+
 	// unpinRequests are requests to unpin a skylink. It is a map of
 	// Skylink.String() to a time.Time by when the skylink should be fully
 	// unpinned. It is a map of strings instead of skylinks because the FileNode
@@ -47,14 +50,22 @@ func (sm *skylinkManager) callPruneUnpinRequests() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Iterate over the unpinRequests and check for requests that are in the past
+	// Iterate over the unpinRequests and check for requests that are in the
+	// past when compared to the pruneTime
 	for sl, t := range sm.unpinRequests {
 		// If the unpin request's time is in the past we can remove it from the
 		// list.
-		if t.Before(time.Now()) {
+		if t.Before(sm.pruneTimeThreshold) {
 			delete(sm.unpinRequests, sl)
 		}
 	}
+}
+
+// callUpdatePruneTimeThreshold updates the skylinkManager's pruneTimeThreshold
+func (sm *skylinkManager) callUpdatePruneTimeThreshold(t time.Time) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.pruneTimeThreshold = t
 }
 
 // managedAddUnpinRequest adds an unpin request to the skylinkManager
@@ -99,5 +110,27 @@ func (r *Renter) UnpinSkylink(skylink skymodules.Skylink) error {
 
 	// Add the unpin request
 	r.staticSkylinkManager.managedAddUnpinRequest(skylink)
+
+	// Try and Delete a file at the siaPath derived from the skylink. Since
+	// there is no guarantee that this is the siaPath for the file we ignore the
+	// errors returned.
+
+	// Derive siaPath
+	siaPath, err := skylink.SiaPath()
+	if err != nil {
+		return nil
+	}
+
+	// Try and delete skyfile
+	_ = r.staticFileSystem.DeleteFile(siaPath)
+
+	// Generate extended siaPath
+	extendedSiaPath, err := skymodules.NewSiaPath(siaPath.String() + skymodules.ExtendedSuffix)
+	if err != nil {
+		return nil
+	}
+
+	// Try ad delete extended skyfile
+	_ = r.staticFileSystem.DeleteFile(extendedSiaPath)
 	return nil
 }

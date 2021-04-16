@@ -638,7 +638,7 @@ func skynetunpincmd(cmd *cobra.Command, skylinks []string) {
 		// Unpin skylink
 		err := httpClient.SkynetSkylinkUnpinPost(skylink)
 		if err != nil {
-			die("Unable to unpin skylink", skylink, err)
+			fmt.Printf("Unable to unpin skylink %v: %v\n", skylink, err)
 		}
 	}
 }
