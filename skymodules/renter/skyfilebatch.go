@@ -11,9 +11,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 var (

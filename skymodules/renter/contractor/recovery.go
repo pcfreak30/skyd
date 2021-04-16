@@ -10,7 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TODO If we already have an active contract with a host for

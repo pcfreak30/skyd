@@ -6,8 +6,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
 
 // TestLimitStreamer verifies the limit streamer properly returns the data

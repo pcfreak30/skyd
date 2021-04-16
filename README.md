@@ -69,10 +69,10 @@ To build from source, [Go 1.13 or above must be
 installed](https://golang.org/doc/install) on the system. Clone the repo and
 run `make`:
 
-``
+```
 git clone https://gitlab.com/SkynetLabs/skyd
 cd skyd && make dependencies && make
-``
+```
 
 This will install the `skyd` and `skyc` binaries in your `$GOPATH/bin` folder.
 (By default, this is `$HOME/go/bin`.) You can find more information about

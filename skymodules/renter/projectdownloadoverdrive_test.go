@@ -7,7 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper

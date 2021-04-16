@@ -22,11 +22,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 )
 
 type (

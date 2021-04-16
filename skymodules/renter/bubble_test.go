@@ -12,10 +12,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 )
 
 // TestBubble tests the bubble code.
@@ -561,7 +561,7 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 	worstFileHealth := 1 - (0-float64(dp))/float64(pp)
 
 	// Define test helper
-	bubbleAndVerifyMetadata := func(testCase string, dirToBubble, expectedMDDir skymodules.SiaPath, dirMD siadir.Metadata, anf, ansd, asf uint64) {
+	bubbleAndVerifyMetadata := func(testCase string, dirToBubble, expectedMDDir skymodules.SiaPath, dirMD siadir.Metadata, anf, ansd, asf, anlf uint64) {
 		// Bubble target directory
 		beforeBubble := time.Now()
 		if err := rt.bubbleBlocking(dirToBubble); err != nil {
@@ -612,6 +612,7 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 			//
 			// Files, Size, SubDirs
 			expectedMetadata.AggregateNumFiles = anf
+			expectedMetadata.AggregateNumLostFiles = anlf
 			expectedMetadata.AggregateSize = anf * fileSize
 			expectedMetadata.AggregateNumSubDirs = ansd
 			// Skynet
@@ -633,7 +634,26 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 			expectedMetadata.AggregateModTime = metadata.AggregateModTime
 
 			// Compare the aggregate fields from the expectedMDDir and root
-			return equalBubbledAggregateMetadata(metadata, expectedMetadata, time.Since(beforeBubble))
+			//
+			// Since we only care about the aggregate fields, set the expectedMetadata
+			// directory fields to be equal to the metadata directory fields.
+			expectedMetadata.Health = metadata.Health
+			expectedMetadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+			expectedMetadata.MinRedundancy = metadata.MinRedundancy
+			expectedMetadata.Mode = metadata.Mode
+			expectedMetadata.NumFiles = metadata.NumFiles
+			expectedMetadata.NumLostFiles = metadata.NumLostFiles
+			expectedMetadata.NumStuckChunks = metadata.NumStuckChunks
+			expectedMetadata.NumSubDirs = metadata.NumSubDirs
+			expectedMetadata.RemoteHealth = metadata.RemoteHealth
+			expectedMetadata.RepairSize = metadata.RepairSize
+			expectedMetadata.Size = metadata.Size
+			expectedMetadata.StuckHealth = metadata.StuckHealth
+			expectedMetadata.StuckSize = metadata.StuckSize
+			expectedMetadata.SkynetFiles = metadata.SkynetFiles
+			expectedMetadata.SkynetSize = metadata.SkynetSize
+			expectedMetadata.Version = metadata.Version
+			return equalBubbledMetadata(metadata, expectedMetadata, time.Since(beforeBubble))
 		}); err != nil {
 			t.Log("Test case:", testCase)
 			expectedData, _ := json.MarshalIndent(expectedMetadata, "", " ")
@@ -663,7 +683,7 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 	tc := "Empty directory reset"
 	expected := metadataUpdate
 	expected.AggregateHealth, expected.Health = 1, 1
-	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_1, expected, 0, 8, 0)
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_1, expected, 0, 8, 0, 0)
 
 	// Add a file to the lowest level
 	fileSiaPath, err := subDir1_2.Join("test")
@@ -713,6 +733,8 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 	//
 	// NumFiles is 1
 	//
+	// NumLostFiles is 1
+	//
 	// NumStuckChunks is 1 for the stuck file that has 1 chunk
 	//
 	// Size should reflect the 1 file
@@ -723,6 +745,7 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 	expected.AggregateHealth, expected.Health = 0, 0
 	expected.AggregateMinRedundancy, expected.MinRedundancy = 0, 0
 	expected.AggregateNumFiles, expected.NumFiles = 1, 1
+	expected.AggregateNumLostFiles, expected.NumLostFiles = 1, 1
 	expected.AggregateNumStuckChunks, expected.NumStuckChunks = 1, 1
 	expected.AggregateSize, expected.Size = fileSize, fileSize
 	expected.AggregateStuckHealth, expected.StuckHealth = worstFileHealth, worstFileHealth
@@ -731,7 +754,7 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 	expected.Version = "1.0"
 
 	tc = "Adding stuck file"
-	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, expected, 1, 8, 0)
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, expected, 1, 8, 0, 1)
 
 	// Mark the file as un-stuck
 	f.SetStuck(0, false)
@@ -764,7 +787,7 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 	expected.AggregateStuckSize, expected.StuckSize = 0, 0
 
 	tc = "Un-stuck file"
-	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, expected, 1, 8, 0)
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, expected, 1, 8, 0, 1)
 
 	/*
 	* TEST BUBBLE HANDLING OF SKYNET COUNTS
@@ -811,7 +834,7 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 	expected.AggregateSkynetFiles, expected.SkynetFiles = 1, 1
 	expected.AggregateSkynetSize, expected.SkynetSize = fileSize, fileSize
 	tc = "Skynet Stats Bubble"
-	bubbleAndVerifyMetadata(tc, skymodules.SkynetFolder, skymodules.SkynetFolder, expected, 3, 8, 1)
+	bubbleAndVerifyMetadata(tc, skymodules.SkynetFolder, skymodules.SkynetFolder, expected, 3, 8, 1, 3)
 
 	/*
 	* FINAL TEST CASE
@@ -857,5 +880,5 @@ func testBubbleScheduler_BubbledMetadata(t *testing.T) {
 	expected.AggregateSkynetSize, expected.SkynetSize = 0, 0
 	expected.AggregateSkynetFiles, expected.SkynetFiles = 0, 0
 	tc = "Empty lowest level directory"
-	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, expected, 3, 9, 1)
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, expected, 3, 9, 1, 3)
 }

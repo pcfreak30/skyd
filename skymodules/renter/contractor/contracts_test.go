@@ -5,7 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TestPubkeysToContractIDMap tests updating the contractor's

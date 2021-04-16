@@ -20,10 +20,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // A Server is a collection of siad modules that can be communicated with over
