@@ -428,7 +428,7 @@ func initCmds() *cobra.Command {
 	root.AddCommand(utilsCmd)
 	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsBruteForceSeedCmd, utilsCheckSigCmd,
 		utilsDecodeRawTxnCmd, utilsDisplayAPIPasswordCmd, utilsEncodeRawTxnCmd, utilsHastingsCmd,
-		utilsSigHashCmd, utilsUploadedsizeCmd, utilsVerifySeedCmd)
+		utilsSigHashCmd, utilsUploadedsizeCmd, utilsVerifySeedCmd, utilsSkylinkCompareCmd)
 
 	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
 
