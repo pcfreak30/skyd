@@ -792,6 +792,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
 		// Deposit the refund.
+		// TODO: (f/u) the refund should be reflected in the spending metrics.
 		refund := budget.Remaining()
 		w.staticAccount.managedTrackDeposit(refund)
 		w.staticAccount.managedCommitDeposit(refund, true)
