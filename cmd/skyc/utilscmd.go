@@ -4,15 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -135,18 +132,6 @@ seed and returns a valid 28 or 29 word seed`,
 		Long: `Calculates a given folder size on Sia and the lost space caused by 
 files are rounded up to the minimum chunks size.`,
 		Run: wrap(utilsuploadedsizecmd),
-	}
-
-	utilsSkylinkCompareCmd = &cobra.Command{
-		Use:   "skylink-compare [skylink]",
-		Short: "Compare a skylink to a regenerated skylink",
-		Long: `This command regenerates a skylink by doing the following:
-First, it reads some provided metadata from a metadata.json file.
-Second, it downloads the skylink and records the metadata, layout, and filedata.
-Third, it compares the downloaded metadata to the metadata read from disk.
-Fourth, it computesthe base sector and then the skylink from the downloaded information.
-Lastly, it compares the generated skylink to the skylink that was passed in.`,
-		Run: wrap(skylinkcomparecmd),
 	}
 )
 
@@ -412,119 +397,4 @@ Files: %v
 			modules.FilesizeUnits(calculateAverageUint64(fileSizes)),
 			modules.FilesizeUnits(calculateMedianUint64(fileSizes)))
 	}
-}
-
-// skylinkcomparecmd compares a provided skylink to with a re-generated skylink
-// based on metadata provided in a metadata.json file and downloading the file
-// data and the layout from the skylink.
-func skylinkcomparecmd(expectedSkylink string) {
-	// Read Metadata file
-	skyfileMetadataBytesFromFile := fileData("metadata.json")
-
-	// Unmarshal the Metadata
-	var skyfileMetadataFromFile skymodules.SkyfileMetadata
-	err := json.Unmarshal(skyfileMetadataBytesFromFile, &skyfileMetadataFromFile)
-	if err != nil {
-		die("Unable to unmarshal metadata bytes from file:", err)
-	}
-
-	// Download from the portal
-	url := "https://siasky.net/" + expectedSkylink
-	url += "?include-layout=" + fmt.Sprintf("%t", true)
-	resp, err := http.Get(url)
-	if err != nil {
-		die("Unable to download from portal:", err)
-	}
-	defer func() {
-		err = resp.Body.Close()
-		if err != nil {
-			die("unable to close reader:", err)
-		}
-	}()
-
-	// Grab the file data
-	skyfileDownloadedData, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		die(err)
-	}
-
-	// Grab the header
-	header := resp.Header
-
-	// Grab the metadata
-	metadataStrFromHeader := header.Get("Skynet-File-Metadata")
-	if metadataStrFromHeader != "" {
-		var skyfileMetadataFromHeader skymodules.SkyfileMetadata
-		err = json.Unmarshal([]byte(metadataStrFromHeader), &skyfileMetadataFromHeader)
-		if err != nil {
-			die("Unable to unmarshal metadata bytes from header:", err)
-		}
-
-		// Check if the metadata download is the same as the metadata loaded from disk
-		if !reflect.DeepEqual(skyfileMetadataFromFile, skyfileMetadataFromHeader) {
-			// Print metadata from file
-			data, err := json.MarshalIndent(skyfileMetadataFromFile, "", "\t")
-			if err != nil {
-				die("Unable to marshal file metadata:", err)
-			}
-			fmt.Println("Metadata read from file")
-			fmt.Println(string(data))
-			data, err = json.MarshalIndent(skyfileMetadataFromHeader, "", "\t")
-			if err != nil {
-				die("Unable to marshal header metadata:", err)
-			}
-			fmt.Println("Metadata read from header")
-			fmt.Println(string(data))
-			die("Metadatas not equal")
-		}
-		fmt.Println("Metadatas Equal")
-	}
-
-	// Grab the Layout
-	var layoutFromHeader skymodules.SkyfileLayout
-	layoutStrFromHeader := header.Get("Skynet-File-Layout")
-	if layoutStrFromHeader != "" {
-		layoutBytes, err := hex.DecodeString(layoutStrFromHeader)
-		if err != nil {
-			die("Unable to decode layout string from header:", err)
-		}
-		layoutFromHeader.Decode(layoutBytes)
-	}
-
-	// build base sector
-	baseSector, fetchSize := skymodules.BuildBaseSector(layoutFromHeader.Encode(), nil, skyfileMetadataBytesFromFile, skyfileDownloadedData)
-	baseSectorRoot := crypto.MerkleRoot(baseSector)
-	skylink, err := skymodules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
-	if err != nil {
-		die(err)
-	}
-
-	if skylink.String() != expectedSkylink {
-		fmt.Println("Expected", expectedSkylink)
-		fmt.Println("Generated", skylink.String())
-		die("Generated Skylink not Equal to Expected")
-	}
-	fmt.Println("Generate Skylink as Expected!")
-}
-
-// fileData is a small helper for reading and returning the data from a file.
-func fileData(filename string) []byte {
-	// Open file
-	f, err := os.Open(filename)
-	if err != nil {
-		die(err)
-	}
-	defer func() {
-		err = f.Close()
-		if err != nil {
-			die(err)
-		}
-	}()
-
-	// Read data
-	data, err := ioutil.ReadAll(f)
-	if err != nil {
-		die(err)
-	}
-	return data
 }
