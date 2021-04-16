@@ -59,6 +59,11 @@ func (mds *mockDataSource) Metadata() skymodules.SkyfileMetadata {
 	return skymodules.SkyfileMetadata{}
 }
 
+// RawMetadata implements streamBufferDataSource
+func (mds *mockDataSource) RawMetadata() []byte {
+	return nil
+}
+
 // Layout implements streamBufferDataSource
 func (mds *mockDataSource) Layout() skymodules.SkyfileLayout {
 	return skymodules.SkyfileLayout{}

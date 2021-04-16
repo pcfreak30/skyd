@@ -1382,7 +1382,7 @@ type Renter interface {
 	// time that exceeds the given timeout value. Passing a timeout of 0 is
 	// considered as no timeout. The pricePerMS acts as a budget to spend on
 	// faster, and thus potentially more expensive, hosts.
-	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileLayout, SkyfileMetadata, Streamer, error)
+	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileStreamer, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
 	// download without any decoding of the metadata, fanout, or decryption. The
@@ -1453,7 +1453,9 @@ type SkyfileStreamer interface {
 	io.ReadSeeker
 	io.Closer
 
+	Layout() SkyfileLayout
 	Metadata() SkyfileMetadata
+	RawMetadata() []byte
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's
