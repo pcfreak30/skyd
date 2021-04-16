@@ -785,14 +785,17 @@ func (w *worker) threadedSubscriptionLoop() {
 			continue
 		}
 
+		// Mark withdrawal as successful.
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, types.ZeroCurrency, false)
+
 		// Run the subscription. The error is checked after closing the handler
 		// and the refund.
 		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
 		// Commit the withdrawal now we know the refund.
 		refund := budget.Remaining()
-		withdrawal := initialBudget.Sub(refund)
-		w.staticAccount.managedCommitWithdrawal(categorySubscription, withdrawal, refund, true)
+		w.staticAccount.managedTrackDeposit(refund)
+		w.staticAccount.managedCommitDeposit(refund, true)
 
 		// Check the error.
 		if errors.Contains(errSubscription, threadgroup.ErrStopped) {
