@@ -17,8 +17,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
 )
 
 var (
@@ -230,7 +230,7 @@ func IsEncryptedLayout(sl SkyfileLayout) bool {
 
 // ParseSkyfileMetadata will pull the metadata (including layout and fanout) out
 // of a skyfile.
-func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, baseSectorPayload []byte, err error) {
+func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload []byte, err error) {
 	// Sanity check - baseSector should not be more than modules.SectorSize.
 	// Note that the base sector may be smaller in the event of a packed
 	// skyfile.
@@ -245,13 +245,13 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 
 	// Check the version.
 	if sl.Version != 1 {
-		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, fmt.Errorf("unsupported skyfile version %v", sl.Version)
+		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, fmt.Errorf("unsupported skyfile version %v", sl.Version)
 	}
 
 	// Currently there is no support for skyfiles with fanout + metadata that
 	// exceeds the base sector.
 	if offset+sl.FanoutSize+sl.MetadataSize > uint64(len(baseSector)) || sl.FanoutSize > modules.SectorSize || sl.MetadataSize > modules.SectorSize {
-		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, errors.New("this version of siad does not support skyfiles with large fanouts and metadata")
+		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.New("this version of siad does not support skyfiles with large fanouts and metadata")
 	}
 
 	// Parse the fanout.
@@ -264,9 +264,10 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 
 	// Parse the metadata.
 	metadataSize := sl.MetadataSize
-	err = json.Unmarshal(baseSector[offset:offset+metadataSize], &sm)
+	rawSM = baseSector[offset : offset+metadataSize]
+	err = json.Unmarshal(rawSM, &sm)
 	if err != nil {
-		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse SkyfileMetadata from skyfile base sector")
+		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.AddContext(err, "unable to parse SkyfileMetadata from skyfile base sector")
 	}
 	offset += metadataSize
 
@@ -277,9 +278,9 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 
 	// Make sure the returned metadata is valid.
 	if err := ValidateSkyfileMetadata(sm); err != nil {
-		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, err
+		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, err
 	}
-	return sl, fanoutBytes, sm, baseSectorPayload, nil
+	return sl, fanoutBytes, sm, rawSM, baseSectorPayload, nil
 }
 
 // SkyfileMetadataBytes will return the marshalled/encoded bytes for the

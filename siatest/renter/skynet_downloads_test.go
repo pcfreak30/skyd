@@ -18,12 +18,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
+	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TestSkynetDownloads verifies the functionality of Skynet downloads.
@@ -575,6 +575,11 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatal("Unexpected status code")
 	}
@@ -602,6 +607,11 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// verify status code is 304 and no data was returned
 	if resp.StatusCode != http.StatusNotModified {

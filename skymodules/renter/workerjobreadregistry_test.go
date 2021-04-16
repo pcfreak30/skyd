@@ -11,7 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 )
 
 // TestReadRegistryJob tests running a ReadRegistry job on a host.

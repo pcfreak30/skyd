@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 )
 
 // errCausedByRevisionMismatch returns true if (we suspect) the given error is

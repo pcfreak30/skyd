@@ -19,9 +19,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 )
 
 var (
@@ -102,6 +102,7 @@ type Contractor struct {
 	// either the renter or host.
 	staticContracts      *proto.ContractSet
 	oldContracts         map[types.FileContractID]skymodules.RenterContract
+	preferredHosts       map[string]struct{}
 	doubleSpentContracts map[types.FileContractID]types.BlockHeight
 	recoverableContracts map[types.FileContractID]skymodules.RecoverableContract
 	renewedFrom          map[types.FileContractID]types.FileContractID
@@ -490,6 +491,7 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		sessions:             make(map[types.FileContractID]*hostSession),
 		oldContracts:         make(map[types.FileContractID]skymodules.RenterContract),
 		doubleSpentContracts: make(map[types.FileContractID]types.BlockHeight),
+		preferredHosts:       make(map[string]struct{}),
 		recoverableContracts: make(map[types.FileContractID]skymodules.RecoverableContract),
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),

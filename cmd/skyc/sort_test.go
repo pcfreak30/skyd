@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/node/api"
 )
 
 // TestSortByValue tests that byValue sorts contracts correctly.

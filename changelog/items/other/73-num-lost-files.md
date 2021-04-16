@@ -1,0 +1,1 @@
+- Add `NumLostFiles` to `siadir` metadata

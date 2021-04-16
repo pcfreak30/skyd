@@ -15,14 +15,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
+	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 )
 
 // test is a helper struct for running subtests when tests can use the same test

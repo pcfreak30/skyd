@@ -9,7 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // marshalChunk binary encodes a chunk. It only allocates memory a single time

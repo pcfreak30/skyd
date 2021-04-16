@@ -12,9 +12,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 // bubbledSiaDirMetadata is a wrapper for siadir.Metadata that also contains the
@@ -43,6 +43,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 		AggregateMinRedundancy:       math.MaxFloat64,
 		AggregateModTime:             time.Time{},
 		AggregateNumFiles:            uint64(0),
+		AggregateNumLostFiles:        uint64(0),
 		AggregateNumStuckChunks:      uint64(0),
 		AggregateNumSubDirs:          uint64(0),
 		AggregateRemoteHealth:        siadir.DefaultDirHealth,
@@ -59,6 +60,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 		MinRedundancy:       math.MaxFloat64,
 		ModTime:             time.Time{},
 		NumFiles:            uint64(0),
+		NumLostFiles:        uint64(0),
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
 		RemoteHealth:        siadir.DefaultDirHealth,
@@ -166,6 +168,12 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			metadata.RepairSize += fileMetadata.RepairBytes
 			metadata.StuckSize += fileMetadata.StuckBytes
 
+			// Check if the files is unrecoverable and should be considered lost
+			if fileMetadata.Unrecoverable {
+				metadata.NumLostFiles++
+				metadata.AggregateNumLostFiles++
+			}
+
 			// Record Values that compare against sub directories
 			aggregateHealth = fileMetadata.Health
 			aggregateStuckHealth = fileMetadata.StuckHealth
@@ -257,6 +265,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 
 			// Update aggregate fields.
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
+			metadata.AggregateNumLostFiles += dirMetadata.AggregateNumLostFiles
 			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateRepairSize += dirMetadata.AggregateRepairSize
@@ -339,7 +348,11 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 	// Check if original file is on disk
 	_, err = os.Stat(sf.LocalPath())
 	onDisk := err == nil
-	if !onDisk && md.CachedRedundancy < 1 {
+
+	// Check if file is unrecoverable and log it
+	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
+	unrecoverable := siafile.Unrecoverable(maxHealth, onDisk)
+	if unrecoverable {
 		r.staticLog.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
 
@@ -362,6 +375,7 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 			StuckHealth:         md.CachedStuckHealth,
 			StuckBytes:          md.CachedStuckBytes,
 			UID:                 sf.UID(),
+			Unrecoverable:       unrecoverable,
 		},
 	}, nil
 }
@@ -495,55 +509,4 @@ func (r *Renter) managedDirectoryMetadata(siaPath skymodules.SiaPath) (_ siadir.
 
 	// Grab the metadata.
 	return siaDir.Metadata()
-}
-
-// managedUpdateLastHealthCheckTime updates the LastHealthCheckTime and
-// AggregateLastHealthCheckTime fields of the directory metadata by reading all
-// the subdirs of the directory.
-func (r *Renter) managedUpdateLastHealthCheckTime(siaPath skymodules.SiaPath) error {
-	// Read directory
-	fileinfos, err := r.staticFileSystem.ReadDir(siaPath)
-	if err != nil {
-		r.staticLog.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.String(), err)
-		return err
-	}
-
-	// Iterate over directory and find the oldest AggregateLastHealthCheckTime
-	aggregateLastHealthCheckTime := time.Now()
-	for _, fi := range fileinfos {
-		// Check to make sure renter hasn't been shutdown
-		select {
-		case <-r.tg.StopChan():
-			return err
-		default:
-		}
-		// Check for SiaFiles and Directories
-		if fi.IsDir() {
-			// Directory is found, read the directory metadata file
-			dirSiaPath, err := siaPath.Join(fi.Name())
-			if err != nil {
-				return err
-			}
-			dirMetadata, err := r.managedDirectoryMetadata(dirSiaPath)
-			if err != nil {
-				return err
-			}
-			// Update AggregateLastHealthCheckTime.
-			if dirMetadata.AggregateLastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
-				aggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
-			}
-		} else {
-			// Ignore everything that is not a directory since files should be updated
-			// already by the ongoing bubble.
-			continue
-		}
-	}
-
-	// Write changes to disk.
-	entry, err := r.staticFileSystem.OpenSiaDir(siaPath)
-	if err != nil {
-		return err
-	}
-	err = entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now())
-	return errors.Compose(err, entry.Close())
 }

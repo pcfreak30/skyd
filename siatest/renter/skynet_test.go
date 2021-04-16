@@ -29,16 +29,16 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
+	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 )
 
 // TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
@@ -1599,7 +1599,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 
 	// Parse the skyfile metadata from the baseSector
-	_, fanoutBytes, metadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, fanoutBytes, metadata, _, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1654,7 +1654,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 
 	// Parse the skyfile metadata from the rootSector
-	_, fanoutBytes, metadata, rootSectorPayload, err := skymodules.ParseSkyfileMetadata(rootSector)
+	_, fanoutBytes, metadata, _, rootSectorPayload, err := skymodules.ParseSkyfileMetadata(rootSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1774,7 +1774,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Parse the information from the BaseSector
-	layout, fanoutBytes, metadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, _, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1964,7 +1964,7 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, fanoutBytes, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, fanoutBytes, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,8 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 type (
@@ -185,6 +185,7 @@ type (
 		StuckBytes          uint64
 		StuckHealth         float64
 		UID                 SiafileUID
+		Unrecoverable       bool
 	}
 )
 

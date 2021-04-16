@@ -13,9 +13,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 )
 
 // TestSaveLoad tests that the contractor can save and load itself.
@@ -28,8 +28,9 @@ func TestSaveLoad(t *testing.T) {
 	persistDir := build.TempDir("contractor", "mock")
 	os.MkdirAll(persistDir, 0700)
 	c := &Contractor{
-		persistDir: persistDir,
-		synced:     make(chan struct{}),
+		persistDir:     persistDir,
+		preferredHosts: make(map[string]struct{}),
+		synced:         make(chan struct{}),
 	}
 
 	c.staticWatchdog = newWatchdog(c)
@@ -89,6 +90,7 @@ func TestSaveLoad(t *testing.T) {
 	c.renewedTo = map[types.FileContractID]types.FileContractID{
 		{1}: {2},
 	}
+	c.preferredHosts["host"] = struct{}{}
 	close(c.synced)
 
 	c.staticChurnLimiter = newChurnLimiter(c)
@@ -120,6 +122,12 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if c.renewedTo[types.FileContractID{1}] != id {
 		t.Fatal("renewedTo not restored properly:", c.renewedTo)
+	}
+	if _, exists := c.preferredHosts["host"]; !exists {
+		t.Fatal("preferred host wasn't loaded")
+	}
+	if len(c.preferredHosts) != 1 {
+		t.Fatal("wrong length")
 	}
 	select {
 	case <-c.synced:
@@ -165,6 +173,12 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if c.renewedTo[types.FileContractID{1}] != id {
 		t.Fatal("renewedTo not restored properly:", c.renewedTo)
+	}
+	if _, exists := c.preferredHosts["host"]; !exists {
+		t.Fatal("preferred host wasn't loaded")
+	}
+	if len(c.preferredHosts) != 1 {
+		t.Fatal("wrong length")
 	}
 	select {
 	case <-c.synced:

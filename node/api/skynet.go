@@ -20,11 +20,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetportals"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
 )
 
 // The SkynetPerformanceStats are stateful and tracked globally, bound by a
@@ -673,7 +673,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
-	layout, metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
+	streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 		return
@@ -693,6 +693,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}()
 
 	// Validate Metadata
+	metadata := streamer.Metadata()
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)
 		return
@@ -765,7 +766,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, offset, size)
+		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -781,7 +782,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, offset, size)
+		streamer, err = NewLimitStreamer(streamer, metadataForPath, streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -797,14 +798,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		format = skymodules.SkyfileFormatZip
 	}
 
-	// Encode the metadata
-	encMetadata, err := json.Marshal(metadata)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
-		return
-	}
 	// Encode the Layout
-	encLayout := layout.Encode()
+	encLayout := streamer.Layout().Encode()
 
 	// Metadata and layout has been parsed successfully, stop the time here for
 	// TTFB.  Metadata was fetched from Skynet itself.
@@ -865,7 +860,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set the Skynet-File-Metadata
 	includeMetadata := !noResponseMetadata
 	if includeMetadata {
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		w.Header().Set("Skynet-File-Metadata", string(streamer.RawMetadata()))
 	}
 
 	// Declare a function for monetizing a writer.

@@ -6,9 +6,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -29,9 +29,10 @@ type (
 	// keeps them in memory, to reduce latency on seeking through the file.
 	skylinkDataSource struct {
 		// Metadata.
-		staticID       skymodules.DataSourceID
-		staticLayout   skymodules.SkyfileLayout
-		staticMetadata skymodules.SkyfileMetadata
+		staticID          skymodules.DataSourceID
+		staticLayout      skymodules.SkyfileLayout
+		staticMetadata    skymodules.SkyfileMetadata
+		staticRawMetadata []byte
 
 		// staticBaseSectorPayload will contain the raw data for the skylink
 		// if there is no fanout. However if there's a fanout it will be nil.
@@ -67,6 +68,11 @@ func (sds *skylinkDataSource) Layout() skymodules.SkyfileLayout {
 // Metadata implements streamBufferDataSource
 func (sds *skylinkDataSource) Metadata() skymodules.SkyfileMetadata {
 	return sds.staticMetadata
+}
+
+// RawMetadata implements streamBufferDataSource
+func (sds *skylinkDataSource) RawMetadata() []byte {
+	return sds.staticRawMetadata
 }
 
 // RequestSize implements streamBufferDataSource
@@ -263,7 +269,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, rawMetadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
@@ -306,9 +312,10 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	}
 
 	sds := &skylinkDataSource{
-		staticID:       link.DataSourceID(),
-		staticLayout:   layout,
-		staticMetadata: metadata,
+		staticID:          link.DataSourceID(),
+		staticLayout:      layout,
+		staticMetadata:    metadata,
+		staticRawMetadata: rawMetadata,
 
 		staticBaseSectorPayload: baseSectorPayload,
 		staticChunkFetchers:     fanoutChunkFetchers,

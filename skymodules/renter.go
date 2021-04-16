@@ -13,8 +13,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
 )
 
 type (
@@ -384,6 +384,7 @@ type DirectoryInfo struct {
 	AggregateMinRedundancy       float64   `json:"aggregateminredundancy"`
 	AggregateMostRecentModTime   time.Time `json:"aggregatemostrecentmodtime"`
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
+	AggregateNumLostFiles        uint64    `json:"aggregatenumlostfiles"`
 	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
 	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
@@ -405,6 +406,7 @@ type DirectoryInfo struct {
 	DirMode             os.FileMode `json:"mode,siamismatch"` // Field is called DirMode for fuse compatibility
 	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
 	NumFiles            uint64      `json:"numfiles"`
+	NumLostFiles        uint64      `json:"numlostfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
 	RepairSize          uint64      `json:"repairsize"`
@@ -1380,7 +1382,7 @@ type Renter interface {
 	// time that exceeds the given timeout value. Passing a timeout of 0 is
 	// considered as no timeout. The pricePerMS acts as a budget to spend on
 	// faster, and thus potentially more expensive, hosts.
-	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileLayout, SkyfileMetadata, Streamer, error)
+	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileStreamer, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
 	// download without any decoding of the metadata, fanout, or decryption. The
@@ -1451,7 +1453,9 @@ type SkyfileStreamer interface {
 	io.ReadSeeker
 	io.Closer
 
+	Layout() SkyfileLayout
 	Metadata() SkyfileMetadata
+	RawMetadata() []byte
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's
@@ -1554,6 +1558,11 @@ type HostDB interface {
 	// usefulness / attractiveness to the renter. RandomHosts will not return
 	// any offline or inactive hosts.
 	RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]HostDBEntry, error)
+
+	// RandomHosts returns a set of random hosts, weighted by their estimated
+	// usefulness / attractiveness to the renter. RandomHosts will not return
+	// any offline or inactive hosts.
+	RandomHostsWithWhitelist(int, []types.SiaPublicKey, []types.SiaPublicKey, map[string]struct{}) ([]HostDBEntry, error)
 
 	// RandomHostsWithAllowance is the same as RandomHosts but accepts an
 	// allowance as an argument to be used instead of the allowance set in the

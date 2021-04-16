@@ -17,8 +17,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
 )
 
 const (
@@ -231,7 +231,7 @@ type (
 	// extended without breaking compatibility.
 	SkyfileMetadata struct {
 		Filename           string          `json:"filename"`
-		Length             uint64          `json:"length,omitempty"`
+		Length             uint64          `json:"length"`
 		Mode               os.FileMode     `json:"mode,omitempty"`
 		Subfiles           SkyfileSubfiles `json:"subfiles,omitempty"`
 		DefaultPath        string          `json:"defaultpath,omitempty"`
@@ -467,7 +467,7 @@ func (sl *SkyfileLayout) DecodeFanoutIntoChunks(fanoutBytes []byte) ([][]crypto.
 
 // Encode will return a []byte that has compactly encoded all of the layout
 // data.
-func (sl *SkyfileLayout) Encode() []byte {
+func (sl SkyfileLayout) Encode() []byte {
 	b := make([]byte, SkyfileLayoutSize)
 	offset := 0
 	b[offset] = sl.Version

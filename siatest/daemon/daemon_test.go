@@ -12,11 +12,11 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/profile"
-	"gitlab.com/skynetlabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
+	"gitlab.com/SkynetLabs/skyd/profile"
+	"gitlab.com/SkynetLabs/skyd/siatest"
 )
 
 // TestDaemonAPIPassword makes sure that the daemon rejects requests with the

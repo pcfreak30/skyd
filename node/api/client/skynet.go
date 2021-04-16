@@ -21,9 +21,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // tusStore is a simple implementation of the tus.Store interface.
@@ -366,7 +366,7 @@ func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) err
 	// return early.
 	if !skymodules.IsEncryptedBaseSector(baseSector) {
 		// Parse the layout from the baseSector
-		sl, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+		sl, _, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 		if err != nil {
 			return errors.AddContext(err, "unable to parse baseSector")
 		}
@@ -879,7 +879,7 @@ func (c *Client) RegistryUpdate(spk types.SiaPublicKey, dataKey crypto.Hash, rev
 }
 
 // SkylinkFromTUSURL is a helper to fetch the skylink of a finished upload.
-func SkylinkFromTUSURL(tc *tus.Client, url string) (string, error) {
+func SkylinkFromTUSURL(tc *tus.Client, url string) (_ string, err error) {
 	// After the upload, fetch the skylink from the metadata.
 	req, err := http.NewRequest("HEAD", url, bytes.NewReader([]byte{}))
 	if err != nil {
@@ -889,6 +889,9 @@ func SkylinkFromTUSURL(tc *tus.Client, url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer func() {
+		err = errors.Compose(err, resp.Body.Close())
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed to fetch upload info: %v", resp.StatusCode)
 	}

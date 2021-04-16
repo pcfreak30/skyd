@@ -16,7 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 // TODO: (f/u) cooldown testing
@@ -35,10 +35,6 @@ var (
 		Dev:      time.Minute,
 		Standard: time.Hour,
 	}).(time.Duration)
-
-	// subscriptionExtensionWindow is the time before the subscription period
-	// ends when the workers starts trying to extend the subscription.
-	subscriptionExtensionWindow = modules.SubscriptionPeriod / 2 // 50% of period
 
 	// subscriptionLoopInterval is the interval after which the subscription
 	// loop checks for work when it's idle. Idle means the staticWakeChan isn't

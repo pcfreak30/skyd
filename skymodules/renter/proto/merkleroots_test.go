@@ -11,7 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 // cmpRoots is a helper function that compares the in-memory file structure and
