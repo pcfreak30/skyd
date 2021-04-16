@@ -119,12 +119,3 @@ type streamerFromReader struct {
 func (sfr *streamerFromReader) Close() error {
 	return nil
 }
-
-// streamerFromSlice returns a skymodules.Streamer given a slice. This is
-// non-trivial because a bytes.Reader does not implement Close.
-func streamerFromSlice(b []byte) skymodules.Streamer {
-	reader := bytes.NewReader(b)
-	return &streamerFromReader{
-		Reader: reader,
-	}
-}
