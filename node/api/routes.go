@@ -12,7 +12,7 @@ import (
 	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/log"
 
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 var (
@@ -50,8 +50,6 @@ func (api *API) buildHTTPRoutes() {
 	router.POST("/daemon/startprofile", api.daemonStartProfileHandlerPOST)
 	router.GET("/daemon/stop", RequirePassword(api.daemonStopHandler, requiredPassword))
 	router.POST("/daemon/stopprofile", api.daemonStopProfileHandlerPOST)
-	router.GET("/daemon/update", api.daemonUpdateHandlerGET)
-	router.POST("/daemon/update", api.daemonUpdateHandlerPOST)
 	router.GET("/daemon/version", api.daemonVersionHandler)
 
 	// Consensus API Calls

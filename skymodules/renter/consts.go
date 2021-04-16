@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // Version and system parameters.
@@ -107,10 +107,6 @@ var (
 	// repairMemoryPriorityDefault is the amount of memory that is held in
 	// reserve explicitly for priority actions.
 	repairMemoryPriorityDefault = repairMemoryDefault / 4
-
-	// gcMemoryThreshold is the amount of memory after which a memory manager
-	// triggers a garbage collection.
-	gcMemoryThreshold = uint64(1 << 28) // 256 MiB
 
 	// initialStreamerCacheSize defines the cache size that each streamer will
 	// start using when it is created. A lower initial cache size will mean that
@@ -298,14 +294,6 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
-	// stuckLoopErrorSleepDuration indicates how long the stuck loop should
-	// sleep before retrying if there is an error preventing progress.
-	stuckLoopErrorSleepDuration = build.Select(build.Var{
-		Dev:      10 * time.Second,
-		Standard: 30 * time.Second,
-		Testing:  3 * time.Second,
-	}).(time.Duration)
-
 	// uploadAndRepairErrorSleepDuration indicates how long a repair process
 	// should sleep before retrying if there is an error fetching the metadata
 	// of the root directory of the renter's filesystem.
@@ -326,10 +314,6 @@ var (
 
 // Constants that tune the worker swarm.
 var (
-	// downloadFailureCooldown defines how long to wait for a worker after a
-	// worker has experienced a download failure.
-	downloadFailureCooldown = time.Second * 3
-
 	// maxConsecutivePenalty determines how many times the timeout/cooldown for
 	// being a bad host can be doubled before a maximum cooldown is reached.
 	maxConsecutivePenalty = build.Select(build.Var{

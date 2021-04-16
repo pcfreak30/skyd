@@ -11,8 +11,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TODO - once bubbling metadata has been updated to be more I/O
@@ -83,7 +83,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymo
 // stuck stack.
 func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) ([]skymodules.SiaPath, error) {
 	var dirSiaPaths []skymodules.SiaPath
-	offline, goodForRenew, _ := r.managedContractUtilityMaps()
+	offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
 	numStuckChunks, _ := r.staticUploadHeap.managedNumStuckChunks()
 	for r.staticStuckStack.managedLen() > 0 && numStuckChunks < maxStuckChunksInHeap {
 		// Pop the first file SiaPath

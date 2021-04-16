@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // Bubble is the process of updating the filesystem metadata for the renter. It
@@ -24,8 +24,7 @@ type bubbleStatus int
 // bubbleError, bubbleQueued, bubbleActive, and bubblePending are the constants
 // used to determine the status of a bubble being executed on a directory
 const (
-	bubbleError bubbleStatus = iota
-	bubbleQueued
+	bubbleQueued bubbleStatus = iota + 1
 	bubbleActive
 	bubblePending
 )

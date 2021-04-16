@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TestUpdateEntry checks that the various components of updateEntry are

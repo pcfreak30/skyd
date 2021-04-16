@@ -16,7 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 // TODO: (f/u) cooldown testing
@@ -35,10 +35,6 @@ var (
 		Dev:      time.Minute,
 		Standard: time.Hour,
 	}).(time.Duration)
-
-	// subscriptionExtensionWindow is the time before the subscription period
-	// ends when the workers starts trying to extend the subscription.
-	subscriptionExtensionWindow = modules.SubscriptionPeriod / 2 // 50% of period
 
 	// subscriptionLoopInterval is the interval after which the subscription
 	// loop checks for work when it's idle. Idle means the staticWakeChan isn't
@@ -188,7 +184,8 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	}()
 
 	// Check if the host was trying to cheat us with an outdated entry.
-	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
+	sid := modules.DeriveRegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)
+	latestRev, exists := w.staticRegistryCache.Get(sid)
 	if exists && sneu.Entry.Revision < latestRev {
 		return fmt.Errorf("host provided outdated entry %v < %v", sneu.Entry.Revision, latestRev)
 	}
@@ -200,7 +197,7 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	}
 
 	// The entry is valid. Update the cache.
-	w.staticRegistryCache.Set(sneu.PubKey, sneu.Entry, false)
+	w.staticRegistryCache.Set(sid, sneu.Entry, false)
 
 	// Check if the host sent us an update we are not subsribed to. This might
 	// not seem bad, but the host might want to spam us with valid entries that
@@ -509,11 +506,12 @@ func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []modul
 	}
 	// Check that the initial values are not outdated and update the cache.
 	for _, rv := range rvs {
-		cachedRevision, exists := w.staticRegistryCache.Get(rv.PubKey, rv.Entry.Tweak)
+		sid := modules.DeriveRegistryEntryID(rv.PubKey, rv.Entry.Tweak)
+		cachedRevision, exists := w.staticRegistryCache.Get(sid)
 		if exists && rv.Entry.Revision < cachedRevision {
 			return fmt.Errorf("host returned an entry with revision %v which is smaller than cached revision %v for the same entry", rv.Entry.Revision, cachedRevision)
 		}
-		w.staticRegistryCache.Set(rv.PubKey, rv.Entry, false)
+		w.staticRegistryCache.Set(sid, rv.Entry, false)
 	}
 	// Withdraw from budget.
 	if !budget.Withdraw(modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(toSubscribe)))) {

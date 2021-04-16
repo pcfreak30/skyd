@@ -15,8 +15,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 var (
@@ -131,6 +131,17 @@ func CalculateHealth(goodPieces, minPieces, numPieces int) float64 {
 	health = math.Round(health)
 	health = health / 10e3
 	return health
+}
+
+// Unrecoverable returns whether or not a siafile should be considered
+// unrecoverable based on the provided health and ondisk status.
+func Unrecoverable(health float64, onDisk bool) bool {
+	// If the health of the health is <= 1 it means it has at least data pieces
+	// available. So a health of > 1 would require a localfile to repair from.
+	//
+	// If the file is ondisk, then it can always be repaired from the localfile so
+	// it is always recoverable.
+	return health > 1 && !onDisk
 }
 
 // MarshalSia implements the encoding.SiaMarshaler interface.

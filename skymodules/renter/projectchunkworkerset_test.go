@@ -14,8 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TestPCWS verifies the functionality of the PCWS.
@@ -502,15 +502,30 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	// ensure PT is valid
 	w.staticPriceTable().staticExpiryTime = time.Now().Add(time.Hour)
 
-	// launch the worker
+	// launch the worker - shouldn't work
 	responseChan := make(chan *jobHasSectorResponse, 0)
-	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws, ws.managedHandleResponse)
+	err = pcws.managedLaunchWorker(w, responseChan, ws)
+	if !errors.Contains(err, errEstimateAboveMax) {
+		t.Fatal(err)
+	}
+
+	// verify the worker didn't launch.
+	uw, exists := ws.unresolvedWorkers["myworker"]
+	if exists {
+		t.Log(ws.unresolvedWorkers)
+		t.Fatal("unexpected")
+	}
+
+	// launch the worker
+	w.staticJobHasSectorQueue.weightedJobTime = float64(pcwsHasSectorTimeout)
+	responseChan = make(chan *jobHasSectorResponse, 0)
+	err = pcws.managedLaunchWorker(w, responseChan, ws)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// verify the worker launched successfully
-	uw, exists := ws.unresolvedWorkers["myworker"]
+	uw, exists = ws.unresolvedWorkers["myworker"]
 	if !exists {
 		t.Log(ws.unresolvedWorkers)
 		t.Fatal("unexpected")
@@ -519,7 +534,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	// verify the expected dur matches the initial queue estimate
 	expectedDur := time.Until(uw.staticExpectedResolvedTime)
 	expectedDurInS := math.Round(expectedDur.Seconds())
-	if expectedDurInS != 123 {
+	if expectedDurInS != pcwsHasSectorTimeout.Seconds() {
 		t.Log(expectedDurInS)
 		t.Fatal("unexpected")
 	}
@@ -527,7 +542,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	// tweak the maintenancestate, putting it on a cooldown
 	minuteFromNow := time.Now().Add(time.Minute)
 	w.staticMaintenanceState.cooldownUntil = minuteFromNow
-	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws, ws.managedHandleResponse)
+	err = pcws.managedLaunchWorker(w, responseChan, ws)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +551,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	uw = ws.unresolvedWorkers["myworker"]
 	expectedDur = time.Until(uw.staticExpectedResolvedTime)
 	expectedDurInS = math.Round(expectedDur.Seconds())
-	if expectedDurInS != 123+60 {
+	if expectedDurInS != pcwsHasSectorTimeout.Seconds()+60 {
 		t.Log(expectedDurInS)
 		t.Fatal("unexpected")
 	}

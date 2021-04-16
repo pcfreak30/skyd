@@ -2,20 +2,51 @@ package renter
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
+
+// newTestBatchWithFiles initializes a skylink batch and adds some files to the
+// currentFiles map
+func newTestBatchWithFiles(name string, numFiles int) *skylinkBatch {
+	batch := &skylinkBatch{
+		currentFiles:    make(map[batchUID]*skyFileObj),
+		remainingMemory: maxBatchSize,
+		staticFilename:  name,
+	}
+
+	filesPerBatch := numFiles
+	size := maxBatchFileSize / uint64(filesPerBatch)
+	for i := 0; i < filesPerBatch; i++ {
+		data := fastrand.Bytes(int(size))
+		batch.currentFiles[newBatchUID()] = &skyFileObj{
+			data: data,
+			size: size,
+			sup: skymodules.SkyfileUploadParameters{
+				Filename: fmt.Sprintf("%v_%v", name, i),
+			},
+		}
+	}
+	return batch
+}
 
 // TestSkyfileBatch probes the skyfile batch subsystem
 func TestSkyfileBatch(t *testing.T) {
 	t.Parallel()
 
 	// Short Tests
-	t.Run("ValidSUP", testvalidBatchSUP)
+	t.Run("BuildBaseSector", testBuildBaseSector)
+	t.Run("PackFiles", testPackFiles)
+	t.Run("ValidSUP", testValidBatchSUP)
 
 	// Long Tests
 	if testing.Short() {
@@ -194,7 +225,11 @@ func testBatchManager(t *testing.T) {
 	}
 
 	// Define too large file
-	sup := skymodules.SkyfileUploadParameters{Batch: true}
+	sup := skymodules.SkyfileUploadParameters{
+		Batch:    true,
+		Filename: "filetoolarge",
+		Mode:     persist.DefaultDiskPermissionsTest,
+	}
 	fileSize := maxBatchFileSize + 1
 	reader := bytes.NewReader(fastrand.Bytes(int(fileSize)))
 	sur := skymodules.NewSkyfileReader(reader, sup)
@@ -254,17 +289,138 @@ func testBatchManager(t *testing.T) {
 	}
 }
 
-// testvalidBatchSUP probes the validBatchSUP function
-func testvalidBatchSUP(t *testing.T) {
-	// Start with a fully set SkyfileUploadParameters
+// testBuildBaseSector probes the buildBaseSector method
+func testBuildBaseSector(t *testing.T) {
+	batch := newTestBatchWithFiles(t.Name(), 3)
+
+	// Pack the files
+	fps, packedSize, err := batch.packFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Build the base sector
+	baseSector, _, err := batch.buildBaseSector(fps, packedSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse the base sector
+	sl, fanout, sm, smRaw, data, err := skymodules.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fanout) != 0 {
+		t.Fatal("expected no fanout")
+	}
+	smRaw2, err := json.Marshal(sm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(smRaw, smRaw2) {
+		t.Fatal("mismatch")
+	}
+
+	// Build Expected metadata and baseSectorData
+	baseSectorData := make([]byte, packedSize)
+	subFiles := make(skymodules.SkyfileSubfiles)
+	var batchLength uint64
+	for _, fp := range fps {
+		sfo, ok := batch.currentFiles[batchUID(fp.FileID)]
+		if !ok {
+			t.Fatal("unexpected")
+		}
+		sfo.fp = fp
+
+		// Write the file data to the offset
+		offset := fp.SectorOffset
+		copy(baseSectorData[offset:], sfo.data)
+
+		// Add to Subfiles
+		subFileLen := uint64(len(sfo.data))
+		subFiles[sfo.sup.Filename] = skymodules.SkyfileSubfileMetadata{
+			FileMode: sfo.sup.Mode,
+			Filename: sfo.sup.Filename,
+			Offset:   fp.SectorOffset,
+			Len:      subFileLen,
+		}
+
+		// Increment batch length
+		batchLength += subFileLen
+	}
+	expectedMD := skymodules.SkyfileMetadata{
+		Filename: batch.staticFilename,
+		Length:   batchLength,
+		Subfiles: subFiles,
+	}
+
+	// Verify metadata
+	if !reflect.DeepEqual(sm, expectedMD) {
+		t.Log("parsed", sm)
+		t.Log("expected", expectedMD)
+		t.Error("metadatas not equal")
+	}
+
+	// Verify baseSectorData
+	if !bytes.Equal(data, baseSectorData) {
+		t.Log("parsed", data[len(data)-100:])
+		t.Log("expected", baseSectorData[len(baseSectorData)-100:])
+		t.Error("base sector data not equal")
+	}
+
+	// Build Expected layout
+	metadataBytes, err := skymodules.SkyfileMetadataBytes(expectedMD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedSL := skymodules.SkyfileLayout{
+		Version:      skymodules.SkyfileVersion,
+		Filesize:     packedSize,
+		MetadataSize: uint64(len(metadataBytes)),
+		CipherType:   crypto.TypePlain,
+	}
+
+	// Verify Layout
+	if !reflect.DeepEqual(sl, expectedSL) {
+		t.Log("parsed", sl)
+		t.Log("expected", expectedSL)
+		t.Error("layouts not equal")
+	}
+}
+
+// testPackFiles probes the packFiles method
+func testPackFiles(t *testing.T) {
+	batch := newTestBatchWithFiles(t.Name(), 3)
+
+	// Pack the files
+	fps, _, err := batch.packFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify files were packed
+	if len(fps) != len(batch.currentFiles) {
+		t.Errorf("expected %v to be packed but found %v", len(batch.currentFiles), len(fps))
+	}
+	for _, fp := range fps {
+		_, ok := batch.currentFiles[batchUID(fp.FileID)]
+		if !ok {
+			t.Error("Packed file ID not found in current files map", fp.FileID)
+		}
+	}
+}
+
+// testValidBatchSUP probes the validBatchSUP function
+func testValidBatchSUP(t *testing.T) {
+	// Start with an incorrect SkyfileUploadParameters
 	sup := skymodules.SkyfileUploadParameters{
 		SiaPath:             skymodules.RandomSiaPath(),
 		DryRun:              true,
 		Force:               true,
 		Root:                true,
 		BaseChunkRedundancy: 1,
-		Filename:            "testfile",
-		Mode:                os.ModePerm,
+		Filename:            "",
+		Mode:                0,
 		DefaultPath:         "default",
 		DisableDefaultPath:  true,
 		Reader:              bytes.NewReader([]byte("file")),
@@ -273,36 +429,35 @@ func testvalidBatchSUP(t *testing.T) {
 		Batch: false,
 	}
 
+	// The require fields are checked first
+	//
 	// First we should see the err for Batch not being true
 	err := validBatchSUP(sup)
 	if err != errBatchNotEnabled {
 		t.Error("unexpected")
 	}
 	sup.Batch = true
-	// Next we should see the err for Force being true
-	err = validBatchSUP(sup)
-	if err != errBatchForce {
-		t.Error("unexpected")
-	}
-	sup.Force = false
-	// Next we should see the err for encryption
-	err = validBatchSUP(sup)
-	if err != errBatchEncrypted {
-		t.Error("unexpected")
-	}
-	sup.SkykeyName = ""
-	// Next we should see the err for DryRun being true
-	err = validBatchSUP(sup)
-	if err != errBatchDryRun {
-		t.Error("unexpected")
-	}
-	sup.DryRun = false
 	// Next we should see the err for BaseChunkRedundancy
 	err = validBatchSUP(sup)
 	if err != errBatchRedundancy {
 		t.Error("unexpected")
 	}
 	sup.BaseChunkRedundancy = SkyfileDefaultBaseChunkRedundancy
+	// Next we should see the err for Filename
+	err = validBatchSUP(sup)
+	if err != errBatchFilename {
+		t.Error("unexpected")
+	}
+	sup.Filename = "testfile"
+	// Next we should see the err for Mode
+	err = validBatchSUP(sup)
+	if err != errBatchMode {
+		t.Error("unexpected")
+	}
+	sup.Mode = os.ModePerm
+
+	// Then the fields that should be left blank are checked
+	//
 	// Next we should see the err for DefaultPath
 	err = validBatchSUP(sup)
 	if err != errBatchDefaultPath {
@@ -314,15 +469,54 @@ func testvalidBatchSUP(t *testing.T) {
 		t.Error("unexpected")
 	}
 	sup.DefaultPath = ""
+	// Next we should see the err for DryRun being true
+	err = validBatchSUP(sup)
+	if err != errBatchDryRun {
+		t.Error("unexpected")
+	}
+	sup.DryRun = false
+	// Next we should see the err for Force being true
+	err = validBatchSUP(sup)
+	if err != errBatchForce {
+		t.Error("unexpected")
+	}
+	sup.Force = false
+	// Next we should see the err for Root
+	err = validBatchSUP(sup)
+	if err != errBatchRoot {
+		t.Error("unexpected")
+	}
+	sup.Root = false
+	// Next we should see the err for encryption
+	err = validBatchSUP(sup)
+	if err != errBatchEncrypted {
+		t.Error("unexpected")
+	}
+	sup.SkykeyName = ""
+	// Next we should see the err for SiaPath
+	err = validBatchSUP(sup)
+	if err != errBatchSiaPath {
+		t.Error("unexpected")
+	}
+	sup.SiaPath = skymodules.SiaPath{}
 
 	// We should have no errors now
 	err = validBatchSUP(sup)
 	if err != nil {
 		t.Error(err)
 	}
-	// We should also only need to set the Batch parameter to true
+	// Setting reader to nil should be no error as well
+	sup.Reader = nil
+	err = validBatchSUP(sup)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Verify setting only required fields
 	sup = skymodules.SkyfileUploadParameters{}
 	sup.Batch = true
+	sup.Filename = "testfile"
+	sup.Mode = os.ModePerm
 	err = validBatchSUP(sup)
 	if err != nil {
 		t.Error(err)

@@ -16,9 +16,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // errTestTimeout is returned when the time allotted for testing runs out. It's
@@ -77,6 +77,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
 	// Create the faulty disk dependency
 	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
+	fdd.Enable()
 	// Attach it to the refcounter
 	rc, err := newCustomRefCounter(rcFilePath, 200, wal, fdd)
 	if err != nil {

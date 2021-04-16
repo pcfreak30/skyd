@@ -29,16 +29,16 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
+	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 )
 
 // TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
@@ -60,6 +60,7 @@ func TestSkynetSuite(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "Basic", Test: testSkynetBasic},
+		{Name: "SkylinkV2Download", Test: testSkylinkV2Download},
 		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
 		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
@@ -1598,7 +1599,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 
 	// Parse the skyfile metadata from the baseSector
-	_, fanoutBytes, metadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, fanoutBytes, metadata, _, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1653,7 +1654,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 
 	// Parse the skyfile metadata from the rootSector
-	_, fanoutBytes, metadata, rootSectorPayload, err := skymodules.ParseSkyfileMetadata(rootSector)
+	_, fanoutBytes, metadata, _, rootSectorPayload, err := skymodules.ParseSkyfileMetadata(rootSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1773,7 +1774,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Parse the information from the BaseSector
-	layout, fanoutBytes, metadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, _, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1963,7 +1964,7 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, fanoutBytes, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, fanoutBytes, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4966,5 +4967,57 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 	err = verifyDownloadByAll(p1, p2, skylink)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkylinkV2Download tests downloading a file by its version 2 skylink.
+func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload some data.
+	data := fastrand.Bytes(100)
+	slStr, _, _, err := r.UploadNewSkyfileWithDataBlocking(t.Name(), data, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var skylink skymodules.Skylink
+	err = skylink.LoadString(slStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Update the registry with that link.
+	sk, pk := crypto.GenerateKeyPair()
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+	srv := modules.NewRegistryValue(dataKey, skylink.Bytes(), fastrand.Uint64n(100)).Sign(sk)
+
+	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Create a v2 link.
+	skylinkV2 := skymodules.NewSkylinkV2(spk, dataKey)
+
+	// Download the file using that link.
+	downloadedDataV2, _, err := r.SkynetSkylinkGet(skylinkV2.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download it using the v1 link.
+	downloadedDataV1, _, err := r.SkynetSkylinkGet(slStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Data should match.
+	if !bytes.Equal(downloadedDataV1, downloadedDataV2) {
+		t.Fatal("data doesn't match")
+	}
+	if !bytes.Equal(downloadedDataV1, data) {
+		t.Fatal("data doesn't match")
 	}
 }

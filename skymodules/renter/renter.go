@@ -45,14 +45,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetblocklist"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetportals"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetblocklist"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
 )
 
 var (
@@ -212,11 +212,9 @@ type Renter struct {
 	staticSpendingHistory   *spendingHistory
 	staticSkynetTUSUploader *skynetTUSUploader
 
-	// Download management. The heap has a separate mutex because it is always
-	// accessed in isolation.
-	downloadHeapMu sync.Mutex         // Used to protect the downloadHeap.
-	downloadHeap   *downloadChunkHeap // A heap of priority-sorted chunks to download.
-	newDownloads   chan struct{}      // Used to notify download loop that new downloads are available.
+	// Download management.
+	staticDownloadHeap *downloadHeap
+	newDownloads       chan struct{} // Used to notify download loop that new downloads are available.
 
 	// Download history.
 	//
@@ -526,35 +524,6 @@ func (r *Renter) PriceEstimation(allowance skymodules.Allowance) (skymodules.Ren
 	return est, allowance, nil
 }
 
-// managedContractUtilityMaps returns a set of maps that contain contract
-// information. Information about which contracts are offline, goodForRenew are
-// available, as well as a full list of contracts keyed by their public key.
-func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]skymodules.RenterContract) {
-	// Save host keys in map.
-	contracts = make(map[string]skymodules.RenterContract)
-	goodForRenew = make(map[string]bool)
-	offline = make(map[string]bool)
-
-	// Get the list of public keys from the contractor and use it to fill out
-	// the contracts map.
-	cs := r.staticHostContractor.Contracts()
-	for i := 0; i < len(cs); i++ {
-		contracts[cs[i].HostPublicKey.String()] = cs[i]
-	}
-
-	// Fill out the goodForRenew and offline maps based on the utility values of
-	// the contractor.
-	for pkString, contract := range contracts {
-		cu, ok := r.ContractUtility(contract.HostPublicKey)
-		if !ok {
-			continue
-		}
-		goodForRenew[pkString] = cu.GoodForRenew
-		offline[pkString] = r.staticHostContractor.IsOffline(contract.HostPublicKey)
-	}
-	return offline, goodForRenew, contracts
-}
-
 // callRenterContractsAndUtilities returns the cached contracts and utilities
 // from the renter. They can be updated by calling
 // managedUpdateRenterContractsAndUtilities.
@@ -584,14 +553,6 @@ func (r *Renter) managedUpdateRenterContractsAndUtilities() {
 		offline[pk.String()] = r.staticHostContractor.IsOffline(pk)
 		contracts[pk.String()] = contract
 		if cu.GoodForRenew {
-			used = append(used, pk)
-		}
-	}
-	// Update the used hosts of the Siafile. Only consider the ones that
-	// are goodForRenew.
-	for _, contract := range allContracts {
-		pk := contract.HostPublicKey
-		if _, gfr := goodForRenew[pk.String()]; gfr {
 			used = append(used, pk)
 		}
 	}
@@ -1105,8 +1066,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		// download heap loop, searching for a chunk that's not there. This is
 		// preferable to the alternative, where in rare cases the download heap
 		// will miss work altogether.
-		newDownloads: make(chan struct{}, 1),
-		downloadHeap: new(downloadChunkHeap),
+		newDownloads:       make(chan struct{}, 1),
+		staticDownloadHeap: &downloadHeap{},
 
 		staticUploadHeap: uploadHeap{
 			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),

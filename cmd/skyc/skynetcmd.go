@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -23,9 +21,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
 
 var (
@@ -302,7 +299,7 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 		}
 		reader = resp.Body
 		defer func() {
-			err = reader.Close()
+			err = resp.Body.Close()
 			if err != nil {
 				die("unable to close reader:", err)
 			}
@@ -366,26 +363,12 @@ func skynetisblockedcmd(_ *cobra.Command, skylinkStrs []string) {
 // similar to 'skyc renter ls' but defaults to the SkynetFolder and only
 // displays files that are pinning skylinks.
 func skynetlscmd(cmd *cobra.Command, args []string) {
-	var path string
-	switch len(args) {
-	case 0:
-		path = "."
-	case 1:
-		path = args[0]
-	default:
+	// Parse the SiaPath
+	sp, err := parseLSArgs(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
-	}
-	// Parse the input siapath.
-	var sp skymodules.SiaPath
-	var err error
-	if path == "." || path == "" || path == "/" {
-		sp = skymodules.RootSiaPath()
-	} else {
-		sp, err = skymodules.NewSiaPath(path)
-		if err != nil {
-			die("could not parse siapath:", err)
-		}
 	}
 
 	// Check whether the command is based in root or based in the skynet folder.
@@ -402,132 +385,62 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 	// Check if the command is hitting a single file.
 	if !sp.IsRoot() {
-		rf, err := httpClient.RenterFileRootGet(sp)
-		if err == nil {
-			if len(rf.File.Skylinks) == 0 {
-				fmt.Println("File is not pinning any skylinks")
-				return
-			}
-			json, err := json.MarshalIndent(rf.File, "", "  ")
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			fmt.Println()
-			fmt.Println(string(json))
-			fmt.Println()
+		tryDir, err := printSingleFile(sp, true, true)
+		if err != nil {
+			die(err)
+		}
+		if !tryDir {
 			return
-		} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-			die(fmt.Sprintf("Error getting file %v: %v", path, err))
 		}
 	}
 
-	// Get the full set of files and directories.
+	// Get the full set of files and directories. They will be sorted by siapath
 	//
-	// NOTE: Always query recursively so that we can filter out files that are
-	// not tracked by Skynet and get accurate, consistent sizes for dirs when
-	// displaying. If the --recursive flag was not passed, we limit the
-	// directory output later.
-	dirs := getDir(sp, true, true)
+	// NOTE: we always pass in true for root as this is referring to the client
+	// method needed to query the directories, not whether or not the siapath is
+	// relative to root or the skynet folder.
+	//
+	// NOTE: We want to get the directories recursively if we are either checking
+	// from root or the user wants recursive.
+	getRecursive := skynetLsRecursive || skynetLsRoot
+	dirs := getDirSorted(sp, true, getRecursive)
 
-	// Sort the directories and the files.
-	sort.Sort(byDirectoryInfo(dirs))
-	for i := 0; i < len(dirs); i++ {
-		sort.Sort(bySiaPathDir(dirs[i].subDirs))
-		sort.Sort(bySiaPathFile(dirs[i].files))
-	}
-
-	// Keep track of the aggregate sizes for dirs as we may be adjusting them.
-	sizePerDir := make(map[skymodules.SiaPath]uint64)
-	for _, dir := range dirs {
-		sizePerDir[dir.dir.SiaPath] = dir.dir.AggregateSize
-	}
-
-	// Drop any files that are not tracking skylinks.
-	var numDropped uint64
-	numOmittedPerDir := make(map[skymodules.SiaPath]int)
-	for j := 0; j < len(dirs); j++ {
-		for i := 0; i < len(dirs[j].files); i++ {
-			file := dirs[j].files[i]
-			if len(file.Skylinks) != 0 {
-				continue
-			}
-
-			siaPath := dirs[j].dir.SiaPath
-			numDropped++
-			numOmittedPerDir[siaPath]++
-			// Subtract the size from the aggregate size for the dir and all
-			// parent dirs.
-			for {
-				sizePerDir[siaPath] -= file.Filesize
-				if siaPath.IsRoot() {
-					break
-				}
-				siaPath, err = siaPath.Dir()
-				if err != nil {
-					die("could not parse parent dir:", err)
-				}
-				if _, exists := sizePerDir[siaPath]; !exists {
-					break
-				}
-			}
-			// Remove the file.
-			copy(dirs[j].files[i:], dirs[j].files[i+1:])
-			dirs[j].files = dirs[j].files[len(dirs[j].files)-1:]
-			i--
-		}
-	}
-
-	// Get the total number of listings (subdirs and files).
-	root := dirs[0] // Root directory we are querying.
+	// Determine the total number of Skyfiles and Skynet Directories. A Skynet
+	// directory is a directory that is either in the Skynet Folder or it contains
+	// at least one skyfile.
 	var numFilesDirs uint64
+	root := dirs[0] // Root directory we are querying.
+
+	// Grab the starting value for the number of Skyfiles and Skynet Directories.
 	if skynetLsRecursive {
-		numFilesDirs = root.dir.AggregateNumFiles + root.dir.AggregateNumSubDirs
-		numFilesDirs -= numDropped
+		numFilesDirs = root.dir.AggregateSkynetFiles + root.dir.AggregateNumSubDirs
 	} else {
-		numFilesDirs = root.dir.NumFiles + root.dir.NumSubDirs
-		numFilesDirs -= uint64(numOmittedPerDir[root.dir.SiaPath])
+		numFilesDirs = root.dir.SkynetFiles + root.dir.NumSubDirs
+	}
+
+	// If we are referencing the root of the file system then we need to check all
+	// the directories we queried and see which ones need to be omitted.
+	if skynetLsRoot {
+		// Figure out how many directories don't contain skyfiles
+		var nonSkynetDir uint64
+		for _, dir := range dirs {
+			if !skymodules.IsSkynetDir(dir.dir.SiaPath) && dir.dir.SkynetFiles == 0 {
+				nonSkynetDir++
+			}
+		}
+
+		// Subtract the number of non skynet directories from the total.
+		numFilesDirs -= nonSkynetDir
 	}
 
 	// Print totals.
-	totalStoredStr := modules.FilesizeUnits(sizePerDir[root.dir.SiaPath])
+	totalStoredStr := modules.FilesizeUnits(root.dir.AggregateSkynetSize)
 	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
-	// Print dirs.
-	for _, dir := range dirs {
-		fmt.Printf("%v/", dir.dir.SiaPath)
-		if numOmitted := numOmittedPerDir[dir.dir.SiaPath]; numOmitted > 0 {
-			fmt.Printf("\t(%v omitted)", numOmitted)
-		}
-		fmt.Println()
-
-		// Print subdirs.
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		for _, subDir := range dir.subDirs {
-			subDirName := subDir.SiaPath.Name() + "/"
-			sizeUnits := modules.FilesizeUnits(sizePerDir[subDir.SiaPath])
-			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, sizeUnits)
-		}
-
-		// Print files.
-		for _, file := range dir.files {
-			name := file.SiaPath.Name()
-			firstSkylink := file.Skylinks[0]
-			size := modules.FilesizeUnits(file.Filesize)
-			fmt.Fprintf(w, "  %v\t%v\t%9v\n", name, firstSkylink, size)
-			for _, skylink := range file.Skylinks[1:] {
-				fmt.Fprintf(w, "\t%v\t\n", skylink)
-			}
-		}
-		if err := w.Flush(); err != nil {
-			die("failed to flush writer")
-		}
-		fmt.Println()
-
-		if !skynetLsRecursive {
-			// If not --recursive, finish early after the first dir.
-			break
-		}
+	// Print Dirs
+	err = printSkynetDirs(dirs, skynetLsRecursive)
+	if err != nil {
+		die(err)
 	}
 }
 
@@ -553,7 +466,7 @@ func skynetPin(skylink string, siaPath skymodules.SiaPath) (string, error) {
 	}
 	reader := resp.Body
 	defer func() {
-		err = reader.Close()
+		err = resp.Body.Close()
 		if err != nil {
 			die("unable to close reader:", err)
 		}

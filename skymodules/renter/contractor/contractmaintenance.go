@@ -9,7 +9,6 @@ import (
 	"math"
 	"math/big"
 	"reflect"
-	"sort"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -18,14 +17,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 )
 
-// MaxCriticalRenewFailThreshold is the maximum number of contracts failing to renew as
-// fraction of the total hosts in the allowance before renew alerts are made
-// critical.
+// MaxCriticalRenewFailThreshold is the maximum number of contracts failing to
+// renew as fraction of the total gfr contracts in the allowance before renew
+// alerts are made critical.
 const MaxCriticalRenewFailThreshold = 0.2
 
 var (
@@ -423,6 +422,43 @@ func (c *Contractor) callInterruptContractMaintenance() {
 	}
 }
 
+// managedAddPreferredHosts adds toAdd hosts to the preferredHosts set from the
+// potentialHosts set and removes them from the potentialHosts.
+func (c *Contractor) managedAddPreferredHosts(toAdd int, preferredHosts, potentialHosts map[string]struct{}) {
+	// Grab random hosts from the potential set that are not already in the
+	// preferred set. To do so, we use the preferred hosts as the blacklist and
+	// the potential hosts as the whitelist.
+	var blacklist []types.SiaPublicKey
+	for host := range preferredHosts {
+		var spk types.SiaPublicKey
+		err := spk.LoadString(host)
+		if err != nil {
+			build.Critical("managedLimitGFUHosts: failed to marshal hostkey", err)
+			delete(preferredHosts, host)
+			continue
+		}
+		// Ignore hosts that are already in the preferred set.
+		blacklist = append(blacklist, spk)
+	}
+	hosts, err := c.staticHDB.RandomHostsWithWhitelist(toAdd, blacklist, blacklist, potentialHosts)
+	if err != nil {
+		c.staticLog.Print("managedLimitGFUHosts: failed to get random hosts:", err)
+		return
+	}
+
+	// Add hosts to fill the set.
+	for i := 0; i < len(hosts) && toAdd > 0; i++ {
+		host := hosts[i].PublicKey.String()
+		_, exists := potentialHosts[host]
+		if !exists {
+			continue // try next
+		}
+		preferredHosts[host] = struct{}{}
+		delete(potentialHosts, host)
+		toAdd--
+	}
+}
+
 // managedFindMinAllowedHostScores uses a set of random hosts from the hostdb to
 // calculate minimum acceptable score for a host to be marked GFR and GFU.
 func (c *Contractor) managedFindMinAllowedHostScores() (types.Currency, types.Currency, error) {
@@ -638,48 +674,71 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
-// managedLimitGFUHosts caps the number of GFU hosts for non-portals to
-// allowance.Hosts.
+// managedLimitGFUHosts caps the number of GFU hosts to allowance.Hosts.
 func (c *Contractor) managedLimitGFUHosts() {
 	c.mu.Lock()
-	wantedHosts := c.allowance.Hosts
-	c.mu.Unlock()
-	// Get all GFU contracts and their score.
-	type gfuContract struct {
-		c     skymodules.RenterContract
-		score types.Currency
+	wantedHosts := int(c.allowance.Hosts)
+	// Store the preferred contracts in a temporary map.
+	preferredHosts := make(map[string]struct{})
+	for hk := range c.preferredHosts {
+		preferredHosts[hk] = struct{}{}
 	}
-	var gfuContracts []gfuContract
+	c.mu.Unlock()
+
+	potentialHosts := make(map[string]struct{})
 	for _, contract := range c.Contracts() {
+		// If the contract is !gfu ignore it.
 		if !contract.Utility.GoodForUpload {
 			continue
 		}
-		host, ok, err := c.staticHDB.Host(contract.HostPublicKey)
-		if !ok || err != nil {
-			c.staticLog.Print("managedLimitGFUHosts was run after updating contract utility but found contract without host in hostdb that's GFU", contract.HostPublicKey)
-			continue
-		}
-		score, err := c.staticHDB.ScoreBreakdown(host)
-		if err != nil {
-			c.staticLog.Print("managedLimitGFUHosts: failed to get score breakdown for GFU host")
-			continue
-		}
-		gfuContracts = append(gfuContracts, gfuContract{
-			c:     contract,
-			score: score.Score,
-		})
+		// If it is gfu, mark the corresponding host as a potential candidate.
+		potentialHosts[contract.HostPublicKey.String()] = struct{}{}
 	}
-	// Sort gfuContracts by score.
-	sort.Slice(gfuContracts, func(i, j int) bool {
-		return gfuContracts[i].score.Cmp(gfuContracts[j].score) < 0
-	})
-	// Mark them bad for upload until we are below the expected number of hosts.
-	var contract gfuContract
-	for uint64(len(gfuContracts)) > wantedHosts {
-		contract, gfuContracts = gfuContracts[0], gfuContracts[1:]
-		sc, ok := c.staticContracts.Acquire(contract.c.ID)
+
+	// If a preferred host is not part of the potential hosts, it's no longer
+	// preferred so we delete it. We also delete hosts that are in the preferred
+	// hosts from the potential ones.
+	for host := range preferredHosts {
+		_, exists := potentialHosts[host]
+		delete(potentialHosts, host)
+		if !exists {
+			delete(preferredHosts, host)
+		}
+	}
+
+	// Now we are only left with the preferred hosts that are gfu.
+	// If they are too many, trim them.
+	toTrim := len(preferredHosts) - int(wantedHosts)
+	for host := range preferredHosts {
+		if toTrim <= 0 {
+			break
+		}
+		delete(preferredHosts, host)
+		toTrim--
+	}
+	// If there are too few, add some.
+	toAdd := int(wantedHosts) - len(preferredHosts)
+	if toAdd > 0 {
+		c.managedAddPreferredHosts(toAdd, preferredHosts, potentialHosts)
+	}
+
+	// Sanity check length of set.
+	if len(preferredHosts) > wantedHosts {
+		build.Critical("too many contracts in the set of preferred contracts")
+	}
+
+	// Mark all contracts that are not in the preferred set as !gfu.
+	for _, contract := range c.Contracts() {
+		_, isPreferred := preferredHosts[contract.HostPublicKey.String()]
+		if isPreferred {
+			continue // nothing to do
+		}
+		if !contract.Utility.GoodForUpload {
+			continue // nothing to do
+		}
+		sc, ok := c.staticContracts.Acquire(contract.ID)
 		if !ok {
-			c.staticLog.Print("managedLimitGFUHosts: failed to acquire GFU contract")
+			c.staticLog.Print("managedLimitGFUHosts: failed to acquire contract")
 			continue
 		}
 		u := sc.Utility()
@@ -691,6 +750,11 @@ func (c *Contractor) managedLimitGFUHosts() {
 			continue
 		}
 	}
+
+	// Update the preferred contracts.
+	c.mu.Lock()
+	c.preferredHosts = preferredHosts
+	c.mu.Unlock()
 }
 
 // staticCheckFormPaymentContractGouging will check whether the pricing from the
@@ -1392,15 +1456,17 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		alertSeverity := modules.SeverityError
-		// Increase the alert severity for renewal fails to critical if the number of
-		// contracts which failed to renew is more than 20% of the number of hosts.
-		if float64(numRenewFails) > math.Ceil(float64(allowance.Hosts)*MaxCriticalRenewFailThreshold) {
+		// Increase the alert severity for renewal fails to critical if the
+		// number of contracts which failed to renew is more than 20% of the
+		// number of gfr contracts.
+		if float64(numRenewFails) > math.Ceil(float64(gfrContracts)*MaxCriticalRenewFailThreshold) {
 			alertSeverity = modules.SeverityCritical
 		}
 		if renewErr != nil {
 			c.staticLog.Debugln("SEVERE", numRenewFails, float64(allowance.Hosts)*MaxCriticalRenewFailThreshold)
 			c.staticLog.Debugln("alert err: ", renewErr)
-			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.AlertSeverity(alertSeverity))
+			alertMSG := fmt.Sprintf("%v out of %v renewals failed - number of total gfr contracts is %v - see contractor.log for details", numRenewFails, len(renewSet), gfrContracts)
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, alertMSG, modules.AlertSeverity(alertSeverity))
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterContractRenewalError)
 		}

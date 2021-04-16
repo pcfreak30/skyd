@@ -1,0 +1,1 @@
+- batch together has sector lookups in single mdm program if possible

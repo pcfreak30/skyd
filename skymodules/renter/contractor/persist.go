@@ -11,8 +11,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/proto"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 )
 
 var (
@@ -35,6 +35,7 @@ type contractorPersist struct {
 	RecentRecoveryChange modules.ConsensusChangeID        `json:"recentrecoverychange"`
 	OldContracts         []skymodules.RenterContract      `json:"oldcontracts"`
 	DoubleSpentContracts map[string]types.BlockHeight     `json:"doublespentcontracts"`
+	PreferredHosts       []string                         `json:"preferredhosts"`
 	RecoverableContracts []skymodules.RecoverableContract `json:"recoverablecontracts"`
 	RenewedFrom          map[string]types.FileContractID  `json:"renewedfrom"`
 	RenewedTo            map[string]types.FileContractID  `json:"renewedto"`
@@ -62,6 +63,7 @@ func (c *Contractor) persistData() contractorPersist {
 		RenewedFrom:          make(map[string]types.FileContractID),
 		RenewedTo:            make(map[string]types.FileContractID),
 		DoubleSpentContracts: make(map[string]types.BlockHeight),
+		PreferredHosts:       make([]string, 0, len(c.preferredHosts)),
 		Synced:               synced,
 	}
 	for k, v := range c.renewedFrom {
@@ -78,6 +80,9 @@ func (c *Contractor) persistData() contractorPersist {
 	}
 	for _, contract := range c.recoverableContracts {
 		data.RecoverableContracts = append(data.RecoverableContracts, contract)
+	}
+	for host := range c.preferredHosts {
+		data.PreferredHosts = append(data.PreferredHosts, host)
 	}
 	data.ChurnLimiter = c.staticChurnLimiter.callPersistData()
 	data.WatchdogData = c.staticWatchdog.callPersistData()
@@ -147,6 +152,9 @@ func (c *Contractor) load() error {
 	}
 	for _, contract := range data.RecoverableContracts {
 		c.recoverableContracts[contract.ID] = contract
+	}
+	for _, host := range data.PreferredHosts {
+		c.preferredHosts[host] = struct{}{}
 	}
 
 	c.staticChurnLimiter = newChurnLimiterFromPersist(c, data.ChurnLimiter)

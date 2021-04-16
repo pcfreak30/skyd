@@ -17,8 +17,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
 )
 
 const (
@@ -467,7 +467,7 @@ func (sl *SkyfileLayout) DecodeFanoutIntoChunks(fanoutBytes []byte) ([][]crypto.
 
 // Encode will return a []byte that has compactly encoded all of the layout
 // data.
-func (sl *SkyfileLayout) Encode() []byte {
+func (sl SkyfileLayout) Encode() []byte {
 	b := make([]byte, SkyfileLayoutSize)
 	offset := 0
 	b[offset] = sl.Version
@@ -583,6 +583,11 @@ func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
 	return payout
 }
 
+// IsSkynetDir is a helper that tells if the siapath is in the Skynet Folder
+func IsSkynetDir(sp SiaPath) bool {
+	return strings.HasPrefix(sp.String(), SkynetFolder.String())
+}
+
 // PayMonetizers is a helper method for paying out monetizers.
 func PayMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency) error {
 	return payMonetizers(w, monetization, downloadedData, totalData, conversionRates, monetizationBase, fastrand.Reader)
@@ -621,8 +626,11 @@ func payMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, dow
 		// Convert money to SC.
 		sc := monetizer.Amount.Mul(conversion).Div(types.SiacoinPrecision)
 
-		// Adjust money to percentage of downloaded content.
-		sc = sc.Mul64(downloadedData).Div64(totalData)
+		// Adjust money to percentage of downloaded content. Unless we download
+		// a 0 byte file.
+		if totalData > 0 {
+			sc = sc.Mul64(downloadedData).Div64(totalData)
+		}
 
 		// Figure out how much to pay.
 		payout, err := computeMonetizationPayout(sc, monetizationBase, rand)

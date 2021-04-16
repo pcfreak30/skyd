@@ -216,6 +216,7 @@ func testValidateSkyfileMetadata(t *testing.T) {
 		},
 	}
 	invalid.Length = 0
+	invalid.Monetization = &Monetization{}
 	err = ValidateSkyfileMetadata(invalid)
 	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata") {
 		t.Fatal("unexpected outcome")
@@ -233,6 +234,30 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	err = ValidateSkyfileMetadata(invalid)
 	if err != nil {
 		t.Fatal("unexpected outcome")
+	}
+
+	// verify legacy file the first one is valid since it only has a single
+	// subfile and the second one isn't.
+	valid := metadata
+	valid.Subfiles = SkyfileSubfiles{
+		"validkey": SkyfileSubfileMetadata{
+			Filename: "validkey",
+			Len:      10,
+		},
+	}
+	valid.Length = 0
+	err = ValidateSkyfileMetadata(valid)
+	if err != nil {
+		t.Fatal("unexpected outcome")
+	}
+	invalid = valid
+	invalid.Subfiles["validkey2"] = SkyfileSubfileMetadata{
+		Filename: "validkey2",
+		Len:      10,
+	}
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata") {
+		t.Fatal("unexpected outcome", err)
 	}
 }
 
@@ -313,6 +338,7 @@ func TestParseSkyfileMetadata(t *testing.T) {
 	ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
 	// Make sure monetization is validated.
 	sm := SkyfileMetadata{
+		Filename: "test",
 		Monetization: &Monetization{
 			License: "", // invalid license
 		},
@@ -328,7 +354,7 @@ func TestParseSkyfileMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, _, err = ParseSkyfileMetadata(baseSector)
+	_, _, _, _, _, err = ParseSkyfileMetadata(baseSector)
 	if !errors.Contains(err, ErrUnknownLicense) {
 		t.Fatal("wrong error:", err)
 	}

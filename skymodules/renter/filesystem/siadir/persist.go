@@ -14,8 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 const (
@@ -92,7 +92,10 @@ func LoadSiaDir(path string, deps modules.Dependencies) (sd *SiaDir, err error) 
 		// return a newly initialized metadata and try and fix the corruption by
 		// re-saving the metadata. This is OK because siadir persistence is not ACID
 		// and all metadata information can be recalculated.
-		sd.metadata = newMetadata()
+		sd.metadata, err = newMetadata()
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to initialize new metadata")
+		}
 		err = sd.saveDir()
 	}
 	return sd, err
@@ -204,6 +207,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.AggregateMinRedundancy = metadata.AggregateMinRedundancy
 	sd.metadata.AggregateModTime = metadata.AggregateModTime
 	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
+	sd.metadata.AggregateNumLostFiles = metadata.AggregateNumLostFiles
 	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
 	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
 	sd.metadata.AggregateRemoteHealth = metadata.AggregateRemoteHealth
@@ -221,6 +225,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.ModTime = metadata.ModTime
 	sd.metadata.Mode = metadata.Mode
 	sd.metadata.NumFiles = metadata.NumFiles
+	sd.metadata.NumLostFiles = metadata.NumLostFiles
 	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
 	sd.metadata.NumSubDirs = metadata.NumSubDirs
 	sd.metadata.RemoteHealth = metadata.RemoteHealth
@@ -316,7 +321,10 @@ func createDirMetadata(path string, mode os.FileMode) (Metadata, error) {
 		return Metadata{}, err
 	}
 
-	md := newMetadata()
+	md, err := newMetadata()
+	if err != nil {
+		return Metadata{}, errors.AddContext(err, "unable to initialize new metadata")
+	}
 	md.Mode = mode
 	return md, nil
 }
@@ -351,12 +359,12 @@ func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode, deps modul
 }
 
 // newMetadata returns an initialized Metadata with all default values.
-func newMetadata() Metadata {
+func newMetadata() (Metadata, error) {
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
 	// empty directories won't be viewed as being the most in need. Initialize
 	// ModTimes.
 	now := time.Now()
-	return Metadata{
+	md := Metadata{
 		AggregateHealth:        DefaultDirHealth,
 		AggregateMinRedundancy: DefaultDirRedundancy,
 		AggregateModTime:       now,
@@ -371,6 +379,7 @@ func newMetadata() Metadata {
 		StuckHealth:   DefaultDirHealth,
 		Version:       metadataVersion,
 	}
+	return md, VerifyMetadataInit(md)
 }
 
 // saveDir saves the metadata to disk at the provided path.

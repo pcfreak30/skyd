@@ -11,9 +11,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 var (
@@ -22,9 +22,13 @@ var (
 	errBatchDefaultPath = errors.New("batching does not supports the use of DefaultPath or DisableDefaultPath")
 	errBatchDryRun      = errors.New("cannot perform a dry run with batched uploads")
 	errBatchEncrypted   = errors.New("cannot batch encrypted uploads")
+	errBatchFilename    = errors.New("filename must be provided for batching")
 	errBatchForce       = errors.New("cannot use force param with batching")
+	errBatchMode        = errors.New("Mode must be provided for batching")
 	errBatchNotEnabled  = errors.New("SkyfileUploadParameters do not indicate file should be batched")
 	errBatchRedundancy  = errors.New("batching only supports the default base chunk redundancy value")
+	errBatchRoot        = errors.New("cannot set root param with batching")
+	errBatchSiaPath     = errors.New("siapath should not be set for batched files")
 
 	// errFileTooLarge is returned if a file that is too large is submitted to the
 	// batch manager
@@ -104,6 +108,9 @@ type (
 		// staticBatchManager is the global batchManager
 		staticBatchManager *skylinkBatchManager
 
+		// staticFilename is the name of the batch used in the metadata for upload
+		staticFilename string
+
 		// err is common error for the skyfile batch. It is returned to all the
 		// individual batched file requests.
 		err error
@@ -125,6 +132,7 @@ type (
 		// File data
 		data []byte
 		size uint64
+		sup  skymodules.SkyfileUploadParameters
 
 		// Packing information
 		fp skymodules.FilePlacement
@@ -168,11 +176,12 @@ func (r *Renter) newSkylinkBatchManager() {
 // batch.
 func (sbm *skylinkBatchManager) createNewBatch() {
 	sbm.activeBatch = &skylinkBatch{
-		staticBatchManager: sbm,
 		currentFiles:       make(map[batchUID]*skyFileObj),
 		externSkylinkData:  make(map[batchUID]*skylinkData),
 		remainingMemory:    maxBatchSize,
 		staticAvailable:    make(chan struct{}),
+		staticBatchManager: sbm,
+		staticFilename:     fmt.Sprintf("batched_file_%v", time.Now().UnixNano()),
 	}
 }
 
@@ -207,6 +216,7 @@ func (sbm *skylinkBatchManager) managedAddFile(sup skymodules.SkyfileUploadParam
 	f := &skyFileObj{
 		data: buf,
 		size: uint64(numBytes),
+		sup:  sup,
 	}
 
 	// addFile does not block, instead it returns a channel that
@@ -280,6 +290,75 @@ func (sb *skylinkBatch) addFile(f *skyFileObj) (*skylinkData, chan struct{}) {
 	return res, sb.staticAvailable
 }
 
+// buildBaseSector builds the basesector for the batch
+func (sb *skylinkBatch) buildBaseSector(fps []skymodules.FilePlacement, packedSize uint64) ([]byte, uint64, error) {
+	// Move file placements back to skyFileObj and build basesector data and
+	// SkyfileSubfiles based on packed files.
+	baseSectorData := make([]byte, packedSize)
+	subFiles := make(skymodules.SkyfileSubfiles)
+	var batchLength uint64
+	for _, fp := range fps {
+		sfo, ok := sb.currentFiles[batchUID(fp.FileID)]
+		// Sanity check that the UIDs used in the file packing are the same as the
+		// ones used in the batch
+		if !ok {
+			err := errors.New("file placement FileID not found in current files")
+			build.Critical(err)
+			return nil, 0, err
+		}
+		sfo.fp = fp
+
+		// Write the file data to the offset
+		offset := fp.SectorOffset
+		copy(baseSectorData[offset:], sfo.data)
+
+		// Add to Subfiles
+		subFileLen := uint64(len(sfo.data))
+		subFiles[sfo.sup.Filename] = skymodules.SkyfileSubfileMetadata{
+			FileMode: sfo.sup.Mode,
+			Filename: sfo.sup.Filename,
+			Offset:   offset,
+			Len:      subFileLen,
+		}
+
+		// Increment batch length
+		batchLength += subFileLen
+	}
+
+	// Generate SkyfileMetadata for the basesector.
+	metadata := skymodules.SkyfileMetadata{
+		Filename: sb.staticFilename,
+		Length:   batchLength,
+		Subfiles: subFiles,
+	}
+
+	// Validate the metadata
+	err := skymodules.ValidateSkyfileMetadata(metadata)
+	if err != nil {
+		err = errors.AddContext(err, "unable to validate metadata")
+		return nil, 0, err
+	}
+
+	// Generate the metadata bytes
+	metadataBytes, err := skymodules.SkyfileMetadataBytes(metadata)
+	if err != nil {
+		err = errors.AddContext(err, "unable to get skyfile metadata bytes")
+		return nil, 0, err
+	}
+
+	// Create Skyfile Layout
+	sl := skymodules.SkyfileLayout{
+		Version:      skymodules.SkyfileVersion,
+		Filesize:     packedSize,
+		MetadataSize: uint64(len(metadataBytes)),
+		CipherType:   crypto.TypePlain,
+	}
+
+	// Generate the BaseSector
+	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, baseSectorData)
+	return baseSector, fetchSize, nil
+}
+
 // initSkylinkBatch is called the first time a file is added to the skylink
 // batch. This will trigger a background timer to check on the status of the
 // batch.
@@ -307,6 +386,31 @@ func (sb *skylinkBatch) initSkylinkBatch() {
 	})
 }
 
+// packFiles packs the batched files into the sector and returns the file
+// placements and the packed size
+func (sb *skylinkBatch) packFiles() ([]skymodules.FilePlacement, uint64, error) {
+	// Build Files Map
+	filesMap := make(map[string]uint64)
+	for uid, f := range sb.currentFiles {
+		filesMap[string(uid)] = f.size
+	}
+
+	// Pack Files
+	fps, numSectors, packedSize, err := skymodules.PackFiles(filesMap)
+	if err != nil {
+		return nil, 0, errors.AddContext(err, "unable to pack files")
+	}
+
+	// Sanity check that we are only packing files into a single sector.
+	if numSectors != 1 {
+		err = errors.New("unexpected number of sectors for batch")
+		build.Critical(err)
+		return nil, 0, err
+	}
+
+	return fps, packedSize, nil
+}
+
 // threadedUploadData handles uploading the batch.
 //
 // By the time threadedUploadData is called, this thread is the only thread with
@@ -331,74 +435,18 @@ func (sb *skylinkBatch) threadedUploadData() {
 	}()
 
 	// Package the files
-	//
-	// Build Files Map
-	filesMap := make(map[string]uint64)
-	for uid, f := range sb.currentFiles {
-		filesMap[string(uid)] = f.size
-	}
-
-	// Pack Files
-	fps, numSectors, totalSize, err := skymodules.PackFiles(filesMap)
+	fps, packedSize, err := sb.packFiles()
 	if err != nil {
-		sb.err = errors.AddContext(err, "batch upload failed to pack files")
+		sb.err = errors.AddContext(err, "batch upload failed, unable to pack files")
 		return
 	}
 
-	// Sanity check that we are only packing files into a single sector.
-	if numSectors != 1 {
-		sb.err = errors.New("batch upload failed due to unexpected number of sectors")
-		build.Critical(sb.err)
-		return
-	}
-
-	// Move file placements back to skyFileObj and build basesector data based on
-	// packed files.
-	baseSectorData := make([]byte, totalSize)
-	for _, fp := range fps {
-		sfo, ok := sb.currentFiles[batchUID(fp.FileID)]
-		// Sanity check that the UIDs used in the file packing are the same as the
-		// ones used in the batch
-		if !ok {
-			sb.err = errors.New("file placement FileID not found in current files")
-			build.Critical(sb.err)
-			return
-		}
-		sfo.fp = fp
-
-		// Write the file data to the offset
-		data := sfo.data
-		offset := fp.SectorOffset
-		copy(baseSectorData[offset:], data)
-	}
-
-	// Generate SkyfileMetadata for the basesector.
-	//
-	// NOTE: the skyfile metadata is for the batched basesector and will be
-	// returned with all the batched skylink downloads. As such we probably
-	// shouldn't include any information about the individual files for privacy
-	// and security reasons. This ultimately makes the metadata pretty generic and
-	// useless.
-	metadata := skymodules.SkyfileMetadata{
-		Filename: fmt.Sprintf("batched_file_%v", time.Now().UnixNano()),
-		Length:   totalSize,
-	}
-	metadataBytes, err := skymodules.SkyfileMetadataBytes(metadata)
+	// Generate BaseSector
+	baseSector, fetchSize, err := sb.buildBaseSector(fps, packedSize)
 	if err != nil {
-		sb.err = errors.AddContext(err, "batch upload failed, unable to get skyfile metadata bytes")
+		sb.err = errors.AddContext(err, "batch upload failed, unable to build base sector")
 		return
 	}
-
-	// Create Skyfile Layout
-	sl := skymodules.SkyfileLayout{
-		Version:      skymodules.SkyfileVersion,
-		Filesize:     totalSize,
-		MetadataSize: uint64(len(metadataBytes)),
-		CipherType:   crypto.TypePlain,
-	}
-
-	// Generate the BaseSector
-	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, baseSectorData)
 
 	// Generate Merkleroot of the basesector
 	merkleroot := crypto.MerkleRoot(baseSector)
@@ -441,7 +489,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 	}
 
 	// Create the SkyfileUploadParameters for the batch
-	siaPath, err := skymodules.NewSiaPath(metadata.Filename)
+	siaPath, err := skymodules.NewSiaPath(sb.staticFilename)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to create siapath for batch")
 		return
@@ -499,37 +547,55 @@ func (sb *skylinkBatch) threadedUploadData() {
 
 // validBatchSUP checks if the SkyfileUploadParameters are valid for batching
 func validBatchSUP(sup skymodules.SkyfileUploadParameters) error {
+	// First check for required fields
+	//
 	// Check that the file should be batched.
 	if !sup.Batch {
 		return errBatchNotEnabled
 	}
+	// Batched files should use the default BaseChunkRedundancy
+	if sup.BaseChunkRedundancy != 0 && sup.BaseChunkRedundancy != SkyfileDefaultBaseChunkRedundancy {
+		return errBatchRedundancy
+	}
+	// Filename should be provided
+	if sup.Filename == "" {
+		return errBatchFilename
+	}
+	// Mode should be provided
+	if sup.Mode == 0 {
+		return errBatchMode
+	}
+
+	// Next check that all other fields were omitted
+	//
+	// DefaultPath and DisableDefaultPath cannot be set.
+	if sup.DisableDefaultPath || sup.DefaultPath != "" {
+		return errBatchDefaultPath
+	}
+	// Not currently supporting dryRun with batching
+	if sup.DryRun {
+		return errBatchDryRun
+	}
 	// Cannot use force param with batching
 	if sup.Force {
 		return errBatchForce
+	}
+	// Root should not be set
+	if sup.Root {
+		return errBatchRoot
 	}
 	// Encrypted uploads cannot be batched
 	isEncrypted := sup.SkykeyName != "" || sup.SkykeyID != skykey.SkykeyID{}
 	if isEncrypted {
 		return errBatchEncrypted
 	}
-	// Not currently supporting dryRun with batching
-	if sup.DryRun {
-		return errBatchDryRun
+	// SiaPath should just be empty as it is not used
+	if !sup.SiaPath.IsEmpty() {
+		return errBatchSiaPath
 	}
-	// Batched files should use the default BaseChunkRedundancy
-	if sup.BaseChunkRedundancy != 0 && sup.BaseChunkRedundancy != SkyfileDefaultBaseChunkRedundancy {
-		return errBatchRedundancy
-	}
-	// DefaultPath and DisableDefaultPath cannot be set.
-	if sup.DisableDefaultPath || sup.DefaultPath != "" {
-		return errBatchDefaultPath
-	}
-
-	// SiaPath, Root, Filename and Mode are just ignored. It is not an issue if
-	// they are set because they do not impact the other files in the batch nor
-	// are they needed for the download. They will just not be used.
-	//
-	// The Reader is ignored because the SkyfileUploadReader should be submitted
-	// and used for the batch.
+	// Reader is ignored as we use the SkyfileUploadReader. However we don't check
+	// for a nil reader in the sup since it is the sup reader was is used to
+	// generate the SkyfileUploadReader and would be confusing to force developers
+	// to nil out that reader just to satisfy this check.
 	return nil
 }
