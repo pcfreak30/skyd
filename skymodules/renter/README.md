@@ -597,6 +597,9 @@ unpinned by the bubble code while it iterates over the filesystem.
      needs to be deleted. 
  - `callPruneUnpinRequests` is used by the bubble subsystem in
     `callThreadedProcessBubbleUpdates` to clear outdated unpin requests.
+ - `callUpdatePruneTimeThreshold` is used by the bubble subsystem in
+    `managedPerformBubbleMetadata` to clear update the skylink manager's
+    `pruneTimeThreshold`.
 
 ### Stream Buffer Subsystem
 **Key Files**
