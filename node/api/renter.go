@@ -1020,11 +1020,14 @@ func (api *API) renterAllowanceCancelHandlerPOST(w http.ResponseWriter, _ *http.
 // renterCleanHandlerPOST handles the API call to clean lost files from a Renter.
 func (api *API) renterCleanHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	var deleteErrs error
+	var deleteErrsMu sync.Mutex
 	cleanFunc := func(fi skymodules.FileInfo) {
 		if fi.OnDisk || fi.Redundancy >= 1 {
 			return
 		}
+		deleteErrsMu.Lock()
 		deleteErrs = errors.Compose(deleteErrs, api.renter.DeleteFile(fi.SiaPath))
+		deleteErrsMu.Unlock()
 	}
 	err := api.renter.FileList(skymodules.RootSiaPath(), true, false, cleanFunc)
 	err = errors.Compose(err, deleteErrs)
