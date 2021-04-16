@@ -128,16 +128,6 @@ type (
 		modules.ProductionDependencies
 	}
 
-	// DependencyInterruptCountOccurrences is a generic dependency that
-	// interrupts the flow of the program if the argument passed to Disrupt
-	// equals str and it keeps track of how many times this happened.
-	DependencyInterruptCountOccurrences struct {
-		occurrences uint64 // indicates how many times this interrupt occurred
-		modules.ProductionDependencies
-		mu  sync.Mutex
-		str string
-	}
-
 	// DependencyInterruptOnceOnKeyword is a generic dependency that interrupts
 	// the flow of the program if the argument passed to Disrupt equals str and
 	// if f was set to true by calling Fail.
@@ -327,14 +317,6 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 	}
 }
 
-// newDependencyInterruptCountOccurrences creates a new
-// DependencyInterruptCountOccurrences from a given disrupt
-func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCountOccurrences {
-	return &DependencyInterruptCountOccurrences{
-		str: str,
-	}
-}
-
 // NewDependencyHostBlockRPC creates a new dependency that can be used to
 // simulate an unresponsive host.
 func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
@@ -491,26 +473,6 @@ func (d *DependencyDisableRotateFingerprintBuckets) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyTimeoutOnHostGET) Disrupt(s string) bool {
 	return s == "TimeoutOnHostGET"
-}
-
-// Disrupt returns true if the correct string is provided. It keeps track of how
-// many times this occurred.
-func (d *DependencyInterruptCountOccurrences) Disrupt(s string) bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if s == d.str {
-		d.occurrences++
-		return true
-	}
-	return false
-}
-
-// Occurrences returns the amount of time this dependency was successfully
-// disrupted.
-func (d *DependencyInterruptCountOccurrences) Occurrences() uint64 {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.occurrences
 }
 
 // Disrupt returns true if the correct string is provided and if the flag was

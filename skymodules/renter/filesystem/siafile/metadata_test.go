@@ -18,7 +18,7 @@ import (
 // createLinkedBlankSiafile creates 2 SiaFiles which use the same SiaFile to
 // store combined chunks. They reside within 'dir'.
 //
-//lint:file-ignore U1000 Ignore unused code, it's for future partial upload code
+// nolint: deadcode // might be used for partial uploads.
 func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 	// Create a wal.
 	walFilePath := filepath.Join(dir, "writeaheadlog.wal")

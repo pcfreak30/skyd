@@ -4,29 +4,17 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 const (
 	testSkylink = "AABEKWZ_wc2R9qlhYkzbG8mImFVi08kBu1nsvvwPLBtpEg"
 )
-
-// modulesTestDir creates a testing directory for the test
-func modulesTestDir(testName string) string {
-	path := build.TempDir("modules", testName)
-	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
-		panic(err)
-	}
-	return path
-}
 
 // TestBackupAndRestoreSkylink probes the backup and restore skylink methods
 func TestBackupAndRestoreSkylink(t *testing.T) {

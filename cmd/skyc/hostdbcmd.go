@@ -19,7 +19,6 @@ const scanHistoryLen = 30
 
 var (
 	hostdbNumHosts int
-	hostdbVerbose  bool
 )
 
 var (

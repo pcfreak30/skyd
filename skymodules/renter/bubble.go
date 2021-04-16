@@ -24,8 +24,7 @@ type bubbleStatus int
 // bubbleError, bubbleQueued, bubbleActive, and bubblePending are the constants
 // used to determine the status of a bubble being executed on a directory
 const (
-	bubbleError bubbleStatus = iota
-	bubbleQueued
+	bubbleQueued bubbleStatus = iota + 1
 	bubbleActive
 	bubblePending
 )

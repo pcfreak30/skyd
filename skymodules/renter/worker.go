@@ -27,10 +27,6 @@ import (
 )
 
 const (
-	// minRHP3Version defines the minimum version that supports RHP3. Note that
-	// this constant is not used, it is left in for documentation purposes only.
-	minRHP3Version = "1.4.10"
-
 	// minRegistryVersion defines the minimum version that is required for a
 	// host to support the registry.
 	minRegistryVersion = "1.5.5"
@@ -134,13 +130,6 @@ type (
 // downloadChunks is a queue of download chunks.
 type downloadChunks struct {
 	*list.List
-}
-
-// newDownloadChunks initializes a new queue.
-func newDownloadChunks() *downloadChunks {
-	return &downloadChunks{
-		List: list.New(),
-	}
 }
 
 // Pop removes the first element of the queue.
