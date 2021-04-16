@@ -792,7 +792,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		// and the refund.
 		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
-		// Commit the withdrawal now we know the refund.
+		// Deposit the refund.
 		refund := budget.Remaining()
 		w.staticAccount.managedTrackDeposit(refund)
 		w.staticAccount.managedCommitDeposit(refund, true)
