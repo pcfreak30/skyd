@@ -434,6 +434,7 @@ func (c *Contractor) managedAddPreferredHosts(toAdd int, preferredHosts, potenti
 		err := spk.LoadString(host)
 		if err != nil {
 			build.Critical("managedLimitGFUHosts: failed to marshal hostkey", err)
+			delete(preferredHosts, host)
 			continue
 		}
 		// Ignore hosts that are already in the preferred set.
