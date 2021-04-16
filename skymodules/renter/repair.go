@@ -83,7 +83,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymo
 // stuck stack.
 func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) ([]skymodules.SiaPath, error) {
 	var dirSiaPaths []skymodules.SiaPath
-	offline, goodForRenew, _ := r.managedContractUtilityMaps()
+	offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
 	numStuckChunks, _ := r.staticUploadHeap.managedNumStuckChunks()
 	for r.staticStuckStack.managedLen() > 0 && numStuckChunks < maxStuckChunksInHeap {
 		// Pop the first file SiaPath

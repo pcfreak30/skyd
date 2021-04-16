@@ -212,7 +212,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 		}
 
 		// Start the chunk upload.
-		offline, goodForRenew, _ := r.managedContractUtilityMaps()
+		offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
 		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
 		if err != nil {
 			return n, errors.AddContext(err, "unable to fetch chunk for stream")

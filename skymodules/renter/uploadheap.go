@@ -774,7 +774,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 	prevHeapLen := r.staticUploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
-	offline, goodForRenew, _ := r.managedContractUtilityMaps()
+	offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
 	consecutiveDirHeapFailures := 0
 	for r.staticUploadHeap.managedLen() < maxUploadHeapChunks && r.staticDirectoryHeap.managedLen() > 0 {
 		select {
@@ -849,7 +849,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(siaPath skymodules.SiaPath, host
 	}
 
 	// Build offline and goodForRenew maps
-	offline, goodForRenew, _ := r.managedContractUtilityMaps()
+	offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
 
 	// Build the unfinished stuck chunks from the file
 	unfinishedUploadChunks := r.managedBuildUnfinishedChunks(file, hosts, target, offline, goodForRenew, mm)
@@ -1548,7 +1548,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// backups is different from the siafileset that stores non-system files
 		// and chunks.
 		heapLen := r.staticUploadHeap.managedLen()
-		offline, goodForRenew, _ := r.managedContractUtilityMaps()
+		offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
 		r.managedBuildChunkHeap(skymodules.BackupFolder, hosts, targetBackupChunks, offline, goodForRenew)
 		numBackupChunks := r.staticUploadHeap.managedLen() - heapLen
 		if numBackupChunks > 0 {

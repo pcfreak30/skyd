@@ -201,7 +201,7 @@ func testManagedBuildChunkHeap(t *testing.T) {
 
 	// Call managedBuildChunkHeap as repair loop, we should see all the chunks
 	// from the file added
-	offline, goodForRenew, _ := rt.renter.managedContractUtilityMaps()
+	offline, goodForRenew, _, _ := rt.renter.callRenterContractsAndUtilities()
 	rt.renter.managedBuildChunkHeap(skymodules.RootSiaPath(), hosts, targetUnstuckChunks, offline, goodForRenew)
 	if rt.renter.staticUploadHeap.managedLen() != int(f1.NumChunks()) {
 		t.Fatalf("Expected heap length of %v but got %v", f1.NumChunks(), rt.renter.staticUploadHeap.managedLen())

@@ -677,7 +677,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				r.staticLog.Println("Failed to upload snapshot .sia:", err)
 			}
 		}
-		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+		offlineMap, goodForRenewMap, contractsMap, _ := r.callRenterContractsAndUtilities()
 		err := r.staticFileSystem.List(root, true, offlineMap, goodForRenewMap, contractsMap, flf, func(skymodules.DirectoryInfo) {})
 		if err != nil {
 			r.staticLog.Println("Could not get un-uploaded snapshots:", err)
