@@ -17,9 +17,9 @@ import (
 	"net/url"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 // addStorageToAllHosts adds a storage folder with a bunch of storage to each

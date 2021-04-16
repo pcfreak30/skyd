@@ -7,9 +7,9 @@ import (
 	"testing"
 	"text/tabwriter"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 const (
