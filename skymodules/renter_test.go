@@ -319,7 +319,8 @@ func TestRenterPayoutsPreTax(t *testing.T) {
 	}
 }
 
-// TestContractSpendingBreakdown is a unit test that probes SpendingBreakdown
+// TestContractorSpending_SpendingBreakdown is a unit test that probes
+// SpendingBreakdown
 func TestContractorSpending_SpendingBreakdown(t *testing.T) {
 	randCurrency := func() types.Currency {
 		return types.NewCurrency64(fastrand.Uint64n(1e3))
