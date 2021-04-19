@@ -32,8 +32,8 @@ func PrintJSON(a interface{}) string {
 	return str
 }
 
-// PrintJSON is a helper function that wraps the jsonMarshalIndent function and
-// returns the error instead of panicing.
+// PrintJSONProd is a helper function that wraps the jsonMarshalIndent function
+// and returns the error instead of panicing.
 func PrintJSONProd(a interface{}) (string, error) {
 	json, err := json.MarshalIndent(a, "", "\t")
 	if err != nil {
