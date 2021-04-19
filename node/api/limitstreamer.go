@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"io"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -33,7 +32,7 @@ type limitStreamer struct {
 // the returned byte slice appropriately. It also replaces the metadata with the
 // provided metadata. That's because we return a different sub-metadata when
 // downloading subfiles.
-func NewLimitStreamer(s skymodules.SkyfileStreamer, md skymodules.SkyfileMetadata, layout skymodules.SkyfileLayout, offset, size uint64) (skymodules.SkyfileStreamer, error) {
+func NewLimitStreamer(s skymodules.SkyfileStreamer, md skymodules.SkyfileMetadata, rawMD []byte, layout skymodules.SkyfileLayout, offset, size uint64) (skymodules.SkyfileStreamer, error) {
 	ls := &limitStreamer{
 		stream:       s,
 		base:         offset,
@@ -41,13 +40,13 @@ func NewLimitStreamer(s skymodules.SkyfileStreamer, md skymodules.SkyfileMetadat
 		limit:        offset + size,
 		staticLayout: layout,
 		staticMD:     md,
+		staticRawMD:  rawMD,
 	}
 	_, err := ls.Seek(0, io.SeekStart) // SeekStart to ensure the initial offset
 	if err != nil {
 		return nil, err
 	}
-	ls.staticRawMD, err = json.Marshal(md)
-	return ls, err
+	return ls, nil
 }
 
 // Read implements the io.Reader interface
