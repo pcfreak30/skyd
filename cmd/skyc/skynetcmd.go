@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -582,15 +582,9 @@ func skynetskylinkcmd(cmd *cobra.Command, args []string) {
 // skylink based on metadata provided in a metadata.json file and downloading
 // the file data and the layout from the skylink.
 func skynetskylinkcomparecmd(expectedSkylink string) {
-	// Read Metadata file
-	skyfileMetadataBytesFromFile := fileData("metadata.json")
-
-	// Unmarshal the Metadata
-	var skyfileMetadataFromFile skymodules.SkyfileMetadata
-	err := json.Unmarshal(skyfileMetadataBytesFromFile, &skyfileMetadataFromFile)
-	if err != nil {
-		die("Unable to unmarshal metadata bytes from file:", err)
-	}
+	// Read Metadata file and trim a potential newline.
+	skyfileMetadataFromFile := fileData("metadata.json")
+	skyfileMetadataFromFile = bytes.TrimSuffix(skyfileMetadataFromFile, []byte{'\n'})
 
 	// Download the skyfile
 	skyfileDownloadedData, layoutFromHeader, skyfileMetadataFromHeader, err := smallSkyfileDownload(expectedSkylink)
@@ -599,26 +593,17 @@ func skynetskylinkcomparecmd(expectedSkylink string) {
 	}
 
 	// Check if the metadata download is the same as the metadata loaded from disk
-	if !reflect.DeepEqual(skyfileMetadataFromFile, skyfileMetadataFromHeader) {
-		// Print metadata from file
-		data, err := json.MarshalIndent(skyfileMetadataFromFile, "", "\t")
-		if err != nil {
-			die("Unable to marshal file metadata:", err)
-		}
-		fmt.Println("Metadata read from file")
-		fmt.Println(string(data))
-		data, err = json.MarshalIndent(skyfileMetadataFromHeader, "", "\t")
-		if err != nil {
-			die("Unable to marshal header metadata:", err)
-		}
-		fmt.Println("Metadata read from header")
-		fmt.Println(string(data))
+	if !bytes.Equal(skyfileMetadataFromFile, skyfileMetadataFromHeader) {
+		fmt.Println("Metadata read from file", len(skyfileMetadataFromFile))
+		fmt.Println(string(skyfileMetadataFromFile))
+		fmt.Println("Metadata read from header", len(skyfileMetadataFromHeader))
+		fmt.Println(string(skyfileMetadataFromHeader))
 		die("Metadatas not equal")
 	}
 	fmt.Println("Metadatas Equal")
 
 	// build base sector
-	baseSector, fetchSize := skymodules.BuildBaseSector(layoutFromHeader.Encode(), nil, skyfileMetadataBytesFromFile, skyfileDownloadedData)
+	baseSector, fetchSize := skymodules.BuildBaseSector(layoutFromHeader.Encode(), nil, skyfileMetadataFromFile, skyfileDownloadedData)
 	baseSectorRoot := crypto.MerkleRoot(baseSector)
 	skylink, err := skymodules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {
@@ -658,12 +643,8 @@ func skynetskylinkmetadatacmd(skylink string) {
 		die(err)
 	}
 	// Print the metadata
-	str, err := siatest.PrintJSONProd(sm)
-	if err != nil {
-		die(err)
-	}
 	fmt.Println("Skyfile Metadata:")
-	fmt.Println(str)
+	fmt.Println(sm)
 }
 
 // skynetunpincmd will unpin and delete either a single or multiple files or

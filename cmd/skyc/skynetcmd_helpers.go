@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -18,20 +16,7 @@ import (
 
 // fileData is a small helper for reading and returning the data from a file.
 func fileData(filename string) []byte {
-	// Open file
-	f, err := os.Open(filename)
-	if err != nil {
-		die(err)
-	}
-	defer func() {
-		err = f.Close()
-		if err != nil {
-			die(err)
-		}
-	}()
-
-	// Read data
-	data, err := ioutil.ReadAll(f)
+	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		die(err)
 	}
@@ -130,7 +115,7 @@ func sanitizeSkylinks(links []string) []string {
 
 // smallSkyfileDownload is a helper that downloads a small skyfile and returns
 // the file data, layout, and metadata.
-func smallSkyfileDownload(skylink string) (fileData []byte, sl skymodules.SkyfileLayout, sm skymodules.SkyfileMetadata, _ error) {
+func smallSkyfileDownload(skylink string) (fileData []byte, sl skymodules.SkyfileLayout, sm []byte, _ error) {
 	// If no portal is set, we download the baseSector and parse the
 	// SkyfileLayout and SkyfileMetadata from it.
 	if skynetDownloadPortal == "" {
@@ -142,7 +127,7 @@ func smallSkyfileDownload(skylink string) (fileData []byte, sl skymodules.Skyfil
 		if err != nil {
 			return nil, sl, sm, errors.AddContext(err, "unable to reader basesector data from reader")
 		}
-		sl, _, sm, _, fileData, err = skymodules.ParseSkyfileMetadata(baseSector)
+		sl, _, _, sm, fileData, err = skymodules.ParseSkyfileMetadata(baseSector)
 		if err != nil {
 			return nil, sl, sm, errors.AddContext(err, "unable to parse layout and metadata from basesector")
 		}
@@ -166,27 +151,25 @@ func smallSkyfileDownload(skylink string) (fileData []byte, sl skymodules.Skyfil
 		}
 
 		// Grab the Layout
-		layoutStr := resp.Header.Get("Skynet-File-Layout")
-		if layoutStr == "" {
-			return nil, sl, sm, errors.New("no layout returned from Portal")
-		}
+		// TODO: this is not returned by portal it seems
+		//	layoutStr := resp.Header.Get("Skynet-File-Layout")
+		//	if layoutStr == "" {
+		//		return nil, sl, sm, errors.New("no layout returned from Portal")
+		//	}
 
-		// Decode the layout
-		layoutBytes, err := hex.DecodeString(layoutStr)
-		if err != nil {
-			return nil, sl, sm, errors.AddContext(err, "unable to decode layout string from header")
-		}
-		sl.Decode(layoutBytes)
+		//	// Decode the layout
+		//	layoutBytes, err := hex.DecodeString(layoutStr)
+		//	if err != nil {
+		//		return nil, sl, sm, errors.AddContext(err, "unable to decode layout string from header")
+		//	}
+		//	sl.Decode(layoutBytes)
 
 		// Grab the metadata
 		metadataStr := resp.Header.Get("Skynet-File-Metadata")
 		if metadataStr == "" {
 			return nil, sl, sm, errors.New("no metadata returned from Portal")
 		}
-		err = json.Unmarshal([]byte(metadataStr), &sm)
-		if err != nil {
-			return nil, sl, sm, errors.AddContext(err, "unable to unmarshal metadata")
-		}
+		sm = []byte(metadataStr)
 	}
 	return fileData, sl, sm, nil
 }
