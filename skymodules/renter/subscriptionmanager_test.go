@@ -240,8 +240,11 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	// Create a subscriber for that pair which counts the number of updates and
 	// allows for returning a custom error.
 	var updates []*modules.SignedRegistryValue
+	var updateMu sync.Mutex
 	var notifyErr error
 	subscriber := sm.NewSubscriber(func(srv *modules.SignedRegistryValue) error {
+		updateMu.Lock()
+		defer updateMu.Unlock()
 		updates = append(updates, srv)
 		return notifyErr
 	})
@@ -347,6 +350,8 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 
 	// Check if the right updates were sent. They should have been sent in the
 	// right order and only once per revision.
+	updateMu.Lock()
+	defer updateMu.Unlock()
 	expectedUpdates := []*modules.SignedRegistryValue{&srv1, &srv2, &srv3}
 	if !reflect.DeepEqual(updates, expectedUpdates) {
 		t.Fatal("updates don't match")
