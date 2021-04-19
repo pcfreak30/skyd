@@ -265,7 +265,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 		}
 		subscriber.notificationMu.Lock()
 		defer subscriber.notificationMu.Unlock()
-		if !reflect.DeepEqual(*subscriber.subscriptions[eid], srv1) {
+		if subscriber.subscriptions[eid] == nil || !reflect.DeepEqual(*subscriber.subscriptions[eid], srv1) {
 			return errors.New("wrong latest value")
 		}
 		return nil
