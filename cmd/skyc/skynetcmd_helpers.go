@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -135,7 +136,6 @@ func smallSkyfileDownload(skylink string) (fileData []byte, sl skymodules.Skyfil
 		// Download the SkyfileLayout and SkyfileMetadata from the portal
 		url := skynetDownloadPortal + "/" + skylink
 		url += "?include-layout=" + fmt.Sprintf("%t", true)
-		fmt.Println(url)
 		resp, err := http.Get(url)
 		if err != nil {
 			return nil, sl, sm, errors.AddContext(err, "unable to download from the portal")
@@ -151,25 +151,25 @@ func smallSkyfileDownload(skylink string) (fileData []byte, sl skymodules.Skyfil
 		}
 
 		// Grab the Layout
-		// TODO: this is not returned by portal it seems
-		//	layoutStr := resp.Header.Get("Skynet-File-Layout")
-		//	if layoutStr == "" {
-		//		return nil, sl, sm, errors.New("no layout returned from Portal")
-		//	}
-
-		//	// Decode the layout
-		//	layoutBytes, err := hex.DecodeString(layoutStr)
-		//	if err != nil {
-		//		return nil, sl, sm, errors.AddContext(err, "unable to decode layout string from header")
-		//	}
-		//	sl.Decode(layoutBytes)
+		layoutStr := resp.Header.Get("Skynet-File-Layout")
+		if layoutStr == "" {
+			fmt.Println("No Layout returned from Portal")
+		} else {
+			// Decode the layout
+			layoutBytes, err := hex.DecodeString(layoutStr)
+			if err != nil {
+				return nil, sl, sm, errors.AddContext(err, "unable to decode layout string from header")
+			}
+			sl.Decode(layoutBytes)
+		}
 
 		// Grab the metadata
 		metadataStr := resp.Header.Get("Skynet-File-Metadata")
 		if metadataStr == "" {
-			return nil, sl, sm, errors.New("no metadata returned from Portal")
+			fmt.Println("No metadata returned from Portal")
+		} else {
+			sm = []byte(metadataStr)
 		}
-		sm = []byte(metadataStr)
 	}
 	return fileData, sl, sm, nil
 }

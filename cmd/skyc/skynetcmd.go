@@ -149,10 +149,10 @@ metadata, or recomputing.`,
 	}
 
 	skynetSkylinkCompareCmd = &cobra.Command{
-		Use:   "compare [skylink]",
+		Use:   "compare [skylink] [metadata filename]",
 		Short: "Compare a skylink to a regenerated skylink",
 		Long: `This command regenerates a skylink by doing the following:
-First, it reads some provided metadata from a metadata.json file.
+First, it reads some provided metadata from the provided filename.
 Second, it downloads the skylink and records the metadata, layout, and filedata.
 Third, it compares the downloaded metadata to the metadata read from disk.
 Fourth, it computesthe base sector and then the skylink from the downloaded information.
@@ -581,9 +581,9 @@ func skynetskylinkcmd(cmd *cobra.Command, args []string) {
 // skynetskylinkcomparecmd compares a provided skylink to with a re-generated
 // skylink based on metadata provided in a metadata.json file and downloading
 // the file data and the layout from the skylink.
-func skynetskylinkcomparecmd(expectedSkylink string) {
+func skynetskylinkcomparecmd(expectedSkylink string, filename string) {
 	// Read Metadata file and trim a potential newline.
-	skyfileMetadataFromFile := fileData("metadata.json")
+	skyfileMetadataFromFile := fileData(filename)
 	skyfileMetadataFromFile = bytes.TrimSuffix(skyfileMetadataFromFile, []byte{'\n'})
 
 	// Download the skyfile
