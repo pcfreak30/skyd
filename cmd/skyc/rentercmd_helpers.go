@@ -698,6 +698,7 @@ func renterFilesAndContractSummary() error {
 	} else if err != nil {
 		return errors.AddContext(err, "unable to get root dir with RenterDirRootGet")
 	}
+	timeSinceHealthCheck := time.Since(rf.Directories[0].AggregateLastHealthCheckTime)
 
 	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
@@ -713,12 +714,16 @@ func renterFilesAndContractSummary() error {
 	passiveSize, _, _, _ := contractStats(rc.PassiveContracts)
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprint(w, "File Summary:\n")
 	fmt.Fprintf(w, "  Files:\t%v\n", rf.Directories[0].AggregateNumFiles)
 	fmt.Fprintf(w, "  Total Stored:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateSize))
 	fmt.Fprintf(w, "  Total Renewing Data:\t%v\n", modules.FilesizeUnits(activeSize+passiveSize))
+	fmt.Fprint(w, "Repair Status:\n")
+	fmt.Fprintf(w, "  Last Health Check:\t%.0fm\n", timeSinceHealthCheck.Minutes())
 	fmt.Fprintf(w, "  Repair Data Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateRepairSize))
 	fmt.Fprintf(w, "  Stuck Repair Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateStuckSize))
 	fmt.Fprintf(w, "  Min Redundancy:\t%v\n", redundancyStr)
+	fmt.Fprint(w, "Contract Summary:\n")
 	fmt.Fprintf(w, "  Active Contracts:\t%v\n", len(rc.ActiveContracts))
 	fmt.Fprintf(w, "  Passive Contracts:\t%v\n", len(rc.PassiveContracts))
 	fmt.Fprintf(w, "  Disabled Contracts:\t%v\n", len(rc.DisabledContracts))
