@@ -89,6 +89,11 @@ var (
 	// successfully.
 	updateRegistryBackgroundTimeout = time.Minute
 
+	// readRegistryStatsDebugThreshold is a threshold for the best lookup's
+	// timing. If the timing is above the threshold, we log some additional
+	// information to figure out why it took that long.
+	readRegistryStatsDebugThreshold = 10 * time.Second
+
 	// readRegistryStatsInterval is the granularity with which read registry
 	// stats are collected. The smaller the number the faster updating the stats
 	// is but the less accurate the estimate.
@@ -280,8 +285,32 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		}
 	}
 
-	// Add the duration to the estimate. If the secondBest
+	// Get the duration of the best lookup.
 	d := best.staticCompleteTime.Sub(startTime)
+
+	// If the duration of the best was very long, print some additional info.
+	if d > readRegistryStatsDebugThreshold {
+		// base msg
+		logStr := fmt.Sprintf("threadedAddResponseSet: WARN: best lookup on host %v took longer than %v seconds", best.staticWorker.staticHostPubKeyStr, readRegistryStatsDebugThreshold)
+		srv := best.staticSignedRegistryValue
+		// Add revision
+		if srv != nil {
+			logStr += fmt.Sprintf(" - revision: %v", srv.Revision)
+		}
+		// Add eid
+		logStr += fmt.Sprintf(" - eid: %v", best.staticEID)
+		// Add spk and tweak
+		if best.staticSPK != nil && best.staticTweak != nil {
+			logStr += fmt.Sprintf(" - spk: %v - tweak: %v", best.staticSPK.String(), best.staticTweak.String())
+		}
+		// Add number of good/total responses.
+		logStr += fmt.Sprintf(" - goodResps: %v/%v", len(goodResps), len(resps))
+		// Log string.
+		l.Print(logStr)
+	}
+
+	// Add the duration to the estimate. If the secondBest was faster, use that
+	// instead.
 	if secondBest != nil && d2 < d {
 		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
 		d = d2
