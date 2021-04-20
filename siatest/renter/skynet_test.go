@@ -4824,9 +4824,8 @@ func TestSkynetPinUnpin(t *testing.T) {
 	// Create group
 	// Create a testgroup with 2 portals.
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
-		Miners:  1,
-		Portals: 2,
+		Hosts:  5,
+		Miners: 1,
 	}
 	groupDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
@@ -4840,6 +4839,15 @@ func TestSkynetPinUnpin(t *testing.T) {
 		}
 	}()
 
+	// Add portals with custom dependency
+	rt := node.RenterTemplate
+	rt.CreatePortal = true
+	deps := &dependencies.DependencySkipUnpinRequest{}
+	rt.RenterDeps = deps
+	_, err = tg.AddNodeN(rt, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Grab the portals
 	portals := tg.Portals()
 	p1 := portals[0]
@@ -4847,16 +4855,16 @@ func TestSkynetPinUnpin(t *testing.T) {
 
 	// Test small Skyfile
 	t.Run("SmallFile", func(t *testing.T) {
-		testSkynetPinUnpin(t, p1, p2, 100)
+		testSkynetPinUnpin(t, p1, p2, 100, deps)
 	})
 	// Test Large Skyfile
 	t.Run("LargeFile", func(t *testing.T) {
-		testSkynetPinUnpin(t, p1, p2, 2*modules.SectorSize)
+		testSkynetPinUnpin(t, p1, p2, 2*modules.SectorSize, deps)
 	})
 }
 
 // testSkynetPinUnpin tests pinning and unpinning a skylink
-func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64) {
+func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64, deps *dependencies.DependencySkipUnpinRequest) {
 	// Define helper function for checking the number of files
 	fileCheck := func(p1Expected, p2Expected uint64) error {
 		return build.Retry(100, 100*time.Millisecond, func() error {
@@ -4878,6 +4886,9 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 		})
 	}
 
+	// Makes sure the test is starting with the dependency enabled.
+	deps.Enable()
+
 	// Verify that the portals are starting with 0 files
 	err := fileCheck(0, 0)
 	if err != nil {
@@ -4885,11 +4896,49 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 	}
 
 	// Upload from one portal
-	skylink, sup, _, err := p1.UploadNewSkyfileBlocking("pinnedfile", fileSize, false)
+	fileName := "pinnedFile"
+	skylink, sup, _, err := p1.UploadNewSkyfileBlocking(fileName, fileSize, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	siaPath := sup.SiaPath
+
+	// A call to unpin with a random siapath should be a no-op with the dependency enabled.
+	err = p1.SkynetSkylinkUnpinCustomPost(skylink, skymodules.RandomSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p1Expected := uint64(1)
+	isLargeFile := fileSize > modules.SectorSize
+	if isLargeFile {
+		p1Expected *= 2
+	}
+	err = fileCheck(p1Expected, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A call to unpin with the correct siaPath should delete the file.
+	fullSiaPath, err := skymodules.SkynetFolder.Join(siaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = p1.SkynetSkylinkUnpinCustomPost(skylink, fullSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fileCheck(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Disable the dependecy and re-upload the siafile
+	deps.Disable()
+	skylink, sup, _, err = p1.UploadNewSkyfileBlocking(fileName, fileSize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath = sup.SiaPath
 
 	// Pin to the other portal a random number of times.
 	//
@@ -4917,10 +4966,6 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 	//
 	// This will test the case of the siapath changing after upload. This also
 	// pulls the siafile out of the skynet folder.
-	fullSiaPath, err := skymodules.SkynetFolder.Join(siaPath.String())
-	if err != nil {
-		t.Fatal(err)
-	}
 	err = p1.RenterRenamePost(fullSiaPath, skymodules.RandomSiaPath(), true)
 	if err != nil {
 		t.Fatal(err)
@@ -4935,9 +4980,8 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64)
 	}
 
 	// Verify that each portal has the expected number of files.
-	p1Expected := uint64(1)
+	p1Expected = uint64(1)
 	p2Expected := uint64(numPins)
-	isLargeFile := fileSize > modules.SectorSize
 	if isLargeFile {
 		p1Expected *= 2
 		p2Expected *= 2

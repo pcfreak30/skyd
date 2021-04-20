@@ -4134,6 +4134,11 @@ successful.
 **skylink** | string\
 The skylink that should be unpinned.
 
+### Query Parameters
+### OPTIONAL
+**siapath** | string\
+The siapath of the skyfile that should be unpinned.
+
 ### Response
 
 standard success or error response. See [standard

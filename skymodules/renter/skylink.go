@@ -108,29 +108,12 @@ func (r *Renter) UnpinSkylink(skylink skymodules.Skylink) error {
 		return ErrSkylinkBlocked
 	}
 
+	// Check for dependency injection
+	if r.staticDeps.Disrupt("SkipUnpinRequest") {
+		return nil
+	}
+
 	// Add the unpin request
 	r.staticSkylinkManager.managedAddUnpinRequest(skylink)
-
-	// Try and Delete a file at the siaPath derived from the skylink. Since
-	// there is no guarantee that this is the siaPath for the file we ignore the
-	// errors returned.
-
-	// Derive siaPath
-	siaPath, err := skylink.SiaPath()
-	if err != nil {
-		return nil
-	}
-
-	// Try and delete skyfile
-	_ = r.staticFileSystem.DeleteFile(siaPath)
-
-	// Generate extended siaPath
-	extendedSiaPath, err := skymodules.NewSiaPath(siaPath.String() + skymodules.ExtendedSuffix)
-	if err != nil {
-		return nil
-	}
-
-	// Try ad delete extended skyfile
-	_ = r.staticFileSystem.DeleteFile(extendedSiaPath)
 	return nil
 }
