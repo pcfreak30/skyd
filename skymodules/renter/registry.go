@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -171,9 +172,12 @@ func (rrs *readResponseSet) responsesLeft() int {
 // threadedAddResponseSet adds a response set to the stats. This includes
 // waiting for all responses to arrive and then updating the stats using the
 // fastest success response with the highest rev number.
-func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet) {
+func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
+	responseCtx, responseCancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
+	defer responseCancel()
+
 	// Get all responses.
-	resps := rrs.collect(ctx)
+	resps := rrs.collect(responseCtx)
 	if resps == nil {
 		return // nothing to do
 	}
@@ -236,13 +240,44 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		return goodResps[i].staticCompleteTime.Before(goodResps[j].staticCompleteTime)
 	})
 
+	// Limit the time we spend on finding the second best response.
+	secondBestCtx, secondBestCancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
+	defer secondBestCancel()
+
 	// Determine the secondBest response by asking all workers with valid responses
 	// again, one-by-one. The secondBest is the first that returns a revision >= the
 	// best one.
-	var secondBest *jobReadRegistryResponse
+	var secondBest *modules.SignedRegistryValue
 	var d2 time.Duration
 	for _, resp := range goodResps {
-		panic("implement")
+		// Nothing to do if the best response doesn't have a revision.
+		if best.staticSignedRegistryValue == nil {
+			break
+		}
+		// Otherwise look up the same entry.
+		var srv *modules.SignedRegistryValue
+		var err error
+		startTime2 := time.Now()
+		if resp.staticSPK == nil || resp.staticTweak == nil {
+			srv, err = resp.staticWorker.ReadRegistryEID(secondBestCtx, resp.staticEID)
+		} else {
+			srv, err = resp.staticWorker.ReadRegistry(secondBestCtx, *resp.staticSPK, *resp.staticTweak)
+		}
+		// Ignore responses with errors and without revision.
+		if err != nil {
+			l.Printf("threadedAddResponseSet: worker that successfully retrieved a registry value failed to retrieve it again: %v", err)
+			continue
+		}
+		if srv == nil {
+			l.Printf("threadedAddResponseSet: worker that successfully retrieved a non-nil registry value returned nil")
+			continue
+		}
+		// If the revision is >= the best one, we are done.
+		if srv.Revision >= best.staticSignedRegistryValue.Revision {
+			d2 = time.Since(startTime2)
+			secondBest = srv
+			break
+		}
 	}
 
 	// Add the duration to the estimate. If the secondBest
@@ -328,10 +363,9 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	}
 	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
 
-	// Specify a sane timeout for jobs that is independent of the user specified
-	// timeout. It is the maximum time that we let a job execute in the
-	// background before cancelling it.
-	backgroundCtx, backgroundCancel := context.WithTimeout(r.tg.StopCtx(), ReadRegistryBackgroundTimeout)
+	// Specify a context for the background jobs. It will be closed as soon as
+	// threadedAddResponseSet is done.
+	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
 
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
@@ -395,7 +429,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Add the response set to the stats after this method is done.
 	defer func() {
 		_ = r.tg.Launch(func() {
-			r.staticRRS.threadedAddResponseSet(backgroundCtx, startTime, responseSet)
+			r.staticRRS.threadedAddResponseSet(r.tg.StopCtx(), startTime, responseSet, r.staticLog)
 			backgroundCancel()
 		})
 	}()
