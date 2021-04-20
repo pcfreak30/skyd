@@ -152,7 +152,6 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 
 	// Wait until we got 4 workers in the pool.
 	numRetries := 0
-	var workers []*worker
 	err = build.Retry(1000, 100*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			_, err = rt.miner.AddBlock()
@@ -161,7 +160,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 			}
 		}
 		numRetries++
-		workers = rt.renter.staticWorkerPool.callWorkers()
+		workers := rt.renter.staticWorkerPool.callWorkers()
 		if len(workers) != len(hosts) {
 			return fmt.Errorf("%v != %v", len(workers), len(hosts))
 		}
@@ -177,12 +176,18 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 	srvHigher.Revision++
 	srvHigher = srvHigher.Sign(sk)
 
-	w1 := workers[0]
-	w2 := workers[1]
-	w3 := workers[2]
-	w4 := workers[3]
+	// Get workers for the corresponding hosts.
+	w1, err1 := rt.renter.staticWorkerPool.callWorker(hosts[0].PublicKey())
+	w2, err2 := rt.renter.staticWorkerPool.callWorker(hosts[1].PublicKey())
+	w3, err3 := rt.renter.staticWorkerPool.callWorker(hosts[2].PublicKey())
+	w4, err4 := rt.renter.staticWorkerPool.callWorker(hosts[3].PublicKey())
+	err = errors.Compose(err1, err2, err3, err4)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Update first two hosts with the higher revision. The rest doesn't know.
+	workers := []*worker{w1, w2, w3, w4}
 	for i := 0; i < 2; i++ {
 		err = workers[i].UpdateRegistry(context.Background(), spk, srvHigher)
 		if err != nil {
@@ -207,7 +212,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 			// Super fast response but no response value.
 			{
 				staticSPK:                 &spk,
-				staticTweak:               &srvLower.Tweak,
+				staticTweak:               &srvHigher.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
 				staticSignedRegistryValue: nil, // no response
 				staticWorker:              nil, // will be ignored
@@ -215,31 +220,31 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 			// Super fast response but error.
 			{
 				staticSPK:          &spk,
-				staticTweak:        &srvLower.Tweak,
+				staticTweak:        &srvHigher.Tweak,
 				staticCompleteTime: startTime.Add(time.Millisecond),
 				staticErr:          errors.New("failed"),
 				staticWorker:       nil, // will be ignored
 			},
-			// Fast response with lower revision number.
-			{
-				staticSPK:                 &spk,
-				staticTweak:               &srvLower.Tweak,
-				staticCompleteTime:        startTime.Add(20 * time.Millisecond),
-				staticSignedRegistryValue: &srvLower,
-				staticWorker:              w1,
-			},
-			// Slow response with higher revision number.
+			// Fast response.
 			{
 				staticSPK:                 &spk,
 				staticTweak:               &srvHigher.Tweak,
-				staticCompleteTime:        startTime.Add(ReadRegistryBackgroundTimeout),
+				staticCompleteTime:        startTime.Add(2 * time.Second),
+				staticSignedRegistryValue: &srvHigher,
+				staticWorker:              w1,
+			},
+			// Faster response.
+			{
+				staticSPK:                 &spk,
+				staticTweak:               &srvHigher.Tweak,
+				staticCompleteTime:        startTime.Add(time.Second),
 				staticSignedRegistryValue: &srvHigher,
 				staticWorker:              w2,
 			},
 			// Super fast response but won't know the entry later.
 			{
 				staticSPK:                 &spk,
-				staticTweak:               &srvLower.Tweak,
+				staticTweak:               &srvHigher.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
 				staticSignedRegistryValue: &srvHigher,
 				staticWorker:              w3,
@@ -247,7 +252,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 			// Super fast response but will be offline later.
 			{
 				staticSPK:                 &spk,
-				staticTweak:               &srvLower.Tweak,
+				staticTweak:               &srvHigher.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
 				staticSignedRegistryValue: &srvHigher,
 				staticWorker:              w4,
@@ -271,12 +276,11 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 	// Run the method.
 	rt.renter.staticRRS.threadedAddResponseSet(context.Background(), startTime, rrs, log)
 
-	// Check p99. The estimate should match the bucket that the timing got
-	// inserted to. That means the estimate should be smaller than the
-	// completion time of the slow response with the high revision number.
+	// Check p99. The winning timing should be 1s which results in an estimate
+	// of 1.02s.
 	d := rt.renter.staticRRS.Estimate()[0]
-	if d >= ReadRegistryBackgroundTimeout {
-		t.Fatal("d is too high", d)
+	if d != 1020*time.Millisecond {
+		t.Fatal("wrong d", d)
 	}
 
 	// The buffer should contain the two messages printed when a worker either

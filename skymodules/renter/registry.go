@@ -233,15 +233,8 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		return
 	}
 
-	// Sort the good responses by completion time and revision.
+	// Sort the good responses by completion time.
 	sort.Slice(goodResps, func(i, j int) bool {
-		// First sort by revision. The higher, the better.
-		srvI, srvJ := goodResps[i].staticSignedRegistryValue, goodResps[j].staticSignedRegistryValue
-		if srvI.Revision != srvJ.Revision {
-			return srvI.Revision > srvJ.Revision
-		}
-
-		// Then by response time.
 		return goodResps[i].staticCompleteTime.Before(goodResps[j].staticCompleteTime)
 	})
 
@@ -262,7 +255,6 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		// Otherwise look up the same entry.
 		var srv *modules.SignedRegistryValue
 		var err error
-		startTime2 := time.Now()
 		if resp.staticSPK == nil || resp.staticTweak == nil {
 			srv, err = resp.staticWorker.ReadRegistryEID(secondBestCtx, resp.staticEID)
 		} else {
@@ -279,7 +271,7 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		}
 		// If the revision is >= the best one, we are done.
 		if srv.Revision >= best.staticSignedRegistryValue.Revision {
-			d2 = time.Since(startTime2)
+			d2 = resp.staticCompleteTime.Sub(startTime)
 			secondBest = srv
 			break
 		}
@@ -309,9 +301,8 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		l.Print(logStr)
 	}
 
-	// Add the duration to the estimate. If the secondBest was faster, use that
-	// instead.
-	if secondBest != nil && d2 < d {
+	// If we found a secondBest, use that instead.
+	if secondBest != nil {
 		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
 		d = d2
 	} else {
