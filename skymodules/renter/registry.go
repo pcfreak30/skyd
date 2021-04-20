@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -179,11 +180,15 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 
 	// Find the fastest timing with the highest revision number.
 	var best *jobReadRegistryResponse
+	var goodResps []*jobReadRegistryResponse
 	for _, resp := range resps {
 		if resp.staticErr != nil {
 			continue
 		}
-
+		// Remember all responses that returned a valid entry.
+		if resp.staticSignedRegistryValue != nil {
+			goodResps = append(goodResps, resp)
+		}
 		// If there is no best yet, always set it.
 		if best == nil {
 			best = resp
@@ -219,8 +224,32 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		return
 	}
 
-	// Add the duration to the estimate.
+	// Sort the good responses by completion time and revision.
+	sort.Slice(goodResps, func(i, j int) bool {
+		// First sort by revision. The higher, the better.
+		srvI, srvJ := goodResps[i].staticSignedRegistryValue, goodResps[j].staticSignedRegistryValue
+		if srvI.Revision != srvJ.Revision {
+			return srvI.Revision > srvJ.Revision
+		}
+
+		// Then by response time.
+		return goodResps[i].staticCompleteTime.Before(goodResps[j].staticCompleteTime)
+	})
+
+	// Determine the secondBest response by asking all workers with valid responses
+	// again, one-by-one. The secondBest is the first that returns a revision >= the
+	// best one.
+	var secondBest *jobReadRegistryResponse
+	var d2 time.Duration
+	for _, resp := range goodResps {
+		panic("implement")
+	}
+
+	// Add the duration to the estimate. If the secondBest
 	d := best.staticCompleteTime.Sub(startTime)
+	if secondBest != nil && d2 < d {
+		d = d2
+	}
 
 	// Sanity check duration is not zero.
 	if d == 0 {
