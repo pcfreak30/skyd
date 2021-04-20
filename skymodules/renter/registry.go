@@ -283,7 +283,10 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 	// Add the duration to the estimate. If the secondBest
 	d := best.staticCompleteTime.Sub(startTime)
 	if secondBest != nil && d2 < d {
+		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
 		d = d2
+	} else {
+		l.Printf("threadedAddResponseSet: using best duration %v (secondBest: %v, nil: %v)", d, d2, secondBest == nil)
 	}
 
 	// Sanity check duration is not zero.
