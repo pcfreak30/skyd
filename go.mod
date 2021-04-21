@@ -6,7 +6,7 @@ require (
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da
 	github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf
 	github.com/eventials/go-tus v0.0.0-20200718001131-45c7ec8f5d59
-	github.com/hanwen/go-fuse/v2 v2.0.2
+	github.com/hanwen/go-fuse/v2 v2.1.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/klauspost/cpuid/v2 v2.0.6 // indirect
 	github.com/klauspost/reedsolomon v1.9.12
@@ -17,12 +17,11 @@ require (
 	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/tus/tusd v1.5.1
 	github.com/vbauerster/mpb/v5 v5.0.3
-	gitlab.com/NebulousLabs/Sia v1.5.6-0.20210408043250-c949c8cd5bca
+	gitlab.com/NebulousLabs/Sia v1.5.6
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
 	gitlab.com/NebulousLabs/errors v0.0.0-20200929122200-06c536cf6975
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
-	gitlab.com/NebulousLabs/go-upnp v0.0.0-20210414172302-67b91c9a5c03 // indirect
 	gitlab.com/NebulousLabs/log v0.0.0-20200604091839-0ba4a941cdc2
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200811080431-99b8f0768b2e
 	gitlab.com/NebulousLabs/siamux v0.0.0-20210409140711-e667c5f458e4
