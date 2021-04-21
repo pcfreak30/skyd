@@ -152,7 +152,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 
 	// Wait until we got 4 workers in the pool.
 	numRetries := 0
-	err = build.Retry(1000, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			_, err = rt.miner.AddBlock()
 			if err != nil {
