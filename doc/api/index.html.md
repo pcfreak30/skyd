@@ -1422,6 +1422,9 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "siapath=home/user/folder&recursi
 
 // Call force bubble on the root directory
 curl -A "Sia-Agent" -u "":<apipassword> --data "rootsiapath=true&force=true"  "localhost:9980/renter/bubble"
+
+// Trigger bubble wth forcedupdatetime
+curl -A "Sia-Agent" -u "":<apipassword> --data "forcedupdatetime=123456789"  "localhost:9980/renter/bubble"
 ```
 
 Manually trigger a bubble update for a directory. This will update the
@@ -1430,7 +1433,12 @@ Updates to sub directories are dependent on the parameters.
 
 ### Query String Parameters
 ### REQUIRED
-One of the following is required. Both **CANNOT** be used at the same time.
+One of the following is required but they **CANNOT** be used at the same
+time.
+
+**forcedupdatetime** | unix timestamp\
+The time until which the health loop will continue to execute bubbles on the
+filesystem, regardless of the `lasthealthchecktime`.
 
 **siapath** | string\
 The path to the directory that is to be bubbled. All paths should be relative
