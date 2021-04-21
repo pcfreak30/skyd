@@ -156,8 +156,11 @@ linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz: 15 |  75880486 ns/op    
 
 ### Exports
  - `BubbleMetadata`
+ - `SetForcedUpdateTime`
 
 #### Inbound Complexities
+ - `callForcedUpdateTime` is used by the health loop to know if it should
+     force a bubble update.
  - `callQueueBubbleUpdate` is used by external subsystems to trigger a bubble
      update on a directory.
  - `callThreadedProcessBubbleUpdates` is called by the Renter on startup to
