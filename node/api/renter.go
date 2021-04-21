@@ -343,7 +343,7 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 	// Parse the forcedUpdateTime
 	forcedUpdateTimeStr := req.FormValue("forcedupdatetime")
 	if forcedUpdateTimeStr != "" {
-		// Check for incorrect parameter useage
+		// Check for incorrect parameter usage
 		if rootSiaPath || s != "" {
 			WriteError(w, Error{"rootsiapath and siapath should not be set if forcedupdatetime is set"}, http.StatusBadRequest)
 			return

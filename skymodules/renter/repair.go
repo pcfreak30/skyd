@@ -583,10 +583,6 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			continue
 		}
 
-		// Check if there is a force update time set
-		forcedUpdateTime := r.staticBubbleScheduler.callForcedUpdateTime()
-		forceUpdate := lastHealthCheckTime.Before(forcedUpdateTime)
-
 		// Check if the time since the last check on the least recently checked
 		// folder is inside the health check interval. If so, the whole
 		// filesystem has been checked recently, and we can sleep until the
@@ -594,9 +590,28 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		//
 		// Allow for a 5 minute buffer to avoid sleep for very short periods of time.
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
-		if timeSinceLastCheck+5*time.Minute < healthCheckInterval && !forceUpdate {
+		recentCheck := timeSinceLastCheck+5*time.Minute < HealthCheckInterval
+
+		// Check if there is a force update time set
+		forcedUpdateTime := r.staticBubbleScheduler.callForcedUpdateTime()
+		forceUpdate := lastHealthCheckTime.Before(forcedUpdateTime)
+
+		// Check for renter dependency
+		if r.staticDeps.Disrupt("ForceBubbleOnly") && !forceUpdate {
+			// If the ForceBubbleOnly dependency is enabled than we sleep and
+			// restart the loop to prevent the health loop from calling bubble.
+			select {
+			case <-r.tg.StopChan():
+				return
+			case <-time.After(HealthCheckInterval / 2):
+			}
+			continue
+		}
+
+		// Decide if the health loop should sleep
+		if recentCheck && !forceUpdate {
 			// Sleep until the least recent check is outside the check interval.
-			sleepDuration := healthCheckInterval - timeSinceLastCheck
+			sleepDuration := HealthCheckInterval - timeSinceLastCheck
 			r.staticLog.Printf("Health loop sleeping for %.2fm, lastHealthCheckTime %v, directory %v", sleepDuration.Minutes(), lastHealthCheckTime, siaPath)
 			wakeSignal := time.After(sleepDuration)
 			select {
@@ -673,7 +688,7 @@ func (r *Renter) callPrepareForBubble(rootDir skymodules.SiaPath, force bool) (*
 		defer mu.Unlock()
 
 		// Skip any directories that have been updated recently
-		if !force && time.Since(di.LastHealthCheckTime) < healthCheckInterval {
+		if !force && time.Since(di.LastHealthCheckTime) < HealthCheckInterval {
 			// Track the LastHealthCheckTime of the skipped directory
 			if di.LastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
 				aggregateLastHealthCheckTime = di.LastHealthCheckTime

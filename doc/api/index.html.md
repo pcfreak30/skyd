@@ -1423,7 +1423,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "siapath=home/user/folder&recursi
 // Call force bubble on the root directory
 curl -A "Sia-Agent" -u "":<apipassword> --data "rootsiapath=true&force=true"  "localhost:9980/renter/bubble"
 
-// Trigger bubble wth forcedupdatetime
+// Trigger bubble with forcedupdatetime
 curl -A "Sia-Agent" -u "":<apipassword> --data "forcedupdatetime=123456789"  "localhost:9980/renter/bubble"
 ```
 

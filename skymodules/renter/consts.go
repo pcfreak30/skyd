@@ -189,9 +189,9 @@ const (
 )
 
 var (
-	// healthCheckInterval defines the maximum amount of time that should pass
+	// HealthCheckInterval defines the maximum amount of time that should pass
 	// in between checking the health of a file or directory.
-	healthCheckInterval = build.Select(build.Var{
+	HealthCheckInterval = build.Select(build.Var{
 		Dev:      15 * time.Minute,
 		Standard: 8 * time.Hour,
 		Testing:  5 * time.Second,

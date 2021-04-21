@@ -181,3 +181,14 @@ func (d *DependencyToggleDisableDeleteBlockedFiles) Disrupt(s string) bool {
 
 	return disabled && (s == "DisableDeleteBlockedFiles")
 }
+
+// DependencyForceBubbleOnly will have the health loop only trigger bubble when
+// the dependency is enabled.
+type DependencyForceBubbleOnly struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt will force the bubble.
+func (d *DependencyForceBubbleOnly) Disrupt(s string) bool {
+	return s == "ForceBubbleOnly"
+}
