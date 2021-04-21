@@ -13,6 +13,8 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 )
 
+// newSubscriber creates a new subscriber with a no-op notification function for
+// testing.
 func (sm *registrySubscriptionManager) newSubscriber() *renterSubscriber {
 	return sm.NewSubscriber(func(*modules.SignedRegistryValue) error { return nil })
 }

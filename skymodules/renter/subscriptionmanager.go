@@ -156,8 +156,9 @@ func (sm *registrySubscriptionManager) Get(eid modules.RegistryEntryID) (modules
 	return *sub.latestValue, true
 }
 
-// SetNotificationFunc sets the notification function for a subscriber. This can
-// be called before subscribing to a value
+// NewSubscriber creates a new subscriber that can subscribe to and unsubscribe
+// from entries. It needs to be closed to make sure it is cleanly unsubscribed
+// from all entries.
 func (sm *registrySubscriptionManager) NewSubscriber(notifyFunc func(*modules.SignedRegistryValue) error) *renterSubscriber {
 	var sid subscriberID
 	fastrand.Read(sid[:])

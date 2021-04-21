@@ -26,7 +26,7 @@ import (
 // information around.
 type workerPool struct {
 	workers      map[string]*worker // The string is the host's public key.
-	changeChan   chan struct{}
+	updateChan   chan struct{}
 	mu           sync.RWMutex
 	staticRenter *Renter
 }
@@ -36,7 +36,7 @@ type workerPool struct {
 func (wp *workerPool) callChangeChan() <-chan struct{} {
 	wp.mu.Lock()
 	defer wp.mu.Unlock()
-	return wp.changeChan
+	return wp.updateChan
 }
 
 // callStatus returns the status of the workers in the worker pool.
@@ -99,8 +99,8 @@ func (wp *workerPool) callUpdate() {
 		if !setChanged {
 			return
 		}
-		oldChan := wp.changeChan
-		wp.changeChan = make(chan struct{})
+		oldChan := wp.updateChan
+		wp.updateChan = make(chan struct{})
 		close(oldChan)
 	}()
 
@@ -209,7 +209,7 @@ func (r *Renter) newWorkerPool() *workerPool {
 	wp := &workerPool{
 		workers:      make(map[string]*worker),
 		staticRenter: r,
-		changeChan:   make(chan struct{}),
+		updateChan:   make(chan struct{}),
 	}
 	wp.staticRenter.tg.OnStop(func() error {
 		wp.mu.RLock()
