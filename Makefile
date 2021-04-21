@@ -58,8 +58,8 @@ lockcheckpkgs = \
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
 pkgs = \
-  $(lockcheckpkgs) \
-	./skymodules/renter \
+	$(lockcheckpkgs) \
+	./skymodules/renter 
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
@@ -159,6 +159,20 @@ test-vlong-windows: clean
 	SET GORACE='$(racevars)'
 	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 
+# docker-ci-start launches a docker container to run tests in the same
+# environment as the online CI.
+#
+# Enter the docker container with 'docker exec -it test /bin/bash
+# A copy of the current skyd repo can be found in the ./skyd folder
+docker-ci-start: docker-ci-stop
+	@docker build . -f siatest/Dockerfile -t skytest-ci
+	@docker run --cpus="1" --name test -di skytest-ci
+docker-ci-stop:
+	@docker stop test || true && docker rm test || true
+docker-test-long: clean
+	GORACE='$(racevars)' go test -race -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
+
+
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)
 test-mem:
@@ -207,5 +221,5 @@ whitepaper:
 	@pdflatex -output-directory=doc whitepaper.tex > /dev/null
 	pdflatex -output-directory=doc whitepaper.tex
 
-.PHONY: all fmt install release clean test test-v test-long cover whitepaper
+.PHONY: all fmt install release clean test test-v test-long cover whitepaper docker-ci-start docker-ci-stop docker-test-long
 
