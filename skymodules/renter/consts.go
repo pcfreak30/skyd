@@ -193,7 +193,7 @@ var (
 	// in between checking the health of a file or directory.
 	healthCheckInterval = build.Select(build.Var{
 		Dev:      15 * time.Minute,
-		Standard: 1 * time.Hour,
+		Standard: 8 * time.Hour,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 

@@ -583,15 +583,21 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			continue
 		}
 
+		// Check if there is a force update time set
+		forcedUpdateTime := r.staticBubbleScheduler.callForcedUpdateTime()
+		forceUpdate := lastHealthCheckTime.Before(forcedUpdateTime)
+
 		// Check if the time since the last check on the least recently checked
 		// folder is inside the health check interval. If so, the whole
 		// filesystem has been checked recently, and we can sleep until the
 		// least recent check is outside the check interval.
+		//
+		// Allow for a 5 minute buffer to avoid sleep for very short periods of time.
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
-		if timeSinceLastCheck < healthCheckInterval {
+		if timeSinceLastCheck+5*time.Minute < healthCheckInterval && !forceUpdate {
 			// Sleep until the least recent check is outside the check interval.
 			sleepDuration := healthCheckInterval - timeSinceLastCheck
-			r.staticLog.Printf("Health loop sleeping for %v, lastHealthCheckTime %v, directory %v", sleepDuration, lastHealthCheckTime, siaPath)
+			r.staticLog.Printf("Health loop sleeping for %.2fm, lastHealthCheckTime %v, directory %v", sleepDuration.Minutes(), lastHealthCheckTime, siaPath)
 			wakeSignal := time.After(sleepDuration)
 			select {
 			case <-r.tg.StopChan():
@@ -602,7 +608,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 
 		// Prepare the subtree for being bubbled
 		r.staticLog.Debugf("Preparing subtree '%v' for bubble", siaPath)
-		urp, err := r.callPrepareForBubble(siaPath, false)
+		urp, err := r.callPrepareForBubble(siaPath, forceUpdate)
 		if err != nil {
 			// Log the error
 			r.staticLog.Println("Error calling callPrepareForBubble on `", siaPath.String(), "`:", err)

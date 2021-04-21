@@ -384,6 +384,29 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 	return
 }
 
+// renterBubbleTriggerHandlerPOST handles the API calls to /renter/bubble/trigger.
+func (api *API) renterBubbleTriggerHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the forcedUpdateTime
+	forcedUpdateTimeStr := req.FormValue("forcedupdatetime")
+	if forcedUpdateTimeStr == "" {
+		WriteError(w, Error{"`forcedupdatetime` parameter must be provided: "}, http.StatusBadRequest)
+		return
+	}
+	forcedUpdateTimeInt, err := strconv.ParseInt(forcedUpdateTimeStr, 10, 64)
+	if err != nil {
+		WriteError(w, Error{"parsing integer value for parameter `forcedupdatetime` failed: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	forcedUpdateTime := time.Unix(0, forcedUpdateTimeInt)
+
+	// Set the forcedUpdateTime
+	err = api.renter.SetForcedUpdateTime(forcedUpdateTime)
+	if err != nil {
+		WriteError(w, Error{"unable to set forcedupdatetime: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+}
+
 // renterBackupsHandlerGET handles the API calls to /renter/backups.
 func (api *API) renterBackupsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	backups, syncedHosts, err := api.renter.UploadedBackups()

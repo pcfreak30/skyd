@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"fmt"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -45,6 +46,10 @@ type (
 
 		// fifo is a First In Fist Out queue of bubble updates
 		fifo *bubbleQueue
+
+		// forcedUpdateTime is the time until which bubble updates will be
+		// forced and the healthCheckInterval will be overridden
+		forcedUpdateTime time.Time
 
 		// staticBubbleNeeded is a channel used to signal the bubbleScheduler that
 		// a bubble is needed
@@ -101,6 +106,13 @@ func (bq *bubbleQueue) Pop() *bubbleUpdate {
 // Push adds an element to the back of the queue
 func (bq *bubbleQueue) Push(bu *bubbleUpdate) {
 	_ = bq.List.PushBack(bu)
+}
+
+// callForcedUpdateTime returns the bubbleScheduler's forcedUpdateTime.
+func (bs *bubbleScheduler) callForcedUpdateTime() time.Time {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+	return bs.forcedUpdateTime
 }
 
 // callQueueBubble adds a bubble update request to the bubbleScheduler.
@@ -374,6 +386,13 @@ func (bs *bubbleScheduler) managedQueueParent(siaPath skymodules.SiaPath) error 
 	return nil
 }
 
+// managedSetForcedUpdateTime sets the forcedUpdateTime for the bubbleScheduler
+func (bs *bubbleScheduler) managedSetForcedUpdateTime(fut time.Time) {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+	bs.forcedUpdateTime = fut
+}
+
 // BubbleMetadata will queue a bubble update for the directory. A bubble update
 // includes calculating the updated values of a directory's metadata, updating
 // the siadir metadata on disk, and then queuing a bubble update for the parent
@@ -407,4 +426,16 @@ func (r *Renter) BubbleMetadata(siaPath skymodules.SiaPath, force, recursive boo
 	}
 	// Call bubble in a non blocking manner
 	return urp.callRefreshAll()
+}
+
+// SetForcedUpdateTime sets the forcedUpdateTime for the Renter's
+// bubbleScheduler
+func (r *Renter) SetForcedUpdateTime(fut time.Time) error {
+	err := r.tg.Add()
+	if err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	r.staticBubbleScheduler.managedSetForcedUpdateTime(fut)
+	return nil
 }
