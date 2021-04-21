@@ -175,8 +175,13 @@ func (rrs *readResponseSet) responsesLeft() int {
 }
 
 // threadedAddResponseSet adds a response set to the stats. This includes
-// waiting for all responses to arrive and then updating the stats using the
-// fastest success response with the highest rev number.
+// waiting for all responses to arrive and then identifying the best one by
+// choosing the fastest one with the highest revision. After that it works its
+// way from the fastest to the slowest worker and asks them for a revision
+// again until a revision is found that is >= the best one. This is referred to
+// as secondBest. If we find a valid secondBest we use that timing, otherwise we
+// stick to the best. That way we get the fastest response for the best entry
+// even if an update caused a slow worker to be considered best at first.
 func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
 	responseCtx, responseCancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
 	defer responseCancel()
