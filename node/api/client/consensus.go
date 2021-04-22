@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/types"
 )
 

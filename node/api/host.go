@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
-	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
+	siaapi "go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/types"
 )
 

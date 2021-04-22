@@ -13,9 +13,9 @@ import (
 
 	"github.com/vbauerster/mpb/v5"
 	"github.com/vbauerster/mpb/v5/decor"
-	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/types"
 )
 

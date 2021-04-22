@@ -176,7 +176,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		}
 
 		// Create the api for the server.
-		api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		srv := &Server{
 			api: api,
 			apiServer: &http.Server{

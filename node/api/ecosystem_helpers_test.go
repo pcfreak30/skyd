@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/node/api"
+	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/types"
 )
 

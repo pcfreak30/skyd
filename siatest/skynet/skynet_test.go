@@ -4517,7 +4517,7 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 			{
 				Address:  addr,
 				Amount:   types.SiacoinPrecision, // $1
-				Currency: modules.CurrencyUSD,
+				Currency: skymodules.CurrencyUSD,
 			},
 		},
 	}

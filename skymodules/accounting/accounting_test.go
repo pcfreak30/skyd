@@ -28,8 +28,8 @@ func TestAccounting(t *testing.T) {
 func testAccounting(t *testing.T) {
 	// Create new accounting
 	testDir := accountingTestDir(t.Name())
-	fm, h, m, r, w, _ := testingParams()
-	a, err := NewCustomAccounting(fm, h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
+	h, m, r, w, _ := testingParams()
+	a, err := NewCustomAccounting(h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
 	if err != nil {
 		t.Fatal(err)
 	}

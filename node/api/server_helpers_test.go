@@ -238,7 +238,7 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	srv, err := NewCustomServer(testdir, "localhost:0", "Sia-Agent", "", nil, cs, nil, nil, g, h, m, r, tp, w, apiDeps)
+	srv, err := NewCustomServer(testdir, "localhost:0", "Sia-Agent", "", nil, cs, nil, g, h, m, r, tp, w, apiDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +336,7 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	srv, err := NewServer(testdir, "localhost:0", "Sia-Agent", requiredPassword, nil, cs, nil, nil, g, h, m, r, tp, w)
+	srv, err := NewServer(testdir, "localhost:0", "Sia-Agent", requiredPassword, nil, cs, nil, g, h, m, r, tp, w)
 	if err != nil {
 		return nil, err
 	}
@@ -390,7 +390,7 @@ func assembleExplorerServerTester(testdir string) (*serverTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	srv, err := NewServer(testdir, "localhost:0", "", "", nil, cs, e, nil, g, nil, nil, nil, nil, nil)
+	srv, err := NewServer(testdir, "localhost:0", "", "", nil, cs, e, g, nil, nil, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
