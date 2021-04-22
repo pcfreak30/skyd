@@ -3,7 +3,10 @@ BUILD_TIME=$(shell date)
 GIT_REVISION=$(shell git rev-parse --short HEAD)
 GIT_DIRTY=$(shell git diff-index --quiet HEAD -- || echo "✗-")
 
-ldflags= -X gitlab.com/SkynetLabs/skyd/build.GitRevision=${GIT_DIRTY}${GIT_REVISION} \
+ldflags= \
+-X "gitlab.com/SkynetLabs/skyd/build.BinaryName=skyd" \
+-X "gitlab.com/SkynetLabs/skyd/build.NodeVersion=1.6.0" \
+-X "gitlab.com/SkynetLabs/skyd/build.GitRevision=${GIT_DIRTY}${GIT_REVISION}" \
 -X "gitlab.com/SkynetLabs/skyd/build.BuildTime=${BUILD_TIME}"
 
 racevars= history_size=3 halt_on_error=1 atexit_sleep_ms=2000

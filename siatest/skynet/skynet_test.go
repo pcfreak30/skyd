@@ -893,7 +893,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify it contains the node's version information
-	expected := build.Version
+	expected := build.NodeVersion
 	if build.ReleaseTag != "" {
 		expected += "-" + build.ReleaseTag
 	}

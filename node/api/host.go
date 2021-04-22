@@ -53,7 +53,7 @@ func hostEstimateScoreGET(host modules.Host, renter skymodules.Renter, w http.Re
 		EphemeralAccountExpiry:     settings.EphemeralAccountExpiry,
 		MaxEphemeralAccountBalance: settings.MaxEphemeralAccountBalance,
 
-		Version: build.Version,
+		Version: build.NodeVersion,
 	}
 	entry := skymodules.HostDBEntry{}
 	entry.PublicKey = host.PublicKey()

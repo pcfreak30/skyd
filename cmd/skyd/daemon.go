@@ -148,7 +148,7 @@ func loadAPIPassword(config Config) (_ Config, err error) {
 
 // printVersionAndRevision prints the daemon's version and revision numbers.
 func printVersionAndRevision() {
-	fmt.Println("Skynet daemon v" + build.Version)
+	fmt.Println("Skynet daemon v" + build.NodeVersion)
 	if build.GitRevision == "" {
 		fmt.Println("WARN: compiled without build commit or version. To compile correctly, please use the makefile")
 	} else {

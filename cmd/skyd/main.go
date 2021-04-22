@@ -65,7 +65,7 @@ func die(args ...interface{}) {
 
 // versionCmd is a cobra command that prints the version of siad.
 func versionCmd(*cobra.Command, []string) {
-	version := build.Version
+	version := build.NodeVersion
 	if build.ReleaseTag != "" {
 		version += "-" + build.ReleaseTag
 	}
@@ -180,8 +180,8 @@ func main() {
 	}
 	root := &cobra.Command{
 		Use:   os.Args[0],
-		Short: "Skynet daemon v" + build.Version,
-		Long:  "Skynet daemon v" + build.Version,
+		Short: "Skynet daemon v" + build.NodeVersion,
+		Long:  "Skynet daemon v" + build.NodeVersion,
 		Run:   startDaemonCmd,
 	}
 

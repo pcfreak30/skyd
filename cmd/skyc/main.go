@@ -302,8 +302,8 @@ func main() {
 func initCmds() *cobra.Command {
 	root := &cobra.Command{
 		Use:   os.Args[0],
-		Short: "Sia Client v" + build.Version,
-		Long:  "Sia Client v" + build.Version,
+		Short: "Skynet Client v" + build.NodeVersion,
+		Long:  "Skynet Client v" + build.NodeVersion,
 		Run:   wrap(statuscmd),
 	}
 

@@ -78,7 +78,7 @@ Renter Rate limits:
   Upload Speed:   (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))`
 
 	connectionRefusedPattern := `Could not get consensus status: \[failed to get reader response; GET request failed; Get "?http://localhost:5555/consensus"?: dial tcp \[::1\]:5555: connect: connection refused\]`
-	siaClientVersionPattern := "Sia Client v" + strings.ReplaceAll(build.Version, ".", `\.`)
+	skyClientVersionPattern := "Skynet Client v" + strings.ReplaceAll(build.NodeVersion, ".", `\.`)
 
 	// Define subtests
 	// We can't test siad on default address (port) when test node has
@@ -138,7 +138,7 @@ Renter Rate limits:
 			test:               testGenericSkycCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-h"},
-			expectedOutPattern: begin + siaClientVersionPattern + nl + nl + rootCmdUsagePattern + end,
+			expectedOutPattern: begin + skyClientVersionPattern + nl + nl + rootCmdUsagePattern + end,
 		},
 	}
 
