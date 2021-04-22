@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -16,6 +15,7 @@ import (
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/modules/transactionpool"
 	modWallet "go.sia.tech/siad/modules/wallet" // name conflicts with type
+	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )

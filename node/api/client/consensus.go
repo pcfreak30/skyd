@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // ConsensusGet requests the /consensus api resource

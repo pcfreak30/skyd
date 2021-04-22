@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // TestRenewContract is a unit test for the worker's RenewContract method.

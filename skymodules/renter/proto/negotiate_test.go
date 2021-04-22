@@ -7,9 +7,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // TestNegotiateRevisionStopResponse tests that when the host sends

@@ -14,10 +14,10 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function

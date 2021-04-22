@@ -17,9 +17,9 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // closeFileInTest is a small helper for calling close on a file in a test

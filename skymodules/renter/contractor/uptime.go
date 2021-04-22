@@ -1,8 +1,8 @@
 package contractor
 
 import (
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/types"
 )
 
 // IsOffline indicates whether a contract's host should be considered offline,

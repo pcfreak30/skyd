@@ -19,7 +19,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
@@ -34,6 +33,7 @@ import (
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/modules/transactionpool"
 	"go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/types"
 )
 
 // A Server is a collection of siad modules that can be communicated with over

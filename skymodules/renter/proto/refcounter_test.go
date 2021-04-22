@@ -20,8 +20,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/types"
 )
 
 // testWAL is the WAL instance we're going to use across this test. This would

@@ -16,11 +16,11 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb/hosttree"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 var (

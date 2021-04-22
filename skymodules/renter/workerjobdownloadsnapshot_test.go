@@ -3,9 +3,9 @@ package renter
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // TestCheckDownloadSnapshotGouging checks that the download snapshot price

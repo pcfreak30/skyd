@@ -19,7 +19,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/types"
 )
 
 // addStorageToAllHosts adds a storage folder with a bunch of storage to each

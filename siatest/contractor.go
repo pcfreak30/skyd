@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node/api"
@@ -14,6 +13,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // CheckBalanceVsSpending checks the renters confirmed siacoin balance in their

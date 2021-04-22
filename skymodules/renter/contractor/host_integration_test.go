@@ -15,7 +15,6 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
@@ -28,6 +27,7 @@ import (
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/modules/transactionpool"
 	modWallet "go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/types"
 )
 
 // newTestingWallet is a helper function that creates a ready-to-use wallet

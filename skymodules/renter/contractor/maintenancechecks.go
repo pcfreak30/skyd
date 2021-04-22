@@ -5,10 +5,10 @@ import (
 	"math/big"
 
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 type utilityUpdateStatus int

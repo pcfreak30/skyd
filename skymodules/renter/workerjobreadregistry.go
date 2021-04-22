@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )

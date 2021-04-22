@@ -3,9 +3,9 @@ package renter
 import (
 	"context"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )

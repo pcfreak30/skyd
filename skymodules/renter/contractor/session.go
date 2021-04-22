@@ -6,9 +6,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 var errInvalidSession = errors.New("session has been invalidated because its contract is being renewed")

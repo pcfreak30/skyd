@@ -24,7 +24,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -39,6 +38,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/host/registry"
+	"go.sia.tech/siad/types"
 )
 
 // TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and

@@ -10,8 +10,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/types"
 )
 
 // TestMerkleRootSetCompatibility checks that the persist encoding for the

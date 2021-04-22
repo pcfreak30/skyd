@@ -16,13 +16,13 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/types"
 )
 
 var (
