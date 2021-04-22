@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 

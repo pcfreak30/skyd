@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 

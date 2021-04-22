@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -21,6 +20,7 @@ import (
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/modules/transactionpool"
 	"go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/siamux"

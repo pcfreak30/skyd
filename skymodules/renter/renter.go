@@ -40,7 +40,6 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
@@ -52,6 +51,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 

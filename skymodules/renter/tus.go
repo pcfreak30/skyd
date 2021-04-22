@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/tus/tusd/pkg/handler"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -18,6 +17,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 )
 
 var (

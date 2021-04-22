@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -38,6 +37,7 @@ import (
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/host/registry"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 

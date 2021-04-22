@@ -18,7 +18,6 @@ import (
 	"go.sia.tech/siad/modules/explorer"
 
 	"gitlab.com/NebulousLabs/Sia/modules/feemanager"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/accounting"
@@ -32,6 +31,7 @@ import (
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/modules/transactionpool"
 	"go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/persist"
 )
 
 // NodeParams contains a bunch of parameters for creating a new test node. As

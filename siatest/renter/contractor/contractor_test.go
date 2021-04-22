@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -22,6 +21,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 

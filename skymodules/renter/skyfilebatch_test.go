@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/persist"
 )
 
 // newTestBatchWithFiles initializes a skylink batch and adds some files to the

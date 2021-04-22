@@ -14,11 +14,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 

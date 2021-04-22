@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/modules/feemanager"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -15,6 +14,7 @@ import (
 	"go.sia.tech/siad/modules/host"
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 
