@@ -320,7 +320,7 @@ func (mr *merkleRoots) root() crypto.Hash {
 		}
 	}
 	for _, root := range mr.uncachedRoots {
-		tree.Push(root[:])
+		tree.PushSubTree(0, root)
 	}
 	return tree.Root()
 }
