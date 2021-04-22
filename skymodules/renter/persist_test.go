@@ -87,7 +87,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	if len(settings.CurrencyConversionRates) != 1 {
 		t.Error("invalid currency conversion")
 	}
-	usd, exists := settings.CurrencyConversionRates[modules.CurrencyUSD]
+	usd, exists := settings.CurrencyConversionRates[skymodules.CurrencyUSD]
 	if !exists || !usd.Equals(types.ZeroCurrency) {
 		t.Error("wrong usd rate")
 	}
@@ -110,7 +110,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	settings.MaxDownloadSpeed = newDownSpeed
 	settings.MaxUploadSpeed = newUpSpeed
 	settings.MonetizationBase = types.SiacoinPrecision
-	settings.CurrencyConversionRates[modules.CurrencyUSD] = types.SiacoinPrecision
+	settings.CurrencyConversionRates[skymodules.CurrencyUSD] = types.SiacoinPrecision
 	err = rt.renter.SetSettings(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	if len(newSettings.CurrencyConversionRates) != 1 {
 		t.Error("currency conversion should have 1 currency")
 	}
-	usdRate, exists := newSettings.CurrencyConversionRates[modules.CurrencyUSD]
+	usdRate, exists := newSettings.CurrencyConversionRates[skymodules.CurrencyUSD]
 	if !exists {
 		t.Error("rate doesn't exist")
 	}

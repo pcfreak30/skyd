@@ -974,7 +974,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{"unable to parse usdConversionRate: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-		settings.CurrencyConversionRates[modules.CurrencyUSD] = usdConversionRate
+		settings.CurrencyConversionRates[skymodules.CurrencyUSD] = usdConversionRate
 	}
 
 	// Parse monetization base.

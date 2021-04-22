@@ -863,7 +863,7 @@ func (r *Renter) threadedPaySkynetFee() {
 	// Pay periodically.
 	ticker := time.NewTicker(skymodules.SkynetFeePayoutCheckInterval)
 	for {
-		na := r.staticDeps.NebulousAddress()
+		na := skymodules.SkynetPayoutAddress()
 
 		// Compute the threshold.
 		_, max := r.staticTPool.FeeEstimation()
