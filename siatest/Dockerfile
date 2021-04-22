@@ -2,7 +2,7 @@
 FROM nebulouslabs/sia-ci:latest 
 
 # Install minimum tooling to debug in container
-RUN apt-get -y install sudo vim && apt-get clean
+RUN apt-get -y install sudo vim ranger && apt-get clean
 
 # We want this to run on linux/amd64
 ENV GOOS linux
@@ -12,13 +12,13 @@ ENV GOARCH amd64
 ENV GOCACHE /tmp
 
 # Set the working Directory
-WORKDIR /root
+WORKDIR /skyd
 
 # Copy the code files into the docker container
-ADD . /root/skyd
+ADD . .
 
 # Make dependencies 
-RUN cd skyd && make dependencies
+RUN make dependencies
 
 # Prep for running test
 RUN --mount=target=. \
