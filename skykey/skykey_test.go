@@ -14,9 +14,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/crypto"
 )
 
 // TestSkykeyManager tests the basic functionality of the skykeyManager.

@@ -5,13 +5,13 @@ import (
 	"math/big"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )

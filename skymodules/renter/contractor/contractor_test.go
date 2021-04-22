@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/consensus"
 	"go.sia.tech/siad/modules/gateway"

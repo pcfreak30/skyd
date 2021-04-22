@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 

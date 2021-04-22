@@ -19,7 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
@@ -31,6 +30,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/host/contractmanager"
 	"go.sia.tech/siad/types"

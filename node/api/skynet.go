@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
@@ -24,6 +23,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )

@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 

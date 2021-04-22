@@ -21,11 +21,11 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
 )
 

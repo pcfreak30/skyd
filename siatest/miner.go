@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
 )
 

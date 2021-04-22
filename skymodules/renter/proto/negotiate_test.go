@@ -6,8 +6,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )

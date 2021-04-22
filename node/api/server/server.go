@@ -17,11 +17,11 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )

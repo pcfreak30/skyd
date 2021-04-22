@@ -10,8 +10,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/crypto"
 )
 
 // merkleRootsCacheHeight is the height of the subTrees in cachedSubTrees. A

@@ -23,11 +23,11 @@ import (
 	"path/filepath"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )

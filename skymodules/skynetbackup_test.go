@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 

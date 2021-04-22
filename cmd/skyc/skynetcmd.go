@@ -18,10 +18,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5/decor"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )

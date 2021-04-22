@@ -12,10 +12,10 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"go.sia.tech/siad/crypto"
 )
 
 // newSiaPath returns a new SiaPath for testing and panics on error

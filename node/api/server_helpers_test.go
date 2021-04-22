@@ -17,7 +17,6 @@ import (
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/threadgroup"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -25,6 +24,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/consensus"
 	"go.sia.tech/siad/modules/explorer"

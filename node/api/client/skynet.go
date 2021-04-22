@@ -17,11 +17,11 @@ import (
 	"time"
 
 	"github.com/eventials/go-tus"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )

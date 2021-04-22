@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 

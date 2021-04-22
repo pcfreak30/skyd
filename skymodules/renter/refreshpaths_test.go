@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 )
 
 // TestRefreshPaths probes the refreshpaths subsystem

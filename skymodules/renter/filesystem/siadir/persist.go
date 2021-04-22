@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 
 	"gitlab.com/SkynetLabs/skyd/build"

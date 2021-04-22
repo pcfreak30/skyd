@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 

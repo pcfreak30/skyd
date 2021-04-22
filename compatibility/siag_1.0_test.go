@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
 )
 

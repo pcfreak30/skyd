@@ -18,10 +18,10 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/twofish"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 

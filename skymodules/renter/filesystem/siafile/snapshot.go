@@ -9,8 +9,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 )
 
 type (

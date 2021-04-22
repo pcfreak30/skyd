@@ -8,9 +8,9 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
 )
 

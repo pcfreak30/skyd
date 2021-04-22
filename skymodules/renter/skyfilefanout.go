@@ -12,11 +12,11 @@ package renter
 import (
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
+	"go.sia.tech/siad/crypto"
 )
 
 // skyfileEncodeFanoutFromFileNode will create the serialized fanout for

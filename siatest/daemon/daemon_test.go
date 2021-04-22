@@ -10,12 +10,12 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/profile"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 

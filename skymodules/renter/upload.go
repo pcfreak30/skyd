@@ -14,10 +14,10 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"go.sia.tech/siad/crypto"
 )
 
 var (
