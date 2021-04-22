@@ -225,7 +225,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 				staticErr:          errors.New("failed"),
 				staticWorker:       nil, // will be ignored
 			},
-			// Fast response.
+			// Slow response with higher rev that will be the "best".
 			{
 				staticSPK:                 &spk,
 				staticTweak:               &srvHigher.Tweak,
@@ -236,25 +236,25 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 			// Faster response.
 			{
 				staticSPK:                 &spk,
-				staticTweak:               &srvHigher.Tweak,
+				staticTweak:               &srvLower.Tweak,
 				staticCompleteTime:        startTime.Add(time.Second),
-				staticSignedRegistryValue: &srvHigher,
+				staticSignedRegistryValue: &srvLower,
 				staticWorker:              w2,
 			},
 			// Super fast response but won't know the entry later.
 			{
 				staticSPK:                 &spk,
-				staticTweak:               &srvHigher.Tweak,
+				staticTweak:               &srvLower.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
-				staticSignedRegistryValue: &srvHigher,
+				staticSignedRegistryValue: &srvLower,
 				staticWorker:              w3,
 			},
 			// Super fast response but will be offline later.
 			{
 				staticSPK:                 &spk,
-				staticTweak:               &srvHigher.Tweak,
+				staticTweak:               &srvLower.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
-				staticSignedRegistryValue: &srvHigher,
+				staticSignedRegistryValue: &srvLower,
 				staticWorker:              w4,
 			},
 		},

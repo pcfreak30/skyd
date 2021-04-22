@@ -220,10 +220,10 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 			continue
 		}
 		// The one with the higher revision gets priority if both have an rv.
-		// TODO: Add code to check for scenarios related to rapidly updating
-		// entries.
-		if bestRV != nil && respRV != nil && respRV.Revision > bestRV.Revision {
-			best = resp
+		if bestRV != nil && respRV != nil && respRV.Revision != bestRV.Revision {
+			if respRV.Revision > bestRV.Revision {
+				best = resp
+			}
 			continue
 		}
 		// Otherwise the faster one wins.
@@ -236,6 +236,16 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 	// No successful responses. We can't update the stats.
 	if best == nil {
 		return
+	}
+
+	// Drop any responses from goodResps that were slower or equal to best.
+	for i := 0; i < len(goodResps); i++ {
+		if goodResps[i].staticCompleteTime.Before(best.staticCompleteTime) {
+			continue // nothing to do for faster response
+		}
+		// Replace element to remove with the last one and drop it.
+		goodResps[i] = goodResps[len(goodResps)-1]
+		goodResps = goodResps[:len(goodResps)-1]
 	}
 
 	// Sort the good responses by completion time.
