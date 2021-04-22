@@ -26,7 +26,6 @@ cpkg = ./skymodules/renter
 lockcheckpkgs = \
 	./benchmark \
 	./build \
-	./cmd/sia-node-scanner \
 	./cmd/skyc \
 	./cmd/skyd \
 	./cmd/skynet-benchmark \
@@ -75,7 +74,7 @@ run = .
 
 # util-pkgs determine the set of packages that are built when running
 # 'make utils'
-util-pkgs = ./cmd/sia-node-scanner ./cmd/skynet-benchmark
+util-pkgs = ./cmd/skynet-benchmark
 
 # dependencies list all packages needed to run make commands used to build, test
 # and lint siac/siad locally and in CI systems.

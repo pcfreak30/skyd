@@ -27,7 +27,6 @@ variables:
     ./skymodules/renter/skynetportals
   package_pkgs: >-
     ./build
-    ./cmd/sia-node-scanner
     ./cmd/skyc
     ./cmd/skyd
     ./cmd/skynet-benchmark
