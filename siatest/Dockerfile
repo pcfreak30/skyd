@@ -14,11 +14,15 @@ ENV GOCACHE /tmp
 # Set the working Directory
 WORKDIR /skyd
 
+# Copy the go files to cache the dependency
+COPY go.* .
+
 # Copy the code files into the docker container
 ADD . .
 
-# Make dependencies 
+# Make dependencies and copy to cache
 RUN make dependencies
+COPY . .
 
 # Prep for running test
 RUN --mount=target=. \

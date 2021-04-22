@@ -5357,7 +5357,7 @@ func TestRenterClean(t *testing.T) {
 	// Create test group
 	groupParams := siatest.GroupParams{
 		Miners:  1,
-		Hosts:   1,
+		Hosts:   2,
 		Renters: 1,
 	}
 	testDir := renterTestDir(t.Name())
@@ -5399,49 +5399,60 @@ func TestRenterClean(t *testing.T) {
 	// Since it doesn't have a local file it will appear as unrecoverable if the
 	// hosts are taken down.
 	data := fastrand.Bytes(100)
-	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", 2, false, nil)
+	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", renter.SkyfileDefaultBaseChunkRedundancy, false, nil)
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Wait for the file to be healthy
+	if err = r.WaitForUploadProgress(rf3, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.WaitForUploadHealth(rf3); err != nil {
 		t.Fatal(err)
 	}
 
 	// Define test function
-	cleanAndVerify := func(numSiaFiles, numSkyFiles int) {
+	cleanAndVerify := func(numSiaFiles, numSkyFiles int) error {
 		// Clean renter
-		err = r.RenterCleanPost()
+		err := r.RenterCleanPost()
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 
 		// Check for the expected SiaFiles
 		rds, err := r.RenterDirRootGet(skymodules.UserFolder)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if len(rds.Files) != numSiaFiles {
-			t.Fatal("unexpected number of files in user folder:", len(rds.Files))
+			return fmt.Errorf("expected %v files in user folder but found %v", numSiaFiles, len(rds.Files))
 		}
 		// The file should be the 2nd siafile uploaded.
 		siaPath := rds.Files[0].SiaPath
 		expected, err := skymodules.UserFolder.Join(rf2.SiaPath().String())
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if !siaPath.Equals(expected) {
-			t.Fatalf("unexpected siapath; expected %v got %v", expected, siaPath)
+			return fmt.Errorf("unexpected siapath; expected %v got %v", expected, siaPath)
 		}
 
 		// Check for the expected SkyFiles
 		rds, err = r.RenterDirRootGet(skymodules.SkynetFolder)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if len(rds.Files) != numSkyFiles {
-			t.Fatal("unexpected number of files in skynet folder:", len(rds.Files))
+			return fmt.Errorf("expected %v files in skynet folder but found %v", numSkyFiles, len(rds.Files))
 		}
+		return nil
 	}
 
 	// First test should only remove the 1 unrecoverable Siafile
-	cleanAndVerify(1, 1)
+	err = cleanAndVerify(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Take down the hosts
 	for _, h := range tg.Hosts() {
@@ -5458,7 +5469,10 @@ func TestRenterClean(t *testing.T) {
 	}
 
 	// Second test should remove the now unrecoverable Skyfile
-	cleanAndVerify(1, 0)
+	err = cleanAndVerify(1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestRenterRepairSize test the RepairSize field of the metadata
