@@ -67,14 +67,6 @@ Full Descriptions
 
 * `skyc version` displays the version string of siac.
 
-### FeeManager tasks
-
-* `skyc feemanager` prints info about the feemanager such as pending fees and
-  the next fee payout height.
-
-* `skyc feemanager cancel <feeUID>` cancels a pending fee. If a transaction has
-  already been created the fee cannot be cancelled.
-
 ### Gateway tasks
 
 * `skyc gateway` prints info about the gateway, including its address and how

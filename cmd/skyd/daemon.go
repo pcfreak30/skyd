@@ -76,25 +76,22 @@ func processModules(modules string) (string, error) {
 	case "tpool":
 		return "gct", nil
 	case "wallet":
-		// Add Accounting and FeeManager modules to all nodes that have at least
-		// a wallet
-		return "gctwaf", nil
+		// Add Accounting module to all nodes that have at least a wallet
+		return "gctwa", nil
 	case "renter":
-		return "gctwafr", nil
+		return "gctwar", nil
 	case "host":
-		return "gctwafh", nil
+		return "gctwah", nil
 	case "miner":
-		return "gctwafm", nil
-	case "feemanager":
-		return "gctwaf", nil
+		return "gctwam", nil
 	case "accounting":
-		return "gctwaf", nil
+		return "gctwa", nil
 	case "explorer":
 		return "gce", nil
 	}
 
 	// Check module letters provided
-	validModules := "acghmrtwef"
+	validModules := "acghmrtwe"
 	invalidModules := modules
 	for _, m := range validModules {
 		invalidModules = strings.Replace(invalidModules, string(m), "", 1)

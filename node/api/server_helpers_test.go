@@ -108,8 +108,8 @@ func (srv *Server) Serve() error {
 // the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be
 // used if the APIaddr is localhost.
-func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet) (*Server, error) {
-	return NewCustomServer(dir, APIaddr, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, &modules.ProductionDependencies{})
+func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet) (*Server, error) {
+	return NewCustomServer(dir, APIaddr, requiredUserAgent, requiredPassword, acc, cs, e, g, h, m, r, tp, w, &modules.ProductionDependencies{})
 }
 
 // NewCustomServer creates a new API server from the provided skymodules. The API
@@ -118,7 +118,7 @@ func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPas
 // authentication sends passwords in plaintext and should therefore only be used
 // if the APIaddr is localhost. It is custom because it allows injecting custom
 // API dependencies.
-func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet, apiDeps modules.Dependencies) (*Server, error) {
+func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet, apiDeps modules.Dependencies) (*Server, error) {
 	listener, err := net.Listen("tcp", APIaddr)
 	if err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requi
 		return nil, errors.AddContext(err, "failed to load siad config")
 	}
 
-	api := NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, apiDeps)
+	api := NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, g, h, m, r, tp, w, apiDeps)
 	srv := &Server{
 		api: api,
 		apiServer: &http.Server{

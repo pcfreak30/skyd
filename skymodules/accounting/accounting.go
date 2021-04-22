@@ -43,11 +43,10 @@ var (
 // information about a Sia node.
 type Accounting struct {
 	// Modules whose accounting information is tracked
-	staticFeeManager modules.FeeManager
-	staticHost       modules.Host
-	staticMiner      modules.Miner
-	staticRenter     skymodules.Renter
-	staticWallet     modules.Wallet
+	staticHost   modules.Host
+	staticMiner  modules.Miner
+	staticRenter skymodules.Renter
+	staticWallet modules.Wallet
 
 	// history is the entire persisted history of the accounting information
 	//
@@ -69,7 +68,7 @@ type Accounting struct {
 
 // NewCustomAccounting initializes the accounting module with custom
 // dependencies
-func NewCustomAccounting(fm modules.FeeManager, h modules.Host, m modules.Miner, r skymodules.Renter, w modules.Wallet, persistDir string, deps modules.Dependencies) (*Accounting, error) {
+func NewCustomAccounting(h modules.Host, m modules.Miner, r skymodules.Renter, w modules.Wallet, persistDir string, deps modules.Dependencies) (*Accounting, error) {
 	// Check that at least the wallet is not nil
 	if w == nil {
 		return nil, errNilWallet
@@ -85,11 +84,10 @@ func NewCustomAccounting(fm modules.FeeManager, h modules.Host, m modules.Miner,
 
 	// Initialize the accounting
 	a := &Accounting{
-		staticFeeManager: fm,
-		staticHost:       h,
-		staticMiner:      m,
-		staticRenter:     r,
-		staticWallet:     w,
+		staticHost:   h,
+		staticMiner:  m,
+		staticRenter: r,
+		staticWallet: w,
 
 		staticPersistDir: persistDir,
 

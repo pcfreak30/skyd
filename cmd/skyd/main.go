@@ -88,9 +88,9 @@ independent components of Sia. This flag should only be used by developers or
 people who want to reduce overhead from unused skymodules. Modules are specified by
 their first letter. If the -M or --modules flag is not specified the default
 modules are run. The default modules are all modules except the miner and the explorer:
-	gateway, consensus set, transaction pool, wallet, renter, host, feemanager, accounting
+	gateway, consensus set, transaction pool, wallet, renter, host, accounting
 This is equivalent to:
-	siad -M gctwrhfa
+	siad -M gctwrha
 Additionally, names of modules are supported. If a name is provided, all required modules
 needed for the provided named module will be enabled.
 The following two commands are equivalent:
@@ -145,15 +145,6 @@ Miner (m):
 	Example:
 		siad -M gctwm
 		siad -M miner
-FeeManager (f):
-	The FeeManager provides a means for application developers to charge
-	users for the user of their application.
-	The FeeManager requires the consensus set, gateway, transaction pool, and wallet.
-	NOTE: While not required, the FeeManager module will be automatically added to
-	the manual list of modules if the Wallet is included.
-	Example:
-		siad -M gctwf
-		siad -M feemanager
 Accounting (a):
 	The Accounting module provides a high level accounting summary for the Sia node.
 	The Accounting module requires the consensus set, gateway, transaction pool, wallet,

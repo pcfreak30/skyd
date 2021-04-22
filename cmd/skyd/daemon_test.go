@@ -54,12 +54,11 @@ func TestUnitProcessModules(t *testing.T) {
 		{"gateway", "g"},
 		{"consensus", "gc"},
 		{"tpool", "gct"},
-		{"wallet", "gctwaf"},
-		{"renter", "gctwafr"},
-		{"host", "gctwafh"},
-		{"miner", "gctwafm"},
-		{"feemanager", "gctwaf"},
-		{"accounting", "gctwaf"},
+		{"wallet", "gctwa"},
+		{"renter", "gctwar"},
+		{"host", "gctwah"},
+		{"miner", "gctwam"},
+		{"accounting", "gctwa"},
 		{"explorer", "gce"},
 	}
 	for _, testVal := range testVals {

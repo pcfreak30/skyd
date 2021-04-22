@@ -15,7 +15,6 @@ type (
 	AccountingInfo struct {
 		// Not implemented yet
 		//
-		// FeeManager FeeManagerAccounting `json:"feemanager"`
 		// Host       HostAccounting       `json:"host"`
 		// Miner      MinerAccounting      `json:"miner"`
 

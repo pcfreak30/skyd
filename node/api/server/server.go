@@ -237,7 +237,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 
 		// Server wasn't shut down. Add node and replace skymodules.
 		srv.node = n
-		api.SetModules(n.Accounting, n.ConsensusSet, n.Explorer, n.FeeManager, n.Gateway, n.Host, n.Miner, n.Renter, n.TransactionPool, n.Wallet)
+		api.SetModules(n.Accounting, n.ConsensusSet, n.Explorer, n.Gateway, n.Host, n.Miner, n.Renter, n.TransactionPool, n.Wallet)
 		return srv, nil
 	}()
 	if err != nil {

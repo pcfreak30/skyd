@@ -455,7 +455,6 @@ Returns the settings for the daemon
   "modules": { 
     "consensus":       true,  // bool
     "explorer":        false, // bool
-    "feemanager":      true,  // bool
     "gateway":         true,  // bool
     "host":            true,  // bool
     "miner":           true,  // bool

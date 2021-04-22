@@ -314,10 +314,6 @@ func initCmds() *cobra.Command {
 	root.AddCommand(consensusCmd)
 	root.AddCommand(jsonCmd)
 
-	// Add feemanager commands
-	root.AddCommand(feeManagerCmd)
-	feeManagerCmd.AddCommand(feeManagerCancelFeeCmd)
-
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayAddressCmd, gatewayBandwidthCmd, gatewayBlocklistCmd, gatewayConnectCmd, gatewayDisconnectCmd, gatewayListCmd, gatewayRatelimitCmd)
 	gatewayBlocklistCmd.AddCommand(gatewayBlocklistAppendCmd, gatewayBlocklistClearCmd, gatewayBlocklistRemoveCmd, gatewayBlocklistSetCmd)

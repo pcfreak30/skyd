@@ -9,8 +9,8 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/tus/tusd/pkg/handler"
-	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/log"
+	siaapi "go.sia.tech/siad/node/api"
 
 	"gitlab.com/SkynetLabs/skyd/build"
 )
@@ -60,11 +60,6 @@ func (api *API) buildHTTPRoutes() {
 	// Explorer API Calls
 	if api.explorer != nil {
 		siaapi.RegisterRoutesExplorer(router, api.explorer, api.cs)
-	}
-
-	// FeeManager API Calls
-	if api.feemanager != nil {
-		siaapi.RegisterRoutesFeeManager(router, api.feemanager, requiredPassword)
 	}
 
 	// Gateway API Calls
