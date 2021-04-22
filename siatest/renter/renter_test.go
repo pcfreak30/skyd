@@ -932,18 +932,29 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Bring up hosts to replace the ones that went offline.
-	for hostsRemoved > 0 {
-		hostsRemoved--
-		_, err = tg.AddNodes(node.HostTemplate)
-		if err != nil {
-			t.Fatal("Failed to create a new host", err)
-		}
+	_, err = tg.AddNodeN(node.HostTemplate, int(hostsRemoved))
+	if err != nil {
+		t.Fatal("Failed to create a new host", err)
 	}
 	if err := renterNode.WaitForUploadHealth(remoteFile); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
-	// Check to see if a chunk got repaired and marked as unstuck
-	err = renterNode.WaitForStuckChunksToRepair()
+	// Make sure that the file system is updated
+	err = renterNode.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// File should not report any stuck chunks
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fi, err := renterNode.File(remoteFile)
+		if err != nil {
+			return err
+		}
+		if fi.Stuck || fi.NumStuckChunks != 0 {
+			return fmt.Errorf("File is still stuck %v with %v stuck chunks", fi.Stuck, fi.NumStuckChunks)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
