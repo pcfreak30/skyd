@@ -11,8 +11,8 @@ import (
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/writeaheadlog"
+	"go.sia.tech/siad/modules"
 
 	"gitlab.com/NebulousLabs/errors"
 )

@@ -3,8 +3,8 @@ package dependencies
 import (
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
 )
 
 // DependencyCustomNebulousAddress will use a custom address for the Nebulous

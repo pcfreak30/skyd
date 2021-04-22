@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/SkynetLabs/skyd/build"

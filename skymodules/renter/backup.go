@@ -19,10 +19,10 @@ import (
 	"golang.org/x/crypto/twofish"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
+	"go.sia.tech/siad/modules"
 )
 
 // backupHeader defines the structure of the backup's JSON header.

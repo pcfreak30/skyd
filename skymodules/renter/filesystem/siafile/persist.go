@@ -11,9 +11,9 @@ import (
 
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
+	"go.sia.tech/siad/modules"
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"

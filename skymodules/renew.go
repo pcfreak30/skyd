@@ -1,8 +1,8 @@
 package skymodules
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
 )
 
 // RenewBaseCosts is a helper to calculate the base costs for a renewed

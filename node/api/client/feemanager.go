@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/url"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
 )
 
 // FeeManagerGet uses the /feemanager GET endpoint to return information about

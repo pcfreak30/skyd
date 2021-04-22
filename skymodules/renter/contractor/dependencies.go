@@ -1,9 +1,9 @@
 package contractor
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
 )
 
 // These interfaces define the HostDB's dependencies. Using the smallest

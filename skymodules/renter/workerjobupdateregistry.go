@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/host/registry"
 
 	"gitlab.com/NebulousLabs/errors"
 )

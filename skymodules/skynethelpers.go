@@ -15,10 +15,10 @@ import (
 
 	"github.com/aead/chacha20/chacha"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
+	"go.sia.tech/siad/modules"
 )
 
 var (

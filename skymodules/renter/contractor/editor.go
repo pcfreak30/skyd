@@ -6,10 +6,10 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
+	"go.sia.tech/siad/modules"
 )
 
 var errInvalidEditor = errors.New("editor has been invalidated because its contract is being renewed")

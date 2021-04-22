@@ -7,9 +7,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
 )
 
 // printSkynetDirs is a helper for printing skynet directoryInfos

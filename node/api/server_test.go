@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"go.sia.tech/siad/modules"
 )
 
 // TestExplorerPreset checks that the default configuration for the explorer is

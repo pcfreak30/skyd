@@ -7,8 +7,8 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/modules"
 )
 
 // dependencyTestJobSerialExecution is a special dependency to change the

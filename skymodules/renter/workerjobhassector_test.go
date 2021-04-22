@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
 )
 
 // TestHasSectorJobBatchCallNext makes sure that multiple has sector jobs are

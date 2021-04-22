@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"go.sia.tech/siad/modules"
 )
 
 // TestParseFees tests the parseFees function to ensure expected return values

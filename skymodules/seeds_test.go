@@ -7,8 +7,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
 )
 
 // TestEphemeralRenterSeed tests the ephemeralRenterSeed methods.
