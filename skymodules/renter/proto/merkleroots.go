@@ -358,6 +358,15 @@ func (mr *merkleRoots) merkleRoots() (roots []crypto.Hash, err error) {
 	return
 }
 
+// merkleRoot returns an individual root from a given index on disk.
+func (mr *merkleRoots) merkleRoot(index int) (crypto.Hash, error) {
+	roots, err := mr.merkleRootsFromIndexFromDisk(index, index)
+	if err != nil {
+		return crypto.Hash{}, err
+	}
+	return roots[0], nil
+}
+
 // merkleRootsFrom index reads all the merkle roots in range [from;to)
 func (mr *merkleRoots) merkleRootsFromIndexFromDisk(from, to int) ([]crypto.Hash, error) {
 	merkleRoots := make([]crypto.Hash, 0, to-from)

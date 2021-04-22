@@ -186,6 +186,19 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ skymodules.RenterC
 	return s.write(sc, actions)
 }
 
+type rootUpdate struct {
+	trim bool
+	root crypto.Hash
+}
+
+func newRootUpdateTrimRoot() rootUpdate {
+	return rootUpdate{trim: true}
+}
+
+func newRootUpdateUpdateRoot(root crypto.Hash) rootUpdate {
+	return rootUpdate{root: root}
+}
+
 func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ skymodules.RenterContract, err error) {
 	contract := sc.header // for convenience
 
@@ -198,16 +211,36 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// calculate the new Merkle root set and total cost/collateral
 	var bandwidthPrice, storagePrice, collateral types.Currency
 	newFileSize := contract.LastRevision().NewFileSize
+	rootUpdates := make(map[uint64]rootUpdate)
 	for _, action := range actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
 			bandwidthPrice = bandwidthPrice.Add(sectorBandwidthPrice)
+			rootUpdates[newFileSize/modules.SectorSize] = newRootUpdateUpdateRoot(crypto.MerkleRoot(action.Data))
 			newFileSize += modules.SectorSize
 
 		case modules.WriteActionTrim:
 			newFileSize -= modules.SectorSize * action.A
+			rootUpdates[newFileSize/modules.SectorSize] = newRootUpdateTrimRoot()
 
 		case modules.WriteActionSwap:
+			_, existsA := rootUpdates[action.A]
+			if !existsA {
+				rootA, err := sc.merkleRoots.merkleRoot(int(action.A))
+				if err != nil {
+					return skymodules.RenterContract{}, err
+				}
+				rootUpdates[action.A] = newRootUpdateUpdateRoot(rootA)
+			}
+			_, existsB := rootUpdates[action.B]
+			if !existsB {
+				rootB, err := sc.merkleRoots.merkleRoot(int(action.B))
+				if err != nil {
+					return skymodules.RenterContract{}, err
+				}
+				rootUpdates[action.B] = newRootUpdateUpdateRoot(rootB)
+			}
+			rootUpdates[action.A], rootUpdates[action.B] = rootUpdates[action.B], rootUpdates[action.A]
 
 		case modules.WriteActionUpdate:
 			return skymodules.RenterContract{}, errors.New("update not supported")
@@ -289,7 +322,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// post-revision contract.
 	//
 	// TODO: update this for non-local root storage
-	walTxn, err := sc.managedRecordAppendIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
+	walTxn, err := sc.managedRecordRootUpdates(rev, rootUpdates, storagePrice, bandwidthPrice)
 	if err != nil {
 		return skymodules.RenterContract{}, err
 	}

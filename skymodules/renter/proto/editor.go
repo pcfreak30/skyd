@@ -142,7 +142,9 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.managedRecordAppendIntent(rev, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
+	walTxn, err := sc.managedRecordRootUpdates(rev, map[uint64]rootUpdate{
+		uint64(sc.merkleRoots.len()): newRootUpdateUpdateRoot(sectorRoot),
+	}, sectorStoragePrice, sectorBandwidthPrice)
 	if err != nil {
 		return skymodules.RenterContract{}, crypto.Hash{}, err
 	}
