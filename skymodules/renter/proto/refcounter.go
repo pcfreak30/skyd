@@ -7,7 +7,7 @@ import (
 	"os"
 	"sync"
 
-	siasync "gitlab.com/NebulousLabs/Sia/sync"
+	siasync "go.sia.tech/siad/sync"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 
