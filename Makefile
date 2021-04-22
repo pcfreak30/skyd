@@ -42,6 +42,7 @@ lockcheckpkgs = \
 	./siatest/renter/contractor \
 	./siatest/renter/hostdb \
 	./siatest/renterhost \
+	./siatest/skynet \
 	./skykey \
 	./skymodules \
 	./skymodules/accounting \
