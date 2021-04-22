@@ -167,8 +167,10 @@ test-vlong-windows: clean
 docker-ci-start: docker-ci-stop
 	@docker build . -f siatest/Dockerfile -t skytest-ci
 	@docker run --cpus="1" --name test -di skytest-ci
+# docker-ci-stop stops and removes the docker container.
 docker-ci-stop:
 	@docker stop test || true && docker rm test || true
+# docker-test-long allows for running long tests faster in the docker container
 docker-test-long: clean
 	GORACE='$(racevars)' go test -race -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
