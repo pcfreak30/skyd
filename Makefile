@@ -48,13 +48,11 @@ lockcheckpkgs = \
 	./skykey \
 	./skymodules \
 	./skymodules/accounting \
-	./skymodules/renter/contractor \
 	./skymodules/renter/filesystem \
 	./skymodules/renter/filesystem/siadir \
 	./skymodules/renter/filesystem/siafile \
 	./skymodules/renter/hostdb \
 	./skymodules/renter/hostdb/hosttree \
-	./skymodules/renter/proto \
 	./skymodules/renter/skynetblocklist \
 	./skymodules/renter/skynetportals \
 
@@ -62,7 +60,9 @@ lockcheckpkgs = \
 # tests are run during testing.
 pkgs = \
 	$(lockcheckpkgs) \
-	./skymodules/renter 
+	./skymodules/renter \
+	./skymodules/renter/contractor \
+	./skymodules/renter/proto
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.

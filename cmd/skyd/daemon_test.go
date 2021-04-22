@@ -29,16 +29,14 @@ func TestUnitProcessModules(t *testing.T) {
 		in  string
 		out string
 	}{
-		{"cghmrtweaf", "cghmrtweaf"},
-		{"CGHMRTWEAF", "cghmrtweaf"},
+		{"cghmrtwea", "cghmrtwea"},
+		{"CGHMRTWEA", "cghmrtwea"},
 		{"a", "a"},
 		{"A", "a"},
 		{"c", "c"},
 		{"C", "c"},
 		{"e", "e"},
 		{"E", "e"},
-		{"f", "f"},
-		{"F", "f"},
 		{"g", "g"},
 		{"G", "g"},
 		{"h", "h"},
