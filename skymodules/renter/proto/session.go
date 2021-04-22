@@ -419,10 +419,25 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 
 	// update contract
 	//
-	// TODO: unnecessary?
 	err = sc.managedCommitAppend(walTxn, txn, storagePrice, bandwidthPrice)
 	if err != nil {
 		return skymodules.RenterContract{}, err
+	}
+
+	// Sanity check: Make sure the contract on disk has the right root.
+	if build.Release == "testing" {
+		// Check cached root first.
+		if sc.merkleRoots.root() != newRoot {
+			build.Critical("write: cached root mismatch")
+		}
+		// Check on-disk root.
+		roots, err := sc.merkleRoots.merkleRoots()
+		if err != nil {
+			build.Critical("failed to fetch roots for sanity check")
+		}
+		if cachedMerkleRoot(roots) != newRoot {
+			build.Critical("write: root mismatch")
+		}
 	}
 	return sc.Metadata(), nil
 }
