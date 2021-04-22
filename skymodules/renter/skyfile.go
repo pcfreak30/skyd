@@ -646,6 +646,8 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 
 	// Check if link needs to be resolved from V2 to V1.
+	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
+	// the API to return a 404.
 	if link.Version() == 2 {
 		srv, err := r.ReadRegistryRID(ctx, link.RegistryEntryID())
 		if err != nil {
@@ -657,6 +659,9 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 		err = link.LoadBytes(srv.Data)
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to parse skylink")
+		}
+		if link == (skymodules.Skylink{}) {
+			return nil, ErrRootNotFound
 		}
 	}
 

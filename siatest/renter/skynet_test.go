@@ -5039,7 +5039,6 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 		Key:       pk[:],
 	}
 	srv := modules.NewRegistryValue(dataKey, skylink.Bytes(), fastrand.Uint64n(100)).Sign(sk)
-
 	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -5063,5 +5062,19 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(downloadedDataV1, data) {
 		t.Fatal("data doesn't match")
+	}
+
+	// Update entry to empty skylink.
+	skylink = skymodules.Skylink{}
+	srv = modules.NewRegistryValue(dataKey, skylink.Bytes(), srv.Revision+1).Sign(sk)
+	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the file using v2 link again.
+	_, _, err = r.SkynetSkylinkGet(skylinkV2.String())
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
+		t.Fatal(err)
 	}
 }
