@@ -23,7 +23,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 )
 
 var (
@@ -139,10 +138,14 @@ by --public if you want it to be publicly available.`,
 	}
 
 	skynetUnpinCmd = &cobra.Command{
-		Use:   "unpin [siapath]",
-		Short: "Unpin pinned skyfiles or directories.",
-		Long: `Unpin one or more pinned skyfiles or directories at the given siapaths. The
-files and directories will continue to be available on Skynet if other nodes have pinned them.`,
+		Use:   "unpin [skylink]",
+		Short: "Unpin pinned skyfiles by skylink.",
+		Long: `Unpin one or more pinned skyfiles by skylink. The files and
+directories will continue to be available on Skynet if other nodes have pinned
+them.
+
+NOTE: To use the prior functionality of unpinning by SiaPath, use the 'skyc
+renter delete' command and set the --root flag.`,
 		Run: skynetunpincmd,
 	}
 
@@ -536,53 +539,20 @@ func skynetrestorecmd(backupPath string) {
 	fmt.Println("Restore successful! Skylink: ", skylink)
 }
 
-// skynetunpincmd will unpin and delete either a single or multiple files or
-// directories from the Renter.
-func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
-	if len(skyPathStrs) == 0 {
+// skynetunpincmd will unpin and delete either a single or multiple skylinks
+// from the renter.
+func skynetunpincmd(cmd *cobra.Command, skylinks []string) {
+	if len(skylinks) == 0 {
 		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 
-	for _, skyPathStr := range skyPathStrs {
-		// Create the skypath.
-		skyPath, err := skymodules.NewSiaPath(skyPathStr)
+	for _, skylink := range skylinks {
+		// Unpin skylink
+		err := httpClient.SkynetSkylinkUnpinPost(skylink)
 		if err != nil {
-			die("Could not parse skypath:", err)
+			fmt.Printf("Unable to unpin skylink %v: %v\n", skylink, err)
 		}
-
-		// Parse out the intended siapath.
-		if !skynetUnpinRoot {
-			skyPath, err = skymodules.SkynetFolder.Join(skyPath.String())
-			if err != nil {
-				die("could not build siapath:", err)
-			}
-		}
-
-		// Try to delete file.
-		//
-		// In the case where the path points to a dir, this will fail and we
-		// silently move on to deleting it as a dir. This is more efficient than
-		// querying the renter first to see if it is a file or a dir, as that is
-		// guaranteed to always be two renter calls.
-		errFile := httpClient.RenterFileDeleteRootPost(skyPath)
-		if errFile == nil {
-			fmt.Printf("Unpinned skyfile '%v'\n", skyPath)
-			continue
-		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
-			die(fmt.Sprintf("Failed to unpin skyfile %v: %v", skyPath, errFile))
-		}
-		// Try to delete dir.
-		errDir := httpClient.RenterDirDeleteRootPost(skyPath)
-		if errDir == nil {
-			fmt.Printf("Unpinned Skynet directory '%v'\n", skyPath)
-			continue
-		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
-			die(fmt.Sprintf("Failed to unpin Skynet directory %v: %v", skyPath, errDir))
-		}
-
-		// Unknown file/dir.
-		die(fmt.Sprintf("Unknown path '%v'", skyPath))
 	}
 }
 
