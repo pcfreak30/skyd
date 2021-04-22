@@ -352,11 +352,17 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 
 	// Check if the right updates were sent. They should have been sent in the
 	// right order and only once per revision.
-	updateMu.Lock()
-	defer updateMu.Unlock()
-	expectedUpdates := []*modules.SignedRegistryValue{&srv1, &srv2, &srv3}
-	if !reflect.DeepEqual(updates, expectedUpdates) {
-		t.Fatal("updates don't match")
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		updateMu.Lock()
+		defer updateMu.Unlock()
+		expectedUpdates := []*modules.SignedRegistryValue{&srv1, &srv2, &srv3}
+		if !reflect.DeepEqual(updates, expectedUpdates) {
+			return errors.New("updates don't match")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
