@@ -3,6 +3,7 @@ package api
 import (
 	"archive/tar"
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -73,10 +74,11 @@ type monetizedResponseWriter struct {
 
 // newMonetizedResponseWriter creates a new response writer wrapped with a
 // monetized writer.
-func newMonetizedResponseWriter(inner http.ResponseWriter, md skymodules.SkyfileMetadata, wallet modules.SiacoinSenderMulti, cr map[string]types.Currency, mb types.Currency) http.ResponseWriter {
+func newMonetizedResponseWriter(ctx context.Context, inner http.ResponseWriter, writeMonetizer *writeMonetizer) http.ResponseWriter {
+	mw := writeMonetizer.MonetizeWriter(inner)
 	return &monetizedResponseWriter{
 		staticInner: inner,
-		staticW:     newMonetizedWriter(inner, md, wallet, cr, mb),
+		staticW:     mw,
 	}
 }
 
@@ -95,15 +97,17 @@ func (rw *monetizedResponseWriter) Write(b []byte) (int, error) {
 	return rw.staticW.Write(b)
 }
 
-// monetizedWriter is a wrapper for an io.Writer. It monetizes the returned
-// bytes.
-type monetizedWriter struct {
-	staticW      io.Writer
+// writeMonetizer is a helper object that allows for monetizing io.Writers. It
+// will count all data served to the user and pay the monetizers upon closing
+// it.
+type writeMonetizer struct {
+	staticCtx    context.Context
 	staticMD     skymodules.SkyfileMetadata
 	staticWallet modules.SiacoinSenderMulti
 
 	staticConversionRates  map[string]types.Currency
 	staticMonetizationBase types.Currency
+	staticRL               *ratelimit.RateLimit
 
 	// count is used for sanity checking the number of monetized bytes against
 	// the total.
@@ -111,51 +115,73 @@ type monetizedWriter struct {
 }
 
 // newMonetizedWriter creates a new wrapped writer.
-func newMonetizedWriter(w io.Writer, md skymodules.SkyfileMetadata, wallet modules.SiacoinSenderMulti, cr map[string]types.Currency, mb types.Currency) io.Writer {
+func newWriteMonetizer(ctx context.Context, md skymodules.SkyfileMetadata, wallet modules.SiacoinSenderMulti, cr map[string]types.Currency, mb, scps types.Currency) (*writeMonetizer, error) {
+	// Check that monetization info is sane. Otherwise we won't be able to pay
+	// later. This should already have happened when parsing the monetization
+	// info but better safe than sorry.
+	err := skymodules.ValidateMonetization(md.Monetization)
+	if err != nil {
+		return nil, err
+	}
 	// Ratelimit the writer.
-	rl := ratelimit.NewRateLimit(0, 0, 0)
-	return &monetizedWriter{
-		staticW:                ratelimit.NewRLReadWriter(&writeReader{Writer: w}, rl, make(chan struct{})),
+	rl, err := newMonetizedRateLimit(md, cr, scps)
+	if err != nil {
+		return nil, err
+	}
+	return &writeMonetizer{
+		staticCtx:              ctx,
 		staticMD:               md,
 		staticWallet:           wallet,
 		staticConversionRates:  cr,
 		staticMonetizationBase: mb,
+		staticRL:               rl,
+	}, nil
+}
+
+// Close closes the writeMonetizer and pays the monetizers.
+func (wm *writeMonetizer) Close() error {
+	// Handle legacy uploads with length 0 by passing it through to the inner
+	// writer.
+	if wm.staticMD.Length == 0 && wm.staticMD.Monetization == nil {
+		return nil
+	}
+
+	// Pay monetizers.
+	if build.Release == "testing" {
+		return skymodules.PayMonetizers(wm.staticWallet, wm.staticMD.Monetization, uint64(wm.count), wm.staticMD.Length, wm.staticConversionRates, wm.staticMonetizationBase)
+	}
+	return nil
+}
+
+// MonetizeWriter wrap a io.Writer and returns a monetizedWriter.
+func (wm *writeMonetizer) MonetizeWriter(w io.Writer) io.Writer {
+	return &monetizedWriter{
+		staticW:              ratelimit.NewRLReadWriter(&writeReader{Writer: w}, wm.staticRL, wm.staticCtx.Done()),
+		staticWriteMonetizer: wm,
 	}
 }
 
+// monetizedWriter is a wrapper for a io.Writer which ratelimits the write
+// speeds according to the downloaded data's monetization.
+type monetizedWriter struct {
+	staticWriteMonetizer *writeMonetizer
+	staticW              io.Writer
+}
+
 // Write wraps the inner Write and adds monetization.
-func (rw *monetizedWriter) Write(b []byte) (int, error) {
-	// Handle legacy uploads with length 0 by passing it through to the inner
-	// writer.
-	if rw.staticMD.Length == 0 && rw.staticMD.Monetization == nil {
-		return rw.staticW.Write(b)
-	}
+func (mw *monetizedWriter) Write(b []byte) (int, error) {
+	wm := mw.staticWriteMonetizer
 
 	// Sanity check the number of monetized bytes against the total.
-	rw.count += len(b)
-	if rw.count > int(rw.staticMD.Length) {
-		err := fmt.Errorf("monetized more data than the total data of the skylink: %v > %v", rw.count, rw.staticMD.Length)
+	wm.count += len(b)
+	if wm.count > int(wm.staticMD.Length) {
+		err := fmt.Errorf("monetized more data than the total data of the skylink: %v > %v", wm.count, wm.staticMD.Length)
 		build.Critical(err)
 		return 0, err
 	}
 
 	// Forward data to inner.
-	// TODO: instead of directly writing to the ratelimited writer, write to a
-	// not ratelimited buffer on disk which forwards the data to the writer.
-	// Otherwise we are starving the renter.
-	n, err := rw.staticW.Write(b)
-	if err != nil {
-		return n, err
-	}
-
-	// Pay monetizers.
-	if build.Release == "testing" {
-		err := skymodules.PayMonetizers(rw.staticWallet, rw.staticMD.Monetization, uint64(len(b)), rw.staticMD.Length, rw.staticConversionRates, rw.staticMonetizationBase)
-		if err != nil {
-			return 0, err
-		}
-	}
-	return n, nil
+	return mw.Write(b)
 }
 
 // buildETag is a helper function that returns an ETag.
@@ -414,7 +440,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 // serveArchive serves skyfiles as an archive by reading them from r and writing
 // the archive to dst using the given archiveFunc.
-func serveArchive(dst io.Writer, src io.ReadSeeker, md skymodules.SkyfileMetadata, archiveFunc archiveFunc, monetize func(io.Writer) io.Writer) error {
+func serveArchive(dst io.Writer, src io.ReadSeeker, md skymodules.SkyfileMetadata, archiveFunc archiveFunc, writeMonetizer *writeMonetizer) error {
 	// Get the files to archive.
 	var files []skymodules.SkyfileSubfileMetadata
 	for _, file := range md.Subfiles {
@@ -453,13 +479,18 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md skymodules.SkyfileMetadat
 			Len:      length,
 		})
 	}
-	return archiveFunc(dst, src, files, monetize)
+	return archiveFunc(dst, src, files, writeMonetizer)
 }
 
 // serveTar is an archiveFunc that implements serving the files from src to dst
 // as a tar.
-func serveTar(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error {
+func serveTar(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, writeMonetizer *writeMonetizer) (err error) {
+	// Create tar writer.
 	tw := tar.NewWriter(dst)
+	defer func() {
+		err = errors.Compose(err, tw.Close())
+	}()
+	// Tar files.
 	for _, file := range files {
 		// Create header.
 		header, err := tar.FileInfoHeader(file, file.Name())
@@ -473,28 +504,58 @@ func serveTar(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMet
 			return err
 		}
 		// Write file content.
-		if _, err := io.CopyN(monetize(tw), src, header.Size); err != nil {
+		if _, err := io.CopyN(writeMonetizer.MonetizeWriter(tw), src, header.Size); err != nil {
 			return err
 		}
 	}
-	return tw.Close()
+	return
 }
 
 // serveZip is an archiveFunc that implements serving the files from src to dst
 // as a zip.
-func serveZip(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error {
+func serveZip(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, writeMonetizer *writeMonetizer) (err error) {
 	zw := zip.NewWriter(dst)
+	defer func() {
+		err = errors.Compose(err, zw.Close())
+	}()
 	for _, file := range files {
 		f, err := zw.Create(file.Filename)
 		if err != nil {
 			return errors.AddContext(err, "serveZip: failed to add the file to the zip")
 		}
-
 		// Write file content.
-		_, err = io.CopyN(monetize(f), src, int64(file.Len))
+		_, err = io.CopyN(writeMonetizer.MonetizeWriter(f), src, int64(file.Len))
 		if err != nil {
 			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
 		}
 	}
-	return zw.Close()
+	return
+}
+
+func newMonetizedRateLimit(md skymodules.SkyfileMetadata, conversionRates map[string]types.Currency, scps types.Currency) (*ratelimit.RateLimit, error) {
+	monetization := md.Monetization
+	if monetization == nil {
+		return ratelimit.NewRateLimit(0, 0, 0), nil
+	}
+
+	// Get the amount of SC this monetization is worth in total.
+	sc, err := monetization.ConvertToSC(conversionRates)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert it to SC per byte.
+	scpb := sc.Div64(md.Length)
+
+	// Calculate how many bytes we can send per second.
+	bps := scps.Div(scpb).Big().Int64()
+
+	// Check bps is not 0 since that would result in no limit.
+	if bps == 0 {
+		return nil, errors.New("can't create a monetized rate limit with 0 bps")
+	}
+
+	// Create a ratelimit that limits writes to bps and has a packet size of
+	// modules.SectorSize.
+	return ratelimit.NewRateLimit(0, bps, modules.SectorSize), nil
 }

@@ -593,6 +593,35 @@ func PayMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, dow
 	return payMonetizers(w, monetization, downloadedData, totalData, conversionRates, monetizationBase, fastrand.Reader)
 }
 
+// ConvertToSC sums up the total monetized value of the monetization and
+// converts it into SC.
+func (m Monetization) ConvertToSC(conversionRates map[string]types.Currency) (types.Currency, error) {
+	var sum types.Currency
+	for _, monetizer := range m.Monetizers {
+		sc, err := monetizer.ConvertToSC(conversionRates)
+		if err != nil {
+			return types.ZeroCurrency, err
+		}
+		sum = sum.Add(sc)
+	}
+	return sum, nil
+}
+
+// ConvertToSC converts the monetized value into SC.
+func (m Monetizer) ConvertToSC(conversionRates map[string]types.Currency) (types.Currency, error) {
+	// Check conversion rate.
+	conversion, valid := conversionRates[m.Currency]
+	if !valid {
+		return types.ZeroCurrency, ErrInvalidCurrency
+	}
+	// Check if the conversion rate is zero.
+	if conversion.IsZero() {
+		return types.ZeroCurrency, errors.AddContext(ErrZeroConversionRate, m.Currency)
+	}
+	// Convert money to SC.
+	return m.Amount.Mul(conversion).Div(types.SiacoinPrecision), nil
+}
+
 // payMonetizers is a helper method for paying out monetizers.
 func payMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency, rand io.Reader) error {
 	// If there is no monetization, there is nothing for us to do.
@@ -614,17 +643,11 @@ func payMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, dow
 	// Pay out monetizers.
 	var payouts []types.SiacoinOutput
 	for _, monetizer := range monetization.Monetizers {
-		// Check conversion rate.
-		conversion, valid := conversionRates[monetizer.Currency]
-		if !valid {
-			return ErrInvalidCurrency
-		}
-		// Check if the conversion rate is zero.
-		if conversion.IsZero() {
-			return errors.AddContext(ErrZeroConversionRate, monetizer.Currency)
-		}
 		// Convert money to SC.
-		sc := monetizer.Amount.Mul(conversion).Div(types.SiacoinPrecision)
+		sc, err := monetizer.ConvertToSC(conversionRates)
+		if err != nil {
+			return err
+		}
 
 		// Adjust money to percentage of downloaded content. Unless we download
 		// a 0 byte file.
