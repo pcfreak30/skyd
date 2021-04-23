@@ -1,4 +1,4 @@
-package renter
+package skynet
 
 import (
 	"bytes"
@@ -32,7 +32,7 @@ func TestSkynetTUSUploader(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	groupDir := renterTestDir(t.Name())
+	groupDir := skynetTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
 	if err != nil {
 		t.Fatal(err)

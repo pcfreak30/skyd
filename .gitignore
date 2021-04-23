@@ -6,6 +6,7 @@
 analyze
 artifacts
 cover
+docker
 fullcover
 release
 

@@ -203,7 +203,11 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 		switch action.Type {
 		case modules.WriteActionAppend:
 			bandwidthPrice = bandwidthPrice.Add(sectorBandwidthPrice)
-			rootUpdates[newFileSize/modules.SectorSize] = newRootUpdateAppendRoot(crypto.MerkleRoot(action.Data))
+			ru, exists := rootUpdates[newFileSize/modules.SectorSize]
+			if !exists {
+				ru = newRootUpdateAppendRoot(crypto.MerkleRoot(action.Data))
+			}
+			ru.trim = false
 			newFileSize += modules.SectorSize
 
 		case modules.WriteActionTrim:
