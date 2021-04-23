@@ -26,6 +26,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 var (
@@ -1020,11 +1021,14 @@ func (api *API) renterAllowanceCancelHandlerPOST(w http.ResponseWriter, _ *http.
 // renterCleanHandlerPOST handles the API call to clean lost files from a Renter.
 func (api *API) renterCleanHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	var deleteErrs error
+	var deleteErrMu sync.Mutex
 	cleanFunc := func(fi skymodules.FileInfo) {
-		if fi.OnDisk || fi.Redundancy >= 1 {
+		if !siafile.Unrecoverable(fi.MaxHealth, fi.OnDisk) {
 			return
 		}
+		deleteErrMu.Lock()
 		deleteErrs = errors.Compose(deleteErrs, api.renter.DeleteFile(fi.SiaPath))
+		deleteErrMu.Unlock()
 	}
 	err := api.renter.FileList(skymodules.RootSiaPath(), true, false, cleanFunc)
 	err = errors.Compose(err, deleteErrs)
