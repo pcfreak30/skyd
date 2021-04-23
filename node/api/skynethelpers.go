@@ -181,7 +181,7 @@ func (mw *monetizedWriter) Write(b []byte) (int, error) {
 	}
 
 	// Forward data to inner.
-	return mw.Write(b)
+	return mw.staticW.Write(b)
 }
 
 // buildETag is a helper function that returns an ETag.
