@@ -143,7 +143,7 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
 	walTxn, err := sc.managedRecordRootUpdates(rev, map[uint64]rootUpdate{
-		uint64(sc.merkleRoots.len()): newRootUpdateUpdateRoot(sectorRoot),
+		uint64(sc.merkleRoots.len()): newRootUpdateAppendRoot(sectorRoot),
 	}, sectorStoragePrice, sectorBandwidthPrice)
 	if err != nil {
 		return skymodules.RenterContract{}, crypto.Hash{}, err

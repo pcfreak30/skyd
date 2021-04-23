@@ -68,7 +68,7 @@ func TestContractUncommittedTxn(t *testing.T) {
 			storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
 			bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
 			txn, err := sc.managedRecordRootUpdates(fcr, map[uint64]rootUpdate{
-				uint64(len(revisedRoots) - 1): newRootUpdateUpdateRoot(newRoot),
+				uint64(len(revisedRoots) - 1): newRootUpdateAppendRoot(newRoot),
 			}, storageCost, bandwidthCost)
 			return txn, revisedRoots, revisedHeader, err
 		}
@@ -304,7 +304,7 @@ func TestContractIncompleteWrite(t *testing.T) {
 	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
 	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
 	_, err = sc.managedRecordRootUpdates(fcr, map[uint64]rootUpdate{
-		uint64(len(revisedRoots) - 1): newRootUpdateUpdateRoot(newRoot),
+		uint64(len(revisedRoots) - 1): newRootUpdateAppendRoot(newRoot),
 	}, storageCost, bandwidthCost)
 	if err != nil {
 		t.Fatal(err)
@@ -672,7 +672,7 @@ func TestContractRefCounter(t *testing.T) {
 	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
 	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
 	walTxn, err := sc.managedRecordRootUpdates(newRev, map[uint64]rootUpdate{
-		uint64(len(initialRoots)): newRootUpdateUpdateRoot(newRoot),
+		uint64(len(initialRoots)): newRootUpdateAppendRoot(newRoot),
 	}, storageCost, bandwidthCost)
 	if err != nil {
 		t.Fatal(err)
@@ -883,7 +883,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 
 	// record the append intent
 	walTxn, err := sc.managedRecordRootUpdates(rev, map[uint64]rootUpdate{
-		uint64(len(initialRoots)): newRootUpdateUpdateRoot(newRoot),
+		uint64(len(initialRoots)): newRootUpdateAppendRoot(newRoot),
 	}, storage, bandwidth)
 	if err != nil {
 		t.Fatal("Failed to record payment intent")
@@ -914,7 +914,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 
 	// start a new append
 	walTxn, err = sc.managedRecordRootUpdates(rev, map[uint64]rootUpdate{
-		uint64(len(initialRoots) + 1): newRootUpdateUpdateRoot(newRoot),
+		uint64(len(initialRoots) + 1): newRootUpdateAppendRoot(newRoot),
 	}, storage, bandwidth)
 	if err != nil {
 		t.Fatal("Failed to record payment intent")

@@ -187,16 +187,21 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ skymodules.RenterC
 }
 
 type rootUpdate struct {
-	trim bool
-	root crypto.Hash
+	appended bool
+	trim     bool
+	root     crypto.Hash
 }
 
 func newRootUpdateTrimRoot() rootUpdate {
 	return rootUpdate{trim: true}
 }
 
+func newRootUpdateAppendRoot(root crypto.Hash) rootUpdate {
+	return rootUpdate{root: root, appended: true}
+}
+
 func newRootUpdateUpdateRoot(root crypto.Hash) rootUpdate {
-	return rootUpdate{root: root}
+	return rootUpdate{root: root, appended: false}
 }
 
 func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ skymodules.RenterContract, err error) {
@@ -216,31 +221,38 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 		switch action.Type {
 		case modules.WriteActionAppend:
 			bandwidthPrice = bandwidthPrice.Add(sectorBandwidthPrice)
-			rootUpdates[newFileSize/modules.SectorSize] = newRootUpdateUpdateRoot(crypto.MerkleRoot(action.Data))
+			rootUpdates[newFileSize/modules.SectorSize] = newRootUpdateAppendRoot(crypto.MerkleRoot(action.Data))
 			newFileSize += modules.SectorSize
 
 		case modules.WriteActionTrim:
 			newFileSize -= modules.SectorSize * action.A
-			rootUpdates[newFileSize/modules.SectorSize] = newRootUpdateTrimRoot()
+			ru, exists := rootUpdates[newFileSize/modules.SectorSize]
+			if !exists {
+				ru = newRootUpdateTrimRoot()
+			}
+			ru.trim = true
+			rootUpdates[newFileSize/modules.SectorSize] = ru
 
 		case modules.WriteActionSwap:
-			_, existsA := rootUpdates[action.A]
+			ruA, existsA := rootUpdates[action.A]
 			if !existsA {
 				rootA, err := sc.merkleRoots.merkleRoot(int(action.A))
 				if err != nil {
 					return skymodules.RenterContract{}, err
 				}
-				rootUpdates[action.A] = newRootUpdateUpdateRoot(rootA)
+				ruA = newRootUpdateUpdateRoot(rootA)
 			}
-			_, existsB := rootUpdates[action.B]
+			ruB, existsB := rootUpdates[action.B]
 			if !existsB {
 				rootB, err := sc.merkleRoots.merkleRoot(int(action.B))
 				if err != nil {
 					return skymodules.RenterContract{}, err
 				}
-				rootUpdates[action.B] = newRootUpdateUpdateRoot(rootB)
+				ruB = newRootUpdateUpdateRoot(rootB)
 			}
-			rootUpdates[action.A], rootUpdates[action.B] = rootUpdates[action.B], rootUpdates[action.A]
+			ruA.root, ruB.root = ruB.root, ruA.root
+			rootUpdates[action.A] = ruA
+			rootUpdates[action.B] = ruB
 
 		case modules.WriteActionUpdate:
 			return skymodules.RenterContract{}, errors.New("update not supported")

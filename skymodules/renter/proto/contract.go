@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -474,23 +473,14 @@ func (c *SafeContract) managedRecordRootUpdates(rev types.FileContractRevision, 
 	updates := []writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
 	}
-	lowestTrimIdx := uint64(math.MaxUint64)
 	for rootIdx, update := range rootUpdates {
-		if update.trim && rootIdx < lowestTrimIdx {
-			lowestTrimIdx = rootIdx
-		} else {
+		if !update.trim {
 			updates = append(updates, c.makeUpdateSetRoot(update.root, int(rootIdx)))
+		} else if update.trim && !update.appended {
+			err := errors.New("trimming from a contract is not yet supported")
+			build.Critical(err)
+			return nil, err
 		}
-	}
-	if lowestTrimIdx < math.MaxUint64 {
-		// NOTE: This is fine. We can trim from a contract as long as we append
-		// to it within the same RPC which is what we do when we replace a
-		// sector. Since we don't have any other use for trimming at the moment
-		// this is good enough for now. We will need to revisit this once we
-		// start working on garbage collection.
-		err := errors.New("trimming from a contract is not yet supported")
-		build.Critical(err)
-		return nil, err
 	}
 	if build.Release == "testing" {
 		rcUpdate, err := c.makeUpdateRefCounterAppend()
@@ -1059,7 +1049,7 @@ func (cs *ContractSet) ConvertV130Contract(c V130Contract, cr V130CachedRevision
 		if len(cr.MerkleRoots) == sc.merkleRoots.len()+1 {
 			root := cr.MerkleRoots[len(cr.MerkleRoots)-1]
 			_, err = sc.managedRecordRootUpdates(cr.Revision, map[uint64]rootUpdate{
-				uint64(len(cr.MerkleRoots)): newRootUpdateUpdateRoot(root),
+				uint64(len(cr.MerkleRoots)): newRootUpdateAppendRoot(root),
 			}, types.ZeroCurrency, types.ZeroCurrency)
 		} else {
 			_, err = sc.managedRecordDownloadIntent(cr.Revision, types.ZeroCurrency)
