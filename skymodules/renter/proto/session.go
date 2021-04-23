@@ -186,24 +186,6 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ skymodules.RenterC
 	return s.write(sc, actions)
 }
 
-type rootUpdate struct {
-	appended bool
-	trim     bool
-	root     crypto.Hash
-}
-
-func newRootUpdateTrimRoot() rootUpdate {
-	return rootUpdate{trim: true}
-}
-
-func newRootUpdateAppendRoot(root crypto.Hash) rootUpdate {
-	return rootUpdate{root: root, appended: true}
-}
-
-func newRootUpdateUpdateRoot(root crypto.Hash) rootUpdate {
-	return rootUpdate{root: root, appended: false}
-}
-
 func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ skymodules.RenterContract, err error) {
 	contract := sc.header // for convenience
 

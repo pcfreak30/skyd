@@ -76,6 +76,36 @@ type contractHeader struct {
 	Utility             skymodules.ContractUtility
 }
 
+// rootUpdate is a helper type that specifies an update to a root.
+type rootUpdate struct {
+	// appended means the root didn't exist before and will be appended to the
+	// contract. Otherwise the update updates an existing root. This field is
+	// useful in combination with trim because a new root that is also trimmed
+	// doesn't require an update on disk since the root didn't exist before
+	// anyway.
+	appended bool
+	// trim indicates that the root is supposed to be trimmed.
+	trim bool
+	// root is the new value of the root. This may be the empty hash if the root
+	// is meant to be trimmed.
+	root crypto.Hash
+}
+
+// newRootUpdateTrimRoot creates a trim update.
+func newRootUpdateTrimRoot() rootUpdate {
+	return rootUpdate{trim: true}
+}
+
+// newRootUpdateAppendRoot creates an append update.
+func newRootUpdateAppendRoot(root crypto.Hash) rootUpdate {
+	return rootUpdate{root: root, appended: true}
+}
+
+// newRootUpdateUpdateRoot creates a regular update.
+func newRootUpdateUpdateRoot(root crypto.Hash) rootUpdate {
+	return rootUpdate{root: root, appended: false}
+}
+
 // validate returns an error if the contractHeader is invalid.
 func (h *contractHeader) validate() error {
 	if len(h.Transaction.FileContractRevisions) == 0 {
