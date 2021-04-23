@@ -7,7 +7,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 type (
@@ -44,7 +43,8 @@ type (
 		staticNotifyFunc          func(*modules.SignedRegistryValue) error
 		staticSubscriberID        subscriberID
 		staticSubscriptionManager *registrySubscriptionManager
-		notificationMu            sync.Mutex
+
+		mu sync.Mutex
 	}
 
 	// subscriberID is a helper type to uniquely identify a subscriber.
@@ -97,31 +97,28 @@ func (sm *registrySubscriptionManager) Notify(notifications ...modules.RPCRegist
 }
 
 // Close closes the subscriber and unsubscribes it from all entries.
-func (subscriber *renterSubscriber) Close() error {
-	sm := subscriber.staticSubscriptionManager
-	sm.managedUnsubscribeAll(subscriber.staticSubscriberID)
+func (rs *renterSubscriber) Close() error {
+	rs.managedUnsubscribeAll()
 	return nil
 }
 
 // Subscribe subscribes the subscriber to an entry.
-func (subscriber *renterSubscriber) Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *modules.SignedRegistryValue {
-	sm := subscriber.staticSubscriptionManager
-	return sm.managedSubscribe(spk, tweak, subscriber)
+func (rs *renterSubscriber) Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *modules.SignedRegistryValue {
+	return rs.managedSubscribe(spk, tweak)
 }
 
 // Unsubscribe unsubscribes the subscriber from an entry.
-func (subscriber *renterSubscriber) Unsubscribe(eid modules.RegistryEntryID) {
-	sm := subscriber.staticSubscriptionManager
-	sm.managedUnsubscribe(subscriber.staticSubscriberID, eid)
+func (rs *renterSubscriber) Unsubscribe(eid modules.RegistryEntryID) {
+	rs.managedUnsubscribe(eid)
 }
 
 // threadedNotify notifies a subscriber about an updated entry.
-func (subscriber *renterSubscriber) threadedNotify(eid modules.RegistryEntryID, srv *modules.SignedRegistryValue) {
-	subscriber.notificationMu.Lock()
-	defer subscriber.notificationMu.Unlock()
+func (rs *renterSubscriber) threadedNotify(eid modules.RegistryEntryID, srv *modules.SignedRegistryValue) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
 
 	// Check if subscriber is interested in the change.
-	latestSRV, exists := subscriber.subscriptions[eid]
+	latestSRV, exists := rs.subscriptions[eid]
 	if !exists {
 		return
 	}
@@ -132,13 +129,13 @@ func (subscriber *renterSubscriber) threadedNotify(eid modules.RegistryEntryID, 
 	}
 
 	// Notify subscriber.
-	err := subscriber.staticNotifyFunc(srv)
+	err := rs.staticNotifyFunc(srv)
 	if err != nil {
 		return // notification func will log error
 	}
 
 	// If the notification was successful, we update the latest value.
-	subscriber.subscriptions[eid] = srv
+	rs.subscriptions[eid] = srv
 }
 
 // Get allows for fetching the latest value of a subscribed entry from the
@@ -171,40 +168,50 @@ func (sm *registrySubscriptionManager) NewSubscriber(notifyFunc func(*modules.Si
 }
 
 // managedSubscribe subscribes a subscriber to an entry.
-func (sm *registrySubscriptionManager) managedSubscribe(spk types.SiaPublicKey, tweak crypto.Hash, sub *renterSubscriber) *modules.SignedRegistryValue {
+func (rs *renterSubscriber) managedSubscribe(spk types.SiaPublicKey, tweak crypto.Hash) *modules.SignedRegistryValue {
+	sm := rs.staticSubscriptionManager
 	eid := modules.DeriveRegistryEntryID(spk, tweak)
 
 	// Check if the subscription exists already. If not, create it.
 	sm.mu.Lock()
-	rs, subExists := sm.subscriptions[eid]
+	sub, subExists := sm.subscriptions[eid]
 	if !subExists {
-		rs = &renterSubscription{
+		sub = &renterSubscription{
 			staticSPK:   spk,
 			staticTweak: tweak,
 			subscribers: make(map[subscriberID]struct{}),
 		}
-		sm.subscriptions[eid] = rs
+		sm.subscriptions[eid] = sub
 	}
+
+	// Add the subscriber to the subscription.
+	sub.subscribers[rs.staticSubscriberID] = struct{}{}
+
+	// Get the latest value of the sub.
+	latestValue := sub.latestValue
+
+	// Add the subscription to the subscriber if it doesn't exist yet. We do
+	// this last to avoid holding the sm.mu.
+	defer func() {
+		rs.mu.Lock()
+		_, exists := rs.subscriptions[eid]
+		if !exists {
+			rs.subscriptions[eid] = latestValue
+		}
+		rs.mu.Unlock()
+	}()
 
 	// Check if subscriber exists already. If not, create it.
-	sid := sub.staticSubscriberID
-	subscriber, exists := sm.subscribers[sid]
+	sid := rs.staticSubscriberID
+	_, exists := sm.subscribers[sid]
 	if !exists {
-		subscriber = sub
-		sm.subscribers[sid] = subscriber
-	}
-
-	// Add the subscription to the subscriber if it doesn't exist yet.
-	_, exists = subscriber.subscriptions[eid]
-	if !exists {
-		subscriber.subscriptions[eid] = rs.latestValue
-		rs.subscribers[sid] = struct{}{}
+		sm.subscribers[sid] = rs
 	}
 
 	// If the sub wasn't new, return the latest known value.
 	if subExists {
 		sm.mu.Unlock()
-		return rs.latestValue
+		return latestValue
 	}
 
 	// Otherwise, update the workers. They will notify us as soon as a value
@@ -215,30 +222,22 @@ func (sm *registrySubscriptionManager) managedSubscribe(spk types.SiaPublicKey, 
 	return nil
 }
 
-// Unsubscribe unsubscribes a subscriber from a single entry.
-func (sm *registrySubscriptionManager) managedUnsubscribe(sid subscriberID, eid modules.RegistryEntryID) {
+// managedUnsubscribe unsubscribes a subscriber from a single entry.
+func (rs *renterSubscriber) managedUnsubscribe(eid modules.RegistryEntryID) {
+	rs.mu.Lock()
+	delete(rs.subscriptions, eid)
+	rs.mu.Unlock()
+
+	// Unsubscribe. If this was the last subscriber, delete the
+	// subscription.
+	sm := rs.staticSubscriptionManager
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	sm.unsubscribe(sid, eid)
-}
-
-// unsubscribe unsubscribes a subscriber from a single entry.
-func (sm *registrySubscriptionManager) unsubscribe(sid subscriberID, eid modules.RegistryEntryID) {
-	// Get subscriber.
-	rs, exists := sm.subscribers[sid]
-	if !exists {
-		build.Critical("unsubscribing from unknown sid")
-		return
-	}
-	delete(rs.subscriptions, eid)
-
-	// Unsubscribe. If this was the last the last subscriber, delete the
-	// subscription.
 	sub, exists := sm.subscriptions[eid]
 	if !exists {
 		return // nothing to do
 	}
-	delete(sub.subscribers, sid)
+	delete(sub.subscribers, rs.staticSubscriberID)
 	if len(sub.subscribers) == 0 {
 		delete(sm.subscriptions, eid)
 	}
@@ -246,22 +245,21 @@ func (sm *registrySubscriptionManager) unsubscribe(sid subscriberID, eid modules
 
 // UnsubscribeAll completely unsubsribes a subscriber and all related
 // subscriptions.
-func (sm *registrySubscriptionManager) managedUnsubscribeAll(sid subscriberID) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	// Get subscriber.
-	us, exists := sm.subscribers[sid]
-	if !exists {
-		build.Critical("unsubscribing unknown subscriber")
-		return
-	}
-	// Unsubscribe from all subscribed entries.
-	for eid := range us.subscriptions {
-		sm.unsubscribe(sid, eid)
-	}
+func (rs *renterSubscriber) managedUnsubscribeAll() {
 	// Remove subscriber from sm.subscribers.
-	delete(sm.subscribers, sid)
+	sm := rs.staticSubscriptionManager
+	sm.mu.Lock()
+	delete(sm.subscribers, rs.staticSubscriberID)
+	sm.mu.Unlock()
+
+	// Unsubscribe from all subscribed entries.
+	rs.mu.Lock()
+	oldSubscriptions := rs.subscriptions
+	rs.subscriptions = make(map[modules.RegistryEntryID]*modules.SignedRegistryValue)
+	rs.mu.Unlock()
+	for eid := range oldSubscriptions {
+		rs.managedUnsubscribe(eid)
+	}
 }
 
 // builSubscriptionRequests creates subscription requests from all currently

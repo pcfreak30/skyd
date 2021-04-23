@@ -268,8 +268,8 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 		if !reflect.DeepEqual(*sm.subscriptions[eid].latestValue, srv1) {
 			return errors.New("wrong latest value")
 		}
-		subscriber.notificationMu.Lock()
-		defer subscriber.notificationMu.Unlock()
+		subscriber.mu.Lock()
+		defer subscriber.mu.Unlock()
 		if subscriber.subscriptions[eid] == nil || !reflect.DeepEqual(*subscriber.subscriptions[eid], srv1) {
 			return errors.New("wrong latest value")
 		}
@@ -291,8 +291,8 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 		if !reflect.DeepEqual(*sm.subscriptions[eid].latestValue, srv1) {
 			return errors.New("wrong latest value")
 		}
-		subscriber.notificationMu.Lock()
-		defer subscriber.notificationMu.Unlock()
+		subscriber.mu.Lock()
+		defer subscriber.mu.Unlock()
 		if !reflect.DeepEqual(*subscriber.subscriptions[eid], srv1) {
 			return errors.New("wrong latest value")
 		}
@@ -314,8 +314,8 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 		if !reflect.DeepEqual(*sm.subscriptions[eid].latestValue, srv2) {
 			return errors.New("wrong latest value")
 		}
-		subscriber.notificationMu.Lock()
-		defer subscriber.notificationMu.Unlock()
+		subscriber.mu.Lock()
+		defer subscriber.mu.Unlock()
 		if !reflect.DeepEqual(*subscriber.subscriptions[eid], srv2) {
 			return errors.New("wrong latest value")
 		}
@@ -339,8 +339,8 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 		if !reflect.DeepEqual(*sm.subscriptions[eid].latestValue, srv3) {
 			return errors.New("wrong latest value")
 		}
-		subscriber.notificationMu.Lock()
-		defer subscriber.notificationMu.Unlock()
+		subscriber.mu.Lock()
+		defer subscriber.mu.Unlock()
 		if !reflect.DeepEqual(*subscriber.subscriptions[eid], srv2) {
 			return errors.New("wrong latest value")
 		}
@@ -459,12 +459,14 @@ func testSubscriptionManagerSubscribeUnsubscribeParallel(t *testing.T, r *Renter
 	wgUnsubscribe.Wait()
 
 	// Check subscribers and subscriptions.
+	sm.mu.Lock()
 	if len(sm.subscribers) != n {
 		t.Errorf("subscribers %v != %v", len(sm.subscribers), n)
 	}
 	if len(sm.subscriptions) != n {
 		t.Errorf("subscriptions %v != %v", len(sm.subscriptions), n)
 	}
+	sm.mu.Unlock()
 
 	// Unblock them.
 	close(unsubscribe)
@@ -479,10 +481,12 @@ func testSubscriptionManagerSubscribeUnsubscribeParallel(t *testing.T, r *Renter
 	wgTicker.Wait()
 
 	// Check subscribers and subscriptions.
+	sm.mu.Lock()
 	if len(sm.subscribers) != 0 {
 		t.Errorf("subscribers %v != %v", len(sm.subscribers), 0)
 	}
 	if len(sm.subscriptions) != 0 {
 		t.Errorf("subscriptions %v != %v", len(sm.subscriptions), 0)
 	}
+	sm.mu.Unlock()
 }
