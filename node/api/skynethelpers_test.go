@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -10,6 +11,9 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -22,6 +26,7 @@ func TestSkynetHelpers(t *testing.T) {
 	t.Run("BuildETag", testBuildETag)
 	t.Run("ParseSkylinkURL", testParseSkylinkURL)
 	t.Run("ParseUploadRequestParameters", testParseUploadRequestParameters)
+	t.Run("MonetizedRateLimit", testMonetizedRateLimit)
 }
 
 // testBuildETag verifies the functionality of the buildETag helper function
@@ -416,5 +421,150 @@ func testParseUploadRequestParameters(t *testing.T) {
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
+	}
+}
+
+func testMonetizedRateLimit(t *testing.T) {
+	t.Parallel()
+
+	// Declare some vars for testing.
+	// emptyCR is an empty conversion rates map.
+	emptyCR := make(map[string]types.Currency)
+	// cr contains a conversion rate of 1SC == $1 for simplicity.
+	cr := map[string]types.Currency{
+		skymodules.CurrencyUSD: types.SiacoinPrecision,
+	}
+
+	// Helper function to create metadata for testing.
+	md := func(amt, length uint64) skymodules.SkyfileMetadata {
+		return skymodules.SkyfileMetadata{
+			Monetization: &skymodules.Monetization{
+				License: skymodules.LicenseMonetization,
+				Monetizers: []skymodules.Monetizer{
+					{
+						Amount:   types.SiacoinPrecision.Mul64(amt),
+						Currency: skymodules.CurrencyUSD,
+					},
+				},
+			},
+			Length: length,
+		}
+	}
+
+	tests := []struct {
+		md         skymodules.SkyfileMetadata
+		cr         map[string]types.Currency
+		scps       uint64
+		err        error
+		bps        int64
+		packetSize uint64
+	}{
+		// no monetization
+		{
+			md:         skymodules.SkyfileMetadata{},
+			bps:        0,
+			cr:         cr,
+			scps:       0,
+			err:        nil,
+			packetSize: 0,
+		},
+		// 1SC monetization, 1SC per second, 100 bytes Should result in 100bps
+		// to be able to download the file within 1 second.
+		{
+			md:         md(1, 100),
+			bps:        100,
+			cr:         cr,
+			scps:       1,
+			err:        nil,
+			packetSize: modules.SectorSize,
+		},
+		// 100SC monetization, 1SC per second, 100 byte Should result in 1bps
+		// to be able to download the file within 1 second.
+		{
+			md:         md(100, 100),
+			bps:        1,
+			cr:         cr,
+			scps:       1,
+			err:        nil,
+			packetSize: modules.SectorSize,
+		},
+		// 100 monetization, 1SC per second, 200 byte Should result in 2bps.
+		{
+			md:         md(100, 200),
+			bps:        2,
+			cr:         cr,
+			scps:       1,
+			err:        nil,
+			packetSize: modules.SectorSize,
+		},
+		// 200 monetization, 1SC per second, 100 byte Should result in <1bps
+		// which is too low and returns an error.
+		{
+			md:         md(200, 100),
+			bps:        2,
+			cr:         cr,
+			scps:       1,
+			err:        errInsufficientSCPS,
+			packetSize: modules.SectorSize,
+		},
+		// No conversion rate.
+		{
+			md:         md(1, 100),
+			bps:        0,
+			cr:         emptyCR,
+			scps:       1,
+			err:        skymodules.ErrInvalidCurrency,
+			packetSize: modules.SectorSize,
+		},
+		// 0SC per second. Results in error.
+		{
+			md:         md(1, 100),
+			bps:        0,
+			cr:         cr,
+			scps:       0,
+			err:        errInsufficientSCPS,
+			packetSize: modules.SectorSize,
+		},
+		// 0 length file's can't be ratelimited and therefore not monetized.
+		// Results in error.
+		{
+			md:         md(1, 0),
+			bps:        0,
+			cr:         cr,
+			scps:       1,
+			err:        errInsufficientSCPS,
+			packetSize: modules.SectorSize,
+		},
+		// 1SC monetization, huge scps, 1 byte. Should result in 0bps.
+		{
+			md:         md(1, 1),
+			bps:        0,
+			cr:         cr,
+			scps:       math.MaxUint64,
+			err:        nil,
+			packetSize: modules.SectorSize,
+		},
+	}
+
+	for i, test := range tests {
+		rl, err := newMonetizedRateLimit(test.md, test.cr, types.SiacoinPrecision.Mul64(test.scps))
+		if test.err == nil && err != nil {
+			t.Fatal(i, err)
+		} else if test.err != nil && !errors.Contains(err, test.err) {
+			t.Fatal(i, "wrong error", test.err, err)
+		}
+		if test.err != nil {
+			continue
+		}
+		readBPS, writeBPS, packetSize := rl.Limits()
+		if readBPS != 0 {
+			t.Fatal(i, "reads shouldn't be ratelimited")
+		}
+		if writeBPS != test.bps {
+			t.Fatalf("%v: wrong bps %v != %v", i, writeBPS, test.bps)
+		}
+		if packetSize != test.packetSize {
+			t.Fatalf("%v: wrong packetSize %v != %v", i, packetSize, test.packetSize)
+		}
 	}
 }

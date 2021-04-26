@@ -532,10 +532,22 @@ func serveZip(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMet
 	return
 }
 
+var errInsufficientSCPS = errors.New("monetization failed since it would result in <1 bps download speeds")
+
+// newMonetizedRateLimit creates a ratelimit from the monetization settings
+// within a skyfile's metadata and a given user bandwidth given in SC per
+// second.
+// NOTE: Any monetization that results in a bandwidh of <1 bps will return an
+// error.  That's because the ralimit only supports integer values for bps and
+// because 1 bps is already borderline over http.
 func newMonetizedRateLimit(md skymodules.SkyfileMetadata, conversionRates map[string]types.Currency, scps types.Currency) (*ratelimit.RateLimit, error) {
 	monetization := md.Monetization
 	if monetization == nil {
 		return ratelimit.NewRateLimit(0, 0, 0), nil
+	}
+
+	if scps.IsZero() {
+		return nil, errInsufficientSCPS
 	}
 
 	// Get the amount of SC this monetization is worth in total.
@@ -544,15 +556,21 @@ func newMonetizedRateLimit(md skymodules.SkyfileMetadata, conversionRates map[st
 		return nil, err
 	}
 
-	// Convert it to SC per byte.
-	scpb := sc.Div64(md.Length)
+	// Calculate how many seconds the download should take.
+	seconds := sc.Div(scps)
 
-	// Calculate how many bytes we can send per second.
-	bps := scps.Div(scpb).Big().Int64()
+	var bps int64
+	if seconds.IsZero() {
+		bps = 0 // no limit since the user's bandwidth is so great that the rate rounds down to 0.
+	} else {
+		// Divide the length by the seconds to get the bps.
+		bps = types.NewCurrency64(md.Length).Div(seconds).Big().Int64()
 
-	// Check bps is not 0 since that would result in no limit.
-	if bps == 0 {
-		return nil, errors.New("can't create a monetized rate limit with 0 bps")
+		// Check bps is not <=0 since that would result in no limit when seconds
+		// was clearly >0 before. That means that seconds >> length.
+		if bps <= 0 {
+			return nil, errInsufficientSCPS
+		}
 	}
 
 	// Create a ratelimit that limits writes to bps and has a packet size of
