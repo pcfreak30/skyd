@@ -618,7 +618,7 @@ func skynetskylinkcomparecmd(expectedSkylink string, filename string) {
 		fmt.Println("Generated", skylink.String())
 		die("Generated Skylink not Equal to Expected")
 	}
-	fmt.Println("Generate Skylink as Expected!")
+	fmt.Println("Generated Skylink as Expected!")
 }
 
 // skynetskylinklayoutcmd prints the SkyfileLayout of the skylink.

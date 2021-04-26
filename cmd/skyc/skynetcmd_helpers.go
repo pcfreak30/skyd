@@ -134,8 +134,7 @@ func smallSkyfileDownload(skylink string) (fileData []byte, sl skymodules.Skyfil
 		}
 	} else {
 		// Download the SkyfileLayout and SkyfileMetadata from the portal
-		url := skynetDownloadPortal + "/" + skylink
-		url += "?include-layout=" + fmt.Sprintf("%t", true)
+		url := fmt.Sprintf("%s/%s?include-layout=true&nocache=true", skynetDownloadPortal, skylink)
 		resp, err := http.Get(url)
 		if err != nil {
 			return nil, sl, sm, errors.AddContext(err, "unable to download from the portal")
