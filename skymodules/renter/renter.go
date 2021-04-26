@@ -206,6 +206,7 @@ type cachedUtilities struct {
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
 	// Skynet Management
+	staticSkylinkManager    *skylinkManager
 	staticSkynetBlocklist   *skynetblocklist.SkynetBlocklist
 	staticSkynetPortals     *skynetportals.SkynetPortals
 	staticSpendingHistory   *spendingHistory
@@ -1057,6 +1058,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 
 	r := &Renter{
+		// Initiate skynet resources
+		staticSkylinkManager: newSkylinkManager(),
+
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
 		// download heap loop, searching for a chunk that's not there. This is

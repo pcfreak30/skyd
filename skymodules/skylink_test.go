@@ -1,7 +1,7 @@
 package skymodules
 
 import (
-	"encoding/base32"
+	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -380,10 +380,37 @@ func TestSkylinkAutoExamples(t *testing.T) {
 	}
 }
 
+// TestSkylinkSiaPath probes the skylink's SiaPath method
+func TestSkylinkSiaPath(t *testing.T) {
+	t.Parallel()
+
+	// Manual create the expect SiaPath
+	var sl Skylink
+	str := sl.String()
+	siaPathStr := filepath.Join(str[:2], str[2:4], str[4:])
+	expected, err := NewSiaPath(siaPathStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab SiaPath
+	siaPath, err := sl.SiaPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compare
+	if !expected.Equals(siaPath) {
+		t.Fatal("SiaPaths not equal", expected, siaPath)
+	}
+}
+
 // TestNewSkylinkV2 is a unit test for NewSkylinkV2.
 func TestNewSkylinkV2(t *testing.T) {
-	var spk types.SiaPublicKey
-	fastrand.Read(spk.Key[:])
+	var key crypto.PublicKey
+	fastrand.Read(key[:])
+	spk := types.Ed25519PublicKey(key)
+
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
 	sid := modules.DeriveRegistryEntryID(spk, tweak)
@@ -399,10 +426,4 @@ func TestNewSkylinkV2(t *testing.T) {
 	if sl.Version() != 2 {
 		t.Fatal("skylink has wrong version")
 	}
-}
-
-// Base32EncodedString converts Skylink to a base32 encoded string.
-func (sl Skylink) Base32EncodedString() string {
-	// Encode the raw bytes to base32
-	return base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString(sl.Bytes())
 }

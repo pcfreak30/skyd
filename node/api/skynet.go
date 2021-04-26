@@ -24,6 +24,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
 )
 
@@ -766,7 +767,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.Layout(), offset, size)
+		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.RawMetadata(), streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -782,7 +783,15 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, metadataForPath, streamer.Layout(), offset, size)
+		// NOTE: we don't have an actual raw metadata for the subpath. So we are
+		// marshaling the temporary metadata. This should be good enough since
+		// the metadata can't be used to create a skylink anyway.
+		rawMetadataForPath, err := json.Marshal(metadataForPath)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
+			return
+		}
+		streamer, err = NewLimitStreamer(streamer, metadataForPath, rawMetadataForPath, streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -1548,4 +1557,66 @@ func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Reques
 	WriteJSON(w, SkynetRestorePOST{
 		Skylink: skylink.String(),
 	})
+}
+
+// skynetSkylinkUnpinHandlerPOST will unpin a skylink from this Sia node.
+func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	strLink := ps.ByName("skylink")
+	var skylink skymodules.Skylink
+	err := skylink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to parse query params: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the siaPath
+	var siaPath skymodules.SiaPath
+	siaPathStr := queryForm.Get("siapath")
+	if siaPathStr != "" {
+		// If a siaPath was provided, load it and also generate an extended
+		// siaPath
+		err = siaPath.LoadString(siaPathStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to parse siapath: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		extendedSiaPath, err := skymodules.NewSiaPath(siaPath.String() + skymodules.ExtendedSuffix)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to create extended siapath: %v", err)}, http.StatusBadRequest)
+			return
+		}
+
+		// Try and delete skyfile
+		err = api.renter.DeleteFile(siaPath)
+		if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			WriteError(w, Error{fmt.Sprintf("failed to delete skyfile: %v", err)}, http.StatusBadRequest)
+			return
+		}
+
+		// Try ad delete extended skyfile
+		err = api.renter.DeleteFile(extendedSiaPath)
+		if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			WriteError(w, Error{fmt.Sprintf("failed to delete extended skyfile: %v", err)}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Unpin the Skylink
+	err = api.renter.UnpinSkylink(skylink)
+	if errors.Contains(err, renter.ErrSkylinkBlocked) {
+		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+		return
+	} else if err != nil {
+		WriteError(w, Error{fmt.Sprintf("Failed to unpin skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
 }

@@ -259,7 +259,7 @@ func (c *Client) skynetSkylinkGetWithParametersRaw(skylink string, params map[st
 
 	getQuery := skylinkQueryWithValues(skylink, values)
 	header, fileData, err := c.getRawResponse(getQuery)
-	return header, fileData, errors.AddContext(err, "skynetSkylnkGet with parameters failed getRawResponse")
+	return header, fileData, errors.AddContext(err, "skynetSkylinkGetWithParametersRaw with parameters failed getRawResponse")
 }
 
 // SkynetSkylinkHead uses the /skynet/skylink endpoint to get the headers that
@@ -1019,4 +1019,22 @@ func urlEncodeSkyfileUploadParameters(sup skymodules.SkyfileUploadParameters) (s
 		return "", err
 	}
 	return values.Encode(), nil
+}
+
+// SkynetSkylinkUnpinPost uses the /skynet/unpin endpoint to remove the any
+// files associated with the given skylink from the renter.
+func (c *Client) SkynetSkylinkUnpinPost(skylink string) error {
+	return c.SkynetSkylinkUnpinCustomPost(skylink, skymodules.SiaPath{})
+}
+
+// SkynetSkylinkUnpinCustomPost uses the /skynet/unpin endpoint to remove the
+// any files associated with the given skylink from the renter.
+func (c *Client) SkynetSkylinkUnpinCustomPost(skylink string, siaPath skymodules.SiaPath) error {
+	values := url.Values{}
+	if !siaPath.IsEmpty() {
+		values.Set("siapath", siaPath.String())
+	}
+	query := fmt.Sprintf("/skynet/unpin/%s?%s", skylink, values.Encode())
+	_, _, err := c.postRawResponse(query, nil)
+	return err
 }
