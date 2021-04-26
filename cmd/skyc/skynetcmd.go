@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/vbauerster/mpb/v5/decor"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"go.sia.tech/siad/crypto"
@@ -135,6 +137,40 @@ by --public if you want it to be publicly available.`,
 		Short: "Restore a skyfile from a backup file.",
 		Long:  "Restore a skyfile from a backup file.",
 		Run:   wrap(skynetrestorecmd),
+	}
+
+	skynetSkylinkCmd = &cobra.Command{
+		Use:   "skylink",
+		Short: "Perform various util functions for a skylink.",
+		Long: `Perform various util functions for a skylink like check the layout
+metadata, or recomputing.`,
+		Run: skynetskylinkcmd,
+	}
+
+	skynetSkylinkCompareCmd = &cobra.Command{
+		Use:   "compare [skylink] [metadata filename]",
+		Short: "Compare a skylink to a regenerated skylink",
+		Long: `This command regenerates a skylink by doing the following:
+First, it reads some provided metadata from the provided filename.
+Second, it downloads the skylink and records the metadata, layout, and filedata.
+Third, it compares the downloaded metadata to the metadata read from disk.
+Fourth, it computesthe base sector and then the skylink from the downloaded information.
+Lastly, it compares the generated skylink to the skylink that was passed in.`,
+		Run: wrap(skynetskylinkcomparecmd),
+	}
+
+	skynetSkylinkLayoutCmd = &cobra.Command{
+		Use:   "layout [skylink]",
+		Short: "Print the layout associated with a skylink",
+		Long:  "Print the layout associated with a skylink",
+		Run:   wrap(skynetskylinklayoutcmd),
+	}
+
+	skynetSkylinkMetadataCmd = &cobra.Command{
+		Use:   "metadata [skylink]",
+		Short: "Print the metadata associated with a skylink",
+		Long:  "Print the metadata associated with a skylink",
+		Run:   wrap(skynetskylinkmetadatacmd),
 	}
 
 	skynetUnpinCmd = &cobra.Command{
@@ -448,7 +484,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 // provided SiaPath
 func skynetPin(skylink string, siaPath skymodules.SiaPath) (string, error) {
 	// Check if --portal was set
-	if skynetPinPortal == "" {
+	if skynetDownloadPortal == "" {
 		spp := skymodules.SkyfilePinParameters{
 			SiaPath: siaPath,
 			Root:    skynetUploadRoot,
@@ -458,8 +494,8 @@ func skynetPin(skylink string, siaPath skymodules.SiaPath) (string, error) {
 	}
 
 	// Download skyfile from the Portal
-	fmt.Printf("Downloading Skyfile from %v ...", skynetPinPortal)
-	url := skynetPinPortal + "/" + skylink
+	fmt.Printf("Downloading Skyfile from %v ...", skynetDownloadPortal)
+	url := skynetDownloadPortal + "/" + skylink
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to download from portal")
@@ -537,6 +573,81 @@ func skynetrestorecmd(backupPath string) {
 		die("Unable to restore skyfile:", err)
 	}
 	fmt.Println("Restore successful! Skylink: ", skylink)
+}
+
+// skynetskylinkcmd displays the usage info for the command.
+func skynetskylinkcmd(cmd *cobra.Command, args []string) {
+	_ = cmd.UsageFunc()(cmd)
+	os.Exit(exitCodeUsage)
+}
+
+// skynetskylinkcomparecmd compares a provided skylink to with a re-generated
+// skylink based on metadata provided in a metadata.json file and downloading
+// the file data and the layout from the skylink.
+func skynetskylinkcomparecmd(expectedSkylink string, filename string) {
+	// Read Metadata file and trim a potential newline.
+	skyfileMetadataFromFile := fileData(filename)
+	skyfileMetadataFromFile = bytes.TrimSuffix(skyfileMetadataFromFile, []byte{'\n'})
+
+	// Download the skyfile
+	skyfileDownloadedData, layoutFromHeader, skyfileMetadataFromHeader, err := smallSkyfileDownload(expectedSkylink)
+	if err != nil {
+		die(err)
+	}
+
+	// Check if the metadata download is the same as the metadata loaded from disk
+	if !bytes.Equal(skyfileMetadataFromFile, skyfileMetadataFromHeader) {
+		fmt.Println("Metadata read from file", len(skyfileMetadataFromFile))
+		fmt.Println(string(skyfileMetadataFromFile))
+		fmt.Println("Metadata read from header", len(skyfileMetadataFromHeader))
+		fmt.Println(string(skyfileMetadataFromHeader))
+		die("Metadatas not equal")
+	}
+	fmt.Println("Metadatas Equal")
+
+	// build base sector
+	baseSector, fetchSize := skymodules.BuildBaseSector(layoutFromHeader.Encode(), nil, skyfileMetadataFromFile, skyfileDownloadedData)
+	baseSectorRoot := crypto.MerkleRoot(baseSector)
+	skylink, err := skymodules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
+	if err != nil {
+		die(err)
+	}
+
+	if skylink.String() != expectedSkylink {
+		fmt.Println("Expected", expectedSkylink)
+		fmt.Println("Generated", skylink.String())
+		die("Generated Skylink not Equal to Expected")
+	}
+	fmt.Println("Generated Skylink as Expected!")
+}
+
+// skynetskylinklayoutcmd prints the SkyfileLayout of the skylink.
+func skynetskylinklayoutcmd(skylink string) {
+	// Download the layout
+	_, sl, _, err := smallSkyfileDownload(skylink)
+	if err != nil {
+		die(err)
+	}
+	// Print the layout
+	str, err := siatest.PrintJSONProd(sl)
+	if err != nil {
+		die(err)
+	}
+	fmt.Println("Skyfile Layout:")
+	fmt.Println(str)
+}
+
+// skynetskylinkmetadatacmd downloads and prints the SkyfileMetadata for a
+// skylink.
+func skynetskylinkmetadatacmd(skylink string) {
+	// Download the metadata
+	_, _, sm, err := smallSkyfileDownload(skylink)
+	if err != nil {
+		die(err)
+	}
+	// Print the metadata
+	fmt.Println("Skyfile Metadata:")
+	fmt.Println(string(sm))
 }
 
 // skynetunpincmd will unpin and delete either a single or multiple skylinks

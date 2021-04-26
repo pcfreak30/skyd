@@ -321,7 +321,7 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		}
 		legacyFile := len(metadata.Subfiles) == 1 && metadata.Length == 0 && metadata.Monetization == nil
 		if !legacyFile && metadata.Length != totalLength {
-			return errors.New("invalid length set on metadata")
+			return fmt.Errorf("invalid length set on metadata - length: %v, totalLength: %v, subfiles: %v, monetized: %v", metadata.Length, totalLength, len(metadata.Subfiles), metadata.Monetization != nil)
 		}
 	}
 
