@@ -55,12 +55,19 @@ Wallet:
   Siacoin Balance: \d+(\.\d*|) (SC|KS|MS))
 
 Renter:
+File Summary:
   Files:                   \d+
   Total Stored:            \d+(\.\d+|) ( B|kB|MB|GB|TB)
   Total Renewing Data:     \d+(\.\d+|) ( B|kB|MB|GB|TB)
+Repair Status:
+  Last Health Check:       \d+(m)
   Repair Data Remaining:   \d+(\.\d+|) ( B|kB|MB|GB|TB)
   Stuck Repair Remaining:  \d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Stuck Chunks:            \d+
+  Max Health:              \d+(\%)
   Min Redundancy:          (\d+.\d{2}|-)
+  Lost Files:              \d+
+Contract Summary:
   Active Contracts:        \d+
   Passive Contracts:       \d+
   Disabled Contracts:      \d+`

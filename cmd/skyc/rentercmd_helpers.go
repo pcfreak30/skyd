@@ -723,7 +723,7 @@ func renterFilesAndContractSummary() error {
 	fmt.Fprintf(w, "  Repair Data Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateRepairSize))
 	fmt.Fprintf(w, "  Stuck Repair Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateStuckSize))
 	fmt.Fprintf(w, "  Stuck Chunks:\t%v\n", rf.Directories[0].AggregateNumStuckChunks)
-	fmt.Fprintf(w, "  Max Health:\t%v\n", rf.Directories[0].AggregateMaxHealthPercentage)
+	fmt.Fprintf(w, "  Max Health:\t%v%%\n", rf.Directories[0].AggregateMaxHealthPercentage)
 	fmt.Fprintf(w, "  Min Redundancy:\t%v\n", redundancyStr)
 	fmt.Fprintf(w, "  Lost Files:\t%v\n", rf.Directories[0].AggregateNumLostFiles)
 	fmt.Fprint(w, "Contract Summary:\n")
