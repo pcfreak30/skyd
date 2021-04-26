@@ -1,4 +1,4 @@
-package renter
+package skynet
 
 import (
 	"bytes"
@@ -32,7 +32,7 @@ func TestSkynetBackupAndRestore(t *testing.T) {
 		Miners:  1,
 		Portals: 2,
 	}
-	groupDir := renterTestDir(t.Name())
+	groupDir := skynetTestDir(t.Name())
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
