@@ -206,8 +206,11 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 			ru, exists := rootUpdates[newFileSize/modules.SectorSize]
 			if !exists {
 				ru = newRootUpdateAppendRoot(crypto.MerkleRoot(action.Data))
+			} else {
+				ru.root = crypto.MerkleRoot(action.Data)
+				ru.trim = false
 			}
-			ru.trim = false
+			rootUpdates[newFileSize/modules.SectorSize] = ru
 			newFileSize += modules.SectorSize
 
 		case modules.WriteActionTrim:
