@@ -46,6 +46,8 @@ variables:
     ./siatest/renter/contractor
     ./siatest/renter/hostdb
     ./siatest/renterhost
+  siatest_skynet_pkgs: >-
+    ./siatest/skynet
   docker_hub_dev_hook: https://hub.docker.com/api/build/v1/source/57afb708-6926-411b-98fc-44c79f59097c/trigger/513a6d92-9f8b-4f04-b20a-ebd51b193b5d/call/
 
 ###############################################
@@ -262,6 +264,17 @@ siatest-renter-sub-tests:
     - apt-get install -y fuse
     - make test-long run=. pkgs="$siatest_renter_sub_pkgs"
 
+siatest-skynet-tests:
+  <<: *default_test_params
+  cache:
+    key: siatest-skynet-tests-cache
+    paths:
+      - .cache
+  script:
+    - apt-get update
+    - apt-get install -y fuse
+    - make test-long run=. pkgs="$siatest_skynet_pkgs"
+
 ############################
 # Nightly Tests 
 ############################
@@ -345,6 +358,19 @@ siatest-renter-sub-windows-tests-nightly:
   <<: *default_nightly_windows_params
   script:
     - make test-vlong-windows run=. pkgs="$siatest_renter_sub_pkgs"
+
+siatest-skynet-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - apt-get update
+    - apt-get install -y fuse
+    - make test-vlong run=. pkgs="$siatest_skynet_pkgs"
+
+# Windows execution
+siatest-skynet-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong-windows run=. pkgs="$siatest_skynet_pkgs"
 
 ############################
 # Antfarm Tests 

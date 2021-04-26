@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"math/bits"
+	"path/filepath"
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -156,6 +157,12 @@ func validateAndParseV1Bitfield(bitfield uint16) (offset uint64, fetchSize uint6
 		return 0, SkylinkMaxFetchSize, errors.New("invalid bitfield, fetching beyond the limits of the sector")
 	}
 	return offset, fetchSize, nil
+}
+
+// Base32EncodedString converts Skylink to a base32 encoded string.
+func (sl Skylink) Base32EncodedString() string {
+	// Encode the raw bytes to base32
+	return base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString(sl.Bytes())
 }
 
 // Bitfield returns the bitfield of a skylink.
@@ -333,6 +340,19 @@ func (sl Skylink) RegistryEntryID() modules.RegistryEntryID {
 		build.Critical("RegistryEntryID should only be called on v2 skylink")
 	}
 	return modules.RegistryEntryID(sl.merkleRoot)
+}
+
+// SiaPath return a SiaPath derived from the Skylink.
+//
+// NOTE: There is no guarantee that the SiaPath is the current SiaPath for for
+// the Skyfile.
+func (sl Skylink) SiaPath() (SiaPath, error) {
+	str := sl.String()
+	// This assumes the siaPaths for skyfiles are being constructed in a 2 layer
+	// directory scheme where each directory name is 2 bytes, i.e.
+	// aa/aa/remaingbytes
+	siaPathStr := filepath.Join(str[:2], str[2:4], str[4:])
+	return NewSiaPath(siaPathStr)
 }
 
 // String converts Skylink to a string.

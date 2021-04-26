@@ -26,6 +26,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 var (
@@ -1022,7 +1023,7 @@ func (api *API) renterCleanHandlerPOST(w http.ResponseWriter, _ *http.Request, _
 	var deleteErrs error
 	var deleteErrsMu sync.Mutex
 	cleanFunc := func(fi skymodules.FileInfo) {
-		if fi.OnDisk || fi.Redundancy >= 1 {
+		if !siafile.Unrecoverable(fi.MaxHealth, fi.OnDisk) {
 			return
 		}
 		deleteErrsMu.Lock()
