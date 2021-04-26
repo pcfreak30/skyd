@@ -2,7 +2,7 @@
 
 This directory contains all the scripts used to build releases of Sia.
 
-`./release.sh` compiles `siac` and `siad` for each supported system. It places
+`./release.sh` compiles `skyc` and `skyd` for each supported system. It places
 those binaries along with documentation into a separate directory for each
 system type. It also creates a file of SHA256 hashes containing the hash of
 each binary produced.
@@ -27,11 +27,6 @@ systems. That is, anyone with a `linux/amd64` system can reproduce the binaries
 created for **all** systems using this script. In the future this can be
 improved to allow reproducibility on more systems.
 
-`./build-ui.sh` completes the final step of the build process by building the
-`Sia-UI` binaries with the outputs from the previous stages of the build
-process. After this step is complete, the checksum file must be signed and the
-releases are ready.
-
 `./generate-changelog.sh` collects all changelog items for each release version
 from `./changelog` directory and generates a single `CHANGELOG.md` file.  
 The changelog generator readme is located at `../changelog/README.md`
@@ -40,7 +35,6 @@ The changelog generator readme is located at `../changelog/README.md`
 ## Example
 The following list of commands shows how one could use the scripts in this directory to build Sia.
 
-1. `./build-in-docker.sh master v1.4.4`
-2. `./build-ui.sh v1.4.4 ../release/ ~/Sia-UI`
-3. `cd ../release && sha256sum --check Sia-v1.4.4-SHA256SUMS.txt`
-3. `gpg --clearsign --armor Sia-v1.4.4-SHA256SUMS.txt`
+1. `./build-in-docker.sh master v1.6.0`
+1. `cd ../release && sha256sum --check skyd-v1.6.0-SHA256SUMS.txt`
+1. `gpg --clearsign --armor skyd-v1.6.0-SHA256SUMS.txt`
