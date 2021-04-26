@@ -91,6 +91,7 @@ responsibilities.
  - [Refresh Paths Subsystem](#refresh-paths-subsystem)
  - [Skyfile Subsystem](#skyfile-subsystem)
  - [Skyfile Batch Subsystem](#skyfile-batch-subsystem)
+ - [Skylink Manager Subsystem](#skylink-manager-subsystem)
  - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Upload Subsystem](#upload-subsystem)
@@ -580,6 +581,29 @@ a single upload.
  - callUploadStreamFromReader is used in `threadedUploadData` to upload the
    batched data to the Sia network. 
 
+### Skylink Manager Subsystem
+**Key Files**
+ - [skylink.go](./skylink.go)
+
+The skylink manager system is responsible for managing actions that are related
+to skylinks.
+
+The skylink manager manages the unpinning of skylinks by maintaining a list of
+skylinks to be unpinned and when they should be unpinned by. The skylinks are
+unpinned by the bubble code while it iterates over the filesystem.
+
+### Exports
+ - `UnpinSkylink`
+
+**Inbound Complexities**
+ - `callIsUnpinned` is used in `managedCachedFileMetadata` to decide if the file
+     needs to be deleted. 
+ - `callPruneUnpinRequests` is used by the bubble subsystem in
+    `callThreadedProcessBubbleUpdates` to clear outdated unpin requests.
+ - `callUpdatePruneTimeThreshold` is used by the bubble subsystem in
+    `managedPerformBubbleMetadata` to clear update the skylink manager's
+    `pruneTimeThreshold`.
+
 ### Stream Buffer Subsystem
 **Key Files**
  - [streambuffer.go](./streambuffer.go)
@@ -703,7 +727,7 @@ that timestamp and the SiaPath of the directory.
 Once the health loop has found the most out of date directory or sub tree, it
 uses the Refresh Paths subsystem to trigger bubble updates that the Bubble
 subsystem manages. Once the entire renter's directory has been updated within
-the healthCheckInterval the health loop sleeps until the time interval has
+the HealthCheckInterval the health loop sleeps until the time interval has
 passed.
 
 

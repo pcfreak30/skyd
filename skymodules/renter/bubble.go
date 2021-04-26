@@ -48,7 +48,7 @@ type (
 		fifo *bubbleQueue
 
 		// forcedUpdateTime is the time until which bubble updates will be
-		// forced and the healthCheckInterval will be overridden
+		// forced and the HealthCheckInterval will be overridden
 		forcedUpdateTime time.Time
 
 		// staticBubbleNeeded is a channel used to signal the bubbleScheduler that
@@ -190,6 +190,11 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 			if err != nil {
 				bs.staticRenter.staticLog.Printf("WARN: error queuing bubble for parent directory on '%v': %v", siaPath, err)
 			}
+
+			// If we are at root, prune the unpin requests
+			if siaPath.IsRoot() {
+				bs.staticRenter.staticSkylinkManager.callPruneUnpinRequests()
+			}
 		}
 	}
 	var wg sync.WaitGroup
@@ -319,12 +324,12 @@ func (bs *bubbleScheduler) managedPerformBubbleUpdate(siaPath skymodules.SiaPath
 		}
 	}
 
-	// If we are at the root directory then check if any files were found in
-	// need of repair or and stuck chunks and trigger the appropriate repair
-	// loop. This is only done at the root directory as the repair and stuck
-	// loops start at the root directory so there is no point triggering them
-	// until the root directory is updated
 	if siaPath.IsRoot() {
+		// If we are at the root directory then check if any files were found in
+		// need of repair or and stuck chunks and trigger the appropriate repair
+		// loop. This is only done at the root directory as the repair and stuck
+		// loops start at the root directory so there is no point triggering
+		// them until the root directory is updated
 		if skymodules.NeedsRepair(metadata.AggregateHealth) {
 			select {
 			case r.staticUploadHeap.repairNeeded <- struct{}{}:
@@ -337,6 +342,8 @@ func (bs *bubbleScheduler) managedPerformBubbleUpdate(siaPath skymodules.SiaPath
 			default:
 			}
 		}
+		// Update the SkylinkManager's pruneTimeThreshold
+		r.staticSkylinkManager.callUpdatePruneTimeThreshold(metadata.AggregateLastHealthCheckTime)
 	}
 	return err
 }

@@ -559,7 +559,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 	defer r.tg.Done()
 
 	// Loop until the renter has shutdown or until the renter's top level files
-	// directory has a LasHealthCheckTime within the healthCheckInterval
+	// directory has a LasHealthCheckTime within the HealthCheckInterval
 	for {
 		select {
 		// Check to make sure renter hasn't been shutdown

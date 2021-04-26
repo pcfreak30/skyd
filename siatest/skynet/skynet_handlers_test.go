@@ -1,4 +1,4 @@
-package renter
+package skynet
 
 import (
 	"net/http"

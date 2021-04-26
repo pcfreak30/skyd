@@ -1,4 +1,4 @@
-package renter
+package skynet
 
 import (
 	"bytes"
@@ -29,7 +29,7 @@ func TestSkykey(t *testing.T) {
 		Miners:  1,
 		Portals: 1,
 	}
-	groupDir := renterTestDir(t.Name())
+	groupDir := skynetTestDir(t.Name())
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{

@@ -25,9 +25,19 @@ func ChunkSize(minPieces uint64, ct crypto.CipherType) uint64 {
 
 // PrintJSON is a helper function that wraps the jsonMarshalIndent function
 func PrintJSON(a interface{}) string {
-	json, err := json.MarshalIndent(a, "", "  ")
+	str, err := PrintJSONProd(a)
 	if err != nil {
 		panic(err)
 	}
-	return string(json)
+	return str
+}
+
+// PrintJSONProd is a helper function that wraps the jsonMarshalIndent function
+// and returns the error instead of panicing.
+func PrintJSONProd(a interface{}) (string, error) {
+	json, err := json.MarshalIndent(a, "", "\t")
+	if err != nil {
+		return "", err
+	}
+	return string(json), nil
 }

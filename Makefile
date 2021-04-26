@@ -42,6 +42,7 @@ lockcheckpkgs = \
 	./siatest/renter/contractor \
 	./siatest/renter/hostdb \
 	./siatest/renterhost \
+	./siatest/skynet \
 	./skykey \
 	./skymodules \
 	./skymodules/accounting \
@@ -58,8 +59,8 @@ lockcheckpkgs = \
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
 pkgs = \
-  $(lockcheckpkgs) \
-	./skymodules/renter \
+	$(lockcheckpkgs) \
+	./skymodules/renter 
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
@@ -134,10 +135,10 @@ release-util:
 clean:
 ifneq ("$(OS)","Windows_NT")
 # Linux
-	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release
+	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf docker fullcover release
 else
 # Windows
-	- DEL /F /Q cover doc\whitepaper.aux doc\whitepaper.log doc\whitepaper.pdf fullcover release
+	- DEL /F /Q cover doc\whitepaper.aux doc\whitepaper.log doc\whitepaper.pdf docker fullcover release
 endif
 
 test:
@@ -158,6 +159,23 @@ test-vlong-windows: clean
 	MD cover
 	SET GORACE='$(racevars)'
 	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
+
+# docker-ci launches a docker container to run tests in the same
+# environment as the online CI.
+#
+# Output from the docker ci can be found in the created docker folder. An
+# output.txt file contains the stdout and stderr output and the test artifacts
+# can be found in docker/SiaTesting
+docker-ci: clean
+	@mkdir docker
+	@docker build . -f siatest/Dockerfile -t skytest-ci
+	@docker run --cpus="1" --name test -di skytest-ci
+	@docker exec -it test make docker-test-long pkgs=$(pkgs) run=$(run) count=$(count) 2>&1 | tee docker/output.txt
+	@docker cp test:/tmp/SiaTesting ./docker/SiaTesting || true
+	@docker stop test || true && docker rm test || true
+# docker-test-long allows for running long tests faster in the docker container
+docker-test-long:
+	GORACE='$(racevars)' go test -race -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)
@@ -207,5 +225,5 @@ whitepaper:
 	@pdflatex -output-directory=doc whitepaper.tex > /dev/null
 	pdflatex -output-directory=doc whitepaper.tex
 
-.PHONY: all fmt install release clean test test-v test-long cover whitepaper
+.PHONY: all fmt install release clean test test-v test-long cover whitepaper docker-ci docker-test-long
 
