@@ -424,6 +424,8 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 }
 
+// testMonetizedRateLimit is a unit test for the ratelimit returned by
+// newMonetizedRateLimit.
 func testMonetizedRateLimit(t *testing.T) {
 	t.Parallel()
 
