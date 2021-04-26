@@ -647,7 +647,7 @@ func skynetskylinkmetadatacmd(skylink string) {
 	}
 	// Print the metadata
 	fmt.Println("Skyfile Metadata:")
-	fmt.Println(sm)
+	fmt.Println(string(sm))
 }
 
 // skynetunpincmd will unpin and delete either a single or multiple skylinks
