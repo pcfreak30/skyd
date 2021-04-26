@@ -28,7 +28,7 @@ func TestLimitStreamer(t *testing.T) {
 	// test the limitreader where we wrap it, but at offset 0 and for the full
 	// length of the data
 	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
-	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, skymodules.SkyfileLayout{}, 0, uint64(len(data)))
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 0, uint64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestLimitStreamer(t *testing.T) {
 
 	// test limit reader at offset
 	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
-	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, skymodules.SkyfileLayout{}, 20, uint64(len(data)))
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 20, uint64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestLimitStreamer(t *testing.T) {
 
 	// test limit reader at offset with length
 	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
-	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, skymodules.SkyfileLayout{}, 20, 13)
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 20, 13)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestLimitStreamer(t *testing.T) {
 
 	// try to force it outside of the bounds
 	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
-	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, skymodules.SkyfileLayout{}, 20, 13)
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 20, 13)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestLimitStreamer(t *testing.T) {
 
 	// try to force it outside of the bounds
 	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
-	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, skymodules.SkyfileLayout{}, 20, 13)
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 20, 13)
 	if err != nil {
 		t.Fatal(err)
 	}

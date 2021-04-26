@@ -82,10 +82,10 @@ var (
 
 	// Skynet Flags
 	skynetBlocklistHash            bool   // Indicates if the input for the blocklist is already a hash.
-	skynetDownloadPortal           string // Portal to use when trying to download a skylink.
+	skynetDownloadPortal           string // Portal to use when performing download or pin requests.
 	skynetLsRecursive              bool   // List files of folder recursively.
 	skynetLsRoot                   bool   // Use root as the base instead of the Skynet folder.
-	skynetPinPortal                string // Portal to use when trying to pin a skylink.
+	skynetUnpinRoot                bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadDefaultPath        string // Specify the file to serve when no specific file is specified.
 	skynetUploadDisableDefaultPath bool   // This skyfile will not have a default path. The only way to use it is to download it.
 	skynetUploadDryRun             bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
@@ -384,7 +384,8 @@ func initCmds() *cobra.Command {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetBackupCmd, skynetBlocklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetIsBlockedCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetRestoreCmd, skynetUnpinCmd, skynetUploadCmd)
+	skynetCmd.AddCommand(skynetBackupCmd, skynetBlocklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetIsBlockedCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetRestoreCmd, skynetSkylinkCmd, skynetUnpinCmd, skynetUploadCmd)
+	skynetCmd.PersistentFlags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete download or pin requests")
 	skynetConvertCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
 	skynetConvertCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by id.")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
@@ -395,15 +396,16 @@ func initCmds() *cobra.Command {
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "", false, "Don't report progress while uploading")
 	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by its key identifier.")
 	skynetUploadCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
+	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
-	skynetPinCmd.Flags().StringVar(&skynetPinPortal, "portal", "", "Use a Skynet portal to download the skylink in order to pin the skyfile")
 	skynetBlocklistCmd.AddCommand(skynetBlocklistAddCmd, skynetBlocklistRemoveCmd)
 	skynetBlocklistAddCmd.Flags().BoolVar(&skynetBlocklistHash, "hash", false, "Indicates if the input is already a hash of the Skylink's Merkleroot")
 	skynetBlocklistRemoveCmd.Flags().BoolVar(&skynetBlocklistHash, "hash", false, "Indicates if the input is already a hash of the Skylink's Merkleroot")
 	skynetPortalsCmd.AddCommand(skynetPortalsAddCmd, skynetPortalsRemoveCmd)
 	skynetPortalsAddCmd.Flags().BoolVar(&skynetPortalPublic, "public", false, "Add this Skynet portal as public")
+	skynetSkylinkCmd.AddCommand(skynetSkylinkCompareCmd, skynetSkylinkLayoutCmd, skynetSkylinkMetadataCmd)
 
 	root.AddCommand(skykeyCmd)
 	skykeyCmd.AddCommand(skykeyAddCmd, skykeyCreateCmd, skykeyDeleteCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
