@@ -2006,8 +2006,9 @@ func TestRenewFailing(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:  4,
-		Miners: 1,
+		Hosts:   1,
+		Miners:  1,
+		Renters: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -2033,15 +2034,11 @@ func TestRenewFailing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add a regular renter.
-	nodes, err = tg.AddNodes(node.RenterTemplate)
-	if err != nil {
-		t.Fatal(err)
-	}
-	renter := nodes[0]
+	// Grab the renter
+	renter := tg.Renters()[0]
 
-	// All the contracts of the renter should be goodForRenew. So there should
-	// be no inactive contracts, only active contracts
+	// All the contracts of the renter should be goodForRenew.  So there should
+	// only be active contracts
 	err = siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -2057,56 +2054,80 @@ func TestRenewFailing(t *testing.T) {
 		hostMap[pk.String()] = host
 	}
 
-	// Get the contracts
+	// Get the contracts and initial endHeight
 	rcg, err := renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
+	endHeight := rcg.ActiveContracts[0].EndHeight
 
-	// Wait until the contract is supposed to be renewed.
+	// Get the current blockheight
 	cg, err := renter.ConsensusGet()
 	if err != nil {
 		t.Fatal(err)
 	}
+	blockHeight := cg.Height
+
+	// Get the renewWindow
 	rg, err := renter.RenterGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	miner := tg.Miners()[0]
-	blockHeight := cg.Height
 	renewWindow := rg.Settings.Allowance.RenewWindow
-	for blockHeight+renewWindow+1 < rcg.ActiveContracts[0].EndHeight {
-		if err := miner.MineBlock(); err != nil {
-			t.Fatal(err)
+
+	// Create helper
+	miner := tg.Miners()[0]
+	mineAndSync := func(n int) error {
+		// Mine Blocks
+		err = miner.MineBlocksN(n)
+		if err != nil {
+			return err
 		}
-		blockHeight++
+		// Make sure the testgroup is synced after mining
+		err = tg.Sync()
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 
-	// There should be no inactive contracts, only active contracts since we are
-	// 1 block before the renewWindow/s second half. Do this in a retry to give
-	// the contractor some time to catch up.
-	err = build.Retry(int(renewWindow/2), time.Second, func() error {
-		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
-	})
+	// Mine blocks until we are 1 block before the renewWindow
+	blocksToMine := endHeight - blockHeight - renewWindow - 1
+	err = mineAndSync(int(blocksToMine))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// mine enough blocks to reach the second half of the renew window.
-	for ; blockHeight+rg.Settings.Allowance.RenewWindow/2+1 < rcg.ActiveContracts[0].EndHeight; blockHeight++ {
-		if err := miner.MineBlock(); err != nil {
-			t.Fatal(err)
-		}
-		blockHeight++
+	// We should still only have active contracts because we haven't entered the
+	// renew window yet.
+	err = siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine halfway through the renew Window
+	blocksToMine = renewWindow / 2
+	err = mineAndSync(int(blocksToMine))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// We should be within the second half of the renew window now. We keep
 	// mining blocks until the host with the locked wallet has been replaced.
 	// This should happen before we reach the endHeight of the contracts. This
 	// means we should have number of hosts - 1 active contracts, number of
-	// hosts - 1 renewed contracts, and one of the disabled contract which will
-	// be the host that has the locked wallet
-	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), time.Second, func() error {
+	// hosts - 1 renewed contracts, and one disabled contract which will be the
+	// host that has the locked wallet.
+	err = build.Retry(int(renewWindow/2-1), time.Second, func() error {
+		// Blockheight sanity check
+		cg, err := renter.ConsensusGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cg.Height > endHeight {
+			t.Fatal("Test Setup Error: blockheight exceeded contract endheight", cg.Height, endHeight)
+		}
+		// Mine Block
 		if err := miner.MineBlock(); err != nil {
 			return err
 		}
