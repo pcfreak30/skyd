@@ -2570,6 +2570,7 @@ func TestFreshSettingsForRenew(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2603,12 +2604,14 @@ func TestFreshSettingsForRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(rc.ActiveContracts) == 0 {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("No active contracts")
 	}
 	endHeight := rc.ActiveContracts[0].EndHeight
 
 	// Mine blocks to force contract renewal
 	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2653,6 +2656,7 @@ func TestFreshSettingsForRenew(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2666,6 +2670,7 @@ func TestFreshSettingsForRenew(t *testing.T) {
 		return siatest.CheckExpectedNumberOfContracts(r, 1, 0, 0, 0, 2, 0)
 	})
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
