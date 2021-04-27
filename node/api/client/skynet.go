@@ -142,7 +142,7 @@ func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string,
 		return "", err
 	}
 
-	// Also fetch it from the decdicated endpoint and compare them.
+	// Also fetch it from the dedicated endpoint and compare them.
 	url, err := url.Parse(uploader.Url())
 	if err != nil {
 		return "", err
