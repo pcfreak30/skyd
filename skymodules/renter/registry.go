@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
@@ -291,6 +292,11 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // response. Otherwise the response with the highest revision number will be
 // used.
 func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (modules.SignedRegistryValue, error) {
+	// Start tracing.
+	tracer := opentracing.GlobalTracer()
+	span := tracer.StartSpan("managedReadRegistry")
+	defer span.Finish()
+
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
