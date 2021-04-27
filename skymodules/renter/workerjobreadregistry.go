@@ -163,19 +163,25 @@ func (w *worker) newJobReadRegistry(ctx context.Context, span opentracing.Span, 
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
 func (w *worker) newJobReadRegistrySID(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
+	jobSpan := opentracing.StartSpan("ReadRegistryJob", opentracing.ChildOf(span.Context()))
+	jobSpan.SetTag("Host", w.staticHostPubKeyStr)
 	return &jobReadRegistry{
 		staticSiaPublicKey:    spk,
 		staticRegistryEntryID: sid,
 		staticTweak:           tweak,
 		staticResponseChan:    responseChan,
-		staticSpan:            span,
+		staticSpan:            jobSpan,
 		jobGeneric:            newJobGeneric(ctx, w.staticJobReadRegistryQueue, nil),
 	}
 }
 
 // callDiscard will discard a job, sending the provided error.
 func (j *jobReadRegistry) callDiscard(err error) {
+	// Log info and finish span.
 	j.staticSpan.LogKV("callDiscard", err)
+	j.staticSpan.SetTag("success", false)
+	defer j.staticSpan.Finish()
+
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobReadRegistryResponse{
@@ -198,8 +204,11 @@ func (j *jobReadRegistry) callExecute() {
 	start := time.Now()
 	w := j.staticQueue.staticWorker()
 
+	// Finish job span at the end.
+	j.staticSpan.Finish()
+
+	// Capture callExecute in new span.
 	span := opentracing.GlobalTracer().StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
-	span.SetTag("Host", w.staticHostPubKeyStr)
 	defer span.Finish()
 
 	// Prepare a method to send a response asynchronously.
