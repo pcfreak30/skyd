@@ -205,7 +205,7 @@ func (j *jobReadRegistry) callExecute() {
 	w := j.staticQueue.staticWorker()
 
 	// Finish job span at the end.
-	j.staticSpan.Finish()
+	defer j.staticSpan.Finish()
 
 	// Capture callExecute in new span.
 	span := opentracing.GlobalTracer().StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
@@ -258,7 +258,7 @@ func (j *jobReadRegistry) callExecute() {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
 		span.LogKV("error", err)
-		span.SetTag("success", false)
+		j.staticSpan.SetTag("success", false)
 		return
 	}
 
@@ -273,7 +273,7 @@ func (j *jobReadRegistry) callExecute() {
 			sendResponse(nil, errHostLowerRevisionThanCache)
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
 			span.LogKV("error", errHostLowerRevisionThanCache)
-			span.SetTag("success", false)
+			j.staticSpan.SetTag("success", false)
 			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, true) // adjust the cache
 			return
 		} else if !cached || srv.Revision > cachedRevision {
@@ -283,7 +283,7 @@ func (j *jobReadRegistry) callExecute() {
 
 	// Success.
 	jobTime := time.Since(start)
-	span.SetTag("success", true)
+	j.staticSpan.SetTag("success", true)
 
 	// Send the response and report success.
 	sendResponse(srv, nil)
