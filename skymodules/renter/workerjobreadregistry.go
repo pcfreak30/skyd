@@ -167,6 +167,8 @@ func (w *worker) newJobReadRegistry(ctx context.Context, span opentracing.Span, 
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
 func (w *worker) newJobReadRegistrySID(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
+	span = opentracing.StartSpan("ReadRegistryJob", opentracing.ChildOf(span.Context()))
+	span.LogKV("Host", w.staticHostPubKeyStr)
 	return &jobReadRegistry{
 		staticSiaPublicKey:    spk,
 		staticRegistryEntryID: sid,
@@ -251,6 +253,7 @@ func (j *jobReadRegistry) callExecute() {
 	if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
+		span.SetTag("failure", err)
 		return
 	}
 
@@ -264,6 +267,7 @@ func (j *jobReadRegistry) callExecute() {
 		if cached && cachedRevision > srv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
+			span.SetTag("failure", errHostLowerRevisionThanCache)
 			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, true) // adjust the cache
 			return
 		} else if !cached || srv.Revision > cachedRevision {

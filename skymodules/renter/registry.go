@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -296,6 +297,13 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	tracer := opentracing.GlobalTracer()
 	span := tracer.StartSpan("managedReadRegistry")
 	defer span.Finish()
+
+	// Log some info about this trace.
+	span.LogKV("SID", hex.EncodeToString(rid[:]))
+	if spk != nil && tweak != nil {
+		span.LogKV("SPK", spk.String())
+		span.LogKV("Tweak", tweak.String())
+	}
 
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
