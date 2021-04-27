@@ -246,6 +246,7 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		// Replace element to remove with the last one and drop it.
 		goodResps[i] = goodResps[len(goodResps)-1]
 		goodResps = goodResps[:len(goodResps)-1]
+		i--
 	}
 
 	// Sort the good responses by completion time.
