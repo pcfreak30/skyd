@@ -79,7 +79,7 @@ func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool) (spk typ
 }
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
-func lookupRegistry(w *worker, span opentracing.Span, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*modules.SignedRegistryValue, error) {
+func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*modules.SignedRegistryValue, error) {
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
@@ -108,14 +108,10 @@ func lookupRegistry(w *worker, span opentracing.Span, sid modules.RegistryEntryI
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	executeSpan := span.Tracer().StartSpan("managedExecuteProgram", opentracing.ChildOf(span.Context()))
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryRead, cost)
 	if err != nil {
-		executeSpan.LogKV("err", err)
-		executeSpan.Finish()
 		return nil, errors.AddContext(err, "Unable to execute program")
 	}
-	executeSpan.Finish()
 	for _, resp := range responses {
 		if resp.Error != nil {
 			return nil, errors.AddContext(resp.Error, "Output error")
@@ -167,8 +163,6 @@ func (w *worker) newJobReadRegistry(ctx context.Context, span opentracing.Span, 
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
 func (w *worker) newJobReadRegistrySID(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
-	span = opentracing.StartSpan("ReadRegistryJob", opentracing.ChildOf(span.Context()))
-	span.LogKV("Host", w.staticHostPubKeyStr)
 	return &jobReadRegistry{
 		staticSiaPublicKey:    spk,
 		staticRegistryEntryID: sid,
@@ -205,6 +199,7 @@ func (j *jobReadRegistry) callExecute() {
 	w := j.staticQueue.staticWorker()
 
 	span := opentracing.GlobalTracer().StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+	span.SetTag("Host", w.staticHostPubKeyStr)
 	defer span.Finish()
 
 	// Prepare a method to send a response asynchronously.
@@ -249,11 +244,12 @@ func (j *jobReadRegistry) callExecute() {
 	}
 
 	// Read the value.
-	srv, err := lookupRegistry(w, span, j.staticRegistryEntryID, spk, tweak)
+	srv, err := lookupRegistry(w, j.staticRegistryEntryID, spk, tweak)
 	if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
-		span.SetTag("failure", err)
+		span.LogKV("error", err)
+		span.SetTag("success", false)
 		return
 	}
 
@@ -267,7 +263,8 @@ func (j *jobReadRegistry) callExecute() {
 		if cached && cachedRevision > srv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-			span.SetTag("failure", errHostLowerRevisionThanCache)
+			span.LogKV("error", errHostLowerRevisionThanCache)
+			span.SetTag("success", false)
 			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, true) // adjust the cache
 			return
 		} else if !cached || srv.Revision > cachedRevision {
@@ -277,6 +274,7 @@ func (j *jobReadRegistry) callExecute() {
 
 	// Success.
 	jobTime := time.Since(start)
+	span.SetTag("success", true)
 
 	// Send the response and report success.
 	sendResponse(srv, nil)

@@ -56,7 +56,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 
 	// Manually try to read the entry from the host.
 	span := opentracing.GlobalTracer().StartSpan(t.Name())
-	lookedUpRV, err := lookupRegistry(wt.worker, span, sid, &spk, &tweak)
+	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &tweak)
 	span.Finish()
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +154,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	wt.staticJobUpdateRegistryQueue.mu.Unlock()
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err = lookupRegistry(wt.worker, testSpan(), sid, &spk, &tweak)
+	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err = lookupRegistry(wt.worker, testSpan(), sid, &spk, &tweak)
+	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err := lookupRegistry(wt.worker, testSpan(), sid, &spk, &tweak)
+	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
