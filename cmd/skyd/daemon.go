@@ -23,7 +23,6 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-lib/metrics"
 
-	"github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 	jaegerlog "github.com/uber/jaeger-client-go/log"
 )
@@ -273,16 +272,9 @@ func startDaemon(config Config) (err error) {
 func initTracer() (io.Closer, error) {
 	// Sample configuration for testing. Use constant sampling to sample every trace
 	// and enable LogSpan to log every span via configured Logger.
-	cfg := jaegercfg.Configuration{
-		ServiceName: "Skyd",
-		Sampler: &jaegercfg.SamplerConfig{
-			Type:  jaeger.SamplerTypeConst,
-			Param: 1,
-		},
-		Reporter: &jaegercfg.ReporterConfig{
-			LogSpans:           true,
-			LocalAgentHostPort: "10.10.10.65:16686",
-		},
+	cfg, err := jaegercfg.FromEnv()
+	if err != nil {
+		return nil, err
 	}
 
 	// Example logger and metrics factory. Use github.com/uber/jaeger-client-go/log
