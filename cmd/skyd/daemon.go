@@ -280,7 +280,8 @@ func initTracer() (io.Closer, error) {
 			Param: 1,
 		},
 		Reporter: &jaegercfg.ReporterConfig{
-			LogSpans: true,
+			LogSpans:           true,
+			LocalAgentHostPort: "10.10.10.65:16686",
 		},
 	}
 
