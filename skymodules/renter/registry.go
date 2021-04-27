@@ -299,7 +299,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	defer span.Finish()
 
 	// Log some info about this trace.
-	span.LogKV("SID", hex.EncodeToString(rid[:]))
+	span.LogKV("RID", hex.EncodeToString(rid[:]))
 	if spk != nil && tweak != nil {
 		span.LogKV("SPK", spk.String())
 		span.LogKV("Tweak", tweak.String())
