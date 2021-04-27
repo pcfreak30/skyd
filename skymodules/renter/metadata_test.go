@@ -194,6 +194,11 @@ func TestDirectoryMetadatas(t *testing.T) {
 // TestCalculateDirectoryMetadata probes the callCalculateDirectoryMetadata
 // method
 func TestCalculateDirectoryMetadata(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create renter with deps
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
