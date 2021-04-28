@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -137,7 +138,24 @@ func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string,
 	}
 	// After the upload, fetch the skylink from the metadata.
 	skylink, err := SkylinkFromTUSURL(tc, uploader.Url())
-	return skylink, err
+	if err != nil {
+		return "", err
+	}
+
+	// Also fetch it from the dedicated endpoint and compare them.
+	url, err := url.Parse(uploader.Url())
+	if err != nil {
+		return "", err
+	}
+	uploadID := filepath.Base(url.Path)
+	skylink2, err := c.SkylinkFromTUSID(uploadID)
+	if err != nil {
+		return "", err
+	}
+	if skylink != skylink2 {
+		return "", err
+	}
+	return skylink, nil
 }
 
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
@@ -929,6 +947,30 @@ func SkylinkFromTUSURL(tc *tus.Client, url string) (_ string, err error) {
 		return "", errors.New("failed to decode skylink")
 	}
 	return string(skylink), nil
+}
+
+// SkylinkFromTUSID fetches the skylink of a finished TUS upload by the upload's
+// ID.
+func (c *Client) SkylinkFromTUSID(id string) (string, error) {
+	header, data, err := c.getRawResponse(fmt.Sprintf("/skynet/upload/tus/%s", id))
+	if err != nil {
+		return "", err
+	}
+	var stsg api.SkynetTUSSkylinkGET
+	err = json.Unmarshal(data, &stsg)
+	if err != nil {
+		return "", err
+	}
+	skylinkHeader := header["Skynet-Skylink"]
+	if len(skylinkHeader) != 1 {
+		return "", errors.New("SkylinkFromTUSID: Skynet-Skylink header has wrong length")
+	}
+	bodySkylink := stsg.Skylink
+	headerSkylink := skylinkHeader[0]
+	if headerSkylink != bodySkylink {
+		return "", fmt.Errorf("SkylinkFromTUSID: skylink mismatch %v != %v", headerSkylink, bodySkylink)
+	}
+	return headerSkylink, nil
 }
 
 // skylinkQueryWithValues returns a skylink query based on the given skylink and
