@@ -135,6 +135,10 @@ func (c *Contractor) Allowance() skymodules.Allowance {
 	return c.allowance
 }
 
+func (c *Contractor) SyncRevision(fcid types.FileContractID, hostRevTxn types.Transaction) {
+
+}
+
 // ContractPublicKey returns the public key capable of verifying the renter's
 // signature on a contract.
 func (c *Contractor) ContractPublicKey(pk types.SiaPublicKey) (crypto.PublicKey, bool) {

@@ -170,6 +170,8 @@ type hostContractor interface {
 	// synced with the peer-to-peer network.
 	Synced() <-chan struct{}
 
+	SyncRevision(fcid types.FileContractID, hostRevTxn types.Transaction) error
+
 	// UpdateWorkerPool updates the workerpool currently in use by the contractor.
 	UpdateWorkerPool(skymodules.WorkerPool)
 }

@@ -1,9 +1,12 @@
 package renter
 
 import (
+	"fmt"
 	"strings"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 )
@@ -78,4 +81,49 @@ func (w *worker) staticSetSuspectRevisionMismatch() {
 // atomicSuspectRevisionMismatch flag has been set.
 func (w *worker) staticSuspectRevisionMismatch() bool {
 	return atomic.LoadUint64(&w.staticLoopState.atomicSuspectRevisionMismatch) == 1
+}
+
+func (w *worker) managedSyncRevision() error {
+	// Build the program.
+	pt := w.staticPriceTable().staticPriceTable
+	fcid := w.staticCache().staticContractID
+	pb := modules.NewProgramBuilder(&pt, 0)
+	pb.AddRevisionInstruction()
+
+	program, programData := pb.Program()
+	cost, _, _ := pb.Cost(true)
+
+	// TODO: account for bandwidth more accurately.
+	ulBandwidth, dlBandwidth := uint64(4096), uint64(4096)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	cost = cost.Add(bandwidthCost)
+
+	// Execute the program and parse the response.
+	// TODO: f/u extend the spending details with a category for revision
+	// downloads.
+	responses, _, err := w.managedExecuteProgram(program, programData, fcid, categoryDownload, cost)
+	if err != nil {
+		return errors.AddContext(err, "Unable to execute revision program")
+	}
+	if len(responses) != 1 {
+		return fmt.Errorf("managedSyncRevision: invalid number of responses %v != %v", len(responses), 1)
+	}
+	response := responses[0]
+	if response.Error != nil {
+		return errors.AddContext(response.Error, "managedSyncRevision: output error")
+	}
+
+	// Unmarshal response
+	var resp modules.MDMInstructionRevisionResponse
+	err = encoding.Unmarshal(response.Output, &resp)
+	if err != nil {
+		return errors.AddContext(err, "managedSyncRevision: failed to unmarshal revision from response")
+	}
+
+	// Finishing syncing revision.
+	err = w.staticRenter.staticHostContractor.SyncRevision(fcid, resp.RevisionTxn)
+	if err != nil {
+		return errors.AddContext(err, "managedSyncRevision: failed to sync revision")
+	}
+	return nil
 }

@@ -95,22 +95,32 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	}
 	// Set the new Session contract.
 	s.contractID = id
+	// Verify the claimed revision.
+	err := verifyHostRevision(resp.Revision, resp.Signatures, secretKey, s.host.PublicKey, s.height)
+	if err != nil {
+		return resp.Revision, resp.Signatures, errors.AddContext(err, "failed to verify revision presented by host")
+	}
+
+	return resp.Revision, resp.Signatures, nil
+}
+
+func verifyHostRevision(revision types.FileContractRevision, sigs []types.TransactionSignature, secretKey crypto.SecretKey, hpk types.SiaPublicKey, height types.BlockHeight) error {
 	// Verify the public keys in the claimed revision.
 	expectedUnlockConditions := types.UnlockConditions{
 		PublicKeys: []types.SiaPublicKey{
 			types.Ed25519PublicKey(secretKey.PublicKey()),
-			s.host.PublicKey,
+			hpk,
 		},
 		SignaturesRequired: 2,
 	}
-	if resp.Revision.UnlockConditions.UnlockHash() != expectedUnlockConditions.UnlockHash() {
-		return resp.Revision, resp.Signatures, errors.New("host's claimed revision has wrong unlock conditions")
+	if revision.UnlockConditions.UnlockHash() != expectedUnlockConditions.UnlockHash() {
+		return errors.New("host's claimed revision has wrong unlock conditions")
 	}
 	// Verify the claimed signatures.
-	if err := modules.VerifyFileContractRevisionTransactionSignatures(resp.Revision, resp.Signatures, s.height); err != nil {
-		return resp.Revision, resp.Signatures, errors.AddContext(err, "unable to verify signatures on contract revision")
+	if err := modules.VerifyFileContractRevisionTransactionSignatures(revision, sigs, height); err != nil {
+		return errors.AddContext(err, "unable to verify signatures on contract revision")
 	}
-	return resp.Revision, resp.Signatures, nil
+	return nil
 }
 
 // Unlock calls the Unlock RPC, unlocking the currently-locked contract.
