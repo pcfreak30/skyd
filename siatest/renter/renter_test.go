@@ -5271,8 +5271,8 @@ func TestRenterPricesVolatility(t *testing.T) {
 	}
 }
 
-// TestRenterPricesVolatility verifies that the renter caches its price
-// estimation, and subsequent calls result in non-volatile results.
+// TestRenterLimitGFUContracts verifies that the renter properly limits the
+// number of GFU contracts.
 func TestRenterLimitGFUContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -5300,7 +5300,7 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 	renter := tg.Renters()[0]
 
 	// Helper to check the number of GFU contracts.
-	test := func(hosts uint64, portalMode bool, preferredHosts map[string]struct{}) error {
+	test := func(hosts uint64, portalMode bool, preferredHosts map[string]struct{}) (map[string]struct{}, error) {
 		// Update the allowance.
 		allowance := siatest.DefaultAllowance
 		allowance.Hosts = hosts
@@ -5309,24 +5309,33 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 		}
 		err := renter.RenterPostAllowance(allowance)
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		// Wait for the number of hosts to match allowance.
 		retries := 0
-		return build.Retry(100, 100*time.Millisecond, func() error {
+		newPH := make(map[string]struct{})
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			// Make sure we are starting with a clean map each iteration in case
+			// there was an error
+			newPH = make(map[string]struct{})
+
+			// Mine a block every 10 iterates with help with contract
+			// maintenance
 			if retries%10 == 0 {
 				err := tg.Miners()[0].MineBlock()
 				if err != nil {
-					t.Fatal(err)
+					return err
 				}
 			}
 			retries++
 
+			// Grab the contracts
 			rcg, err := renter.RenterAllContractsGet()
 			if err != nil {
-				t.Fatal(err)
+				return err
 			}
 
+			// Verify the hosts we have contracts with are the ones we expect
 			gfuContracts := uint64(0)
 			for _, contract := range rcg.ActiveContracts {
 				if contract.GoodForUpload {
@@ -5337,50 +5346,50 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 					if _, ok := preferredHosts[contract.HostPublicKey.String()]; !ok {
 						return errors.New("found gfu contract that is not part of the preferred hosts")
 					}
+
+					// Update the new preferred host map
+					newPH[contract.HostPublicKey.String()] = struct{}{}
 				}
 			}
+			// Final check that we found the expected number of good for upload
+			// contracts
 			if gfuContracts != hosts {
 				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
 			}
 			return nil
 		})
+		if err != nil {
+			return nil, err
+		}
+		// Check that the new preferred Host map is as expected
+		if len(newPH) != int(hosts) {
+			return nil, fmt.Errorf("new preferred hosts map not equal to number of expected hosts; %v != %v", len(newPH), hosts)
+		}
+		return newPH, nil
 	}
 
-	// Helper to get the set of preferred hosts which are the hosts we have gfu
-	// contracts with.
-	preferredHosts := func() map[string]struct{} {
-		ph := make(map[string]struct{})
-		rcg, err := renter.RenterAllContractsGet()
+	// Generate initial preferred host list
+	phs := make(map[string]struct{})
+	for _, h := range tg.Hosts() {
+		pk, err := h.HostPublicKey()
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, contract := range rcg.ActiveContracts {
-			if contract.GoodForUpload {
-				ph[contract.HostPublicKey.String()] = struct{}{}
-			}
-		}
-		return ph
-	}
-	if len(preferredHosts()) != len(tg.Hosts()) {
-		t.Fatal("all hosts should be in the initial set of preferred hosts")
+		phs[pk.String()] = struct{}{}
 	}
 
 	// Run for default allowance and then one less every time until we reach 0
 	// hosts.
-	phs := preferredHosts()
 	for hosts := siatest.DefaultAllowance.Hosts; hosts > 0; hosts-- {
-		// Run for regular node.
-		if err := test(hosts, false, phs); err != nil {
+		// Run for regular node.  Ignore the returned preferred host map
+		_, err = test(hosts, false, phs)
+		if err != nil {
 			t.Fatal(err)
 		}
-		// Run for portal.
-		if err := test(hosts, true, phs); err != nil {
+		// Run for portal.  Record the preferred host map.
+		phs, err = test(hosts, true, phs)
+		if err != nil {
 			t.Fatal(err)
-		}
-		// Update the preferred hosts to match the smaller allowance.
-		phs = preferredHosts()
-		if len(phs) != int(hosts) {
-			t.Fatalf("%v != %v", len(phs), hosts)
 		}
 	}
 }
