@@ -269,6 +269,9 @@ func startDaemon(config Config) (err error) {
 	return nil
 }
 
+// initTracer initializes the opentracer from the environment variables.  For a
+// list of options see
+// https://github.com/jaegertracing/jaeger-client-go#environment-variables.
 func initTracer() (io.Closer, error) {
 	// Sample configuration for testing. Use constant sampling to sample every trace
 	// and enable LogSpan to log every span via configured Logger.
