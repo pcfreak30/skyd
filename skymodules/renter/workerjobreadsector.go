@@ -87,7 +87,15 @@ func (w *worker) ReadSectorLowPrio(ctx context.Context, category spendingCategor
 
 	// Add the job to the queue.
 	if !w.staticJobReadQueue.callAdd(jro) {
-		return nil, errors.New("worker unavailable")
+		// If the Add call fails then the worker is unavailable either for the
+		// queue being killed of the queue being on cooldown.
+		contextStr := "worker unavailable:"
+		if w.staticJobReadQueue.callIsKilled() {
+			contextStr = fmt.Sprintf("%v: job queue killed", contextStr)
+		} else {
+			contextStr = fmt.Sprintf("%v: job queue on cooldown", contextStr)
+		}
+		return nil, errors.New(contextStr)
 	}
 
 	// Wait for the response.

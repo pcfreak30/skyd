@@ -2575,7 +2575,7 @@ func TestRenterLosingHosts(t *testing.T) {
 			if _, ok := contractHosts[pk.String()]; !ok {
 				continue
 			}
-			if err = tg.StopNode(h); err != nil {
+			if err = tg.RemoveNode(h); err != nil {
 				return types.SiaPublicKey{}, err
 			}
 			break
@@ -2668,11 +2668,9 @@ func TestRenterLosingHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Make a call to query the workers to help with NDFs
-	//
-	// Since we need all host to succeed in order to download the file, we are
-	// trying to avoid NDFs due to a connection error with one of the hosts.
-	_, err = r.RenterWorkersGet()
+	// Make sure the testgroup is synced before 1x redundancy download to try
+	// and reduce NDFs
+	err = tg.Sync()
 	if err != nil {
 		t.Fatal(err)
 	}
