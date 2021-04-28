@@ -2668,17 +2668,17 @@ func TestRenterLosingHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify that renter can still download file
+	// Make a call to query the workers to help with NDFs
 	//
-	// Since we need all host to succeed in order to download the file, we
-	// download in a loop to avoid NDFs due to a connection error with one of
-	// the hosts.  If there is an actual problem with the file or the
-	// hosts/contracts then the download will continue to fail and the loop with
-	// return an error.
-	err = build.Retry(10, 100*time.Millisecond, func() error {
-		_, _, err = r.DownloadToDisk(rf, false)
-		return err
-	})
+	// Since we need all host to succeed in order to download the file, we are
+	// trying to avoid NDFs due to a connection error with one of the hosts.
+	_, err = r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that renter can still download file
+	_, _, err = r.DownloadToDisk(rf, false)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
