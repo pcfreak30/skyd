@@ -2568,7 +2568,7 @@ func TestFreshSettingsForRenew(t *testing.T) {
 		})
 	}
 
-	// Make sure we are starting with the exected 1 active contract
+	// Make sure we are starting with the expected 1 active contract
 	err = checkContracts(1, 0, 0)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
@@ -2611,12 +2611,16 @@ func TestFreshSettingsForRenew(t *testing.T) {
 	}
 	endHeight := rc.ActiveContracts[0].EndHeight
 
-	// Mine until the contract is expired to confirm that we couldn't renew it.
+	// Mine to the beginning of the renew period.
 	cg, err := r.ConsensusGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocksToMine := endHeight - cg.Height + 1
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocksToMine := endHeight - cg.Height - rg.Settings.Allowance.RenewWindow
 	err = m.MineBlocksN(int(blocksToMine))
 	if err != nil {
 		t.Fatal(err)
