@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"

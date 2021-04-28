@@ -271,8 +271,11 @@ func (r *Renter) managedSnapshotExists(name string) bool {
 func (r *Renter) managedSaveSnapshot(meta skymodules.UploadedBackup) error {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
+	fmt.Println("=== managedSaveSnapshot")
 	// Check whether we've already saved this snapshot.
+	fmt.Println("Upload Progress", meta.Name, meta.UploadProgress)
 	for i, ub := range r.persist.UploadedBackups {
+		fmt.Println("Upload Progress", ub.Name, ub.UploadProgress)
 		if ub.UID == meta.UID {
 			if ub == meta {
 				// nothing changed
