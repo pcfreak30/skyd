@@ -5317,8 +5317,7 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 			// there was an error
 			newPH = make(map[string]struct{})
 
-			// Mine a block every 10 iterates with help with contract
-			// maintenance
+			// Mine a block every 10 iterates to help with contract maintenance
 			if retries%10 == 0 {
 				err := tg.Miners()[0].MineBlock()
 				if err != nil {

@@ -299,8 +299,8 @@ func TestRemoteBackup(t *testing.T) {
 
 	// Test Params.
 	//
-	// NOTE: was previously 20e3 but there was no comment as to why it was that
-	// big.  Reduced size to a sector
+	// NOTE: filesSize was previously 20e3 but there was no comment as to why it
+	// was that big.  Reduced size to a sector to help with UploadProgress NDF.
 	filesSize := int(modules.SectorSize)
 
 	// Create a testgroup.
