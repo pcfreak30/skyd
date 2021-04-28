@@ -135,8 +135,10 @@ func (c *Contractor) Allowance() skymodules.Allowance {
 	return c.allowance
 }
 
-func (c *Contractor) SyncRevision(fcid types.FileContractID, hostRevTxn types.Transaction) {
-
+// SyncRevision tries to sync the revision of the contract with the provided id
+// with the provided id with the provided revision.
+func (c *Contractor) SyncRevision(fcid types.FileContractID, hostRevTxn types.Transaction) error {
+	return c.staticContracts.SyncRevision(fcid, hostRevTxn)
 }
 
 // ContractPublicKey returns the public key capable of verifying the renter's

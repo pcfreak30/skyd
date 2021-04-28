@@ -40,11 +40,9 @@ func (w *worker) externTryFixRevisionMismatch() {
 	// Unset the flag indicating mismatch suspicion.
 	atomic.StoreUint64(&w.staticLoopState.atomicSuspectRevisionMismatch, 0)
 
-	// TODO: use the host's revision endpoint - which uses RHP3
-
 	// Initiate a session, this performs a handshake with the host and syncs up
 	// the revision if necessary.
-	session, err := w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticRenter.tg.StopChan())
+	err := w.managedSyncRevision()
 
 	// Track the outcome of the revision mismatch fix - this ensures a proper
 	// working of the maintenance cooldown mechanism.
@@ -58,13 +56,6 @@ func (w *worker) externTryFixRevisionMismatch() {
 
 	if err != nil {
 		w.staticRenter.staticLog.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
-		return
-	}
-
-	// Immediately close the session.
-	err = session.Close()
-	if err != nil {
-		w.staticRenter.staticLog.Printf("could not close session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
 
@@ -83,6 +74,8 @@ func (w *worker) staticSuspectRevisionMismatch() bool {
 	return atomic.LoadUint64(&w.staticLoopState.atomicSuspectRevisionMismatch) == 1
 }
 
+// managedSyncRevision fetches the latest revision from the host and tries to
+// sync the worker's revision with the host's again.
 func (w *worker) managedSyncRevision() error {
 	// Build the program.
 	pt := w.staticPriceTable().staticPriceTable

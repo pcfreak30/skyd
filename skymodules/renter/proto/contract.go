@@ -702,6 +702,29 @@ func (c *SafeContract) managedCommitTxns() error {
 	return nil
 }
 
+// SyncRevision tries to sync the revision of the contract with the provided id
+// with the provided id with the provided revision.
+func (cs *ContractSet) SyncRevision(fcid types.FileContractID, hostRevTxn types.Transaction) error {
+	if len(hostRevTxn.FileContractRevisions) != 1 {
+		return errors.New("SyncRevision: txn has invalid number of revisions")
+	}
+	rev := hostRevTxn.FileContractRevisions[0]
+	sigs := hostRevTxn.TransactionSignatures
+
+	// Verify revision first
+	sc, ok := cs.Acquire(fcid)
+	if !ok {
+		return errors.New("SyncRevision: contract not found")
+	}
+	defer cs.Return(sc)
+
+	err := verifyHostRevision(rev, sigs, sc.header.SecretKey, sc.header.HostPublicKey(), sc.header.StartHeight)
+	if err != nil {
+		return errors.New("SyncRevision: failed to verify host revision")
+	}
+	return sc.managedSyncRevision(rev, sigs)
+}
+
 // managedSyncRevision checks whether rev accords with the SafeContract's most
 // recent revision; if it does not, managedSyncRevision attempts to synchronize
 // with rev by committing any uncommitted WAL transactions. If the revisions
