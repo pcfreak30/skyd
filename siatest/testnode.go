@@ -309,7 +309,7 @@ func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterI
 		if err != nil {
 			t.Log(err)
 		}
-		t.Log("Active Hosts from HostDB")
+		t.Log("All Hosts from HostDB")
 		for _, host := range hdbag.Hosts {
 			hostInfo, err := tn.HostDbHostsGet(host.PublicKey)
 			if err != nil {

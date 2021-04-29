@@ -166,11 +166,16 @@ test-vlong-windows: clean
 # Output from the docker ci can be found in the created docker folder. An
 # output.txt file contains the stdout and stderr output and the test artifacts
 # can be found in docker/SiaTesting
+#
+# The `|| true` after some of the docker commands is to allow the script to
+# continue if the command errors. This is useful since some tests don't create
+# test files in /SiaTesting so the copy command would fail and exit before the
+# final commands to stop and remove the container.
 docker-ci: clean
 	@mkdir docker
 	@docker build . -f siatest/Dockerfile -t skytest-ci
 	@docker run --cpus="1" --name test -di skytest-ci
-	@docker exec -it test make docker-test-long pkgs=$(pkgs) run=$(run) count=$(count) 2>&1 | tee docker/output.txt
+	@docker exec test make docker-test-long pkgs=$(pkgs) run=$(run) count=$(count) 2>&1 | tee docker/output.txt
 	@docker cp test:/tmp/SiaTesting ./docker/SiaTesting || true
 	@docker stop test || true && docker rm test || true
 # docker-test-long allows for running long tests faster in the docker container

@@ -187,6 +187,13 @@ func (jq *jobGenericQueue) callKill() {
 	jq.killed = true
 }
 
+// callIsKilled returns whether or not the jobGenericQueue was killed or not
+func (jq *jobGenericQueue) callIsKilled() bool {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return jq.killed
+}
+
 // callLen returns the number of jobs in the queue.
 func (jq *jobGenericQueue) callLen() int {
 	jq.mu.Lock()

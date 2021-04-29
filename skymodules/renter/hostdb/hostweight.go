@@ -277,9 +277,6 @@ func (hdb *HostDB) priceAdjustments(entry skymodules.HostDBEntry, allowance skym
 	if !allowance.MaxUploadBandwidthPrice.IsZero() && entry.UploadBandwidthPrice.Cmp(allowance.MaxUploadBandwidthPrice) > 0 {
 		return math.SmallestNonzeroFloat64
 	}
-	if !allowance.MaxStoragePrice.IsZero() && entry.StoragePrice.Cmp(allowance.MaxStoragePrice) > 0 {
-		return math.SmallestNonzeroFloat64
-	}
 
 	// Convert each element of the allowance into a number of resources that we
 	// expect to use in this contract.
