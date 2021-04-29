@@ -184,6 +184,18 @@ func (stu *skynetTUSUploader) PruneUploads() {
 	}
 }
 
+// Skylink returns the skylink for the upload with the given ID.
+func (stu *skynetTUSUploader) Skylink(id string) (string, bool) {
+	stu.mu.Lock()
+	defer stu.mu.Unlock()
+	upload, exists := stu.uploads[id]
+	if !exists {
+		return "", false
+	}
+	skylink, exists := upload.fi.MetaData["Skylink"]
+	return skylink, exists
+}
+
 // Close closes the upload and underlying filenode.
 func (u *skynetTUSUpload) Close() error {
 	return u.managedClose()

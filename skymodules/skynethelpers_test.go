@@ -250,15 +250,6 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal("unexpected outcome")
 	}
-	invalid = valid
-	invalid.Subfiles["validkey2"] = SkyfileSubfileMetadata{
-		Filename: "validkey2",
-		Len:      10,
-	}
-	err = ValidateSkyfileMetadata(invalid)
-	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata") {
-		t.Fatal("unexpected outcome", err)
-	}
 }
 
 // testEnsurePrefix ensures EnsurePrefix is properly adding prefixes.

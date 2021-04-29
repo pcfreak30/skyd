@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -297,7 +298,10 @@ func TestRemoteBackup(t *testing.T) {
 	t.Parallel()
 
 	// Test Params.
-	filesSize := int(20e3)
+	//
+	// NOTE: filesSize was previously 20e3 but there was no comment as to why it
+	// was that big.  Reduced size to a sector to help with UploadProgress NDF.
+	filesSize := int(modules.SectorSize)
 
 	// Create a testgroup.
 	//
@@ -341,7 +345,7 @@ func TestRemoteBackup(t *testing.T) {
 			return err
 		}
 		// wait for backup to upload
-		return build.Retry(60, time.Second, func() error {
+		return build.Retry(100, 100*time.Second, func() error {
 			ubs, _ := r.RenterBackups()
 			for _, ub := range ubs.Backups {
 				if ub.Name != name {
@@ -355,6 +359,7 @@ func TestRemoteBackup(t *testing.T) {
 		})
 	}
 	if err := createSnapshot("foo"); err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 	// Create a snapshot with the same name again. This should fail.
@@ -374,11 +379,14 @@ func TestRemoteBackup(t *testing.T) {
 	}
 	rf2, err := r.UploadBlocking(lf2, dataPieces, parityPieces, false)
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	if err := createSnapshot("bar"); err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
+	// Delete the file locally.
 	if err := lf2.Delete(); err != nil {
 		t.Fatal(err)
 	}

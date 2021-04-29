@@ -228,8 +228,14 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 
 	// Check if any of the skylinks associated with the siafile are blocked
 	if r.managedIsFileNodeBlocked(fileNode) {
+		err = ErrSkylinkBlocked
 		// Skylink is blocked, return error and try and delete file
-		return skymodules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
+		deleteErr := r.DeleteFile(sup.SiaPath)
+		// Don't bother returning an error if the file doesn't exist
+		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+			err = errors.Compose(err, deleteErr)
+		}
+		return skymodules.Skylink{}, err
 	}
 
 	// Check that the encryption key and erasure code is compatible with the
@@ -295,8 +301,14 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 
 	// Check if the new skylink is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) {
+		err = ErrSkylinkBlocked
 		// Skylink is blocked, return error and try and delete file
-		return skymodules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
+		deleteErr := r.DeleteFile(sup.SiaPath)
+		// Don't bother returning an error if the file doesn't exist
+		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+			err = errors.Compose(err, deleteErr)
+		}
+		return skymodules.Skylink{}, err
 	}
 
 	// Add the skylink to the siafiles.
@@ -415,7 +427,11 @@ func (r *Renter) managedUploadBaseSector(sup skymodules.SkyfileUploadParameters,
 	defer func() {
 		// If there was an error, try and delete the file that was created
 		if err != nil {
-			err = errors.Compose(err, r.DeleteFile(sup.SiaPath))
+			deleteErr := r.DeleteFile(sup.SiaPath)
+			// Don't bother returning an error if the file doesn't exist
+			if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+				err = errors.Compose(err, deleteErr)
+			}
 		}
 		err = errors.Compose(err, fileNode.Close())
 	}()
@@ -548,7 +564,11 @@ func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodul
 	defer func() {
 		// If there was an error, try and delete the file that was created
 		if err != nil {
-			err = errors.Compose(err, r.DeleteFile(sup.SiaPath))
+			deleteErr := r.DeleteFile(sup.SiaPath)
+			// Don't bother returning an error if the file doesn't exist
+			if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+				err = errors.Compose(err, deleteErr)
+			}
 		}
 		err = errors.Compose(err, fileNode.Close())
 	}()
@@ -999,15 +1019,26 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 
 	// Check if any of the skylinks associated with the siafile are blocked
 	if r.managedIsFileNodeBlocked(fileNode) {
+		err = ErrSkylinkBlocked
 		// Skylink is blocked, return error and try and delete file
-		return skymodules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
+		deleteErr := r.DeleteFile(sup.SiaPath)
+		// Don't bother returning an error if the file doesn't exist
+		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+			err = errors.Compose(err, deleteErr)
+		}
+		return skymodules.Skylink{}, err
 	}
 
 	// Add the skylink to the siafiles.
 	err = fileNode.AddSkylink(skylink)
 	if err != nil {
 		err = errors.AddContext(err, "unable to add skylink to the sianodes")
-		return skymodules.Skylink{}, errors.Compose(err, r.DeleteFile(sup.SiaPath))
+		deleteErr := r.DeleteFile(sup.SiaPath)
+		// Don't bother returning an error if the file doesn't exist
+		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+			err = errors.Compose(err, deleteErr)
+		}
+		return skymodules.Skylink{}, err
 	}
 
 	return skylink, nil
@@ -1055,7 +1086,9 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 
 	// Check if skylink is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) && !sup.DryRun {
-		return skymodules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
+		// No need to try and delete the file, the above defer func will handle
+		// the deletion
+		return skymodules.Skylink{}, ErrSkylinkBlocked
 	}
 
 	return skylink, nil

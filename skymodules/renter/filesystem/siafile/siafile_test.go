@@ -109,6 +109,11 @@ func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error 
 
 // TestFileNumChunks checks the numChunks method of the file type.
 func TestFileNumChunks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	fileSize := func(numSectors uint64) uint64 {
 		return numSectors*modules.SectorSize + uint64(fastrand.Intn(int(modules.SectorSize)))
 	}
