@@ -799,10 +799,4 @@ func TestMaxPriceAdjustments(t *testing.T) {
 		t.Fatal("false")
 	}
 	hdb.allowance = DefaultTestAllowance
-
-	hdb.allowance.MaxStoragePrice = entry.StoragePrice.Sub64(1)
-	score = hdb.priceAdjustments(entry, hdb.allowance, types.ZeroCurrency)
-	if score != math.SmallestNonzeroFloat64 {
-		t.Fatal("false")
-	}
 }
