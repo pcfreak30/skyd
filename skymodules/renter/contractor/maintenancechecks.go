@@ -268,7 +268,10 @@ func renewedCheck(u skymodules.ContractUtility, renewed bool) (skymodules.Contra
 // storageGougingCheck makes sure the host's storage price isn't too expensive.
 func storageGougingCheck(allowance skymodules.Allowance, host skymodules.HostDBEntry) (skymodules.ContractUtility, bool) {
 	if !allowance.MaxStoragePrice.IsZero() && host.StoragePrice.Cmp(allowance.MaxStoragePrice) > 0 {
-		return skymodules.ContractUtility{}, true
+		return skymodules.ContractUtility{
+			GoodForUpload: false,
+			GoodForRenew:  false,
+		}, true
 	}
 	return skymodules.ContractUtility{}, false
 }
