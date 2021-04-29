@@ -3279,6 +3279,32 @@ When using the defaults, the overhead is 0 and the dataPieces are 10. That's
 because all files uploaded using this protocol are automatically considered
 large uploads.
 
+The Skylink for a TUS upload can be found at the following endpoint once the
+upload finished successfully.  It will be returned both as a JSON object in
+the response body as well as the http response header `"Skynet-Skylink"`.
+
+## /skynet/upload/tus/:id [GET]
+> curl example  
+
+```bash
+curl "localhost:9980/skynet/upload/tus/72a44879cb93d0cd0c13b285a06ce22ce6cd6c8a"
+```  
+
+returns information about a finished TUS upload.
+
+### Path Parameters
+**id** | string  
+The upload ID specified in the TUS protocol.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "skylink": "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg",
+}
+```
+
 # Skynet
 
 ## /skynet/basesector/*skylink* [GET]

@@ -261,6 +261,26 @@ func (hdb *HostDB) priceAdjustments(entry skymodules.HostDBEntry, allowance skym
 		allowance.ExpectedRedundancy = 1
 	}
 
+	// Check max prices first.
+	if !allowance.MaxRPCPrice.IsZero() && entry.BaseRPCPrice.Cmp(allowance.MaxRPCPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxContractPrice.IsZero() && entry.ContractPrice.Cmp(allowance.MaxContractPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxSectorAccessPrice.IsZero() && entry.SectorAccessPrice.Cmp(allowance.MaxSectorAccessPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && entry.DownloadBandwidthPrice.Cmp(allowance.MaxDownloadBandwidthPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && entry.UploadBandwidthPrice.Cmp(allowance.MaxUploadBandwidthPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxStoragePrice.IsZero() && entry.StoragePrice.Cmp(allowance.MaxStoragePrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+
 	// Convert each element of the allowance into a number of resources that we
 	// expect to use in this contract.
 	contractExpectedDownload := types.NewCurrency64(allowance.ExpectedDownload).Mul64(uint64(allowance.Period)).Div64(allowance.Hosts)
