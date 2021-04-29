@@ -46,9 +46,12 @@ func TestRootSkycCmd(t *testing.T) {
 	IPv6addr := n.Address
 	IPv4Addr := strings.ReplaceAll(n.Address, "[::]", "localhost")
 
+	// Regex helpers
+	// \s+ to match 1 or more spaces. Helpful with the tab writter
+	// \d+ to match a number
 	rootCmdOutPattern := `Consensus:
   Synced: (No|Yes)
-  Height: \d+
+  Height:\s+\d+
 
 Wallet:
 (  Status: Locked|  Status:          unlocked
@@ -56,21 +59,21 @@ Wallet:
 
 Renter:
 File Summary:
-  Files:                   \d+
-  Total Stored:            \d+(\.\d+|) ( B|kB|MB|GB|TB)
-  Total Renewing Data:     \d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Files:\s+\d+
+  Total Stored:\s+\d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Total Renewing Data:\s+\d+(\.\d+|) ( B|kB|MB|GB|TB)
 Repair Status:
-  Last Health Check:       \d+(m)
-  Repair Data Remaining:   \d+(\.\d+|) ( B|kB|MB|GB|TB)
-  Stuck Repair Remaining:  \d+(\.\d+|) ( B|kB|MB|GB|TB)
-  Stuck Chunks:            \d+
-  Max Health:              \d+(\%)
-  Min Redundancy:          (\d+.\d{2}|-)
-  Lost Files:              \d+
+  Last Health Check:\s+\d+(m)
+  Repair Data Remaining:\s+\d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Stuck Repair Remaining:\s+\d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Stuck Chunks:\s+\d+
+  Max Health:\s+\d+(\%)
+  Min Redundancy:\s+(\d+.\d{2}|-)
+  Lost Files:\s+\d+
 Contract Summary:
-  Active Contracts:        \d+
-  Passive Contracts:       \d+
-  Disabled Contracts:      \d+`
+  Active Contracts:\s+\d+
+  Passive Contracts:\s+\d+
+  Disabled Contracts:\s+\d+`
 
 	rootCmdVerbosePartPattern := `Global Rate limits: 
   Download Speed: (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))
