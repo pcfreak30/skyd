@@ -502,6 +502,11 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		if err != nil {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
+		println("*************final workers***************")
+		for i, worker := range finalWorkers {
+			println(fmt.Sprintf("%v: pieces %v", i, worker.pieces))
+		}
+		println("*****************************************")
 
 		// If the function returned an actual set of workers, we are good to
 		// launch.
