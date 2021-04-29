@@ -456,23 +456,26 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	// the best set is done and all of the workers in the best set are resolved,
 	// return the best set and everything else is nil.
 	totalWorkers := 0
-	isUnresolved := false
-	for _, worker := range bestSet {
+	unresolved := 0
+	for i, worker := range bestSet {
 		if worker == nil {
 			continue
 		}
-		totalWorkers++
-		isUnresolved = isUnresolved || worker.unresolved
+		if worker.unresolved {
+			unresolved++
+			bestSet[i] = nil
+		} else {
+			totalWorkers++
+		}
 	}
 
-	if totalWorkers < ec.MinPieces() {
+	if unresolved+totalWorkers < ec.MinPieces() {
+		// If we don't have enough workers return an error.
 		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalWorkers, ec.MinPieces()))
-	}
-
-	if isUnresolved {
+	} else if totalWorkers < ec.MinPieces() {
+		// If we have enough workers but some are unresolved return nil.
 		return nil, nil
 	}
-
 	return bestSet, nil
 }
 
