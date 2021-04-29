@@ -590,13 +590,12 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		timeSinceLastCheck := time.Since(lastHealthCheckTime)
 		if timeSinceLastCheck < healthCheckInterval {
 			// Sleep until the least recent check is outside the check interval.
-			sleepDuration := healthCheckInterval - timeSinceLastCheck
+			sleepDuration := healthCheckInterval
 			r.staticLog.Printf("Health loop sleeping for %v, lastHealthCheckTime %v, directory %v", sleepDuration, lastHealthCheckTime, siaPath)
-			wakeSignal := time.After(sleepDuration)
 			select {
 			case <-r.tg.StopChan():
 				return
-			case <-wakeSignal:
+			case <-time.After(sleepDuration):
 			}
 		}
 
