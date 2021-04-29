@@ -684,7 +684,7 @@ func TestFilterMode(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:  10,
+		Hosts:  8,
 		Miners: 1,
 	}
 	testDir := hostdbTestDir(t.Name())
@@ -698,7 +698,7 @@ func TestFilterMode(t *testing.T) {
 		}
 	}()
 
-	// Create renter. Set allowance of 2 with 10 total hosts, this will allow a
+	// Create renter. Set allowance of 2 with 8 total hosts, this will allow a
 	// blacklist or whitelist of 2, and a number of extra hosts to potentially
 	// cancel contracts with
 	renterParams := node.Renter(testDir + "/renter")
@@ -710,23 +710,18 @@ func TestFilterMode(t *testing.T) {
 	}
 	renter := nodes[0]
 
-	if err := testFilterMode(tg, renter, skymodules.HostDBActivateBlacklist); err != nil {
-		renter.PrintDebugInfo(t, true, true, true)
-		t.Fatal(err)
-	}
-	if err := testFilterMode(tg, renter, skymodules.HostDBActiveWhitelist); err != nil {
-		renter.PrintDebugInfo(t, true, true, true)
-		t.Fatal(err)
-	}
+	testFilterMode(t, tg, renter, skymodules.HostDBActivateBlacklist)
+	testFilterMode(t, tg, renter, skymodules.HostDBActiveWhitelist)
 }
 
-func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodules.FilterMode) error {
+// testFilterMode tests the hostdb's filtermode
+func testFilterMode(t *testing.T, tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodules.FilterMode) {
 	// Grab all host pks
 	var hosts []types.SiaPublicKey
 	for _, h := range tg.Hosts() {
 		pk, err := h.HostPublicKey()
 		if err != nil {
-			return err
+			t.Fatal(err)
 		}
 		hosts = append(hosts, pk)
 	}
@@ -734,7 +729,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodul
 	// Get Renter Settings
 	rg, err := renter.RenterGet()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	allowHosts := int(rg.Settings.Allowance.Hosts)
 
@@ -768,7 +763,8 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodul
 		return nil
 	})
 	if err != nil {
-		return err
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
 	}
 
 	// Get listedHosts. If testing blacklist mode we want to grab hosts we
@@ -777,7 +773,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodul
 	// formation and replacement is properly tested
 	rc, err := renter.RenterInactiveContractsGet()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	contractHosts := make(map[string]struct{})
 	for _, c := range rc.ActiveContracts {
@@ -808,19 +804,19 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodul
 
 	// enable list mode
 	if err = renter.HostDbFilterModePost(fm, filteredHosts); err != nil {
-		return err
+		t.Fatal(err)
 	}
 
 	// Confirm filter mode is set as expected
 	hdfmg, err := renter.HostDbFilterModeGet()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	if hdfmg.FilterMode != fm.String() {
-		return fmt.Errorf("filter mode not set as expected, got %v expected %v", hdfmg.FilterMode, fm.String())
+		t.Fatalf("filter mode not set as expected, got %v expected %v", hdfmg.FilterMode, fm.String())
 	}
 	if len(hdfmg.Hosts) != len(filteredHosts) {
-		return fmt.Errorf("Number of filtered hosts incorrect, got %v expected %v", len(hdfmg.Hosts), len(filteredHosts))
+		t.Fatalf("Number of filtered hosts incorrect, got %v expected %v", len(hdfmg.Hosts), len(filteredHosts))
 	}
 	// Create map for comparison
 	filteredHostsMap := make(map[string]struct{})
@@ -829,21 +825,21 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodul
 	}
 	for _, host := range hdfmg.Hosts {
 		if _, ok := filteredHostsMap[host]; !ok {
-			return errors.New("host returned not found in filtered hosts")
+			t.Fatal("host returned not found in filtered hosts")
 		}
 	}
 
 	// Confirm hosts are marked as filtered in original hosttree by querying AllHost
 	hbag, err := renter.HostDbAllGet()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	for _, host := range hbag.Hosts {
 		if _, ok := filteredHostsMap[host.PublicKeyString]; !ok {
 			continue
 		}
 		if !host.Filtered {
-			return errors.New("Host not marked as filtered")
+			t.Fatal("Host not marked as filtered")
 		}
 	}
 
@@ -886,52 +882,53 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodul
 		return nil
 	})
 	if err != nil {
-		return err
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
 	}
 
 	// Confirm HostDbActiveGet is filtered appropriately
 	hdbActive, err := renter.HostDbActiveGet()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	numExpectedHosts := len(tg.Hosts()) - len(filteredHosts)
 	if isWhitelist {
 		numExpectedHosts = len(filteredHosts)
 	}
 	if len(hdbActive.Hosts) != numExpectedHosts {
-		return fmt.Errorf("Number of active hosts doesn't equal number of non list hosts: got %v expected %v", len(hdbActive.Hosts), numExpectedHosts)
+		t.Fatalf("Number of active hosts doesn't equal number of non list hosts: got %v expected %v", len(hdbActive.Hosts), numExpectedHosts)
 	}
 	for _, h := range hdbActive.Hosts {
 		_, ok := filteredHostsMap[h.PublicKeyString]
 		if isWhitelist != ok {
-			return errors.New("Blacklisted host returned as active host")
+			t.Fatal("Blacklisted host returned as active host")
 		}
 	}
 
 	// Confirm that HostDbAllGet is not filtered
 	hdbAll, err := renter.HostDbAllGet()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	if len(hdbAll.Hosts) != len(tg.Hosts()) {
-		return fmt.Errorf("Number of all hosts doesn't equal number of test group hosts: got %v expected %v", len(hdbAll.Hosts), len(tg.Hosts()))
+		t.Fatalf("Number of all hosts doesn't equal number of test group hosts: got %v expected %v", len(hdbAll.Hosts), len(tg.Hosts()))
 	}
 
 	// Disable FilterMode and confirm all hosts are active again
 	var nullList []types.SiaPublicKey
 	if err = renter.HostDbFilterModePost(skymodules.HostDBDisableFilter, nullList); err != nil {
-		return err
+		t.Fatal(err)
 	}
 	hdbActive, err = renter.HostDbActiveGet()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	hdbag, err := renter.HostDbAllGet()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	if len(hdbActive.Hosts) != len(tg.Hosts()) {
-		return fmt.Errorf("Unexpected number of active hosts after disabling FilterMode: got %v expected %v (%v)", len(hdbActive.Hosts), len(tg.Hosts()), len(hdbag.Hosts))
+		t.Fatalf("Unexpected number of active hosts after disabling FilterMode: got %v expected %v (%v)", len(hdbActive.Hosts), len(tg.Hosts()), len(hdbag.Hosts))
 	}
 
 	// Confirm that contracts will form with non listed hosts again by
@@ -965,8 +962,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm skymodul
 		return errors.New("no contracts reformed with blacklist hosts")
 	})
 	if err != nil {
-		return err
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
 	}
-
-	return nil
 }

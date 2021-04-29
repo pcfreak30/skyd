@@ -164,6 +164,12 @@ type (
 		Data      []byte             `json:"data"`
 	}
 
+	// SkynetTUSSkylinkGET is the expected format of the json response for
+	// /skynet/tus/skylink/:id [GET].
+	SkynetTUSSkylinkGET struct {
+		Skylink string `json:"skylink"`
+	}
+
 	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
 	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error
@@ -1046,6 +1052,31 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	WriteSuccess(w)
+}
+
+// skynetTUSUploadSkylinkGET is the handler for the /skynet/tus/skylink/:id
+// endpoint.
+func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Get id from path.
+	id := ps.ByName("id")
+
+	// Get the uploader from the renter.
+	tusUploader := api.renter.SkynetTUSUploader()
+
+	// Fetch the skylink.
+	skylink, found := tusUploader.Skylink(id)
+	if !found {
+		WriteError(w, Error{"failed to fetch skylink for upload"}, http.StatusNotFound)
+		return
+	}
+
+	// Set the Skylink response header
+	w.Header().Set("Skynet-Skylink", skylink)
+
+	// Respond with the skylink in the body as well.
+	WriteJSON(w, SkynetTUSSkylinkGET{
+		Skylink: skylink,
+	})
 }
 
 // skynetSkyfileHandlerPOST is a dual purpose endpoint. If the 'convertpath'

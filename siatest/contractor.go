@@ -385,17 +385,13 @@ func RenewContractsByRenewWindow(renter *TestNode, tg *TestGroup) error {
 
 	blocksToMine := endHeight - rg.Settings.Allowance.RenewWindow - cg.Height
 	m := tg.Miners()[0]
-	for i := 0; i < int(blocksToMine); i++ {
-		if err = m.MineBlock(); err != nil {
-			return err
-		}
+	err = m.MineBlocksN(int(blocksToMine))
+	if err != nil {
+		return err
 	}
 
 	// Waiting for nodes to sync
-	if err = tg.Sync(); err != nil {
-		return err
-	}
-	return nil
+	return tg.Sync()
 }
 
 // RenterContractsStable verifies that the renter's contracts are in a stable

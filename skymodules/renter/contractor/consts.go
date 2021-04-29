@@ -43,9 +43,9 @@ var (
 	// the minimum amount of funds to put into a new contract
 	MinInitialContractFundingDivFactor = uint64(20)
 
-	// consecutiveRenewalsBeforeReplacement is the number of times a contract
+	// ConsecutiveRenewalsBeforeReplacement is the number of times a contract
 	// attempt to be renewed before it is marked as !goodForRenew.
-	consecutiveRenewalsBeforeReplacement = build.Select(build.Var{
+	ConsecutiveRenewalsBeforeReplacement = build.Select(build.Var{
 		Dev:      types.BlockHeight(12),
 		Standard: types.BlockHeight(12), // ~2h
 		Testing:  types.BlockHeight(12),

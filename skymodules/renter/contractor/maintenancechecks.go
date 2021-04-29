@@ -111,6 +111,7 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host s
 	contract := sc.Metadata()
 
 	c.mu.RLock()
+	allowance := c.allowance
 	blockHeight := c.blockHeight
 	renewWindow := c.allowance.RenewWindow
 	period := c.allowance.Period
@@ -149,6 +150,11 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host s
 	}
 
 	u, needsUpdate = outOfStorageCheck(contract, blockHeight, c.staticLog)
+	if needsUpdate {
+		return u, needsUpdate
+	}
+
+	u, needsUpdate = storageGougingCheck(allowance, host)
 	if needsUpdate {
 		return u, needsUpdate
 	}
@@ -257,6 +263,17 @@ func renewedCheck(u skymodules.ContractUtility, renewed bool) (skymodules.Contra
 		return u, true
 	}
 	return u, false
+}
+
+// storageGougingCheck makes sure the host's storage price isn't too expensive.
+func storageGougingCheck(allowance skymodules.Allowance, host skymodules.HostDBEntry) (skymodules.ContractUtility, bool) {
+	if !allowance.MaxStoragePrice.IsZero() && host.StoragePrice.Cmp(allowance.MaxStoragePrice) > 0 {
+		return skymodules.ContractUtility{
+			GoodForUpload: false,
+			GoodForRenew:  false,
+		}, true
+	}
+	return skymodules.ContractUtility{}, false
 }
 
 // sufficientFundsCheck checks if there are enough funds left in the contract

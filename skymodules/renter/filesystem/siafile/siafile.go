@@ -1103,9 +1103,11 @@ func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, cont
 
 	// backup the changed metadata before changing it. Revert the change on
 	// error.
+	oldPubKeyTable := append([]HostPublicKey{}, sf.pubKeyTable...)
 	defer func(backup Metadata) {
 		if err != nil {
 			sf.staticMetadata.restore(backup)
+			sf.pubKeyTable = oldPubKeyTable
 		}
 	}(sf.staticMetadata.backup())
 

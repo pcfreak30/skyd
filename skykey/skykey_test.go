@@ -21,6 +21,11 @@ import (
 
 // TestSkykeyManager tests the basic functionality of the skykeyManager.
 func TestSkykeyManager(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create a key manager.
 	persistDir := build.TempDir("skykey", t.Name())
 	keyMan, err := NewSkykeyManager(persistDir)
@@ -208,6 +213,11 @@ func TestSkykeyManager(t *testing.T) {
 // TestSkykeyDerivation tests skykey derivation methods used in skyfile
 // encryption.
 func TestSkykeyDerivations(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create a key manager.
 	persistDir := build.TempDir("skykey", t.Name())
 	keyMan, err := NewSkykeyManager(persistDir)
@@ -681,6 +691,11 @@ func TestSkykeyTypeStrings(t *testing.T) {
 // TestSkyfileEncryptionIDs tests the generation and verification of skyfile
 // encryption IDs.
 func TestSkyfileEncryptionIDs(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create a key manager.
 	persistDir := build.TempDir("skykey", t.Name())
 	keyMan, err := NewSkykeyManager(persistDir)
@@ -794,6 +809,11 @@ func TestSkyfileEncryptionIDs(t *testing.T) {
 
 // TestSkykeyDelete tests the Delete methods for the skykey manager.
 func TestSkykeyDelete(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create a key manager.
 	persistDir := build.TempDir("skykey", t.Name())
 	keyMan, err := NewSkykeyManager(persistDir)
@@ -932,6 +952,11 @@ func TestSkykeyDelete(t *testing.T) {
 // TestSkykeyDelete tests the Delete methods for the skykey manager, starting
 // with a file containing skykeys created using the older format.
 func TestSkykeyDeleteCompat(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create a persist dir.
 	persistDir := build.TempDir("skykey", t.Name())
 	err := os.MkdirAll(persistDir, defaultDirPerm)
