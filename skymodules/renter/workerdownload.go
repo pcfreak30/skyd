@@ -125,7 +125,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	allowance := w.staticRenter.staticHostContractor.Allowance()
 	err := checkDownloadGouging(allowance, &w.staticPriceTable().staticPriceTable)
 	if err != nil {
-		w.staticRenter.staticLog.Debugln("worker downloader is not being used because price gouging was detected:", err)
+		w.staticRenter.staticLog.Debugf("worker %v downloader is not being used because price gouging was detected: %v", w.staticHostPubKeyStr, err)
 		udc.managedUnregisterWorker(w)
 		return
 	}
@@ -136,7 +136,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
 	pieceData, err := w.ReadSectorLowPrio(w.staticRenter.tg.StopCtx(), udc.staticSpendingCategory, root, fetchOffset, fetchLength)
 	if err != nil {
-		w.staticRenter.staticLog.Debugln("worker failed to download sector:", err)
+		w.staticRenter.staticLog.Debugf("worker %v failed to download sector: %v", w.staticHostPubKeyStr, err)
 		udc.managedUnregisterWorker(w)
 		return
 	}
