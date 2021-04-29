@@ -504,7 +504,11 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		}
 		println("*************final workers***************")
 		for i, worker := range finalWorkers {
-			println(fmt.Sprintf("%v: pieces %v", i, worker.pieces))
+			if worker == nil {
+				println(fmt.Sprintf("%v: nil", i))
+			} else {
+				println(fmt.Sprintf("%v: pieces %v", i, worker.pieces))
+			}
 		}
 		println("*****************************************")
 
