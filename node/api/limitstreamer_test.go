@@ -6,7 +6,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
 
 // TestLimitStreamer verifies the limit streamer properly returns the data
@@ -15,7 +16,7 @@ func TestLimitStreamer(t *testing.T) {
 	data := []byte("Hello, this is some not so random text")
 
 	// test simple case where we do not wrap the streamer
-	streamer := streamerFromSlice(data)
+	streamer := renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
 	allData, err := ioutil.ReadAll(streamer)
 	if !bytes.Equal(allData, data) {
 		t.Fatal("Expected streamer to return all data")
@@ -26,8 +27,8 @@ func TestLimitStreamer(t *testing.T) {
 
 	// test the limitreader where we wrap it, but at offset 0 and for the full
 	// length of the data
-	streamer = streamerFromSlice(data)
-	streamer, err = NewLimitStreamer(streamer, 0, uint64(len(data)))
+	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 0, uint64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,8 +41,8 @@ func TestLimitStreamer(t *testing.T) {
 	}
 
 	// test limit reader at offset
-	streamer = streamerFromSlice(data)
-	streamer, err = NewLimitStreamer(streamer, 20, uint64(len(data)))
+	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 20, uint64(len(data)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,8 +56,8 @@ func TestLimitStreamer(t *testing.T) {
 	}
 
 	// test limit reader at offset with length
-	streamer = streamerFromSlice(data)
-	streamer, err = NewLimitStreamer(streamer, 20, 13)
+	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 20, 13)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,8 +71,8 @@ func TestLimitStreamer(t *testing.T) {
 	}
 
 	// try to force it outside of the bounds
-	streamer = streamerFromSlice(data)
-	streamer, err = NewLimitStreamer(streamer, 20, 13)
+	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 20, 13)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,8 +90,8 @@ func TestLimitStreamer(t *testing.T) {
 	}
 
 	// try to force it outside of the bounds
-	streamer = streamerFromSlice(data)
-	streamer, err = NewLimitStreamer(streamer, 20, 13)
+	streamer = renter.SkylinkStreamerFromSlice(data, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{})
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, skymodules.SkyfileLayout{}, 20, 13)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,13 +118,4 @@ type streamerFromReader struct {
 // Close is a no-op because a bytes.Reader doesn't need to be closed.
 func (sfr *streamerFromReader) Close() error {
 	return nil
-}
-
-// streamerFromSlice returns a skymodules.Streamer given a slice. This is
-// non-trivial because a bytes.Reader does not implement Close.
-func streamerFromSlice(b []byte) skymodules.Streamer {
-	reader := bytes.NewReader(b)
-	return &streamerFromReader{
-		Reader: reader,
-	}
 }

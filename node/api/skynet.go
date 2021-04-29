@@ -2,6 +2,7 @@ package api
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,11 +20,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/skynetportals"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
 )
 
 // The SkynetPerformanceStats are stateful and tracked globally, bound by a
@@ -160,6 +162,12 @@ type (
 		Revision  uint64             `json:"revision"`
 		Signature crypto.Signature   `json:"signature"`
 		Data      []byte             `json:"data"`
+	}
+
+	// SkynetTUSSkylinkGET is the expected format of the json response for
+	// /skynet/tus/skylink/:id [GET].
+	SkynetTUSSkylinkGET struct {
+		Skylink string `json:"skylink"`
 	}
 
 	// archiveFunc is a function that serves subfiles from src to dst and
@@ -672,7 +680,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
-	layout, metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
+	streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 		return
@@ -692,6 +700,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}()
 
 	// Validate Metadata
+	metadata := streamer.Metadata()
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)
 		return
@@ -764,7 +773,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, offset, size)
+		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.RawMetadata(), streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -780,7 +789,15 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, offset, size)
+		// NOTE: we don't have an actual raw metadata for the subpath. So we are
+		// marshaling the temporary metadata. This should be good enough since
+		// the metadata can't be used to create a skylink anyway.
+		rawMetadataForPath, err := json.Marshal(metadataForPath)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
+			return
+		}
+		streamer, err = NewLimitStreamer(streamer, metadataForPath, rawMetadataForPath, streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -796,14 +813,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		format = skymodules.SkyfileFormatZip
 	}
 
-	// Encode the metadata
-	encMetadata, err := json.Marshal(metadata)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
-		return
-	}
 	// Encode the Layout
-	encLayout := layout.Encode()
+	encLayout := streamer.Layout().Encode()
 
 	// Metadata and layout has been parsed successfully, stop the time here for
 	// TTFB.  Metadata was fetched from Skynet itself.
@@ -864,7 +875,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set the Skynet-File-Metadata
 	includeMetadata := !noResponseMetadata
 	if includeMetadata {
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		w.Header().Set("Skynet-File-Metadata", string(streamer.RawMetadata()))
 	}
 
 	// Declare a function for monetizing a writer.
@@ -1043,6 +1054,31 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	WriteSuccess(w)
 }
 
+// skynetTUSUploadSkylinkGET is the handler for the /skynet/tus/skylink/:id
+// endpoint.
+func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Get id from path.
+	id := ps.ByName("id")
+
+	// Get the uploader from the renter.
+	tusUploader := api.renter.SkynetTUSUploader()
+
+	// Fetch the skylink.
+	skylink, found := tusUploader.Skylink(id)
+	if !found {
+		WriteError(w, Error{"failed to fetch skylink for upload"}, http.StatusNotFound)
+		return
+	}
+
+	// Set the Skylink response header
+	w.Header().Set("Skynet-Skylink", skylink)
+
+	// Respond with the skylink in the body as well.
+	WriteJSON(w, SkynetTUSSkylinkGET{
+		Skylink: skylink,
+	})
+}
+
 // skynetSkyfileHandlerPOST is a dual purpose endpoint. If the 'convertpath'
 // field is set, this endpoint will create a skyfile using an existing siafile.
 // The original siafile and the skyfile will both need to be kept in order for
@@ -1097,7 +1133,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
 	if params.convertPath == "" {
-		skylink, err := api.renter.UploadSkyfile(sup, reader)
+		skylink, err := api.renter.UploadSkyfile(req.Context(), sup, reader)
 		if errors.Contains(err, renter.ErrSkylinkBlocked) {
 			WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 			return
@@ -1514,7 +1550,9 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	}
 
 	// Read registry.
-	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+	srv, err := api.renter.ReadRegistry(ctx, spk, dataKey)
 	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
 		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
 		WriteError(w, Error{err.Error()}, http.StatusNotFound)
@@ -1550,4 +1588,66 @@ func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Reques
 	WriteJSON(w, SkynetRestorePOST{
 		Skylink: skylink.String(),
 	})
+}
+
+// skynetSkylinkUnpinHandlerPOST will unpin a skylink from this Sia node.
+func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	strLink := ps.ByName("skylink")
+	var skylink skymodules.Skylink
+	err := skylink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to parse query params: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the siaPath
+	var siaPath skymodules.SiaPath
+	siaPathStr := queryForm.Get("siapath")
+	if siaPathStr != "" {
+		// If a siaPath was provided, load it and also generate an extended
+		// siaPath
+		err = siaPath.LoadString(siaPathStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to parse siapath: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		extendedSiaPath, err := skymodules.NewSiaPath(siaPath.String() + skymodules.ExtendedSuffix)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to create extended siapath: %v", err)}, http.StatusBadRequest)
+			return
+		}
+
+		// Try and delete skyfile
+		err = api.renter.DeleteFile(siaPath)
+		if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			WriteError(w, Error{fmt.Sprintf("failed to delete skyfile: %v", err)}, http.StatusBadRequest)
+			return
+		}
+
+		// Try ad delete extended skyfile
+		err = api.renter.DeleteFile(extendedSiaPath)
+		if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			WriteError(w, Error{fmt.Sprintf("failed to delete extended skyfile: %v", err)}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Unpin the Skylink
+	err = api.renter.UnpinSkylink(skylink)
+	if errors.Contains(err, renter.ErrSkylinkBlocked) {
+		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+		return
+	} else if err != nil {
+		WriteError(w, Error{fmt.Sprintf("Failed to unpin skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
 }

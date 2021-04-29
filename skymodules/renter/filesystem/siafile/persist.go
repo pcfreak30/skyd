@@ -9,15 +9,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 var (
@@ -209,17 +209,6 @@ func applyUpdates(deps modules.Dependencies, updates ...writeaheadlog.Update) er
 func createDeleteUpdate(path string) writeaheadlog.Update {
 	return writeaheadlog.Update{
 		Name:         updateDeleteName,
-		Instructions: []byte(path),
-	}
-}
-
-// createDeletePartialUpdate is a helper method that creates a writeaheadlog for
-// deleting a .partial file.
-//
-//lint:ignore U1000 Ignore unused code, it's prep for partial uploads
-func createDeletePartialUpdate(path string) writeaheadlog.Update {
-	return writeaheadlog.Update{
-		Name:         updateDeletePartialName,
 		Instructions: []byte(path),
 	}
 }

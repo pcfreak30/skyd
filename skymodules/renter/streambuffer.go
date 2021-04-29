@@ -19,8 +19,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -106,6 +106,9 @@ type streamBufferDataSource interface {
 
 	// Metadata returns the Skyfile metadata of a data source.
 	Metadata() skymodules.SkyfileMetadata
+
+	// RawMetadata returns the raw metadata of a data source.
+	RawMetadata() []byte
 
 	// Layout returns the Skyfile layout of a data source.
 	Layout() skymodules.SkyfileLayout
@@ -321,6 +324,11 @@ func (s *stream) Close() error {
 // Metadata returns the skyfile metadata associated with this stream.
 func (s *stream) Metadata() skymodules.SkyfileMetadata {
 	return s.staticStreamBuffer.staticDataSource.Metadata()
+}
+
+// RawMetadata returns the skyfile metadata associated with this stream.
+func (s *stream) RawMetadata() []byte {
+	return s.staticStreamBuffer.staticDataSource.RawMetadata()
 }
 
 // Layout returns the skyfile layout associated with this stream.

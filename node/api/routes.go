@@ -12,7 +12,7 @@ import (
 	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/log"
 
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 var (
@@ -50,8 +50,6 @@ func (api *API) buildHTTPRoutes() {
 	router.POST("/daemon/startprofile", api.daemonStartProfileHandlerPOST)
 	router.GET("/daemon/stop", RequirePassword(api.daemonStopHandler, requiredPassword))
 	router.POST("/daemon/stopprofile", api.daemonStopProfileHandlerPOST)
-	router.GET("/daemon/update", api.daemonUpdateHandlerGET)
-	router.POST("/daemon/update", api.daemonUpdateHandlerPOST)
 	router.GET("/daemon/version", api.daemonVersionHandler)
 
 	// Consensus API Calls
@@ -136,14 +134,17 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
 		router.GET("/skynet/portals", api.skynetPortalsHandlerGET)
 		router.POST("/skynet/portals", RequirePassword(api.skynetPortalsHandlerPOST, requiredPassword))
+		router.POST("/skynet/registry", RequirePassword(api.registryHandlerPOST, requiredPassword))
+		router.GET("/skynet/registry", api.registryHandlerGET)
+		router.POST("/skynet/restore", RequirePassword(api.skynetRestoreHandlerPOST, requiredPassword))
 		router.GET("/skynet/root", api.skynetRootHandlerGET)
 		router.GET("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)
 		router.HEAD("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
-		router.POST("/skynet/registry", RequirePassword(api.registryHandlerPOST, requiredPassword))
-		router.GET("/skynet/registry", api.registryHandlerGET)
-		router.POST("/skynet/restore", RequirePassword(api.skynetRestoreHandlerPOST, requiredPassword))
 		router.GET("/skynet/stats", api.skynetStatsHandlerGET)
+		router.POST("/skynet/unpin/:skylink", RequirePassword(api.skynetSkylinkUnpinHandlerPOST, requiredPassword))
+
+		// Skykey endpoints
 		router.GET("/skynet/skykey", RequirePassword(api.skykeyHandlerGET, requiredPassword))
 		router.POST("/skynet/addskykey", RequirePassword(api.skykeyAddKeyHandlerPOST, requiredPassword))
 		router.POST("/skynet/createskykey", RequirePassword(api.skykeyCreateKeyHandlerPOST, requiredPassword))
@@ -175,6 +176,7 @@ func (api *API) buildHTTPRoutes() {
 		router.HEAD("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.HeadFile, tusHandler))
 		router.PATCH("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.PatchFile, tusHandler))
 		router.GET("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.GetFile, tusHandler))
+		router.GET("/skynet/upload/tus/:id", api.skynetTUSUploadSkylinkGET)
 
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))

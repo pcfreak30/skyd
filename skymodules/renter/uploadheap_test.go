@@ -13,11 +13,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 // TestUploadHeap tests the uploadheap subsystem
@@ -201,7 +201,7 @@ func testManagedBuildChunkHeap(t *testing.T) {
 
 	// Call managedBuildChunkHeap as repair loop, we should see all the chunks
 	// from the file added
-	offline, goodForRenew, _ := rt.renter.managedContractUtilityMaps()
+	offline, goodForRenew, _, _ := rt.renter.callRenterContractsAndUtilities()
 	rt.renter.managedBuildChunkHeap(skymodules.RootSiaPath(), hosts, targetUnstuckChunks, offline, goodForRenew)
 	if rt.renter.staticUploadHeap.managedLen() != int(f1.NumChunks()) {
 		t.Fatalf("Expected heap length of %v but got %v", f1.NumChunks(), rt.renter.staticUploadHeap.managedLen())

@@ -14,9 +14,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 // skyfileEncodeFanoutFromFileNode will create the serialized fanout for

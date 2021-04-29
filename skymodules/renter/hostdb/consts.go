@@ -3,7 +3,7 @@ package hostdb
 import (
 	"time"
 
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 const (

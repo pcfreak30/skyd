@@ -8,7 +8,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 type (

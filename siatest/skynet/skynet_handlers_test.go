@@ -1,4 +1,4 @@
-package renter
+package skynet
 
 import (
 	"net/http"
@@ -11,9 +11,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 )
 
 // TestSkynetSkylinkHandlerGET tests the behaviour of SkynetSkylinkHandlerGET

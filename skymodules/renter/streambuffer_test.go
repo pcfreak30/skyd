@@ -12,7 +12,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -57,6 +57,11 @@ func (mds *mockDataSource) ID() skymodules.DataSourceID {
 // Metadata implements streamBufferDataSource
 func (mds *mockDataSource) Metadata() skymodules.SkyfileMetadata {
 	return skymodules.SkyfileMetadata{}
+}
+
+// RawMetadata implements streamBufferDataSource
+func (mds *mockDataSource) RawMetadata() []byte {
+	return nil
 }
 
 // Layout implements streamBufferDataSource

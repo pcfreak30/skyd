@@ -10,8 +10,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 var (
@@ -44,6 +44,7 @@ var (
 			DownloadBandwidthPrice: types.SiacoinPrecision.Mul64(100).Div64(1e12),
 			SectorAccessPrice:      types.SiacoinPrecision.Mul64(2).Div64(1e6),
 			StoragePrice:           types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte),
+			UploadBandwidthPrice:   types.SiacoinPrecision.Mul64(100).Div64(1e12),
 
 			Version: build.Version,
 		},
@@ -746,5 +747,62 @@ func TestHostWeightAcceptContract(t *testing.T) {
 	}
 	if w2.Cmp64(1) != 0 {
 		t.Error("Entry2 should have smallest weight")
+	}
+}
+
+// TestMaxPriceAdjustments tests that hosts which are not below the max prices
+// specified in the allowance are considered bad.
+func TestMaxPriceAdjustments(t *testing.T) {
+	t.Parallel()
+
+	hdb := bareHostDB()
+	hdb.allowance = DefaultTestAllowance
+	entry := DefaultHostDBEntry
+
+	// Score should be greater than the smallest score.
+	score := hdb.priceAdjustments(entry, hdb.allowance, types.ZeroCurrency)
+	if score <= math.SmallestNonzeroFloat64 {
+		t.Fatal("false")
+	}
+
+	hdb.allowance.MaxRPCPrice = entry.BaseRPCPrice.Sub64(1)
+	score = hdb.priceAdjustments(entry, hdb.allowance, types.ZeroCurrency)
+	if score != math.SmallestNonzeroFloat64 {
+		t.Fatal("false")
+	}
+	hdb.allowance = DefaultTestAllowance
+
+	hdb.allowance.MaxContractPrice = entry.ContractPrice.Sub64(1)
+	score = hdb.priceAdjustments(entry, hdb.allowance, types.ZeroCurrency)
+	if score != math.SmallestNonzeroFloat64 {
+		t.Fatal("false")
+	}
+	hdb.allowance = DefaultTestAllowance
+
+	hdb.allowance.MaxSectorAccessPrice = entry.SectorAccessPrice.MulTax().Sub64(1)
+	score = hdb.priceAdjustments(entry, hdb.allowance, types.ZeroCurrency)
+	if score != math.SmallestNonzeroFloat64 {
+		t.Fatal("false")
+	}
+	hdb.allowance = DefaultTestAllowance
+
+	hdb.allowance.MaxDownloadBandwidthPrice = entry.DownloadBandwidthPrice.Sub64(1)
+	score = hdb.priceAdjustments(entry, hdb.allowance, types.ZeroCurrency)
+	if score != math.SmallestNonzeroFloat64 {
+		t.Fatal("false")
+	}
+	hdb.allowance = DefaultTestAllowance
+
+	hdb.allowance.MaxUploadBandwidthPrice = entry.UploadBandwidthPrice.Sub64(1)
+	score = hdb.priceAdjustments(entry, hdb.allowance, types.ZeroCurrency)
+	if score != math.SmallestNonzeroFloat64 {
+		t.Fatal("false")
+	}
+	hdb.allowance = DefaultTestAllowance
+
+	hdb.allowance.MaxStoragePrice = entry.StoragePrice.Sub64(1)
+	score = hdb.priceAdjustments(entry, hdb.allowance, types.ZeroCurrency)
+	if score != math.SmallestNonzeroFloat64 {
+		t.Fatal("false")
 	}
 }

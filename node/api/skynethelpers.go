@@ -21,9 +21,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 type (
@@ -125,11 +125,18 @@ func newMonetizedWriter(w io.Writer, md skymodules.SkyfileMetadata, wallet modul
 
 // Write wraps the inner Write and adds monetization.
 func (rw *monetizedWriter) Write(b []byte) (int, error) {
+	// Handle legacy uploads with length 0 by passing it through to the inner
+	// writer.
+	if rw.staticMD.Length == 0 && rw.staticMD.Monetization == nil {
+		return rw.staticW.Write(b)
+	}
+
 	// Sanity check the number of monetized bytes against the total.
 	rw.count += len(b)
 	if rw.count > int(rw.staticMD.Length) {
-		build.Critical(fmt.Sprintf("monetized more data than the total data of the skylink: %v > %v", rw.count, rw.staticMD.Length))
-		return rw.staticW.Write(b) // forward without monetizing
+		err := fmt.Errorf("monetized more data than the total data of the skylink: %v > %v", rw.count, rw.staticMD.Length)
+		build.Critical(err)
+		return 0, err
 	}
 
 	// Forward data to inner.

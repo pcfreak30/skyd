@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,9 +22,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // tusStore is a simple implementation of the tus.Store interface.
@@ -137,7 +138,24 @@ func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string,
 	}
 	// After the upload, fetch the skylink from the metadata.
 	skylink, err := SkylinkFromTUSURL(tc, uploader.Url())
-	return skylink, err
+	if err != nil {
+		return "", err
+	}
+
+	// Also fetch it from the dedicated endpoint and compare them.
+	url, err := url.Parse(uploader.Url())
+	if err != nil {
+		return "", err
+	}
+	uploadID := filepath.Base(url.Path)
+	skylink2, err := c.SkylinkFromTUSID(uploadID)
+	if err != nil {
+		return "", err
+	}
+	if skylink != skylink2 {
+		return "", err
+	}
+	return skylink, nil
 }
 
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
@@ -259,7 +277,7 @@ func (c *Client) skynetSkylinkGetWithParametersRaw(skylink string, params map[st
 
 	getQuery := skylinkQueryWithValues(skylink, values)
 	header, fileData, err := c.getRawResponse(getQuery)
-	return header, fileData, errors.AddContext(err, "skynetSkylnkGet with parameters failed getRawResponse")
+	return header, fileData, errors.AddContext(err, "skynetSkylinkGetWithParametersRaw with parameters failed getRawResponse")
 }
 
 // SkynetSkylinkHead uses the /skynet/skylink endpoint to get the headers that
@@ -366,7 +384,7 @@ func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) err
 	// return early.
 	if !skymodules.IsEncryptedBaseSector(baseSector) {
 		// Parse the layout from the baseSector
-		sl, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+		sl, _, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 		if err != nil {
 			return errors.AddContext(err, "unable to parse baseSector")
 		}
@@ -879,7 +897,7 @@ func (c *Client) RegistryUpdate(spk types.SiaPublicKey, dataKey crypto.Hash, rev
 }
 
 // SkylinkFromTUSURL is a helper to fetch the skylink of a finished upload.
-func SkylinkFromTUSURL(tc *tus.Client, url string) (string, error) {
+func SkylinkFromTUSURL(tc *tus.Client, url string) (_ string, err error) {
 	// After the upload, fetch the skylink from the metadata.
 	req, err := http.NewRequest("HEAD", url, bytes.NewReader([]byte{}))
 	if err != nil {
@@ -889,6 +907,9 @@ func SkylinkFromTUSURL(tc *tus.Client, url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer func() {
+		err = errors.Compose(err, resp.Body.Close())
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed to fetch upload info: %v", resp.StatusCode)
 	}
@@ -926,6 +947,30 @@ func SkylinkFromTUSURL(tc *tus.Client, url string) (string, error) {
 		return "", errors.New("failed to decode skylink")
 	}
 	return string(skylink), nil
+}
+
+// SkylinkFromTUSID fetches the skylink of a finished TUS upload by the upload's
+// ID.
+func (c *Client) SkylinkFromTUSID(id string) (string, error) {
+	header, data, err := c.getRawResponse(fmt.Sprintf("/skynet/upload/tus/%s", id))
+	if err != nil {
+		return "", err
+	}
+	var stsg api.SkynetTUSSkylinkGET
+	err = json.Unmarshal(data, &stsg)
+	if err != nil {
+		return "", err
+	}
+	skylinkHeader := header["Skynet-Skylink"]
+	if len(skylinkHeader) != 1 {
+		return "", errors.New("SkylinkFromTUSID: Skynet-Skylink header has wrong length")
+	}
+	bodySkylink := stsg.Skylink
+	headerSkylink := skylinkHeader[0]
+	if headerSkylink != bodySkylink {
+		return "", fmt.Errorf("SkylinkFromTUSID: skylink mismatch %v != %v", headerSkylink, bodySkylink)
+	}
+	return headerSkylink, nil
 }
 
 // skylinkQueryWithValues returns a skylink query based on the given skylink and
@@ -1016,4 +1061,22 @@ func urlEncodeSkyfileUploadParameters(sup skymodules.SkyfileUploadParameters) (s
 		return "", err
 	}
 	return values.Encode(), nil
+}
+
+// SkynetSkylinkUnpinPost uses the /skynet/unpin endpoint to remove the any
+// files associated with the given skylink from the renter.
+func (c *Client) SkynetSkylinkUnpinPost(skylink string) error {
+	return c.SkynetSkylinkUnpinCustomPost(skylink, skymodules.SiaPath{})
+}
+
+// SkynetSkylinkUnpinCustomPost uses the /skynet/unpin endpoint to remove the
+// any files associated with the given skylink from the renter.
+func (c *Client) SkynetSkylinkUnpinCustomPost(skylink string, siaPath skymodules.SiaPath) error {
+	values := url.Values{}
+	if !siaPath.IsEmpty() {
+		values.Set("siapath", siaPath.String())
+	}
+	query := fmt.Sprintf("/skynet/unpin/%s?%s", skylink, values.Encode())
+	_, _, err := c.postRawResponse(query, nil)
+	return err
 }

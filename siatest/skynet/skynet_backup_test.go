@@ -1,20 +1,21 @@
-package renter
+package skynet
 
 import (
 	"bytes"
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 )
 
 // TestSkynetBackupAndRestore verifies the back up and restoration functionality
@@ -31,7 +32,7 @@ func TestSkynetBackupAndRestore(t *testing.T) {
 		Miners:  1,
 		Portals: 2,
 	}
-	groupDir := renterTestDir(t.Name())
+	groupDir := skynetTestDir(t.Name())
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
@@ -413,10 +414,28 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, portal1, portal2 *siatest.Tes
 
 // verifyDownloadByAll verifies that both the renter's can download the skylink.
 func verifyDownloadByAll(portal1, portal2 *siatest.TestNode, skylink string) error {
-	data1, sm1, err1 := portal1.SkynetSkylinkGet(skylink)
-	err1 = errors.AddContext(err1, "portal 1 download error")
-	data2, sm2, err2 := portal2.SkynetSkylinkGet(skylink)
-	err2 = errors.AddContext(err2, "portal 2 download error")
+	// Define common variables
+	var wg sync.WaitGroup
+	var data1, data2 []byte
+	var sm1, sm2 skymodules.SkyfileMetadata
+	var err1, err2 error
+
+	// Download from the portals in parallel
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		data1, sm1, err1 = portal1.SkynetSkylinkGet(skylink)
+		err1 = errors.AddContext(err1, "portal 1 download error")
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		data2, sm2, err2 = portal2.SkynetSkylinkGet(skylink)
+		err2 = errors.AddContext(err2, "portal 2 download error")
+	}()
+	wg.Wait()
+
+	// Check errors and return variables.
 	if err := errors.Compose(err1, err2); err != nil {
 		return err
 	}

@@ -1,7 +1,7 @@
 package renter
 
 import (
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -51,7 +51,7 @@ func (r *Renter) FileList(siaPath skymodules.SiaPath, recursive, cached bool, fl
 	if cached {
 		err = r.staticFileSystem.CachedList(siaPath, recursive, flf, func(skymodules.DirectoryInfo) {})
 	} else {
-		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+		offlineMap, goodForRenewMap, contractsMap, _ := r.callRenterContractsAndUtilities()
 		err = r.staticFileSystem.List(siaPath, recursive, offlineMap, goodForRenewMap, contractsMap, flf, func(skymodules.DirectoryInfo) {})
 	}
 	if err != nil {
@@ -67,7 +67,7 @@ func (r *Renter) File(siaPath skymodules.SiaPath) (skymodules.FileInfo, error) {
 		return skymodules.FileInfo{}, err
 	}
 	defer r.tg.Done()
-	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
+	offline, goodForRenew, contracts, _ := r.callRenterContractsAndUtilities()
 	fi, err := r.staticFileSystem.FileInfo(siaPath, offline, goodForRenew, contracts)
 	if err != nil {
 		return skymodules.FileInfo{}, errors.AddContext(err, "unable to get the fileinfo from the filesystem")

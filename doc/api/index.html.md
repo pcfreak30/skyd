@@ -6,7 +6,7 @@ language_tabs: # must be one of https://git.io/vQNgJ
 
 toc_footers:
   - <a href='https://siasky.net'>The Official Skynet Website
-  - <a href='https://gitlab.com/skynetlabs/skyd'>Skyd on GitLab</a>
+  - <a href='https://gitlab.com/SkynetLabs/skyd'>Skyd on GitLab</a>
 
 search: true
 ---
@@ -78,7 +78,7 @@ The following details the documentation standards for the API endpoints.
 Contributors should follow these standards when submitting updates to the API
 documentation.  If you find API endpoints that do not adhere to these
 documentation standards please let the Skyd team know by submitting an issue
-[here](https://gitlab.com/skynetlabs/skyd/issues)
+[here](https://gitlab.com/SkynetLabs/skyd/issues)
 
 # Standard Responses
 
@@ -1895,6 +1895,7 @@ relative to 'home/user/'.
       "aggregateminredundancy":       2.6,  // float64
       "aggregatemostrecentmodtime":   "2018-09-23T08:00:00.000000000+04:00" // timestamp
       "aggregatenumfiles":            2,    // uint64
+      "aggregatenumlostfiles":        0,    // uint64
       "aggregatenumstuckchunks":      4,    // uint64
       "aggregatenumsubdirs":          4,    // uint64
       "aggregaterepairsize":          4096, // uint64
@@ -1913,6 +1914,7 @@ relative to 'home/user/'.
       "mode":                0666,     // uint32
       "mostrecentmodtime":   "2018-09-23T08:00:00.000000000+04:00" // timestamp
       "numfiles":            3,        // uint64
+      "numlostfiles":        0,        // uint64
       "numstuckchunks":      3,        // uint64
       "numsubdirs":          2,        // uint64
       "repairsize":          4096,     // uint64
@@ -1967,6 +1969,11 @@ The most recent mod time of any file or directory in the sub directory tree
 
 **aggregatenumfiles** | **numfiles** | uint64\
 The total number of files in the sub directory tree
+
+**aggregatenumlostfiles** | **numlostfiles** | uint64\
+The total number of lost files in the sub directory tree. A file is considered
+lost if the redundancy has dropped below 1 and there is not a local file to
+repair from.
 
 **aggregatenumstuckchunks** | **aggregatenumstuckchunks** | uint64\
 The total number of stuck chunks in the sub directory tree
@@ -3264,6 +3271,32 @@ When using the defaults, the overhead is 0 and the dataPieces are 10. That's
 because all files uploaded using this protocol are automatically considered
 large uploads.
 
+The Skylink for a TUS upload can be found at the following endpoint once the
+upload finished successfully.  It will be returned both as a JSON object in
+the response body as well as the http response header `"Skynet-Skylink"`.
+
+## /skynet/upload/tus/:id [GET]
+> curl example  
+
+```bash
+curl "localhost:9980/skynet/upload/tus/72a44879cb93d0cd0c13b285a06ce22ce6cd6c8a"
+```  
+
+returns information about a finished TUS upload.
+
+### Path Parameters
+**id** | string  
+The upload ID specified in the TUS protocol.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "skylink": "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg",
+}
+```
+
 # Skynet
 
 ## /skynet/basesector/*skylink* [GET]
@@ -3363,6 +3396,72 @@ add is an array of skylinks that should be added to the blocklist.
 
 **remove** | array of strings  
 remove is an array of skylinks that should be removed from the blocklist.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /skynet/pin/:skylink [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "siapath=path/to/pin" "localhost:9980/skynet/pin/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+```
+
+Pinning a skylink to a portal will add the skyfile to the portal's filesystem
+making the portal responsible for maintaining the health of this pinned copy of
+the skyfile.
+
+### Path Parameters
+### REQUIRED
+**skylink** | string\
+The skylink that should be pinned.
+
+### Query String Parameters
+### REQUIRED
+**siapath** | string\
+The siapath that the skyfile should be pinned at in the portal's filesystem.
+
+### OPTIONAL
+**basechunkredundancy** | uint8\
+The amount of redundancy to use when uploading the base chunk. The base chunk is
+the first chunk of the file, and is always uploaded using 1-of-N redundancy.
+
+**force** | bool\
+If the pinned skyfile should overwrite any file currently at the provided
+siapath.
+
+**priceperms** | string\
+'price per millisecond' is a value that helps the downloader determine whether
+to download from cheaper hosts or faster hosts. For a ppms of '0', the
+downloader will always select the cheapest hosts that it is able to download
+from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
+by choosing more expensive hosts to download from, it will choose those hosts if
+and only if the total cost of the download increases by less than 10 SC,
+otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
+"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
+value will be treated as hastings. The default ppms is 100nS.
+
+**root** | bool\
+If the siapath should reference the root of the renter's filesystem.
+
+**timeout** | int\
+If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved
+before it expires. Note that this timeout does not cover the actual download
+time, but rather covers the TTFB. Timeout is specified in seconds, a timeout
+value of 0 will be ignored. If no timeout is given, the default will be used,
+which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
+
+### Http Headers
+### OPTIONAL
+**Skynet-Disable-Force** | bool\
+This request header allows overruling the behaviour of the `force` parameter
+that can be passed in through the query string parameters. This header is useful
+for Skynet portal operators that would like to have some control over the
+requests that are being passed to siad. To avoid having to parse query string
+parameters and overrule them that way, this header can be set to disable the
+force flag and disallow overwriting the file at the given siapath.
 
 ### Response
 
@@ -4033,6 +4132,43 @@ Contains some stats about the skynet registry.
 **readprojectpX** | uint64  
 The Xth percentile of the execution time of all successful read registry
 projects.
+
+## /skynet/unpin/:skylink [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/unpin/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+```
+
+Unpinning a skylink will delete the underlying skyfile(s) from the portal. This
+will delete any skyfile that has the skylink associated with it.
+
+**NOTE:** There is no siapath stored in the layout or metadata of a skylink
+because skyfiles can be pinned to different siapaths on the same or different
+portals. Because of this, all skyfiles and siafiles on a portal will need to be
+checked to see if the skylink is contained in the file's metadata. For
+performance reasons, this process is handled in a background thread and is not
+ACID. This means, if there is a shutdown of any kind before all the files have
+been checked, the unpin request may not be successfully executed and will need
+to be resubmitted. Submitting an unpin request multiple times for the same
+skylink is OK and does not duplicate the background unpinning process. If two
+`healthCheckInterval`s have passed, it can be assumed that the unpin was
+successful. 
+
+### Path Parameters
+### REQUIRED
+**skylink** | string\
+The skylink that should be unpinned.
+
+### Query Parameters
+### OPTIONAL
+**siapath** | string\
+The siapath of the skyfile that should be unpinned.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
 
 ## /skynet/addskykey [POST]
 > curl example

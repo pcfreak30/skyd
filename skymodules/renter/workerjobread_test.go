@@ -7,9 +7,10 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 // TestJobExpectedJobTime is a small unit test that verifies the result of
@@ -130,5 +131,40 @@ func TestJobReadMetadata(t *testing.T) {
 	}
 	if jrr.staticMetadata.staticWorker == nil || jrr.staticMetadata.staticWorker.staticHostPubKeyStr != wt.host.PublicKey().String() {
 		t.Fatal("unexpected")
+	}
+}
+
+// TestJobReadExpectedJobCost tests the read queue's callExpectedJobCost method.
+func TestJobReadExpectedJobCost(t *testing.T) {
+	pt := newDefaultPriceTable()
+	w := &worker{}
+	w.staticSetPriceTable(&workerPriceTable{
+		staticPriceTable: pt,
+	})
+	jq := &jobReadQueue{
+		jobGenericQueue: newJobGenericQueue(w),
+	}
+
+	// Compute the cost using the programbuilder for comparison. Unfortunately
+	// using the programbuilder does quite a few memory allocations so it's not
+	// very cpu friendly in production.
+	cost := func(l uint64) types.Currency {
+		pb := modules.NewProgramBuilder(&pt, 0)
+		pb.AddReadSectorInstruction(l, 0, crypto.Hash{}, true)
+		cost, _, _ := pb.Cost(true)
+
+		// take into account bandwidth costs
+		ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
+		bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+		return cost.Add(bandwidthCost)
+	}
+
+	// Run tests for every length between 0 and 2 sectors.
+	for i := uint64(0); i < 2*modules.SectorSize; i++ {
+		c := jq.callExpectedJobCost(i)
+		expectedCost := cost(i)
+		if !c.Equals(expectedCost) {
+			t.Fatalf("%v: mismatch %v != %v", i, c, expectedCost)
+		}
 	}
 }

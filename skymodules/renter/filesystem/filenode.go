@@ -8,9 +8,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siafile"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 type (
@@ -210,7 +210,7 @@ func (n *FileNode) managedRename(newName string, oldParent, newParent *DirNode) 
 
 // cachedFileInfo returns information on a siafile. As a performance
 // optimization, the fileInfo takes the maps returned by
-// renter.managedContractUtilityMaps for many files at once.
+// renter.callRenterContractsAndUtilitiess for many files at once.
 func (n *FileNode) staticCachedInfo(siaPath skymodules.SiaPath) (skymodules.FileInfo, error) {
 	md := n.Metadata()
 

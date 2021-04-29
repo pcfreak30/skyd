@@ -11,7 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 // TestMerkleRootSetCompatibility checks that the persist encoding for the
@@ -316,5 +316,56 @@ func TestRenterPayoutsPreTax(t *testing.T) {
 	}
 	if hostCollateral.Cmp(types.ZeroCurrency) < 0 {
 		t.Fatal("Negative currency returned for host collateral", hostCollateral)
+	}
+}
+
+// TestContractorSpending_SpendingBreakdown is a unit test that probes
+// SpendingBreakdown
+func TestContractorSpending_SpendingBreakdown(t *testing.T) {
+	randCurrency := func() types.Currency {
+		return types.NewCurrency64(fastrand.Uint64n(1e3))
+	}
+
+	cs := &ContractorSpending{
+		ContractFees:        randCurrency(),
+		DownloadSpending:    randCurrency(),
+		FundAccountSpending: randCurrency(),
+		MaintenanceSpending: MaintenanceSpending{
+			AccountBalanceCost:   randCurrency(),
+			FundAccountCost:      randCurrency(),
+			UpdatePriceTableCost: randCurrency(),
+		},
+		StorageSpending:  randCurrency(),
+		TotalAllocated:   randCurrency(),
+		UploadSpending:   randCurrency(),
+		Unspent:          randCurrency(),
+		WithheldFunds:    randCurrency(),
+		PreviousSpending: randCurrency(),
+	}
+
+	totalSpent, unspentAllocated, unspentUnallocated := cs.SpendingBreakdown()
+
+	// compare total spent vs expected value
+	expectedTotalSpent := cs.ContractFees.Add(cs.UploadSpending).Add(cs.DownloadSpending).Add(cs.StorageSpending).Add(cs.FundAccountSpending).Add(cs.MaintenanceSpending.Sum())
+	if !expectedTotalSpent.Equals(totalSpent) {
+		t.Fatal("unexpected")
+	}
+
+	// compare unspentAllocated vs expected value
+	var expectedUnspentAllocated types.Currency
+	if cs.TotalAllocated.Cmp(expectedTotalSpent) >= 0 {
+		expectedUnspentAllocated = cs.TotalAllocated.Sub(expectedTotalSpent)
+	}
+	if !expectedUnspentAllocated.Equals(unspentAllocated) {
+		t.Fatal("unexpected")
+	}
+
+	// compare unspentUnallocated vs expected value
+	var expectedUnspentUnallocated types.Currency
+	if cs.Unspent.Cmp(expectedUnspentAllocated) >= 0 {
+		expectedUnspentUnallocated = cs.Unspent.Sub(expectedUnspentAllocated)
+	}
+	if !expectedUnspentUnallocated.Equals(unspentUnallocated) {
+		t.Fatal("unexpected")
 	}
 }

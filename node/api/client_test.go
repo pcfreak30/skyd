@@ -12,7 +12,7 @@ import (
 
 // Client holds fields to make requests to a Sia API.
 //
-//lint:ignore U1000 Ignore unused code, Client type is used externally
+// nolint: unused // used externally
 type Client struct {
 	address  string
 	password string

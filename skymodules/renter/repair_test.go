@@ -12,10 +12,10 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 )
 
 // updateFileMetadatas updates the metadata of all siafiles within a dir.
@@ -806,6 +806,9 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 	if fileMetadata.NumSkylinks != 1 {
 		t.Fatalf("NumSkylinks incorrect, expected %v got %v", 1, fileMetadata.NumSkylinks)
+	}
+	if !fileMetadata.Unrecoverable {
+		t.Fatal("expected file to be unrecoverable")
 	}
 }
 

@@ -9,10 +9,13 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"math/bits"
+	"path/filepath"
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/skynetlabs/skyd/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/SkynetLabs/skyd/build"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -78,6 +81,22 @@ func isSkylinkV1(bitfield uint16) bool {
 	return bitfield&3 == 0
 }
 
+// isSkylinkV2 returns a boolean indicating if the Skylink is a V2 skylink
+func isSkylinkV2(bitfield uint16) bool {
+	// We compare against 1 here because a V2 skylink only uses the version
+	// bits. All other bits should be set to 0.
+	return bitfield == 1
+}
+
+// NewSkylinkV2 creates a version 2 skylink.
+func NewSkylinkV2(spk types.SiaPublicKey, tweak crypto.Hash) Skylink {
+	var sl Skylink
+	version := uint16(2)
+	sl.bitfield |= (version - 1)
+	sl.merkleRoot = crypto.Hash(modules.DeriveRegistryEntryID(spk, tweak))
+	return sl
+}
+
 // validateAndParseV1Bitfield is a helper method which validates that a bitfield
 // is valid and also parses the offset and fetch size from the bitfield. These
 // two actions are performed at once because performing full validation requires
@@ -140,6 +159,12 @@ func validateAndParseV1Bitfield(bitfield uint16) (offset uint64, fetchSize uint6
 	return offset, fetchSize, nil
 }
 
+// Base32EncodedString converts Skylink to a base32 encoded string.
+func (sl Skylink) Base32EncodedString() string {
+	// Encode the raw bytes to base32
+	return base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString(sl.Bytes())
+}
+
 // Bitfield returns the bitfield of a skylink.
 func (sl *Skylink) Bitfield() uint16 {
 	return sl.bitfield
@@ -194,6 +219,9 @@ func (sl *Skylink) LoadString(s string) error {
 
 // MerkleRoot returns the merkle root of the Skylink.
 func (sl Skylink) MerkleRoot() crypto.Hash {
+	if sl.Version() != 1 {
+		build.Critical("MerkleRoot should only be called on v1 skylink")
+	}
 	return sl.merkleRoot
 }
 
@@ -306,6 +334,27 @@ func (sl Skylink) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err err
 	return validateAndParseV1Bitfield(sl.bitfield)
 }
 
+// RegistryEntryID returns the RegistryEntryID of a v2 skylink.
+func (sl Skylink) RegistryEntryID() modules.RegistryEntryID {
+	if sl.Version() != 2 {
+		build.Critical("RegistryEntryID should only be called on v2 skylink")
+	}
+	return modules.RegistryEntryID(sl.merkleRoot)
+}
+
+// SiaPath return a SiaPath derived from the Skylink.
+//
+// NOTE: There is no guarantee that the SiaPath is the current SiaPath for for
+// the Skyfile.
+func (sl Skylink) SiaPath() (SiaPath, error) {
+	str := sl.String()
+	// This assumes the siaPaths for skyfiles are being constructed in a 2 layer
+	// directory scheme where each directory name is 2 bytes, i.e.
+	// aa/aa/remaingbytes
+	siaPathStr := filepath.Join(str[:2], str[2:4], str[4:])
+	return NewSiaPath(siaPathStr)
+}
+
 // String converts Skylink to a string.
 func (sl Skylink) String() string {
 	// Encode the raw bytes to base64.
@@ -332,7 +381,14 @@ func (sl *Skylink) LoadBytes(data []byte) error {
 	// Skylink so that the Skylink remains unchanged if there is any error
 	// parsing the string.
 	bitfield := binary.LittleEndian.Uint16(data)
-	_, _, err := validateAndParseV1Bitfield(bitfield)
+	var err error
+	if isSkylinkV1(bitfield) {
+		_, _, err = validateAndParseV1Bitfield(bitfield)
+	} else if isSkylinkV2(bitfield) {
+		// nothing to check for V2 skylinks
+	} else {
+		err = errors.New("unknown skylink version")
+	}
 	if err != nil {
 		return errors.AddContext(err, "skylink failed verification")
 	}

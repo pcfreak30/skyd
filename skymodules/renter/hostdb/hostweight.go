@@ -9,9 +9,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/hostdb/hosttree"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb/hosttree"
 )
 
 const (
@@ -261,6 +261,26 @@ func (hdb *HostDB) priceAdjustments(entry skymodules.HostDBEntry, allowance skym
 		allowance.ExpectedRedundancy = 1
 	}
 
+	// Check max prices first.
+	if !allowance.MaxRPCPrice.IsZero() && entry.BaseRPCPrice.Cmp(allowance.MaxRPCPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxContractPrice.IsZero() && entry.ContractPrice.Cmp(allowance.MaxContractPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxSectorAccessPrice.IsZero() && entry.SectorAccessPrice.Cmp(allowance.MaxSectorAccessPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && entry.DownloadBandwidthPrice.Cmp(allowance.MaxDownloadBandwidthPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && entry.UploadBandwidthPrice.Cmp(allowance.MaxUploadBandwidthPrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+	if !allowance.MaxStoragePrice.IsZero() && entry.StoragePrice.Cmp(allowance.MaxStoragePrice) > 0 {
+		return math.SmallestNonzeroFloat64
+	}
+
 	// Convert each element of the allowance into a number of resources that we
 	// expect to use in this contract.
 	contractExpectedDownload := types.NewCurrency64(allowance.ExpectedDownload).Mul64(uint64(allowance.Period)).Div64(allowance.Hosts)
@@ -397,8 +417,12 @@ func versionAdjustments(entry skymodules.HostDBEntry) float64 {
 	// we give the current version a very tiny penalty is so that the test suite
 	// complains if we forget to update this file when we bump the version next
 	// time. The value compared against must be higher than the current version.
-	if build.VersionCmp(entry.Version, "1.5.7") < 0 {
+	if build.VersionCmp(entry.Version, "1.6.1") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
+	}
+	// This needs to be "less than the current version" - anything less than the current version should get a penalty.
+	if build.VersionCmp(entry.Version, "1.6.0") < 0 {
+		base = base * 0.99 // Small penalty
 	}
 
 	// This needs to be "less than the current version" - anything less than the current version should get a penalty.

@@ -10,8 +10,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -316,7 +316,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 // managedLaunchWorker will launch a job to determine which sectors of a chunk
 // are available through that worker. The resulting unresolved worker is
 // returned so it can be added to the pending worker state.
-func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *worker, responseChan chan *jobHasSectorResponse, ws *pcwsWorkerState, hook func(*jobHasSectorResponse)) error {
+func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan chan *jobHasSectorResponse, ws *pcwsWorkerState) error {
 	// Check for gouging.
 	cache := w.staticCache()
 	pt := w.staticPriceTable().staticPriceTable
@@ -339,9 +339,15 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	}
 
 	// Create and launch the job.
-	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, hook, pcws.staticPieceRoots...)
-	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
+	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
+	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
+		ws.managedHandleResponse(resp)
+		cancel()
+	}, pcws.staticPieceRoots...)
+
+	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs, pcwsHasSectorTimeout)
 	if err != nil {
+		cancel()
 		return errors.AddContext(err, fmt.Sprintf("unable to add has sector job to %v", w.staticHostPubKeyStr))
 	}
 	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
@@ -373,12 +379,8 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorkers(ws *pcwsWorkerState) {
 	workers := ws.staticRenter.staticWorkerPool.callWorkers()
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
-		ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
-		err := pcws.managedLaunchWorker(ctx, w, responseChan, ws, func(resp *jobHasSectorResponse) {
-			ws.managedHandleResponse(resp)
-			cancel()
-		})
-		if err != nil {
+		err := pcws.managedLaunchWorker(w, responseChan, ws)
+		if err != nil && !errors.Contains(err, errEstimateAboveMax) {
 			pcws.staticRenter.staticLog.Debugf("failed to launch worker: %v", err)
 		}
 	}

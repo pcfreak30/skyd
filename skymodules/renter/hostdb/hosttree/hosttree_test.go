@@ -15,7 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // customScoreBreakdown is a helper struct to create scoreBreakdown's for
@@ -532,6 +532,22 @@ func TestRandomHosts(t *testing.T) {
 
 	if randHosts[0].PublicKey.Equals(randHosts[1].PublicKey) || randHosts[0].PublicKey.Equals(randHosts[2].PublicKey) || randHosts[1].PublicKey.Equals(randHosts[2].PublicKey) {
 		t.Error("doubled up")
+	}
+
+	// Ask for 3 hosts while only whitelisting 2.
+	whitelist := map[string]struct{}{
+		entry1.PublicKey.String(): {},
+		entry3.PublicKey.String(): {},
+	}
+	randHosts = tree.SelectRandomWithWhitelist(3, nil, nil, whitelist)
+	if len(randHosts) != len(whitelist) {
+		t.Errorf("wrong number of hosts returned %v", len(randHosts))
+	}
+	for _, host := range randHosts {
+		_, ok := whitelist[host.PublicKey.String()]
+		if !ok {
+			t.Error("non whitelisted host returned")
+		}
 	}
 }
 

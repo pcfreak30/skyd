@@ -24,16 +24,16 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/siatest"
-	"gitlab.com/skynetlabs/skyd/siatest/dependencies"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/contractor"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem/siadir"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
+	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 )
 
 // TestRenterOne executes a number of subtests using the same TestGroup to save
@@ -932,18 +932,29 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Bring up hosts to replace the ones that went offline.
-	for hostsRemoved > 0 {
-		hostsRemoved--
-		_, err = tg.AddNodes(node.HostTemplate)
-		if err != nil {
-			t.Fatal("Failed to create a new host", err)
-		}
+	_, err = tg.AddNodeN(node.HostTemplate, int(hostsRemoved))
+	if err != nil {
+		t.Fatal("Failed to create a new host", err)
 	}
 	if err := renterNode.WaitForUploadHealth(remoteFile); err != nil {
 		t.Fatal("File wasn't repaired", err)
 	}
-	// Check to see if a chunk got repaired and marked as unstuck
-	err = renterNode.WaitForStuckChunksToRepair()
+	// Make sure that the file system is updated
+	err = renterNode.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// File should not report any stuck chunks
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fi, err := renterNode.File(remoteFile)
+		if err != nil {
+			return err
+		}
+		if fi.Stuck || fi.NumStuckChunks != 0 {
+			return fmt.Errorf("File is still stuck %v with %v stuck chunks", fi.Stuck, fi.NumStuckChunks)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5262,7 +5273,7 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 	renter := tg.Renters()[0]
 
 	// Helper to check the number of GFU contracts.
-	test := func(hosts uint64, portalMode bool) error {
+	test := func(hosts uint64, portalMode bool, preferredHosts map[string]struct{}) error {
 		// Update the allowance.
 		allowance := siatest.DefaultAllowance
 		allowance.Hosts = hosts
@@ -5293,6 +5304,12 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 			for _, contract := range rcg.ActiveContracts {
 				if contract.GoodForUpload {
 					gfuContracts++
+
+					// The gfu contract should be part of the preferred hosts
+					// set.
+					if _, ok := preferredHosts[contract.HostPublicKey.String()]; !ok {
+						return errors.New("found gfu contract that is not part of the preferred hosts")
+					}
 				}
 			}
 			if gfuContracts != hosts {
@@ -5302,16 +5319,41 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 		})
 	}
 
+	// Helper to get the set of preferred hosts which are the hosts we have gfu
+	// contracts with.
+	preferredHosts := func() map[string]struct{} {
+		ph := make(map[string]struct{})
+		rcg, err := renter.RenterAllContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, contract := range rcg.ActiveContracts {
+			if contract.GoodForUpload {
+				ph[contract.HostPublicKey.String()] = struct{}{}
+			}
+		}
+		return ph
+	}
+	if len(preferredHosts()) != len(tg.Hosts()) {
+		t.Fatal("all hosts should be in the initial set of preferred hosts")
+	}
+
 	// Run for default allowance and then one less every time until we reach 0
 	// hosts.
+	phs := preferredHosts()
 	for hosts := siatest.DefaultAllowance.Hosts; hosts > 0; hosts-- {
 		// Run for regular node.
-		if err := test(hosts, false); err != nil {
+		if err := test(hosts, false, phs); err != nil {
 			t.Fatal(err)
 		}
 		// Run for portal.
-		if err := test(hosts, true); err != nil {
+		if err := test(hosts, true, phs); err != nil {
 			t.Fatal(err)
+		}
+		// Update the preferred hosts to match the smaller allowance.
+		phs = preferredHosts()
+		if len(phs) != int(hosts) {
+			t.Fatalf("%v != %v", len(phs), hosts)
 		}
 	}
 }
@@ -5326,7 +5368,7 @@ func TestRenterClean(t *testing.T) {
 	// Create test group
 	groupParams := siatest.GroupParams{
 		Miners:  1,
-		Hosts:   1,
+		Hosts:   2,
 		Renters: 1,
 	}
 	testDir := renterTestDir(t.Name())
@@ -5368,49 +5410,60 @@ func TestRenterClean(t *testing.T) {
 	// Since it doesn't have a local file it will appear as unrecoverable if the
 	// hosts are taken down.
 	data := fastrand.Bytes(100)
-	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", 2, false, nil)
+	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", renter.SkyfileDefaultBaseChunkRedundancy, false, nil)
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Wait for the file to be healthy
+	if err = r.WaitForUploadProgress(rf3, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.WaitForUploadHealth(rf3); err != nil {
 		t.Fatal(err)
 	}
 
 	// Define test function
-	cleanAndVerify := func(numSiaFiles, numSkyFiles int) {
+	cleanAndVerify := func(numSiaFiles, numSkyFiles int) error {
 		// Clean renter
-		err = r.RenterCleanPost()
+		err := r.RenterCleanPost()
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 
 		// Check for the expected SiaFiles
 		rds, err := r.RenterDirRootGet(skymodules.UserFolder)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if len(rds.Files) != numSiaFiles {
-			t.Fatal("unexpected number of files in user folder:", len(rds.Files))
+			return fmt.Errorf("expected %v files in user folder but found %v", numSiaFiles, len(rds.Files))
 		}
 		// The file should be the 2nd siafile uploaded.
 		siaPath := rds.Files[0].SiaPath
 		expected, err := skymodules.UserFolder.Join(rf2.SiaPath().String())
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if !siaPath.Equals(expected) {
-			t.Fatalf("unexpected siapath; expected %v got %v", expected, siaPath)
+			return fmt.Errorf("unexpected siapath; expected %v got %v", expected, siaPath)
 		}
 
 		// Check for the expected SkyFiles
 		rds, err = r.RenterDirRootGet(skymodules.SkynetFolder)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if len(rds.Files) != numSkyFiles {
-			t.Fatal("unexpected number of files in skynet folder:", len(rds.Files))
+			return fmt.Errorf("expected %v files in skynet folder but found %v", numSkyFiles, len(rds.Files))
 		}
+		return nil
 	}
 
 	// First test should only remove the 1 unrecoverable Siafile
-	cleanAndVerify(1, 1)
+	err = cleanAndVerify(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Take down the hosts
 	for _, h := range tg.Hosts() {
@@ -5427,7 +5480,10 @@ func TestRenterClean(t *testing.T) {
 	}
 
 	// Second test should remove the now unrecoverable Skyfile
-	cleanAndVerify(1, 0)
+	err = cleanAndVerify(1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestRenterRepairSize test the RepairSize field of the metadata

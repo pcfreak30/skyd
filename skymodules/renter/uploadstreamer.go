@@ -9,9 +9,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/skymodules"
-	"gitlab.com/skynetlabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 )
 
 // Upload Streaming Overview:
@@ -212,7 +212,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 		}
 
 		// Start the chunk upload.
-		offline, goodForRenew, _ := r.managedContractUtilityMaps()
+		offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
 		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
 		if err != nil {
 			return n, errors.AddContext(err, "unable to fetch chunk for stream")

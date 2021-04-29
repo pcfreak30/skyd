@@ -1,10 +1,12 @@
 package skymodules
 
 import (
-	"encoding/base32"
+	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -204,7 +206,7 @@ func TestSkylink(t *testing.T) {
 
 	// Try loading a base32 encoded string with invalid bitfield
 	var slInvalidBitfield Skylink
-	slInvalidBitfield.bitfield = 1
+	slInvalidBitfield.bitfield = 2
 	b32BadBitfield := slInvalidBitfield.Base32EncodedString()
 	err = slMaxB32Decoded.LoadString(b32BadBitfield)
 	if err == nil {
@@ -282,7 +284,7 @@ func TestSkylink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sl.MerkleRoot() != mr {
+	if sl.merkleRoot != mr {
 		t.Fatal("root mismatch")
 	}
 }
@@ -378,8 +380,50 @@ func TestSkylinkAutoExamples(t *testing.T) {
 	}
 }
 
-// Base32EncodedString converts Skylink to a base32 encoded string.
-func (sl Skylink) Base32EncodedString() string {
-	// Encode the raw bytes to base32
-	return base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString(sl.Bytes())
+// TestSkylinkSiaPath probes the skylink's SiaPath method
+func TestSkylinkSiaPath(t *testing.T) {
+	t.Parallel()
+
+	// Manual create the expect SiaPath
+	var sl Skylink
+	str := sl.String()
+	siaPathStr := filepath.Join(str[:2], str[2:4], str[4:])
+	expected, err := NewSiaPath(siaPathStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab SiaPath
+	siaPath, err := sl.SiaPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compare
+	if !expected.Equals(siaPath) {
+		t.Fatal("SiaPaths not equal", expected, siaPath)
+	}
+}
+
+// TestNewSkylinkV2 is a unit test for NewSkylinkV2.
+func TestNewSkylinkV2(t *testing.T) {
+	var key crypto.PublicKey
+	fastrand.Read(key[:])
+	spk := types.Ed25519PublicKey(key)
+
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	sid := modules.DeriveRegistryEntryID(spk, tweak)
+
+	// Create skylink and check fields.
+	sl := NewSkylinkV2(spk, tweak)
+	if sl.merkleRoot != crypto.Hash(sid) {
+		t.Fatal("wrong merkle root")
+	}
+	if sl.RegistryEntryID() != sid {
+		t.Fatal("wrong merkle root")
+	}
+	if sl.Version() != 2 {
+		t.Fatal("skylink has wrong version")
+	}
 }

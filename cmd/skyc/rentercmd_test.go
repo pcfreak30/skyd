@@ -6,8 +6,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/node/api"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // TestFilePercentageBreakdown tests the filePercentageBreakdown function
@@ -29,7 +29,7 @@ func TestFilePercentageBreakdown(t *testing.T) {
 	f4 := skymodules.FileInfo{MaxHealthPercent: 30}
 	f5 := skymodules.FileInfo{MaxHealthPercent: 10}
 	f6 := skymodules.FileInfo{MaxHealthPercent: 0, OnDisk: true}
-	f7 := skymodules.FileInfo{MaxHealthPercent: 0}
+	f7 := skymodules.FileInfo{MaxHealth: 1.1}
 	files := []skymodules.FileInfo{f1, f2, f3, f4, f5, f6, f7}
 	dirs[0] = directoryInfo{
 		dir:   dir,

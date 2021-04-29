@@ -14,10 +14,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/build"
-	"gitlab.com/skynetlabs/skyd/node"
-	"gitlab.com/skynetlabs/skyd/node/api/client"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 type (
@@ -802,6 +802,10 @@ func (tg *TestGroup) setupNodes(setHosts, setNodes, setRenters map[*TestNode]str
 	if err := miner.MineBlock(); err != nil {
 		return build.ExtendErr("failed to mine host announcements", err)
 	}
+	// Make sure the nodes are synced after the host announcement.
+	if err := synchronizationCheck(tg.nodes); err != nil {
+		return build.ExtendErr("synchronization check 2 failed", err)
+	}
 	// Block until the hosts show up as active in the renters' hostdbs
 	if err := hostsInRenterDBCheck(miner, tg.renters, tg.hosts); err != nil {
 		return build.ExtendErr("renter database check failed", err)
@@ -817,7 +821,7 @@ func (tg *TestGroup) setupNodes(setHosts, setNodes, setRenters map[*TestNode]str
 	}
 	// Make sure all nodes are synced
 	if err := synchronizationCheck(tg.nodes); err != nil {
-		return build.ExtendErr("synchronization check 2 failed", err)
+		return build.ExtendErr("synchronization check 3 failed", err)
 	}
 	return nil
 }

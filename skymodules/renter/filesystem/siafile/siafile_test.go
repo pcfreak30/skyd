@@ -18,7 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/skynetlabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // randomChunk is a helper method for testing that creates a random chunk.
@@ -1613,5 +1613,39 @@ func TestUpdateMetadata(t *testing.T) {
 	err = checkMetadata(file)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestUnrecoverable probes the Unrecoverable function.
+func TestUnrecoverable(t *testing.T) {
+	t.Parallel()
+
+	// Define Tests
+	var tests = []struct {
+		health        float64
+		onDisk        bool
+		unrecoverable bool
+	}{
+		// Unrecoverable
+		{1.01, false, true},
+		{math.MaxFloat64, false, true},
+
+		// Recoverable
+		//
+		// If onDisk, health doesn't matter
+		{0, true, false},
+		{1.01, true, false},
+		{math.MaxFloat64, true, false},
+		// If !onDisk, health must be <=1
+		{0, false, false},
+		{0.99, false, false},
+		{1, false, false},
+	}
+
+	// Execute Tests
+	for _, test := range tests {
+		if Unrecoverable(test.health, test.onDisk) != test.unrecoverable {
+			t.Error("Unexpected results", test)
+		}
 	}
 }
