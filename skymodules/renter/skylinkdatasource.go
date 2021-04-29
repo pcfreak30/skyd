@@ -349,9 +349,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 		err = r.tg.Launch(func() {
 			for i, chunk := range fanoutChunks {
 				pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
-				if err != nil {
-					fanoutChunkErrs[i] = err
-				}
+				fanoutChunkErrs[i] = err
 				fanoutChunkFetchers[i] = pcws
 				close(fanoutChunksReady[i])
 			}
