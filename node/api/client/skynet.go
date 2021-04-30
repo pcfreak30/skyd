@@ -988,8 +988,6 @@ func (c *Client) SkylinkFromTUSID(id string) (string, error) {
 	if sl.Bitfield() != stsg.Bitfield {
 		return "", errors.New("returned bitfield doesn't match skylink's")
 	}
-	b, _ := json.MarshalIndent(stsg, "  ", "  ")
-	fmt.Println(string(b))
 	return headerSkylink, nil
 }
 
