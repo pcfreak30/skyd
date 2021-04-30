@@ -183,7 +183,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// resovles; favor some other worker instead.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Before(time.Now()) {
-			resolveTime = time.Now().Add(2*time.Since(resolveTime))
+			resolveTime = time.Now().Add(2 * time.Since(resolveTime))
 		}
 
 		// Determine the expected readDuration and cost for this worker. Add the
