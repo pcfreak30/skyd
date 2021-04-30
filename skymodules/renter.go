@@ -141,7 +141,7 @@ type RenterStats struct {
 	TotalContractSpentFees      types.Currency `json:"totalcontractspentfees"`
 	TotalContractRemainingFunds types.Currency `json:"totalcontractremainingfunds"`
 
-	AllowanceFunds              types.Currency `json:"allowancefunds"`
+	Allowance                   Allowance      `json:"allowance"`
 	AllowanceUnspentUnallocated types.Currency `json:"allowanceunspentunallocated"`
 	WalletFunds                 types.Currency `json:"walletfunds"` // Includes unconfirmed
 
