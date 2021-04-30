@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -163,7 +162,7 @@ func (api *API) buildHTTPRoutes() {
 		// Check if the maxsize can be read from the environment.  Otherwise
 		// it's unlimited.
 		var maxSize int64
-		maxSizeStr, ok := os.LookupEnv("TUS_MAXSIZE")
+		maxSizeStr, ok := build.TUSMaxSize()
 		if ok {
 			_, err := fmt.Sscan(maxSizeStr, &maxSize)
 			if err != nil {
