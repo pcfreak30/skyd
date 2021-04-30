@@ -76,6 +76,36 @@ type contractHeader struct {
 	Utility             skymodules.ContractUtility
 }
 
+// rootUpdate is a helper type that specifies an update to a root.
+type rootUpdate struct {
+	// appended means the root didn't exist before and will be appended to the
+	// contract. Otherwise the update updates an existing root. This field is
+	// useful in combination with trim because a new root that is also trimmed
+	// doesn't require an update on disk since the root didn't exist before
+	// anyway.
+	appended bool
+	// trim indicates that the root is supposed to be trimmed.
+	trim bool
+	// root is the new value of the root. This may be the empty hash if the root
+	// is meant to be trimmed.
+	root crypto.Hash
+}
+
+// newRootUpdateTrimRoot creates a trim update.
+func newRootUpdateTrimRoot() rootUpdate {
+	return rootUpdate{trim: true}
+}
+
+// newRootUpdateAppendRoot creates an append update.
+func newRootUpdateAppendRoot(root crypto.Hash) rootUpdate {
+	return rootUpdate{root: root, appended: true}
+}
+
+// newRootUpdateUpdateRoot creates a regular update.
+func newRootUpdateUpdateRoot(root crypto.Hash) rootUpdate {
+	return rootUpdate{root: root, appended: false}
+}
+
 // validate returns an error if the contractHeader is invalid.
 func (h *contractHeader) validate() error {
 	if len(h.Transaction.FileContractRevisions) == 0 {
@@ -457,9 +487,9 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 	return c.merkleRoots.insert(index, root)
 }
 
-// managedRecordAppendIntent creates a WAL update that adds a new sector to the
-// contract and queues this update for application.
-func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*unappliedWalTxn, error) {
+// managedRecordRootUpdates creates a WAL update that applies a number of
+// updates to contract roots.
+func (c *SafeContract) managedRecordRootUpdates(rev types.FileContractRevision, rootUpdates map[uint64]rootUpdate, storageCost, bandwidthCost types.Currency) (*unappliedWalTxn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -472,7 +502,15 @@ func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision,
 
 	updates := []writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
-		c.makeUpdateSetRoot(root, c.merkleRoots.len()),
+	}
+	for rootIdx, update := range rootUpdates {
+		if !update.trim {
+			updates = append(updates, c.makeUpdateSetRoot(update.root, int(rootIdx)))
+		} else if update.trim && !update.appended {
+			err := errors.New("trimming from a contract is not yet supported")
+			build.Critical(err)
+			return nil, err
+		}
 	}
 	if build.Release == "testing" {
 		rcUpdate, err := c.makeUpdateRefCounterAppend()
@@ -1040,7 +1078,9 @@ func (cs *ContractSet) ConvertV130Contract(c V130Contract, cr V130CachedRevision
 		defer cs.Return(sc)
 		if len(cr.MerkleRoots) == sc.merkleRoots.len()+1 {
 			root := cr.MerkleRoots[len(cr.MerkleRoots)-1]
-			_, err = sc.managedRecordAppendIntent(cr.Revision, root, types.ZeroCurrency, types.ZeroCurrency)
+			_, err = sc.managedRecordRootUpdates(cr.Revision, map[uint64]rootUpdate{
+				uint64(len(cr.MerkleRoots)): newRootUpdateAppendRoot(root),
+			}, types.ZeroCurrency, types.ZeroCurrency)
 		} else {
 			_, err = sc.managedRecordDownloadIntent(cr.Revision, types.ZeroCurrency)
 		}
