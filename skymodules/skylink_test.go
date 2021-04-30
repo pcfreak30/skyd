@@ -407,8 +407,10 @@ func TestSkylinkSiaPath(t *testing.T) {
 
 // TestNewSkylinkV2 is a unit test for NewSkylinkV2.
 func TestNewSkylinkV2(t *testing.T) {
-	var spk types.SiaPublicKey
-	fastrand.Read(spk.Key[:])
+	var key crypto.PublicKey
+	fastrand.Read(key[:])
+	spk := types.Ed25519PublicKey(key)
+
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
 	sid := modules.DeriveRegistryEntryID(spk, tweak)
