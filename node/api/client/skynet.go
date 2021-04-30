@@ -963,8 +963,8 @@ func (c *Client) SkylinkFromTUSID(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var stsg api.SkynetSkyfileHandlerPOST
-	err = json.Unmarshal(data, &stsg)
+	var sshp api.SkynetSkyfileHandlerPOST
+	err = json.Unmarshal(data, &sshp)
 	if err != nil {
 		return "", err
 	}
@@ -972,7 +972,7 @@ func (c *Client) SkylinkFromTUSID(id string) (string, error) {
 	if len(skylinkHeader) != 1 {
 		return "", errors.New("SkylinkFromTUSID: Skynet-Skylink header has wrong length")
 	}
-	bodySkylink := stsg.Skylink
+	bodySkylink := sshp.Skylink
 	headerSkylink := skylinkHeader[0]
 	if headerSkylink != bodySkylink {
 		return "", fmt.Errorf("SkylinkFromTUSID: skylink mismatch %v != %v", headerSkylink, bodySkylink)
@@ -982,10 +982,10 @@ func (c *Client) SkylinkFromTUSID(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if sl.MerkleRoot() != stsg.MerkleRoot {
+	if sl.MerkleRoot() != sshp.MerkleRoot {
 		return "", errors.New("returned merkleroot doesn't match skylink's")
 	}
-	if sl.Bitfield() != stsg.Bitfield {
+	if sl.Bitfield() != sshp.Bitfield {
 		return "", errors.New("returned bitfield doesn't match skylink's")
 	}
 	return headerSkylink, nil
