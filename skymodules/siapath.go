@@ -144,10 +144,7 @@ func (sp SiaPath) AddSuffixStr(suffix string) (SiaPath, error) {
 	if sp.IsRoot() || sp.IsEmpty() {
 		return SiaPath{}, errors.New("cannot add suffix to root or empty siapath")
 	}
-	siaPath := SiaPath{
-		Path: clean(sp.Path + suffix),
-	}
-	return siaPath, siaPath.Validate(false)
+	return newSiaPath(sp.Path + suffix)
 }
 
 // Dir returns the directory of the SiaPath
