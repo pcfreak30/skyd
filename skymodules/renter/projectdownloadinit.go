@@ -180,7 +180,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// to resolve. If that time is in the past, add a penalty that assumes
 		// that there is some unusual circumstance preventing the worker from
 		// being on time and that it may be another while before the worker
-		// resovles; favor some other worker instead.
+		// resolves; favor some other worker instead.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Before(time.Now()) {
 			resolveTime = time.Now().Add(2 * time.Since(resolveTime))
