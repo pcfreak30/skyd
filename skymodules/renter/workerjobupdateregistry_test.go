@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
@@ -54,7 +55,9 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
+	span := opentracing.GlobalTracer().StartSpan(t.Name())
 	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &tweak)
+	span.Finish()
 	if err != nil {
 		t.Fatal(err)
 	}

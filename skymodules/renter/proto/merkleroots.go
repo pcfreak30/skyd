@@ -320,7 +320,7 @@ func (mr *merkleRoots) root() crypto.Hash {
 		}
 	}
 	for _, root := range mr.uncachedRoots {
-		tree.Push(root[:])
+		tree.PushSubTree(0, root)
 	}
 	return tree.Root()
 }
@@ -356,6 +356,15 @@ func (mr *merkleRoots) merkleRoots() (roots []crypto.Hash, err error) {
 			len(roots), mr.numMerkleRoots))
 	}
 	return
+}
+
+// merkleRoot returns an individual root from a given index on disk.
+func (mr *merkleRoots) merkleRoot(index int) (crypto.Hash, error) {
+	roots, err := mr.merkleRootsFromIndexFromDisk(index, index+1)
+	if err != nil {
+		return crypto.Hash{}, err
+	}
+	return roots[0], nil
 }
 
 // merkleRootsFrom index reads all the merkle roots in range [from;to)

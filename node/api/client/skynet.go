@@ -194,6 +194,13 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, skymodules.SkyfileMet
 	return c.SkynetSkylinkGetWithTimeout(skylink, -1)
 }
 
+// SkynetMetadataGet uses the /skynet/metadata endpoint to fetch a skylink's
+// metadata.
+func (c *Client) SkynetMetadataGet(skylink string) (sm skymodules.SkyfileMetadata, err error) {
+	err = c.get(fmt.Sprintf("/skynet/metadata/%s", skylink), &sm)
+	return
+}
+
 // SkynetSkylinkRange uses the /skynet/skylink endpoint to download a range from
 // a skylink file.
 func (c *Client) SkynetSkylinkRange(skylink string, from, to uint64) ([]byte, error) {
@@ -956,8 +963,8 @@ func (c *Client) SkylinkFromTUSID(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var stsg api.SkynetTUSSkylinkGET
-	err = json.Unmarshal(data, &stsg)
+	var sshp api.SkynetSkyfileHandlerPOST
+	err = json.Unmarshal(data, &sshp)
 	if err != nil {
 		return "", err
 	}
@@ -965,10 +972,21 @@ func (c *Client) SkylinkFromTUSID(id string) (string, error) {
 	if len(skylinkHeader) != 1 {
 		return "", errors.New("SkylinkFromTUSID: Skynet-Skylink header has wrong length")
 	}
-	bodySkylink := stsg.Skylink
+	bodySkylink := sshp.Skylink
 	headerSkylink := skylinkHeader[0]
 	if headerSkylink != bodySkylink {
 		return "", fmt.Errorf("SkylinkFromTUSID: skylink mismatch %v != %v", headerSkylink, bodySkylink)
+	}
+	var sl skymodules.Skylink
+	err = sl.LoadString(headerSkylink)
+	if err != nil {
+		return "", err
+	}
+	if sl.MerkleRoot() != sshp.MerkleRoot {
+		return "", errors.New("returned merkleroot doesn't match skylink's")
+	}
+	if sl.Bitfield() != sshp.Bitfield {
+		return "", errors.New("returned bitfield doesn't match skylink's")
 	}
 	return headerSkylink, nil
 }

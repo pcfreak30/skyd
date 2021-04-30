@@ -142,7 +142,9 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 	// record the change we are about to make to the contract. If we lose power
 	// mid-revision, this allows us to restore either the pre-revision or
 	// post-revision contract.
-	walTxn, err := sc.managedRecordAppendIntent(rev, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
+	walTxn, err := sc.managedRecordRootUpdates(rev, map[uint64]rootUpdate{
+		uint64(sc.merkleRoots.len()): newRootUpdateAppendRoot(sectorRoot),
+	}, sectorStoragePrice, sectorBandwidthPrice)
 	if err != nil {
 		return skymodules.RenterContract{}, crypto.Hash{}, err
 	}
@@ -180,6 +182,22 @@ func (he *Editor) Upload(data []byte) (_ skymodules.RenterContract, _ crypto.Has
 	err = sc.managedCommitAppend(walTxn, signedTxn, sectorStoragePrice, sectorBandwidthPrice)
 	if err != nil {
 		return skymodules.RenterContract{}, crypto.Hash{}, err
+	}
+
+	// Sanity check: Make sure the contract on disk has the right root.
+	if build.Release == "testing" {
+		// Check cached root first.
+		if sc.merkleRoots.root() != merkleRoot {
+			build.Critical("write: cached root mismatch")
+		}
+		// Check on-disk root.
+		roots, err := sc.merkleRoots.merkleRoots()
+		if err != nil {
+			build.Critical("failed to fetch roots for sanity check")
+		}
+		if cachedMerkleRoot(roots) != merkleRoot {
+			build.Critical("write: root mismatch")
+		}
 	}
 
 	return sc.Metadata(), sectorRoot, nil
