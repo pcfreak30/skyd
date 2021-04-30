@@ -3293,7 +3293,9 @@ The upload ID specified in the TUS protocol.
 
 ```go
 {
-  "skylink": "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg",
+  "skylink": "AACnV8tE5iQpfl5Bi-iYNx07TF-eOEu1dYUv8KJzfuXUCA",                      // string
+  "merkleroot": "a757cb44e624297e5e418be898371d3b4c5f9e384bb575852ff0a2737ee5d408", // crypto.Hash
+  "bitfield": 0                                                                     // uint16
 }
 ```
 

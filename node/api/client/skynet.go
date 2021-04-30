@@ -963,7 +963,7 @@ func (c *Client) SkylinkFromTUSID(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var stsg api.SkynetTUSSkylinkGET
+	var stsg api.SkynetSkyfileHandlerPOST
 	err = json.Unmarshal(data, &stsg)
 	if err != nil {
 		return "", err
@@ -977,6 +977,19 @@ func (c *Client) SkylinkFromTUSID(id string) (string, error) {
 	if headerSkylink != bodySkylink {
 		return "", fmt.Errorf("SkylinkFromTUSID: skylink mismatch %v != %v", headerSkylink, bodySkylink)
 	}
+	var sl skymodules.Skylink
+	err = sl.LoadString(headerSkylink)
+	if err != nil {
+		return "", err
+	}
+	if sl.MerkleRoot() != stsg.MerkleRoot {
+		return "", errors.New("returned merkleroot doesn't match skylink's")
+	}
+	if sl.Bitfield() != stsg.Bitfield {
+		return "", errors.New("returned bitfield doesn't match skylink's")
+	}
+	b, _ := json.MarshalIndent(stsg, "  ", "  ")
+	fmt.Println(string(b))
 	return headerSkylink, nil
 }
 
