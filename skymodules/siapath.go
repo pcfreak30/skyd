@@ -139,6 +139,17 @@ func (sp SiaPath) AddSuffix(suffix uint) SiaPath {
 	}
 }
 
+// AddSuffixStr adds a string suffix to the end of the SiaPath.
+func (sp SiaPath) AddSuffixStr(suffix string) (SiaPath, error) {
+	if sp.IsRoot() || sp.IsEmpty() {
+		return SiaPath{}, errors.New("cannot add suffix to root or empty siapath")
+	}
+	siaPath := SiaPath{
+		Path: clean(sp.Path + suffix),
+	}
+	return siaPath, siaPath.Validate(false)
+}
+
 // Dir returns the directory of the SiaPath
 func (sp SiaPath) Dir() (SiaPath, error) {
 	pathElements := strings.Split(sp.Path, "/")
