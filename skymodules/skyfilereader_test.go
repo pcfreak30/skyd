@@ -157,6 +157,10 @@ func testSkyfileReaderReadBuffer(t *testing.T) {
 // testSkyfileReaderMetadataTimeout verifies metadata returns on timeout,
 // potentially before the reader is fully read
 func testSkyfileReaderMetadataTimeout(t *testing.T) {
+	// Since this is a timeout test only run with long test
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	// create upload parameters
@@ -532,6 +536,10 @@ func testSkyfileMultipartReaderReadBuffer(t *testing.T) {
 // testSkyfileMultipartReaderMetadataTimeout verifies metadata returns on
 // timeout, potentially before the reader is fully read
 func testSkyfileMultipartReaderMetadataTimeout(t *testing.T) {
+	// Since this is a timeout test only run with long test
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	// create upload parameters

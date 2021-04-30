@@ -1,4 +1,4 @@
-package renter
+package skynet
 
 import (
 	"bytes"
@@ -39,7 +39,7 @@ func TestSkynetDownloads(t *testing.T) {
 		Miners:  1,
 		Portals: 1,
 	}
-	groupDir := renterTestDir(t.Name())
+	groupDir := skynetTestDir(t.Name())
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
@@ -753,7 +753,7 @@ func TestSkynetSlowDownload(t *testing.T) {
 		Miners:  1,
 		Portals: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("failed to create test group", err)

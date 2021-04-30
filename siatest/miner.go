@@ -57,6 +57,17 @@ func (tn *TestNode) MineBlock() error {
 	return nil
 }
 
+// MineBlocksN makes the underlying node mine N blocks and broadcasts them
+func (tn *TestNode) MineBlocksN(n int) error {
+	for i := 0; i < n; i++ {
+		err := tn.MineBlock()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // MineEmptyBlock mines an empty block without any transactions and broadcasts
 // it.
 func (tn *TestNode) MineEmptyBlock() error {

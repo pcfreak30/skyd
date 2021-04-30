@@ -1,4 +1,4 @@
-package renter
+package skynet
 
 import (
 	"archive/tar"
@@ -55,7 +55,7 @@ func TestSkynetSuite(t *testing.T) {
 		Miners:  1,
 		Portals: 1,
 	}
-	groupDir := renterTestDir(t.Name())
+	groupDir := skynetTestDir(t.Name())
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
@@ -1694,7 +1694,7 @@ func TestSkynetDownloadByRoot(t *testing.T) {
 		Hosts:  numHosts,
 		Miners: 1,
 	}
-	groupDir := renterTestDir(t.Name())
+	groupDir := skynetTestDir(t.Name())
 
 	// Create a testgroup.
 	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
@@ -2156,7 +2156,7 @@ func TestSkynetBlocklist(t *testing.T) {
 		Hosts:  3,
 		Miners: 1,
 	}
-	groupDir := renterTestDir(t.Name())
+	groupDir := skynetTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
 	if err != nil {
 		t.Fatal(err)
@@ -2581,7 +2581,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 // skylinks
 func testSkynetBlocklistUpgrade(t *testing.T, tg *siatest.TestGroup) {
 	// Create renterDir and renter params
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 	renterDir := filepath.Join(testDir, "renter")
 	err := os.MkdirAll(renterDir, persist.DefaultDiskPermissionsTest)
 	if err != nil {
@@ -2989,7 +2989,7 @@ func testSkynetIncludeLayout(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	// Create renter, skip setting the allowance so that we can ensure there are
 	// no contracts created and therefore no workers in the worker pool
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	renterParams.SkipSetAllowance = true
 	nodes, err := tg.AddNodes(renterParams)
@@ -3146,7 +3146,7 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Create a renter with a timeout dependency injected
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	renterParams.RenterDeps = &dependencies.DependencyTimeoutProjectDownloadByRoot{}
 	nodes, err := tg.AddNodes(renterParams)
@@ -3200,7 +3200,7 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Create a renter with a BlockResumeJobDownloadUntilTimeout dependency.
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	renterParams.RenterDeps = dependencies.NewDependencyBlockResumeJobDownloadUntilTimeout()
 	nodes, err := tg.AddNodes(renterParams)
@@ -3815,7 +3815,7 @@ func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 // sharing platform.
 // i9 - 51.01 MB/s - dbe75c8436cea64f2664e52f9489e9ac761bc058
 func BenchmarkSkynetSingleSector(b *testing.B) {
-	testDir := renterTestDir(b.Name())
+	testDir := skynetTestDir(b.Name())
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -3863,7 +3863,7 @@ func TestFormContractBadScore(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -3931,7 +3931,7 @@ func TestRenewContractBadScore(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -4012,7 +4012,7 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -4186,7 +4186,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 		Hosts:  3,
 		Miners: 1,
 	}
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal(err)
@@ -4490,7 +4490,7 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Prepare a clean node.
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 	monetizer, err := siatest.NewCleanNode(node.Wallet(testDir))
 	if err != nil {
 		t.Fatal(err)
@@ -4632,7 +4632,7 @@ func TestReadUnknownRegistryEntry(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -4721,7 +4721,7 @@ func TestSkynetFeePaid(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	testDir := renterTestDir(t.Name())
+	testDir := skynetTestDir(t.Name())
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
@@ -4827,7 +4827,7 @@ func TestSkynetPinUnpin(t *testing.T) {
 		Hosts:  5,
 		Miners: 1,
 	}
-	groupDir := renterTestDir(t.Name())
+	groupDir := skynetTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
 	if err != nil {
 		t.Fatal(err)
@@ -5039,7 +5039,6 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 		Key:       pk[:],
 	}
 	srv := modules.NewRegistryValue(dataKey, skylink.Bytes(), fastrand.Uint64n(100)).Sign(sk)
-
 	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -5063,5 +5062,19 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(downloadedDataV1, data) {
 		t.Fatal("data doesn't match")
+	}
+
+	// Update entry to empty skylink.
+	skylink = skymodules.Skylink{}
+	srv = modules.NewRegistryValue(dataKey, skylink.Bytes(), srv.Revision+1).Sign(sk)
+	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the file using v2 link again.
+	_, _, err = r.SkynetSkylinkGet(skylinkV2.String())
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
+		t.Fatal(err)
 	}
 }
