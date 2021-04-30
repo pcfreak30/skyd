@@ -177,6 +177,17 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("bad filename")
 	}
 
+	// Fetch the links metadata and compare it. Should match.
+	metadata2, err := r.SkynetMetadataGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(metadata, metadata2) {
+		t.Log(metadata)
+		t.Log(metadata2)
+		t.Fatal("metadata doesn't match")
+	}
+
 	// Try to download the file explicitly using the ReaderGet method with the
 	// no formatter.
 	skylinkReader, err := r.SkynetSkylinkReaderGet(skylink)

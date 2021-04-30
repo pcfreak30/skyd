@@ -194,6 +194,13 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, skymodules.SkyfileMet
 	return c.SkynetSkylinkGetWithTimeout(skylink, -1)
 }
 
+// SkynetMetadataGet uses the /skynet/metadata endpoint to fetch a skylink's
+// metadata.
+func (c *Client) SkynetMetadataGet(skylink string) (sm skymodules.SkyfileMetadata, err error) {
+	err = c.get(fmt.Sprintf("/skynet/metadata/%s", skylink), &sm)
+	return
+}
+
 // SkynetSkylinkRange uses the /skynet/skylink endpoint to download a range from
 // a skylink file.
 func (c *Client) SkynetSkylinkRange(skylink string, from, to uint64) ([]byte, error) {

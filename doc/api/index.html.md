@@ -3402,6 +3402,53 @@ remove is an array of skylinks that should be removed from the blocklist.
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /skynet/metadata/*skylink* [GET]
+> curl example  
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/skynet/metadata/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+```  
+
+downloads the metadata of a skylink within its base sector.
+
+### Path Parameters 
+### Required
+**skylink** | string  
+The skylink of the metadata that should be downloaded.
+
+### Query String Parameters
+### OPTIONAL
+
+**timeout** | int  
+If 'timeout' is set, the download will fail if the basesector cannot be
+retrieved before it expires. Note that this timeout does not cover the actual
+download time, but rather covers the TTFB. Timeout is specified in seconds,
+a timeout value of 0 will be ignored. If no timeout is given, the default will
+be used, which is a 30 second timeout. The maximum allowed timeout is 900s (15
+minutes).
+
+**priceperms** | string  
+'price per millisecond' is a value that helps the downloader determine whether
+to download from cheaper hosts or faster hosts. For a ppms of '0', the
+downloader will always select the cheapest hosts that it is able to download
+from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
+by choosing more expensive hosts to download from, it will choose those hosts if
+and only if the total cost of the download increases by less than 10 SC,
+otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
+"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
+value will be treated as hastings. The default ppms is 100nS.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "filename": "testSmall", // string
+  "length":   99,          // uint64
+  "mode":     416          // uint32
+}
+```
+
 ## /skynet/pin/:skylink [POST]
 > curl example
 
