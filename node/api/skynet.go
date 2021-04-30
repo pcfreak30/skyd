@@ -672,6 +672,16 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// Parse the scps.
+	scps := types.ZeroCurrency
+	scpsStr := queryForm.Get("scps")
+	if scpsStr != "" {
+		if _, err := fmt.Sscan(scpsStr, &scps); err != nil {
+			WriteError(w, Error{"unable to parse 'scps' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Get the renter's settings.
 	settings, err := api.renter.Settings()
 	if err != nil {
@@ -877,10 +887,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if includeMetadata {
 		w.Header().Set("Skynet-File-Metadata", string(streamer.RawMetadata()))
 	}
-
-	// TODO: f/u this needs to be set for downloading monetized content. Needs
-	// to be added to the API and nginx.
-	scps := types.ZeroCurrency
 
 	// Create a write monetizer.
 	writeMonetizer, err := newWriteMonetizer(req.Context(), metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase, scps)

@@ -191,7 +191,19 @@ func (c *Client) RenterSkyfileGet(siaPath skymodules.SiaPath, root bool) (rf api
 // SkynetSkylinkGet uses the /skynet/skylink endpoint to download a skylink
 // file.
 func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, skymodules.SkyfileMetadata, error) {
-	return c.SkynetSkylinkGetWithTimeout(skylink, -1)
+	return c.SkynetSkylinkGetCustom(skylink, types.ZeroCurrency, -1)
+}
+
+// SkynetSkylinkGetWithTimeout uses the /skynet/skylink endpoint to download a
+// skylink file, specifying the given timeout.
+func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byte, skymodules.SkyfileMetadata, error) {
+	return c.SkynetSkylinkGetCustom(skylink, types.ZeroCurrency, timeout)
+}
+
+// SkynetSkylinkGetWithSCPS uses the /skynet/skylink endpoint to download a
+// skylink file, specifying the given siacoin per second monetization rate.
+func (c *Client) SkynetSkylinkGetWithSCPS(skylink string, scps types.Currency) ([]byte, skymodules.SkyfileMetadata, error) {
+	return c.SkynetSkylinkGetCustom(skylink, scps, -1)
 }
 
 // SkynetSkylinkRange uses the /skynet/skylink endpoint to download a range from
@@ -201,14 +213,17 @@ func (c *Client) SkynetSkylinkRange(skylink string, from, to uint64) ([]byte, er
 	return c.getRawPartialResponse(getQuery, from, to)
 }
 
-// SkynetSkylinkGetWithTimeout uses the /skynet/skylink endpoint to download a
-// skylink file, specifying the given timeout.
-func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byte, skymodules.SkyfileMetadata, error) {
+// SkynetSkylinkGetCustom uses the /skynet/skylink endpoint to download a
+// skylink file, specifying custom parameters.
+func (c *Client) SkynetSkylinkGetCustom(skylink string, scps types.Currency, timeout int) ([]byte, skymodules.SkyfileMetadata, error) {
 	params := make(map[string]string)
 	// Only set the timeout if it's valid. Seeing as 0 is a valid timeout,
 	// callers need to pass -1 to ignore it.
 	if timeout >= 0 {
 		params["timeout"] = fmt.Sprintf("%d", timeout)
+	}
+	if !scps.IsZero() {
+		params["scps"] = scps.String()
 	}
 	return c.skynetSkylinkGetWithParameters(skylink, params)
 }
@@ -326,8 +341,17 @@ func (c *Client) SkynetSkylinkHeadWithParameters(skylink string, values url.Valu
 // SkynetSkylinkConcatGet uses the /skynet/skylink endpoint to download a
 // skylink file with the 'concat' format specified.
 func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, _ skymodules.SkyfileMetadata, err error) {
+	return c.SkynetSkylinkGetWithSCPS(skylink, types.ZeroCurrency)
+}
+
+// SkynetSkylinkConcatGetWithSCPS uses the /skynet/skylink endpoint to download
+// a skylink file with the 'concat' format and 'scps' specified.
+func (c *Client) SkynetSkylinkConcatGetWithSCPS(skylink string, scps types.Currency) (_ []byte, _ skymodules.SkyfileMetadata, err error) {
 	values := url.Values{}
 	values.Set("format", string(skymodules.SkyfileFormatConcat))
+	if !scps.IsZero() {
+		values.Set("scps", scps.String())
+	}
 	getQuery := skylinkQueryWithValues(skylink, values)
 	var reader io.Reader
 	header, body, err := c.getReaderResponse(getQuery)

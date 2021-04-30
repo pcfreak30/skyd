@@ -4316,7 +4316,7 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, md, err := r.SkynetSkylinkGet(skylink)
+	_, md, err := r.SkynetSkylinkGetWithSCPS(skylink, types.SiacoinPrecision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4331,7 +4331,7 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, md, err = r.SkynetSkylinkGet(skylink)
+	_, md, err = r.SkynetSkylinkGetWithSCPS(skylink, types.SiacoinPrecision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4350,7 +4350,7 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Download the whole thing.
-	_, md, err = r.SkynetSkylinkConcatGet(skylink)
+	_, md, err = r.SkynetSkylinkConcatGetWithSCPS(skylink, types.SiacoinPrecision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4364,7 +4364,7 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Download just the first subfile. It should have half the monetization
 	// since both fields have the same length.
-	_, md, err = r.SkynetSkylinkGet(skylink + "/" + nestedFile1.Name)
+	_, md, err = r.SkynetSkylinkGetWithSCPS(skylink+"/"+nestedFile1.Name, types.SiacoinPrecision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4393,7 +4393,7 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
 	}
-	_, md, err = r.SkynetSkylinkGet(sshp.Skylink)
+	_, md, err = r.SkynetSkylinkGetWithSCPS(sshp.Skylink, types.SiacoinPrecision)
 	if err != nil {
 		t.Fatal(err)
 	}
