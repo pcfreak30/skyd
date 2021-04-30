@@ -280,6 +280,14 @@ func initTracer() (io.Closer, error) {
 		return nil, err
 	}
 
+	// If the environment variable for disabling Jaeger wasn't explicitly set to
+	// "false", we still consider it disabled intead of defaulting to enabled to
+	// save resources.
+	_, ok := os.LookupEnv("JAEGER_DISABLED")
+	if !ok {
+		cfg.Disabled = true
+	}
+
 	// Example logger and metrics factory. Use github.com/uber/jaeger-client-go/log
 	// and github.com/uber/jaeger-lib/metrics respectively to bind to real logging and metrics
 	// frameworks.
