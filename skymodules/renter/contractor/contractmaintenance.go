@@ -1054,7 +1054,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		numRenews, failedBefore := c.numFailedRenews[md.ID]
 		c.mu.RUnlock()
 		secondHalfOfWindow := blockHeight+allowance.RenewWindow/2 >= md.EndHeight
-		replace := numRenews >= consecutiveRenewalsBeforeReplacement
+		replace := numRenews >= ConsecutiveRenewalsBeforeReplacement
 		if failedBefore && secondHalfOfWindow && replace {
 			oldUtility.GoodForRenew = false
 			oldUtility.GoodForUpload = false

@@ -59,6 +59,11 @@ type (
 		staticSignedRegistryValue *modules.SignedRegistryValue
 		staticErr                 error
 		staticCompleteTime        time.Time
+		staticExecuteTime         time.Time
+		staticEID                 modules.RegistryEntryID
+		staticSPK                 *types.SiaPublicKey
+		staticTweak               *crypto.Hash
+		staticWorker              *worker
 	}
 )
 
@@ -187,6 +192,7 @@ func (j *jobReadRegistry) callDiscard(err error) {
 		response := &jobReadRegistryResponse{
 			staticErr:          errors.Extend(err, ErrJobDiscarded),
 			staticCompleteTime: time.Now(),
+			staticWorker:       w,
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -218,6 +224,8 @@ func (j *jobReadRegistry) callExecute() {
 				staticCompleteTime:        time.Now(),
 				staticSignedRegistryValue: srv,
 				staticErr:                 err,
+				staticExecuteTime:         start,
+				staticWorker:              w,
 			}
 			select {
 			case j.staticResponseChan <- response:
@@ -343,9 +351,9 @@ func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 	return resp.staticSignedRegistryValue, resp.staticErr
 }
 
-// ReadRegistrySID is a helper method to run a ReadRegistry job on a worker
+// ReadRegistryEID is a helper method to run a ReadRegistry job on a worker
 // without a pubkey or tweak.
-func (w *worker) ReadRegistrySID(ctx context.Context, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistryEID(ctx context.Context, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
 	span := opentracing.GlobalTracer().StartSpan("ReadRegistry")
 	defer span.Finish()

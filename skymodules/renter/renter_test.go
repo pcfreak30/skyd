@@ -407,6 +407,11 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 
 // TestPaySkynetFee is a unit test for paySkynetFee.
 func TestPaySkynetFee(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	testDir := build.TempDir("renter", t.Name())
 	fileName := "test"
 

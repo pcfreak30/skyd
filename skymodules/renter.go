@@ -141,7 +141,7 @@ type RenterStats struct {
 	TotalContractSpentFees      types.Currency `json:"totalcontractspentfees"`
 	TotalContractRemainingFunds types.Currency `json:"totalcontractremainingfunds"`
 
-	AllowanceFunds              types.Currency `json:"allowancefunds"`
+	Allowance                   Allowance      `json:"allowance"`
 	AllowanceUnspentUnallocated types.Currency `json:"allowanceunspentunallocated"`
 	WalletFunds                 types.Currency `json:"walletfunds"` // Includes unconfirmed
 
@@ -916,7 +916,8 @@ type ContractorSpending struct {
 // Spending
 func (cs ContractorSpending) SpendingBreakdown() (totalSpent, unspentAllocated, unspentUnallocated types.Currency) {
 	totalSpent = cs.ContractFees.Add(cs.UploadSpending).
-		Add(cs.DownloadSpending).Add(cs.StorageSpending)
+		Add(cs.DownloadSpending).Add(cs.StorageSpending).Add(cs.FundAccountSpending).Add(cs.MaintenanceSpending.Sum())
+
 	// Calculate unspent allocated
 	if cs.TotalAllocated.Cmp(totalSpent) >= 0 {
 		unspentAllocated = cs.TotalAllocated.Sub(totalSpent)
