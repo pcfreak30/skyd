@@ -256,6 +256,22 @@ var (
 		Testing:  1,
 	}).(int)
 
+	// nextChunkSleepInterval is the interval that the repair loop will sleep
+	// before launching the next chunk
+	nextChunkSleepInterval = build.Select(build.Var{
+		Dev:      100 * time.Millisecond,
+		Standard: 15 * time.Second,
+		Testing:  time.Millisecond,
+	}).(time.Duration)
+
+	// nextRepairSleepInterval is the interval that the repair loop will sleep
+	// before the next repair cycle
+	nextRepairSleepInterval = build.Select(build.Var{
+		Dev:      time.Second,
+		Standard: time.Minute,
+		Testing:  time.Millisecond,
+	}).(time.Duration)
+
 	// numBubbleWorkerThreads is the number of threads used when using worker
 	// groups in various bubble methods
 	numBubbleWorkerThreads = build.Select(build.Var{

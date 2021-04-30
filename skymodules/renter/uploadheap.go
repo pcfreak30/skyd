@@ -1367,7 +1367,7 @@ func (r *Renter) managedRepairLoop() error {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
 			return errors.New("Repair loop interrupted because renter is shutting down")
-		default:
+		case <-time.After(nextChunkSleepInterval):
 		}
 
 		// Return if the renter is not online.
@@ -1633,6 +1633,13 @@ func (r *Renter) threadedUploadAndRepair() {
 		dirSiaPaths.callRefreshAll()
 		if err != nil {
 			r.staticRepairLog.Println("WARN: unable to update the filesystem:", err)
+		}
+
+		// Sleep in between interations of the repair loop
+		select {
+		case <-r.tg.StopChan():
+			return
+		case <-time.After(nextRepairSleepInterval):
 		}
 	}
 }
