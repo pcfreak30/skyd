@@ -275,6 +275,17 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // determine the best set of workers to use when attempting to download a piece.
 // Note that we only return this best set if all workers from the worker set are
 // resolved, if that is not the case we simply return nil.
+//
+// NOTE: If there are any unresolved workers (meaning workers that have not
+// completed their HasSector jobs) which were selected as part of the best set
+// for the workers, 'nil' will be returned. This means that we may have a set of
+// resolved workers which is sufficient to begin fetching the file, and yet we
+// will not launch the download yet. If this is happening, it is because the yet
+// unresolved workers have a significantly better estimated time to complete the
+// full download than the resolved workers that were not included in the best
+// set. If workers are going a lot time and remaining unresolved, a penalty is
+// applied which will eventually break those workers and revert to preferring
+// the already resolved workers.
 func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
