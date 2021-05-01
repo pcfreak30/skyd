@@ -558,6 +558,9 @@ func (r *Renter) threadedUpdateRenterHealth() {
 	}
 	defer r.tg.Done()
 
+	// TEMPORARY: disable all health checks.
+	return
+
 	// Loop until the renter has shutdown or until the renter's top level files
 	// directory has a LasHealthCheckTime within the healthCheckInterval
 	for {

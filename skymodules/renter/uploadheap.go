@@ -1464,6 +1464,9 @@ func (r *Renter) threadedUploadAndRepair() {
 	}
 	defer r.tg.Done()
 
+	// TEMPORARY: no repair at all.
+	return
+
 	// Perpetual loop to scan for more files and add chunks to the uploadheap.
 	// The loop assumes that the heap has already been initialized (either at
 	// startup, or after sleeping) and does checks to see whether there is any
