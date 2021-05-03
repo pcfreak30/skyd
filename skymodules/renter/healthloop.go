@@ -44,7 +44,7 @@ var (
 	// cleaning out its cache and restarting from root.
 	healthLoopResetInterval = build.Select(build.Var{
 		Dev:      30 * time.Second,
-		Standard: 3 * time.Minute,
+		Standard: 15 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
