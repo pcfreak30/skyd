@@ -57,6 +57,7 @@ type (
 		closed         bool
 		complete       bool
 		sm             skymodules.SkyfileMetadata
+		sl             skymodules.Skylink
 		staticUploader *skynetTUSUploader
 		staticSUP      skymodules.SkyfileUploadParameters
 
@@ -185,15 +186,16 @@ func (stu *skynetTUSUploader) PruneUploads() {
 }
 
 // Skylink returns the skylink for the upload with the given ID.
-func (stu *skynetTUSUploader) Skylink(id string) (string, bool) {
+func (stu *skynetTUSUploader) Skylink(id string) (skymodules.Skylink, bool) {
 	stu.mu.Lock()
 	defer stu.mu.Unlock()
 	upload, exists := stu.uploads[id]
 	if !exists {
-		return "", false
+		return skymodules.Skylink{}, false
 	}
-	skylink, exists := upload.fi.MetaData["Skylink"]
-	return skylink, exists
+
+	_, exists = upload.fi.MetaData["Skylink"]
+	return upload.sl, exists
 }
 
 // Close closes the upload and underlying filenode.
@@ -396,6 +398,7 @@ func (u *skynetTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	}
 
 	// Set the skylink on the metadata.
+	u.sl = skylink
 	u.fi.MetaData["Skylink"] = skylink.String()
 
 	// Mark it as complete.

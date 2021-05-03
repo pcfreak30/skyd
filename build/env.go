@@ -20,4 +20,7 @@ var (
 	// siaExchangeRate is the environment variable that can be set to
 	// show amounts (additionally) in a different currency
 	siaExchangeRate = "SIA_EXCHANGE_RATE"
+
+	// tusMaxSize determines the max size of an upload via the /tus endpoint.
+	tusMaxSize = "TUS_MAXSIZE"
 )

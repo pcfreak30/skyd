@@ -2,10 +2,12 @@ package renter
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
@@ -394,6 +396,18 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // response. Otherwise the response with the highest revision number will be
 // used.
 func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (modules.SignedRegistryValue, error) {
+	// Start tracing.
+	tracer := opentracing.GlobalTracer()
+	span := tracer.StartSpan("managedReadRegistry")
+	defer span.Finish()
+
+	// Log some info about this trace.
+	span.LogKV("RID", hex.EncodeToString(rid[:]))
+	if spk != nil && tweak != nil {
+		span.LogKV("SPK", spk.String())
+		span.LogKV("Tweak", tweak.String())
+	}
+
 	// Check if we are subscribed to the entry first.
 	subscribedRV, ok := r.staticSubscriptionManager.Get(rid)
 	if ok {
@@ -440,7 +454,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 			continue
 		}
 
-		jrr := worker.newJobReadRegistrySID(backgroundCtx, staticResponseChan, rid, spk, tweak)
+		jrr := worker.newJobReadRegistrySID(backgroundCtx, span, staticResponseChan, rid, spk, tweak)
 		if !worker.staticJobReadRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
