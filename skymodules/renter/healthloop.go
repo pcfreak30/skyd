@@ -126,7 +126,7 @@ func (dirFinder *healthLoopDirFinder) reset() {
 	//
 	// TODO: Change to using EMA to estimate system scan duration.
 	if dirFinder.cumulativeFilesProcessed > 0 && dirFinder.totalFiles > 0 {
-		dirFinder.estimatedSystemScanDuration = time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed / dirFinder.totalFiles)
+		dirFinder.estimatedSystemScanDuration = time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed/dirFinder.totalFiles)
 	}
 	dirFinder.windowStartTime = time.Now()
 	dirFinder.cumulativeSleepTime = 0
@@ -269,7 +269,7 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// To compensate for that, we track how much time we spend in system
 	// scan per cylce and subtract that from the numerator of the above
 	// described equation.
-	sleepTime := (targetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration) * time.Duration(dirFinder.filesInNextDir / dirFinder.totalFiles)
+	sleepTime := (targetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration) * time.Duration(dirFinder.filesInNextDir/dirFinder.totalFiles)
 	// If we are behind schedule, we compress the sleep time
 	// proportionally to how far behind schedule we are.
 	if timeSinceLRC > targetHealthCheckFrequency {
@@ -356,7 +356,7 @@ func (r *Renter) threadedHealthLoop() {
 	// Perform a check that the constants are configured correctly.
 	//
 	// NOTE: If this invariant is broken, it could cause divide by zero errors.
-	if targetHealthCheckFrequency < urgentHealthCheckFrequency {
+	if urgentHealthCheckFrequency <= targetHealthCheckFrequency {
 		panic("constants are set incorrectly, targetHealthCheckFrequenecy needs to be smaller than urgentHealthCheckFrequency")
 	}
 
