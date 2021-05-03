@@ -138,7 +138,7 @@ func (dirFinder *healthLoopDirFinder) reset() {
 		// fraction is rounded down to zero.
 		dirFinder.estimatedSystemScanDuration = (time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed)) / time.Duration(dirFinder.totalFiles)
 		dirFinder.renter.staticLog.Println("HEALTH LOOP: Updated estimated system scan direction to", dirFinder.estimatedSystemScanDuration)
-		, dirFinder.totalFiles, dirFinder.windowStartTime, time.Since(dirFinder.windowStartTime))
+		dirFinder.renter.staticLog.Println("HEALTH LOOP: estimator vars", dirFinder.totalFiles, dirFinder.windowStartTime, time.Since(dirFinder.windowStartTime))
 	}
 	dirFinder.windowStartTime = time.Now()
 	dirFinder.cumulativeSleepTime = 0
