@@ -121,6 +121,9 @@ type healthLoopDirFinder struct {
 // commit the directory metadata changes in every part of our cacheing layer, so
 // the changes exist on disk.
 func (dirFinder *healthLoopDirFinder) reset() {
+	// TODO: This is a temporary logging thing. Remove before merging.
+	dirFinder.renter.staticLog.Println("HEALTH LOOP: resetting the dir finder with this many files scanned:", dirFinder.cumulativeFilesProcessed)
+
 	// Only update the estimated duration if there were actual files to process.
 	// Also check for a divide by zero in the total number of files.
 	//
@@ -131,6 +134,9 @@ func (dirFinder *healthLoopDirFinder) reset() {
 	dirFinder.windowStartTime = time.Now()
 	dirFinder.cumulativeSleepTime = 0
 	dirFinder.cumulativeFilesProcessed = 0
+
+	// TODO: This is a temporary logging thing. Remove before merging.
+	dirFinder.renter.staticLog.Println("HEALTH LOOP: current estimated system scan time:", dirFinder.estimatedSystemScanDuration)
 }
 
 // loadNextDir will find the next directory with the worst health and load
@@ -360,8 +366,14 @@ func (r *Renter) threadedHealthLoop() {
 		panic("constants are set incorrectly, TargetHealthCheckFrequenecy needs to be smaller than urgentHealthCheckFrequency")
 	}
 
+
 	// Launch the background loop to perform health checks on the filesystem.
 	dirFinder := r.newHealthLoopDirFinder()
+	// TODO: This is a temporary, debugging thing. Remove it before merging.
+	r.staticLog.Println("HEALTH LOOP: starting a full system scan")
+	systemScanStart := time.Now()
+	dirFinder.manualCheckTime = time.Now()
+	loggedOnce := false
 	for {
 		// Load the next directory. In the event of an error, reset and try again.
 		err := dirFinder.loadNextDir()
@@ -379,6 +391,12 @@ func (r *Renter) threadedHealthLoop() {
 			// would be handled out here, but that made the error handling and
 			// logging incredibly verbose.
 			err = dirFinder.loadNextDir()
+		}
+
+		// TODO: This is a temporary, debugging thing. Remove it before merging.
+		if !loggedOnce && dirFinder.leastRecentCheck.After(systemScanStart) {
+			loggedOnce = true
+			r.staticLog.Println("HEALTH LOOP: full system scan is complete")
 		}
 
 		// Sleep before processing the next directory. This also serves as the
