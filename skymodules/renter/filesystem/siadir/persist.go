@@ -146,17 +146,6 @@ func (sd *SiaDir) SetPath(targetPath string) error {
 	return nil
 }
 
-// UpdateBubbledMetadata updates the SiaDir Metadata that is bubbled and saves
-// the changes to disk. For fields that are not bubbled, this method sets them
-// to the current values in the SiaDir metadata
-func (sd *SiaDir) UpdateBubbledMetadata(metadata Metadata) error {
-	sd.mu.Lock()
-	defer sd.mu.Unlock()
-	metadata.Mode = sd.metadata.Mode
-	metadata.Version = sd.metadata.Version
-	return sd.updateMetadata(metadata)
-}
-
 // UpdateLastHealthCheckTime updates the SiaDir LastHealthCheckTime and
 // AggregateLastHealthCheckTime and saves the changes to disk
 func (sd *SiaDir) UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, lastHealthCheckTime time.Time) error {
@@ -237,7 +226,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.SkynetFiles = metadata.SkynetFiles
 	sd.metadata.SkynetSize = metadata.SkynetSize
 
-	sd.metadata.Version = metadata.Version
+	sd.metadata.Version = metadataVersion
 
 	// Testing check to ensure new fields aren't missed
 	if build.Release == "testing" && !reflect.DeepEqual(sd.metadata, metadata) {
