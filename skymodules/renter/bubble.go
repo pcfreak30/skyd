@@ -475,7 +475,7 @@ func (r *Renter) callPrepareForBubble(rootDir skymodules.SiaPath, force bool) (*
 		defer mu.Unlock()
 
 		// Skip any directories that have been updated recently
-		if !force && time.Since(di.LastHealthCheckTime) < targetHealthCheckFrequency {
+		if !force && time.Since(di.LastHealthCheckTime) < TargetHealthCheckFrequency {
 			// Track the LastHealthCheckTime of the skipped directory
 			if di.LastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
 				aggregateLastHealthCheckTime = di.LastHealthCheckTime

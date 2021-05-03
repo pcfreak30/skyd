@@ -2628,10 +2628,9 @@ func TestRenterLosingHosts(t *testing.T) {
 	// the previously unused host.
 	delete(contractHosts, pk.String())
 
-	// Sleep a bit for the health loop to catch up.
-	//
-	// TODO: Make this not as magical.
-	time.Sleep(time.Second * 10)
+	// Sleep for long enough that the health loop has time to kick in and detect
+	// the missing host.
+	time.Sleep(2 * renter.TargetHealthCheckFrequency)
 
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5

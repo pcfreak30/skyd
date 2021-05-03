@@ -48,7 +48,7 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
-	// targetHealthCheckFrequency defines how frequently we want to update the
+	// TargetHealthCheckFrequency defines how frequently we want to update the
 	// health of the filesystem when everything is running smoothly. The goal of
 	// the health check system is to spread the health checks of files over this
 	// interval, so that the load of performing health checks is as light as
@@ -58,10 +58,10 @@ var (
 	// in good health. This value is picked based on the rate at which hosts
 	// churn through Skynet - in the course of 24 hours, we should never have
 	// enough churn to have built up a concerning amount of repair burden.
-	targetHealthCheckFrequency = build.Select(build.Var{
-		Dev:      5 * time.Minute,
+	TargetHealthCheckFrequency = build.Select(build.Var{
+		Dev:      2 * time.Minute,
 		Standard: 24 * time.Hour,
-		Testing:  5 * time.Second,
+		Testing:  3 * time.Second,
 	}).(time.Duration)
 
 	// urgentHealthCheckFrequency is the time at which we feel the health of the
@@ -244,7 +244,7 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	lrc := dirFinder.leastRecentCheck
 	timeSinceLRC := time.Since(lrc)
 	urgent := timeSinceLRC > urgentHealthCheckFrequency
-	slowScanTime := dirFinder.estimatedSystemScanDuration >= targetHealthCheckFrequency
+	slowScanTime := dirFinder.estimatedSystemScanDuration >= TargetHealthCheckFrequency
 	manualCheckActive := dirFinder.manualCheckTime.After(lrc)
 	// If a manual check is currently active, or if the condition of the
 	// file health is urgent, or if the amount of time it takes to scan the
@@ -269,10 +269,10 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// To compensate for that, we track how much time we spend in system
 	// scan per cylce and subtract that from the numerator of the above
 	// described equation.
-	sleepTime := (targetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration) * time.Duration(dirFinder.filesInNextDir/dirFinder.totalFiles)
+	sleepTime := (TargetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration) * time.Duration(dirFinder.filesInNextDir/dirFinder.totalFiles)
 	// If we are behind schedule, we compress the sleep time
 	// proportionally to how far behind schedule we are.
-	if timeSinceLRC > targetHealthCheckFrequency {
+	if timeSinceLRC > TargetHealthCheckFrequency {
 		// We are behind schedule, compute the percentage progress
 		// towards urgency that we are. For example, if we are 1 minute
 		// later than the target health check frequency, and the urgent
@@ -283,8 +283,8 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 		// NOTE: This is safe from divide by zero errors because we check
 		// earlier in the program that the urgent time is strictly greater than
 		// the target time.
-		compressionNum := float64(timeSinceLRC - targetHealthCheckFrequency)
-		compressionDenom := float64(urgentHealthCheckFrequency - targetHealthCheckFrequency)
+		compressionNum := float64(timeSinceLRC - TargetHealthCheckFrequency)
+		compressionDenom := float64(urgentHealthCheckFrequency - TargetHealthCheckFrequency)
 		compression := 1 - (compressionNum / compressionDenom)
 		sleepTime = time.Duration(float64(sleepTime) * compression)
 	}
@@ -356,8 +356,8 @@ func (r *Renter) threadedHealthLoop() {
 	// Perform a check that the constants are configured correctly.
 	//
 	// NOTE: If this invariant is broken, it could cause divide by zero errors.
-	if urgentHealthCheckFrequency <= targetHealthCheckFrequency {
-		panic("constants are set incorrectly, targetHealthCheckFrequenecy needs to be smaller than urgentHealthCheckFrequency")
+	if urgentHealthCheckFrequency <= TargetHealthCheckFrequency {
+		panic("constants are set incorrectly, TargetHealthCheckFrequenecy needs to be smaller than urgentHealthCheckFrequency")
 	}
 
 	// Launch the background loop to perform health checks on the filesystem.

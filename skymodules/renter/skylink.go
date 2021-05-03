@@ -85,7 +85,7 @@ func (sm *skylinkManager) managedAddUnpinRequest(skylink skymodules.Skylink) {
 
 	// Add the unpin request and set the time to twice the HealthCheckInterval in
 	// the future.
-	sm.unpinRequests[skylinkStr] = time.Now().Add(targetHealthCheckFrequency * 2)
+	sm.unpinRequests[skylinkStr] = time.Now().Add(TargetHealthCheckFrequency * 2)
 }
 
 // UnpinSkylink unpins a skylink from the renter by removing the underlying

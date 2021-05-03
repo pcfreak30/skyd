@@ -122,7 +122,7 @@ func testSkylinkBasic(t *testing.T) {
 		if !ok {
 			return errors.New("skylink not in unpinRequests")
 		}
-		if urt.Before(start.Add(2 * targetHealthCheckFrequency)) {
+		if urt.Before(start.Add(2 * TargetHealthCheckFrequency)) {
 			return errors.New("time not far enough in the future")
 		}
 		return nil
@@ -149,7 +149,7 @@ func testSkylinkBasic(t *testing.T) {
 
 	// Update the pruneTimeThreshold to now plus 2 * HealthCheckInterval. This
 	// will cause the first skylink to be pruned.
-	sm.callUpdatePruneTimeThreshold(time.Now().Add(2 * targetHealthCheckFrequency))
+	sm.callUpdatePruneTimeThreshold(time.Now().Add(2 * TargetHealthCheckFrequency))
 
 	// Add skylink again should be a no-op
 	sm.managedAddUnpinRequest(skylink1)
