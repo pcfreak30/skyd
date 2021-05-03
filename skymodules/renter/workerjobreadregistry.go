@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -35,6 +36,7 @@ type (
 	jobReadRegistry struct {
 		staticRegistryEntryID modules.RegistryEntryID
 		staticSiaPublicKey    *types.SiaPublicKey
+		staticSpan            opentracing.Span
 		staticTweak           *crypto.Hash
 
 		staticResponseChan chan *jobReadRegistryResponse // Channel to send a response down
@@ -159,24 +161,32 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 }
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
-func (w *worker) newJobReadRegistry(ctx context.Context, responseChan chan *jobReadRegistryResponse, spk types.SiaPublicKey, tweak crypto.Hash) *jobReadRegistry {
+func (w *worker) newJobReadRegistry(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, spk types.SiaPublicKey, tweak crypto.Hash) *jobReadRegistry {
 	sid := modules.DeriveRegistryEntryID(spk, tweak)
-	return w.newJobReadRegistrySID(ctx, responseChan, sid, &spk, &tweak)
+	return w.newJobReadRegistrySID(ctx, span, responseChan, sid, &spk, &tweak)
 }
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
-func (w *worker) newJobReadRegistrySID(ctx context.Context, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
+func (w *worker) newJobReadRegistrySID(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
+	jobSpan := opentracing.StartSpan("ReadRegistryJob", opentracing.ChildOf(span.Context()))
+	jobSpan.SetTag("Host", w.staticHostPubKeyStr)
 	return &jobReadRegistry{
 		staticSiaPublicKey:    spk,
 		staticRegistryEntryID: sid,
 		staticTweak:           tweak,
 		staticResponseChan:    responseChan,
+		staticSpan:            jobSpan,
 		jobGeneric:            newJobGeneric(ctx, w.staticJobReadRegistryQueue, nil),
 	}
 }
 
 // callDiscard will discard a job, sending the provided error.
 func (j *jobReadRegistry) callDiscard(err error) {
+	// Log info and finish span.
+	j.staticSpan.LogKV("callDiscard", err)
+	j.staticSpan.SetTag("success", false)
+	defer j.staticSpan.Finish()
+
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobReadRegistryResponse{
@@ -199,6 +209,13 @@ func (j *jobReadRegistry) callDiscard(err error) {
 func (j *jobReadRegistry) callExecute() {
 	start := time.Now()
 	w := j.staticQueue.staticWorker()
+
+	// Finish job span at the end.
+	defer j.staticSpan.Finish()
+
+	// Capture callExecute in new span.
+	span := opentracing.GlobalTracer().StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+	defer span.Finish()
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
@@ -248,6 +265,8 @@ func (j *jobReadRegistry) callExecute() {
 	if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
+		span.LogKV("error", err)
+		j.staticSpan.SetTag("success", false)
 		return
 	}
 
@@ -261,6 +280,8 @@ func (j *jobReadRegistry) callExecute() {
 		if cached && cachedRevision > srv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
+			span.LogKV("error", errHostLowerRevisionThanCache)
+			j.staticSpan.SetTag("success", false)
 			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, true) // adjust the cache
 			return
 		} else if !cached || srv.Revision > cachedRevision {
@@ -270,6 +291,7 @@ func (j *jobReadRegistry) callExecute() {
 
 	// Success.
 	jobTime := time.Since(start)
+	j.staticSpan.SetTag("success", true)
 
 	// Send the response and report success.
 	sendResponse(srv, nil)
@@ -304,7 +326,10 @@ func (w *worker) initJobReadRegistryQueue() {
 // ReadRegistry is a helper method to run a ReadRegistry job on a worker.
 func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
-	jur := w.newJobReadRegistry(ctx, readRegistryRespChan, spk, tweak)
+	span := opentracing.GlobalTracer().StartSpan("ReadRegistry")
+	defer span.Finish()
+
+	jur := w.newJobReadRegistry(ctx, span, readRegistryRespChan, spk, tweak)
 
 	// Add the job to the queue.
 	if !w.staticJobReadRegistryQueue.callAdd(jur) {
@@ -330,7 +355,10 @@ func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 // without a pubkey or tweak.
 func (w *worker) ReadRegistryEID(ctx context.Context, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
-	jur := w.newJobReadRegistrySID(ctx, readRegistryRespChan, sid, nil, nil)
+	span := opentracing.GlobalTracer().StartSpan("ReadRegistry")
+	defer span.Finish()
+
+	jur := w.newJobReadRegistrySID(ctx, span, readRegistryRespChan, sid, nil, nil)
 
 	// Add the job to the queue.
 	if !w.staticJobReadRegistryQueue.callAdd(jur) {
