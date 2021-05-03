@@ -14,6 +14,12 @@ package renter
 // in any way. For the most part, the renter can learn everything useful about
 // the health loop by checking the numbers in the root siadir.
 
+// TODO: Once tagged logging is in place, everywhere that a log has the prefix
+// 'HEALTH LOOP', we can swap out that log.Println for a
+// log.Tagline("health-loop", $msg), meaning those lines will always print if
+// someone activates the tag "health-loop" in the logger. "HEALTH LOOP VERBOSE"
+// logs can be given the tag "health-loop-verbose".
+
 import (
 	"fmt"
 	"time"
@@ -121,9 +127,7 @@ type healthLoopDirFinder struct {
 // commit the directory metadata changes in every part of our cacheing layer, so
 // the changes exist on disk.
 func (dirFinder *healthLoopDirFinder) reset() {
-	// TODO: This is a temporary logging thing. Remove before merging.
 	dirFinder.renter.staticLog.Println("HEALTH LOOP: resetting the dir finder with this many files scanned:", dirFinder.cumulativeFilesProcessed)
-	dirFinder.renter.staticLog.Println("HEALTH LOOP:", dirFinder.totalFiles, dirFinder.windowStartTime, time.Since(dirFinder.windowStartTime))
 
 	// Only update the estimated duration if there were actual files to process.
 	// Also check for a divide by zero in the total number of files.
@@ -133,6 +137,8 @@ func (dirFinder *healthLoopDirFinder) reset() {
 		// NOTE: need to separate the variable in time.Duration otherwise the
 		// fraction is rounded down to zero.
 		dirFinder.estimatedSystemScanDuration = (time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed)) / time.Duration(dirFinder.totalFiles)
+		dirFinder.renter.staticLog.Println("HEALTH LOOP: Updated estimated system scan direction to", dirFinder.estimatedSystemScanDuration)
+		, dirFinder.totalFiles, dirFinder.windowStartTime, time.Since(dirFinder.windowStartTime))
 	}
 	dirFinder.windowStartTime = time.Now()
 	dirFinder.cumulativeSleepTime = 0
@@ -395,6 +401,7 @@ func (r *Renter) threadedHealthLoop() {
 			// logging incredibly verbose.
 			err = dirFinder.loadNextDir()
 		}
+		r.staticLog.Println("HEALTH LOOP VERBOSE: loaded a directory", dirFinder.nextDir)
 
 		// TODO: This is a temporary, debugging thing. Remove it before merging.
 		if !loggedOnce && dirFinder.leastRecentCheck.After(systemScanStart) {
@@ -415,6 +422,7 @@ func (r *Renter) threadedHealthLoop() {
 		// the right amount of sleep time is chosen, as the sleep duration will
 		// depend on which directory is up next.
 		sleepTime := dirFinder.sleepDurationBeforeNextDir()
+		r.staticLog.Println("HEALTH LOOP VERBOSE: sleeping before next directory", sleepTime)
 		select {
 		case <-time.After(sleepTime):
 		case <-r.tg.StopChan():
@@ -423,6 +431,7 @@ func (r *Renter) threadedHealthLoop() {
 
 		// Process the next directory. We don't retry on error, we just move on
 		// to the next directory.
+		r.staticLog.Println("HEALTH LOOP VERBOSE: processing next directory")
 		err = dirFinder.processNextDir()
 		if err != nil {
 			r.staticLog.Println("Error processing a directory in the health loop:", err)
