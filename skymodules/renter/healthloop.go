@@ -118,6 +118,13 @@ type healthLoopDirFinder struct {
 	renter *Renter
 }
 
+// computeUpdatedEstimatedSystemScanDuration is a stateless function to compute
+// the new estimated system scan duration given the information from the
+// previous scan.
+func computeUpdatedEstimatedSystemScanDuration() time.Duration {
+	return 0
+}
+
 // reset will reset the dirFinder and start the dirFinder back at the root
 // level.
 //
@@ -375,7 +382,6 @@ func (r *Renter) threadedHealthLoop() {
 		panic("constants are set incorrectly, TargetHealthCheckFrequenecy needs to be smaller than urgentHealthCheckFrequency")
 	}
 
-
 	// Launch the background loop to perform health checks on the filesystem.
 	dirFinder := r.newHealthLoopDirFinder()
 	// TODO: This is a temporary, debugging thing. Remove it before merging.
@@ -385,6 +391,7 @@ func (r *Renter) threadedHealthLoop() {
 	loggedOnce := false
 	for {
 		// Load the next directory. In the event of an error, reset and try again.
+		r.staticLog.Println("HEALTH LOOP: attempting to load the next dir")
 		err := dirFinder.loadNextDir()
 		for err != nil {
 			// Log the error and then sleep.
