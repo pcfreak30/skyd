@@ -28,7 +28,7 @@ var (
 	// sleep if there are files in the filesystem.
 	emptyFilesystemSleepDuration = build.Select(build.Var{
 		Dev:      5 * time.Second,
-		Standard: 60 * time.Minute,
+		Standard: 10 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
@@ -36,7 +36,7 @@ var (
 	// sleep before retrying if there is an error preventing progress.
 	healthLoopErrorSleepDuration = build.Select(build.Var{
 		Dev:      10 * time.Second,
-		Standard: 30 * time.Second,
+		Standard: 10 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
@@ -44,7 +44,7 @@ var (
 	// cleaning out its cache and restarting from root.
 	healthLoopResetInterval = build.Select(build.Var{
 		Dev:      30 * time.Second,
-		Standard: 15 * time.Minute,
+		Standard: 5 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
@@ -123,6 +123,7 @@ type healthLoopDirFinder struct {
 func (dirFinder *healthLoopDirFinder) reset() {
 	// TODO: This is a temporary logging thing. Remove before merging.
 	dirFinder.renter.staticLog.Println("HEALTH LOOP: resetting the dir finder with this many files scanned:", dirFinder.cumulativeFilesProcessed)
+	dirFinder.renter.staticLog.Println("HEALTH LOOP:", dirFinder.totalFiles, dirFinder.windowStartTime, time.Since(dirFinder.windowStartTime))
 
 	// Only update the estimated duration if there were actual files to process.
 	// Also check for a divide by zero in the total number of files.
@@ -131,7 +132,7 @@ func (dirFinder *healthLoopDirFinder) reset() {
 	if dirFinder.cumulativeFilesProcessed > 0 && dirFinder.totalFiles > 0 {
 		// NOTE: need to separate the variable in time.Duration otherwise the
 		// fraction is rounded down to zero.
-		dirFinder.estimatedSystemScanDuration = time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed) / time.Duration(dirFinder.totalFiles)
+		dirFinder.estimatedSystemScanDuration = (time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed)) / time.Duration(dirFinder.totalFiles)
 	}
 	dirFinder.windowStartTime = time.Now()
 	dirFinder.cumulativeSleepTime = 0
