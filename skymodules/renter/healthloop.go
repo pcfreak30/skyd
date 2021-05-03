@@ -44,7 +44,7 @@ var (
 	// cleaning out its cache and restarting from root.
 	healthLoopResetInterval = build.Select(build.Var{
 		Dev:      30 * time.Second,
-		Standard: 15 * time.Minute,
+		Standard: 3 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
@@ -129,7 +129,9 @@ func (dirFinder *healthLoopDirFinder) reset() {
 	//
 	// TODO: Change to using EMA to estimate system scan duration.
 	if dirFinder.cumulativeFilesProcessed > 0 && dirFinder.totalFiles > 0 {
-		dirFinder.estimatedSystemScanDuration = time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed/dirFinder.totalFiles)
+		// NOTE: need to separate the variable in time.Duration otherwise the
+		// fraction is rounded down to zero.
+		dirFinder.estimatedSystemScanDuration = time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed) / time.Duration(dirFinder.totalFiles)
 	}
 	dirFinder.windowStartTime = time.Now()
 	dirFinder.cumulativeSleepTime = 0
