@@ -192,6 +192,9 @@ func (j *jobReadRegistry) callDiscard(err error) {
 		response := &jobReadRegistryResponse{
 			staticErr:          errors.Extend(err, ErrJobDiscarded),
 			staticCompleteTime: time.Now(),
+			staticEID:          j.staticRegistryEntryID,
+			staticSPK:          j.staticSiaPublicKey,
+			staticTweak:        j.staticTweak,
 			staticWorker:       w,
 		}
 		select {
@@ -225,6 +228,9 @@ func (j *jobReadRegistry) callExecute() {
 				staticSignedRegistryValue: srv,
 				staticErr:                 err,
 				staticExecuteTime:         start,
+				staticEID:                 j.staticRegistryEntryID,
+				staticSPK:                 j.staticSiaPublicKey,
+				staticTweak:               j.staticTweak,
 				staticWorker:              w,
 			}
 			select {
