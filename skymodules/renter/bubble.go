@@ -317,7 +317,7 @@ func (bs *bubbleScheduler) managedPerformBubbleUpdate(siaPath skymodules.SiaPath
 		defer func() {
 			err = errors.Compose(err, siaDir.Close())
 		}()
-		err = siaDir.UpdateBubbledMetadata(metadata)
+		err = siaDir.UpdateMetadata(metadata)
 		if err != nil {
 			e := fmt.Sprintf("could not update the metadata of the directory %v", siaPath.String())
 			err = errors.AddContext(err, e)

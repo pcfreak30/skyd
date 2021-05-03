@@ -75,8 +75,6 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 
 		SkynetFiles: uint64(0),
 		SkynetSize:  uint64(0),
-
-		Version: siadir.MetadataVersion,
 	}
 	// Read directory
 	fileinfos, err := r.staticFileSystem.ReadDir(siaPath)
