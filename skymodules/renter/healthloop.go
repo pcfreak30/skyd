@@ -16,9 +16,9 @@ package renter
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
@@ -42,7 +42,7 @@ var (
 
 	// healthLoopResetInterval defines how frequently the health loop resets,
 	// cleaning out its cache and restarting from root.
-	healthLoopErrorSleepDuration = build.Select(build.Var{
+	healthLoopResetInterval = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 15 * time.Minute,
 		Testing:  5 * time.Second,
@@ -110,7 +110,6 @@ type healthLoopDirFinder struct {
 	estimatedSystemScanDuration time.Duration
 
 	renter *Renter
-	mu     sync.Mutex
 }
 
 // reset will reset the dirFinder and start the dirFinder back at the root
@@ -127,7 +126,7 @@ func (dirFinder *healthLoopDirFinder) reset() {
 	//
 	// TODO: Change to using EMA to estimate system scan duration.
 	if dirFinder.cumulativeFilesProcessed > 0 && dirFinder.totalFiles > 0 {
-		dirFinder.estimatedSystemScanDuration = time.Since(dirFinder.windowStartTime) * dirFinder.cumulativeFilesProcessed / dirFinder.totalFiles
+		dirFinder.estimatedSystemScanDuration = time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed / dirFinder.totalFiles)
 	}
 	dirFinder.windowStartTime = time.Now()
 	dirFinder.cumulativeSleepTime = 0
@@ -145,9 +144,9 @@ func (dirFinder *healthLoopDirFinder) reset() {
 // the other directories at our current level are reasonably within the timeout
 // range, preferring to go deeper here and making the structure more linear in
 // the future.
-func (dirFinder *heathLoopDirFinder) loadNextDir() error {
+func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 	// Check if we need to reset the dirFinder.
-	if dirFinder.windowStartTime.Before(time.Now().Sub(healthLoopResetInterval)) {
+	if dirFinder.windowStartTime.Before(time.Now().Add(-1 * healthLoopResetInterval)) {
 		dirFinder.reset()
 	}
 
@@ -156,7 +155,7 @@ func (dirFinder *heathLoopDirFinder) loadNextDir() error {
 	// TODO: Can start at a cached level instead of root.
 	siaPath := skymodules.RootSiaPath()
 	// TODO: Can use a cached metadata instead of loading it manually.
-	metadata, err := r.managedDirectoryMetadata(siaPath)
+	metadata, err := dirFinder.renter.managedDirectoryMetadata(siaPath)
 	if err != nil {
 		return errors.AddContext(err, "unable to load root metadata")
 	}
@@ -176,7 +175,7 @@ func (dirFinder *heathLoopDirFinder) loadNextDir() error {
 	// least recent regions.
 	for {
 		// Load any subdirectories.
-		subDirSiaPaths, err := r.managedSubDirectories(siaPath)
+		subDirSiaPaths, err := dirFinder.renter.managedSubDirectories(siaPath)
 		if err != nil {
 			errStr := fmt.Sprintf("error when fetching the sub directories of %s", siaPath)
 			return errors.AddContext(err, errStr)
@@ -186,7 +185,7 @@ func (dirFinder *heathLoopDirFinder) loadNextDir() error {
 		betterSubdirFound := false
 		for _, subDirPath := range subDirSiaPaths {
 			// Load the metadata of this subdir.
-			subMetadata, err := r.managedDirectoryMetadata(subDirPath)
+			subMetadata, err := dirFinder.renter.managedDirectoryMetadata(subDirPath)
 			if err != nil {
 				errStr := fmt.Sprintf("unable to load the metadata of subdirectory %s", subDirPath)
 				return errors.AddContext(err, errStr)
@@ -206,7 +205,8 @@ func (dirFinder *heathLoopDirFinder) loadNextDir() error {
 	}
 
 	dirFinder.filesInNextDir = metadata.NumFiles
-	dirFinder.siaPath = siaPath
+	dirFinder.nextDir = siaPath
+	return nil
 }
 
 // sleepDurationBeforeNextDir will determine how long the health loop should
@@ -219,6 +219,8 @@ func (dirFinder *heathLoopDirFinder) loadNextDir() error {
 // call.
 func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration {
 	// If there are no files, return a standard time for sleeping.
+	//
+	// NOTE: Without this check, you get a divide by zero.
 	if dirFinder.totalFiles == 0 {
 		return emptyFilesystemSleepDuration
 	}
@@ -241,8 +243,8 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// files.
 	lrc := dirFinder.leastRecentCheck
 	timeSinceLRC := time.Since(lrc)
-	urgent := timeSinceLRC > urgetnHealthCheckFrequency
-	slowScanTime := dirFinder.systemScanDuration >= sleepTimeNumerator
+	urgent := timeSinceLRC > urgentHealthCheckFrequency
+	slowScanTime := dirFinder.estimatedSystemScanDuration >= targetHealthCheckFrequency
 	manualCheckActive := dirFinder.manualCheckTime.After(lrc)
 	// If a manual check is currently active, or if the condition of the
 	// file health is urgent, or if the amount of time it takes to scan the
@@ -267,7 +269,7 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// To compensate for that, we track how much time we spend in system
 	// scan per cylce and subtract that from the numerator of the above
 	// described equation.
-	sleepTime := (targetHealthCheckFrequency - dirFinder.systemScanDuration) * dirFinder.filesInNextDir / dirFinder.totalFiles
+	sleepTime := (targetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration) * time.Duration(dirFinder.filesInNextDir / dirFinder.totalFiles)
 	// If we are behind schedule, we compress the sleep time
 	// proportionally to how far behind schedule we are.
 	if timeSinceLRC > targetHealthCheckFrequency {
@@ -288,6 +290,40 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	}
 	dirFinder.cumulativeSleepTime += sleepTime
 	return sleepTime
+}
+
+// processNextDir performs the actual health check and update on the directory
+// that was discovered in loadNextDir.
+func (dirFinder *healthLoopDirFinder) processNextDir() error {
+	// Scan and update the healths of all the files in the directory, and update
+	// the corresponding directory metadata.
+	nextDir := dirFinder.nextDir
+	err := dirFinder.renter.managedUpdateFilesInDir(nextDir)
+	if err != nil {
+		errStr := fmt.Sprintf("unable to process directory %s from within the health loop", nextDir)
+		return errors.AddContext(err, errStr)
+	}
+	dirFinder.cumulativeFilesProcessed += dirFinder.filesInNextDir
+
+	// Update the metadatas of all the underlying directories up to root. This
+	// won't scan and update all of the inner files, it'll just use the
+	// metadatas that the inner files already have. Most skynet portals only
+	// have files at the leaf directories, so it shouldn't make a big difference
+	// either way.
+	for !nextDir.IsRoot() {
+		parent, err := nextDir.Dir()
+		if err != nil {
+			errStr := fmt.Sprintf("unable to get the parent directory of %s", nextDir)
+			return errors.AddContext(err, errStr)
+		}
+		nextDir = parent
+		err = dirFinder.renter.managedUpdateDirMetadata(nextDir)
+		if err != nil {
+			errStr := fmt.Sprintf("unable to update the metadata of directory %s", nextDir)
+			return errors.AddContext(err, errStr)
+		}
+	}
+	return nil
 }
 
 // newHealthLoopDirFinder creates a new dir finder that is ready to perform
@@ -331,7 +367,7 @@ func (r *Renter) threadedHealthLoop() {
 		err := dirFinder.loadNextDir()
 		for err != nil {
 			// Log the error and then sleep.
-			r.log.Println("Error loading next directory:", err)
+			r.staticLog.Println("Error loading next directory:", err)
 			select {
 			case <-time.After(healthLoopErrorSleepDuration):
 			case <-r.tg.StopChan():
@@ -366,9 +402,9 @@ func (r *Renter) threadedHealthLoop() {
 
 		// Process the next directory. We don't retry on error, we just move on
 		// to the next directory.
-		err := dirFinder.processNextDir()
+		err = dirFinder.processNextDir()
 		if err != nil {
-			r.log.Println("Error processing a directory in the health loop:", err)
+			r.staticLog.Println("Error processing a directory in the health loop:", err)
 		}
 	}
 }
