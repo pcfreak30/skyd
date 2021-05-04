@@ -230,13 +230,11 @@ type Renter struct {
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []skymodules.HostDBEntry
 
-	// staticBubbleScheduler manages the bubble requests for the renter
-	staticBubbleScheduler *bubbleScheduler
-
-	// cachedUtilities contain contract information used when calculating metadata
-	// information about the filesystem, such as health. This information is used
-	// in various functions such as listing filesystem information and bubble.
-	// These values are cached to prevent recomputing them too often.
+	// cachedUtilities contain contract information used when calculating
+	// metadata information about the filesystem, such as health. This
+	// information is used in various functions such as listing filesystem
+	// information and updating directory metadata.  These values are cached to
+	// prevent recomputing them too often.
 	cachedUtilities cachedUtilities
 
 	// staticBatchManager manages batching skyfile uploads for the Renter.
@@ -281,6 +279,7 @@ type Renter struct {
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
 	staticGateway                      modules.Gateway
+	staticDirUpdateBatcher             *dirUpdateBatcher
 	staticHostContractor               hostContractor
 	staticHostDB                       skymodules.HostDB
 	staticSkykeyManager                *skykey.SkykeyManager
@@ -1103,7 +1102,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticTPool:          tpool,
 	}
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticBubbleScheduler = newBubbleScheduler(r)
+	r.staticDirUpdateBatcher = r.newHealthUpdateBatcher()
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
@@ -1211,10 +1210,10 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		go r.threadedHealthLoop()
 	}
 
-	// We do not group the staticBubbleScheduler's background thread with the
-	// threads disabled by "DisableRepairAndHealthLoops" so that manual calls to
-	// for bubble updates are processed.
-	go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
+	// The background thread for updating the directory metadata is not grouped
+	// with the threads disabled by "DisableRepairAndHealthLoops" so that manual
+	// calls to update directory metadata can still be processed.
+	go r.staticDirUpdateBatcher.threadedExecuteBatchUpdates()
 
 	// Initialize the batch manager
 	r.newSkylinkBatchManager()
