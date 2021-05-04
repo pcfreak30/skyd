@@ -134,7 +134,7 @@ func TestDirFinderSleepDuration(t *testing.T) {
 	}
 
 	// Standard check - set the number of files to 3, which means there should
-	// be a full second of sleep betwen each file.
+	// be a full second of sleep between each file.
 	dirFinder.totalFiles = 3
 	dirFinder.filesInNextDir = 1
 	dirFinder.leastRecentCheck = time.Now().Add(-1 * TargetHealthCheckFrequency / 2)
