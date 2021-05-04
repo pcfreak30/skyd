@@ -133,7 +133,10 @@ type healthLoopDirFinder struct {
 }
 
 // computeUpdatedEstimatedSystemScanDuration computes the estimated system scan
-// duration of the dirFinder.
+// duration of the dirFinder. It uses an EMA, compressing historic values and
+// then adding the new values from the recent window. Finally, it resets the new
+// values from the recent window so that the EMA is not corrupted if called
+// multiple times.
 func (dirFinder *healthLoopDirFinder) updateEstimatedSystemScanDuration() {
 	df := dirFinder // Improves readability in this case
 	df.weightedProcessingTime *= systemScanTimeEstimatorDecayNum
@@ -166,9 +169,10 @@ func (dirFinder *healthLoopDirFinder) updateEstimatedSystemScanDuration() {
 // commit the directory metadata changes in every part of our cacheing layer, so
 // the changes exist on disk.
 func (dirFinder *healthLoopDirFinder) reset() {
-	dirFinder.renter.staticLog.Println("HEALTH LOOP: resetting the dir finder with this many files scanned:", dirFinder.windowFilesProcessed)
+	filesProcessed := dirFinder.windowFilesProcessed
+	timeTaken := time.Since(dirFinder.windowStartTime)-dirFinder.windowSleepTime
 	dirFinder.updateEstimatedSystemScanDuration()
-	dirFinder.renter.staticLog.Println("HEALTH LOOP: current estimated system scan time:", dirFinder.estimatedSystemScanDuration)
+	dirFinder.renter.staticLog.Printf("HEALTH LOOP: scanned %v files in %v, resulting in a new estimated full scan duration of %v", filesProcessed, timeTaken, dirFinder.estimatedSystemScanDuration)
 }
 
 // loadNextDir will find the next directory with the worst health and load
