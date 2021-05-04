@@ -34,7 +34,7 @@ const (
 	// should be applied to the estimator. A decay that is closer to 1 will take
 	// into account more historical data, and a decay that is closer to 0 will
 	// be more responsive to changes in the environment.
-	systemScanTimeEstimatorDecayNum = 90
+	systemScanTimeEstimatorDecayNum   = 90
 	systemScanTimeEstimatorDecayDenom = 100
 )
 
@@ -43,15 +43,15 @@ var (
 	// sleep if there are files in the filesystem.
 	emptyFilesystemSleepDuration = build.Select(build.Var{
 		Dev:      5 * time.Second,
-		Standard: 1 * time.Minute,
+		Standard: 5 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
 	// healthLoopErrorSleepDuration indicates how long the health loop should
 	// sleep before retrying if there is an error preventing progress.
 	healthLoopErrorSleepDuration = build.Select(build.Var{
-		Dev:      10 * time.Second,
-		Standard: 10 * time.Second,
+		Dev:      9 * time.Second,
+		Standard: 5 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
@@ -59,7 +59,7 @@ var (
 	// cleaning out its cache and restarting from root.
 	healthLoopResetInterval = build.Select(build.Var{
 		Dev:      30 * time.Second,
-		Standard: 5 * time.Minute,
+		Standard: 15 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
@@ -74,7 +74,7 @@ var (
 	// churn through Skynet - in the course of 24 hours, we should never have
 	// enough churn to have built up a concerning amount of repair burden.
 	TargetHealthCheckFrequency = build.Select(build.Var{
-		Dev:      2 * time.Minute,
+		Dev:      3 * time.Minute,
 		Standard: 24 * time.Hour,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
@@ -93,9 +93,9 @@ var (
 	// there, the health loop will run halfway between proprtional speed and
 	// full speed.
 	urgentHealthCheckFrequency = build.Select(build.Var{
-		Dev:      15 * time.Minute,
+		Dev:      9 * time.Minute,
 		Standard: 72 * time.Hour,
-		Testing:  15 * time.Second,
+		Testing:  9 * time.Second,
 	}).(time.Duration)
 )
 
@@ -170,7 +170,7 @@ func (dirFinder *healthLoopDirFinder) updateEstimatedSystemScanDuration() {
 // the changes exist on disk.
 func (dirFinder *healthLoopDirFinder) reset() {
 	filesProcessed := dirFinder.windowFilesProcessed
-	timeTaken := time.Since(dirFinder.windowStartTime)-dirFinder.windowSleepTime
+	timeTaken := time.Since(dirFinder.windowStartTime) - dirFinder.windowSleepTime
 	dirFinder.updateEstimatedSystemScanDuration()
 	dirFinder.renter.staticLog.Printf("HEALTH LOOP: scanned %v files in %v, resulting in a new estimated full scan duration of %v", filesProcessed, timeTaken, dirFinder.estimatedSystemScanDuration)
 }
