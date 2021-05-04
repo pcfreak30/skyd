@@ -393,6 +393,7 @@ func (r *Renter) threadedHealthLoop() {
 		// Load the next directory. In the event of an error, reset and try again.
 		r.staticLog.Println("HEALTH LOOP: attempting to load the next dir")
 		err := dirFinder.loadNextDir()
+		r.staticLog.Println("HEALTH LOOP: next dir load complete")
 		for err != nil {
 			// Log the error and then sleep.
 			r.staticLog.Println("Error loading next directory:", err)
