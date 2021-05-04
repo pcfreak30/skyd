@@ -88,7 +88,8 @@ Renter Rate limits:
   Upload Speed:   (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))`
 
 	connectionRefusedPattern := `Could not get consensus status: \[failed to get reader response; GET request failed; Get "?http://localhost:5555/consensus"?: dial tcp \[::1\]:5555: connect: connection refused\]`
-	skyClientVersionPattern := "Skynet Client v" + strings.ReplaceAll(build.NodeVersion, ".", `\.`)
+	versionReplacer := strings.NewReplacer(".", `\.`, "?", `\?`)
+	skyClientVersionPattern := "Skynet Client v" + versionReplacer.Replace(build.NodeVersion)
 
 	// Define subtests
 	// We can't test siad on default address (port) when test node has
