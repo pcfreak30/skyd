@@ -272,7 +272,7 @@ func (w *worker) initJobUpdateRegistryQueue() {
 // UpdateRegistry is a helper method to run a UpdateRegistry job on a worker.
 func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
 	updateRegistryRespChan := make(chan *jobUpdateRegistryResponse)
-	span := opentracing.GlobalTracer().StartSpan("ReadRegistry")
+	span := opentracing.GlobalTracer().StartSpan("UpdateRegistry")
 	defer span.Finish()
 
 	jur := w.newJobUpdateRegistry(ctx, span, updateRegistryRespChan, spk, rv)

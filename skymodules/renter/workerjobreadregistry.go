@@ -365,7 +365,7 @@ func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 // without a pubkey or tweak.
 func (w *worker) ReadRegistryEID(ctx context.Context, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
-	span := opentracing.GlobalTracer().StartSpan("ReadRegistry")
+	span := opentracing.GlobalTracer().StartSpan("ReadRegistryEID")
 	defer span.Finish()
 
 	jur := w.newJobReadRegistrySID(ctx, span, readRegistryRespChan, sid, nil, nil)
