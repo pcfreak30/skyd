@@ -2,6 +2,8 @@ package skynet
 
 import (
 	"bytes"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -69,37 +71,75 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
 
 	// Declare a test helper that uploads a file and downloads it.
-	uploadTest := func(fileSize int64) {
+	uploadTest := func(fileSize int64) error {
 		uploadedData := fastrand.Bytes(int(fileSize))
 		skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 
 		// Download the uploaded data and compare it to the uploaded data.
 		downloadedData, sm, err := r.SkynetSkylinkGet(skylink)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if !bytes.Equal(uploadedData, downloadedData) {
-			t.Fatal("data doesn't match")
+			return errors.New("data doesn't match")
 		}
 		if sm.Length != uint64(len(uploadedData)) {
-			t.Fatal("wrong length in metadata")
+			return errors.New("wrong length in metadata")
 		}
+		return nil
 	}
 
 	// Upload a large file.
-	uploadTest(chunkSize*5 + chunkSize/2)
+	if err := uploadTest(chunkSize*5 + chunkSize/2); err != nil {
+		t.Fatal(err)
+	}
 
 	// Upload a byte that's smaller than a sector but still a large file.
-	uploadTest(int64(modules.SectorSize) - 1)
+	if err := uploadTest(int64(modules.SectorSize) - 1); err != nil {
+		t.Fatal(err)
+	}
 
 	// Upload a small file.
-	uploadTest(1)
+	if err := uploadTest(1); err != nil {
+		t.Fatal(err)
+	}
 
 	// Upload empty file.
-	uploadTest(0)
+	if err := uploadTest(0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the max size to 1 chunkSize.
+	err = os.Setenv("TUS_MAXSIZE", fmt.Sprint(chunkSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart the renter for the change to take effect.
+	err = r.RestartNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload file that is too large.
+	if err := uploadTest(2 * chunkSize); err == nil || !strings.Contains(err.Error(), "upload body is to large") {
+		t.Fatal(err)
+	}
+
+	// Reset size.
+	err = os.Unsetenv("TUS_MAXSIZE")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart the renter again.
+	err = r.RestartNode()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Wait for two full pruning intervals to make sure pruning ran at least
 	// once.

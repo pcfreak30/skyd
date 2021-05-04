@@ -21,6 +21,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -497,4 +498,31 @@ func serveZip(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMet
 		}
 	}
 	return zw.Close()
+}
+
+// handleSkynetError is a handler that returns the correct status code for a
+// given error returned by a skynet related method.
+func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
+	httpErr := Error{fmt.Sprintf("%v: %v", prefix, err)}
+
+	if errors.Contains(err, renter.ErrSkylinkBlocked) {
+		WriteError(w, httpErr, http.StatusUnavailableForLegalReasons)
+		return
+	}
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, httpErr, http.StatusNotFound)
+		return
+	}
+	if errors.Contains(err, renter.ErrRegistryEntryNotFound) {
+		WriteError(w, httpErr, http.StatusNotFound)
+		return
+	}
+	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {
+		WriteError(w, httpErr, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		WriteError(w, httpErr, http.StatusInternalServerError)
+		return
+	}
 }

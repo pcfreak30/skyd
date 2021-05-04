@@ -286,11 +286,11 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 	// The buffer should contain the two messages printed when a worker either
 	// failed to respond or retrieved a nil value.
 	logs := buf.String()
-	if !strings.Contains(logs, "threadedAddResponseSet: worker that successfully retrieved a registry value failed to retrieve it again") {
+	if strings.Count(logs, "threadedAddResponseSet: worker that successfully retrieved a registry value failed to retrieve it again") != 1 {
 		t.Log("logs", logs)
 		t.Fatal("didn't log first line")
 	}
-	if !strings.Contains(logs, "threadedAddResponseSet: worker that successfully retrieved a non-nil registry value returned nil") {
+	if strings.Count(logs, "threadedAddResponseSet: worker that successfully retrieved a non-nil registry value returned nil") != 1 {
 		t.Log("logs", logs)
 		t.Fatal("didn't log second line")
 	}

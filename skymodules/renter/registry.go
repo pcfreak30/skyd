@@ -447,7 +447,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 			continue
 		}
 
-		jrr := worker.newJobReadRegistrySID(backgroundCtx, span, staticResponseChan, rid, spk, tweak)
+		jrr := worker.newJobReadRegistryEID(backgroundCtx, span, staticResponseChan, rid, spk, tweak)
 		if !worker.staticJobReadRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
