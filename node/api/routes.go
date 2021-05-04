@@ -162,15 +162,9 @@ func (api *API) buildHTTPRoutes() {
 
 		// Check if the maxsize can be read from the environment.  Otherwise
 		// it's unlimited.
-		var maxSize int64
-		maxSizeStr, ok := build.TUSMaxSize()
+		maxSize, ok := build.TUSMaxSize()
 		if ok {
-			_, err := fmt.Sscan(maxSizeStr, &maxSize)
-			if err != nil {
-				build.Critical("failed to marshal TUS_MAXSIZE environment variable")
-			} else {
-				fmt.Printf("INFO: max size for tus uploads set to %v\n", maxSize)
-			}
+			fmt.Printf("INFO: max size for tus uploads set to %v\n", maxSize)
 		}
 
 		// Create the TUS handler and register its routes.
