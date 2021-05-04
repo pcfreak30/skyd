@@ -386,6 +386,7 @@ func (r *Renter) threadedHealthLoop() {
 	dirFinder := r.newHealthLoopDirFinder()
 	// TODO: This is a temporary, debugging thing. Remove it before merging.
 	r.staticLog.Println("HEALTH LOOP: starting a full system scan")
+	r.staticLog.Println("HEALTH LOOP: starting a full system scan... second line")
 	systemScanStart := time.Now()
 	dirFinder.manualCheckTime = time.Now()
 	loggedOnce := false
