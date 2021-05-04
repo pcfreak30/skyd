@@ -186,6 +186,12 @@ func (dirFinder *healthLoopDirFinder) reset() {
 // the other directories at our current level are reasonably within the timeout
 // range, preferring to go deeper here and making the structure more linear in
 // the future.
+//
+// TODO: There's an idea of regionalized dfs, where we attempt to explore all
+// the potential directories in order of health, but while we are in a given
+// region we potentially add extra directories since it is cheaper to do them
+// now while in the region than to come back to them later. The full algorithm
+// is a bit involved, consult David before attempting.
 func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 	// Check if we need to reset the dirFinder.
 	if dirFinder.windowStartTime.Before(time.Now().Add(-1 * healthLoopResetInterval)) {
@@ -193,28 +199,16 @@ func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 	}
 
 	// Check the siadir metadata for the root files directory.
-	//
-	// TODO: Can start at a cached level instead of root.
 	siaPath := skymodules.RootSiaPath()
-	// TODO: Can use a cached metadata instead of loading it manually.
 	metadata, err := dirFinder.renter.managedDirectoryMetadata(siaPath)
 	if err != nil {
 		return errors.AddContext(err, "unable to load root metadata")
 	}
-	// TODO: These don't need to be loaded every time.
 	dirFinder.totalFiles = metadata.AggregateNumFiles
 	dirFinder.leastRecentCheck = metadata.AggregateLastHealthCheckTime
 
 	// Run a loop that will continually descend into child directories until it
 	// discovers the directory with the least recent health check time.
-	//
-	// TODO: This can start by iterating over any existing metadatas, and then
-	// perform checks to see if pure DFS makes more sense than always going to
-	// the most urgent file. Doing pure DFS will increase throughput, but we
-	// need to make sure it is safe against conditions where the user keeps
-	// turning off the system and back on again - the pure DFS still needs to
-	// skip regions that were updated in the previous run so it focuses on the
-	// least recent regions.
 	for {
 		// Load any subdirectories.
 		subDirSiaPaths, err := dirFinder.renter.managedSubDirectories(siaPath)
@@ -263,10 +257,6 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// If there are no files, return a standard time for sleeping.
 	//
 	// NOTE: Without this check, you get a divide by zero.
-	//
-	// TODO: Sometimes it looks like the root metadata has been zeroed out,
-	// which will cause this to trigger even though there are files. Need to
-	// determine the root cause of this zero data.
 	if dirFinder.totalFiles == 0 {
 		dirFinder.renter.staticLog.Println("HEALTH LOOP: sleeping because the total files in the filesystem is zero")
 		return emptyFilesystemSleepDuration
@@ -298,6 +288,7 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// filesystem is longer than the target health interval, do not try to
 	// sleep.
 	if urgent || manualCheckActive || slowScanTime {
+		dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: skipping a sleep", urgent, manualCheckActive, slowScanTime)
 		return 0
 	}
 
@@ -316,7 +307,8 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// To compensate for that, we track how much time we spend in system
 	// scan per cylce and subtract that from the numerator of the above
 	// described equation.
-	sleepTime := (TargetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration) * time.Duration(dirFinder.filesInNextDir/dirFinder.totalFiles)
+	desiredSleepPerScan := TargetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration
+	sleepTime := desiredSleepPerScan * time.Duration(dirFinder.filesInNextDir) / time.Duration(dirFinder.totalFiles)
 	// If we are behind schedule, we compress the sleep time
 	// proportionally to how far behind schedule we are.
 	if timeSinceLRC > TargetHealthCheckFrequency {
