@@ -147,8 +147,8 @@ func testSkylinkBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Update the pruneTimeThreshold to now plus 2 * HealthCheckInterval. This
-	// will cause the first skylink to be pruned.
+	// Update the pruneTimeThreshold to now plus 2 * TargetHealthCheckFrequency.
+	// This will cause the first skylink to be pruned.
 	sm.callUpdatePruneTimeThreshold(time.Now().Add(2 * TargetHealthCheckFrequency))
 
 	// Add skylink again should be a no-op

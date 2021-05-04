@@ -1422,9 +1422,6 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "siapath=home/user/folder&recursi
 
 // Call force bubble on the root directory
 curl -A "Sia-Agent" -u "":<apipassword> --data "rootsiapath=true&force=true"  "localhost:9980/renter/bubble"
-
-// Trigger bubble with forcedupdatetime
-curl -A "Sia-Agent" -u "":<apipassword> --data "forcedupdatetime=123456789"  "localhost:9980/renter/bubble"
 ```
 
 Manually trigger a bubble update for a directory. This will update the
@@ -1433,12 +1430,7 @@ Updates to sub directories are dependent on the parameters.
 
 ### Query String Parameters
 ### REQUIRED
-One of the following is required but they **CANNOT** be used at the same
-time.
-
-**forcedupdatetime** | unix timestamp\
-The time until which the health loop will continue to execute bubbles on the
-filesystem, regardless of the `lasthealthchecktime`.
+One of the following is required. Both **CANNOT** be used at the same time.
 
 **siapath** | string\
 The path to the directory that is to be bubbled. All paths should be relative
@@ -4209,7 +4201,7 @@ ACID. This means, if there is a shutdown of any kind before all the files have
 been checked, the unpin request may not be successfully executed and will need
 to be resubmitted. Submitting an unpin request multiple times for the same
 skylink is OK and does not duplicate the background unpinning process. If two
-`HealthCheckInterval`s have passed, it can be assumed that the unpin was
+`healthCheckInterval`s have passed, it can be assumed that the unpin was
 successful. 
 
 ### Path Parameters

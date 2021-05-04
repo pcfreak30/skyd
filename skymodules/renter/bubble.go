@@ -47,10 +47,6 @@ type (
 		// fifo is a First In Fist Out queue of bubble updates
 		fifo *bubbleQueue
 
-		// forcedUpdateTime is the time until which bubble updates will be
-		// forced and the HealthCheckInterval will be overridden
-		forcedUpdateTime time.Time
-
 		// staticBubbleNeeded is a channel used to signal the bubbleScheduler that
 		// a bubble is needed
 		staticBubbleNeeded chan struct{}
@@ -106,13 +102,6 @@ func (bq *bubbleQueue) Pop() *bubbleUpdate {
 // Push adds an element to the back of the queue
 func (bq *bubbleQueue) Push(bu *bubbleUpdate) {
 	_ = bq.List.PushBack(bu)
-}
-
-// callForcedUpdateTime returns the bubbleScheduler's forcedUpdateTime.
-func (bs *bubbleScheduler) callForcedUpdateTime() time.Time {
-	bs.mu.Lock()
-	defer bs.mu.Unlock()
-	return bs.forcedUpdateTime
 }
 
 // callQueueBubble adds a bubble update request to the bubbleScheduler.
@@ -393,13 +382,6 @@ func (bs *bubbleScheduler) managedQueueParent(siaPath skymodules.SiaPath) error 
 	return nil
 }
 
-// managedSetForcedUpdateTime sets the forcedUpdateTime for the bubbleScheduler
-func (bs *bubbleScheduler) managedSetForcedUpdateTime(fut time.Time) {
-	bs.mu.Lock()
-	defer bs.mu.Unlock()
-	bs.forcedUpdateTime = fut
-}
-
 // BubbleMetadata will queue a bubble update for the directory. A bubble update
 // includes calculating the updated values of a directory's metadata, updating
 // the siadir metadata on disk, and then queuing a bubble update for the parent
@@ -433,78 +415,4 @@ func (r *Renter) BubbleMetadata(siaPath skymodules.SiaPath, force, recursive boo
 	}
 	// Call bubble in a non blocking manner
 	return urp.callRefreshAll()
-}
-
-// SetForcedUpdateTime sets the forcedUpdateTime for the Renter's
-// bubbleScheduler
-func (r *Renter) SetForcedUpdateTime(fut time.Time) error {
-	err := r.tg.Add()
-	if err != nil {
-		return err
-	}
-	defer r.tg.Done()
-	r.staticBubbleScheduler.managedSetForcedUpdateTime(fut)
-	return nil
-}
-
-// callPrepareForBubble prepares a directory for the Health Loop to call bubble
-// on and returns a uniqueRefreshPaths including all the paths of the
-// directories in the subtree that need to be updated. This includes updating
-// the LastHealthCheckTime for the supplied root directory.
-//
-// This method will at a minimum return a uniqueRefreshPaths with the rootDir
-// added.
-//
-// If the force boolean is supplied, the LastHealthCheckTime of the directories
-// will be ignored so all directories will be considered.
-func (r *Renter) callPrepareForBubble(rootDir skymodules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
-	// Initiate helpers
-	urp := r.callNewUniqueRefreshPaths()
-	aggregateLastHealthCheckTime := time.Now()
-
-	// Add the rootDir to urp.
-	err := urp.callAdd(rootDir)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to add initial rootDir to uniqueRefreshPaths")
-	}
-
-	// Define DirectoryInfo function
-	var mu sync.Mutex
-	dlf := func(di skymodules.DirectoryInfo) {
-		mu.Lock()
-		defer mu.Unlock()
-
-		// Skip any directories that have been updated recently
-		if !force && time.Since(di.LastHealthCheckTime) < TargetHealthCheckFrequency {
-			// Track the LastHealthCheckTime of the skipped directory
-			if di.LastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
-				aggregateLastHealthCheckTime = di.LastHealthCheckTime
-			}
-			return
-		}
-		// Add the directory to uniqueRefreshPaths
-		addErr := urp.callAdd(di.SiaPath)
-		if addErr != nil {
-			r.staticLog.Printf("WARN: unable to add siapath `%v` to uniqueRefreshPaths; err: %v", di.SiaPath, addErr)
-			err = errors.Compose(err, addErr)
-			return
-		}
-	}
-
-	// Execute the function on the FileSystem
-	errList := r.staticFileSystem.CachedList(rootDir, true, func(skymodules.FileInfo) {}, dlf)
-	if errList != nil {
-		err = errors.Compose(err, errList)
-		// Still return the uniqueRefreshPaths as we added at least the root dir and
-		// we should return.
-		return urp, errors.AddContext(err, "unable to get cached list of sub directories")
-	}
-
-	// Update the root directory's LastHealthCheckTime to signal that this sub
-	// tree has been updated
-	entry, openErr := r.staticFileSystem.OpenSiaDir(rootDir)
-	if openErr != nil {
-		return urp, errors.Compose(err, openErr)
-	}
-	return urp, errors.Compose(err, entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now()), entry.Close())
 }

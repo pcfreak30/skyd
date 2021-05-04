@@ -88,7 +88,7 @@ type (
 		Health              float64     `json:"health"`
 		LastHealthCheckTime time.Time   `json:"lasthealthchecktime"`
 		MinRedundancy       float64     `json:"minredundancy"`
-		Mode                os.FileMode `json:"mode"` //  TODO: Deprecated now
+		Mode                os.FileMode `json:"mode"`
 		ModTime             time.Time   `json:"modtime"`
 		NumFiles            uint64      `json:"numfiles"`
 		NumLostFiles        uint64      `json:"numlostfiles"`

@@ -816,12 +816,3 @@ func (c *Client) RenterBubblePost(siaPath skymodules.SiaPath, force, recursive b
 	err = c.post("/renter/bubble", values.Encode(), nil)
 	return
 }
-
-// RenterBubbleForcedUpdateTimePost uses the /renter/bubble endpoint to set the
-// forcedUpdateTime.
-func (c *Client) RenterBubbleForcedUpdateTimePost(fut time.Time) (err error) {
-	values := url.Values{}
-	values.Set("forcedupdatetime", strconv.FormatInt(fut.UnixNano(), 10))
-	err = c.post("/renter/bubble", values.Encode(), nil)
-	return
-}

@@ -1443,10 +1443,6 @@ type Renter interface {
 	// If the force boolean is supplied, the LastHealthCheckTime of the directories
 	// will be ignored so all directories will be considered.
 	BubbleMetadata(siaPath SiaPath, force, recursive bool) error
-
-	// SetForcedUpdateTime sets the forcedUpdateTime for the Renter's
-	// bubbleScheduler
-	SetForcedUpdateTime(fut time.Time) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

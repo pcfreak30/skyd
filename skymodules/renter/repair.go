@@ -458,6 +458,68 @@ func (r *Renter) threadedStuckFileLoop() {
 	}
 }
 
+// callPrepareForBubble prepares a directory for the Health Loop to call bubble
+// on and returns a uniqueRefreshPaths including all the paths of the
+// directories in the subtree that need to be updated. This includes updating
+// the LastHealthCheckTime for the supplied root directory.
+//
+// This method will at a minimum return a uniqueRefreshPaths with the rootDir
+// added.
+//
+// If the force boolean is supplied, the LastHealthCheckTime of the directories
+// will be ignored so all directories will be considered.
+func (r *Renter) callPrepareForBubble(rootDir skymodules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
+	// Initiate helpers
+	urp := r.callNewUniqueRefreshPaths()
+	aggregateLastHealthCheckTime := time.Now()
+
+	// Add the rootDir to urp.
+	err := urp.callAdd(rootDir)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to add initial rootDir to uniqueRefreshPaths")
+	}
+
+	// Define DirectoryInfo function
+	var mu sync.Mutex
+	dlf := func(di skymodules.DirectoryInfo) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		// Skip any directories that have been updated recently
+		if !force && time.Since(di.LastHealthCheckTime) < TargetHealthCheckFrequency {
+			// Track the LastHealthCheckTime of the skipped directory
+			if di.LastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
+				aggregateLastHealthCheckTime = di.LastHealthCheckTime
+			}
+			return
+		}
+		// Add the directory to uniqueRefreshPaths
+		addErr := urp.callAdd(di.SiaPath)
+		if addErr != nil {
+			r.staticLog.Printf("WARN: unable to add siapath `%v` to uniqueRefreshPaths; err: %v", di.SiaPath, addErr)
+			err = errors.Compose(err, addErr)
+			return
+		}
+	}
+
+	// Execute the function on the FileSystem
+	errList := r.staticFileSystem.CachedList(rootDir, true, func(skymodules.FileInfo) {}, dlf)
+	if errList != nil {
+		err = errors.Compose(err, errList)
+		// Still return the uniqueRefreshPaths as we added at least the root dir and
+		// we should return.
+		return urp, errors.AddContext(err, "unable to get cached list of sub directories")
+	}
+
+	// Update the root directory's LastHealthCheckTime to signal that this sub
+	// tree has been updated
+	entry, openErr := r.staticFileSystem.OpenSiaDir(rootDir)
+	if openErr != nil {
+		return urp, errors.Compose(err, openErr)
+	}
+	return urp, errors.Compose(err, entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now()), entry.Close())
+}
+
 // managedUpdateFileMetadatasParams updates the metadata of all siafiles within
 // a dir with the provided parameters.  This can be very expensive for large
 // directories and should therefore only happen sparingly.

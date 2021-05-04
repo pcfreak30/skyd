@@ -324,8 +324,6 @@ func trimDownloadInfo(dis ...skymodules.DownloadInfo) (_ []skymodules.DownloadIn
 
 // renterBubbleHandlerPOST handles the API calls to /renter/bubble.
 func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// First parse the required parameters
-
 	// Parse the 'rootsiapath' parameter
 	rootSiaPath := false
 	var err error
@@ -340,33 +338,6 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 	// Parse the siaPath
 	var siaPath skymodules.SiaPath
 	s := req.FormValue("siapath")
-
-	// Parse the forcedUpdateTime
-	forcedUpdateTimeStr := req.FormValue("forcedupdatetime")
-	if forcedUpdateTimeStr != "" {
-		// Check for incorrect parameter usage
-		if rootSiaPath || s != "" {
-			WriteError(w, Error{"rootsiapath and siapath should not be set if forcedupdatetime is set"}, http.StatusBadRequest)
-			return
-		}
-
-		// Finish parsing the forcedupdatetime
-		forcedUpdateTimeInt, err := strconv.ParseInt(forcedUpdateTimeStr, 10, 64)
-		if err != nil {
-			WriteError(w, Error{"parsing integer value for parameter `forcedupdatetime` failed: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		forcedUpdateTime := time.Unix(0, forcedUpdateTimeInt)
-
-		// Set the forcedUpdateTime
-		err = api.renter.SetForcedUpdateTime(forcedUpdateTime)
-		if err != nil {
-			WriteError(w, Error{"unable to set forcedupdatetime: " + err.Error()}, http.StatusInternalServerError)
-			return
-		}
-		WriteSuccess(w)
-		return
-	}
 
 	// Finish parsing siapath
 	if rootSiaPath && s != "" {
@@ -386,8 +357,6 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 			return
 		}
 	}
-
-	// Parse the optional parameters
 
 	// Parse the 'force' parameter
 	force := false

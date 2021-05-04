@@ -1464,12 +1464,6 @@ func (r *Renter) threadedUploadAndRepair() {
 	}
 	defer r.tg.Done()
 
-	// TODO: This is debugging so that we isolate the health loop activities to
-	// only the health loop, do not merge.
-	if true {
-		return
-	}
-
 	// Perpetual loop to scan for more files and add chunks to the uploadheap.
 	// The loop assumes that the heap has already been initialized (either at
 	// startup, or after sleeping) and does checks to see whether there is any

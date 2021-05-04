@@ -157,11 +157,8 @@ linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz: 15 |  75880486 ns/op    
 
 ### Exports
  - `BubbleMetadata`
- - `SetForcedUpdateTime`
 
 #### Inbound Complexities
- - `callForcedUpdateTime` is used by the health loop to know if it should
-     force a bubble update.
  - `callQueueBubbleUpdate` is used by external subsystems to trigger a bubble
      update on a directory.
  - `callThreadedProcessBubbleUpdates` is called by the Renter on startup to
@@ -727,7 +724,7 @@ that timestamp and the SiaPath of the directory.
 Once the health loop has found the most out of date directory or sub tree, it
 uses the Refresh Paths subsystem to trigger bubble updates that the Bubble
 subsystem manages. Once the entire renter's directory has been updated within
-the HealthCheckInterval the health loop sleeps until the time interval has
+the healthCheckInterval the health loop sleeps until the time interval has
 passed.
 
 

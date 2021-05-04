@@ -83,8 +83,8 @@ func (sm *skylinkManager) managedAddUnpinRequest(skylink skymodules.Skylink) {
 		return
 	}
 
-	// Add the unpin request and set the time to twice the HealthCheckInterval in
-	// the future.
+	// Add the unpin request and set the time in the future by twice the target
+	// health check interval.
 	sm.unpinRequests[skylinkStr] = time.Now().Add(TargetHealthCheckFrequency * 2)
 }
 
