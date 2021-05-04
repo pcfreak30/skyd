@@ -1199,7 +1199,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// the utilities regularly.
 	r.managedUpdateRenterContractsAndUtilities()
 	go r.threadedUpdateRenterContractsAndUtilities()
-	r.staticLog.Println("TEST LOG")
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
@@ -1209,10 +1208,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		if err != nil {
 			return nil, err
 		}
-		r.staticLog.Println("HEALTH LOOP: launched")
 		go r.threadedHealthLoop()
 	}
-	r.staticLog.Println("TEST LOG 2")
 
 	// We do not group the staticBubbleScheduler's background thread with the
 	// threads disabled by "DisableRepairAndHealthLoops" so that manual calls to

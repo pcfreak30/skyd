@@ -338,8 +338,6 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 	// Parse the siaPath
 	var siaPath skymodules.SiaPath
 	s := req.FormValue("siapath")
-
-	// Finish parsing siapath
 	if rootSiaPath && s != "" {
 		WriteError(w, Error{"rootsiapath and non empty siapath cannot both be used"}, http.StatusBadRequest)
 		return
@@ -384,6 +382,7 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 		return
 	}
 	WriteSuccess(w)
+	return
 }
 
 // renterBackupsHandlerGET handles the API calls to /renter/backups.

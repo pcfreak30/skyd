@@ -14,7 +14,6 @@ require (
 	github.com/montanaflynn/stats v0.6.3
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/spf13/cobra v1.1.3
-	github.com/tdakkota/asciicheck v0.0.0-20200416200610-e657995f937b // indirect
 	github.com/tus/tusd v1.5.1
 	github.com/uber/jaeger-client-go v2.27.0+incompatible
 	github.com/uber/jaeger-lib v2.4.1+incompatible
@@ -31,5 +30,4 @@ require (
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1
-	golang.org/x/tools v0.1.0 // indirect
 )

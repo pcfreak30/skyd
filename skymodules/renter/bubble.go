@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"fmt"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
