@@ -401,11 +401,6 @@ func (r *Renter) threadedHealthLoop() {
 
 	// Launch the background loop to perform health checks on the filesystem.
 	dirFinder := r.newHealthLoopDirFinder()
-	// TODO: This is a temporary, debugging thing. Remove it before merging.
-	r.staticLog.Println("HEALTH LOOP: starting a full system scan")
-	systemScanStart := time.Now()
-	dirFinder.manualCheckTime = time.Now()
-	loggedOnce := false
 	for {
 		// Load the next directory. In the event of an error, reset and try again.
 		err := dirFinder.loadNextDir()
@@ -423,12 +418,6 @@ func (r *Renter) threadedHealthLoop() {
 			// would be handled out here, but that made the error handling and
 			// logging incredibly verbose.
 			err = dirFinder.loadNextDir()
-		}
-
-		// TODO: This is a temporary, debugging thing. Remove it before merging.
-		if !loggedOnce && dirFinder.leastRecentCheck.After(systemScanStart) {
-			loggedOnce = true
-			r.staticLog.Println("HEALTH LOOP: full system scan is complete")
 		}
 
 		// Sleep before processing the next directory. This also serves as the
