@@ -252,6 +252,8 @@ func (j *jobReadRegistry) callExecute() {
 		build.Critical(err)
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
+		span.LogKV("error", err)
+		j.staticSpan.SetTag("success", false)
 		return
 	}
 	// If both are set, they should match the subscription id.
@@ -262,6 +264,8 @@ func (j *jobReadRegistry) callExecute() {
 			build.Critical(err)
 			sendResponse(nil, err)
 			j.staticQueue.callReportFailure(err)
+			span.LogKV("error", err)
+			j.staticSpan.SetTag("success", false)
 			return
 		}
 	}

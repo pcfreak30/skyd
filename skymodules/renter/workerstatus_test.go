@@ -446,7 +446,8 @@ func TestWorkerRegistryJobStatus(t *testing.T) {
 	rrc := make(chan *jobReadRegistryResponse)
 	urc := make(chan *jobUpdateRegistryResponse)
 	jrr := w.newJobReadRegistry(ctx, testSpan(), rrc, types.SiaPublicKey{}, crypto.Hash{})
-	jur := w.newJobUpdateRegistry(ctx, urc, types.SiaPublicKey{}, modules.SignedRegistryValue{})
+	span := opentracing.GlobalTracer().StartSpan(t.Name())
+	jur := w.newJobUpdateRegistry(ctx, span, urc, types.SiaPublicKey{}, modules.SignedRegistryValue{})
 	if !w.staticJobReadRegistryQueue.callAdd(jrr) {
 		t.Fatal("Could not add job to queue")
 	}
