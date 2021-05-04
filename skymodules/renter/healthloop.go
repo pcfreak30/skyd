@@ -343,6 +343,11 @@ func (dirFinder *healthLoopDirFinder) processNextDir() error {
 		return errors.AddContext(err, errStr)
 	}
 	dirFinder.windowFilesProcessed += dirFinder.filesInNextDir
+	err = dirFinder.renter.managedUpdateDirMetadata(nextDir)
+	if err != nil {
+		errStr := fmt.Sprintf("unable to update the metadata of directory %s", nextDir)
+		return errors.AddContext(err, errStr)
+	}
 
 	// Update the metadatas of all the underlying directories up to root. This
 	// won't scan and update all of the inner files, it'll just use the
