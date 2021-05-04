@@ -34,7 +34,7 @@ var (
 	// sleep if there are files in the filesystem.
 	emptyFilesystemSleepDuration = build.Select(build.Var{
 		Dev:      5 * time.Second,
-		Standard: 10 * time.Minute,
+		Standard: 1 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
@@ -184,6 +184,7 @@ func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 	// TODO: These don't need to be loaded every time.
 	dirFinder.totalFiles = metadata.AggregateNumFiles
 	dirFinder.leastRecentCheck = metadata.AggregateLastHealthCheckTime
+	dirFinder.renter.staticLog.Println("HEALTH LOOP: total files:", dirFinder.totalFiles)
 
 	// Run a loop that will continually descend into child directories until it
 	// discovers the directory with the least recent health check time.
@@ -244,6 +245,7 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	//
 	// NOTE: Without this check, you get a divide by zero.
 	if dirFinder.totalFiles == 0 {
+		dirFinder.renter.staticLog.Println("HEALTH LOOP: sleeping because the total files in the filesystem is zero")
 		return emptyFilesystemSleepDuration
 	}
 
@@ -386,7 +388,6 @@ func (r *Renter) threadedHealthLoop() {
 	dirFinder := r.newHealthLoopDirFinder()
 	// TODO: This is a temporary, debugging thing. Remove it before merging.
 	r.staticLog.Println("HEALTH LOOP: starting a full system scan")
-	r.staticLog.Println("HEALTH LOOP: starting a full system scan... second line")
 	systemScanStart := time.Now()
 	dirFinder.manualCheckTime = time.Now()
 	loggedOnce := false
