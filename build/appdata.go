@@ -78,6 +78,11 @@ func ExchangeRate() string {
 	return os.Getenv(siaExchangeRate)
 }
 
+// TUSMaxSize returns the tusMaxSize environment variable if set.
+func TUSMaxSize() (string, bool) {
+	return os.LookupEnv(tusMaxSize)
+}
+
 // apiPasswordFilePath returns the path to the API's password file. The password
 // file is stored in the Sia data directory.
 func apiPasswordFilePath() string {
