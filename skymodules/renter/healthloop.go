@@ -29,6 +29,15 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
+const (
+	// The system scan time estimator decay values determine how much decay
+	// should be applied to the estimator. A decay that is closer to 1 will take
+	// into account more historical data, and a decay that is closer to 0 will
+	// be more responsive to changes in the environment.
+	systemScanTimeEstimatorDecayNum = 90
+	systemScanTimeEstimatorDecayDenom = 100
+)
+
 var (
 	// emptyFilesystemSleepDuration determines how long the health loop will
 	// sleep if there are files in the filesystem.
@@ -109,20 +118,43 @@ type healthLoopDirFinder struct {
 	totalFiles       uint64             // An approximation of the total number of files in the filesystem.
 
 	// These variables are used to estimate how long it takes to scan the
-	// filesystem when you exclude the sleeps.
-	windowStartTime             time.Time
-	cumulativeSleepTime         time.Duration
-	cumulativeFilesProcessed    uint64
+	// filesystem when you exclude the sleeps. The weighted values are used to
+	// compute an exponential moving average to get a more accurate estimate
+	// based on historic data. The window variables count up the stats in the
+	// most recent window of time.
 	estimatedSystemScanDuration time.Duration
+	weightedProcessingTime      time.Duration
+	weightedFilesProcessed      uint64
+	windowFilesProcessed        uint64
+	windowSleepTime             time.Duration
+	windowStartTime             time.Time
 
 	renter *Renter
 }
 
-// computeUpdatedEstimatedSystemScanDuration is a stateless function to compute
-// the new estimated system scan duration given the information from the
-// previous scan.
-func computeUpdatedEstimatedSystemScanDuration() time.Duration {
-	return 0
+// computeUpdatedEstimatedSystemScanDuration computes the estimated system scan
+// duration of the dirFinder.
+func (dirFinder *healthLoopDirFinder) updateEstimatedSystemScanDuration() {
+	df := dirFinder // Improves readability in this case
+	df.weightedProcessingTime *= systemScanTimeEstimatorDecayNum
+	df.weightedProcessingTime /= systemScanTimeEstimatorDecayDenom
+	df.weightedFilesProcessed *= systemScanTimeEstimatorDecayNum
+	df.weightedFilesProcessed /= systemScanTimeEstimatorDecayDenom
+	df.weightedProcessingTime += time.Since(df.windowStartTime)
+	df.weightedProcessingTime -= df.windowSleepTime
+	df.weightedFilesProcessed += df.windowFilesProcessed
+
+	// Check for divide by zero before computing final estimate.
+	if df.windowFilesProcessed > 0 {
+		df.estimatedSystemScanDuration = df.weightedProcessingTime * time.Duration(df.totalFiles) / time.Duration(df.weightedFilesProcessed)
+	} else {
+		df.estimatedSystemScanDuration = 0
+	}
+
+	// Reset the window variables.
+	dirFinder.windowFilesProcessed = 0
+	dirFinder.windowSleepTime = 0
+	dirFinder.windowStartTime = time.Now()
 }
 
 // reset will reset the dirFinder and start the dirFinder back at the root
@@ -134,24 +166,8 @@ func computeUpdatedEstimatedSystemScanDuration() time.Duration {
 // commit the directory metadata changes in every part of our cacheing layer, so
 // the changes exist on disk.
 func (dirFinder *healthLoopDirFinder) reset() {
-	dirFinder.renter.staticLog.Println("HEALTH LOOP: resetting the dir finder with this many files scanned:", dirFinder.cumulativeFilesProcessed)
-
-	// Only update the estimated duration if there were actual files to process.
-	// Also check for a divide by zero in the total number of files.
-	//
-	// TODO: Change to using EMA to estimate system scan duration.
-	if dirFinder.cumulativeFilesProcessed > 0 && dirFinder.totalFiles > 0 {
-		// NOTE: need to separate the variable in time.Duration otherwise the
-		// fraction is rounded down to zero.
-		dirFinder.estimatedSystemScanDuration = (time.Since(dirFinder.windowStartTime) * time.Duration(dirFinder.cumulativeFilesProcessed)) / time.Duration(dirFinder.totalFiles)
-		dirFinder.renter.staticLog.Println("HEALTH LOOP: Updated estimated system scan direction to", dirFinder.estimatedSystemScanDuration)
-		dirFinder.renter.staticLog.Println("HEALTH LOOP: estimator vars", dirFinder.totalFiles, dirFinder.windowStartTime, time.Since(dirFinder.windowStartTime))
-	}
-	dirFinder.windowStartTime = time.Now()
-	dirFinder.cumulativeSleepTime = 0
-	dirFinder.cumulativeFilesProcessed = 0
-
-	// TODO: This is a temporary logging thing. Remove before merging.
+	dirFinder.renter.staticLog.Println("HEALTH LOOP: resetting the dir finder with this many files scanned:", dirFinder.windowFilesProcessed)
+	dirFinder.updateEstimatedSystemScanDuration()
 	dirFinder.renter.staticLog.Println("HEALTH LOOP: current estimated system scan time:", dirFinder.estimatedSystemScanDuration)
 }
 
@@ -184,7 +200,6 @@ func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 	// TODO: These don't need to be loaded every time.
 	dirFinder.totalFiles = metadata.AggregateNumFiles
 	dirFinder.leastRecentCheck = metadata.AggregateLastHealthCheckTime
-	dirFinder.renter.staticLog.Println("HEALTH LOOP: total files:", dirFinder.totalFiles)
 
 	// Run a loop that will continually descend into child directories until it
 	// discovers the directory with the least recent health check time.
@@ -244,6 +259,10 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// If there are no files, return a standard time for sleeping.
 	//
 	// NOTE: Without this check, you get a divide by zero.
+	//
+	// TODO: Sometimes it looks like the root metadata has been zeroed out,
+	// which will cause this to trigger even though there are files. Need to
+	// determine the root cause of this zero data.
 	if dirFinder.totalFiles == 0 {
 		dirFinder.renter.staticLog.Println("HEALTH LOOP: sleeping because the total files in the filesystem is zero")
 		return emptyFilesystemSleepDuration
@@ -312,7 +331,7 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 		compression := 1 - (compressionNum / compressionDenom)
 		sleepTime = time.Duration(float64(sleepTime) * compression)
 	}
-	dirFinder.cumulativeSleepTime += sleepTime
+	dirFinder.windowSleepTime += sleepTime
 	return sleepTime
 }
 
@@ -327,7 +346,7 @@ func (dirFinder *healthLoopDirFinder) processNextDir() error {
 		errStr := fmt.Sprintf("unable to process directory %s from within the health loop", nextDir)
 		return errors.AddContext(err, errStr)
 	}
-	dirFinder.cumulativeFilesProcessed += dirFinder.filesInNextDir
+	dirFinder.windowFilesProcessed += dirFinder.filesInNextDir
 
 	// Update the metadatas of all the underlying directories up to root. This
 	// won't scan and update all of the inner files, it'll just use the
@@ -393,9 +412,7 @@ func (r *Renter) threadedHealthLoop() {
 	loggedOnce := false
 	for {
 		// Load the next directory. In the event of an error, reset and try again.
-		r.staticLog.Println("HEALTH LOOP: attempting to load the next dir")
 		err := dirFinder.loadNextDir()
-		r.staticLog.Println("HEALTH LOOP: next dir load complete")
 		for err != nil {
 			// Log the error and then sleep.
 			r.staticLog.Println("Error loading next directory:", err)
@@ -411,7 +428,6 @@ func (r *Renter) threadedHealthLoop() {
 			// logging incredibly verbose.
 			err = dirFinder.loadNextDir()
 		}
-		r.staticLog.Println("HEALTH LOOP VERBOSE: loaded a directory", dirFinder.nextDir)
 
 		// TODO: This is a temporary, debugging thing. Remove it before merging.
 		if !loggedOnce && dirFinder.leastRecentCheck.After(systemScanStart) {
@@ -441,7 +457,6 @@ func (r *Renter) threadedHealthLoop() {
 
 		// Process the next directory. We don't retry on error, we just move on
 		// to the next directory.
-		r.staticLog.Println("HEALTH LOOP VERBOSE: processing next directory")
 		err = dirFinder.processNextDir()
 		if err != nil {
 			r.staticLog.Println("Error processing a directory in the health loop:", err)
