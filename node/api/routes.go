@@ -160,10 +160,17 @@ func (api *API) buildHTTPRoutes() {
 		// uploading a file with a known size in chunks.
 		storeComposer.UseCore(sds)
 
+		// Check if the maxsize can be read from the environment.  Otherwise
+		// it's unlimited.
+		maxSize, ok := build.TUSMaxSize()
+		if ok {
+			fmt.Printf("INFO: max size for tus uploads set to %v\n", maxSize)
+		}
+
 		// Create the TUS handler and register its routes.
 		tusHandler, err := handler.NewUnroutedHandler(handler.Config{
 			BasePath:      "/skynet/tus",
-			MaxSize:       0, // unlimited upload size
+			MaxSize:       maxSize,
 			StoreComposer: storeComposer,
 
 			// NOTE: comment logger out for debugging

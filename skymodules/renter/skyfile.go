@@ -538,7 +538,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (_ skymodules.Skylink, err error) {
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	siaPath, err := skymodules.NewSiaPath(sup.SiaPath.String() + skymodules.ExtendedSuffix)
+	siaPath, err := sup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
@@ -855,7 +855,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	fup.SiaPath, err = skymodules.NewSiaPath(lup.SiaPath.String() + skymodules.ExtendedSuffix)
+	fup.SiaPath, err = lup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
@@ -973,7 +973,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 
 	// Create erasure coder and FileUploadParams
-	extendedPath, err := skymodules.NewSiaPath(sup.SiaPath.String() + skymodules.ExtendedSuffix)
+	extendedPath, err := sup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create extended siapath")
 	}
@@ -1067,10 +1067,11 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 				r.staticLog.Printf("error deleting siafile after upload error: %v", err)
 			}
 
-			extendedPath := sup.SiaPath.String() + skymodules.ExtendedSuffix
-			extendedSiaPath, _ := skymodules.NewSiaPath(extendedPath)
-			if err := r.DeleteFile(extendedSiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
-				r.staticLog.Printf("error deleting extended siafile after upload error: %v\n", err)
+			extendedSiaPath, spErr := sup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
+			if spErr == nil {
+				if err := r.DeleteFile(extendedSiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
+					r.staticLog.Printf("error deleting extended siafile after upload error: %v\n", err)
+				}
 			}
 		}
 	}()

@@ -163,11 +163,11 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
 func (w *worker) newJobReadRegistry(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, spk types.SiaPublicKey, tweak crypto.Hash) *jobReadRegistry {
 	sid := modules.DeriveRegistryEntryID(spk, tweak)
-	return w.newJobReadRegistrySID(ctx, span, responseChan, sid, &spk, &tweak)
+	return w.newJobReadRegistryEID(ctx, span, responseChan, sid, &spk, &tweak)
 }
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
-func (w *worker) newJobReadRegistrySID(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
+func (w *worker) newJobReadRegistryEID(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
 	jobSpan := opentracing.StartSpan("ReadRegistryJob", opentracing.ChildOf(span.Context()))
 	jobSpan.SetTag("Host", w.staticHostPubKeyStr)
 	return &jobReadRegistry{
@@ -192,6 +192,9 @@ func (j *jobReadRegistry) callDiscard(err error) {
 		response := &jobReadRegistryResponse{
 			staticErr:          errors.Extend(err, ErrJobDiscarded),
 			staticCompleteTime: time.Now(),
+			staticEID:          j.staticRegistryEntryID,
+			staticSPK:          j.staticSiaPublicKey,
+			staticTweak:        j.staticTweak,
 			staticWorker:       w,
 		}
 		select {
@@ -225,6 +228,9 @@ func (j *jobReadRegistry) callExecute() {
 				staticSignedRegistryValue: srv,
 				staticErr:                 err,
 				staticExecuteTime:         start,
+				staticEID:                 j.staticRegistryEntryID,
+				staticSPK:                 j.staticSiaPublicKey,
+				staticTweak:               j.staticTweak,
 				staticWorker:              w,
 			}
 			select {
@@ -246,6 +252,8 @@ func (j *jobReadRegistry) callExecute() {
 		build.Critical(err)
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
+		span.LogKV("error", err)
+		j.staticSpan.SetTag("success", false)
 		return
 	}
 	// If both are set, they should match the subscription id.
@@ -256,6 +264,8 @@ func (j *jobReadRegistry) callExecute() {
 			build.Critical(err)
 			sendResponse(nil, err)
 			j.staticQueue.callReportFailure(err)
+			span.LogKV("error", err)
+			j.staticSpan.SetTag("success", false)
 			return
 		}
 	}
@@ -355,10 +365,10 @@ func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 // without a pubkey or tweak.
 func (w *worker) ReadRegistryEID(ctx context.Context, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
-	span := opentracing.GlobalTracer().StartSpan("ReadRegistry")
+	span := opentracing.GlobalTracer().StartSpan("ReadRegistryEID")
 	defer span.Finish()
 
-	jur := w.newJobReadRegistrySID(ctx, span, readRegistryRespChan, sid, nil, nil)
+	jur := w.newJobReadRegistryEID(ctx, span, readRegistryRespChan, sid, nil, nil)
 
 	// Add the job to the queue.
 	if !w.staticJobReadRegistryQueue.callAdd(jur) {
