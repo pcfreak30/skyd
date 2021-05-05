@@ -34,9 +34,8 @@ func (r *Renter) DeleteFile(siaPath skymodules.SiaPath) error {
 		return nil
 	}
 
-	// Queue a bubble to bubble the directory, ignore the return channel as we do
-	// not want to block on this update.
-	_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
+	// Queue an update to the directory.
+	r.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 	return nil
 }
 
