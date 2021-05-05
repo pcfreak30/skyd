@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -34,6 +35,7 @@ type (
 	jobUpdateRegistry struct {
 		staticSiaPublicKey        types.SiaPublicKey
 		staticSignedRegistryValue modules.SignedRegistryValue
+		staticSpan                opentracing.Span
 
 		staticResponseChan chan *jobUpdateRegistryResponse // Channel to send a response down
 
@@ -58,17 +60,25 @@ type (
 )
 
 // newJobUpdateRegistry is a helper method to create a new UpdateRegistry job.
-func (w *worker) newJobUpdateRegistry(ctx context.Context, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, srv modules.SignedRegistryValue) *jobUpdateRegistry {
+func (w *worker) newJobUpdateRegistry(ctx context.Context, span opentracing.Span, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, srv modules.SignedRegistryValue) *jobUpdateRegistry {
+	jobSpan := opentracing.StartSpan("UpdateRegistryJob", opentracing.ChildOf(span.Context()))
+	jobSpan.SetTag("Host", w.staticHostPubKeyStr)
 	return &jobUpdateRegistry{
 		staticSiaPublicKey:        spk,
 		staticSignedRegistryValue: srv,
 		staticResponseChan:        responseChan,
+		staticSpan:                jobSpan,
 		jobGeneric:                newJobGeneric(ctx, w.staticJobUpdateRegistryQueue, nil),
 	}
 }
 
 // callDiscard will discard a job, sending the provided error.
 func (j *jobUpdateRegistry) callDiscard(err error) {
+	// Log info and finish span.
+	j.staticSpan.LogKV("callDiscard", err)
+	j.staticSpan.SetTag("success", false)
+	defer j.staticSpan.Finish()
+
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobUpdateRegistryResponse{
@@ -91,6 +101,13 @@ func (j *jobUpdateRegistry) callExecute() {
 	start := time.Now()
 	w := j.staticQueue.staticWorker()
 	sid := modules.DeriveRegistryEntryID(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
+
+	// Finish job span at the end.
+	defer j.staticSpan.Finish()
+
+	// Capture callExecute in new span.
+	span := opentracing.GlobalTracer().StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+	defer span.Finish()
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
@@ -122,6 +139,8 @@ func (j *jobUpdateRegistry) callExecute() {
 		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
 			sendResponse(nil, err)
 			j.staticQueue.callReportFailure(err)
+			span.LogKV("error", err)
+			j.staticSpan.SetTag("success", false)
 			return
 		}
 		// If the entry is valid, check if the revision number is actually
@@ -130,6 +149,8 @@ func (j *jobUpdateRegistry) callExecute() {
 			(j.staticSignedRegistryValue.Revision == rv.Revision && j.staticSignedRegistryValue.HasMoreWork(rv.RegistryValue)) {
 			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(errHostOutdatedProof)
+			span.LogKV("error", errHostOutdatedProof)
+			j.staticSpan.SetTag("success", false)
 			return
 		}
 		// If the entry is valid and the revision is also valid, check if we
@@ -140,6 +161,8 @@ func (j *jobUpdateRegistry) callExecute() {
 		if cached && cachedRevision > rv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
+			span.LogKV("error", errHostLowerRevisionThanCache)
+			j.staticSpan.SetTag("success", false)
 			w.staticRegistryCache.Set(sid, rv, true) // adjust the cache
 			return
 		}
@@ -148,11 +171,15 @@ func (j *jobUpdateRegistry) callExecute() {
 	} else if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
+		span.LogKV("error", err)
+		j.staticSpan.SetTag("success", false)
 		return
 	}
 
-	// Success. We either confirmed the latest revision or updated the host successfully.
+	// Success. We either confirmed the latest revision or updated the host
+	// successfully.
 	jobTime := time.Since(start)
+	j.staticSpan.SetTag("success", true)
 
 	// Update the registry cache.
 	w.staticRegistryCache.Set(sid, j.staticSignedRegistryValue, false)
@@ -245,7 +272,10 @@ func (w *worker) initJobUpdateRegistryQueue() {
 // UpdateRegistry is a helper method to run a UpdateRegistry job on a worker.
 func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
 	updateRegistryRespChan := make(chan *jobUpdateRegistryResponse)
-	jur := w.newJobUpdateRegistry(ctx, updateRegistryRespChan, spk, rv)
+	span := opentracing.GlobalTracer().StartSpan("UpdateRegistry")
+	defer span.Finish()
+
+	jur := w.newJobUpdateRegistry(ctx, span, updateRegistryRespChan, spk, rv)
 
 	// Add the job to the queue.
 	if !w.staticJobUpdateRegistryQueue.callAdd(jur) {
