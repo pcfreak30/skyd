@@ -1652,7 +1652,7 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 			WriteError(w, Error{fmt.Sprintf("failed to parse siapath: %v", err)}, http.StatusBadRequest)
 			return
 		}
-		extendedSiaPath, err := skymodules.NewSiaPath(siaPath.String() + skymodules.ExtendedSuffix)
+		extendedSiaPath, err := siaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to create extended siapath: %v", err)}, http.StatusBadRequest)
 			return
