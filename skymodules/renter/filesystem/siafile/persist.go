@@ -17,7 +17,6 @@ import (
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"
-	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 var (
@@ -75,87 +74,6 @@ func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeahe
 // production dependencies.
 func LoadSiaFileMetadata(path string) (Metadata, error) {
 	return loadSiaFileMetadata(path, modules.ProdDependencies)
-}
-
-// SetPartialChunks informs the SiaFile about a partial chunk that has been
-// saved by the partial chunk set. As such it should be exclusively called by
-// the partial chunk set. It updates the metadata of the SiaFile and also adds a
-// new chunk to the partial SiaFile if necessary. At the end it applies the
-// updates of the partial chunk set, the SiaFile and the partial SiaFile
-// atomically.
-func (sf *SiaFile) SetPartialChunks(combinedChunks []skymodules.PartialChunk, updates []writeaheadlog.Update) (err error) {
-	// SavePartialChunk can only be called when there is no partial chunk yet.
-	if !sf.staticMetadata.HasPartialChunk || len(sf.staticMetadata.PartialChunks) > 0 {
-		return fmt.Errorf("can't call SetPartialChunk unless file has a partial chunk and doesn't have combined chunks assigned to it yet: %v %v",
-			sf.staticMetadata.HasPartialChunk, len(sf.staticMetadata.PartialChunks))
-	}
-	// Check the number of combinedChunks for sanity.
-	if len(combinedChunks) != 1 && len(combinedChunks) != 2 {
-		return fmt.Errorf("should have 1 or 2 combined chunks but got %v", len(combinedChunks))
-	}
-	// Make sure the length is what we would expect.
-	var totalLength int64
-	for _, cc := range combinedChunks {
-		totalLength += int64(cc.Length)
-	}
-	expectedLength := sf.staticMetadata.FileSize % int64(sf.staticChunkSize())
-	if totalLength != expectedLength {
-		return fmt.Errorf("expect partial chunk length to be %v but was %v", expectedLength, totalLength)
-	}
-	// Lock both the SiaFile and partials SiaFile. We need to atomically update
-	// both of them.
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// Check if siafile has been deleted.
-	if sf.deleted {
-		return errors.New("can't set combined chunk of deleted siafile")
-	}
-	// backup the changed metadata before changing it. Revert the change on
-	// error.
-	oldNumChunks := sf.numChunks
-	defer func(backup Metadata) {
-		if err != nil {
-			sf.staticMetadata.restore(backup)
-			sf.numChunks = oldNumChunks
-		}
-	}(sf.staticMetadata.backup())
-	sf.partialsSiaFile.mu.Lock()
-	defer sf.partialsSiaFile.mu.Unlock()
-	// For each combined chunk that is not yet tracked within the partials sia
-	// file, add a chunk to the partials sia file.
-	pcs := make([]PartialChunkInfo, 0, len(combinedChunks))
-	for _, c := range combinedChunks {
-		pc := PartialChunkInfo{
-			ID:     c.ChunkID,
-			Length: c.Length,
-			Offset: c.Offset,
-			Status: CombinedChunkStatusInComplete,
-		}
-		if c.InPartialsFile {
-			pc.Index = uint64(sf.partialsSiaFile.numChunks - 1)
-		} else {
-			pc.Index = uint64(sf.partialsSiaFile.numChunks)
-			u, err := sf.partialsSiaFile.addCombinedChunk()
-			if err != nil {
-				return err
-			}
-			updates = append(updates, u...)
-		}
-		pcs = append(pcs, pc)
-	}
-	// Update the combined chunk metadata on disk.
-	u, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	updates = append(updates, u...)
-	err = createAndApplyTransaction(sf.wal, updates...)
-	if err != nil {
-		return err
-	}
-	sf.numChunks = sf.numChunks - 1 + len(combinedChunks)
-	sf.staticMetadata.PartialChunks = pcs
-	return nil
 }
 
 // SetPartialsSiaFile sets the partialsSiaFile field of the SiaFile. This is
@@ -296,9 +214,6 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		numChunks++
 	}
 	sf.numChunks = int(numChunks)
-	if len(sf.staticMetadata.PartialChunks) > 0 {
-		sf.numChunks = sf.numChunks - 1 + len(sf.staticMetadata.PartialChunks)
-	}
 	return sf, nil
 }
 
@@ -497,15 +412,6 @@ func (sf *SiaFile) chunk(chunkIndex int) (_ chunk, err error) {
 	if sf.deleted {
 		return chunk{}, errors.AddContext(ErrDeleted, "can't call chunk on deleted file")
 	}
-	// Handle partial chunk.
-	if cci, ok := sf.isIncludedPartialChunk(uint64(chunkIndex)); ok {
-		c, err := sf.partialsSiaFile.Chunk(cci.Index)
-		c.Index = chunkIndex // convert index within partials file to requested index
-		return c, err
-	} else if sf.isIncompletePartialChunk(uint64(chunkIndex)) {
-		return chunk{Index: chunkIndex}, nil
-	}
-	// Handle full chunk.
 	chunkOffset := sf.chunkOffset(chunkIndex)
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	f, err := sf.deps.Open(sf.siaFilePath)
@@ -538,15 +444,7 @@ func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]w
 		if err != nil {
 			return err
 		}
-		cci, ok := sf.isIncludedPartialChunk(uint64(chunk.Index))
-		if !ok && sf.isIncompletePartialChunk(uint64(chunk.Index)) {
-			// Can't persist incomplete partial chunk. Make sure iterFunc doesn't try to.
-			return errors.New("can't persist incomplete partial chunk")
-		}
-		if modified && ok {
-			chunk.Index = int(cci.Index)
-			updates = append(updates, sf.partialsSiaFile.saveChunkUpdate(chunk))
-		} else if modified {
+		if modified {
 			updates = append(updates, sf.saveChunkUpdate(chunk))
 		}
 		return nil
@@ -579,18 +477,12 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) (err 
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
 		var c chunk
 		var err error
-		if cci, ok := sf.isIncludedPartialChunk(uint64(chunkIndex)); ok {
-			c, err = sf.partialsSiaFile.Chunk(cci.Index)
-		} else if sf.isIncompletePartialChunk(uint64(chunkIndex)) {
-			c = chunk{Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces())}
-		} else {
-			if _, err := f.Read(chunkBytes); err != nil && !errors.Contains(err, io.EOF) {
-				return errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
-			}
-			c, err = unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
-			if err != nil {
-				return errors.AddContext(err, fmt.Sprintf("failed to unmarshal chunk %v", chunkIndex))
-			}
+		if _, err := f.Read(chunkBytes); err != nil && !errors.Contains(err, io.EOF) {
+			return errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
+		}
+		c, err = unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
+		if err != nil {
+			return errors.AddContext(err, fmt.Sprintf("failed to unmarshal chunk %v", chunkIndex))
 		}
 		c.Index = chunkIndex
 		if err := iterFunc(c); err != nil {

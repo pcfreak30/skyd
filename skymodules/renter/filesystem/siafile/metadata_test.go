@@ -33,7 +33,7 @@ func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 	partialsSiaPath := skymodules.CombinedSiaFilePath(rc)
 	partialsSiaFilePath := partialsSiaPath.SiaPartialsFileSysPath(dir)
 	if _, err = os.Stat(partialsSiaFilePath); os.IsNotExist(err) {
-		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil, false)
+		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil)
 	} else {
 		partialsSiaFile, err = LoadSiaFile(partialsSiaFilePath, wal)
 	}
@@ -50,11 +50,11 @@ func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 	// Create the files.
 	sf1Path := filepath.Join(dir, "sf1"+skymodules.SiaFileExtension)
 	sf2Path := filepath.Join(dir, "sf2"+skymodules.SiaFileExtension)
-	sf1, err := New(sf1Path, source, wal, rc, sk, fileSize, fileMode, nil, false)
+	sf1, err := New(sf1Path, source, wal, rc, sk, fileSize, fileMode, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	sf2, err := New(sf2Path, source, wal, rc, sk, fileSize, fileMode, nil, false)
+	sf2, err := New(sf2Path, source, wal, rc, sk, fileSize, fileMode, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -87,11 +87,6 @@ func TestBackupRestoreMetadata(t *testing.T) {
 	} else {
 		sf.staticMetadata.Skylinks = nil
 	}
-	if fastrand.Intn(2) == 0 {
-		sf.staticMetadata.PartialChunks = []PartialChunkInfo{}
-	} else {
-		sf.staticMetadata.PartialChunks = nil
-	}
 
 	// Clone the metadata before modifying it.
 	mdBefore := sf.staticMetadata.backup()
@@ -115,12 +110,6 @@ func TestBackupRestoreMetadata(t *testing.T) {
 		sf.staticMetadata.UniqueID = SiafileUID(fmt.Sprint(fastrand.Intn(100)))
 		sf.staticMetadata.FileSize = int64(fastrand.Intn(100))
 		sf.staticMetadata.LocalPath = string(fastrand.Bytes(100))
-		sf.staticMetadata.DisablePartialChunk = !sf.staticMetadata.DisablePartialChunk
-		sf.staticMetadata.HasPartialChunk = !sf.staticMetadata.HasPartialChunk
-		sf.staticMetadata.PartialChunks = nil
-		if fastrand.Intn(2) == 0 { // 50% chance to be not nil
-			sf.staticMetadata.PartialChunks = make([]PartialChunkInfo, fastrand.Intn(10))
-		}
 		sf.staticMetadata.ModTime = time.Now()
 		sf.staticMetadata.ChangeTime = time.Now()
 		sf.staticMetadata.AccessTime = time.Now()

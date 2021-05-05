@@ -19,18 +19,6 @@ import (
 )
 
 type (
-	// PartialChunkInfo contains all the essential information about a partial
-	// chunk relevant to SiaFiles. A SiaFile with a partial chunk may contain 1 or
-	// 2 PartialChunkInfos since the partial chunk might be split between 2
-	// combined chunks.
-	PartialChunkInfo struct {
-		ID     skymodules.CombinedChunkID `json:"id"`     // ID of the combined chunk
-		Index  uint64                     `json:"index"`  // Index of the combined chunk within partialsSiaFile
-		Offset uint64                     `json:"offset"` // Offset of partial chunk within combined chunk
-		Length uint64                     `json:"length"` // Length of partial chunk within combined chunk
-		Status uint8                      `json:"status"` // Status of combined chunk
-	}
-
 	// SiafileUID is a unique identifier for siafile which is used to track
 	// siafiles even after renaming them.
 	SiafileUID string
@@ -54,11 +42,6 @@ type (
 		StaticMasterKeyType  crypto.CipherType `json:"masterkeytype"`
 		StaticSharingKey     []byte            `json:"sharingkey"` // key used to encrypt shared pieces
 		StaticSharingKeyType crypto.CipherType `json:"sharingkeytype"`
-
-		// Fields for partial uploads
-		DisablePartialChunk bool               `json:"disablepartialchunk"` // determines whether the file should be treated like legacy files
-		PartialChunks       []PartialChunkInfo `json:"partialchunks"`       // information about the partial chunk.
-		HasPartialChunk     bool               `json:"haspartialchunk"`     // indicates whether this file is supposed to have a partial chunk or not
 
 		// The following fields are the usual unix timestamps of files.
 		ModTime    time.Time `json:"modtime"`    // time of last content modification
@@ -224,13 +207,6 @@ func (sf *SiaFile) ChangeTime() time.Time {
 	return sf.staticMetadata.ChangeTime
 }
 
-// PartialChunks returns the partial chunk infos of the siafile.
-func (sf *SiaFile) PartialChunks() []PartialChunkInfo {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return sf.staticMetadata.PartialChunks
-}
-
 // CreateTime returns the CreateTime timestamp of the file.
 func (sf *SiaFile) CreateTime() time.Time {
 	sf.mu.RLock()
@@ -241,14 +217,6 @@ func (sf *SiaFile) CreateTime() time.Time {
 // ChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) ChunkSize() uint64 {
 	return sf.staticChunkSize()
-}
-
-// HasPartialChunk returns whether this file is supposed to have a partial chunk
-// or not.
-func (sf *SiaFile) HasPartialChunk() bool {
-	sf.mu.RLock()
-	defer sf.mu.RUnlock()
-	return sf.staticMetadata.HasPartialChunk
 }
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
@@ -337,8 +305,6 @@ func (md Metadata) backup() (b Metadata) {
 	b.UniqueID = md.UniqueID
 	b.FileSize = md.FileSize
 	b.LocalPath = md.LocalPath
-	b.DisablePartialChunk = md.DisablePartialChunk
-	b.HasPartialChunk = md.HasPartialChunk
 	b.ModTime = md.ModTime
 	b.ChangeTime = md.ChangeTime
 	b.AccessTime = md.AccessTime
@@ -367,13 +333,6 @@ func (md Metadata) backup() (b Metadata) {
 	b.PubKeyTableOffset = md.PubKeyTableOffset
 	// Special handling for slice since reflect.DeepEqual is false when
 	// comparing empty slice to nil.
-	if md.PartialChunks == nil {
-		b.PartialChunks = nil
-	} else {
-		// Being extra explicit about capacity and length here.
-		b.PartialChunks = make([]PartialChunkInfo, len(md.PartialChunks), cap(md.PartialChunks))
-		copy(b.PartialChunks, md.PartialChunks)
-	}
 	if md.Skylinks == nil {
 		b.Skylinks = nil
 	} else {
@@ -395,9 +354,6 @@ func (md *Metadata) restore(b Metadata) {
 	md.UniqueID = b.UniqueID
 	md.FileSize = b.FileSize
 	md.LocalPath = b.LocalPath
-	md.DisablePartialChunk = b.DisablePartialChunk
-	md.PartialChunks = b.PartialChunks
-	md.HasPartialChunk = b.HasPartialChunk
 	md.ModTime = b.ModTime
 	md.ChangeTime = b.ChangeTime
 	md.AccessTime = b.AccessTime
@@ -483,9 +439,6 @@ func (sf *SiaFile) rename(newSiaFilePath string) (err error) {
 	// Load all the chunks.
 	chunks := make([]chunk, 0, sf.numChunks)
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
-		if _, ok := sf.isIncludedPartialChunk(uint64(chunk.Index)); ok {
-			return nil // Ignore partial chunk
-		}
 		chunks = append(chunks, chunk)
 		return nil
 	})
@@ -602,17 +555,7 @@ func (sf *SiaFile) UpdateAccessTime() (err error) {
 // numStuckChunks returns the number of stuck chunks recorded in the file's
 // metadata.
 func (sf *SiaFile) numStuckChunks() uint64 {
-	numStuckChunks := sf.staticMetadata.NumStuckChunks
-	for _, cc := range sf.staticMetadata.PartialChunks {
-		stuck, err := sf.partialsSiaFile.StuckChunkByIndex(cc.Index)
-		if err != nil {
-			build.Critical("failed to get 'stuck' status of partial chunk")
-		}
-		if stuck {
-			numStuckChunks++
-		}
-	}
-	return numStuckChunks
+	return sf.staticMetadata.NumStuckChunks
 }
 
 // staticChunkSize returns the size of a single chunk of the file.

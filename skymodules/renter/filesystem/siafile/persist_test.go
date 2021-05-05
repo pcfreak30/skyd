@@ -132,7 +132,7 @@ func customTestFileAndWAL(siaFilePath, source string, rc skymodules.ErasureCoder
 	partialsSiaPath := skymodules.CombinedSiaFilePath(rc)
 	partialsSiaFilePath := partialsSiaPath.SiaPartialsFileSysPath(dir)
 	if _, err = os.Stat(partialsSiaFilePath); os.IsNotExist(err) {
-		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil, false)
+		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil)
 	} else {
 		partialsSiaFile, err = LoadSiaFile(partialsSiaFilePath, wal)
 	}
@@ -143,14 +143,8 @@ func customTestFileAndWAL(siaFilePath, source string, rc skymodules.ErasureCoder
 	if partialsSiaFile.numChunks > 0 {
 		panic(fmt.Sprint("partialsSiaFile shouldn't have any chunks but had ", partialsSiaFile.numChunks))
 	}
-	/* PARTIAL TODO:
-	partialsEntry := &SiaFileSetEntry{
-		partialsSiaFile,
-		uint64(fastrand.Intn(math.MaxInt32)),
-	}
-	*/
 	// Create the file.
-	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, nil, false)
+	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -180,9 +174,6 @@ func newBlankTestFile() *SiaFile {
 // number of pieces.
 func newTestFile() *SiaFile {
 	sf := newBlankTestFile()
-	if err := setCombinedChunkOfTestFile(sf); err != nil {
-		panic(err)
-	}
 	// Add pieces to each chunk.
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
 		for pieceIndex := 0; pieceIndex < sf.ErasureCode().NumPieces(); pieceIndex++ {
@@ -899,142 +890,6 @@ func TestUniqueIDMissing(t *testing.T) {
 	// It should have a UID now.
 	if sf.staticMetadata.UniqueID == "" {
 		t.Fatal("unique ID wasn't set after loading file")
-	}
-}
-
-// TestSetCombinedChunkSingle tests SetCombinedChunk for a partial chunk with a
-// single combined chunk.
-func TestSetCombinedChunkSingle(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-	t.Skip("skip until partial chunks are enabled")
-
-	// Create two SiaFiles with partial chunks and link them by giving the second
-	// one the same partials siafile as the first one.
-	sf, _, _ := newBlankTestFileAndWAL(1)
-	sf2, _, _ := newBlankTestFileAndWAL(1)
-	sf2.SetPartialsSiaFile(sf.partialsSiaFile)
-
-	// Calculate the partial chunks' sizes.
-	partialChunkSize := int64(sf.Size() % sf.ChunkSize())
-	if partialChunkSize == 0 {
-		t.Fatal("no partial chunk at end of file")
-	}
-	partialChunkSize2 := int64(sf2.Size() % sf2.ChunkSize())
-	if partialChunkSize2 == 0 {
-		t.Fatal("no partial chunk at end of file2")
-	}
-
-	// Set the combined chunk of the first file to have offset 0.
-	cid := skymodules.CombinedChunkID("chunkid")
-	partialChunks := []skymodules.PartialChunk{
-		{
-			ChunkID:        cid,
-			InPartialsFile: false,
-			Length:         uint64(partialChunkSize),
-			Offset:         0,
-		},
-	}
-	if err := sf.SetPartialChunks(partialChunks, nil); err != nil {
-		t.Fatal(err)
-	}
-	// The metadata of the siafile should be set correctly now.
-	ccs := sf.staticMetadata.PartialChunks
-	if len(sf.staticMetadata.PartialChunks) != 1 {
-		t.Fatal("expected exactly 1 combined chunk but got",
-			len(sf.staticMetadata.PartialChunks))
-	}
-	if ccs[0].ID != cid {
-		t.Fatal("combined chunk id doesn't match expected id",
-			ccs[0].ID, cid)
-	}
-	if ccs[0].Index != 0 {
-		t.Fatal("expected chunk index to be 0 but was",
-			ccs[0].Index)
-	}
-	if ccs[0].Length != uint64(partialChunkSize) {
-		t.Fatal("wrong combinedchunklength",
-			ccs[0].Length, partialChunkSize)
-	}
-	if ccs[0].Offset != 0 {
-		t.Fatal("wrong combinedchunkoffset",
-			ccs[0].Offset, 0)
-	}
-	if ccs[0].Status != CombinedChunkStatusInComplete {
-		t.Fatal("wrong combinedchunkstatus",
-			ccs[0].Status, CombinedChunkStatusInComplete)
-	}
-	// The partials siafile should have one chunk now.
-	if sf.partialsSiaFile.NumChunks() != 1 {
-		t.Fatal("expected partialsSiaFile to have one chunk but had", sf.partialsSiaFile.NumChunks())
-	}
-
-	// The first combined chunk's HasPartialsChunk can be set to 'true' now since
-	// it was added to the partials file.
-	partialChunks[0].InPartialsFile = true
-	// The second chunk should start at an offset at the end of the combined chunk
-	// to force it to be spread across 2 combined chunks.
-	cid2 := skymodules.CombinedChunkID("chunkid2")
-	partialChunks = []skymodules.PartialChunk{
-		{
-			ChunkID:        cid,
-			InPartialsFile: true,
-			Length:         1,
-			Offset:         uint64(sf2.ChunkSize() - 1),
-		},
-		{
-			ChunkID:        cid2,
-			InPartialsFile: false,
-			Length:         uint64(partialChunkSize2) - 1,
-			Offset:         0,
-		},
-	}
-	// Set the combined chunk of the second file to have offset chunkSize-1.
-	if err := sf2.SetPartialChunks(partialChunks, nil); err != nil {
-		t.Fatal(err)
-	}
-	// The metadata of the second siafile should be set correctly now.
-	ccs2 := sf2.staticMetadata.PartialChunks
-	if len(ccs2) != 2 {
-		t.Fatal("expected exactly 2 combined chunks but got",
-			len(ccs2))
-	}
-	if ccs2[0].ID != cid {
-		t.Fatal("combined chunk id doesn't match expected id",
-			ccs2[0].ID, cid)
-	}
-	if ccs2[1].ID != cid2 {
-		t.Fatal("combined chunk id doesn't match expected id",
-			ccs2[0].ID, cid)
-	}
-	if ccs2[0].Index != 0 {
-		t.Fatal("expected chunk index to be 0 but was",
-			ccs2[0].Index)
-	}
-	if ccs2[1].Index != 1 {
-		t.Fatal("expected chunk index to be 1 but was",
-			ccs2[1].Index)
-	}
-	if ccs2[0].Length+ccs2[1].Length != uint64(partialChunkSize2) {
-		t.Fatal("wrong combinedchunklength",
-			ccs2[0].Length, partialChunkSize)
-	}
-	if ccs2[0].Offset != sf2.ChunkSize()-1 {
-		t.Fatal("wrong combinedchunkoffset",
-			ccs2[0].Offset, 0)
-	}
-	if ccs2[0].Status != CombinedChunkStatusInComplete {
-		t.Fatal("wrong combinedchunkstatus",
-			ccs2[0].Status, CombinedChunkStatusInComplete)
-	}
-	// The partials siafile should have two chunks now.
-	if sf.partialsSiaFile.NumChunks() != 2 {
-		t.Fatal("expected partialsSiaFile to have two chunks but had", sf.partialsSiaFile.NumChunks())
-	}
-	if sf2.partialsSiaFile.NumChunks() != 2 {
-		t.Fatal("expected partialsSiaFile to have two chunks but had", sf.partialsSiaFile.NumChunks())
 	}
 }
 

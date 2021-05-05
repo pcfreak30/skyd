@@ -50,7 +50,6 @@ func NewFromLegacyData(fd FileData, siaFilePath string, wal *writeaheadlog.WAL) 
 			AccessTime:              currentTime,
 			ChunkOffset:             defaultReservedMDPages * pageSize,
 			ChangeTime:              currentTime,
-			HasPartialChunk:         false,
 			CreateTime:              currentTime,
 			CachedHealth:            zeroHealth,
 			CachedStuckHealth:       0,
