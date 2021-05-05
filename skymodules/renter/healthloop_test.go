@@ -17,9 +17,9 @@ import (
 func TestSystemScanDurationEstimator(t *testing.T) {
 	// Base case, check what happens when computing an estimate on an empty dir
 	// finder.
-	dirFinder := &healthLoopDirFinder{
-		totalFiles: 100,
-	}
+	r := new(Renter)
+	dirFinder := r.newHealthLoopDirFinder()
+	dirFinder.totalFiles = 100
 	dirFinder.updateEstimatedSystemScanDuration()
 	if dirFinder.estimatedSystemScanDuration != 0 {
 		t.Error("bad")

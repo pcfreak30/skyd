@@ -143,7 +143,7 @@ func (dirFinder *healthLoopDirFinder) updateEstimatedSystemScanDuration() {
 	dirFinder.weightedFilesProcessed = expMovingAvg(dirFinder.weightedFilesProcessed, windowFilesProcessed, systemScanTimeEstimatorDecay)
 
 	// Check for divide by zero before computing final estimate.
-	if dirFinder.windowFilesProcessed > 0 {
+	if dirFinder.weightedFilesProcessed > 0 {
 		dirFinder.estimatedSystemScanDuration = time.Duration(dirFinder.weightedProcessingTime) * time.Duration(dirFinder.totalFiles) / time.Duration(dirFinder.weightedFilesProcessed)
 	} else {
 		dirFinder.estimatedSystemScanDuration = 0
