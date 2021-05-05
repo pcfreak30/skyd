@@ -17,9 +17,9 @@ import (
 func TestSystemScanDurationEstimator(t *testing.T) {
 	// Base case, check what happens when computing an estimate on an empty dir
 	// finder.
-	dirFinder := &healthLoopDirFinder{
-		totalFiles: 100,
-	}
+	r := new(Renter)
+	dirFinder := r.newHealthLoopDirFinder()
+	dirFinder.totalFiles = 100
 	dirFinder.updateEstimatedSystemScanDuration()
 	if dirFinder.estimatedSystemScanDuration != 0 {
 		t.Error("bad")
@@ -55,13 +55,13 @@ func TestSystemScanDurationEstimator(t *testing.T) {
 		t.Error("bad", dirFinder.estimatedSystemScanDuration)
 	}
 	// Try again, but this time double the total number of files, this should
-	// double the total estimate.
+	// cause the total estimate to increase.
 	dirFinder.totalFiles = 200
 	dirFinder.windowFilesProcessed = 10
 	dirFinder.windowStartTime = time.Now().Add(-20 * time.Second)
 	dirFinder.windowSleepTime = 10 * time.Second
 	dirFinder.updateEstimatedSystemScanDuration()
-	if dirFinder.estimatedSystemScanDuration > time.Second*205 || dirFinder.estimatedSystemScanDuration < time.Second*195 {
+	if dirFinder.estimatedSystemScanDuration > time.Second*135 || dirFinder.estimatedSystemScanDuration < time.Second*125 {
 		t.Error("bad", dirFinder.estimatedSystemScanDuration)
 	}
 	// Try again, but this time we are going faster per file, this should
@@ -70,7 +70,7 @@ func TestSystemScanDurationEstimator(t *testing.T) {
 	dirFinder.windowStartTime = time.Now().Add(-20 * time.Second)
 	dirFinder.windowSleepTime = 10 * time.Second
 	dirFinder.updateEstimatedSystemScanDuration()
-	if dirFinder.estimatedSystemScanDuration > time.Second*165 || dirFinder.estimatedSystemScanDuration < time.Second*155 {
+	if dirFinder.estimatedSystemScanDuration > time.Second*125 || dirFinder.estimatedSystemScanDuration < time.Second*115 {
 		t.Error("bad", dirFinder.estimatedSystemScanDuration)
 	}
 	// Update a few times in a loop, the result should converge closely to
@@ -89,7 +89,7 @@ func TestSystemScanDurationEstimator(t *testing.T) {
 	dirFinder.windowStartTime = time.Now().Add(-20 * time.Second)
 	dirFinder.windowSleepTime = 10 * time.Second
 	dirFinder.updateEstimatedSystemScanDuration()
-	if dirFinder.estimatedSystemScanDuration > time.Second*115 || dirFinder.estimatedSystemScanDuration < time.Second*100 {
+	if dirFinder.estimatedSystemScanDuration > time.Second*135 || dirFinder.estimatedSystemScanDuration < time.Second*125 {
 		t.Error("bad", dirFinder.estimatedSystemScanDuration)
 	}
 	// Update a few times in a loop, the result should converge closely to half
@@ -139,17 +139,18 @@ func TestDirFinderSleepDuration(t *testing.T) {
 	dirFinder.filesInNextDir = 1
 	dirFinder.leastRecentCheck = time.Now().Add(-1 * TargetHealthCheckFrequency / 2)
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
-	if sleepDuration < time.Second-(time.Millisecond*5) || sleepDuration > time.Second+(time.Millisecond*5) {
+	baseExpectedTime := TargetHealthCheckFrequency / 3
+	if sleepDuration < baseExpectedTime-(time.Millisecond*5) || sleepDuration > baseExpectedTime+(time.Millisecond*5) {
 		t.Error("bad", sleepDuration)
 	}
 	dirFinder.filesInNextDir = 2
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
-	if sleepDuration < 2*time.Second-(time.Millisecond*5) || sleepDuration > 2*time.Second+(time.Millisecond*5) {
+	if sleepDuration < 2*baseExpectedTime-(time.Millisecond*5) || sleepDuration > 2*baseExpectedTime+(time.Millisecond*5) {
 		t.Error("bad", sleepDuration)
 	}
 	dirFinder.filesInNextDir = 3
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
-	if sleepDuration < 3*time.Second-(time.Millisecond*5) || sleepDuration > 3*time.Second+(time.Millisecond*5) {
+	if sleepDuration < 3*baseExpectedTime-(time.Millisecond*5) || sleepDuration > 3*baseExpectedTime+(time.Millisecond*5) {
 		t.Error("bad", sleepDuration)
 	}
 
@@ -158,12 +159,12 @@ func TestDirFinderSleepDuration(t *testing.T) {
 	halfwayToUrgent := TargetHealthCheckFrequency + (urgentHealthCheckFrequency-TargetHealthCheckFrequency)/2
 	dirFinder.leastRecentCheck = time.Now().Add(-1 * halfwayToUrgent)
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
-	if sleepDuration < time.Second-(time.Millisecond*5) || sleepDuration > time.Second+(time.Millisecond*5) {
+	if sleepDuration < baseExpectedTime-(time.Millisecond*5) || sleepDuration > baseExpectedTime+(time.Millisecond*5) {
 		t.Error("bad", sleepDuration)
 	}
 
 	// Check that a manual check being active results in no sleep.
-	dirFinder.manualCheckTime = time.Now().Add(time.Second)
+	dirFinder.manualCheckTime = time.Now().Add(baseExpectedTime)
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
 	if sleepDuration != 0 {
 		t.Error("bad", sleepDuration)
