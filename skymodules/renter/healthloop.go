@@ -34,8 +34,7 @@ const (
 	// should be applied to the estimator. A decay that is closer to 1 will take
 	// into account more historical data, and a decay that is closer to 0 will
 	// be more responsive to changes in the environment.
-	systemScanTimeEstimatorDecayNum   = 90
-	systemScanTimeEstimatorDecayDenom = 100
+	systemScanTimeEstimatorDecay = 0.9
 )
 
 var (
@@ -123,8 +122,8 @@ type healthLoopDirFinder struct {
 	// based on historic data. The window variables count up the stats in the
 	// most recent window of time.
 	estimatedSystemScanDuration time.Duration
-	weightedProcessingTime      time.Duration
-	weightedFilesProcessed      uint64
+	weightedProcessingTime      float64 // converted from a time.Duration
+	weightedFilesProcessed      float64 // converted from a time.Duration
 	windowFilesProcessed        uint64
 	windowSleepTime             time.Duration
 	windowStartTime             time.Time
@@ -133,25 +132,21 @@ type healthLoopDirFinder struct {
 }
 
 // computeUpdatedEstimatedSystemScanDuration computes the estimated system scan
-// duration of the dirFinder. It uses an EMA, compressing historic values and
-// then adding the new values from the recent window. Finally, it resets the new
-// values from the recent window so that the EMA is not corrupted if called
-// multiple times.
+// duration of the dirFinder. It uses an exponential moving average, compressing
+// historic values and then adding the new values from the recent window.
+// Finally, it resets the new values from the recent window so that the EMA is
+// not corrupted if called multiple times.
 func (dirFinder *healthLoopDirFinder) updateEstimatedSystemScanDuration() {
-	df := dirFinder // Improves readability in this case
-	df.weightedProcessingTime *= systemScanTimeEstimatorDecayNum
-	df.weightedProcessingTime /= systemScanTimeEstimatorDecayDenom
-	df.weightedFilesProcessed *= systemScanTimeEstimatorDecayNum
-	df.weightedFilesProcessed /= systemScanTimeEstimatorDecayDenom
-	df.weightedProcessingTime += time.Since(df.windowStartTime)
-	df.weightedProcessingTime -= df.windowSleepTime
-	df.weightedFilesProcessed += df.windowFilesProcessed
+	windowProcessingTime := float64(time.Since(dirFinder.windowStartTime) - dirFinder.windowSleepTime)
+	windowFilesProcessed := float64(dirFinder.windowFilesProcessed)
+	dirFinder.weightedProcessingTime = expMovingAvg(dirFinder.weightedProcessingTime, windowProcessingTime, systemScanTimeEstimatorDecay)
+	dirFinder.weightedFilesProcessed = expMovingAvg(dirFinder.weightedFilesProcessed, windowFilesProcessed, systemScanTimeEstimatorDecay)
 
 	// Check for divide by zero before computing final estimate.
-	if df.windowFilesProcessed > 0 {
-		df.estimatedSystemScanDuration = df.weightedProcessingTime * time.Duration(df.totalFiles) / time.Duration(df.weightedFilesProcessed)
+	if dirFinder.windowFilesProcessed > 0 {
+		dirFinder.estimatedSystemScanDuration = time.Duration(dirFinder.weightedProcessingTime) * time.Duration(dirFinder.totalFiles) / time.Duration(dirFinder.weightedFilesProcessed)
 	} else {
-		df.estimatedSystemScanDuration = 0
+		dirFinder.estimatedSystemScanDuration = 0
 	}
 
 	// Reset the window variables.
