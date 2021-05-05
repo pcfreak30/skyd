@@ -139,17 +139,18 @@ func TestDirFinderSleepDuration(t *testing.T) {
 	dirFinder.filesInNextDir = 1
 	dirFinder.leastRecentCheck = time.Now().Add(-1 * TargetHealthCheckFrequency / 2)
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
-	if sleepDuration < time.Second-(time.Millisecond*5) || sleepDuration > time.Second+(time.Millisecond*5) {
+	baseExpectedTime := TargetHealthCheckFrequency / 3
+	if sleepDuration < baseExpectedTime-(time.Millisecond*5) || sleepDuration > baseExpectedTime+(time.Millisecond*5) {
 		t.Error("bad", sleepDuration)
 	}
 	dirFinder.filesInNextDir = 2
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
-	if sleepDuration < 2*time.Second-(time.Millisecond*5) || sleepDuration > 2*time.Second+(time.Millisecond*5) {
+	if sleepDuration < 2*baseExpectedTime-(time.Millisecond*5) || sleepDuration > 2*baseExpectedTime+(time.Millisecond*5) {
 		t.Error("bad", sleepDuration)
 	}
 	dirFinder.filesInNextDir = 3
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
-	if sleepDuration < 3*time.Second-(time.Millisecond*5) || sleepDuration > 3*time.Second+(time.Millisecond*5) {
+	if sleepDuration < 3*baseExpectedTime-(time.Millisecond*5) || sleepDuration > 3*baseExpectedTime+(time.Millisecond*5) {
 		t.Error("bad", sleepDuration)
 	}
 
@@ -158,12 +159,12 @@ func TestDirFinderSleepDuration(t *testing.T) {
 	halfwayToUrgent := TargetHealthCheckFrequency + (urgentHealthCheckFrequency-TargetHealthCheckFrequency)/2
 	dirFinder.leastRecentCheck = time.Now().Add(-1 * halfwayToUrgent)
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
-	if sleepDuration < time.Second-(time.Millisecond*5) || sleepDuration > time.Second+(time.Millisecond*5) {
+	if sleepDuration < baseExpectedTime-(time.Millisecond*5) || sleepDuration > baseExpectedTime+(time.Millisecond*5) {
 		t.Error("bad", sleepDuration)
 	}
 
 	// Check that a manual check being active results in no sleep.
-	dirFinder.manualCheckTime = time.Now().Add(time.Second)
+	dirFinder.manualCheckTime = time.Now().Add(baseExpectedTime)
 	sleepDuration = dirFinder.sleepDurationBeforeNextDir()
 	if sleepDuration != 0 {
 		t.Error("bad", sleepDuration)
