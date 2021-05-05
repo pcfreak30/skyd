@@ -41,7 +41,7 @@ func TestSystemScanDurationEstimator(t *testing.T) {
 	dirFinder.windowSleepTime = 0
 	dirFinder.updateEstimatedSystemScanDuration()
 	if dirFinder.estimatedSystemScanDuration > time.Second*101 || dirFinder.estimatedSystemScanDuration < time.Second*99 {
-		t.Error("bad", dirFinder.estimatedSystemScanDuration, dirFinder.weightedFilesProcessed, dirFinder.weightedProcessingTime, dirFinder.totalFiles)
+		t.Error("bad", dirFinder.estimatedSystemScanDuration)
 	}
 	// Try again, but this time with an average sleep of 1 second per file. So
 	// the processing is going at 1 second per file, and the sleep is going at 1
@@ -55,13 +55,13 @@ func TestSystemScanDurationEstimator(t *testing.T) {
 		t.Error("bad", dirFinder.estimatedSystemScanDuration)
 	}
 	// Try again, but this time double the total number of files, this should
-	// double the total estimate.
+	// cause the total estimate to increase.
 	dirFinder.totalFiles = 200
 	dirFinder.windowFilesProcessed = 10
 	dirFinder.windowStartTime = time.Now().Add(-20 * time.Second)
 	dirFinder.windowSleepTime = 10 * time.Second
 	dirFinder.updateEstimatedSystemScanDuration()
-	if dirFinder.estimatedSystemScanDuration > time.Second*205 || dirFinder.estimatedSystemScanDuration < time.Second*195 {
+	if dirFinder.estimatedSystemScanDuration > time.Second*135 || dirFinder.estimatedSystemScanDuration < time.Second*125 {
 		t.Error("bad", dirFinder.estimatedSystemScanDuration)
 	}
 	// Try again, but this time we are going faster per file, this should
@@ -70,7 +70,7 @@ func TestSystemScanDurationEstimator(t *testing.T) {
 	dirFinder.windowStartTime = time.Now().Add(-20 * time.Second)
 	dirFinder.windowSleepTime = 10 * time.Second
 	dirFinder.updateEstimatedSystemScanDuration()
-	if dirFinder.estimatedSystemScanDuration > time.Second*165 || dirFinder.estimatedSystemScanDuration < time.Second*155 {
+	if dirFinder.estimatedSystemScanDuration > time.Second*125 || dirFinder.estimatedSystemScanDuration < time.Second*115 {
 		t.Error("bad", dirFinder.estimatedSystemScanDuration)
 	}
 	// Update a few times in a loop, the result should converge closely to
@@ -89,7 +89,7 @@ func TestSystemScanDurationEstimator(t *testing.T) {
 	dirFinder.windowStartTime = time.Now().Add(-20 * time.Second)
 	dirFinder.windowSleepTime = 10 * time.Second
 	dirFinder.updateEstimatedSystemScanDuration()
-	if dirFinder.estimatedSystemScanDuration > time.Second*115 || dirFinder.estimatedSystemScanDuration < time.Second*100 {
+	if dirFinder.estimatedSystemScanDuration > time.Second*135 || dirFinder.estimatedSystemScanDuration < time.Second*125 {
 		t.Error("bad", dirFinder.estimatedSystemScanDuration)
 	}
 	// Update a few times in a loop, the result should converge closely to half

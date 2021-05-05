@@ -306,7 +306,7 @@ func (j *jobReadRegistry) callExecute() {
 	// Update the performance stats on the queue.
 	jq := j.staticQueue.(*jobReadRegistryQueue)
 	jq.mu.Lock()
-	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobReadRegistryPerformanceDecay)
+	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobReadRegistryPerformanceDecay)
 	jq.mu.Unlock()
 }
 

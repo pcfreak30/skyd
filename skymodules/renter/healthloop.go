@@ -122,8 +122,7 @@ type healthLoopDirFinder struct {
 	// based on historic data. The window variables count up the stats in the
 	// most recent window of time.
 	estimatedSystemScanDuration time.Duration
-	weightedProcessingTime      float64 // converted from a time.Duration
-	weightedFilesProcessed      float64 // converted from a time.Duration
+	systemScanDurationAvg       *expMovingAvg
 	windowFilesProcessed        uint64
 	windowSleepTime             time.Duration
 	windowStartTime             time.Time
@@ -137,21 +136,11 @@ type healthLoopDirFinder struct {
 // Finally, it resets the new values from the recent window so that the EMA is
 // not corrupted if called multiple times.
 func (dirFinder *healthLoopDirFinder) updateEstimatedSystemScanDuration() {
-	windowProcessingTime := float64(time.Since(dirFinder.windowStartTime) - dirFinder.windowSleepTime)
-	windowFilesProcessed := float64(dirFinder.windowFilesProcessed)
-	dirFinder.weightedProcessingTime = expMovingAvg(dirFinder.weightedProcessingTime, windowProcessingTime, systemScanTimeEstimatorDecay)
-	dirFinder.weightedFilesProcessed = expMovingAvg(dirFinder.weightedFilesProcessed, windowFilesProcessed, systemScanTimeEstimatorDecay)
-
-	// Check for divide by zero before computing final estimate.
-	if dirFinder.weightedFilesProcessed > 0 {
-		// NOTE: We slip a 1e6 into the weighted processing time and the
-		// weighted files processed because we are converting a float64 to an
-		// integer type, and we don't want to lose too much precision when it
-		// rounds down. Beacuse one value is in the numerator and the other is
-		// in the denmoninator, they cancel out.
-		dirFinder.estimatedSystemScanDuration = time.Duration(dirFinder.weightedProcessingTime*1e6) * time.Duration(dirFinder.totalFiles) / time.Duration(dirFinder.weightedFilesProcessed*1e6)
-	} else {
-		dirFinder.estimatedSystemScanDuration = 0
+	if dirFinder.windowFilesProcessed > 0 {
+		processingTime := time.Since(dirFinder.windowStartTime) - dirFinder.windowSleepTime
+		estimatedScanDuration := float64(processingTime) * float64(dirFinder.totalFiles) / float64(dirFinder.windowFilesProcessed)
+		dirFinder.systemScanDurationAvg.addDataPoint(estimatedScanDuration)
+		dirFinder.estimatedSystemScanDuration = time.Duration(dirFinder.systemScanDurationAvg.average())
 	}
 
 	// Reset the window variables.
@@ -373,7 +362,8 @@ func (dirFinder *healthLoopDirFinder) processNextDir() error {
 // health checks.
 func (r *Renter) newHealthLoopDirFinder() *healthLoopDirFinder {
 	return &healthLoopDirFinder{
-		windowStartTime: time.Now(),
+		windowStartTime:       time.Now(),
+		systemScanDurationAvg: newExpMovingAvg(systemScanTimeEstimatorDecay),
 
 		renter: r,
 	}

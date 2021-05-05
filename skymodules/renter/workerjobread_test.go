@@ -43,7 +43,7 @@ func TestJobExpectedJobTime(t *testing.T) {
 			jrq.callUpdateJobTimeMetrics(readLength, randJobTime)
 			ejt := jrq.callExpectedJobTime(readLength)
 			if ejt < dur80MS || ejt > dur120MS {
-				t.Fatal("unexpected", ejt)
+				t.Error("unexpected", ejt, i)
 			}
 		}
 	}
