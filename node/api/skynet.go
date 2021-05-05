@@ -168,7 +168,7 @@ type (
 
 	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
-	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, writeMonetizer *writeMonetizer) error
+	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, writeMonetizer *monetizer) error
 )
 
 // skynetBaseSectorHandlerGET accepts a skylink as input and will return the

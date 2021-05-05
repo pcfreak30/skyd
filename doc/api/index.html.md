@@ -3806,6 +3806,12 @@ the download which is why it is not returned by default. Cases that require the
 layout include backing up skylinks where all the original upload information
 about a skylink is needed.
 
+**scps** | types.Currency  
+Specifies the speed of a monetized download in Siacoins per second. If a
+download costs 1SC and the scps is 0.1SC, the download will take at least 10
+seconds. If scps is so low that it will result in a download speed of less than
+1 byte per second, an error is returned.
+
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
