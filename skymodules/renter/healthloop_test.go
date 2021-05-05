@@ -41,7 +41,7 @@ func TestSystemScanDurationEstimator(t *testing.T) {
 	dirFinder.windowSleepTime = 0
 	dirFinder.updateEstimatedSystemScanDuration()
 	if dirFinder.estimatedSystemScanDuration > time.Second*101 || dirFinder.estimatedSystemScanDuration < time.Second*99 {
-		t.Error("bad", dirFinder.estimatedSystemScanDuration)
+		t.Error("bad", dirFinder.estimatedSystemScanDuration, dirFinder.weightedFilesProcessed, dirFinder.weightedProcessingTime, dirFinder.totalFiles)
 	}
 	// Try again, but this time with an average sleep of 1 second per file. So
 	// the processing is going at 1 second per file, and the sleep is going at 1

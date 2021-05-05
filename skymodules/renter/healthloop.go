@@ -144,7 +144,12 @@ func (dirFinder *healthLoopDirFinder) updateEstimatedSystemScanDuration() {
 
 	// Check for divide by zero before computing final estimate.
 	if dirFinder.weightedFilesProcessed > 0 {
-		dirFinder.estimatedSystemScanDuration = time.Duration(dirFinder.weightedProcessingTime) * time.Duration(dirFinder.totalFiles) / time.Duration(dirFinder.weightedFilesProcessed)
+		// NOTE: We slip a 1e6 into the weighted processing time and the
+		// weighted files processed because we are converting a float64 to an
+		// integer type, and we don't want to lose too much precision when it
+		// rounds down. Beacuse one value is in the numerator and the other is
+		// in the denmoninator, they cancel out.
+		dirFinder.estimatedSystemScanDuration = time.Duration(dirFinder.weightedProcessingTime*1e6) * time.Duration(dirFinder.totalFiles) / time.Duration(dirFinder.weightedFilesProcessed*1e6)
 	} else {
 		dirFinder.estimatedSystemScanDuration = 0
 	}
