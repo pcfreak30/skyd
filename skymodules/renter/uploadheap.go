@@ -26,7 +26,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 // repairTarget is a helper type for telling the repair heap what type of
@@ -709,7 +708,6 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// accessed without error. If there is an error accessing the file then
 		// it is likely that we can not read the file in which case it can not
 		// be used for repair.
-		repairable := !siafile.Unrecoverable(chunk.health, chunk.onDisk)
 		needsRepair := skymodules.NeedsRepair(chunk.health)
 
 		if r.staticDeps.Disrupt("AddUnrepairableChunks") && needsRepair {
@@ -718,24 +716,13 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 		// Add chunk to list of incompleteChunks if it is incomplete and
 		// repairable or if we are targeting stuck chunks
-		if needsRepair && (repairable || target == targetStuckChunks) {
+		if needsRepair && (target == targetStuckChunks) {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
 		}
 
-		// If a chunk is not able to be repaired, mark it as stuck. Otherwise do not
-		// update the chunk status as we have performed no work on this chunk and we
-		// do not want to overwrite an update to the stuck status from another
-		// thread.
-		var setStuck bool
-		if !repairable {
-			r.staticLog.Println("Marking chunk", chunk.id, "as stuck due to not being repairable")
-			chunk.stuck = true
-			setStuck = true
-		}
-
 		// Close entry of completed chunk
-		err := r.managedSetStuckAndClose(chunk, setStuck)
+		err := r.managedSetStuckAndClose(chunk, false)
 		if err != nil {
 			r.staticLog.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}

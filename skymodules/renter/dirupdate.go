@@ -48,16 +48,16 @@ func (r *Renter) managedUpdateDirMetadata(siaPath skymodules.SiaPath) error {
 	if err != nil {
 		e := fmt.Sprintf("could not open directory %v", siaPath.String())
 		return errors.AddContext(err, e)
-	} else {
-		err = siaDir.UpdateMetadata(metadata)
-		if err != nil {
-			e := fmt.Sprintf("could not update the metadata of the directory %v", siaPath.String())
-			err = errors.AddContext(err, e)
-		}
-		err = errors.Compose(err, siaDir.Close())
-		if err != nil {
-			return err
-		}
+	}
+
+	err = siaDir.UpdateMetadata(metadata)
+	if err != nil {
+		e := fmt.Sprintf("could not update the metadata of the directory %v", siaPath.String())
+		err = errors.AddContext(err, e)
+	}
+	err = errors.Compose(err, siaDir.Close())
+	if err != nil {
+		return err
 	}
 
 	// If we are at the root directory then check if any files were found in
