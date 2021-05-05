@@ -2,6 +2,7 @@ package build
 
 import (
 	"encoding/hex"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -79,8 +80,18 @@ func ExchangeRate() string {
 }
 
 // TUSMaxSize returns the tusMaxSize environment variable if set.
-func TUSMaxSize() (string, bool) {
-	return os.LookupEnv(tusMaxSize)
+func TUSMaxSize() (int64, bool) {
+	maxSizeStr, ok := os.LookupEnv(tusMaxSize)
+	if !ok {
+		return 0, false
+	}
+	var maxSize int64
+	_, err := fmt.Sscan(maxSizeStr, &maxSize)
+	if err != nil {
+		Critical("failed to marshal TUS_MAXSIZE environment variable")
+		return 0, false
+	}
+	return maxSize, true
 }
 
 // apiPasswordFilePath returns the path to the API's password file. The password

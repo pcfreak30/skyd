@@ -1022,7 +1022,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		extSP, err := skymodules.NewSiaPath(sp.String() + skymodules.ExtendedSuffix)
+		extSP, err := sp.AddSuffixStr(skymodules.ExtendedSuffix)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2239,7 +2239,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	if err != nil {
 		t.Fatal(err)
 	}
-	spExtended, err := skymodules.NewSiaPath(sp.String() + skymodules.ExtendedSuffix)
+	spExtended, err := sp.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4261,7 +4261,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	largePathExtended, err := skymodules.NewSiaPath(largePath.String() + skymodules.ExtendedSuffix)
+	largePathExtended, err := largePath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -17,7 +19,84 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
+
+// testHTTPWriter is a dummy http.ResponseWriter for testing.
+type testHTTPWriter struct {
+	statusCode int
+	write      []byte
+}
+
+// Header implements http.ResponseWriter.
+func (tw *testHTTPWriter) Header() http.Header {
+	return http.Header{}
+}
+
+// Write implements http.ResponseWriter.
+func (tw *testHTTPWriter) Write(b []byte) (int, error) {
+	tw.write = bytes.Trim(b, "\n")
+	return len(b), nil
+}
+
+// WriteHeader implements http.ResponseWriter.
+func (tw *testHTTPWriter) WriteHeader(statusCode int) {
+	tw.statusCode = statusCode
+}
+
+// TestHandleSkynetError is a unit test for handleSkynetError.
+func TestHandleSkynetError(t *testing.T) {
+	tw := &testHTTPWriter{}
+
+	tests := []struct {
+		err        error
+		statusCode int
+	}{
+		{
+			err:        renter.ErrSkylinkBlocked,
+			statusCode: http.StatusUnavailableForLegalReasons,
+		},
+		{
+			err:        renter.ErrRootNotFound,
+			statusCode: http.StatusNotFound,
+		},
+		{
+			err:        renter.ErrRegistryEntryNotFound,
+			statusCode: http.StatusNotFound,
+		},
+		{
+			err:        renter.ErrRegistryLookupTimeout,
+			statusCode: http.StatusNotFound,
+		},
+		{
+			err:        errors.New("other"),
+			statusCode: http.StatusInternalServerError,
+		},
+	}
+
+	prefix := "foo"
+	for _, test := range tests {
+		handleSkynetError(tw, prefix, test.err)
+
+		expectedErr := Error{
+			Message: fmt.Sprintf("%v: %v", prefix, test.err),
+		}
+		errBytes, err := json.Marshal(expectedErr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(tw.write, errBytes) {
+			t.Logf("written '%v'", string(tw.write))
+			t.Logf("expected '%v'", string(errBytes))
+			t.Fatal("wrong error")
+		}
+		if test.statusCode != tw.statusCode {
+			t.Log("written", tw.statusCode)
+			t.Log("expected", test.statusCode)
+			t.Fatal("wrong status", test.statusCode, tw.statusCode)
+		}
+	}
+}
 
 // TestSkynetHelpers is a convenience function that wraps all of the Skynet
 // helper tests, this ensures these tests are ran when supplying `-run
