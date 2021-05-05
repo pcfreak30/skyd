@@ -7,6 +7,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
+
 var (
 	// maxTimeBetweenBatchExectutions defines the amount of time that a batch
 	// will wait before executing the queue of directories to batch. The testing
@@ -51,7 +52,7 @@ type (
 		// previous batch. This ensures that when the channel is closed, all
 		// updates are certain to have completed, even if those updates were
 		// submitted to previous batches.
-		completeChan chan struct{}
+		completeChan      chan struct{}
 		priorCompleteChan chan struct{}
 
 		renter *Renter
@@ -74,8 +75,8 @@ type (
 // execute will execute a batch of updates.
 func (batch *dirUpdateBatch) execute() {
 	// iterate through the batchSet backwards.
-	for i := len(batch.batchSet)-1; i >= 0; i-- {
-		for dirPath , _ := range batch.batchSet[i] {
+	for i := len(batch.batchSet) - 1; i >= 0; i-- {
+		for dirPath := range batch.batchSet[i] {
 			// Update the directory metadata. Note: we don't do any updates on
 			// the file healths themselves, we just use the file metadata.
 			err := batch.renter.managedUpdateDirMetadata(dirPath)
@@ -140,7 +141,7 @@ func (hub *dirUpdateBatcher) callFlushUpdates() {
 	hub.mu.Unlock()
 
 	// Signal that the current batch should be flushed.
-	select{
+	select {
 	case hub.staticFlushChan <- struct{}{}:
 	default:
 	}
@@ -152,7 +153,7 @@ func (hub *dirUpdateBatcher) callFlushUpdates() {
 // newBatch returns a new dirUpdateBatch ready for use.
 func (hub *dirUpdateBatcher) newBatch(priorCompleteChan chan struct{}) *dirUpdateBatch {
 	return &dirUpdateBatch{
-		completeChan: make(chan struct{}),
+		completeChan:      make(chan struct{}),
 		priorCompleteChan: priorCompleteChan,
 
 		renter: hub.staticRenter,
