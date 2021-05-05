@@ -2,7 +2,11 @@ package renter
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
+	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
