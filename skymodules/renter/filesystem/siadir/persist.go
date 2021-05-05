@@ -226,13 +226,10 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.SkynetFiles = metadata.SkynetFiles
 	sd.metadata.SkynetSize = metadata.SkynetSize
 
-	// NOTE: We're setting the version manually here because the assumption is
-	// that if the version has changed, it is the new version that is being
-	// saved to disk. This assumption may need some scrutiny.
-	//
-	// We change the version on both so that the consistency check below doesn't
-	// trigger due to a metadata mismatch, because we still want the check in
-	// place for other fields. But the version in particular is a special case.
+	// NOTE: We're setting the version manually here because we are saving the
+	// metadata to disk using the most recent code. If the metadata used to have
+	// an older version, it'll have the most recent version following this
+	// update.
 	sd.metadata.Version = metadataVersion
 	metadata.Version = metadataVersion
 
