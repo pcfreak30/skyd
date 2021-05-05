@@ -44,7 +44,7 @@ var (
 	emptyFilesystemSleepDuration = build.Select(build.Var{
 		Dev:      5 * time.Second,
 		Standard: 5 * time.Minute,
-		Testing:  3 * time.Second,
+		Testing:  100 * time.Millisecond,
 	}).(time.Duration)
 
 	// healthLoopErrorSleepDuration indicates how long the health loop should
@@ -52,7 +52,7 @@ var (
 	healthLoopErrorSleepDuration = build.Select(build.Var{
 		Dev:      9 * time.Second,
 		Standard: 5 * time.Minute,
-		Testing:  3 * time.Second,
+		Testing:  250 * time.Millisecond,
 	}).(time.Duration)
 
 	// healthLoopResetInterval defines how frequently the health loop resets,
@@ -60,7 +60,7 @@ var (
 	healthLoopResetInterval = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 15 * time.Minute,
-		Testing:  5 * time.Second,
+		Testing:  3 * time.Second,
 	}).(time.Duration)
 
 	// TargetHealthCheckFrequency defines how frequently we want to update the
@@ -76,7 +76,7 @@ var (
 	TargetHealthCheckFrequency = build.Select(build.Var{
 		Dev:      3 * time.Minute,
 		Standard: 24 * time.Hour,
-		Testing:  3 * time.Second,
+		Testing:  1 * time.Second,
 	}).(time.Duration)
 
 	// urgentHealthCheckFrequency is the time at which we feel the health of the
@@ -95,7 +95,7 @@ var (
 	urgentHealthCheckFrequency = build.Select(build.Var{
 		Dev:      9 * time.Minute,
 		Standard: 72 * time.Hour,
-		Testing:  9 * time.Second,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
 
@@ -194,7 +194,7 @@ func (dirFinder *healthLoopDirFinder) reset() {
 // is a bit involved, consult David before attempting.
 func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 	// Check if we need to reset the dirFinder.
-	if dirFinder.windowStartTime.Before(time.Now().Add(-1 * healthLoopResetInterval)) {
+	if time.Since(dirFinder.windowStartTime) > healthLoopResetInterval {
 		dirFinder.reset()
 	}
 
@@ -263,21 +263,20 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	}
 
 	// Sleep before processing any directories. The amount of sleep will be
-	// determined by the recent health time of the provided directory
-	// compared against the target health time. If the health time is more
-	// recent, we will sleep a prortionate amount of time so that we average
-	// scanning the entire filesystem once per target interval, but evenly
-	// spaced throughout that interval.
+	// determined by the recent health time of the provided directory compared
+	// against the target health time. If the health time is more recent, we
+	// will sleep a proportionate amount of time so that we average scanning the
+	// entire filesystem once per target interval, but evenly spaced throughout
+	// that interval.
 	//
-	// If the recent check time is later than the target interval, the
-	// amount of sleep is reduced proprtionally to the distance from the
-	// urgent time. This proportional reduction still has a bit of a
-	// spreading effect, to keep the load distributed over a large range of
-	// time rather than clustered.
+	// If the recent check time is later than the target interval, the amount of
+	// sleep is reduced proportionally to the distance from the urgent time.
+	// This proportional reduction still has a bit of a spreading effect, to
+	// keep the load distributed over a large range of time rather than
+	// clustered.
 	//
-	// If the recent check is later than the urgent interval, there is no
-	// sleep at all because we need to get the updated health status on the
-	// files.
+	// If the recent check is later than the urgent interval, there is no sleep
+	// at all because we need to get the updated health status on the files.
 	lrc := dirFinder.leastRecentCheck
 	timeSinceLRC := time.Since(lrc)
 	urgent := timeSinceLRC > urgentHealthCheckFrequency
