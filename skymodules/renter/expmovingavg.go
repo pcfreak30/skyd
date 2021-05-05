@@ -48,6 +48,11 @@ func expMovingAvgHotStart(oldEMA, newValue, decay float64) float64 {
 		panic("decay has to be a value in range 0 <= x <= 1")
 	}
 	if oldEMA == 0 {
+		// This is the hot start. If there is no EMA yet, we take the first
+		// datapoint as the true average. If you don't do this, when you start
+		// off at first you will have an average that is completely incorrect,
+		// because your first datapoint might be '80' but at a decay of 0.9 your
+		// average after that datapoint will be 8.
 		return newValue
 	}
 	return newValue*(1-decay) + decay*oldEMA
