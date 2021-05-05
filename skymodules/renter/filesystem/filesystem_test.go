@@ -1205,7 +1205,7 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 		t.Fatalf("Expected threadCount to be 0, got %v", len(entry.threads))
 	}
 
-	// Confirm file and partialsSiaFile were removed from memory
+	// Confirm file was removed from memory
 	if len(sfs.files) != 0 {
 		t.Fatalf("Expected SiaFileSet map to contain 0 files, instead is length %v", len(sfs.files))
 	}
@@ -1603,8 +1603,7 @@ func TestSiaDirDelete(t *testing.T) {
 		t.Fatalf("There should be %v files/folders in the root dir but found %v\n", 1, len(files))
 	}
 	for _, file := range files {
-		if filepath.Ext(file.Name()) != skymodules.SiaDirExtension &&
-			filepath.Ext(file.Name()) != skymodules.PartialsSiaFileExtension {
+		if filepath.Ext(file.Name()) != skymodules.SiaDirExtension {
 			t.Fatal("Encountered unexpected file:", file.Name())
 		}
 	}

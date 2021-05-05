@@ -665,7 +665,7 @@ func (n *DirNode) managedNewSiaFile(fileName string, source string, ec skymodule
 	if exists := n.childExists(fileName); exists {
 		return ErrExists
 	}
-	_, err := siafile.New(filepath.Join(n.absPath(), fileName+skymodules.SiaFileExtension), source, n.staticWal, ec, mk, fileSize, fileMode, nil)
+	_, err := siafile.New(filepath.Join(n.absPath(), fileName+skymodules.SiaFileExtension), source, n.staticWal, ec, mk, fileSize, fileMode)
 	return errors.AddContext(err, "NewSiaFile: failed to create file")
 }
 

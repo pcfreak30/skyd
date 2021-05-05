@@ -61,12 +61,6 @@ type (
 
 		// siaFilePath is the path to the .sia file on disk.
 		siaFilePath string
-
-		// partialSiaFile is the SiaFile that holds or could hold the partial chunk of
-		// this siafile. Since we don't know if a file is going to have a partial
-		// chunk we simply keep the megafiles always open and assign them to SiaFiles
-		// with matching redundancy.
-		partialsSiaFile *SiaFile
 	}
 
 	// Chunks is an exported version of a chunk slice.. It exists for
@@ -200,7 +194,7 @@ func (c *chunk) numPieces() (numPieces int) {
 }
 
 // New create a new SiaFile.
-func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFile) (*SiaFile, error) {
+func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (*SiaFile, error) {
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	minPieces := erasureCode.MinPieces()
@@ -234,18 +228,15 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
 			UniqueID:                uniqueID(),
 		},
-		deps:            modules.ProdDependencies,
-		partialsSiaFile: partialsSiaFile,
-		siaFilePath:     siaFilePath,
-		wal:             wal,
+		deps:        modules.ProdDependencies,
+		siaFilePath: siaFilePath,
+		wal:         wal,
 	}
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
 	if fileSize%file.staticChunkSize() != 0 {
 		// This file does have a partial chunk but we treat it as a full chunk.
 		numChunks++
-	} else if fileSize%file.staticChunkSize() != 0 && partialsSiaFile == nil {
-		return nil, errors.New("can't create a file with a partial chunk without assigning a partialsSiaFile")
 	}
 	file.numChunks = int(numChunks)
 	// Update cached fields for 0-Byte files.

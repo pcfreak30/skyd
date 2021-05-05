@@ -241,15 +241,15 @@ func TestRenterPaths(t *testing.T) {
 	sk := crypto.GenerateSiaKey(crypto.TypeThreefish)
 	fileSize := uint64(modules.SectorSize)
 	fileMode := os.FileMode(0600)
-	f1, err := siafile.New(siaPath1.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil)
+	f1, err := siafile.New(siaPath1.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f2, err := siafile.New(siaPath2.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil)
+	f2, err := siafile.New(siaPath2.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f3, err := siafile.New(siaPath3.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil)
+	f3, err := siafile.New(siaPath3.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}

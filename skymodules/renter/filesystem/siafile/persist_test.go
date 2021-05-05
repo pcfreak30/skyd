@@ -127,24 +127,8 @@ func customTestFileAndWAL(siaFilePath, source string, rc skymodules.ErasureCoder
 	}
 	// Create a test wal
 	wal, walPath := newTestWAL()
-	// Create the corresponding partials file if it doesn't exist already.
-	var partialsSiaFile *SiaFile
-	partialsSiaPath := skymodules.CombinedSiaFilePath(rc)
-	partialsSiaFilePath := partialsSiaPath.SiaPartialsFileSysPath(dir)
-	if _, err = os.Stat(partialsSiaFilePath); os.IsNotExist(err) {
-		partialsSiaFile, err = New(partialsSiaFilePath, "", wal, rc, sk, 0, fileMode, nil)
-	} else {
-		partialsSiaFile, err = LoadSiaFile(partialsSiaFilePath, wal)
-	}
-	if err != nil {
-		panic(fmt.Sprint("failed to load partialsSiaFile", err))
-	}
-	// Check that the partials file is sane.
-	if partialsSiaFile.numChunks > 0 {
-		panic(fmt.Sprint("partialsSiaFile shouldn't have any chunks but had ", partialsSiaFile.numChunks))
-	}
 	// Create the file.
-	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, nil)
+	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		panic(err)
 	}
@@ -356,7 +340,6 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to load SiaFile from disk", err)
 	}
-	sf2.SetPartialsSiaFile(sf.partialsSiaFile)
 	// Compare the files.
 	if err := equalFiles(sf, sf2); err != nil {
 		t.Fatal(err)

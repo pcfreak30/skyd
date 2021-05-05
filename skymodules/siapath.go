@@ -31,10 +31,6 @@ var (
 	// SiaFileExtension is the extension for siafiles on disk
 	SiaFileExtension = ".sia"
 
-	// PartialsSiaFileExtension is the extension for siafiles which contain
-	// combined chunks.
-	PartialsSiaFileExtension = ".csia"
-
 	// CombinedChunkExtension is the extension for a combined chunk on disk.
 	CombinedChunkExtension = ".cc"
 	// UnfinishedChunkExtension is the extension for an unfinished combined chunk
@@ -107,12 +103,6 @@ func RandomSkynetFilePath() (sp SiaPath) {
 // RootSiaPath returns a SiaPath for the root siadir which has a blank path
 func RootSiaPath() SiaPath {
 	return SiaPath{}
-}
-
-// CombinedSiaFilePath returns the SiaPath to a hidden siafile which is used to
-// store chunks that contain pieces of multiple siafiles.
-func CombinedSiaFilePath(ec ErasureCoder) SiaPath {
-	return SiaPath{Path: fmt.Sprintf(".%v", ec.Identifier())}
 }
 
 // clean cleans up the string by converting an OS separators to forward slashes
@@ -253,13 +243,6 @@ func (sp SiaPath) SiaFileSysPath(dir string) string {
 	return filepath.Join(dir, filepath.FromSlash(sp.Path)+SiaFileExtension)
 }
 
-// SiaPartialsFileSysPath returns the system path needed to read the
-// PartialsSiaFile from disk, the input dir is the root siafile directory on
-// disk
-func (sp SiaPath) SiaPartialsFileSysPath(dir string) string {
-	return filepath.Join(dir, filepath.FromSlash(sp.Path)+PartialsSiaFileExtension)
-}
-
 // String returns the SiaPath's path
 func (sp SiaPath) String() string {
 	return sp.Path
@@ -273,7 +256,6 @@ func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {
 	}
 	relPath := strings.TrimPrefix(siaFilePath, dir)
 	relPath = strings.TrimSuffix(relPath, SiaFileExtension)
-	relPath = strings.TrimSuffix(relPath, PartialsSiaFileExtension)
 	*sp, err = newSiaPath(relPath)
 	return
 }

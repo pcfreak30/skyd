@@ -76,14 +76,6 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 	return loadSiaFileMetadata(path, modules.ProdDependencies)
 }
 
-// SetPartialsSiaFile sets the partialsSiaFile field of the SiaFile. This is
-// usually done for non-partials SiaFiles after loading them from disk.
-func (sf *SiaFile) SetPartialsSiaFile(partialsSiaFile *SiaFile) {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	sf.partialsSiaFile = partialsSiaFile
-}
-
 // SetSiaFilePath sets the path of the siafile on disk.
 func (sf *SiaFile) SetSiaFilePath(path string) {
 	sf.mu.Lock()

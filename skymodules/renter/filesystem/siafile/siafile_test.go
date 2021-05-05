@@ -1205,7 +1205,7 @@ func BenchmarkLoadSiaFile(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode, nil) // 1 chunk file
+	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1257,7 +1257,7 @@ func benchmarkRandomChunkWrite(numThreads int, b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode, nil) // 1 chunk file
+	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1320,7 +1320,7 @@ func BenchmarkRandomChunkRead(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode, nil) // 1 chunk file
+	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
 	if err != nil {
 		b.Fatal(err)
 	}
