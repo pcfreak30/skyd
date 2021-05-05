@@ -1387,6 +1387,10 @@ func (sf *SiaFile) uploadedBytes() (uint64, uint64, error) {
 	var total, unique uint64
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		for _, pieceSet := range chunk.Pieces {
+			// Move onto the next pieceSet if nothing has been uploaded yet.
+			if len(pieceSet) == 0 {
+				continue
+			}
 			// Note: we need to multiply by SectorSize here instead of
 			// f.pieceSize because the actual bytes uploaded include overhead
 			// from TwoFish encryption
