@@ -1210,11 +1210,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		go r.threadedHealthLoop()
 	}
 
-	// The background thread for updating the directory metadata is not grouped
-	// with the threads disabled by "DisableRepairAndHealthLoops" so that manual
-	// calls to update directory metadata can still be processed.
-	go r.staticDirUpdateBatcher.threadedExecuteBatchUpdates()
-
 	// Initialize the batch manager
 	r.newSkylinkBatchManager()
 

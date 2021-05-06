@@ -100,7 +100,12 @@ func (batch *dirUpdateBatch) execute() {
 
 	// Wait until the previous channel is complete.
 	<-batch.priorCompleteChan
-	close(batch.completeChan)
+	select {
+	case <-batch.completeChan:
+		println("attempting to close a closed channel")
+	case <-time.After(time.Second):
+		close(batch.completeChan)
+	}
 }
 
 // callQueueUpdate will add an update to the current batch. The input needs to
@@ -173,6 +178,7 @@ func (hub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 	for {
 		select {
 		case <-hub.staticRenter.tg.StopChan():
+			hub.nextBatch.execute()
 			return
 		case <-hub.staticFlushChan:
 		case <-time.After(maxTimeBetweenBatchExecutions):
