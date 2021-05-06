@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
@@ -206,4 +207,18 @@ func (r *Renter) newHealthUpdateBatcher() *dirUpdateBatcher {
 	hub.nextBatch = hub.newBatch(initialChan)
 	go hub.threadedExecuteBatchUpdates()
 	return hub
+}
+
+// UpdateMetadata will explicitly update the metadata of the provided directory,
+// returning once the directory has been updated and the changes are reflected
+// in the aggregate metadata of the root directory. If the recursive flag is
+// set, it will do a check on all subdirs as well.
+func (r *Renter) UpdateMetadata(siaPath skymodules.SiaPath, recursive bool) error {
+	// TODO: implement it. Can't just use the dirupdatebatcher, because we need
+	// to rescan all of the files as well. For each dir and subdir, do a file
+	// scan, and then add the dir/subdir to the dirupdatebatcher.
+	//
+	// Once that is done, call flush() on the dirupdatebatcher to ensure the
+	// updates make it all the way to the root dir.
+	return errors.New("not implemented")
 }

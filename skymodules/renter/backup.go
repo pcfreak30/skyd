@@ -343,14 +343,6 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
 func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
-	// dirsToUpdate are all the directories that will need bubble to be called
-	// on them so that the renter's directory metadata from the back up is
-	// updated
-	dirsToUpdate := r.callNewUniqueRefreshPaths()
-	defer func() {
-		err = errors.Compose(err, dirsToUpdate.callRefreshAll())
-	}()
-
 	// Copy the files from the tarball to the new location.
 	dir := r.staticFileSystem.DirPath(skymodules.UserFolder)
 	for {
@@ -429,10 +421,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
 				return errors.AddContext(err, "could not update metadata")
 			}
 			// Metadata was updated so add to list of directories to be updated
-			err = dirsToUpdate.callAdd(siaPath)
-			if err != nil {
-				return errors.AddContext(err, fmt.Sprintf("could not add directory %v to the list of directories to be updated", siaPath))
-			}
+			r.staticDirUpdateBatcher.callQueueDirUpdate(siaPath)
 			// Close Directory
 			dirEntry.Close()
 		} else if filepath.Ext(info.Name()) == skymodules.SiaFileExtension {
@@ -446,12 +435,11 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
 			if err != nil {
 				return errors.AddContext(err, "could not add siafile from reader")
 			}
-			// Add directory that siafile resides in to the list of directories
-			// to be updated
-			err = dirsToUpdate.callAdd(siaPath)
+			parent, err := siaPath.Dir()
 			if err != nil {
-				return errors.AddContext(err, fmt.Sprintf("could not add directory %v to the list of directories to be updated", siaPath))
+				return errors.AddContext(err, "could not get parent of siafile from reader")
 			}
+			r.staticDirUpdateBatcher.callQueueDirUpdate(parent)
 		}
 	}
 	return nil

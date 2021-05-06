@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -263,11 +262,10 @@ func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymod
 	numFiles := metadata.NumFiles
 	if aggregateNumStuckChunks == 0 || numStuckChunks == 0 || numFiles == 0 {
 		// If the number of stuck chunks or number of files is zero then this
-		// directory should not have been used to find a stuck file.
-		//
-		// Queue a bubble to bubble the directory, ignore the return channel as we
-		// do not want to block on this update.
-		_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
+		// directory should not have been used to find a stuck file. Queue an
+		// update on the directories metadata to prevent this from happening
+		// again.
+		r.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 		err = fmt.Errorf("managedStuckFile should not have been called on %v, AggregateNumStuckChunks: %v, NumStuckChunks: %v, NumFiles: %v", dirSiaPath.String(), aggregateNumStuckChunks, numStuckChunks, numFiles)
 		return skymodules.SiaPath{}, err
 	}
@@ -320,11 +318,9 @@ func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymod
 	}
 	if siapath.IsEmpty() {
 		// If no files were selected from the directory than there is a mismatch
-		// between the file metadata and the directory metadata.
-		//
-		// Queue a bubble to bubble the directory, ignore the return channel as we
-		// do not want to block on this update.
-		_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
+		// between the file metadata and the directory metadata. Queue an update
+		// on the directory's metadata so this doesn't happen again.
+		r.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 		return skymodules.SiaPath{}, errors.New("no files selected from directory " + dirSiaPath.String())
 	}
 	return siapath, nil
@@ -440,81 +436,12 @@ func (r *Renter) threadedStuckFileLoop() {
 			// Stuck chunk was successfully repaired.
 		}
 
-		// Call bubble before continuing on next iteration to ensure filesystem
-		// is updated.
-		//
-		// TODO - once bubbling metadata has been updated to be more I/O
-		// efficient this code should be removed and we should call bubble when
-		// we clean up the upload chunk after a successful repair.
-		bubblePaths := r.callNewUniqueRefreshPaths()
+		// Queue an update to all of the dirs that were visited and then block
+		// until all of the updates have completed and have their stats
+		// represented in the root aggregate metadata.
 		for _, dirSiaPath := range dirSiaPaths {
-			err = bubblePaths.callAdd(dirSiaPath)
-			if err != nil {
-				r.staticRepairLog.Printf("Error adding refresh path of %s: %v", dirSiaPath.String(), err)
-			}
+			r.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 		}
-		bubblePaths.callRefreshAllBlocking()
+		r.staticDirUpdateBatcher.callFlushUpdates()
 	}
-}
-
-// callPrepareForBubble prepares a directory for the Health Loop to call bubble
-// on and returns a uniqueRefreshPaths including all the paths of the
-// directories in the subtree that need to be updated. This includes updating
-// the LastHealthCheckTime for the supplied root directory.
-//
-// This method will at a minimum return a uniqueRefreshPaths with the rootDir
-// added.
-//
-// If the force boolean is supplied, the LastHealthCheckTime of the directories
-// will be ignored so all directories will be considered.
-func (r *Renter) callPrepareForBubble(rootDir skymodules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
-	// Initiate helpers
-	urp := r.callNewUniqueRefreshPaths()
-	aggregateLastHealthCheckTime := time.Now()
-
-	// Add the rootDir to urp.
-	err := urp.callAdd(rootDir)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to add initial rootDir to uniqueRefreshPaths")
-	}
-
-	// Define DirectoryInfo function
-	var mu sync.Mutex
-	dlf := func(di skymodules.DirectoryInfo) {
-		mu.Lock()
-		defer mu.Unlock()
-
-		// Skip any directories that have been updated recently
-		if !force && time.Since(di.LastHealthCheckTime) < TargetHealthCheckFrequency {
-			// Track the LastHealthCheckTime of the skipped directory
-			if di.LastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
-				aggregateLastHealthCheckTime = di.LastHealthCheckTime
-			}
-			return
-		}
-		// Add the directory to uniqueRefreshPaths
-		addErr := urp.callAdd(di.SiaPath)
-		if addErr != nil {
-			r.staticLog.Printf("WARN: unable to add siapath `%v` to uniqueRefreshPaths; err: %v", di.SiaPath, addErr)
-			err = errors.Compose(err, addErr)
-			return
-		}
-	}
-
-	// Execute the function on the FileSystem
-	errList := r.staticFileSystem.CachedList(rootDir, true, func(skymodules.FileInfo) {}, dlf)
-	if errList != nil {
-		err = errors.Compose(err, errList)
-		// Still return the uniqueRefreshPaths as we added at least the root dir and
-		// we should return.
-		return urp, errors.AddContext(err, "unable to get cached list of sub directories")
-	}
-
-	// Update the root directory's LastHealthCheckTime to signal that this sub
-	// tree has been updated
-	entry, openErr := r.staticFileSystem.OpenSiaDir(rootDir)
-	if openErr != nil {
-		return urp, errors.Compose(err, openErr)
-	}
-	return urp, errors.Compose(err, entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now()), entry.Close())
 }

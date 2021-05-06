@@ -276,10 +276,10 @@ type Renter struct {
 	staticAccountManager               *accountManager
 	staticAlerter                      *modules.GenericAlerter
 	staticConsensusSet                 modules.ConsensusSet
+	staticDirUpdateBatcher             *dirUpdateBatcher
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
 	staticGateway                      modules.Gateway
-	staticDirUpdateBatcher             *dirUpdateBatcher
 	staticHostContractor               hostContractor
 	staticHostDB                       skymodules.HostDB
 	staticSkykeyManager                *skykey.SkykeyManager
