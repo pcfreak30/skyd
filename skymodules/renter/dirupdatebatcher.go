@@ -202,7 +202,7 @@ func (hub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 // newHealthUpdateBatcher returns a health update batcher that is ready for use.
 func (r *Renter) newHealthUpdateBatcher() *dirUpdateBatcher {
 	hub := &dirUpdateBatcher{
-		staticFlushChan: make(chan struct{}),
+		staticFlushChan: make(chan struct{}, 1),
 		staticRenter:    r,
 	}
 
