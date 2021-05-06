@@ -666,23 +666,9 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 
 	// Check if link needs to be resolved from V2 to V1.
-	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
-	// the API to return a 404.
-	if link.Version() == 2 {
-		srv, err := r.ReadRegistryRID(ctx, link.RegistryEntryID())
-		if err != nil {
-			return nil, err
-		}
-		if len(srv.Data) == 0 {
-			return nil, errors.New("failed to resolve skylink")
-		}
-		err = link.LoadBytes(srv.Data)
-		if err != nil {
-			return nil, errors.AddContext(err, "failed to parse skylink")
-		}
-		if link == (skymodules.Skylink{}) {
-			return nil, ErrRootNotFound
-		}
+	link, err := r.managedTryResolveSkylinkV2(ctx, link)
+	if err != nil {
+		return nil, err
 	}
 
 	// Check if link is blocked
@@ -706,17 +692,23 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	}
 	defer r.tg.Done()
 
-	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(link) {
-		return nil, ErrSkylinkBlocked
-	}
-
 	// Create the context
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
+	}
+
+	// Check if link needs to be resolved from V2 to V1.
+	link, err := r.managedTryResolveSkylinkV2(ctx, link)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if link is blocked
+	if r.staticSkynetBlocklist.IsBlocked(link) {
+		return nil, ErrSkylinkBlocked
 	}
 
 	// Find the fetch size.
@@ -1116,4 +1108,35 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 		}
 	}
 	return false
+}
+
+// managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
+// skylink is not a V2 skylink, the input link is returned.
+func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, error) {
+	if sl.Version() != 2 {
+		return sl, nil
+	}
+	// Get link from registry entry.
+	srv, err := r.ReadRegistryRID(ctx, sl.RegistryEntryID())
+	if err != nil {
+		return skymodules.Skylink{}, err
+	}
+	if len(srv.Data) == 0 {
+		return skymodules.Skylink{}, errors.New("failed to resolve skylink")
+	}
+	var link skymodules.Skylink
+	err = link.LoadBytes(srv.Data)
+	if err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "failed to parse skylink")
+	}
+	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
+	// the API to return a 404.
+	if link == (skymodules.Skylink{}) {
+		return skymodules.Skylink{}, ErrRootNotFound
+	}
+	// Check if link is blocked
+	if r.staticSkynetBlocklist.IsBlocked(link) {
+		return skymodules.Skylink{}, ErrSkylinkBlocked
+	}
+	return link, nil
 }

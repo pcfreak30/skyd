@@ -5,6 +5,8 @@ import (
 	"mime/multipart"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/node/api"
@@ -17,6 +19,44 @@ import (
 type TestFile struct {
 	Name string
 	Data []byte
+}
+
+// SkylinkV2 is a convenience type around a skylink for creating and updating V2
+// skylinks.
+type SkylinkV2 struct {
+	skymodules.Skylink
+	staticPK types.SiaPublicKey
+	staticSK crypto.SecretKey
+	srv      modules.SignedRegistryValue
+}
+
+// DeleteSkylinkV2 sets a V2 skylink to the empty skylink.
+func (tn *TestNode) DeleteSkylinkV2(sl *SkylinkV2) error {
+	return tn.UpdateSkylinkV2(sl, skymodules.Skylink{})
+}
+
+// NewSkylinkV2 creates a new V2 skylink from a V1 skylink.
+func (tn *TestNode) NewSkylinkV2(sl skymodules.Skylink) (SkylinkV2, error) {
+	// Update the registry with that link.
+	sk, pk := crypto.GenerateKeyPair()
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+	srv := modules.NewRegistryValue(dataKey, sl.Bytes(), 0).Sign(sk)
+	err := tn.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, sl)
+	if err != nil {
+		return SkylinkV2{}, err
+	}
+	// Create a v2 link.
+	return SkylinkV2{
+		Skylink:  skymodules.NewSkylinkV2(spk, dataKey),
+		staticPK: spk,
+		staticSK: sk,
+		srv:      srv,
+	}, nil
 }
 
 // UploadNewSkyfileWithDataBlocking attempts to upload a skyfile with given
@@ -88,6 +128,12 @@ func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykey
 		root:     true,
 	}
 	return
+}
+
+// UpdateSkylinkV2 updates a V2 skylink with a new V1 skylink's value.
+func (tn *TestNode) UpdateSkylinkV2(sl *SkylinkV2, slNew skymodules.Skylink) error {
+	sl.srv = modules.NewRegistryValue(sl.srv.Tweak, slNew.Bytes(), sl.srv.Revision+1).Sign(sl.staticSK)
+	return tn.RegistryUpdate(sl.staticPK, sl.srv.Tweak, sl.srv.Revision, sl.srv.Signature, slNew)
 }
 
 // UploadSkyfileBlockingCustom attempts to upload a skyfile. After it has
