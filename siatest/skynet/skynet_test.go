@@ -1585,6 +1585,17 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 		t.Fatal(err)
 	}
 
+	// Create a v2 skylink from it.
+	var skylinkV1 skymodules.Skylink
+	err = skylinkV1.LoadString(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylinkV2, err := r.NewSkylinkV2(skylinkV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Download the BaseSector reader
 	baseSectorReader, err := r.SkynetBaseSectorGet(skylink)
 	if err != nil {
@@ -1595,6 +1606,23 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	baseSector, err := ioutil.ReadAll(baseSectorReader)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Download the BaseSector reader for the V2 link.
+	baseSectorReaderV2, err := r.SkynetBaseSectorGet(skylinkV2.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the baseSector
+	baseSectorV2, err := ioutil.ReadAll(baseSectorReaderV2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// They should be the same.
+	if !bytes.Equal(baseSector, baseSectorV2) {
+		t.Fatal("base sectors don't match")
 	}
 
 	// Check for encryption
@@ -5041,21 +5069,12 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Update the registry with that link.
-	sk, pk := crypto.GenerateKeyPair()
-	var dataKey crypto.Hash
-	fastrand.Read(dataKey[:])
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	srv := modules.NewRegistryValue(dataKey, skylink.Bytes(), fastrand.Uint64n(100)).Sign(sk)
-	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
+
+	// Create a v2 link.
+	skylinkV2, err := r.NewSkylinkV2(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Create a v2 link.
-	skylinkV2 := skymodules.NewSkylinkV2(spk, dataKey)
 
 	// Download the file using that link.
 	downloadedDataV2, _, err := r.SkynetSkylinkGet(skylinkV2.String())
@@ -5076,9 +5095,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Update entry to empty skylink.
-	skylink = skymodules.Skylink{}
-	srv = modules.NewRegistryValue(dataKey, skylink.Bytes(), srv.Revision+1).Sign(sk)
-	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
+	err = r.DeleteSkylinkV2(&skylinkV2)
 	if err != nil {
 		t.Fatal(err)
 	}

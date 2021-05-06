@@ -258,14 +258,6 @@ type (
 	// CombinedChunkID is a unique identifier for a combined chunk which makes up
 	// part of its filename on disk.
 	CombinedChunkID string
-
-	// PartialChunk holds some information about a combined chunk
-	PartialChunk struct {
-		ChunkID        CombinedChunkID // The ChunkID of the combined chunk the partial is in.
-		InPartialsFile bool            // 'true' if the combined chunk is already in the partials siafile.
-		Length         uint64          // length of the partial chunk within the combined chunk.
-		Offset         uint64          // offset of the partial chunk within the combined chunk.
-	}
 )
 
 // An Allowance dictates how much the Renter is allowed to spend in a given

@@ -647,14 +647,14 @@ func (n *DirNode) childFiles() []*FileNode {
 }
 
 // managedNewSiaFile creates a new SiaFile in the directory.
-func (n *DirNode) managedNewSiaFile(fileName string, source string, ec skymodules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
+func (n *DirNode) managedNewSiaFile(fileName string, source string, ec skymodules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Make sure we don't have a file or folder with that name already.
 	if exists := n.childExists(fileName); exists {
 		return ErrExists
 	}
-	_, err := siafile.New(filepath.Join(n.absPath(), fileName+skymodules.SiaFileExtension), source, n.staticWal, ec, mk, fileSize, fileMode, nil, disablePartialUpload)
+	_, err := siafile.New(filepath.Join(n.absPath(), fileName+skymodules.SiaFileExtension), source, n.staticWal, ec, mk, fileSize, fileMode)
 	return errors.AddContext(err, "NewSiaFile: failed to create file")
 }
 
