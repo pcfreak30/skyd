@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -128,14 +129,13 @@ func (hub *dirUpdateBatcher) callQueueDirUpdate(dirPath skymodules.SiaPath) {
 	hub.nextBatch.batchSet[levels][dirPath] = struct{}{}
 }
 
-// callFlushUpdates will trigger the current batch of updates to execute, and
-// will not return until all updates have compelted and are represented in the
-// root directory. It will also not return until all prior batches have
-// completed as well - if you have added a directory to a batch and call flush,
-// you can be certain that the directory update will have executed by the time
-// the flush call returns, regardless of which batch that directory was added
-// to.
-func (hub *dirUpdateBatcher) callFlushUpdates() {
+// callFlush will trigger the current batch of updates to execute, and will not
+// return until all updates have compelted and are represented in the root
+// directory. It will also not return until all prior batches have completed as
+// well - if you have added a directory to a batch and call flush, you can be
+// certain that the directory update will have executed by the time the flush
+// call returns, regardless of which batch that directory was added to.
+func (hub *dirUpdateBatcher) callFlush() {
 	// Grab the complete chan for the current batch.
 	hub.mu.Lock()
 	completeChan := hub.nextBatch.completeChan
@@ -213,12 +213,44 @@ func (r *Renter) newHealthUpdateBatcher() *dirUpdateBatcher {
 // returning once the directory has been updated and the changes are reflected
 // in the aggregate metadata of the root directory. If the recursive flag is
 // set, it will do a check on all subdirs as well.
+//
+// NOTE: This call is not very efficient, and generally isn't intended to be
+// used on large directories with lots of subdirectories.
 func (r *Renter) UpdateMetadata(siaPath skymodules.SiaPath, recursive bool) error {
-	// TODO: implement it. Can't just use the dirupdatebatcher, because we need
-	// to rescan all of the files as well. For each dir and subdir, do a file
-	// scan, and then add the dir/subdir to the dirupdatebatcher.
-	//
-	// Once that is done, call flush() on the dirupdatebatcher to ensure the
-	// updates make it all the way to the root dir.
-	return errors.New("not implemented")
+	err := r.tg.Add()
+	if err != nil {
+		return err
+	}
+	defer r.tg.Done()
+
+	// TODO: change this to a list.
+	dirPaths := []skymodules.SiaPath{siaPath}
+	for len(dirPaths) > 0 {
+		siaPath := dirPaths[0]
+		dirPaths = dirPaths[1:]
+		err := r.managedUpdateFilesInDir(siaPath)
+		if err != nil {
+			context := fmt.Sprintf("unable to update the metadata of the files in dir %v", siaPath)
+			return errors.AddContext(err, context)
+		}
+		r.staticDirUpdateBatcher.callQueueDirUpdate(siaPath)
+		if !recursive {
+			// If the recursive flag isn't set, this should trigger immediately
+			// and result in only one directory being processed.
+			continue
+		}
+
+		// The recursive flag is set, so load the full list of subdirectories
+		// and ensure the loop will scan all of those directories as well.
+		subDirPaths, err := r.managedSubDirectories(siaPath)
+		if err != nil {
+			context := fmt.Sprintf("unable to load list of subdirs for %v", siaPath)
+			return errors.AddContext(err, context)
+		}
+		dirPaths = append(dirPaths, subDirPaths...)
+	}
+
+	// Block until all updates are represented in the root aggregate metadata.
+	r.staticDirUpdateBatcher.callFlush()
+	return nil
 }

@@ -346,7 +346,7 @@ func TestCalculateDirectoryMetadata(t *testing.T) {
 	expected.ModTime = md.ModTime
 
 	// Verify metadata
-	err = equalBubbledMetadata(md, expected, time.Duration(0))
+	err = equivalentMetadata(md, expected, time.Duration(0))
 	if err != nil {
 		expectedData, _ := json.MarshalIndent(expected, "", " ")
 		actual, _ := json.MarshalIndent(md, "", " ")

@@ -442,6 +442,6 @@ func (r *Renter) threadedStuckFileLoop() {
 		for _, dirSiaPath := range dirSiaPaths {
 			r.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 		}
-		r.staticDirUpdateBatcher.callFlushUpdates()
+		r.staticDirUpdateBatcher.callFlush()
 	}
 }

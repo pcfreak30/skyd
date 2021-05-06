@@ -1630,6 +1630,6 @@ func (r *Renter) threadedUploadAndRepair() {
 		//
 		// TODO: Get some stats/traces on this call, so we can understand how it
 		// is limiting the repair heap.
-		r.staticDirUpdateBatcher.callFlushUpdates()
+		r.staticDirUpdateBatcher.callFlush()
 	}
 }
