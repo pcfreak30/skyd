@@ -5926,6 +5926,7 @@ func TestRenterBubble(t *testing.T) {
 			return checkDirInfo(rd.Directories[0], test.expected)
 		})
 		if err != nil {
+			t.Error(err)
 			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
 		}
 	}

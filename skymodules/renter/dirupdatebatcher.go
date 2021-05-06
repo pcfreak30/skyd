@@ -68,6 +68,7 @@ type (
 		nextBatch *dirUpdateBatch
 
 		// Utilities
+		closed          bool // callQueueDirUpdate is a no-op after shutdown
 		staticFlushChan chan struct{}
 		mu              sync.Mutex
 		staticRenter    *Renter
@@ -100,12 +101,7 @@ func (batch *dirUpdateBatch) execute() {
 
 	// Wait until the previous channel is complete.
 	<-batch.priorCompleteChan
-	select {
-	case <-batch.completeChan:
-		println("attempting to close a closed channel")
-	case <-time.After(time.Second):
-		close(batch.completeChan)
-	}
+	close(batch.completeChan)
 }
 
 // callQueueUpdate will add an update to the current batch. The input needs to
@@ -113,6 +109,9 @@ func (batch *dirUpdateBatch) execute() {
 func (hub *dirUpdateBatcher) callQueueDirUpdate(dirPath skymodules.SiaPath) {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
+	if hub.closed {
+		return
+	}
 
 	// Determine how many levels this dir has.
 	levels := 0
@@ -178,6 +177,9 @@ func (hub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 	for {
 		select {
 		case <-hub.staticRenter.tg.StopChan():
+			hub.mu.Lock()
+			hub.closed = true
+			hub.mu.Unlock()
 			hub.nextBatch.execute()
 			return
 		case <-hub.staticFlushChan:
