@@ -169,9 +169,10 @@ func (api *API) buildHTTPRoutes() {
 
 		// Create the TUS handler and register its routes.
 		tusHandler, err := handler.NewUnroutedHandler(handler.Config{
-			BasePath:      "/skynet/tus",
-			MaxSize:       maxSize,
-			StoreComposer: storeComposer,
+			BasePath:                "/skynet/tus",
+			MaxSize:                 maxSize,
+			RespectForwardedHeaders: true,
+			StoreComposer:           storeComposer,
 
 			// NOTE: comment logger out for debugging
 			Logger: log.DiscardLogger.Logger, // discard third party logging
