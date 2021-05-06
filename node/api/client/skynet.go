@@ -348,7 +348,7 @@ func (c *Client) SkynetSkylinkHeadWithParameters(skylink string, values url.Valu
 // SkynetSkylinkConcatGet uses the /skynet/skylink endpoint to download a
 // skylink file with the 'concat' format specified.
 func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, _ skymodules.SkyfileMetadata, err error) {
-	return c.SkynetSkylinkGetWithSCPS(skylink, types.ZeroCurrency)
+	return c.SkynetSkylinkConcatGetWithSCPS(skylink, types.ZeroCurrency)
 }
 
 // SkynetSkylinkConcatGetWithSCPS uses the /skynet/skylink endpoint to download

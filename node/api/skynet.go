@@ -656,7 +656,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	scps := types.ZeroCurrency
 	scpsStr := queryForm.Get("scps")
 	if scpsStr != "" {
-		if _, err := fmt.Sscan(scpsStr, &scps); err != nil {
+		scpsStrParsed, err := types.ParseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'scps' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		if _, err := fmt.Sscan(scpsStrParsed, &scps); err != nil {
 			WriteError(w, Error{"unable to parse 'scps' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
