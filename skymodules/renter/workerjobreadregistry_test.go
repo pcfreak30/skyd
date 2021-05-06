@@ -151,7 +151,7 @@ func TestReadRegistryJobManual(t *testing.T) {
 	}
 
 	// Do it again without the pubkey or tweak. Should also work.
-	rrj = wt.newJobReadRegistrySID(context.Background(), span, respChan, eid, nil, nil)
+	rrj = wt.newJobReadRegistryEID(context.Background(), span, respChan, eid, nil, nil)
 	if !wt.staticJobReadRegistryQueue.callAdd(rrj) {
 		t.Fatal("failed")
 	}

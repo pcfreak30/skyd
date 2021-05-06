@@ -135,20 +135,18 @@ func testManagedBuildUnfinishedChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Call managedBuildUnfinishedChunks as not stuck loop, since the file is
-	// now not repairable it should return no chunks
+	// Call managedBuildUnfinishedChunks as not stuck loop, the file is
+	// now not repairable but it should still return chunks.
 	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew, rt.renter.staticRepairMemoryManager)
-	if len(uucs) != 0 {
-		t.Fatalf("Incorrect number of chunks returned, expected 0 got %v", len(uucs))
+	if len(uucs) != 2 {
+		t.Fatalf("Incorrect number of chunks returned, expected 2 got %v", len(uucs))
 	}
 
-	// Call managedBuildUnfinishedChunks as stuck loop, all chunks should be
-	// returned because they should have been marked as stuck by the previous
-	// call and stuck chunks should still be returned if the file is not
-	// repairable
+	// Call managedBuildUnfinishedChunks as stuck loop, one chunk should be
+	// returned again.
 	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew, rt.renter.staticRepairMemoryManager)
-	if len(uucs) != int(f.NumChunks()) {
-		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", f.NumChunks(), len(uucs))
+	if len(uucs) != 1 {
+		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", 1, len(uucs))
 	}
 	for _, c := range uucs {
 		if !c.stuck {

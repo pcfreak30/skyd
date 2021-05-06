@@ -173,6 +173,25 @@ func TestSiapath(t *testing.T) {
 		if err == nil && pathtest.valid && sp.String() != pathtest.out {
 			t.Fatalf("Unexpected SiaPath From New; got %v, expected %v, for test %v", sp.String(), pathtest.out, pathtest.in)
 		}
+
+		// Only test Suffix for valid SiaPaths
+		if !pathtest.valid {
+			continue
+		}
+
+		// Test Add Suffix
+		extendedSiaPath, err := sp.AddSuffixStr(ExtendedSuffix)
+		// Verify expected Error
+		if err != nil && pathtest.valid {
+			t.Fatal("AddSuffixStr failed on valid path: ", pathtest.in)
+		}
+		if err == nil && !pathtest.valid {
+			t.Fatal("AddSuffixStr succeeded on invalid path: ", pathtest.in)
+		}
+		// Verify expected path
+		if err == nil && pathtest.valid && extendedSiaPath.String() != pathtest.out+ExtendedSuffix {
+			t.Fatalf("Unexpected SiaPath From AddSuffixStr; got %v, expected %v, for test %v", sp.String(), pathtest.out+ExtendedSuffix, pathtest.in)
+		}
 	}
 
 	// Test LoadString
