@@ -464,11 +464,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	}
 	numWorkers := len(workers)
 
-	// Sanity check the time it took to distribute the jobs to the worker.
-	if passed := time.Since(startTime); passed > 20*time.Millisecond {
-		build.Critical(fmt.Sprintf("distributing readRegistry jobs took more than 20ms: %v", passed))
-	}
-
 	// If specified, increment numWorkers. This will cause the loop to never
 	// exit without any of the context being closed since the response set won't
 	// be able to read the last response.
