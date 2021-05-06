@@ -238,7 +238,17 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			// Get next dir's metadata.
 			dirMetadata := dirMetadatas[0]
 			dirMetadatas = dirMetadatas[1:]
-
+			if dirMetadata.AggregateLastHealthCheckTime.IsZero() {
+				dirMetadata.AggregateLastHealthCheckTime = time.Now()
+				// Check for the dependency to disable the LastHealthCheckTime
+				// correction, (LHCT = LastHealthCheckTime).
+				if !r.staticDeps.Disrupt("DisableLHCTCorrection") {
+					// Queue a bubble to bubble the directory, ignore the return channel
+					// as we do not want to block on this update.
+					r.staticLog.Debugf("Found zero time for ALHCT at '%v'", dirMetadata.sp)
+					r.staticDirUpdateBatcher.callQueueDirUpdate(dirMetadata.sp)
+				}
+			}
 			// Record Values that compare against files
 			aggregateHealth = dirMetadata.AggregateHealth
 			aggregateStuckHealth = dirMetadata.AggregateStuckHealth

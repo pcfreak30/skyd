@@ -191,10 +191,10 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 		return errors.AddContext(ErrDeleted, "cannot update the metadata for a deleted directory")
 	}
 
-	if metadata.LastHealthCheckTime == (time.Time{}) {
+	if metadata.LastHealthCheckTime.IsZero() {
 		debug.PrintStack()
 	} else {
-		fmt.Println("not zero")
+		// fmt.Println("not zero")
 	}
 
 	// Update metadata

@@ -939,7 +939,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// Make sure that the file system is updated
-	err = renterNode.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+	err = renterNode.RenterBubblePost(skymodules.RootSiaPath(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5491,7 +5491,7 @@ func TestRenterRepairSize(t *testing.T) {
 	checkDirRepairSize := func(dirSiaPath skymodules.SiaPath, repairExpected, stuckExpected uint64) error {
 		return build.Retry(15, time.Second, func() error {
 			// Make sure the directory is being updated
-			err := r.RenterBubblePost(dirSiaPath, true, true)
+			err := r.RenterBubblePost(dirSiaPath, true)
 			if err != nil {
 				return err
 			}
@@ -5891,8 +5891,8 @@ func TestRenterBubble(t *testing.T) {
 	}
 
 	// Call bubble on root
-	var force, recursive bool
-	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
+	var recursive bool
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), recursive)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5923,11 +5923,7 @@ func TestRenterBubble(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			err = checkDirInfo(rd.Directories[0], test.expected)
-			if err != nil {
-				t.Log(rd.Directories[0])
-			}
-			return err
+			return checkDirInfo(rd.Directories[0], test.expected)
 		})
 		if err != nil {
 			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
@@ -5935,9 +5931,8 @@ func TestRenterBubble(t *testing.T) {
 	}
 
 	// Call bubble on root recursively
-	force = true
 	recursive = true
-	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), recursive)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5984,46 +5979,6 @@ func TestRenterBubble(t *testing.T) {
 				return err
 			}
 			return checkDirInfo(rd.Directories[0], test.expected)
-		})
-		if err != nil {
-			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
-		}
-	}
-
-	// Call bubble on root recursively without force, this should result in only
-	// the root directory being updated.
-	checkTime := time.Now()
-	force = false
-	recursive = true
-	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, test := range tests {
-		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
-		err = build.Retry(100, 100*time.Millisecond, func() error {
-			rd, err := r.RenterDirRootGet(test.siaPath)
-			if err != nil {
-				return err
-			}
-			dir := rd.Directories[0]
-
-			// Check LastHealthCheckTimes
-			var badALHCT, badLHCT bool
-			if test.siaPath.IsRoot() {
-				// Root should have a lastHealthCheckTime after checkTime but an
-				// AggregateLastHealthCheckTime after checkTime
-				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
-				badLHCT = dir.LastHealthCheckTime.Before(checkTime)
-			} else {
-				// All other directories should have both lastHealthCheckTimes before checkTime
-				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
-				badLHCT = dir.LastHealthCheckTime.After(checkTime)
-			}
-			if badALHCT || badLHCT {
-				return fmt.Errorf("badALHCT %v badLHCT %v", badALHCT, badLHCT)
-			}
-			return nil
 		})
 		if err != nil {
 			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)

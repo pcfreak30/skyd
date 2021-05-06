@@ -10,69 +10,10 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 )
-
-// randomMetadata returns a siadir Metadata struct with random values set
-func randomMetadata() siadir.Metadata {
-	md := siadir.Metadata{
-		AggregateHealth:              float64(fastrand.Intn(100)),
-		AggregateLastHealthCheckTime: time.Now(),
-		AggregateMinRedundancy:       float64(fastrand.Intn(100)),
-		AggregateModTime:             time.Now(),
-		AggregateNumFiles:            fastrand.Uint64n(100),
-		AggregateNumLostFiles:        fastrand.Uint64n(100),
-		AggregateNumStuckChunks:      fastrand.Uint64n(100),
-		AggregateNumSubDirs:          fastrand.Uint64n(100),
-		AggregateRemoteHealth:        float64(fastrand.Intn(100)),
-		AggregateRepairSize:          fastrand.Uint64n(100),
-		AggregateSize:                fastrand.Uint64n(100),
-		AggregateStuckHealth:         float64(fastrand.Intn(100)),
-		AggregateStuckSize:           fastrand.Uint64n(100),
-
-		AggregateSkynetFiles: fastrand.Uint64n(100),
-		AggregateSkynetSize:  fastrand.Uint64n(100),
-
-		Health:              float64(fastrand.Intn(100)),
-		LastHealthCheckTime: time.Now(),
-		MinRedundancy:       float64(fastrand.Intn(100)),
-		ModTime:             time.Now(),
-		NumFiles:            fastrand.Uint64n(100),
-		NumLostFiles:        fastrand.Uint64n(100),
-		NumStuckChunks:      fastrand.Uint64n(100),
-		NumSubDirs:          fastrand.Uint64n(100),
-		RemoteHealth:        float64(fastrand.Intn(100)),
-		RepairSize:          fastrand.Uint64n(100),
-		Size:                fastrand.Uint64n(100),
-		StuckHealth:         float64(fastrand.Intn(100)),
-		StuckSize:           fastrand.Uint64n(100),
-
-		SkynetFiles: fastrand.Uint64n(100),
-		SkynetSize:  fastrand.Uint64n(100),
-	}
-	return md
-}
-
-// safeRandomMetadata returns random siadir metadata but with select fields
-// adjusted to prevent developer errors.
-//
-// NOTE: You cannot set the NumStuckChunks to a non zero number without a
-// file in the directory as this will create a developer error
-func safeRandomMetadata() siadir.Metadata {
-	md := randomMetadata()
-	md.AggregateNumFiles = 0
-	md.NumFiles = 0
-	md.AggregateNumStuckChunks = 0
-	md.NumStuckChunks = 0
-	// Set LostFiles to zero as well since we can't have zero files but non zero
-	// lost files.
-	md.AggregateNumLostFiles = 0
-	md.NumLostFiles = 0
-	return md
-}
 
 // TestCalculateFileMetadatas probes the calculate file metadata methods of the
 // renter.
