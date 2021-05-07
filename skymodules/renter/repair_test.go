@@ -1,19 +1,19 @@
 package renter
 
 import (
-	"encoding/hex"
-	"fmt"
-	"os"
-	"testing"
-	"time"
+	// "encoding/hex"
+	// "fmt"
+	// "os"
+	// "testing"
+	// "time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
+	// "gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/SkynetLabs/skyd/build"
-	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	// "gitlab.com/NebulousLabs/Sia/crypto"
+	// "gitlab.com/NebulousLabs/Sia/persist"
+	// "gitlab.com/SkynetLabs/skyd/build"
+	// "gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 )
@@ -35,6 +35,7 @@ func (rt *renterTester) openAndUpdateDir(siapath skymodules.SiaPath, metadata si
 	return errors.Compose(err, siadir.Close())
 }
 
+/* TODO: bring back in some form
 // TestOldestHealthCheckTime probes managedOldestHealthCheckTime to verify that
 // the directory with the oldest LastHealthCheckTime is returned
 func TestOldestHealthCheckTime(t *testing.T) {
@@ -1162,3 +1163,4 @@ func TestPrepareForBubble(t *testing.T) {
 		t.Error("unexpected", ok, okHome, okVar)
 	}
 }
+*/

@@ -319,7 +319,7 @@ func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
 func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
+	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
 }
 
 // expectedJobTime will return the amount of time that a job is expected to
