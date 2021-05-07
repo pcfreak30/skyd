@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -783,6 +784,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// At this point, we know that either the host's revision number is above
 	// ours, or their Merkle root differs. Search our unapplied WAL transactions
 	// for one that might synchronize us with the host.
+	var ignoredUpdatesLog []string
 	for _, t := range c.unappliedTxns {
 		for _, update := range t.Updates {
 			if update.Name == updateNameSetHeader {
@@ -792,6 +794,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				}
 				unappliedRev := u.Header.LastRevision()
 				if unappliedRev.NewRevisionNumber != rev.NewRevisionNumber || unappliedRev.NewFileMerkleRoot != rev.NewFileMerkleRoot {
+					ignoredUpdatesLog = append(ignoredUpdatesLog, fmt.Sprintf("%v != %v || %v != %v", unappliedRev.NewRevisionNumber, rev.NewRevisionNumber, unappliedRev.NewFileMerkleRoot, rev.NewFileMerkleRoot))
 					continue
 				}
 
@@ -850,6 +853,8 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// Should we just return an error here? Because we should never be out of
 	// sync if we use the wal correctly and this just hides mistakes like the
 	// ones that caused the NDF that this MR is fixing.
+	fmt.Println("Ignored Updates:", len(ignoredUpdatesLog))
+	fmt.Println(strings.Join(ignoredUpdatesLog, "\n"))
 	build.Critical("sanity check that this is not happening")
 
 	// The host's revision is still different, and we have no unapplied
