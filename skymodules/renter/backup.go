@@ -343,6 +343,10 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
 func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
+	// Flush out the health updates before returning so that the user can see a
+	// correct root metadata once the restore is complete.
+	defer r.staticDirUpdateBatcher.callFlush()
+
 	// Copy the files from the tarball to the new location.
 	dir := r.staticFileSystem.DirPath(skymodules.UserFolder)
 	for {
