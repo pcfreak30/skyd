@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -199,6 +200,7 @@ type SafeContract struct {
 	// applied to the contract file.
 	unappliedTxns []*unappliedWalTxn
 
+	staticDeps       modules.Dependencies
 	staticHeaderFile *os.File
 	staticWal        *writeaheadlog.WAL
 	mu               sync.Mutex
@@ -853,9 +855,11 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// Should we just return an error here? Because we should never be out of
 	// sync if we use the wal correctly and this just hides mistakes like the
 	// ones that caused the NDF that this MR is fixing.
-	fmt.Println("Ignored Updates:", len(ignoredUpdatesLog))
-	fmt.Println(strings.Join(ignoredUpdatesLog, "\n"))
-	build.Critical("sanity check that this is not happening")
+	if !c.staticDeps.Disrupt("AcceptHostRevision") {
+		fmt.Println("Ignored Updates:", len(ignoredUpdatesLog))
+		fmt.Println(strings.Join(ignoredUpdatesLog, "\n"))
+		build.Critical("sanity check that this is not happening", rev.NewFileMerkleRoot, rev.NewRevisionNumber)
+	}
 
 	// The host's revision is still different, and we have no unapplied
 	// transactions containing their revision. At this point, the best we can do
@@ -962,6 +966,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	sc := &SafeContract{
 		header:           h,
 		merkleRoots:      merkleRoots,
+		staticDeps:       cs.staticDeps,
 		staticHeaderFile: headerFile,
 		staticWal:        cs.staticWal,
 		staticRC:         rc,
@@ -1075,6 +1080,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		header:           header,
 		merkleRoots:      merkleRoots,
 		unappliedTxns:    unappliedTxns,
+		staticDeps:       cs.staticDeps,
 		staticHeaderFile: headerFile,
 		staticWal:        cs.staticWal,
 		staticRC:         rc,

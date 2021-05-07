@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 )
@@ -287,7 +288,10 @@ func TestHostLockTimeout(t *testing.T) {
 	go func() {
 		// NOTE: the ContractSet uses a local mutex to serialize RPCs, so this
 		// test requires a separate ContractSet.
-		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+		// NOTE: we need a special dependency here since the cloned contract set
+		// won't have the wal txn that contains the latest revision. So we force
+		// it to accept the revision presented by the host without a panic.
+		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, &dependencies.DependencyAcceptHostRevision{})
 		if err != nil {
 			errCh <- err
 			return
