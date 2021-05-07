@@ -866,7 +866,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Create a write monetizer.
-	writeMonetizer, err := newWriteMonetizer(req.Context(), metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase, scps)
+	writeMonetizer, err := newMonetizer(req.Context(), metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase, scps)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to create write monetizer: %v", err)}, http.StatusBadRequest)
 		return

@@ -120,7 +120,7 @@ type monetizer struct {
 }
 
 // newMonetizedWriter creates a new wrapped writer.
-func newWriteMonetizer(ctx context.Context, md skymodules.SkyfileMetadata, wallet modules.SiacoinSenderMulti, cr map[string]types.Currency, mb, scps types.Currency) (*monetizer, error) {
+func newMonetizer(ctx context.Context, md skymodules.SkyfileMetadata, wallet modules.SiacoinSenderMulti, cr map[string]types.Currency, mb, scps types.Currency) (*monetizer, error) {
 	// Check that monetization info is sane. Otherwise we won't be able to pay
 	// later. This should already have happened when parsing the monetization
 	// info but better safe than sorry.
@@ -143,7 +143,7 @@ func newWriteMonetizer(ctx context.Context, md skymodules.SkyfileMetadata, walle
 	}, nil
 }
 
-// Close closes the writeMonetizer and pays the monetizers.
+// Close closes the monetizer and pays the monetizers.
 func (wm *monetizer) Close() error {
 	// Handle legacy uploads with length 0 by passing it through to the inner
 	// writer.
