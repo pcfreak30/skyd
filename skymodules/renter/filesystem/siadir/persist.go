@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime/debug"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -189,12 +188,6 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	// Check if the directory is deleted
 	if sd.deleted {
 		return errors.AddContext(ErrDeleted, "cannot update the metadata for a deleted directory")
-	}
-
-	if metadata.LastHealthCheckTime.IsZero() {
-		debug.PrintStack()
-	} else {
-		// fmt.Println("not zero")
 	}
 
 	// Update metadata

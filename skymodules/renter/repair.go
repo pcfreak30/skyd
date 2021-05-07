@@ -9,7 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	// "gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
@@ -180,13 +180,8 @@ func (r *Renter) managedStuckDirectory() (skymodules.SiaPath, error) {
 			return skymodules.SiaPath{}, err
 		}
 		// Sanity check that there is at least the current directory
-		//
-		// TODO: I don't understand this sanity check, if there's just the root
-		// dir and nothing in it, I don't see any code that would stop this
-		// check from running?
 		if len(directories) == 0 {
-			return skymodules.SiaPath{}, errNoStuckFiles
-			// build.Critical("No directories returned from DirList", siaPath.String())
+			build.Critical("No directories returned from DirList", siaPath.String())
 		}
 
 		// Check if we are in an empty Directory. This will be the case before

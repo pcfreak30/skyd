@@ -13,13 +13,18 @@ import (
 var (
 	// maxTimeBetweenBatchExectutions defines the amount of time that a batch
 	// will wait before executing the queue of directories to batch. The testing
-	// value is really low at 100ms to maximize the opportunity that threads
+	// value is really low at 50ms to maximize the opportunity that threads
 	// queue things across multiple batches (which should be safe, but
 	// potentially has edge cases).
+	//
+	// The production value is also relatively low at 30 seconds was set a lot
+	// higher (15 minutes), but we saw in production that this would result in
+	// large amounts of files being batched together all at once, causing the
+	// flush to take over a minute.
 	maxTimeBetweenBatchExecutions = build.Select(build.Var{
-		Dev:      30 * time.Second,
-		Standard: 15 * time.Minute,
-		Testing:  1 * time.Second,
+		Dev:      10 * time.Second,
+		Standard: 30 * time.Second,
+		Testing:  50 * time.Millisecond,
 	}).(time.Duration)
 )
 
@@ -92,7 +97,7 @@ func (batch *dirUpdateBatch) execute() {
 			if !dirPath.IsRoot() {
 				parent, err := dirPath.Dir()
 				if err != nil {
-					panic("should not be getting an error when grabbing the parent of a non-root siadir")
+					build.Critical("should not be getting an error when grabbing the dir of a non-root siadir:", dirPath, err)
 				}
 				batch.batchSet[i-1][parent] = struct{}{}
 			}
@@ -117,11 +122,11 @@ func (hub *dirUpdateBatcher) callQueueDirUpdate(dirPath skymodules.SiaPath) {
 	levels := 0
 	next := dirPath
 	for !next.IsRoot() {
-		var err error
-		next, err = next.Dir()
+		parent, err := next.Dir()
 		if err != nil {
-			panic("should not get an error when parsing the dir")
+			build.Critical("should not be getting an error when grabbing the dir of a non-root siapath:", next, err)
 		}
+		next = parent
 		levels++
 	}
 
@@ -134,7 +139,7 @@ func (hub *dirUpdateBatcher) callQueueDirUpdate(dirPath skymodules.SiaPath) {
 }
 
 // callFlush will trigger the current batch of updates to execute, and will not
-// return until all updates have compelted and are represented in the root
+// return until all updates have completed and are represented in the root
 // directory. It will also not return until all prior batches have completed as
 // well - if you have added a directory to a batch and call flush, you can be
 // certain that the directory update will have executed by the time the flush
