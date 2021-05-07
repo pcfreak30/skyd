@@ -803,6 +803,34 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				if err := c.applySetHeader(u.Header); err != nil {
 					return err
 				}
+
+				// pluck the refcounter and setRoot updates from the WAL txn as
+				// well.
+				for _, u := range t.Updates {
+					switch u.Name {
+					case updateNameSetHeader:
+						// do nothing - we already applied a new version of this update
+					case updateNameSetRoot:
+						var sru updateSetRoot
+						if err := encoding.Unmarshal(u.Instructions, &sru); err != nil {
+							return err
+						}
+						if err := c.applySetRoot(sru.Root, sru.Index); err != nil {
+							return err
+						}
+					case updateNameRCWriteAt:
+						if err := c.applyRefCounterUpdate(u); err != nil {
+							return errors.AddContext(err, "failed to apply refcounter update")
+						}
+						if err := c.staticRC.callUpdateApplied(); err != nil {
+							build.Critical(err)
+							return err
+						}
+					default:
+						build.Critical("unexpected update", u.Name)
+					}
+				}
+				// Sync header.
 				if err := c.staticHeaderFile.Sync(); err != nil {
 					return err
 				}
@@ -814,6 +842,15 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 			}
 		}
 	}
+
+	// NOTE: @reviewers
+	// If we reach this point, we are corrupting our on-disk state. That's
+	// because we are only updating the revision on disk without fetching the
+	// roots.
+	// Should we just return an error here? Because we should never be out of
+	// sync if we use the wal correctly and this just hides mistakes like the
+	// ones that caused the NDF that this MR is fixing.
+	build.Critical("sanity check that this is not happening")
 
 	// The host's revision is still different, and we have no unapplied
 	// transactions containing their revision. At this point, the best we can do
