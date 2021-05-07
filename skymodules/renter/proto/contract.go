@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -786,7 +785,6 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// At this point, we know that either the host's revision number is above
 	// ours, or their Merkle root differs. Search our unapplied WAL transactions
 	// for one that might synchronize us with the host.
-	var ignoredUpdatesLog []string
 	for _, t := range c.unappliedTxns {
 		for _, update := range t.Updates {
 			if update.Name == updateNameSetHeader {
@@ -796,7 +794,6 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				}
 				unappliedRev := u.Header.LastRevision()
 				if unappliedRev.NewRevisionNumber != rev.NewRevisionNumber || unappliedRev.NewFileMerkleRoot != rev.NewFileMerkleRoot {
-					ignoredUpdatesLog = append(ignoredUpdatesLog, fmt.Sprintf("%v != %v || %v != %v", unappliedRev.NewRevisionNumber, rev.NewRevisionNumber, unappliedRev.NewFileMerkleRoot, rev.NewFileMerkleRoot))
 					continue
 				}
 
@@ -852,13 +849,14 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// If we reach this point, we are corrupting our on-disk state. That's
 	// because we are only updating the revision on disk without fetching the
 	// roots.
-	// Should we just return an error here? Because we should never be out of
-	// sync if we use the wal correctly and this just hides mistakes like the
-	// ones that caused the NDF that this MR is fixing.
+	// Should we just return an error here and maybe mark the contract as bad?
+	// Because we should never be out of sync if we use the wal correctly and
+	// this just hides mistakes like the ones that caused the NDF that this MR
+	// is fixing.
 	if !c.staticDeps.Disrupt("AcceptHostRevision") {
-		fmt.Println("Ignored Updates:", len(ignoredUpdatesLog))
-		fmt.Println(strings.Join(ignoredUpdatesLog, "\n"))
-		build.Critical("sanity check that this is not happening", rev.NewFileMerkleRoot, rev.NewRevisionNumber)
+		err := errors.New("revision mismatch unfixable")
+		build.Critical(err)
+		return err
 	}
 
 	// The host's revision is still different, and we have no unapplied
