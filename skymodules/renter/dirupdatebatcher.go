@@ -5,6 +5,22 @@ package renter
 // directories in the same time period by removing redundant calls to the same
 // directory, and by removing redundant update calls that would happen on shared
 // parent directories.
+//
+// NOTE: The dir update batcher is already fairly optimized. There are two known
+// places to improve performance, but both contain a fair amount of programming
+// overhead and could potentially make performance worse if implemented
+// incorrectly. The first is that batches do not deduplicate between eachother.
+// If flush() is called on one batch before the previous batch is finished, the
+// two batches may perform redundant work. This can be deduplicated if the
+// batches have pointers to eachother, however for garbage collection purposes
+// you need to make sure to clean up the pointers later. The second thing is
+// that the update calls are all made together in rapid succession, which could
+// hog the CPU and consume a ton of disk IOPs all at once. We try to manage this
+// by only batching together 30 seconds at a time. You could try to slow down
+// the update calls so that the CPU is under less stress, but this may block
+// parts of the repair loop, and may also block user calls. It is unlikely that
+// either of these optimizations need to be pursued, but is something to keep in
+// mind if the batcher seems to be causing issues in production.
 
 import (
 	"fmt"
