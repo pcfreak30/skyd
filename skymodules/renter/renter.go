@@ -1101,15 +1101,19 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+	var err error
+	r.staticDirUpdateBatcher, err = r.newHealthUpdateBatcher()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new health update batcher")
+	}
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticDirUpdateBatcher = r.newHealthUpdateBatcher()
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
 	close(r.staticUploadHeap.pauseChan)
 
 	// Seed the rrs.
-	err := r.staticRRS.AddDatum(readRegistryStatsSeed)
+	err = r.staticRRS.AddDatum(readRegistryStatsSeed)
 	if err != nil {
 		return nil, err
 	}

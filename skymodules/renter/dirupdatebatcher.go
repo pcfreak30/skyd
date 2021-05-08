@@ -154,7 +154,7 @@ func (hub *dirUpdateBatcher) callFlush() {
 	// the renter has closed, just exit immediately.
 	select {
 	case <-completeChan:
-	case <-hub.staticRetner.tg.StopChan():
+	case <-hub.staticRenter.tg.StopChan():
 	}
 }
 
@@ -171,12 +171,6 @@ func (hub *dirUpdateBatcher) newBatch(priorCompleteChan chan struct{}) *dirUpdat
 // threadedExecuteBatchUpdates is a permanent background thread which will
 // execute batched updates in the background.
 func (hub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
-	err := hub.staticRenter.tg.Add()
-	if err != nil {
-		return
-	}
-	defer hub.staticRenter.tg.Done()
-
 	for {
 		select {
 		case <-hub.staticRenter.tg.StopChan():
@@ -203,7 +197,7 @@ func (hub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 }
 
 // newHealthUpdateBatcher returns a health update batcher that is ready for use.
-func (r *Renter) newHealthUpdateBatcher() *dirUpdateBatcher {
+func (r *Renter) newHealthUpdateBatcher() (*dirUpdateBatcher, error) {
 	hub := &dirUpdateBatcher{
 		staticFlushChan: make(chan struct{}, 1),
 		staticRenter:    r,
@@ -216,8 +210,11 @@ func (r *Renter) newHealthUpdateBatcher() *dirUpdateBatcher {
 	close(initialChan)
 
 	hub.nextBatch = hub.newBatch(initialChan)
-	go hub.threadedExecuteBatchUpdates()
-	return hub
+	err := r.tg.Launch(hub.threadedExecuteBatchUpdates)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to launch the batch updates backghround thread")
+	}
+	return hub, nil
 }
 
 // UpdateMetadata will explicitly update the metadata of the provided directory,
