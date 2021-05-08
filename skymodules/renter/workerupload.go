@@ -180,21 +180,21 @@ func (w *worker) managedPerformUploadChunkJob() {
 		return
 	}
 	// Open an editing connection to the host.
-	e, err := w.staticRenter.staticHostContractor.Editor(w.staticHostPubKey, w.staticRenter.tg.StopChan())
+	s, err := w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticRenter.tg.StopChan())
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to acquire an editor: %v", err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
 	defer func() {
-		if err := e.Close(); err != nil {
+		if err := s.Close(); err != nil {
 			w.staticRenter.staticLog.Print("managedPerformUploadChunkJob: failed to close editor", err)
 		}
 	}()
 
 	// Before performing the upload, check for price gouging.
 	allowance := w.staticRenter.staticHostContractor.Allowance()
-	hostSettings := e.HostSettings()
+	hostSettings := s.HostSettings()
 	err = checkUploadGouging(allowance, hostSettings)
 	if err != nil && !w.staticRenter.staticDeps.Disrupt("DisableUploadGouging") {
 		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
@@ -207,7 +207,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	//
 	// Ignore the error if it's a ErrMaxVirtualSectors coming from a pre-1.5.5
 	// host.
-	root, err := e.Upload(uc.physicalChunkData[pieceIndex])
+	root, err := s.Upload(uc.physicalChunkData[pieceIndex])
 	ignoreErr := build.VersionCmp(hostSettings.Version, "1.5.5") < 0 && err != nil && strings.Contains(err.Error(), modules.ErrMaxVirtualSectors.Error())
 	if err != nil && !ignoreErr {
 		failureErr := fmt.Errorf("Worker failed to upload root %v via the editor: %v", root, err)

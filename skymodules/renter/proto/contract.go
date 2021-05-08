@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -198,6 +199,7 @@ type SafeContract struct {
 	// applied to the contract file.
 	unappliedTxns []*unappliedWalTxn
 
+	staticDeps       modules.Dependencies
 	staticHeaderFile *os.File
 	staticWal        *writeaheadlog.WAL
 	mu               sync.Mutex
@@ -803,6 +805,34 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				if err := c.applySetHeader(u.Header); err != nil {
 					return err
 				}
+
+				// pluck the refcounter and setRoot updates from the WAL txn as
+				// well.
+				for _, u := range t.Updates {
+					switch u.Name {
+					case updateNameSetHeader:
+						// do nothing - we already applied a new version of this update
+					case updateNameSetRoot:
+						var sru updateSetRoot
+						if err := encoding.Unmarshal(u.Instructions, &sru); err != nil {
+							return err
+						}
+						if err := c.applySetRoot(sru.Root, sru.Index); err != nil {
+							return err
+						}
+					case updateNameRCWriteAt:
+						if err := c.applyRefCounterUpdate(u); err != nil {
+							return errors.AddContext(err, "failed to apply refcounter update")
+						}
+						if err := c.staticRC.callUpdateApplied(); err != nil {
+							build.Critical(err)
+							return err
+						}
+					default:
+						build.Critical("unexpected update", u.Name)
+					}
+				}
+				// Sync header.
 				if err := c.staticHeaderFile.Sync(); err != nil {
 					return err
 				}
@@ -813,6 +843,20 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				return nil
 			}
 		}
+	}
+
+	// NOTE: @reviewers
+	// If we reach this point, we are corrupting our on-disk state. That's
+	// because we are only updating the revision on disk without fetching the
+	// roots.
+	// Should we just return an error here and maybe mark the contract as bad?
+	// Because we should never be out of sync if we use the wal correctly and
+	// this just hides mistakes like the ones that caused the NDF that this MR
+	// is fixing.
+	if !c.staticDeps.Disrupt("AcceptHostRevision") {
+		err := errors.New("revision mismatch unfixable")
+		build.Critical(err)
+		return err
 	}
 
 	// The host's revision is still different, and we have no unapplied
@@ -920,6 +964,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	sc := &SafeContract{
 		header:           h,
 		merkleRoots:      merkleRoots,
+		staticDeps:       cs.staticDeps,
 		staticHeaderFile: headerFile,
 		staticWal:        cs.staticWal,
 		staticRC:         rc,
@@ -1033,6 +1078,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		header:           header,
 		merkleRoots:      merkleRoots,
 		unappliedTxns:    unappliedTxns,
+		staticDeps:       cs.staticDeps,
 		staticHeaderFile: headerFile,
 		staticWal:        cs.staticWal,
 		staticRC:         rc,
