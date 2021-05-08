@@ -104,8 +104,13 @@ func (batch *dirUpdateBatch) execute() {
 		}
 	}
 
-	// Wait until the previous channel is complete.
-	<-batch.priorCompleteChan
+	// Wait until the previous batch is complete. If we are shutting down, go
+	// ahead and front-run the previous batch and just signal a close
+	// immediately.
+	select {
+	case <-batch.priorCompleteChan:
+	case <-batch.renter.tg.StopChan():
+	}
 	close(batch.completeChan)
 }
 
@@ -145,8 +150,12 @@ func (hub *dirUpdateBatcher) callFlush() {
 	default:
 	}
 
-	// Wait until the batch has completed before returning.
-	<-completeChan
+	// Wait until the batch has completed before returning. No need to wait if
+	// the renter has closed, just exit immediately.
+	select {
+	case <-completeChan:
+	case <-hub.staticRetner.tg.StopChan():
+	}
 }
 
 // newBatch returns a new dirUpdateBatch ready for use.
