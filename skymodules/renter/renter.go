@@ -1102,7 +1102,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticTPool:          tpool,
 	}
 	var err error
-	r.staticDirUpdateBatcher, err = r.newHealthUpdateBatcher()
+	r.staticDirUpdateBatcher, err = r.newDirUpdateBatcher()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create new health update batcher")
 	}
