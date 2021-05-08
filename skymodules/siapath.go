@@ -256,6 +256,15 @@ func (sp SiaPath) String() string {
 	return sp.Path
 }
 
+// Depth returns the number of levels in the siapath. 'Root' has one level, and
+// subdir of root has two levels, etc.
+func (sp *SiaPath) Depth() int {
+	if sp.Path == "" {
+		return 0
+	}
+	return 1 + strings.Count(sp.Path, "/")
+}
+
 // FromSysPath creates a SiaPath from a siaFilePath and corresponding root files
 // dir.
 func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {

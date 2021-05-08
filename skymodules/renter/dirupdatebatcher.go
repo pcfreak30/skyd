@@ -118,24 +118,13 @@ func (hub *dirUpdateBatcher) callQueueDirUpdate(dirPath skymodules.SiaPath) {
 		return
 	}
 
-	// Determine how many levels this dir has.
-	levels := 0
-	next := dirPath
-	for !next.IsRoot() {
-		parent, err := next.Dir()
-		if err != nil {
-			build.Critical("should not be getting an error when grabbing the dir of a non-root siapath:", next, err)
-		}
-		next = parent
-		levels++
-	}
-
-	// Make sure maps at each level exist.
-	for i := len(hub.nextBatch.batchSet); i <= levels; i++ {
+	// Make sure maps at each depth exist.
+	depth := dirPath.Depth()
+	for i := len(hub.nextBatch.batchSet); i <= depth; i++ {
 		hub.nextBatch.batchSet = append(hub.nextBatch.batchSet, make(map[skymodules.SiaPath]struct{}))
 	}
 	// Add the input dirPath to the final level.
-	hub.nextBatch.batchSet[levels][dirPath] = struct{}{}
+	hub.nextBatch.batchSet[depth][dirPath] = struct{}{}
 }
 
 // callFlush will trigger the current batch of updates to execute, and will not
