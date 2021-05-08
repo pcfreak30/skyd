@@ -256,8 +256,9 @@ func (sp SiaPath) String() string {
 	return sp.Path
 }
 
-// Depth returns the number of levels in the siapath. 'Root' has one level, and
-// subdir of root has two levels, etc.
+// Depth returns the number of levels in the siapath. The root dir has a depth
+// of 0, a subdir in the root dir like "someDir" has a depth of 1, a nested
+// subdir like "someDir/anotherDir" has a depth of 2, and so on.
 func (sp *SiaPath) Depth() int {
 	if sp.Path == "" {
 		return 0
