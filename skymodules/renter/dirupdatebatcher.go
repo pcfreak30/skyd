@@ -116,20 +116,20 @@ func (batch *dirUpdateBatch) execute() {
 
 // callQueueUpdate will add an update to the current batch. The input needs to
 // be a dir.
-func (hub *dirUpdateBatcher) callQueueDirUpdate(dirPath skymodules.SiaPath) {
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-	if hub.closed {
+func (dub *dirUpdateBatcher) callQueueDirUpdate(dirPath skymodules.SiaPath) {
+	dub.mu.Lock()
+	defer dub.mu.Unlock()
+	if dub.closed {
 		return
 	}
 
 	// Make sure maps at each depth exist.
 	depth := dirPath.Depth()
-	for i := len(hub.nextBatch.batchSet); i <= depth; i++ {
-		hub.nextBatch.batchSet = append(hub.nextBatch.batchSet, make(map[skymodules.SiaPath]struct{}))
+	for i := len(dub.nextBatch.batchSet); i <= depth; i++ {
+		dub.nextBatch.batchSet = append(dub.nextBatch.batchSet, make(map[skymodules.SiaPath]struct{}))
 	}
 	// Add the input dirPath to the final level.
-	hub.nextBatch.batchSet[depth][dirPath] = struct{}{}
+	dub.nextBatch.batchSet[depth][dirPath] = struct{}{}
 }
 
 // callFlush will trigger the current batch of updates to execute, and will not
@@ -138,15 +138,15 @@ func (hub *dirUpdateBatcher) callQueueDirUpdate(dirPath skymodules.SiaPath) {
 // well - if you have added a directory to a batch and call flush, you can be
 // certain that the directory update will have executed by the time the flush
 // call returns, regardless of which batch that directory was added to.
-func (hub *dirUpdateBatcher) callFlush() {
+func (dub *dirUpdateBatcher) callFlush() {
 	// Grab the complete chan for the current batch.
-	hub.mu.Lock()
-	completeChan := hub.nextBatch.completeChan
-	hub.mu.Unlock()
+	dub.mu.Lock()
+	completeChan := dub.nextBatch.completeChan
+	dub.mu.Unlock()
 
 	// Signal that the current batch should be flushed.
 	select {
-	case hub.staticFlushChan <- struct{}{}:
+	case dub.staticFlushChan <- struct{}{}:
 	default:
 	}
 
@@ -154,42 +154,42 @@ func (hub *dirUpdateBatcher) callFlush() {
 	// the renter has closed, just exit immediately.
 	select {
 	case <-completeChan:
-	case <-hub.staticRenter.tg.StopChan():
+	case <-dub.staticRenter.tg.StopChan():
 	}
 }
 
 // newBatch returns a new dirUpdateBatch ready for use.
-func (hub *dirUpdateBatcher) newBatch(priorCompleteChan chan struct{}) *dirUpdateBatch {
+func (dub *dirUpdateBatcher) newBatch(priorCompleteChan chan struct{}) *dirUpdateBatch {
 	return &dirUpdateBatch{
 		completeChan:      make(chan struct{}),
 		priorCompleteChan: priorCompleteChan,
 
-		renter: hub.staticRenter,
+		renter: dub.staticRenter,
 	}
 }
 
 // threadedExecuteBatchUpdates is a permanent background thread which will
 // execute batched updates in the background.
-func (hub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
+func (dub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 	for {
 		select {
-		case <-hub.staticRenter.tg.StopChan():
-			hub.mu.Lock()
-			hub.closed = true
-			hub.mu.Unlock()
-			hub.nextBatch.execute()
+		case <-dub.staticRenter.tg.StopChan():
+			dub.mu.Lock()
+			dub.closed = true
+			dub.mu.Unlock()
+			dub.nextBatch.execute()
 			return
-		case <-hub.staticFlushChan:
+		case <-dub.staticFlushChan:
 		case <-time.After(maxTimeBetweenBatchExecutions):
 		}
 
 		// Rotate the current batch out for a new batch. This will block any
 		// thread trying to add new updates to the batch, so make sure it
 		// happens quickly.
-		hub.mu.Lock()
-		batch := hub.nextBatch
-		hub.nextBatch = hub.newBatch(batch.priorCompleteChan)
-		hub.mu.Unlock()
+		dub.mu.Lock()
+		batch := dub.nextBatch
+		dub.nextBatch = dub.newBatch(batch.priorCompleteChan)
+		dub.mu.Unlock()
 
 		// Execute the batch now that we aren't blocking anymore.
 		batch.execute()
@@ -198,7 +198,7 @@ func (hub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 
 // newDirUpdateBatcher returns a health update batcher that is ready for use.
 func (r *Renter) newDirUpdateBatcher() (*dirUpdateBatcher, error) {
-	hub := &dirUpdateBatcher{
+	dub := &dirUpdateBatcher{
 		staticFlushChan: make(chan struct{}, 1),
 		staticRenter:    r,
 	}
@@ -209,12 +209,12 @@ func (r *Renter) newDirUpdateBatcher() (*dirUpdateBatcher, error) {
 	initialChan := make(chan struct{})
 	close(initialChan)
 
-	hub.nextBatch = hub.newBatch(initialChan)
-	err := r.tg.Launch(hub.threadedExecuteBatchUpdates)
+	dub.nextBatch = dub.newBatch(initialChan)
+	err := r.tg.Launch(dub.threadedExecuteBatchUpdates)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to launch the batch updates backghround thread")
 	}
-	return hub, nil
+	return dub, nil
 }
 
 // UpdateMetadata will explicitly update the metadata of the provided directory,
