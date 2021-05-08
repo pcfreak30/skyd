@@ -1,5 +1,11 @@
 package renter
 
+// dirupdatebatcher.go contains the logic for the dirupdatebatcher, which is a
+// batching tool that improves the performance of updating a large numer of
+// directories in the same time period by removing redundant calls to the same
+// directory, and by removing redundant update calls that would happen on shared
+// parent directories.
+
 import (
 	"fmt"
 	"sync"
@@ -62,7 +68,8 @@ type (
 		completeChan      chan struct{}
 		priorCompleteChan chan struct{}
 
-		renter *Renter
+		// Contains a renter, and also has some dependency injection logic.
+		dirUpdateBatchDeps
 	}
 
 	// dirUpdateBatcher receives requests to update the health of a file or
@@ -87,7 +94,7 @@ func (batch *dirUpdateBatch) execute() {
 		for dirPath := range batch.batchSet[i] {
 			// Update the directory metadata. Note: we don't do any updates on
 			// the file healths themselves, we just use the file metadata.
-			err := batch.renter.managedUpdateDirMetadata(dirPath)
+			err := batch.managedUpdateDirMetadata(dirPath) // passes through to the renter except during testing
 			if err != nil {
 				// TODO: Verbose log?
 				continue
@@ -164,7 +171,9 @@ func (dub *dirUpdateBatcher) newBatch(priorCompleteChan chan struct{}) *dirUpdat
 		completeChan:      make(chan struct{}),
 		priorCompleteChan: priorCompleteChan,
 
-		renter: dub.staticRenter,
+		dirUpdateBatchDeps: dirUpdateBatchDeps{
+			renter: dub.staticRenter,
+		},
 	}
 }
 
