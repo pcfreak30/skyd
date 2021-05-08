@@ -32,6 +32,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -205,6 +206,11 @@ type cachedUtilities struct {
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
+	// An atomic variable to export the estimated system scan duration from the
+	// health loop code to the renter. We use a uint64 because that's what's
+	// friendly to the atomic package, but actually it's a time.Duration.
+	atomicSystemHealthScanDuration uint64
+
 	// Skynet Management
 	staticSkylinkManager    *skylinkManager
 	staticSkynetBlocklist   *skynetblocklist.SkynetBlocklist
@@ -786,6 +792,21 @@ func (r *Renter) RecoveryScanStatus() (bool, types.BlockHeight) {
 // OldContracts returns an array of host contractor's oldContracts
 func (r *Renter) OldContracts() []skymodules.RenterContract {
 	return r.staticHostContractor.OldContracts()
+}
+
+// Performance is a function call that returns all of the performacne
+// information about the renter.
+func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
+	regStats, err := r.RegistryStats()
+	if err != nil {
+		return skymodules.RenterPerformance{}, errors.AddContext(err, "unable to fetch registry stats")
+	}
+
+	return skymodules.RenterPerformance{
+		SystemHealthScanDuration: time.Duration(atomic.LoadUint64(&r.atomicSystemHealthScanDuration)),
+
+		RegistryStats: regStats,
+	}, nil
 }
 
 // PeriodSpending returns the host contractor's period spending

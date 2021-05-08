@@ -22,6 +22,7 @@ package renter
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -141,6 +142,9 @@ func (dirFinder *healthLoopDirFinder) updateEstimatedSystemScanDuration() {
 		estimatedScanDuration := float64(processingTime) * float64(dirFinder.totalFiles) / float64(dirFinder.windowFilesProcessed)
 		dirFinder.systemScanDurationAvg.addDataPoint(estimatedScanDuration)
 		dirFinder.estimatedSystemScanDuration = time.Duration(dirFinder.systemScanDurationAvg.average())
+
+		// Set the renter's estimated system scan duration as well.
+		atomic.StoreUint64(&dirFinder.renter.atomicSystemHealthScanDuration, uint64(dirFinder.estimatedSystemScanDuration))
 	}
 
 	// Reset the window variables.

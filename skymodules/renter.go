@@ -109,6 +109,14 @@ type SkynetStats struct {
 	TotalSize uint64 `json:"totalsize"`
 }
 
+// RenterPerformance contains a collection of information that can be exported
+// from the renter about its performance.
+type RenterPerformance struct {
+	SystemHealthScanDuration time.Duration
+
+	RegistryStats RegistryStats
+}
+
 // RenterStats is a struct which tracks key metrics in a single renter. This
 // struct is intended to give a large overview / large dump of data related to
 // the renter, which can then be aggregated across a fleet of renters by a
@@ -1165,6 +1173,9 @@ type Renter interface {
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error
 
+	// Performance returns performance information about the renter.
+	Performance() (RenterPerformance, error)
+
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
 	PeriodSpending() (ContractorSpending, error)
@@ -1181,9 +1192,6 @@ type Renter interface {
 
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
-
-	// RegistryStats returns some registry related information.
-	RegistryStats() (RegistryStats, error)
 
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
