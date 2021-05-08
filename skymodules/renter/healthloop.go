@@ -60,7 +60,7 @@ var (
 	healthLoopResetInterval = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 15 * time.Minute,
-		Testing:  3 * time.Second,
+		Testing:  300 * time.Millisecond,
 	}).(time.Duration)
 
 	// TargetHealthCheckFrequency defines how frequently we want to update the

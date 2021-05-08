@@ -124,7 +124,7 @@ type (
 		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
 		RegistryStats    skymodules.RegistryStats          `json:"registrystats"`
 
-		SystemHealthScanDuration time.Duration `json:"systemhealthscanduration"`
+		SystemHealthScanDurationHours float64 `json:"systemhealthscanduration"`
 
 		Uptime      int64                  `json:"uptime"`
 		UploadStats skymodules.SkynetStats `json:"uploadstats"`
@@ -1246,7 +1246,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		PerformanceStats: perfStats,
 		RegistryStats:    renterPerf.RegistryStats.ToMS(),
 
-		SystemHealthScanDuration: renterPerf.SystemHealthScanDuration,
+		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration)/float64(time.Hour),
 
 		Uptime:      int64(uptime),
 		UploadStats: stats,

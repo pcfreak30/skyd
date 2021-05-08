@@ -802,8 +802,9 @@ func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 		return skymodules.RenterPerformance{}, errors.AddContext(err, "unable to fetch registry stats")
 	}
 
+	healthDuration := time.Duration(atomic.LoadUint64(&r.atomicSystemHealthScanDuration))
 	return skymodules.RenterPerformance{
-		SystemHealthScanDuration: time.Duration(atomic.LoadUint64(&r.atomicSystemHealthScanDuration)),
+		SystemHealthScanDuration: healthDuration,
 
 		RegistryStats: regStats,
 	}, nil

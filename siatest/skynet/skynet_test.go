@@ -895,12 +895,23 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Error(err)
 	}
-	time.Sleep(time.Second)
+
+	// Sleep for a few seconds to give all of the health and repair loops time
+	// to get settled.
+	time.Sleep(time.Second * 3)
 
 	// Get the stats
 	stats, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Check that there are files in the filesystem.
+	if stats.UploadStats.NumFiles == 0 {
+		t.Fatal("test prereq requires files to exist")
+	}
+	// Check that the system scan duration has been set.
+	if stats.SystemHealthScanDurationHours == 0 {
+		t.Fatal("system health scan duration is not set")
 	}
 
 	// verify it contains the node's version information
