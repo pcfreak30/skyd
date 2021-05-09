@@ -932,13 +932,13 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check registry stats are set
-	if stats.RegistryStats.ReadProjectP99 == 0 {
+	if stats.RegistryRead15mP99ms == 0 {
 		t.Error("readregistry p99 is zero")
 	}
-	if stats.RegistryStats.ReadProjectP999 == 0 {
+	if stats.RegistryRead15mP999ms == 0 {
 		t.Error("readregistry p999 is zero")
 	}
-	if stats.RegistryStats.ReadProjectP9999 == 0 {
+	if stats.RegistryRead15mP9999ms == 0 {
 		t.Error("readregistry p9999 is zero")
 	}
 
@@ -4754,8 +4754,8 @@ func TestReadUnknownRegistryEntry(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if ss.RegistryStats.ReadProjectP99 >= renter.ReadRegistryBackgroundTimeout {
-			return fmt.Errorf("%v >= %v", ss.RegistryStats.ReadProjectP99, renter.ReadRegistryBackgroundTimeout)
+		if ss.RegistryRead15mP99ms >= float64(renter.ReadRegistryBackgroundTimeout)/float64(time.Millisecond) {
+			return fmt.Errorf("%v >= %v", ss.RegistryRead15mP99ms, renter.ReadRegistryBackgroundTimeout)
 		}
 		return nil
 	})
