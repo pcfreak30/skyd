@@ -122,6 +122,7 @@ type (
 	// GET endpoint
 	SkynetStatsGET struct {
 		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
+		RegistryStats    skymodules.RegistryStats          `json:"registrystats"`
 
 		// The amount of computational time that it takes the health loop to
 		// scan the entire filesystem. Unit is given in hours.
@@ -1255,6 +1256,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 
 	WriteJSON(w, &SkynetStatsGET{
 		PerformanceStats: perfStats,
+		RegistryStats:    renterPerf.RegistryReadStats.ToMS(),
 
 		RegistryRead15mP99ms:   float64(renterPerf.RegistryReadStats.ReadProjectP99) / float64(time.Millisecond),
 		RegistryRead15mP999ms:  float64(renterPerf.RegistryReadStats.ReadProjectP999) / float64(time.Millisecond),
