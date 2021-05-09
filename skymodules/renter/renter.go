@@ -32,6 +32,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -205,6 +206,11 @@ type cachedUtilities struct {
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
+	// An atomic variable to export the estimated system scan duration from the
+	// health loop code to the renter. We use a uint64 because that's what's
+	// friendly to the atomic package, but actually it's a time.Duration.
+	atomicSystemHealthScanDuration uint64
+
 	// Skynet Management
 	staticSkylinkManager    *skylinkManager
 	staticSkynetBlocklist   *skynetblocklist.SkynetBlocklist
@@ -230,13 +236,11 @@ type Renter struct {
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []skymodules.HostDBEntry
 
-	// staticBubbleScheduler manages the bubble requests for the renter
-	staticBubbleScheduler *bubbleScheduler
-
-	// cachedUtilities contain contract information used when calculating metadata
-	// information about the filesystem, such as health. This information is used
-	// in various functions such as listing filesystem information and bubble.
-	// These values are cached to prevent recomputing them too often.
+	// cachedUtilities contain contract information used when calculating
+	// metadata information about the filesystem, such as health. This
+	// information is used in various functions such as listing filesystem
+	// information and updating directory metadata.  These values are cached to
+	// prevent recomputing them too often.
 	cachedUtilities cachedUtilities
 
 	// staticBatchManager manages batching skyfile uploads for the Renter.
@@ -278,6 +282,7 @@ type Renter struct {
 	staticAccountManager               *accountManager
 	staticAlerter                      *modules.GenericAlerter
 	staticConsensusSet                 modules.ConsensusSet
+	staticDirUpdateBatcher             *dirUpdateBatcher
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
 	staticGateway                      modules.Gateway
@@ -789,6 +794,22 @@ func (r *Renter) OldContracts() []skymodules.RenterContract {
 	return r.staticHostContractor.OldContracts()
 }
 
+// Performance is a function call that returns all of the performacne
+// information about the renter.
+func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
+	regStats, err := r.RegistryStats()
+	if err != nil {
+		return skymodules.RenterPerformance{}, errors.AddContext(err, "unable to fetch registry stats")
+	}
+
+	healthDuration := time.Duration(atomic.LoadUint64(&r.atomicSystemHealthScanDuration))
+	return skymodules.RenterPerformance{
+		SystemHealthScanDuration: healthDuration,
+
+		RegistryStats: regStats,
+	}, nil
+}
+
 // PeriodSpending returns the host contractor's period spending
 func (r *Renter) PeriodSpending() (skymodules.ContractorSpending, error) {
 	return r.staticHostContractor.PeriodSpending()
@@ -1102,15 +1123,19 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+	var err error
+	r.staticDirUpdateBatcher, err = r.newDirUpdateBatcher()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new health update batcher")
+	}
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
 	close(r.staticUploadHeap.pauseChan)
 
 	// Seed the rrs.
-	err := r.staticRRS.AddDatum(readRegistryStatsSeed)
+	err = r.staticRRS.AddDatum(readRegistryStatsSeed)
 	if err != nil {
 		return nil, err
 	}
@@ -1210,11 +1235,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		}
 		go r.threadedHealthLoop()
 	}
-
-	// We do not group the staticBubbleScheduler's background thread with the
-	// threads disabled by "DisableRepairAndHealthLoops" so that manual calls to
-	// for bubble updates are processed.
-	go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
 
 	// Initialize the batch manager
 	r.newSkylinkBatchManager()

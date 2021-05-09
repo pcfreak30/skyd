@@ -124,6 +124,8 @@ type (
 		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
 		RegistryStats    skymodules.RegistryStats          `json:"registrystats"`
 
+		SystemHealthScanDurationHours float64 `json:"systemhealthscanduration"`
+
 		Uptime      int64                  `json:"uptime"`
 		UploadStats skymodules.SkynetStats `json:"uploadstats"`
 		VersionInfo SkynetVersion          `json:"versioninfo"`
@@ -1234,7 +1236,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	uptime := time.Since(api.StartTime()).Seconds()
 
 	// Get the registry stats.
-	registryStats, err := api.renter.RegistryStats()
+	renterPerf, err := api.renter.Performance()
 	if err != nil {
 		WriteError(w, Error{"unable to get renter registry status: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -1242,7 +1244,9 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 
 	WriteJSON(w, &SkynetStatsGET{
 		PerformanceStats: perfStats,
-		RegistryStats:    registryStats.ToMS(),
+		RegistryStats:    renterPerf.RegistryStats.ToMS(),
+
+		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration)/float64(time.Hour),
 
 		Uptime:      int64(uptime),
 		UploadStats: stats,

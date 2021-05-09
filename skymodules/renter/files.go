@@ -34,9 +34,8 @@ func (r *Renter) DeleteFile(siaPath skymodules.SiaPath) error {
 		return nil
 	}
 
-	// Queue a bubble to bubble the directory, ignore the return channel as we do
-	// not want to block on this update.
-	_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
+	// Queue an update to the directory.
+	r.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 	return nil
 }
 
@@ -100,8 +99,8 @@ func (r *Renter) RenameFile(currentName, newName skymodules.SiaPath) error {
 		return err
 	}
 
-	// Call callThreadedBubbleMetadata on the old and new directories to make
-	// sure the system metadata is updated to reflect the move.
+	// Queue an update on each parent dir of the filenames to ensure that the
+	// aggregate metadata is correctly updated.
 	oldDirSiaPath, err := currentName.Dir()
 	if err != nil {
 		return err
@@ -110,16 +109,9 @@ func (r *Renter) RenameFile(currentName, newName skymodules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	bubblePaths := r.callNewUniqueRefreshPaths()
-	err = bubblePaths.callAdd(oldDirSiaPath)
-	if err != nil {
-		r.staticLog.Printf("failed to add old directory '%v' to bubble paths:  %v", oldDirSiaPath, err)
-	}
-	err = bubblePaths.callAdd(newDirSiaPath)
-	if err != nil {
-		r.staticLog.Printf("failed to add new directory '%v' to bubble paths:  %v", newDirSiaPath, err)
-	}
-	return bubblePaths.callRefreshAll()
+	r.staticDirUpdateBatcher.callQueueDirUpdate(oldDirSiaPath)
+	r.staticDirUpdateBatcher.callQueueDirUpdate(newDirSiaPath)
+	return nil
 }
 
 // SetFileStuck sets the Stuck field of the whole siafile to stuck.

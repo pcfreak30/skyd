@@ -1362,7 +1362,7 @@ func renterbubblecmd(directory string) {
 	fmt.Println("Calling bubble on:", directory)
 
 	// Bubble Directory
-	err := httpClient.RenterBubblePost(siaPath, true, renterBubbleAll)
+	err := httpClient.RenterBubblePost(siaPath, renterBubbleAll)
 	if err != nil {
 		die("Unable to bubble", directory, ":", err)
 	}

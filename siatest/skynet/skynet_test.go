@@ -891,16 +891,27 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// This test relies on state from the previous tests. Make sure we are
 	// starting from a place of updated metadata
-	err := r.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+	err := r.RenterBubblePost(skymodules.RootSiaPath(), true)
 	if err != nil {
 		t.Error(err)
 	}
-	time.Sleep(time.Second)
+
+	// Sleep for a few seconds to give all of the health and repair loops time
+	// to get settled.
+	time.Sleep(time.Second * 3)
 
 	// Get the stats
 	stats, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Check that there are files in the filesystem.
+	if stats.UploadStats.NumFiles == 0 {
+		t.Fatal("test prereq requires files to exist")
+	}
+	// Check that the system scan duration has been set.
+	if stats.SystemHealthScanDurationHours == 0 {
+		t.Fatal("system health scan duration is not set")
 	}
 
 	// verify it contains the node's version information
@@ -989,7 +1000,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Make sure that the filesystem is being updated
 		if tries%10 == 0 {
-			err = r.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+			err = r.RenterBubblePost(skymodules.RootSiaPath(), true)
 			if err != nil {
 				return err
 			}
@@ -1051,7 +1062,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Make sure that the filesystem is being updated
 		if tries%10 == 0 {
-			err = r.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+			err = r.RenterBubblePost(skymodules.RootSiaPath(), true)
 			if err != nil {
 				return err
 			}
