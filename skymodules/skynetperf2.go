@@ -12,6 +12,7 @@ package skymodules
 
 import (
 	"math"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,9 @@ type (
 	//
 	// A distribution is useful for tracking requests over a range of times from
 	// 4ms to about one hour.
+	//
+	// NOTE: This struct is not thread safe, thread safety is derived from the
+	// parent object.
 	Distribution struct {
 		// Determines the decay rate of data in the distribution. Zero value
 		// here means that no decay is applied.
@@ -50,7 +54,9 @@ type (
 	// different half life. A common choice is to track the half lives for {15
 	// minutes, 24 hours, Lifetime}.
 	DistributionTracker struct {
-		Distributions []*Distribution
+		distributions []*Distribution
+
+		mu sync.Mutex
 	}
 )
 
@@ -139,7 +145,10 @@ func (d *Distribution) GetPStat(p float64) time.Duration {
 // AddDataPoint will add a data point to each of the distributions in the
 // tracker.
 func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
-	for _, tr := range dt.Distributions {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	for _, tr := range dt.distributions {
 		tr.AddDataPoint(dur)
 	}
 }
@@ -150,13 +159,16 @@ func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
 //	 + the p999
 //	 + the p9999
 func (dt *DistributionTracker) AllNines() [][]time.Duration {
-	timings := make([][]time.Duration, len(dt.Distributions))
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	timings := make([][]time.Duration, len(dt.distributions))
 	for i := 0; i < len(timings); i++ {
 		timings[i] = make([]time.Duration, 4)
-		timings[i][0] = dt.Distributions[i].GetPStat(.9)
-		timings[i][1] = dt.Distributions[i].GetPStat(.99)
-		timings[i][2] = dt.Distributions[i].GetPStat(.999)
-		timings[i][3] = dt.Distributions[i].GetPStat(.9999)
+		timings[i][0] = dt.distributions[i].GetPStat(.9)
+		timings[i][1] = dt.distributions[i].GetPStat(.99)
+		timings[i][2] = dt.distributions[i].GetPStat(.999)
+		timings[i][3] = dt.distributions[i].GetPStat(.9999)
 	}
 	return timings
 }
@@ -181,7 +193,7 @@ func NewDistributionTrackerStandard() *DistributionTracker {
 		PreviousUpdate: time.Now(),
 	}
 	return &DistributionTracker{
-		Distributions: []*Distribution{
+		distributions: []*Distribution{
 			d1,
 			d2,
 			d3,

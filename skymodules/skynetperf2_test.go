@@ -15,9 +15,9 @@ func TestFullDistributionTracker(t *testing.T) {
 
 	// Get the standard distributions but then fix their half lives.
 	dt := NewDistributionTrackerStandard()
-	dt.Distributions[0].StaticHalfLife = 5 * time.Second
-	dt.Distributions[1].StaticHalfLife = 20 * time.Second
-	dt.Distributions[2].StaticHalfLife = time.Hour
+	dt.distributions[0].StaticHalfLife = 5 * time.Second
+	dt.distributions[1].StaticHalfLife = 20 * time.Second
+	dt.distributions[2].StaticHalfLife = time.Hour
 
 	// 1000 data points to the first bucket.
 	for i := 0; i < 1e3; i++ {
