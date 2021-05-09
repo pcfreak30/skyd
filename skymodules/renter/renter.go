@@ -258,8 +258,9 @@ type Renter struct {
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
-	// read registry stats
-	staticRRS *readRegistryStats
+	// various performance stats
+	staticRRS           *readRegistryStats
+	staticRegWriteStats *skymodules.DistributionTracker
 
 	// Memory management
 	//
@@ -797,16 +798,18 @@ func (r *Renter) OldContracts() []skymodules.RenterContract {
 // Performance is a function call that returns all of the performacne
 // information about the renter.
 func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
-	regStats, err := r.RegistryStats()
+	regReadStats, err := r.RegistryStats()
 	if err != nil {
 		return skymodules.RenterPerformance{}, errors.AddContext(err, "unable to fetch registry stats")
 	}
+	regWriteStats := r.staticRegWriteStats.AllNines()
 
 	healthDuration := time.Duration(atomic.LoadUint64(&r.atomicSystemHealthScanDuration))
 	return skymodules.RenterPerformance{
 		SystemHealthScanDuration: healthDuration,
 
-		RegistryStats: regStats,
+		RegistryReadStats:  regReadStats,
+		RegistryWriteStats: regWriteStats,
 	}, nil
 }
 
@@ -1132,6 +1135,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
+	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
+	r.staticRegWriteStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
 	close(r.staticUploadHeap.pauseChan)
 
 	// Seed the rrs.

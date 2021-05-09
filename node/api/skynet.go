@@ -122,9 +122,20 @@ type (
 	// GET endpoint
 	SkynetStatsGET struct {
 		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
-		RegistryStats    skymodules.RegistryStats          `json:"registrystats"`
 
+		// The amount of computational time that it takes the health loop to
+		// scan the entire filesystem. Unit is given in hours.
 		SystemHealthScanDurationHours float64 `json:"systemhealthscanduration"`
+
+		// Registry performance stats, unit is given in milliseconds.
+		RegistryRead15mP99ms   float64 `json:"registryread15mp99ms"`
+		RegistryRead15mP999ms  float64 `json:"registryread15mp999ms"`
+		RegistryRead15mP9999ms float64 `json:"registryread15mp9999ms"`
+
+		// Registry performance stats, unit is given in milliseconds.
+		RegistryWrite15mP99ms   float64 `json:"registrywrite15mp99ms"`
+		RegistryWrite15mP999ms  float64 `json:"registrywrite15mp999ms"`
+		RegistryWrite15mP9999ms float64 `json:"registrywrite15mp9999ms"`
 
 		Uptime      int64                  `json:"uptime"`
 		UploadStats skymodules.SkynetStats `json:"uploadstats"`
@@ -1244,9 +1255,16 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 
 	WriteJSON(w, &SkynetStatsGET{
 		PerformanceStats: perfStats,
-		RegistryStats:    renterPerf.RegistryStats.ToMS(),
 
-		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration)/float64(time.Hour),
+		RegistryRead15mP99ms:   float64(renterPerf.RegistryReadStats.ReadProjectP99) / float64(time.Millisecond),
+		RegistryRead15mP999ms:  float64(renterPerf.RegistryReadStats.ReadProjectP999) / float64(time.Millisecond),
+		RegistryRead15mP9999ms: float64(renterPerf.RegistryReadStats.ReadProjectP9999) / float64(time.Millisecond),
+
+		RegistryWrite15mP99ms:   float64(renterPerf.RegistryWriteStats[0][2]) / float64(time.Millisecond),
+		RegistryWrite15mP999ms:  float64(renterPerf.RegistryWriteStats[0][3]) / float64(time.Millisecond),
+		RegistryWrite15mP9999ms: float64(renterPerf.RegistryWriteStats[0][4]) / float64(time.Millisecond),
+
+		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
 
 		Uptime:      int64(uptime),
 		UploadStats: stats,
