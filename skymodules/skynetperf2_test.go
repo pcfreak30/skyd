@@ -5,6 +5,105 @@ import (
 	"time"
 )
 
+// TestFullDistributionTracker attempts to use a distribution tracker in full,
+// including using actual sleeps instead of artifical clock manipulation.
+func TestFullDistributionTracker(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get the standard distributions but then fix their half lives.
+	dt := NewDistributionTrackerStandard()
+	dt.Distributions[0].StaticHalfLife = 5 * time.Second
+	dt.Distributions[1].StaticHalfLife = 20 * time.Second
+	dt.Distributions[2].StaticHalfLife = time.Hour
+
+	// 1000 data points to the first bucket.
+	for i := 0; i < 1e3; i++ {
+		dt.AddDataPoint(time.Millisecond * 3)
+	}
+	// Add 100 data points to the third bucket.
+	for i := 0; i < 100; i++ {
+		dt.AddDataPoint(time.Millisecond * 10)
+	}
+	// Add 10 data points to the 10th bucket.
+	for i := 0; i < 10; i++ {
+		dt.AddDataPoint(time.Millisecond * 39)
+	}
+	// Add 1 data point to the 65th bucket.
+	dt.AddDataPoint(time.Millisecond * 266)
+
+	// Check how the distributions seem.
+	nines := dt.AllNines()
+	// Each nine should be less than the next, and equal across all
+	// distribuitons.
+	if nines[0][0] >= nines[0][1] || nines[0][1] >= nines[0][2] || nines[0][2] >= nines[0][3] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][0] != nines[1][0] || nines[1][0] != nines[2][0] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][1] != nines[1][1] || nines[1][1] != nines[2][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][2] != nines[1][2] || nines[1][2] != nines[2][2] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][3] != nines[1][3] || nines[1][3] != nines[2][3] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+
+	// Have 20 seconds elpase, and add 2e3 more data points to the first bucket.
+	// This should skew the distribution for the first bucket but not the other
+	// two.
+	time.Sleep(time.Second * 20)
+	for i := 0; i < 2e3; i++ {
+		dt.AddDataPoint(time.Millisecond * 3)
+	}
+	nines = dt.AllNines()
+	if nines[0][0] != nines[0][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][1] >= nines[1][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[1][1] != nines[2][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+
+	// Add 5,000 more entries, this should shift the 20 second bucket but not
+	// the 1 hour bucket.
+	for i := 0; i < 5e3; i++ {
+		dt.AddDataPoint(time.Millisecond * 3)
+	}
+	nines = dt.AllNines()
+	if nines[0][1] != nines[0][2] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[1][0] != nines[1][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[1][1] != nines[2][0] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[2][0] >= nines[2][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+}
+
 // TestDistributionDecay will test that the distribution is being decayed
 // correctly when enough time has passed.
 func TestDistributionDecay(t *testing.T) {
@@ -24,10 +123,10 @@ func TestDistributionDecay(t *testing.T) {
 	// Add 500 data points.
 	for i := 0; i < 500; i++ {
 		// Use different buckets.
-		if i % 6 == 0 {
+		if i%6 == 0 {
 			d.AddDataPoint(time.Millisecond)
 		} else {
-			d.AddDataPoint(time.Millisecond*100)
+			d.AddDataPoint(time.Millisecond * 100)
 		}
 	}
 	if totalPoints() < 499 || totalPoints() > 501 {
@@ -77,7 +176,7 @@ func TestDistributionDecayedLifetime(t *testing.T) {
 		d.PreviousUpdate = time.Now().Add(-1 * time.Minute)
 		d.AddDataPoint(time.Millisecond)
 	}
-	pointsPerHour := totalPoints()/float64(d.DecayedLifetime/time.Hour)
+	pointsPerHour := totalPoints() / float64(d.DecayedLifetime/time.Hour)
 	if pointsPerHour < 55 || pointsPerHour > 65 {
 		t.Error("bad")
 	}

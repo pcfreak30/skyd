@@ -4,6 +4,11 @@ package skymodules
 // datapoints and return a distribution for how they occur. This struct was
 // created with both performance in mind, and also the limited precision of
 // floating points in mind.
+//
+// NOTE: There are a lot of values here that feel like they should be constants,
+// but I've elected not to make them constants because they are all highly
+// dependent on each other, and I don't want to give the impression that you can
+// tweak them.
 
 import (
 	"math"
@@ -23,7 +28,7 @@ type (
 
 		// Tracks the last time decay was applied so we know if we need to apply
 		// another round of decay when adding a datapoint.
-		LastDecay       time.Time
+		LastDecay time.Time
 
 		// Keeps track of the total amount of time that this distribution has
 		// been alive. This time gets decayed alongside the values, which means
@@ -45,7 +50,7 @@ type (
 	// different half life. A common choice is to track the half lives for {15
 	// minutes, 24 hours, Lifetime}.
 	DistributionTracker struct {
-		TimeRanges []Distribution
+		Distributions []*Distribution
 	}
 )
 
@@ -63,7 +68,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 		for i := 0; i < len(d.Timings); i++ {
 			d.Timings[i] *= mult
 		}
-		d.DecayedLifetime = time.Duration(float64(d.DecayedLifetime)*mult)
+		d.DecayedLifetime = time.Duration(float64(d.DecayedLifetime) * mult)
 		d.LastDecay = time.Now()
 	}
 
@@ -129,4 +134,57 @@ func (d *Distribution) GetPStat(p float64) time.Duration {
 
 	// The final bucket value.
 	return prevMax
+}
+
+// AddDataPoint will add a data point to each of the distributions in the
+// tracker.
+func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
+	for _, tr := range dt.Distributions {
+		tr.AddDataPoint(dur)
+	}
+}
+
+// AllNines returns 4 timings for each distribution in the tracker:
+//	 + the p90
+//	 + the p99
+//	 + the p999
+//	 + the p9999
+func (dt *DistributionTracker) AllNines() [][]time.Duration {
+	timings := make([][]time.Duration, len(dt.Distributions))
+	for i := 0; i < len(timings); i++ {
+		timings[i] = make([]time.Duration, 4)
+		timings[i][0] = dt.Distributions[i].GetPStat(.9)
+		timings[i][1] = dt.Distributions[i].GetPStat(.99)
+		timings[i][2] = dt.Distributions[i].GetPStat(.999)
+		timings[i][3] = dt.Distributions[i].GetPStat(.9999)
+	}
+	return timings
+}
+
+// NewDistributionTrackerStandard returns a standard distribution tracker, which
+// tracks data points over distributions with half lives of 15 minutes, 24
+// hours, and 30 days.
+func NewDistributionTrackerStandard() *DistributionTracker {
+	d1 := &Distribution{
+		StaticHalfLife: 15 * time.Minute,
+		LastDecay:      time.Now(),
+		PreviousUpdate: time.Now(),
+	}
+	d2 := &Distribution{
+		StaticHalfLife: 24 * time.Hour,
+		LastDecay:      time.Now(),
+		PreviousUpdate: time.Now(),
+	}
+	d3 := &Distribution{
+		StaticHalfLife: 30 * 24 * time.Hour,
+		LastDecay:      time.Now(),
+		PreviousUpdate: time.Now(),
+	}
+	return &DistributionTracker{
+		Distributions: []*Distribution{
+			d1,
+			d2,
+			d3,
+		},
+	}
 }
