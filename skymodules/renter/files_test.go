@@ -18,15 +18,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 )
 
-// newSiaPath returns a new SiaPath for testing and panics on error
-func newSiaPath(str string) skymodules.SiaPath {
-	sp, err := skymodules.NewSiaPath(str)
-	if err != nil {
-		panic(err)
-	}
-	return sp
-}
-
 // createRenterTestFile creates a test file when the test has a renter so that the
 // file is properly added to the renter. It returns the SiaFileSetEntry that the
 // SiaFile is stored in

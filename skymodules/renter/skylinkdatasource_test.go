@@ -174,10 +174,16 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 			newChunkFetcher(fanoutChunk1, nil),
 			newChunkFetcher(fanoutChunk2, nil),
 		},
+		staticChunksReady: make([]chan struct{}, 2),
+		staticChunkErrs:   []error{nil, nil},
 
 		staticCancelFunc: cancel,
 		staticCtx:        ctx,
 		staticRenter:     new(Renter),
+	}
+	for i := 0; i < len(sds.staticChunksReady); i++ {
+		sds.staticChunksReady[i] = make(chan struct{})
+		close(sds.staticChunksReady[i])
 	}
 
 	if sds.DataSize() != datasize {

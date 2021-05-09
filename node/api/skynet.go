@@ -1,12 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -164,12 +166,6 @@ type (
 		Data      []byte             `json:"data"`
 	}
 
-	// SkynetTUSSkylinkGET is the expected format of the json response for
-	// /skynet/tus/skylink/:id [GET].
-	SkynetTUSSkylinkGET struct {
-		Skylink string `json:"skylink"`
-	}
-
 	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
 	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error
@@ -240,16 +236,8 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	}
-	if errors.Contains(err, renter.ErrRootNotFound) {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		handleSkynetError(w, "failed to fetch base sector", err)
 		return
 	}
 	isErr = false
@@ -513,16 +501,8 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 	// Fetch the skyfile's  streamer to serve the basesector of the file
 	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	}
-	if errors.Contains(err, renter.ErrRootNotFound) {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusInternalServerError)
+		handleSkynetError(w, "failed to fetch root", err)
 		return
 	}
 	isErr = false
@@ -681,16 +661,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Fetch the skyfile's metadata and a streamer to download the file
 	streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	}
-	if errors.Contains(err, renter.ErrRootNotFound) {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		handleSkynetError(w, "failed to fetch skylink", err)
 		return
 	}
 	defer func() {
@@ -1040,17 +1012,10 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	err = api.renter.PinSkylink(skylink, lup, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	} else if errors.Contains(err, renter.ErrRootNotFound) {
-		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusNotFound)
-		return
-	} else if err != nil {
-		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusInternalServerError)
+	if err != nil {
+		handleSkynetError(w, "failed to pin file to skynet", err)
 		return
 	}
-
 	WriteSuccess(w)
 }
 
@@ -1071,11 +1036,13 @@ func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, req *http.Reque
 	}
 
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink)
+	w.Header().Set("Skynet-Skylink", skylink.String())
 
 	// Respond with the skylink in the body as well.
-	WriteJSON(w, SkynetTUSSkylinkGET{
-		Skylink: skylink,
+	WriteJSON(w, SkynetSkyfileHandlerPOST{
+		Bitfield:   skylink.Bitfield(),
+		MerkleRoot: skylink.MerkleRoot(),
+		Skylink:    skylink.String(),
 	})
 }
 
@@ -1134,11 +1101,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// streaming upload.
 	if params.convertPath == "" {
 		skylink, err := api.renter.UploadSkyfile(req.Context(), sup, reader)
-		if errors.Contains(err, renter.ErrSkylinkBlocked) {
-			WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-			return
-		} else if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
+		if err != nil {
+			handleSkynetError(w, "failed to upload file to skynet", err)
 			return
 		}
 
@@ -1214,12 +1178,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	skylink, err := api.renter.CreateSkylinkFromSiafile(sup, convertPath)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
+		handleSkynetError(w, "failed to convert siafile to skyfile", err)
 		return
 	}
 
@@ -1553,13 +1513,8 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
 	srv, err := api.renter.ReadRegistry(ctx, spk, dataKey)
-	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
-		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
-		WriteError(w, Error{err.Error()}, http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusInternalServerError)
+		handleSkynetError(w, "unable to read from the registry", err)
 		return
 	}
 
@@ -1590,6 +1545,85 @@ func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Reques
 	})
 }
 
+// skynetMetadataHandlerGET is the handler for the /skynet/metadata endpoint.
+func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the skylink from the raw URL of the request. Any special characters
+	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
+	// that begins query parameters from the encoded version '%3F'.
+	skylink, _, _, err := parseSkylinkURL(req.URL.String(), "/skynet/metadata/")
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the timeout.
+	timeout := DefaultSkynetRequestTimeout
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		if timeoutInt > MaxSkynetRequestTimeout {
+			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Fetch the skyfile's streamer to serve the basesector of the file
+	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	if err != nil {
+		handleSkynetError(w, "failed to fetch base sector", err)
+		return
+	}
+	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
+		_ = streamer.Close()
+	}()
+
+	// Read base sector.
+	baseSector, err := ioutil.ReadAll(streamer)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to read base sector: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
+	// Parse it.
+	_, _, _, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	http.ServeContent(w, req, "", time.Time{}, bytes.NewReader(rawMD))
+}
+
 // skynetSkylinkUnpinHandlerPOST will unpin a skylink from this Sia node.
 func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	strLink := ps.ByName("skylink")
@@ -1618,7 +1652,7 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 			WriteError(w, Error{fmt.Sprintf("failed to parse siapath: %v", err)}, http.StatusBadRequest)
 			return
 		}
-		extendedSiaPath, err := skymodules.NewSiaPath(siaPath.String() + skymodules.ExtendedSuffix)
+		extendedSiaPath, err := siaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to create extended siapath: %v", err)}, http.StatusBadRequest)
 			return
@@ -1641,13 +1675,9 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 
 	// Unpin the Skylink
 	err = api.renter.UnpinSkylink(skylink)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	} else if err != nil {
-		WriteError(w, Error{fmt.Sprintf("Failed to unpin skylink: %v", err)}, http.StatusInternalServerError)
+	if err != nil {
+		handleSkynetError(w, "failed to unpin skylink", err)
 		return
 	}
-
 	WriteSuccess(w)
 }

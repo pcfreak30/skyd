@@ -41,11 +41,6 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	sf, wal, walPath := newBlankTestFileAndWAL(1)
 	sf.deps = fdd
 
-	// Wrap it in a file set entry.
-	if err := setCombinedChunkOfTestFile(sf); err != nil {
-		t.Fatal(err)
-	}
-
 	// Create 50 hostkeys from which to choose from.
 	hostkeys := make([]types.SiaPublicKey, 0, 50)
 	for i := 0; i < 50; i++ {
@@ -148,19 +143,6 @@ OUTER:
 				}
 			}
 			// Load file again.
-			/*
-				 PARTIAL TODO:
-						 TODO: Uncomment once we enable partial chunks again
-							_, err = loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
-							if err != nil {
-								if errors.Contains(err, dependencies.ErrDiskFault) {
-									numRecoveries++
-									continue // try again
-								} else {
-									t.Fatal(err)
-								}
-							}
-			*/
 			sf, err = loadSiaFile(sf.siaFilePath, wal, fdd)
 			sf.deps = fdd
 			if err != nil {
@@ -171,15 +153,6 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
-			/*
-				 PARTIAL TODO:
-						partialsEntry := &SiaFileSetEntry{
-							dummyEntry(partialsSiaFile),
-							uint64(fastrand.Intn(math.MaxInt32)),
-						}
-			*/
-			//sf = dummyEntry(siafile)
-			sf.SetPartialsSiaFile(nil)
 			break
 		}
 	}

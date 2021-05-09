@@ -131,6 +131,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/skynet/basesector/*skylink", api.skynetBaseSectorHandlerGET)
 		router.GET("/skynet/blocklist", api.skynetBlocklistHandlerGET)
 		router.POST("/skynet/blocklist", RequirePassword(api.skynetBlocklistHandlerPOST, requiredPassword))
+		router.GET("/skynet/metadata/:skylink", api.skynetMetadataHandlerGET)
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
 		router.GET("/skynet/portals", api.skynetPortalsHandlerGET)
 		router.POST("/skynet/portals", RequirePassword(api.skynetPortalsHandlerPOST, requiredPassword))
@@ -159,11 +160,19 @@ func (api *API) buildHTTPRoutes() {
 		// uploading a file with a known size in chunks.
 		storeComposer.UseCore(sds)
 
+		// Check if the maxsize can be read from the environment.  Otherwise
+		// it's unlimited.
+		maxSize, ok := build.TUSMaxSize()
+		if ok {
+			fmt.Printf("INFO: max size for tus uploads set to %v\n", maxSize)
+		}
+
 		// Create the TUS handler and register its routes.
 		tusHandler, err := handler.NewUnroutedHandler(handler.Config{
-			BasePath:      "/skynet/tus",
-			MaxSize:       0, // unlimited upload size
-			StoreComposer: storeComposer,
+			BasePath:                "/skynet/tus",
+			MaxSize:                 maxSize,
+			RespectForwardedHeaders: true,
+			StoreComposer:           storeComposer,
 
 			// NOTE: comment logger out for debugging
 			Logger: log.DiscardLogger.Logger, // discard third party logging

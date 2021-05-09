@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -63,7 +64,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 
 	// Do it again without the pubkey or tweak. Should also work.
-	lookedUpRV, err = wt.ReadRegistry(context.Background(), spk, rv.Tweak)
+	lookedUpRV, err = wt.ReadRegistryEID(context.Background(), modules.DeriveRegistryEntryID(spk, rv.Tweak))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +74,112 @@ func TestReadRegistryJob(t *testing.T) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
+	}
+}
+
+// TestReadRegistryJob tests running a ReadRegistry job on a host by directly
+// creating the job and passing it to the queue.
+func TestReadRegistryJobManual(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create a registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	data := fastrand.Bytes(modules.RegistryDataSize)
+	rev := fastrand.Uint64n(1000)
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	eid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
+
+	// Prepare a span.
+	span := opentracing.GlobalTracer().StartSpan(t.Name())
+
+	// Run the UpdateRegistry job.
+	err = wt.UpdateRegistry(context.Background(), spk, rv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a ReadRegistry job to read the entry.
+	respChan := make(chan *jobReadRegistryResponse)
+	rrj := wt.newJobReadRegistry(context.Background(), span, respChan, spk, rv.Tweak)
+	if !wt.staticJobReadRegistryQueue.callAdd(rrj) {
+		t.Fatal("failed")
+	}
+	resp := <-respChan
+	if resp.staticErr != nil {
+		t.Fatal(resp.staticErr)
+	}
+	lookedUpRV := resp.staticSignedRegistryValue
+
+	// The entries should match.
+	if !reflect.DeepEqual(*lookedUpRV, rv) {
+		t.Log(lookedUpRV)
+		t.Log(rv)
+		t.Fatal("entries don't match")
+	}
+
+	// The worker, eid, spk and tweak should be set.
+	if *resp.staticTweak != rv.Tweak {
+		t.Fatal("wrong tweak")
+	}
+	if !resp.staticSPK.Equals(spk) {
+		t.Fatal("wrong spk")
+	}
+	if resp.staticEID != eid {
+		t.Fatal("wrong eid")
+	}
+	if resp.staticWorker != wt.worker {
+		t.Fatal("wrong worker")
+	}
+
+	// Do it again without the pubkey or tweak. Should also work.
+	rrj = wt.newJobReadRegistryEID(context.Background(), span, respChan, eid, nil, nil)
+	if !wt.staticJobReadRegistryQueue.callAdd(rrj) {
+		t.Fatal("failed")
+	}
+	resp = <-respChan
+	if resp.staticErr != nil {
+		t.Fatal(resp.staticErr)
+	}
+	lookedUpRV = resp.staticSignedRegistryValue
+
+	// The entries should match.
+	if !reflect.DeepEqual(*lookedUpRV, rv) {
+		t.Log(lookedUpRV)
+		t.Log(rv)
+		t.Fatal("entries don't match")
+	}
+
+	// The worker and eid should be set.
+	if resp.staticTweak != nil {
+		t.Fatal("wrong tweak")
+	}
+	if resp.staticSPK != nil {
+		t.Fatal("wrong spk")
+	}
+	if resp.staticEID != eid {
+		t.Fatal("wrong eid")
+	}
+	if resp.staticWorker != wt.worker {
+		t.Fatal("wrong worker")
 	}
 }
 

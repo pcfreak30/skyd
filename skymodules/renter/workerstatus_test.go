@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -15,6 +16,11 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 )
+
+// testSpan returns a span for testing.
+func testSpan() opentracing.Span {
+	return opentracing.GlobalTracer().StartSpan("testSpan")
+}
 
 // TestWorkerAccountStatus is a small unit test that verifies the output of the
 // `managedStatus` method on the worker's account.
@@ -439,8 +445,9 @@ func TestWorkerRegistryJobStatus(t *testing.T) {
 	ctx := context.Background()
 	rrc := make(chan *jobReadRegistryResponse)
 	urc := make(chan *jobUpdateRegistryResponse)
-	jrr := w.newJobReadRegistry(ctx, rrc, types.SiaPublicKey{}, crypto.Hash{})
-	jur := w.newJobUpdateRegistry(ctx, urc, types.SiaPublicKey{}, modules.SignedRegistryValue{})
+	jrr := w.newJobReadRegistry(ctx, testSpan(), rrc, types.SiaPublicKey{}, crypto.Hash{})
+	span := opentracing.GlobalTracer().StartSpan(t.Name())
+	jur := w.newJobUpdateRegistry(ctx, span, urc, types.SiaPublicKey{}, modules.SignedRegistryValue{})
 	if !w.staticJobReadRegistryQueue.callAdd(jrr) {
 		t.Fatal("Could not add job to queue")
 	}

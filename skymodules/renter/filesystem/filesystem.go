@@ -326,7 +326,7 @@ func (fs *FileSystem) NewSiaFile(siaPath skymodules.SiaPath, source string, ec s
 	if err = fs.NewSiaDir(dirSiaPath, fileMode); err != nil {
 		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", dirSiaPath.String(), siaPath.String()))
 	}
-	return fs.managedNewSiaFile(siaPath.String(), source, ec, mk, fileSize, fileMode, disablePartialUpload)
+	return fs.managedNewSiaFile(siaPath.String(), source, ec, mk, fileSize, fileMode)
 }
 
 // ReadDir reads all the fileinfos of the specified dir.
@@ -703,7 +703,7 @@ func (fs *FileSystem) managedOpenFile(relPath string) (_ *FileNode, err error) {
 
 // managedNewSiaFile opens the parent folder of the new SiaFile and calls
 // managedNewSiaFile on it.
-func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec skymodules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) (err error) {
+func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec skymodules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode) (err error) {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(relPath)
 	var dir *DirNode
@@ -719,7 +719,7 @@ func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec skymod
 			err = errors.Compose(err, dir.Close())
 		}()
 	}
-	return dir.managedNewSiaFile(fileName, source, ec, mk, fileSize, fileMode, disablePartialUpload)
+	return dir.managedNewSiaFile(fileName, source, ec, mk, fileSize, fileMode)
 }
 
 // managedOpenSiaDir opens a SiaDir and adds it and all of its parents to the

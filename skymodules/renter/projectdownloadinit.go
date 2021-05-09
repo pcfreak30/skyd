@@ -150,42 +150,51 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // cooldown for the read job. The worker heap optimizes for speed, not cost.
 // Cost is taken into account at a later point where the initial worker set is
 // built.
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker, unresolvedWorkerTimePenalty time.Duration) pdcWorkerHeap {
+func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
 		// Ignore workers that are on a maintenance cooldown. Good performing
 		// workers are generally never on maintenance cooldown, so by skipping
 		// them here we avoid ever waiting for them to resolve.
-		if uw.staticWorker.managedOnMaintenanceCooldown() {
+		w := uw.staticWorker
+		if w.managedOnMaintenanceCooldown() {
+			continue
+		}
+		// Ignore workers that are considered to be price gouging.
+		pt := w.staticPriceTable().staticPriceTable
+		allowance := w.staticCache().staticRenterAllowance
+		err := checkProjectDownloadGouging(pt, allowance)
+		if err != nil {
 			continue
 		}
 
 		// Verify whether the read queue is on a cooldown, if so skip this
-		// worker.
-		jrq := uw.staticWorker.staticJobReadQueue
-		if jrq.callOnCooldown() {
+		// worker. Also skip if the worker is not async ready.
+		jrq := w.staticJobReadQueue
+		if !w.managedAsyncReady() || jrq.callOnCooldown() {
 			continue
 		}
 
 		// Fetch the resolveTime, which is the time until the HS job is expected
-		// to resolve. If that time is in the past, set it to a time in the
-		// future, equal to the amount that it's late.
+		// to resolve. If that time is in the past, add a penalty that assumes
+		// that there is some unusual circumstance preventing the worker from
+		// being on time and that it may be another while before the worker
+		// resolves; favor some other worker instead.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Before(time.Now()) {
-			resolveTime = time.Now().Add(time.Since(resolveTime))
+			resolveTime = time.Now().Add(2 * time.Since(resolveTime))
 		}
 
 		// Determine the expected readDuration and cost for this worker. Add the
-		// readDuration to the hasSectorTime to get the full
-		// complete time for the download
+		// readDuration to the hasSectorTime to get the full complete time for
+		// the download.
 		cost := jrq.callExpectedJobCost(pdc.pieceLength)
 		readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
 		if readDuration == 0 {
 			continue
 		}
-
-		completeTime := resolveTime.Add(readDuration).Add(unresolvedWorkerTimePenalty)
+		completeTime := resolveTime.Add(readDuration)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -204,7 +213,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 			pieces:     pieces,
 			unresolved: true,
-			worker:     uw.staticWorker,
+			worker:     w,
 		})
 	}
 
@@ -227,7 +236,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if the worker is not currently equipped to
 			// perform async work, or if the read queue is on a cooldown.
 			jrq := w.staticJobReadQueue
-			if !w.managedAsyncReady() || w.staticJobReadQueue.callOnCooldown() {
+			if !w.managedAsyncReady() || jrq.callOnCooldown() {
 				continue
 			}
 
@@ -266,6 +275,17 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // determine the best set of workers to use when attempting to download a piece.
 // Note that we only return this best set if all workers from the worker set are
 // resolved, if that is not the case we simply return nil.
+//
+// NOTE: If there are any unresolved workers (meaning workers that have not
+// completed their HasSector jobs) which were selected as part of the best set
+// for the workers, 'nil' will be returned. This means that we may have a set of
+// resolved workers which is sufficient to begin fetching the file, and yet we
+// will not launch the download yet. If this is happening, it is because the yet
+// unresolved workers have a significantly better estimated time to complete the
+// full download than the resolved workers that were not included in the best
+// set. If workers are going a lot time and remaining unresolved, a penalty is
+// applied which will eventually break those workers and revert to preferring
+// the already resolved workers.
 func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
@@ -455,18 +475,18 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	// are yet unresolved, return the updateChan and everything else is nil, if
 	// the best set is done and all of the workers in the best set are resolved,
 	// return the best set and everything else is nil.
-	totalWorkers := 0
+	totalPieces := 0
 	isUnresolved := false
-	for _, worker := range bestSet {
-		if worker == nil {
+	for _, piece := range bestSet {
+		if piece == nil {
 			continue
 		}
-		totalWorkers++
-		isUnresolved = isUnresolved || worker.unresolved
+		totalPieces++
+		isUnresolved = isUnresolved || piece.unresolved
 	}
 
-	if totalWorkers < ec.MinPieces() {
-		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalWorkers, ec.MinPieces()))
+	if totalPieces < ec.MinPieces() {
+		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalPieces, ec.MinPieces()))
 	}
 
 	if isUnresolved {
@@ -480,8 +500,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
-	start := time.Now()
-
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -489,13 +507,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
 
 		// Create a list of usable workers, sorted by the amount of time they
-		// are expected to take to return. We pass in the time since we've
-		// initially tried to launch the initial set of workers, this time is
-		// being used as a time penalty which we'll attribute to unresolved
-		// workers. Ensuring resolved workers are being selected if we're
-		// waiting too long for unresolved workers to resolve.
-		unresolvedWorkerPenalty := time.Since(start)
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkerPenalty)
+		// are expected to take to return.
+		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
