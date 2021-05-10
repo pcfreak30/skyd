@@ -1231,7 +1231,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 
 	// Pull the skynet stats from the root directory
 	dirs, err := api.renter.DirList(skymodules.RootSiaPath())
-	if err == nil {
+	if err != nil {
 		WriteError(w, Error{"unable to get root directory status: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
@@ -1291,6 +1291,8 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	}
 
 	// Determine the wallet status.
+	var walletStatus string
+	var allowance skymodules.Allowance
 	unlocked, err := api.wallet.Unlocked()
 	if err != nil {
 		WriteError(w, Error{"unable to get wallet lock status: " + err.Error()}, http.StatusBadRequest)
@@ -1306,8 +1308,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{"unable to get renter settings: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	allowance := renterSettings.Allowance
-	var walletStatus string
+	allowance = renterSettings.Allowance
 	if !unlocked {
 		walletStatus = "locked"
 	} else if walletFunds.Cmp(allowance.Funds.Div64(3)) < 0 {
