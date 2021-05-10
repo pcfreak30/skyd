@@ -755,9 +755,9 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// Our current revision should always be signed. If it isn't, we have no
 	// choice but to accept the host's revision.
 	if len(c.header.Transaction.TransactionSignatures) == 0 {
-		c.header.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
-		c.header.Transaction.TransactionSignatures = sigs
-		return nil
+		err := errors.New("renter has unsigned revision, this should never happen")
+		build.Critical(err)
+		return err
 	}
 
 	ourRev := c.header.LastRevision()
@@ -834,7 +834,9 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				}
 				// Sync header.
 				if err := c.staticHeaderFile.Sync(); err != nil {
-					return err
+					// If syncing to disk fails, panic to avoid further
+					// corruption.
+					panic(err)
 				}
 				// drop all unapplied transactions
 				if err := c.clearUnappliedTxns(); err != nil {
@@ -845,34 +847,25 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 		}
 	}
 
-	// NOTE: @reviewers
-	// If we reach this point, we are corrupting our on-disk state. That's
-	// because we are only updating the revision on disk without fetching the
-	// roots.
-	// Should we just return an error here and maybe mark the contract as bad?
-	// Because we should never be out of sync if we use the wal correctly and
-	// this just hides mistakes like the ones that caused the NDF that this MR
-	// is fixing.
-	if !c.staticDeps.Disrupt("AcceptHostRevision") {
-		err := errors.New("revision mismatch unfixable")
-		build.Critical(err)
-		return err
-	}
-
-	// The host's revision is still different, and we have no unapplied
-	// transactions containing their revision. At this point, the best we can do
-	// is accept their revision. This isn't ideal, but at least there's no
-	// security risk, since we *did* sign the revision that the host is
-	// claiming. Worst case, certain contract metadata (e.g. UploadSpending)
-	// will be incorrect.
-	c.header.Transaction.FileContractRevisions[0] = rev
-	c.header.Transaction.TransactionSignatures = sigs
-
 	// Drop the WAL transactions, since they can't conceivably help us.
 	if err := c.clearUnappliedTxns(); err != nil {
 		return errors.AddContext(err, "failed to clear unapplied txns")
 	}
-	return nil
+
+	// Under certain conditions in testing we want to ignore the fact that we
+	// can't fix the mismatch and simply accept the host's revision.
+	if c.staticDeps.Disrupt("AcceptHostRevision") {
+		c.header.Transaction.FileContractRevisions[0] = rev
+		c.header.Transaction.TransactionSignatures = sigs
+		return nil
+	}
+
+	// If we reach this point, we are corrupting our on-disk state. That's
+	// because we are only updating the revision on disk without fetching the
+	// roots.
+	err := errors.New("revision mismatch unfixable")
+	build.Critical(err)
+	return err
 }
 
 // managedInsertContract inserts a contract into the set in an ACID fashion
