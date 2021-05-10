@@ -141,12 +141,12 @@ type (
 		RegistryWrite15mP9999ms    float64 `json:"registrywrite15mp9999ms"`
 
 		// General Statuses
-		AllowanceStatus string // 'low', 'good', 'high'
-		MaxStoragePrice string
-		Repair          uint64
-		Storage         uint64
-		StuckChunks     uint64
-		WalletStatus    string // 'low', 'good', 'high'
+		AllowanceStatus string `json:"allowancestatus"` // 'low', 'good', 'high'
+		MaxStoragePrice string `json:"maxstorageprice"`
+		Repair          uint64 `json:"repair"`
+		Storage         uint64 `json:"storage"`
+		StuckChunks     uint64 `json:"stuckchunks"`
+		WalletStatus    string `json:"walletstatus"` // 'low', 'good', 'high'
 
 		Uptime      int64                  `json:"uptime"`
 		UploadStats skymodules.SkynetStats `json:"uploadstats"`
