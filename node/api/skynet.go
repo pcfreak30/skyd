@@ -142,6 +142,7 @@ type (
 
 		// General Statuses
 		AllowanceStatus string `json:"allowancestatus"` // 'low', 'good', 'high'
+		ContractStorage uint64 `json:"contractstorage"`
 		MaxStoragePrice string `json:"maxstorageprice"`
 		Repair          uint64 `json:"repair"`
 		Storage         uint64 `json:"storage"`
@@ -1312,9 +1313,9 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	if !unlocked {
 		walletStatus = "locked"
 	} else if walletFunds.Cmp(allowance.Funds.Div64(3)) < 0 {
-		walletStatus = "low balance"
+		walletStatus = "low"
 	} else if walletFunds.Cmp(allowance.Funds.Mul64(3)) > 0 {
-		walletStatus = "high balance"
+		walletStatus = "high"
 	} else {
 		walletStatus = "healthy"
 	}
@@ -1337,6 +1338,12 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		allowanceStatus = "healthy"
 	}
 
+	// Get information about the total contracts size.
+	var totalStorage uint64
+	for _, c := range api.renter.Contracts() {
+		totalStorage += c.Size()
+	}
+
 	WriteJSON(w, &SkynetStatsGET{
 		NumCritAlerts: len(critAlerts),
 
@@ -1354,7 +1361,8 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
 
 		AllowanceStatus: allowanceStatus,
-		MaxStoragePrice: allowance.MaxStoragePrice.HumanString(),
+		ContractStorage: totalStorage,
+		MaxStoragePrice: allowance.MaxStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte).HumanString(),
 		Repair:          rootDir.AggregateRepairSize,
 		Storage:         rootDir.AggregateSize,
 		StuckChunks:     rootDir.AggregateNumStuckChunks,
