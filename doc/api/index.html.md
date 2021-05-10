@@ -3338,9 +3338,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 ### Response Body
 
@@ -3436,9 +3434,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 ### JSON Response
 > JSON Response Example
@@ -3488,9 +3484,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 **root** | bool\
 If the siapath should reference the root of the renter's filesystem.
@@ -3826,9 +3820,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 ### Response Header
 
