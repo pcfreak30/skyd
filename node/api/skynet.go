@@ -1353,10 +1353,10 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		RegistryRead15mP999ms:  float64(renterPerf.RegistryReadStats.ReadProjectP999) / float64(time.Millisecond),
 		RegistryRead15mP9999ms: float64(renterPerf.RegistryReadStats.ReadProjectP9999) / float64(time.Millisecond),
 
-		RegistryWrite15mDataPoints: renterPerf.RegistryWriteDataPoints[0],
-		RegistryWrite15mP99ms:      float64(renterPerf.RegistryWriteStats[0][1]) / float64(time.Millisecond),
-		RegistryWrite15mP999ms:     float64(renterPerf.RegistryWriteStats[0][2]) / float64(time.Millisecond),
-		RegistryWrite15mP9999ms:    float64(renterPerf.RegistryWriteStats[0][3]) / float64(time.Millisecond),
+		RegistryWrite15mDataPoints: renterPerf.RegistryWriteStats.TotalDataPoints[0],
+		RegistryWrite15mP99ms:      float64(renterPerf.RegistryWriteStats.Nines[0][1]) / float64(time.Millisecond),
+		RegistryWrite15mP999ms:     float64(renterPerf.RegistryWriteStats.Nines[0][2]) / float64(time.Millisecond),
+		RegistryWrite15mP9999ms:    float64(renterPerf.RegistryWriteStats.Nines[0][3]) / float64(time.Millisecond),
 
 		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
 

@@ -58,6 +58,14 @@ type (
 
 		mu sync.Mutex
 	}
+
+	// DistributionTrackerStats houses a set of fields that get returned by the
+	// DistributionTracker which display the values of the underlying
+	// distributions.
+	DistributionTrackerStats struct {
+		Nines           [][]time.Duration
+		TotalDataPoints []float64
+	}
 )
 
 // AddDataPoint will add a sampled time to the distribution, performing a decay
@@ -193,6 +201,15 @@ func (dt *DistributionTracker) TotalDataPoints() []float64 {
 		totals = append(totals, d.TotalDataPoints())
 	}
 	return totals
+}
+
+// Stats returns a full suite of statistics about the distributions in the
+// tracker.
+func (dt *DistributionTracker) Stats() *DistributionTrackerStats {
+	return &DistributionTrackerStats{
+		Nines:           dt.AllNines(),
+		TotalDataPoints: dt.TotalDataPoints(),
+	}
 }
 
 // NewDistributionTrackerStandard returns a standard distribution tracker, which
