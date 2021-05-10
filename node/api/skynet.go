@@ -121,9 +121,9 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		NumCritAlerts int `json:"numcritalerts"`
-
 		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
+
+		NumCritAlerts int `json:"numcritalerts"`
 
 		// The amount of computational time that it takes the health loop to
 		// scan the entire filesystem. Unit is given in hours.
@@ -139,6 +139,14 @@ type (
 		RegistryWrite15mP99ms      float64 `json:"registrywrite15mp99ms"`
 		RegistryWrite15mP999ms     float64 `json:"registrywrite15mp999ms"`
 		RegistryWrite15mP9999ms    float64 `json:"registrywrite15mp9999ms"`
+
+		// General Statuses
+		AllowanceStatus string // 'low', 'good', 'high'
+		MaxStoragePrice string
+		Repair          uint64
+		Storage         uint64
+		StuckChunks     uint64
+		WalletStatus    string // 'low', 'good', 'high'
 
 		Uptime      int64                  `json:"uptime"`
 		UploadStats skymodules.SkynetStats `json:"uploadstats"`
@@ -1222,16 +1230,15 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	var stats skymodules.SkynetStats
 
 	// Pull the skynet stats from the root directory
-	dis, err := api.renter.DirList(skymodules.RootSiaPath())
+	dirs, err := api.renter.DirList(skymodules.RootSiaPath())
 	if err == nil {
-		// If there is an error we just return null stats
-		//
-		// Update the stats with the information from the root directory
-		di := dis[0]
-		stats = skymodules.SkynetStats{
-			NumFiles:  int(di.AggregateSkynetFiles),
-			TotalSize: di.AggregateSkynetSize,
-		}
+		WriteError(w, Error{"unable to get root directory status: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	rootDir := dirs[0]
+	stats = skymodules.SkynetStats{
+		NumFiles:  int(rootDir.AggregateSkynetFiles),
+		TotalSize: rootDir.AggregateSkynetSize,
 	}
 
 	// get version
@@ -1283,6 +1290,52 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		critAlerts = append(critAlerts, c...)
 	}
 
+	// Determine the wallet status.
+	unlocked, err := api.wallet.Unlocked()
+	if err != nil {
+		WriteError(w, Error{"unable to get wallet lock status: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	walletFunds, _, _, err := api.wallet.ConfirmedBalance()
+	if err != nil {
+		WriteError(w, Error{"unable to get wallet balance: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	renterSettings, err := api.renter.Settings()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter settings: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	allowance := renterSettings.Allowance
+	var walletStatus string
+	if !unlocked {
+		walletStatus = "locked"
+	} else if walletFunds.Cmp(allowance.Funds.Div64(3)) < 0 {
+		walletStatus = "low balance"
+	} else if walletFunds.Cmp(allowance.Funds.Mul64(3)) > 0 {
+		walletStatus = "high balance"
+	} else {
+		walletStatus = "healthy"
+	}
+
+	// Determine the allowance status.
+	financialMetrics, err := api.renter.PeriodSpending()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter financial breakdonw: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	_, _, unspentUnallocated := financialMetrics.SpendingBreakdown()
+	var allowanceStatus string
+	if unspentUnallocated.Cmp(types.NewCurrency64(10e3)) < 0 {
+		allowanceStatus = "low"
+	} else if unspentUnallocated.Cmp(allowance.Funds.Div64(5)) < 0 {
+		allowanceStatus = "low"
+	} else if unspentUnallocated.Cmp(allowance.Funds.Mul64(3).Div64(4)) > 0 && allowance.Funds.Cmp(types.NewCurrency64(50e3)) > 0 {
+		allowanceStatus = "high"
+	} else {
+		allowanceStatus = "healthy"
+	}
+
 	WriteJSON(w, &SkynetStatsGET{
 		NumCritAlerts: len(critAlerts),
 
@@ -1298,6 +1351,13 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		RegistryWrite15mP9999ms:    float64(renterPerf.RegistryWriteStats[0][3]) / float64(time.Millisecond),
 
 		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
+
+		AllowanceStatus: allowanceStatus,
+		MaxStoragePrice: allowance.MaxStoragePrice.HumanString(),
+		Repair:          rootDir.AggregateRepairSize,
+		Storage:         rootDir.AggregateSize,
+		StuckChunks:     rootDir.AggregateNumStuckChunks,
+		WalletStatus:    walletStatus,
 
 		Uptime:      int64(uptime),
 		UploadStats: stats,
