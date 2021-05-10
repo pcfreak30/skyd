@@ -135,9 +135,10 @@ type (
 		RegistryRead15mP9999ms float64 `json:"registryread15mp9999ms"`
 
 		// Registry performance stats, unit is given in milliseconds.
-		RegistryWrite15mP99ms   float64 `json:"registrywrite15mp99ms"`
-		RegistryWrite15mP999ms  float64 `json:"registrywrite15mp999ms"`
-		RegistryWrite15mP9999ms float64 `json:"registrywrite15mp9999ms"`
+		RegistryWrite15mDataPoints float64 `json:"registrywrite15mdatapoints"`
+		RegistryWrite15mP99ms      float64 `json:"registrywrite15mp99ms"`
+		RegistryWrite15mP999ms     float64 `json:"registrywrite15mp999ms"`
+		RegistryWrite15mP9999ms    float64 `json:"registrywrite15mp9999ms"`
 
 		Uptime      int64                  `json:"uptime"`
 		UploadStats skymodules.SkynetStats `json:"uploadstats"`
@@ -1291,9 +1292,10 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		RegistryRead15mP999ms:  float64(renterPerf.RegistryReadStats.ReadProjectP999) / float64(time.Millisecond),
 		RegistryRead15mP9999ms: float64(renterPerf.RegistryReadStats.ReadProjectP9999) / float64(time.Millisecond),
 
-		RegistryWrite15mP99ms:   float64(renterPerf.RegistryWriteStats[0][1]) / float64(time.Millisecond),
-		RegistryWrite15mP999ms:  float64(renterPerf.RegistryWriteStats[0][2]) / float64(time.Millisecond),
-		RegistryWrite15mP9999ms: float64(renterPerf.RegistryWriteStats[0][3]) / float64(time.Millisecond),
+		RegistryWrite15mDataPoints: renterPerf.RegistryWriteDataPoints[0],
+		RegistryWrite15mP99ms:      float64(renterPerf.RegistryWriteStats[0][1]) / float64(time.Millisecond),
+		RegistryWrite15mP999ms:     float64(renterPerf.RegistryWriteStats[0][2]) / float64(time.Millisecond),
+		RegistryWrite15mP9999ms:    float64(renterPerf.RegistryWriteStats[0][3]) / float64(time.Millisecond),
 
 		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
 

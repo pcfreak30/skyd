@@ -114,8 +114,9 @@ type SkynetStats struct {
 type RenterPerformance struct {
 	SystemHealthScanDuration time.Duration
 
-	RegistryReadStats  RegistryStats
-	RegistryWriteStats [][]time.Duration
+	RegistryReadStats       RegistryStats
+	RegistryWriteStats      [][]time.Duration
+	RegistryWriteDataPoints []float64
 }
 
 // RenterStats is a struct which tracks key metrics in a single renter. This

@@ -142,6 +142,16 @@ func (d *Distribution) GetPStat(p float64) time.Duration {
 	return prevMax
 }
 
+// TotalDataPoints returns the total number of data points contained within the
+// distribution.
+func (d *Distribution) TotalDataPoints() float64 {
+	var total float64
+	for i := 0; i < len(d.Timings); i++ {
+		total += d.Timings[i]
+	}
+	return total
+}
+
 // AddDataPoint will add a data point to each of the distributions in the
 // tracker.
 func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
@@ -171,6 +181,18 @@ func (dt *DistributionTracker) AllNines() [][]time.Duration {
 		timings[i][3] = dt.distributions[i].GetPStat(.9999)
 	}
 	return timings
+}
+
+// TotalDataPoints returns the total number of items represented in each distribution.
+func (dt *DistributionTracker) TotalDataPoints() []float64 {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	var totals []float64
+	for _, d := range dt.distributions {
+		totals = append(totals, d.TotalDataPoints())
+	}
+	return totals
 }
 
 // NewDistributionTrackerStandard returns a standard distribution tracker, which
