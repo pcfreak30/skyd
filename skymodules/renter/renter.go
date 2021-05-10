@@ -810,6 +810,7 @@ func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 		SystemHealthScanDuration: healthDuration,
 
 		BaseSectorUploadStats: r.staticBaseSectorUploadStats.Stats(),
+		ChunkUploadStats:      r.staticChunkUploadStats.Stats(),
 		RegistryReadStats:     regReadStats,
 		RegistryWriteStats:    r.staticRegWriteStats.Stats(),
 	}, nil

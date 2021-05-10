@@ -666,6 +666,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	totalMemoryReleased := uc.memoryReleased
 	workersRemaining := uc.workersRemaining
 	repair := uc.repair || uc.stuckRepair
+	finished := chunkComplete && uc.piecesCompleted >= uc.staticPiecesNeeded && uc.staticAvailable()
 	heapTime := uc.chunkPoppedFromHeapTime.Sub(uc.chunkCreationTime)
 	availableTime := uc.chunkAvailableTime.Sub(uc.chunkLogicalDataReceivedTime)
 	uc.mu.Unlock()
@@ -676,7 +677,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	//
 	// We also check that the chunk was made available. If the chunk was not
 	// successfully made available, the availableTime will be less than zero.
-	if !repair && availableTime > 0 && heapTime > 0 {
+	if !repair && finished {
 		r.staticChunkUploadStats.AddDataPoint(heapTime + availableTime)
 	}
 
