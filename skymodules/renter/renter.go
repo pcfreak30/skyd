@@ -259,8 +259,10 @@ type Renter struct {
 	statsMu   sync.Mutex
 
 	// various performance stats
-	staticRRS           *readRegistryStats
-	staticRegWriteStats *skymodules.DistributionTracker
+	staticRRS                   *readRegistryStats
+	staticRegWriteStats         *skymodules.DistributionTracker
+	staticBaseSectorUploadStats *skymodules.DistributionTracker
+	staticChunkUploadStats      *skymodules.DistributionTracker
 
 	// Memory management
 	//
@@ -807,8 +809,9 @@ func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 	return skymodules.RenterPerformance{
 		SystemHealthScanDuration: healthDuration,
 
-		RegistryReadStats:  regReadStats,
-		RegistryWriteStats: r.staticRegWriteStats.Stats(),
+		BaseSectorUploadStats: r.staticBaseSectorUploadStats.Stats(),
+		RegistryReadStats:     regReadStats,
+		RegistryWriteStats:    r.staticRegWriteStats.Stats(),
 	}, nil
 }
 
@@ -1136,6 +1139,10 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
 	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
 	r.staticRegWriteStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
+	r.staticBaseSectorUploadStats = skymodules.NewDistributionTrackerStandard()
+	r.staticBaseSectorUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
+	r.staticChunkUploadStats = skymodules.NewDistributionTrackerStandard()
+	r.staticChunkUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
 	close(r.staticUploadHeap.pauseChan)
 
 	// Seed the rrs.

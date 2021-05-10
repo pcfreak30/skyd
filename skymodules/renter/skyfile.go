@@ -524,10 +524,12 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 	}
 
 	// Upload the base sector.
+	start := time.Now()
 	err = r.managedUploadBaseSector(sup, baseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
 	}
+	r.staticBaseSectorUploadStats.AddDataPoint(time.Since(start))
 	return skylink, nil
 }
 

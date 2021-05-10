@@ -1413,6 +1413,7 @@ func (r *Renter) managedRepairLoop() error {
 		// thread down to using only the resources that are available.
 		nextChunk.mu.Lock()
 		nextChunk.chunkPoppedFromHeapTime = time.Now()
+		nextChunk.repair = true
 		nextChunk.mu.Unlock()
 		err := r.managedPrepareNextChunk(nextChunk)
 		if err != nil {

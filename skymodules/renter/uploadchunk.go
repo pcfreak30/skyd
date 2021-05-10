@@ -39,6 +39,7 @@ type unfinishedUploadChunk struct {
 	staticMinimumPieces    int    // number of pieces required to recover the file.
 	offset                 int64  // Offset of the chunk within the file.
 	onDisk                 bool   // indicates if there is a local file accessible on disk
+	repair                 bool   // inidicates if this chunk is a repair chunk
 	staticPiecesNeeded     int    // number of pieces to achieve a 100% complete upload
 	stuck                  bool   // indicates if the chunk was marked as stuck during last repair
 	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
@@ -70,13 +71,14 @@ type unfinishedUploadChunk struct {
 	sourceReader skymodules.ChunkReader
 
 	// Performance information.
-	chunkCreationTime        time.Time
-	chunkPoppedFromHeapTime  time.Time
-	chunkDistributionTime    time.Time
-	chunkFailedProcessTimes  []time.Time
-	chunkSuccessProcessTimes []time.Time
-	chunkAvailableTime       time.Time
-	chunkCompleteTime        time.Time
+	chunkCreationTime            time.Time
+	chunkPoppedFromHeapTime      time.Time
+	chunkLogicalDataReceivedTime time.Time
+	chunkDistributionTime        time.Time
+	chunkFailedProcessTimes      []time.Time
+	chunkSuccessProcessTimes     []time.Time
+	chunkAvailableTime           time.Time
+	chunkCompleteTime            time.Time
 
 	// Channels used to signal the progress of the chunk.
 	staticAvailableChan       chan struct{} // used to signal that the chunk is available on the Sia network. Error needs to be checked.
@@ -436,6 +438,9 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		return
 	}
 
+	// Update time timestamp.
+	chunk.chunkLogicalDataReceivedTime = time.Now()
+
 	// Distribute the chunk to the workers.
 	r.staticUploadChunkDistributionQueue.callAddUploadChunk(chunk)
 }
@@ -649,17 +654,28 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		r.staticRepairLog.Printf(`
 	Chunk Created: %v
 	Chunk Popped: %v
+	Chunk Logical Data Received: %v
 	Chunk Distributed: %v
 	Chunk Available: %v
 	Chunk Complete: %v
 	Chunk Canceled: %v
 	Fail Times: %v
-	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), canceled, failedTimes, successTimes)
+	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkLogicalDataReceivedTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), canceled, failedTimes, successTimes)
 	}
 	uc.memoryReleased += memoryReleased
 	totalMemoryReleased := uc.memoryReleased
 	workersRemaining := uc.workersRemaining
+	repair := uc.repair || uc.stuckRepair
 	uc.mu.Unlock()
+
+	// Add the upload timing of this chunk to the stat tracker. We ignore
+	// repairs, and we also ignore the time spent receiving logical data because
+	// that could be the fault of the user.
+	if !repair {
+		heapTime := uc.chunkPoppedFromHeapTime.Sub(uc.chunkCreationTime)
+		availableTime := uc.chunkAvailableTime.Sub(uc.chunkLogicalDataReceivedTime)
+		r.staticChunkUploadStats.AddDataPoint(heapTime + availableTime)
+	}
 
 	// If there are pieces available, add the standby workers to collect them.
 	// Standby workers are only added to the chunk when piecesAvailable is equal
