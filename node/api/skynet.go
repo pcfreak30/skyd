@@ -121,6 +121,8 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
+		NumCritAlerts int `json:"numcritalerts"`
+
 		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
 
 		// The amount of computational time that it takes the health loop to
@@ -1253,7 +1255,36 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		return
 	}
 
+	// Check for any critical alerts.
+	critAlerts := make([]modules.Alert, 0, 6)
+	if api.gateway != nil {
+		c, _, _ := api.gateway.Alerts()
+		critAlerts = append(critAlerts, c...)
+	}
+	if api.cs != nil {
+		c, _, _ := api.cs.Alerts()
+		critAlerts = append(critAlerts, c...)
+	}
+	if api.tpool != nil {
+		c, _, _ := api.tpool.Alerts()
+		critAlerts = append(critAlerts, c...)
+	}
+	if api.wallet != nil {
+		c, _, _ := api.wallet.Alerts()
+		critAlerts = append(critAlerts, c...)
+	}
+	if api.renter != nil {
+		c, _, _ := api.renter.Alerts()
+		critAlerts = append(critAlerts, c...)
+	}
+	if api.host != nil {
+		c, _, _ := api.host.Alerts()
+		critAlerts = append(critAlerts, c...)
+	}
+
 	WriteJSON(w, &SkynetStatsGET{
+		NumCritAlerts: len(critAlerts),
+
 		PerformanceStats: perfStats,
 
 		RegistryRead15mP99ms:   float64(renterPerf.RegistryReadStats.ReadProjectP99) / float64(time.Millisecond),
