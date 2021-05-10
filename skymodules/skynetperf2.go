@@ -14,6 +14,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 type (
@@ -71,6 +73,12 @@ type (
 // AddDataPoint will add a sampled time to the distribution, performing a decay
 // operation if needed.
 func (d *Distribution) AddDataPoint(dur time.Duration) {
+	// Check for negative inputs.
+	if dur < 0 {
+		build.Critical("cannot call AddDataPoint with negatime timestamp")
+		return
+	}
+
 	sinceLastDecay := time.Since(d.LastDecay)
 	d.DecayedLifetime += time.Since(d.PreviousUpdate)
 	d.PreviousUpdate = time.Now()

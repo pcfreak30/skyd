@@ -666,14 +666,17 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	totalMemoryReleased := uc.memoryReleased
 	workersRemaining := uc.workersRemaining
 	repair := uc.repair || uc.stuckRepair
+	heapTime := uc.chunkPoppedFromHeapTime.Sub(uc.chunkCreationTime)
+	availableTime := uc.chunkAvailableTime.Sub(uc.chunkLogicalDataReceivedTime)
 	uc.mu.Unlock()
 
 	// Add the upload timing of this chunk to the stat tracker. We ignore
 	// repairs, and we also ignore the time spent receiving logical data because
 	// that could be the fault of the user.
-	if !repair {
-		heapTime := uc.chunkPoppedFromHeapTime.Sub(uc.chunkCreationTime)
-		availableTime := uc.chunkAvailableTime.Sub(uc.chunkLogicalDataReceivedTime)
+	//
+	// We also check that the chunk was made available. If the chunk was not
+	// successfully made available, the availableTime will be less than zero.
+	if !repair && availableTime > 0 && heapTime > 0 {
 		r.staticChunkUploadStats.AddDataPoint(heapTime + availableTime)
 	}
 
