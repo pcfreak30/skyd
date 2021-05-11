@@ -154,10 +154,10 @@ type (
 		RegistryWrite15mP9999ms    float64 `json:"registrywrite15mp9999ms"`
 
 		// Stream Buffer Download Stats
-		StreamBuffer15mDataPoints float64 `json:"basesectorupload15mdatapoints"`
-		StreamBuffer15mP99ms      float64 `json:"basesectorupload15mp99ms"`
-		StreamBuffer15mP999ms     float64 `json:"basesectorupload15mp999ms"`
-		StreamBuffer15mP9999ms    float64 `json:"basesectorupload15mp9999ms"`
+		StreamBufferRead15mDataPoints float64 `json:"streambufferread15mdatapoints"`
+		StreamBufferRead15mP99ms      float64 `json:"streambufferread15mp99ms"`
+		StreamBufferRead15mP999ms     float64 `json:"streambufferread15mp999ms"`
+		StreamBufferRead15mP9999ms    float64 `json:"streambufferread15mp9999ms"`
 
 		// General Statuses
 		AllowanceStatus string `json:"allowancestatus"` // 'low', 'good', 'high'
@@ -1388,10 +1388,10 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		RegistryWrite15mP999ms:     float64(renterPerf.RegistryWriteStats.Nines[0][2]) / float64(time.Millisecond),
 		RegistryWrite15mP9999ms:    float64(renterPerf.RegistryWriteStats.Nines[0][3]) / float64(time.Millisecond),
 
-		StreamBuffer15mDataPoints: renterPerf.StreamBufferStats.TotalDataPoints[0],
-		StreamBuffer15mP99ms:      float64(renterPerf.StreamBufferStats.Nines[0][1]) / float64(time.Millisecond),
-		StreamBuffer15mP999ms:     float64(renterPerf.StreamBufferStats.Nines[0][2]) / float64(time.Millisecond),
-		StreamBuffer15mP9999ms:    float64(renterPerf.StreamBufferStats.Nines[0][3]) / float64(time.Millisecond),
+		StreamBufferRead15mDataPoints: renterPerf.StreamBufferReadStats.TotalDataPoints[0],
+		StreamBufferRead15mP99ms:      float64(renterPerf.StreamBufferReadStats.Nines[0][1]) / float64(time.Millisecond),
+		StreamBufferRead15mP999ms:     float64(renterPerf.StreamBufferReadStats.Nines[0][2]) / float64(time.Millisecond),
+		StreamBufferRead15mP9999ms:    float64(renterPerf.StreamBufferReadStats.Nines[0][3]) / float64(time.Millisecond),
 
 		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
 
