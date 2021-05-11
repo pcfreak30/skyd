@@ -29,12 +29,12 @@ type workerTester struct {
 
 // newWorkerTester creates a new worker for testing.
 func newWorkerTester(name string) (*workerTester, error) {
-	return newWorkerTesterCustomDependency(name, modules.ProdDependencies, modules.ProdDependencies)
+	return newWorkerTesterCustomDependency(name, skymodules.SkydProdDependencies, modules.ProdDependencies)
 }
 
 // newWorkerTesterCustomDependency creates a new worker for testing with a
 // custom depency.
-func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencies, hostDeps modules.Dependencies) (*workerTester, error) {
+func newWorkerTesterCustomDependency(name string, renterDeps skymodules.SkydDependencies, hostDeps modules.Dependencies) (*workerTester, error) {
 	// Create the renter.
 	rt, err := newRenterTesterWithDependency(filepath.Join(name, "renter"), renterDeps)
 	if err != nil {
@@ -134,7 +134,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	t.Parallel()
 
 	deps := dependencies.NewDependencyCorruptMDMOutput()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.SkydProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}

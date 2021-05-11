@@ -309,7 +309,7 @@ func testAccountCompatV150Basic(t *testing.T, rt *renterTester) {
 	}
 
 	// create a renter
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &modules.ProductionDependencies{})
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &skymodules.SkynetDependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +403,7 @@ func testAccountCompatV150_TmpFileExistsWithClean(t *testing.T, rt *renterTester
 	}
 
 	// create a renter
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &modules.ProductionDependencies{})
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &skymodules.SkynetDependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}

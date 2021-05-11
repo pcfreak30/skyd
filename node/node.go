@@ -90,7 +90,7 @@ type NodeParams struct {
 	GatewayDeps      modules.Dependencies
 	HostDeps         modules.Dependencies
 	HostDBDeps       modules.Dependencies
-	RenterDeps       modules.Dependencies
+	RenterDeps       skymodules.SkydDependencies
 	TPoolDeps        modules.Dependencies
 	WalletDeps       modules.Dependencies
 
@@ -477,7 +477,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		renterDeps := params.RenterDeps
 		if renterDeps == nil {
-			renterDeps = modules.ProdDependencies
+			renterDeps = skymodules.SkydProdDependencies
 		}
 		persistDir := filepath.Join(dir, skymodules.RenterDir)
 

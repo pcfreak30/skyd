@@ -9,13 +9,12 @@ import (
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 )
 
 // newBenchmarkRenterWithDependency creates a renter to be used for benchmarks
 // on renter methods
-func newBenchmarkRenterWithDependency(name string, deps modules.Dependencies) (*Renter, error) {
+func newBenchmarkRenterWithDependency(name string, deps skymodules.SkydDependencies) (*Renter, error) {
 	testdir := build.TempDir("renter", name)
 	rt, err := newRenterTesterNoRenter(testdir)
 	if err != nil {

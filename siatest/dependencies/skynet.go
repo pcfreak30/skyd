@@ -3,12 +3,12 @@ package dependencies
 import (
 	"sync"
 
-	"go.sia.tech/siad/modules"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // DependencySkipUnpinRequest skips submitting the unpin request.
 type DependencySkipUnpinRequest struct {
-	modules.ProductionDependencies
+	skymodules.SkynetDependencies
 
 	disabled bool
 	mu       sync.Mutex

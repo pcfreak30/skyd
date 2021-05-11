@@ -163,7 +163,7 @@ type serverTester struct {
 // assembleServerTesterWithDeps creates a bunch of modules with injected
 // dependencies and assembles them into a server tester, without creating any
 // directories or mining any blocks.
-func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
+func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, cDeps, tDeps, wDeps, hDeps modules.Dependencies, rDeps skymodules.SkydDependencies, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
 	// assembleServerTester should not get called during short tests, as it
 	// takes a long time to run.
 	if testing.Short() {
@@ -272,7 +272,7 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 // assembleServerTester creates a bunch of modules and assembles them into a
 // server tester, without creating any directories or mining any blocks.
 func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, error) {
-	return assembleServerTesterWithDeps(key, testdir, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
+	return assembleServerTesterWithDeps(key, testdir, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, skymodules.SkydProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
 }
 
 // assembleAuthenticatedServerTester creates a bunch of modules and assembles
@@ -438,7 +438,7 @@ func blankServerTester(name string) (*serverTester, error) {
 // createServerTesterWithDeps creates a server tester object with injected
 // dependencies that is ready for testing, including money in the wallet and all
 // modules initialized.
-func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
+func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps modules.Dependencies, rDeps skymodules.SkydDependencies, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
 	// createServerTester is expensive, and therefore should not be called
 	// during short tests.
 	if testing.Short() {
@@ -473,7 +473,9 @@ func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, 
 // createServerTester creates a server tester object that is ready for testing,
 // including money in the wallet and all modules initialized.
 func createServerTester(name string) (*serverTester, error) {
-	return createServerTesterWithDeps(name, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
+	pd := modules.ProdDependencies
+	sd := skymodules.SkydProdDependencies
+	return createServerTesterWithDeps(name, pd, pd, pd, pd, pd, sd, pd, pd, pd, pd)
 }
 
 // createAuthenticatedServerTester creates an authenticated server tester

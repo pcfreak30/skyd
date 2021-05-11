@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
 )
 
@@ -76,7 +77,9 @@ func TestServerTimeout(t *testing.T) {
 	t.Parallel()
 
 	apiDeps := &dependencies.DependencyTimeoutOnHostGET{}
-	st, err := createServerTesterWithDeps(t.Name(), modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, apiDeps)
+	pd := modules.ProdDependencies
+	sd := skymodules.SkydProdDependencies
+	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, sd, pd, pd, pd, apiDeps)
 	if err != nil {
 		t.Fatal(err)
 	}

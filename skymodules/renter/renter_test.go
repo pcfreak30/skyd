@@ -180,7 +180,7 @@ func (rt *renterTester) reloadRenter(r *Renter) (*Renter, error) {
 // reloadRenterWithDependency closes the given renter and recreates it using the
 // given dependency, it then re-adds the renter on the renter tester effectively
 // reloading it.
-func (rt *renterTester) reloadRenterWithDependency(r *Renter, deps modules.Dependencies) (*Renter, error) {
+func (rt *renterTester) reloadRenterWithDependency(r *Renter, deps skymodules.SkydDependencies) (*Renter, error) {
 	err := r.Close()
 	if err != nil {
 		return nil, err
@@ -277,7 +277,7 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 
 // newRenterTesterWithDependency creates a ready-to-use renter tester with money
 // in the wallet.
-func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*renterTester, error) {
+func newRenterTesterWithDependency(name string, deps skymodules.SkydDependencies) (*renterTester, error) {
 	testdir := build.TempDir("renter", name)
 	rt, err := newRenterTesterNoRenter(testdir)
 	if err != nil {
@@ -303,7 +303,7 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 }
 
 // newRenterWithDependency creates a Renter with custom dependency
-func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
+func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string, deps skymodules.SkydDependencies) (*Renter, error) {
 	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tpool, mux, persistDir, deps)
 	if err := <-errChan; err != nil {
 		return nil, err

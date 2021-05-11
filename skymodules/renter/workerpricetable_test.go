@@ -154,7 +154,7 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	deps.Disable()
 
 	// create a new worker tester
-	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.SkydProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}

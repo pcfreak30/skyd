@@ -4813,7 +4813,7 @@ func TestSkynetFeePaid(t *testing.T) {
 
 	// Create a new renter that thinks the wallet's address is the fee address.
 	rt := node.RenterTemplate
-	deps := &dependencies.DependencyCustomNebulousAddress{}
+	deps := &dependencies.DependencyCustomSkynetAddress{}
 	deps.SetAddress(wag.Address)
 	rt.RenterDeps = deps
 	nodes, err := tg.AddNodes(rt)

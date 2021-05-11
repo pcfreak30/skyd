@@ -175,7 +175,8 @@ func TestHostAndRentVanilla(t *testing.T) {
 	// Inject a dependency that forces legacy contract renewal without clearing
 	// the contract.
 	pd := modules.ProdDependencies
-	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, pd, pd)
+	sd := skymodules.SkydProdDependencies
+	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, sd, pd, pd, pd, pd)
 	if err != nil {
 		t.Fatal(err)
 	}
