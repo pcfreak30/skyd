@@ -211,15 +211,17 @@ type streamBuffer struct {
 type streamBufferSet struct {
 	streams map[skymodules.DataSourceID]*streamBuffer
 
+	staticStatsCollector  *skymodules.DistributionTracker
 	staticTG *threadgroup.ThreadGroup
 	mu       sync.Mutex
 }
 
 // newStreamBufferSet initializes and returns a stream buffer set.
-func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
+func newStreamBufferSet(statsCollector *skymodules.DistributionTracker, tg *threadgroup.ThreadGroup) *streamBufferSet {
 	return &streamBufferSet{
 		streams: make(map[skymodules.DataSourceID]*streamBuffer),
 
+		staticStatsCollector: statsCollector,
 		staticTG: tg,
 	}
 }
@@ -577,12 +579,16 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		defer sb.staticTG.Done()
 
 		// Grab the data from the data source.
+		start := time.Now()
 		responseChan := sb.staticDataSource.ReadStream(sb.staticTG.StopCtx(), index*dataSectionSize, fetchSize, sb.staticPricePerMS)
 
 		select {
 		case response := <-responseChan:
 			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
 			ds.externData = response.staticData
+			if ds.externErr != nil {
+				sb.staticStreamBufferSet.staticStatsCollector.AddDataPoint(time.Since(start))
+			}
 		case <-sb.staticTG.StopChan():
 			ds.externErr = errors.New("failed to read response from ReadStream")
 		}

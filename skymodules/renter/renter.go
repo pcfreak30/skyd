@@ -1117,9 +1117,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create new health update batcher")
 	}
-	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
-	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
 	r.staticRegReadStats.AddDataPoint(2 * time.Second) // Seed the stats so that startup doesn't say 0.
 	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
@@ -1130,6 +1127,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticChunkUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
 	r.staticStreamBufferStats = skymodules.NewDistributionTrackerStandard()
 	r.staticStreamBufferStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
+	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
+	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
+	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.staticUploadHeap.pauseChan)
 
 	// Init the spending history.
