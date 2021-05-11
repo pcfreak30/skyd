@@ -279,7 +279,6 @@ func TestRenterFour(t *testing.T) {
 		{Name: "TestNextPeriod", Test: testNextPeriod},
 		{Name: "TestPauseAndResumeRepairAndUploads", Test: testPauseAndResumeRepairAndUploads},
 		{Name: "TestDownloadServedFromDisk", Test: testDownloadServedFromDisk},
-		{Name: "TestDirMode", Test: testDirMode},
 		{Name: "TestEscapeSiaPath", Test: testEscapeSiaPath}, // Runs last because it uploads many files
 	}
 
@@ -2629,6 +2628,10 @@ func TestRenterLosingHosts(t *testing.T) {
 	// the previously unused host.
 	delete(contractHosts, pk.String())
 
+	// Sleep for long enough that the health loop has time to kick in and detect
+	// the missing host.
+	time.Sleep(2 * renter.TargetHealthCheckFrequency)
+
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -4690,76 +4693,6 @@ func testDownloadServedFromDisk(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testDirMode is a subtest that makes sure that various ways of creating a dir
-// all set the correct permissions.
-func testDirMode(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the first of the group's renters
-	renter := tg.Renters()[0]
-	// Upload file, creating a piece for each host in the group
-	dataPieces := uint64(1)
-	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
-
-	dirSP, err := skymodules.NewSiaPath("dir")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir, err := renter.FilesDir().CreateDir(dirSP.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	lf, err := dir.NewFile(fileSize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = renter.UploadBlocking(lf, dataPieces, parityPieces, false)
-	if err != nil {
-		t.Fatal("Failed to upload a file for testing: ", err)
-	}
-	// The fileupload should have created a dir. That dir should have the same
-	// permissions as the file.
-	rd, err := renter.RenterDirGet(dirSP)
-	if err != nil {
-		t.Fatal(err)
-	}
-	di := rd.Directories[0]
-	fi, err := lf.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if di.DirMode != fi.Mode() {
-		t.Fatalf("Expected folder permissions to be %v but was %v", fi.Mode(), di.DirMode)
-	}
-	// Test creating dir using endpoint.
-	dir2SP := skymodules.RandomSiaPath()
-	if err := renter.RenterDirCreatePost(dir2SP); err != nil {
-		t.Fatal(err)
-	}
-	rd, err = renter.RenterDirGet(dir2SP)
-	if err != nil {
-		t.Fatal(err)
-	}
-	di = rd.Directories[0]
-	// The created dir should have the default permissions.
-	if di.DirMode != skymodules.DefaultDirPerm {
-		t.Fatalf("Expected folder permissions to be %v but was %v", skymodules.DefaultDirPerm, di.DirMode)
-	}
-	dir3SP := skymodules.RandomSiaPath()
-	mode := os.FileMode(0777)
-	if err := renter.RenterDirCreateWithModePost(dir3SP, mode); err != nil {
-		t.Fatal(err)
-	}
-	rd, err = renter.RenterDirGet(dir3SP)
-	if err != nil {
-		t.Fatal(err)
-	}
-	di = rd.Directories[0]
-	// The created dir should have the specified permissions.
-	if di.DirMode != mode {
-		t.Fatalf("Expected folder permissions to be %v but was %v", mode, di.DirMode)
-	}
-}
-
 // TestWorkerStatus probes the WorkerPoolStatus
 func TestWorkerStatus(t *testing.T) {
 	if testing.Short() {
@@ -5900,6 +5833,9 @@ func TestRenterBubble(t *testing.T) {
 		// Match up the UID and SiaPath
 		expected.UID = found.UID
 		expected.SiaPath = found.SiaPath
+
+		// Ignore the mode
+		expected.DirMode = found.DirMode
 
 		// Check the remaining fields
 		if !reflect.DeepEqual(found, expected) {

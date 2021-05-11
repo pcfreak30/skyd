@@ -189,38 +189,6 @@ const (
 )
 
 var (
-	// healthCheckInterval defines the maximum amount of time that should pass
-	// in between checking the health of a file or directory.
-	healthCheckInterval = build.Select(build.Var{
-		Dev:      15 * time.Minute,
-		Standard: 1 * time.Hour,
-		Testing:  5 * time.Second,
-	}).(time.Duration)
-
-	// healthLoopErrorSleepDuration indicates how long the health loop should
-	// sleep before retrying if there is an error preventing progress.
-	healthLoopErrorSleepDuration = build.Select(build.Var{
-		Dev:      10 * time.Second,
-		Standard: 30 * time.Second,
-		Testing:  3 * time.Second,
-	}).(time.Duration)
-
-	// healthLoopNumBatchFiles defines the number of files the health loop will
-	// try to batch together in a subtree when updating the filesystem.
-	healthLoopNumBatchFiles = build.Select(build.Var{
-		Dev:      uint64(1e3),
-		Standard: uint64(10e3),
-		Testing:  uint64(5),
-	}).(uint64)
-
-	// healthLoopNumBatchSubDirs defines the number of sub directories the health
-	// loop will try to batch together in a subtree when updating the filesystem.
-	healthLoopNumBatchSubDirs = build.Select(build.Var{
-		Dev:      uint64(100),
-		Standard: uint64(1e3),
-		Testing:  uint64(2),
-	}).(uint64)
-
 	// maxRepairLoopTime indicates the maximum amount of time that the repair
 	// loop will spend popping chunks off of the repair heap.
 	maxRepairLoopTime = build.Select(build.Var{

@@ -347,7 +347,7 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, portal1, portal2 *siatest.Tes
 	if err != nil {
 		return err
 	}
-	skySiaPathExtended, err := skySiaPath.Join(skymodules.ExtendedSuffix)
+	skySiaPathExtended, err := skySiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return err
 	}

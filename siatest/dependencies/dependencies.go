@@ -9,6 +9,11 @@ import (
 )
 
 type (
+	// DependencyAcceptHostRevision tells a contract set to accept a host's
+	// revision without having a corresponding open wal txn.
+	DependencyAcceptHostRevision struct {
+		modules.ProductionDependencies
+	}
 	// DependencyUnstableTUSUpload causes every TUS upload to fail and to only
 	// append half the uploaded data.
 	DependencyUnstableTUSUpload struct {
@@ -370,6 +375,11 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyReadRegistryBlocking) Disrupt(s string) bool {
 	return s == "ReadRegistryBlocking"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyAcceptHostRevision) Disrupt(s string) bool {
+	return s == "AcceptHostRevision"
 }
 
 // Disrupt returns true if the correct string is provided.

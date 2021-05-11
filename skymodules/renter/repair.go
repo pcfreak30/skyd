@@ -12,12 +12,7 @@ import (
 
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"go.sia.tech/siad/types"
 )
-
-// TODO - once bubbling metadata has been updated to be more I/O
-// efficient this code should be removed and we should call bubble when
-// we clean up the upload chunk after a successful repair.
 
 var (
 	// errNoStuckFiles is a helper to indicate that there are no stuck files in
@@ -166,93 +161,6 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath skymodules.SiaPath, hosts m
 		r.staticStuckStack.managedPush(siaPath)
 	}
 	return allErrors
-}
-
-// managedOldestHealthCheckTime finds the lowest level directory tree that
-// contains the oldest LastHealthCheckTime.
-func (r *Renter) managedOldestHealthCheckTime() (skymodules.SiaPath, time.Time, error) {
-	// Check the siadir metadata for the root files directory
-	siaPath := skymodules.RootSiaPath()
-	metadata, err := r.managedDirectoryMetadata(siaPath)
-	if err != nil {
-		return skymodules.SiaPath{}, time.Time{}, err
-	}
-
-	// Follow the path of oldest LastHealthCheckTime to the lowest level directory
-	// tree defined by the batch constants
-	for (metadata.AggregateNumSubDirs > healthLoopNumBatchSubDirs || metadata.AggregateNumFiles > healthLoopNumBatchFiles) && metadata.NumSubDirs > 0 {
-		// Check to make sure renter hasn't been shutdown
-		select {
-		case <-r.tg.StopChan():
-			return skymodules.SiaPath{}, time.Time{}, errors.New("Renter shutdown before oldestHealthCheckTime could be found")
-		default:
-		}
-
-		// Check for sub directories
-		subDirSiaPaths, err := r.managedSubDirectories(siaPath)
-		if err != nil {
-			return skymodules.SiaPath{}, time.Time{}, err
-		}
-
-		// Find the oldest LastHealthCheckTime of the sub directories
-		updated := false
-		for _, subDirPath := range subDirSiaPaths {
-			// Check to make sure renter hasn't been shutdown
-			select {
-			case <-r.tg.StopChan():
-				return skymodules.SiaPath{}, time.Time{}, errors.New("Renter shutdown before oldestHealthCheckTime could be found")
-			default:
-			}
-
-			// Check lastHealthCheckTime of sub directory
-			subMetadata, err := r.managedDirectoryMetadata(subDirPath)
-			if err != nil {
-				return skymodules.SiaPath{}, time.Time{}, err
-			}
-
-			// If the AggregateLastHealthCheckTime for the sub directory is after the
-			// current directory's AggregateLastHealthCheckTime then we will want to
-			// continue since we want to follow the path of oldest
-			// AggregateLastHealthCheckTime
-			isOldestAggregate := subMetadata.AggregateLastHealthCheckTime.After(metadata.AggregateLastHealthCheckTime)
-			// Whenever the node stops there is a chance the directory tree is not
-			// fully updated if there are bubbles pending. With this in mind we also
-			// want to confirm that the current directory's LastHealthCheckTime is
-			// older than the sub directory's AggregateLastHealthCheckTime as well.
-			isOldestDirectory := subMetadata.AggregateLastHealthCheckTime.After(metadata.LastHealthCheckTime)
-			// The isOldestDirectory condition is only a valid check if we have not
-			// already updated the metadata for a sub directory. As soon as we have
-			// updated the metadata once, we have confirmed we are not going to get an
-			// incorrect LastHealthCheckTime due to the metadatas being out of date
-			// from a shutdown when there were pending bubbles.
-			if isOldestAggregate && (isOldestDirectory || updated) {
-				continue
-			}
-
-			// Update the metadata and siaPath to follow older path. We do not break
-			// out of the loop just because we have updated these values as we might
-			// find an even older path to follow.
-			updated = true
-			metadata = subMetadata
-			siaPath = subDirPath
-		}
-
-		// If the values were never updated with any of the sub directory values
-		// then return as we are in the directory we are looking for
-		if !updated {
-			// We return the LastHealthCheckTime here because at this point we should
-			// actually be in the oldest directory.
-			r.staticLog.Debugf("Health Loop found LHCT OldestDir %v, LHCT %v, ALHCT %v", siaPath, metadata.LastHealthCheckTime, metadata.AggregateLastHealthCheckTime)
-			return siaPath, metadata.LastHealthCheckTime, nil
-		}
-	}
-
-	// Returning the AggregateLastHealthCheckTime here because we stopped
-	// traversing the filesystem via the above for loop. This doesn't mean that we
-	// have necessarily ended up in the oldest directory but we are on the oldest
-	// subtree so return the AggregateLastHealthCheckTime
-	r.staticLog.Debugf("Health Loop found ALHCT OldestDir %v, LHCT %v, ALHCT %v", siaPath, metadata.LastHealthCheckTime, metadata.AggregateLastHealthCheckTime)
-	return siaPath, metadata.AggregateLastHealthCheckTime, nil
 }
 
 // managedStuckDirectory randomly finds a directory that contains stuck chunks
@@ -549,96 +457,6 @@ func (r *Renter) threadedStuckFileLoop() {
 	}
 }
 
-// threadedUpdateRenterHealth reads all the siafiles in the renter, calculates
-// the health of each file and updates the folder metadata
-func (r *Renter) threadedUpdateRenterHealth() {
-	err := r.tg.Add()
-	if err != nil {
-		return
-	}
-	defer r.tg.Done()
-
-	// Loop until the renter has shutdown or until the renter's top level files
-	// directory has a LasHealthCheckTime within the healthCheckInterval
-	for {
-		select {
-		// Check to make sure renter hasn't been shutdown
-		case <-r.tg.StopChan():
-			return
-		default:
-		}
-
-		// Follow path of oldest time, return directory and timestamp
-		r.staticLog.Debugln("Checking for oldest health check time")
-		siaPath, lastHealthCheckTime, err := r.managedOldestHealthCheckTime()
-		if err != nil {
-			// If there is an error getting the lastHealthCheckTime sleep for a
-			// little bit before continuing
-			r.staticLog.Println("WARN: Could not find oldest health check time:", err)
-			select {
-			case <-time.After(healthLoopErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-			continue
-		}
-
-		// Check if the time since the last check on the least recently checked
-		// folder is inside the health check interval. If so, the whole
-		// filesystem has been checked recently, and we can sleep until the
-		// least recent check is outside the check interval.
-		timeSinceLastCheck := time.Since(lastHealthCheckTime)
-		if timeSinceLastCheck < healthCheckInterval {
-			// Sleep until the least recent check is outside the check interval.
-			sleepDuration := healthCheckInterval - timeSinceLastCheck
-			r.staticLog.Printf("Health loop sleeping for %v, lastHealthCheckTime %v, directory %v", sleepDuration, lastHealthCheckTime, siaPath)
-			wakeSignal := time.After(sleepDuration)
-			select {
-			case <-r.tg.StopChan():
-				return
-			case <-wakeSignal:
-			}
-		}
-
-		// Prepare the subtree for being bubbled
-		r.staticLog.Debugf("Preparing subtree '%v' for bubble", siaPath)
-		urp, err := r.callPrepareForBubble(siaPath, false)
-		if err != nil {
-			// Log the error
-			r.staticLog.Println("Error calling callPrepareForBubble on `", siaPath.String(), "`:", err)
-
-			// Check if urp is nil. This should only happen if the first call to Add
-			// the Root dir fails.
-			if urp == nil {
-				// Sleep and continue
-				select {
-				case <-time.After(healthLoopErrorSleepDuration):
-				case <-r.tg.StopChan():
-					return
-				}
-				continue
-			}
-		}
-
-		// Sanity check that we have both a urp and it has directories listed in its
-		// childDir map.
-		if urp == nil || urp.callNumChildDirs() == 0 {
-			// This should never happen, build.Critical and sleep to prevent potential
-			// rapid cycling.
-			msg := fmt.Sprintf("WARN: No refresh paths returned from '%v'", siaPath)
-			build.Critical(msg)
-			select {
-			case <-time.After(healthLoopErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-			continue
-		}
-		r.staticLog.Debugf("Calling bubble on the subtree '%v', # bubbles %v", siaPath, urp.callNumChildDirs())
-		urp.callRefreshAllBlocking()
-	}
-}
-
 // callPrepareForBubble prepares a directory for the Health Loop to call bubble
 // on and returns a uniqueRefreshPaths including all the paths of the
 // directories in the subtree that need to be updated. This includes updating
@@ -667,7 +485,7 @@ func (r *Renter) callPrepareForBubble(rootDir skymodules.SiaPath, force bool) (*
 		defer mu.Unlock()
 
 		// Skip any directories that have been updated recently
-		if !force && time.Since(di.LastHealthCheckTime) < healthCheckInterval {
+		if !force && time.Since(di.LastHealthCheckTime) < TargetHealthCheckFrequency {
 			// Track the LastHealthCheckTime of the skipped directory
 			if di.LastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
 				aggregateLastHealthCheckTime = di.LastHealthCheckTime
@@ -699,74 +517,4 @@ func (r *Renter) callPrepareForBubble(rootDir skymodules.SiaPath, force bool) (*
 		return urp, errors.Compose(err, openErr)
 	}
 	return urp, errors.Compose(err, entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now()), entry.Close())
-}
-
-// managedUpdateFileMetadatasParams updates the metadata of all siafiles within
-// a dir with the provided parameters.  This can be very expensive for large
-// directories and should therefore only happen sparingly.
-func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath skymodules.SiaPath, offlineMap map[string]bool, goodForRenewMap map[string]bool, contracts map[string]skymodules.RenterContract, used []types.SiaPublicKey) error {
-	// Read the fileinfos from the directory
-	fis, err := r.staticFileSystem.ReadDir(dirSiaPath)
-	if err != nil {
-		return errors.AddContext(err, "managedUpdateFileMetadatas: failed to read dir")
-	}
-
-	// Define common variables
-	var errs error
-	var errMU sync.Mutex
-	fileSiaPathChan := make(chan skymodules.SiaPath, numBubbleWorkerThreads)
-
-	// Define the fileWorker
-	fileWorker := func() {
-		for fileSiaPath := range fileSiaPathChan {
-			err := func() error {
-				sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
-				if err != nil {
-					return err
-				}
-				err = sf.UpdateMetadata(offlineMap, goodForRenewMap, contracts, used)
-				return errors.Compose(err, sf.Close())
-			}()
-			errMU.Lock()
-			errs = errors.Compose(errs, err)
-			errMU.Unlock()
-		}
-	}
-
-	// Launch file workers
-	var wg sync.WaitGroup
-	for i := 0; i < numBubbleWorkerThreads; i++ {
-		wg.Add(1)
-		go func() {
-			fileWorker()
-			wg.Done()
-		}()
-	}
-
-	// Update the file metadatas
-	for _, fi := range fis {
-		ext := filepath.Ext(fi.Name())
-		if ext != skymodules.SiaFileExtension {
-			continue
-		}
-		fName := strings.TrimSuffix(fi.Name(), skymodules.SiaFileExtension)
-		fileSiaPath, err := dirSiaPath.Join(fName)
-		if err != nil {
-			r.staticLog.Println("managedUpdateFileMetadatas: unable to join siapath with dirpath", err)
-			continue
-		}
-		// Send fileSiaPath to the file workers
-		select {
-		case fileSiaPathChan <- fileSiaPath:
-		case <-r.tg.StopChan():
-			close(fileSiaPathChan)
-			wg.Wait()
-			return errors.AddContext(errs, "renter shutdown")
-		}
-	}
-
-	// Close the chan and wait for the workers to finish
-	close(fileSiaPathChan)
-	wg.Wait()
-	return errs
 }

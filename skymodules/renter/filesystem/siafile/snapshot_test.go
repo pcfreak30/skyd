@@ -45,9 +45,6 @@ func TestSnapshot(t *testing.T) {
 		t.Errorf("numPieces was %v but should be %v",
 			sf.staticMetadata.staticErasureCode.NumPieces(), snap.staticErasureCode.NumPieces())
 	}
-	if !reflect.DeepEqual(sf.staticMetadata.PartialChunks, snap.staticPartialChunks) {
-		t.Errorf("combinedChunks don't match %v %v", sf.staticMetadata.PartialChunks, snap.staticPartialChunks)
-	}
 	if !bytes.Equal(sf.staticMetadata.StaticMasterKey, snap.staticMasterKey.Key()) {
 		t.Error("masterkeys don't match")
 	}

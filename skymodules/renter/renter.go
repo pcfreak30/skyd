@@ -1208,7 +1208,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		if err != nil {
 			return nil, err
 		}
-		go r.threadedUpdateRenterHealth()
+		go r.threadedHealthLoop()
 	}
 
 	// We do not group the staticBubbleScheduler's background thread with the

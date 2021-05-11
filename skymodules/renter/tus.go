@@ -124,7 +124,7 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 	}
 
 	// Create the FileUploadParams
-	extendedSP, err := skymodules.NewSiaPath(sp.String() + skymodules.ExtendedSuffix)
+	extendedSP, err := sp.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}

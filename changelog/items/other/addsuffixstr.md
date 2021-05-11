@@ -1,0 +1,1 @@
+- Add `AddSuffixStr` `SiaPath` method

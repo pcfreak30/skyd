@@ -252,6 +252,8 @@ func (j *jobReadRegistry) callExecute() {
 		build.Critical(err)
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
+		span.LogKV("error", err)
+		j.staticSpan.SetTag("success", false)
 		return
 	}
 	// If both are set, they should match the subscription id.
@@ -262,6 +264,8 @@ func (j *jobReadRegistry) callExecute() {
 			build.Critical(err)
 			sendResponse(nil, err)
 			j.staticQueue.callReportFailure(err)
+			span.LogKV("error", err)
+			j.staticSpan.SetTag("success", false)
 			return
 		}
 	}
@@ -306,7 +310,7 @@ func (j *jobReadRegistry) callExecute() {
 	// Update the performance stats on the queue.
 	jq := j.staticQueue.(*jobReadRegistryQueue)
 	jq.mu.Lock()
-	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobReadRegistryPerformanceDecay)
+	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobReadRegistryPerformanceDecay)
 	jq.mu.Unlock()
 }
 

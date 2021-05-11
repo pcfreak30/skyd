@@ -464,11 +464,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	}
 	numWorkers := len(workers)
 
-	// Sanity check the time it took to distribute the jobs to the worker.
-	if passed := time.Since(startTime); passed > 20*time.Millisecond {
-		build.Critical(fmt.Sprintf("distributing readRegistry jobs took more than 20ms: %v", passed))
-	}
-
 	// If specified, increment numWorkers. This will cause the loop to never
 	// exit without any of the context being closed since the response set won't
 	// be able to read the last response.
@@ -566,6 +561,11 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 // before the timeout. It doesn't stop the update jobs. That's because we want
 // to always make sure we update as many hosts as possble.
 func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) (err error) {
+	// Start tracing.
+	tracer := opentracing.GlobalTracer()
+	span := tracer.StartSpan("managedUpdateRegistry")
+	defer span.Finish()
+
 	// Verify the signature before updating the hosts.
 	if err := srv.Verify(spk.ToPublicKey()); err != nil {
 		return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")
@@ -615,7 +615,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		}
 
 		// Create the job.
-		jrr := worker.newJobUpdateRegistry(updateTimeoutCtx, staticResponseChan, spk, srv)
+		jrr := worker.newJobUpdateRegistry(updateTimeoutCtx, span, staticResponseChan, spk, srv)
 		if !worker.staticJobUpdateRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.

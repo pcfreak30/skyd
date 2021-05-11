@@ -135,17 +135,6 @@ func (n *DirNode) Path() (string, error) {
 	return sd.Path(), nil
 }
 
-// UpdateBubbledMetadata is a wrapper for SiaDir.UpdateBubbledMetadata.
-func (n *DirNode) UpdateBubbledMetadata(md siadir.Metadata) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	sd, err := n.siaDir()
-	if err != nil {
-		return err
-	}
-	return sd.UpdateBubbledMetadata(md)
-}
-
 // UpdateLastHealthCheckTime is a wrapper for SiaDir.UpdateLastHealthCheckTime.
 func (n *DirNode) UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, lastHealthCheckTime time.Time) error {
 	n.mu.Lock()
@@ -658,14 +647,14 @@ func (n *DirNode) childFiles() []*FileNode {
 }
 
 // managedNewSiaFile creates a new SiaFile in the directory.
-func (n *DirNode) managedNewSiaFile(fileName string, source string, ec skymodules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
+func (n *DirNode) managedNewSiaFile(fileName string, source string, ec skymodules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Make sure we don't have a file or folder with that name already.
 	if exists := n.childExists(fileName); exists {
 		return ErrExists
 	}
-	_, err := siafile.New(filepath.Join(n.absPath(), fileName+skymodules.SiaFileExtension), source, n.staticWal, ec, mk, fileSize, fileMode, nil, disablePartialUpload)
+	_, err := siafile.New(filepath.Join(n.absPath(), fileName+skymodules.SiaFileExtension), source, n.staticWal, ec, mk, fileSize, fileMode)
 	return errors.AddContext(err, "NewSiaFile: failed to create file")
 }
 

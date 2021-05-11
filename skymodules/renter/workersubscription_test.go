@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
@@ -630,7 +631,8 @@ func TestSubscriptionNotifications(t *testing.T) {
 	// affecting the cache.
 	update := func(spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
 		c := make(chan *jobUpdateRegistryResponse, 1)
-		j := wt.newJobUpdateRegistry(context.Background(), c, spk, rv)
+		span := opentracing.GlobalTracer().StartSpan(t.Name())
+		j := wt.newJobUpdateRegistry(context.Background(), span, c, spk, rv)
 		_, err = j.managedUpdateRegistry()
 		return err
 	}

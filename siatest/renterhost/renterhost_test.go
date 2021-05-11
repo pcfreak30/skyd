@@ -13,6 +13,7 @@ import (
 
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 	"go.sia.tech/siad/crypto"
@@ -49,18 +50,28 @@ func TestSession(t *testing.T) {
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+	rag, err := renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	contract := cs.ViewAll()[0]
-
+	contract := rag.Contracts[0]
 	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// shut down the renter to prevent it from updating contracts.
+	if err := tg.RemoveNode(renter); err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually open the contract set.
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,11 +88,32 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// check merkle root of contract
+	sc, ok := cs.Acquire(contract.ID)
+	if !ok {
+		t.Fatal("contract not found")
+	}
+	if sc.LastRevision().NewFileMerkleRoot != root {
+		t.Fatal("wrong root")
+	}
+	cs.Return(sc)
 	// upload another sector, to test Merkle proofs
-	_, _, err = s.Append(sector)
+	_, root2, err := s.Append(sector)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// check merkle root of contract
+	sc, ok = cs.Acquire(contract.ID)
+	if !ok {
+		t.Fatal("contract not found")
+	}
+	tree := crypto.NewCachedTree(1)
+	tree.Push(root)
+	tree.Push(root2)
+	if sc.LastRevision().NewFileMerkleRoot != tree.Root() {
+		t.Fatal("wrong root")
+	}
+	cs.Return(sc)
 
 	// download the sector
 	_, dsector, err := s.ReadSection(root, 0, uint32(len(sector)))
@@ -186,20 +218,35 @@ func TestHostLockTimeout(t *testing.T) {
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+	rag, err := renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	contract := cs.ViewAll()[0]
-
-	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
+	rc := rag.Contracts[0]
+	hhg, err := renter.HostDbHostsGet(rc.HostPublicKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cg, err := renter.ConsensusGet()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// shut down the renter to prevent it from updating contracts.
+	if err := tg.RemoveNode(renter); err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually open the contract set.
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contract, ok := cs.View(rc.ID)
+	if !ok {
+		t.Fatal("contract not found")
 	}
 
 	// Begin an RPC session. This will lock the contract.
@@ -241,7 +288,10 @@ func TestHostLockTimeout(t *testing.T) {
 	go func() {
 		// NOTE: the ContractSet uses a local mutex to serialize RPCs, so this
 		// test requires a separate ContractSet.
-		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+		// NOTE: we need a special dependency here since the cloned contract set
+		// won't have the wal txn that contains the latest revision. So we force
+		// it to accept the revision presented by the host without a panic.
+		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, &dependencies.DependencyAcceptHostRevision{})
 		if err != nil {
 			errCh <- err
 			return
@@ -307,18 +357,28 @@ func TestHostBaseRPCPrice(t *testing.T) {
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+	rag, err := renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	contract := cs.ViewAll()[0]
-
+	contract := rag.Contracts[0]
 	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// shut down the renter to prevent it from updating contracts.
+	if err := tg.RemoveNode(renter); err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually open the contract set.
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,18 +437,28 @@ func TestMultiRead(t *testing.T) {
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	rl := ratelimit.NewRateLimit(0, 0, 0)
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
+	rag, err := renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	contract := cs.ViewAll()[0]
-
+	contract := rag.Contracts[0]
 	hhg, err := renter.HostDbHostsGet(contract.HostPublicKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// shut down the renter to prevent it from updating contracts.
+	if err := tg.RemoveNode(renter); err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually open the contract set.
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
