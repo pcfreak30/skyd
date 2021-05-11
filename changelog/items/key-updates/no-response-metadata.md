@@ -1,0 +1,2 @@
+- don't return the response metadata when downloading skylinks anymore
+- change priceperms to be set in hastings instead of a currency string
