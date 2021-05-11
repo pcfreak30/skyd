@@ -2126,7 +2126,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 		FileMode:    os.FileMode(0640),
 		Filename:    "b/file3.txt",
 		ContentType: "text/plain; charset=utf-8",
-		Offset:      0,
+		Offset:      uint64(len(dataFile1) + len(dataFile2)),
 		Len:         uint64(len(dataFile3)),
 	}
 	if !reflect.DeepEqual(mdF3, mdF3Expected) {

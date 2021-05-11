@@ -576,6 +576,10 @@ func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 // cleanup required. This can include returning reserved memory and releasing
 // the chunk from the map of active chunks in the chunk heap.
 func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
+	uc.cancelMU.Lock()
+	canceled := uc.canceled
+	uc.cancelMU.Unlock()
+
 	uc.mu.Lock()
 	piecesAvailable := 0
 	var memoryReleased uint64
@@ -620,7 +624,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
 	released := uc.released
-	canceled := uc.canceled
 	if chunkComplete && !released {
 		if uc.piecesCompleted >= uc.staticPiecesNeeded {
 			r.staticRepairLog.Printf("Completed repair for chunk %v of %s, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.staticPiecesNeeded)
