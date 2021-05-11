@@ -380,23 +380,16 @@ func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) err
 
 	// Fetch the header and reader for the Skylink
 	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylinkStr)
-	header, reader, err := c.getReaderResponse(getQuery)
+	_, reader, err := c.getReaderResponse(getQuery)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch skylink data")
 	}
 	defer drainAndClose(reader)
 
 	// Read the SkyfileMetadata
-	var sm skymodules.SkyfileMetadata
-	strMetadata := header.Get("Skynet-File-Metadata")
-	if strMetadata == "" {
-		return errors.AddContext(err, "no skyfile metadata returned")
-	}
-
-	// Unmarshal the metadata so we can check for subFiles
-	err = json.Unmarshal([]byte(strMetadata), &sm)
+	sm, err := c.SkynetMetadataGet(skylinkStr)
 	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal skyfile metadata")
+		return errors.AddContext(err, "unable to fetch metadata")
 	}
 
 	// If there are no subFiles then we have all the information we need to

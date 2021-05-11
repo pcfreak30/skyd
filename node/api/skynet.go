@@ -1573,6 +1573,16 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Decrypt it if necessary.
+	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
+	if encrypted {
+		_, err = api.renter.DecryptBaseSector(baseSector)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to decrypt base sector: %v", err)}, http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Parse it.
 	_, _, _, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {

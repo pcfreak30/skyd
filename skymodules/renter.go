@@ -1126,6 +1126,12 @@ type Renter interface {
 	// nil, the backup will be encrypted using the provided secret.
 	CreateBackup(dst string, secret []byte) error
 
+	// DecryptBaseSector attempts to decrypt the baseSector. If it has the
+	// necessary Skykey, it will decrypt the baseSector in-place. It returns the
+	// file-specific skykey to be used for decrypting the rest of the associated
+	// skyfile.
+	DecryptBaseSector(baseSector []byte) (skykey.Skykey, error)
+
 	// LoadBackup loads the siafiles of a previously created backup into the
 	// renter. If the backup is encrypted, secret will be used to decrypt it.
 	// Otherwise the argument is ignored.

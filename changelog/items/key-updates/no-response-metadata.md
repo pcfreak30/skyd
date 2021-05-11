@@ -1,2 +1,3 @@
 - don't return the response metadata when downloading skylinks anymore
+- removed no-response-metadata query param
 - change priceperms to be set in hastings instead of a currency string
