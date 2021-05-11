@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -198,6 +199,7 @@ type SafeContract struct {
 	// applied to the contract file.
 	unappliedTxns []*unappliedWalTxn
 
+	staticDeps       modules.Dependencies
 	staticHeaderFile *os.File
 	staticWal        *writeaheadlog.WAL
 	mu               sync.Mutex
@@ -753,9 +755,9 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// Our current revision should always be signed. If it isn't, we have no
 	// choice but to accept the host's revision.
 	if len(c.header.Transaction.TransactionSignatures) == 0 {
-		c.header.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
-		c.header.Transaction.TransactionSignatures = sigs
-		return nil
+		err := errors.New("renter has unsigned revision, this should never happen")
+		build.Critical(err)
+		return err
 	}
 
 	ourRev := c.header.LastRevision()
@@ -803,8 +805,38 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				if err := c.applySetHeader(u.Header); err != nil {
 					return err
 				}
+
+				// pluck the refcounter and setRoot updates from the WAL txn as
+				// well.
+				for _, u := range t.Updates {
+					switch u.Name {
+					case updateNameSetHeader:
+						// do nothing - we already applied a new version of this update
+					case updateNameSetRoot:
+						var sru updateSetRoot
+						if err := encoding.Unmarshal(u.Instructions, &sru); err != nil {
+							return err
+						}
+						if err := c.applySetRoot(sru.Root, sru.Index); err != nil {
+							return err
+						}
+					case updateNameRCWriteAt:
+						if err := c.applyRefCounterUpdate(u); err != nil {
+							return errors.AddContext(err, "failed to apply refcounter update")
+						}
+						if err := c.staticRC.callUpdateApplied(); err != nil {
+							build.Critical(err)
+							return err
+						}
+					default:
+						build.Critical("unexpected update", u.Name)
+					}
+				}
+				// Sync header.
 				if err := c.staticHeaderFile.Sync(); err != nil {
-					return err
+					// If syncing to disk fails, panic to avoid further
+					// corruption.
+					panic(err)
 				}
 				// drop all unapplied transactions
 				if err := c.clearUnappliedTxns(); err != nil {
@@ -815,20 +847,25 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 		}
 	}
 
-	// The host's revision is still different, and we have no unapplied
-	// transactions containing their revision. At this point, the best we can do
-	// is accept their revision. This isn't ideal, but at least there's no
-	// security risk, since we *did* sign the revision that the host is
-	// claiming. Worst case, certain contract metadata (e.g. UploadSpending)
-	// will be incorrect.
-	c.header.Transaction.FileContractRevisions[0] = rev
-	c.header.Transaction.TransactionSignatures = sigs
-
 	// Drop the WAL transactions, since they can't conceivably help us.
 	if err := c.clearUnappliedTxns(); err != nil {
 		return errors.AddContext(err, "failed to clear unapplied txns")
 	}
-	return nil
+
+	// Under certain conditions in testing we want to ignore the fact that we
+	// can't fix the mismatch and simply accept the host's revision.
+	if c.staticDeps.Disrupt("AcceptHostRevision") {
+		c.header.Transaction.FileContractRevisions[0] = rev
+		c.header.Transaction.TransactionSignatures = sigs
+		return nil
+	}
+
+	// If we reach this point, we are corrupting our on-disk state. That's
+	// because we are only updating the revision on disk without fetching the
+	// roots.
+	err := errors.New("revision mismatch unfixable")
+	build.Critical(err)
+	return err
 }
 
 // managedInsertContract inserts a contract into the set in an ACID fashion
@@ -920,6 +957,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	sc := &SafeContract{
 		header:           h,
 		merkleRoots:      merkleRoots,
+		staticDeps:       cs.staticDeps,
 		staticHeaderFile: headerFile,
 		staticWal:        cs.staticWal,
 		staticRC:         rc,
@@ -1033,6 +1071,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		header:           header,
 		merkleRoots:      merkleRoots,
 		unappliedTxns:    unappliedTxns,
+		staticDeps:       cs.staticDeps,
 		staticHeaderFile: headerFile,
 		staticWal:        cs.staticWal,
 		staticRC:         rc,

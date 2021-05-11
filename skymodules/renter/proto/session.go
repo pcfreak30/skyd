@@ -318,16 +318,6 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 		req.NewMissedProofValues[i] = o.Value
 	}
 
-	// record the change we are about to make to the contract. If we lose power
-	// mid-revision, this allows us to restore either the pre-revision or
-	// post-revision contract.
-	//
-	// TODO: update this for non-local root storage
-	walTxn, err := sc.managedRecordRootUpdates(rev, rootUpdates, storagePrice, bandwidthPrice)
-	if err != nil {
-		return skymodules.RenterContract{}, err
-	}
-
 	defer func() {
 		// Increase Successful/Failed interactions accordingly
 		if err != nil {
@@ -372,8 +362,19 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 		return skymodules.RenterContract{}, errors.New("invalid Merkle proof for new root")
 	}
 
-	// update the revision, sign it, and send it
+	// If the proof was correct, update the revision's root.
 	rev.NewFileMerkleRoot = newRoot
+
+	// record the change we are about to make to the contract. If we lose power
+	// mid-revision, this allows us to restore either the pre-revision or
+	// post-revision contract.
+	//
+	walTxn, err := sc.managedRecordRootUpdates(rev, rootUpdates, storagePrice, bandwidthPrice)
+	if err != nil {
+		return skymodules.RenterContract{}, err
+	}
+
+	// , sign it, and send it
 	txn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{rev},
 		TransactionSignatures: []types.TransactionSignature{
@@ -408,8 +409,9 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 			u.GoodForUpload = false // Stop uploading to such a host immediately.
 			u.LastOOSErr = s.height
 			err = errors.Compose(err, sc.UpdateUtility(u))
+			err = errors.AddContext(err, "marking host as !gfu becaue it ran out of storage")
 		}
-		return skymodules.RenterContract{}, errors.AddContext(err, "marking host as not good for upload because the host is out of storage")
+		return skymodules.RenterContract{}, errors.AddContext(err, "failed to read host's signature")
 	}
 	txn.TransactionSignatures[1].Signature = hostSig.Signature
 
