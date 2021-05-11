@@ -118,7 +118,7 @@ type RenterPerformance struct {
 	ChunkUploadStats      *DistributionTrackerStats
 	RegistryReadStats     *DistributionTrackerStats
 	RegistryWriteStats    *DistributionTrackerStats
-	StreamBufferStats     *DistributionTrackerStats
+	StreamBufferReadStats *DistributionTrackerStats
 }
 
 // RenterStats is a struct which tracks key metrics in a single renter. This

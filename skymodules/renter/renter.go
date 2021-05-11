@@ -809,7 +809,7 @@ func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 		ChunkUploadStats:      r.staticChunkUploadStats.Stats(),
 		RegistryReadStats:     r.staticRegReadStats.Stats(),
 		RegistryWriteStats:    r.staticRegWriteStats.Stats(),
-		StreamBufferStats:     r.staticStreamBufferStats.Stats(),
+		StreamBufferReadStats: r.staticStreamBufferStats.Stats(),
 	}, nil
 }
 
