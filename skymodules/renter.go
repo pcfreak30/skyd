@@ -116,8 +116,9 @@ type RenterPerformance struct {
 
 	BaseSectorUploadStats *DistributionTrackerStats
 	ChunkUploadStats      *DistributionTrackerStats
-	RegistryReadStats     RegistryStats
+	RegistryReadStats     *DistributionTrackerStats
 	RegistryWriteStats    *DistributionTrackerStats
+	StreamBufferStats     *DistributionTrackerStats
 }
 
 // RenterStats is a struct which tracks key metrics in a single renter. This
@@ -616,23 +617,6 @@ type MemoryManagerStatus struct {
 	PriorityBase      uint64 `json:"prioritybase"`
 	PriorityRequested uint64 `json:"priorityrequested"`
 	PriorityReserve   uint64 `json:"priorityreserve"`
-}
-
-// RegistryStats is some registry related information returned by the renter.
-type RegistryStats struct {
-	ReadProjectP99   time.Duration `json:"readprojectp99"`
-	ReadProjectP999  time.Duration `json:"readprojectp999"`
-	ReadProjectP9999 time.Duration `json:"readprojectp9999"`
-}
-
-// ToMS adjusts all stats in the RegistryStats object to milliseconds and
-// returns a new stats object.
-func (rs RegistryStats) ToMS() RegistryStats {
-	// Adjust stats from nanoseconds to milliseconds.
-	rs.ReadProjectP99 /= time.Millisecond
-	rs.ReadProjectP999 /= time.Millisecond
-	rs.ReadProjectP9999 /= time.Millisecond
-	return rs
 }
 
 // Add combines two MemoryManagerStatus objects into one.

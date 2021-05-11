@@ -142,9 +142,10 @@ type (
 		ChunkUpload15mP9999ms    float64 `json:"chunkupload15mp9999ms"`
 
 		// Registry performance stats, unit is given in milliseconds.
-		RegistryRead15mP99ms   float64 `json:"registryread15mp99ms"`
-		RegistryRead15mP999ms  float64 `json:"registryread15mp999ms"`
-		RegistryRead15mP9999ms float64 `json:"registryread15mp9999ms"`
+		RegistryRead15mDataPoints float64 `json:"registryread15mdatapoints"`
+		RegistryRead15mP99ms      float64 `json:"registryread15mp99ms"`
+		RegistryRead15mP999ms     float64 `json:"registryread15mp999ms"`
+		RegistryRead15mP9999ms    float64 `json:"registryread15mp9999ms"`
 
 		// Registry performance stats, unit is given in milliseconds.
 		RegistryWrite15mDataPoints float64 `json:"registrywrite15mdatapoints"`
@@ -1371,9 +1372,10 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		ChunkUpload15mP999ms:     float64(renterPerf.ChunkUploadStats.Nines[0][2]) / float64(time.Millisecond),
 		ChunkUpload15mP9999ms:    float64(renterPerf.ChunkUploadStats.Nines[0][3]) / float64(time.Millisecond),
 
-		RegistryRead15mP99ms:   float64(renterPerf.RegistryReadStats.ReadProjectP99) / float64(time.Millisecond),
-		RegistryRead15mP999ms:  float64(renterPerf.RegistryReadStats.ReadProjectP999) / float64(time.Millisecond),
-		RegistryRead15mP9999ms: float64(renterPerf.RegistryReadStats.ReadProjectP9999) / float64(time.Millisecond),
+		RegistryRead15mDataPoints: renterPerf.RegistryReadStats.TotalDataPoints[0],
+		RegistryRead15mP99ms:      float64(renterPerf.RegistryReadStats.Nines[0][1]) / float64(time.Millisecond),
+		RegistryRead15mP999ms:     float64(renterPerf.RegistryReadStats.Nines[0][2]) / float64(time.Millisecond),
+		RegistryRead15mP9999ms:    float64(renterPerf.RegistryReadStats.Nines[0][3]) / float64(time.Millisecond),
 
 		RegistryWrite15mDataPoints: renterPerf.RegistryWriteStats.TotalDataPoints[0],
 		RegistryWrite15mP99ms:      float64(renterPerf.RegistryWriteStats.Nines[0][1]) / float64(time.Millisecond),

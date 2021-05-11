@@ -184,7 +184,7 @@ func (rrs *readResponseSet) responsesLeft() int {
 // as secondBest. If we find a valid secondBest we use that timing, otherwise we
 // stick to the best. That way we get the fastest response for the best entry
 // even if an update caused a slow worker to be considered best at first.
-func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
+func (r *Renter) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
 	responseCtx, responseCancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
 	defer responseCancel()
 
@@ -336,7 +336,7 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 
 	// The error is ignored since it only returns an error if the measurement is
 	// outside of the 5 minute bounds the stats were created with.
-	_ = rs.AddDatum(d)
+	r.staticRegReadStats.AddDataPoint(d)
 }
 
 // ReadRegistry starts a registry lookup on all available workers. The jobs have
@@ -477,14 +477,14 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Add the response set to the stats after this method is done.
 	defer func() {
 		_ = r.tg.Launch(func() {
-			r.staticRRS.threadedAddResponseSet(r.tg.StopCtx(), startTime, responseSet, r.staticLog)
+			r.threadedAddResponseSet(r.tg.StopCtx(), startTime, responseSet, r.staticLog)
 			backgroundCancel()
 		})
 	}()
 
-	// Further restrict the input timeout using historical data.
-	// We use the first estimate returned here which is p99.
-	estimate := r.staticRRS.Estimate()[0]
+	// Use the p999 of the registry read stats to determine the timeout.
+	nines := r.staticRegReadStats.AllNines()
+	estimate := nines[0][2]
 	if estimate < minRegistryReadTimeout {
 		estimate = minRegistryReadTimeout
 	}

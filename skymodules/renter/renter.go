@@ -259,10 +259,11 @@ type Renter struct {
 	statsMu   sync.Mutex
 
 	// various performance stats
-	staticRRS                   *readRegistryStats
-	staticRegWriteStats         *skymodules.DistributionTracker
 	staticBaseSectorUploadStats *skymodules.DistributionTracker
 	staticChunkUploadStats      *skymodules.DistributionTracker
+	staticRegReadStats          *skymodules.DistributionTracker
+	staticRegWriteStats         *skymodules.DistributionTracker
+	staticStreamBufferStats     *skymodules.DistributionTracker
 
 	// Memory management
 	//
@@ -800,19 +801,15 @@ func (r *Renter) OldContracts() []skymodules.RenterContract {
 // Performance is a function call that returns all of the performacne
 // information about the renter.
 func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
-	regReadStats, err := r.RegistryStats()
-	if err != nil {
-		return skymodules.RenterPerformance{}, errors.AddContext(err, "unable to fetch registry stats")
-	}
-
 	healthDuration := time.Duration(atomic.LoadUint64(&r.atomicSystemHealthScanDuration))
 	return skymodules.RenterPerformance{
 		SystemHealthScanDuration: healthDuration,
 
 		BaseSectorUploadStats: r.staticBaseSectorUploadStats.Stats(),
 		ChunkUploadStats:      r.staticChunkUploadStats.Stats(),
-		RegistryReadStats:     regReadStats,
+		RegistryReadStats:     r.staticRegReadStats.Stats(),
 		RegistryWriteStats:    r.staticRegWriteStats.Stats(),
+		StreamBufferStats:     r.staticStreamBufferStats.Stats(),
 	}, nil
 }
 
@@ -830,20 +827,6 @@ func (r *Renter) RecoverableContracts() []skymodules.RecoverableContract {
 // refreshed
 func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 	return r.staticHostContractor.RefreshedContract(fcid)
-}
-
-// RegistryStats returns some registry related information.
-func (r *Renter) RegistryStats() (skymodules.RegistryStats, error) {
-	if err := r.tg.Add(); err != nil {
-		return skymodules.RegistryStats{}, err
-	}
-	defer r.tg.Done()
-	estimates := r.staticRRS.Estimate()
-	return skymodules.RegistryStats{
-		ReadProjectP99:   estimates[0],
-		ReadProjectP999:  estimates[1],
-		ReadProjectP9999: estimates[2],
-	}, nil
 }
 
 // Settings returns the Renter's current settings.
@@ -1137,20 +1120,17 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
-	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
+	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
+	r.staticRegReadStats.AddDataPoint(2 * time.Second) // Seed the stats so that startup doesn't say 0.
 	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
 	r.staticRegWriteStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
 	r.staticBaseSectorUploadStats = skymodules.NewDistributionTrackerStandard()
 	r.staticBaseSectorUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
 	r.staticChunkUploadStats = skymodules.NewDistributionTrackerStandard()
 	r.staticChunkUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
+	r.staticStreamBufferStats = skymodules.NewDistributionTrackerStandard()
+	r.staticStreamBufferStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
 	close(r.staticUploadHeap.pauseChan)
-
-	// Seed the rrs.
-	err = r.staticRRS.AddDatum(readRegistryStatsSeed)
-	if err != nil {
-		return nil, err
-	}
 
 	// Init the spending history.
 	sh, err := NewSpendingHistory(r.persistDir, skymodules.SkynetSpendingHistoryFilename)
