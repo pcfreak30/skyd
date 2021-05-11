@@ -539,7 +539,11 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey
 	}
 
 	// Try to download the file behind the skylink.
-	fetchedData, metadata, err := r.SkynetSkylinkGet(skylink)
+	fetchedData, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +616,11 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 	}
 
 	// Try to download the file behind the skylink.
-	fetchedData, metadata, err := r.SkynetSkylinkGet(skylink)
+	fetchedData, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}

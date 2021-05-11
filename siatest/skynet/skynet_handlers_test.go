@@ -169,7 +169,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 	re := regexp.MustCompile(`Redirect:###(.*)###`)
 	// Run the tests.
 	for _, test := range subTests {
-		_, _, err := r.SkynetSkylinkGet(test.Skylink)
+		_, err = r.SkynetSkylinkGet(test.Skylink)
 		if err == nil && test.ExpectedError != "" {
 			t.Fatalf("%s failed: expected error '%s', got '%+v'\n", test.Name, test.ExpectedError, err)
 		}

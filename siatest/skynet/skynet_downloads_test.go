@@ -797,7 +797,7 @@ func TestSkynetSlowDownload(t *testing.T) {
 
 	// Verify we can download the file
 	start := time.Now()
-	_, _, err = r.SkynetSkylinkGet(skylink)
+	_, err = r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -821,7 +821,7 @@ func fileMapFromFiles(tfs []siatest.TestFile) fileMap {
 // verifyDownloadRaw is a helper function that downloads the content for the
 // given skylink and verifies the response data and response headers.
 func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expectedData []byte, expectedMetadata skymodules.SkyfileMetadata, testName string) error {
-	data, metadata, err := r.SkynetSkylinkGet(skylink)
+	data, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		return err
 	}
@@ -832,6 +832,10 @@ func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expect
 		t.Log("actual   data: ")
 		siatest.PrintJSON(data)
 		return errors.New("Unexpected data")
+	}
+	metadata, err := r.SkynetMetadataGet(skylink)
+	if err != nil {
+		return err
 	}
 	if !reflect.DeepEqual(metadata, expectedMetadata) {
 		t.Log("Test:", testName)
@@ -847,7 +851,7 @@ func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expect
 // download the file using the `concat` format to be able to compare the data
 // without it having to be an archive.
 func verifyDownloadDirectory(t *testing.T, r *siatest.TestNode, skylink string, expectedData []byte, expectedMetadata skymodules.SkyfileMetadata, testName string) error {
-	data, metadata, err := r.SkynetSkylinkConcatGet(skylink)
+	data, err := r.SkynetSkylinkConcatGet(skylink)
 	if err != nil {
 		return err
 	}
@@ -857,10 +861,14 @@ func verifyDownloadDirectory(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log("actual   data: ", data)
 		return errors.New("Unexpected data")
 	}
+	metadata, err := r.SkynetMetadataGet(skylink)
+	if err != nil {
+		return err
+	}
 	if !reflect.DeepEqual(metadata, expectedMetadata) {
 		t.Log("Test:", testName)
-		t.Log("expected metadata: ", expectedMetadata)
-		t.Log("actual   metadata: ", metadata)
+		t.Logf("expected metadata: %+v\n", expectedMetadata)
+		t.Logf("actual   metadata: %+v\n", metadata)
 		return errors.New("Unexpected metadata")
 	}
 	return nil
@@ -896,22 +904,6 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return fmt.Errorf("unexpected 'Content-Type' header, expected 'application/zip' actual '%v'", ct)
 	}
 
-	var md skymodules.SkyfileMetadata
-	mdStr := header.Get("Skynet-File-Metadata")
-	if mdStr != "" {
-		err = json.Unmarshal([]byte(mdStr), &md)
-		if err != nil {
-			return errors.AddContext(err, "could not unmarshal metadata")
-		}
-	}
-
-	if !reflect.DeepEqual(md, expectedMetadata) {
-		t.Log("Test:", testName)
-		t.Log("expected:", expectedMetadata)
-		t.Log("actual  :", md)
-		return errors.New("Unexpected metadata")
-	}
-
 	// tar
 	header, reader, err = r.SkynetSkylinkTarReaderGet(skylink)
 	if err != nil {
@@ -934,21 +926,6 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	ct = header.Get("Content-type")
 	if ct != "application/x-tar" {
 		return fmt.Errorf("unexpected 'Content-Type' header, expected 'application/x-tar' actual '%v'", ct)
-	}
-
-	mdStr = header.Get("Skynet-File-Metadata")
-	if mdStr != "" {
-		err = json.Unmarshal([]byte(mdStr), &md)
-		if err != nil {
-			return errors.AddContext(err, "could not unmarshal metadata")
-		}
-	}
-
-	if !reflect.DeepEqual(md, expectedMetadata) {
-		t.Log("Test:", testName)
-		t.Log("expected:", expectedMetadata)
-		t.Log("actual  :", md)
-		return errors.New("Unexpected metadata")
 	}
 
 	// tar gz
@@ -978,19 +955,15 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return fmt.Errorf("unexpected 'Content-Type' header, expected 'application/gzip' actual '%v'", ct)
 	}
 
-	mdStr = header.Get("Skynet-File-Metadata")
-	if mdStr != "" {
-		err = json.Unmarshal([]byte(mdStr), &md)
-		if err != nil {
-			return errors.AddContext(err, "could not unmarshal metadata")
-		}
+	metadata, err := r.SkynetMetadataGet(skylink)
+	if err != nil {
+		return err
 	}
-	if !reflect.DeepEqual(md, expectedMetadata) {
+	if !reflect.DeepEqual(metadata, expectedMetadata) {
 		t.Log("Test:", testName)
-		t.Log("expected:", expectedMetadata)
-		t.Log("actual  :", md)
+		t.Logf("expected metadata: %+v\n", expectedMetadata)
+		t.Logf("actual   metadata: %+v\n", metadata)
 		return errors.New("Unexpected metadata")
 	}
-
 	return nil
 }
