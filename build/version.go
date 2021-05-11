@@ -12,9 +12,16 @@ const (
 	// later if we choose. For example appending the version string with the HEAD
 	// commit hash.
 	MaxEncodedVersionLength = 100
+)
 
-	// Version is the current version of siad.
-	Version = "1.5.6"
+var (
+	// BinaryName is the name of the node binary. It is supplied at compile
+	// time via ldflags.
+	BinaryName string = "unknown"
+
+	// NodeVersion is the current version of the node software. It is
+	// supplied at compile time via ldflags.
+	NodeVersion string = "?.?.?"
 )
 
 // ReleaseTag contains the release tag, such as "rc3". It is supplied at build

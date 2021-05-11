@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
+	siaapi "go.sia.tech/siad/node/api"
+	"go.sia.tech/siad/types"
 )
 
 // hostEstimateScoreGET handles the POST request to /host/estimatescore and
@@ -53,7 +53,7 @@ func hostEstimateScoreGET(host modules.Host, renter skymodules.Renter, w http.Re
 		EphemeralAccountExpiry:     settings.EphemeralAccountExpiry,
 		MaxEphemeralAccountBalance: settings.MaxEphemeralAccountBalance,
 
-		Version: build.Version,
+		Version: build.NodeVersion,
 	}
 	entry := skymodules.HostDBEntry{}
 	entry.PublicKey = host.PublicKey()

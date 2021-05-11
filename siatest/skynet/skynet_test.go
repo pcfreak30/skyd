@@ -22,11 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -39,6 +34,11 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/host/registry"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 // TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
@@ -904,7 +904,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify it contains the node's version information
-	expected := build.Version
+	expected := build.NodeVersion
 	if build.ReleaseTag != "" {
 		expected += "-" + build.ReleaseTag
 	}
@@ -4556,7 +4556,7 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 			{
 				Address:  addr,
 				Amount:   types.SiacoinPrecision, // $1
-				Currency: modules.CurrencyUSD,
+				Currency: skymodules.CurrencyUSD,
 			},
 		},
 	}
@@ -4813,7 +4813,7 @@ func TestSkynetFeePaid(t *testing.T) {
 
 	// Create a new renter that thinks the wallet's address is the fee address.
 	rt := node.RenterTemplate
-	deps := &dependencies.DependencyCustomNebulousAddress{}
+	deps := &dependencies.DependencyCustomSkynetAddress{}
 	deps.SetAddress(wag.Address)
 	rt.RenterDeps = deps
 	nodes, err := tg.AddNodes(rt)

@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"go.sia.tech/siad/persist"
 )
 
 // TestSkynetSkylinkHandlerGET tests the behaviour of SkynetSkylinkHandlerGET

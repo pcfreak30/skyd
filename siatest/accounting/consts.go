@@ -3,8 +3,8 @@ package accounting
 import (
 	"os"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"go.sia.tech/siad/persist"
 )
 
 // accountingTestDir creates a temporary testing directory for accounting tests.

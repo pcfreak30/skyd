@@ -3,8 +3,8 @@ package skynet
 import (
 	"os"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"go.sia.tech/siad/persist"
 )
 
 // skynetTestDir creates a temporary testing directory for a skynet test. This

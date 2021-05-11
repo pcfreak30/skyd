@@ -11,8 +11,8 @@ import (
 	"io"
 
 	"github.com/klauspost/reedsolomon"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/crypto"
 )
 
 var (

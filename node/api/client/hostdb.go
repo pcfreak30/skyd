@@ -3,9 +3,9 @@ package client
 import (
 	"encoding/json"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/types"
 )
 
 // HostDbGet requests the /hostdb endpoint's resources.

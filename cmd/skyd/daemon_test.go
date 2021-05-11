@@ -29,16 +29,14 @@ func TestUnitProcessModules(t *testing.T) {
 		in  string
 		out string
 	}{
-		{"cghmrtweaf", "cghmrtweaf"},
-		{"CGHMRTWEAF", "cghmrtweaf"},
+		{"cghmrtwea", "cghmrtwea"},
+		{"CGHMRTWEA", "cghmrtwea"},
 		{"a", "a"},
 		{"A", "a"},
 		{"c", "c"},
 		{"C", "c"},
 		{"e", "e"},
 		{"E", "e"},
-		{"f", "f"},
-		{"F", "f"},
 		{"g", "g"},
 		{"G", "g"},
 		{"h", "h"},
@@ -54,12 +52,11 @@ func TestUnitProcessModules(t *testing.T) {
 		{"gateway", "g"},
 		{"consensus", "gc"},
 		{"tpool", "gct"},
-		{"wallet", "gctwaf"},
-		{"renter", "gctwafr"},
-		{"host", "gctwafh"},
-		{"miner", "gctwafm"},
-		{"feemanager", "gctwaf"},
-		{"accounting", "gctwaf"},
+		{"wallet", "gctwa"},
+		{"renter", "gctwar"},
+		{"host", "gctwah"},
+		{"miner", "gctwam"},
+		{"accounting", "gctwa"},
 		{"explorer", "gce"},
 	}
 	for _, testVal := range testVals {
