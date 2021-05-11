@@ -3338,9 +3338,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 ### Response Body
 
@@ -3436,9 +3434,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 ### JSON Response
 > JSON Response Example
@@ -3488,9 +3484,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 **root** | bool\
 If the siapath should reference the root of the renter's filesystem.
@@ -3793,12 +3787,6 @@ returned. Currently, we support the following values:
 If the format is not specified, and the skylink points at a directory, we
 default to the zip format and the contents will be downloaded as a zip archive.
 
-**no-response-metadata** | string  
-If 'no-response-metadata' is set to true, the API will not return the metadata
-in the "Skynet-File-Metadata" response header. This might be useful in cases
-where the metadata is not used, or where the size of the response header is
-proving to be an issue.
-
 **include-layout** | string  
 If 'include-layout' is set to true, the API will return the layout in the
 "Skynet-File-Layout" response header. In most cases the layout is not needed for
@@ -3820,9 +3808,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 ### Response Header
 

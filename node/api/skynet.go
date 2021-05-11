@@ -222,12 +222,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -487,12 +482,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -597,17 +587,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// Parse the `no-response-metadata` query string parameter.
-	var noResponseMetadata bool
-	noResponseMetadataStr := queryForm.Get("no-response-metadata")
-	if noResponseMetadataStr != "" {
-		noResponseMetadata, err = strconv.ParseBool(noResponseMetadataStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'no-response-metadata' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-
 	// Parse the `include-layout` query string parameter.
 	var includeLayout bool
 	includeLayoutStr := queryForm.Get("include-layout")
@@ -640,12 +619,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -844,12 +818,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	w.Header().Set("Content-Disposition", cdh)
 
-	// Set the Skynet-File-Metadata
-	includeMetadata := !noResponseMetadata
-	if includeMetadata {
-		w.Header().Set("Skynet-File-Metadata", string(streamer.RawMetadata()))
-	}
-
 	// Declare a function for monetizing a writer.
 	monetize := func(w io.Writer) io.Writer {
 		return newMonetizedWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
@@ -951,12 +919,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -1584,12 +1547,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
