@@ -16,6 +16,18 @@ import (
 
 var errNoSkykeyMatchesSkyfileEncryptionID = errors.New("Unable to find matching skykey for public ID encryption")
 
+// DecryptBaseSector attempts to decrypt the baseSector. If it has the
+// necessary Skykey, it will decrypt the baseSector in-place. It returns the
+// file-specific skykey to be used for decrypting the rest of the associated
+// skyfile.
+func (r *Renter) DecryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
+	defer r.tg.Done()
+	return r.managedDecryptBaseSector(baseSector)
+}
+
 // managedCheckSkyfileEncryptionIDMatch tries to find a Skykey that can decrypt
 // the identifier and be used for decrypting the associated skyfile. It returns
 // an error if it is not found.
