@@ -805,12 +805,11 @@ func (c *Client) RenterWorkersSortedGet(sorted bool) (wps skymodules.WorkerPoolS
 
 // RenterBubblePost uses the /renter/bubble endpoint to manually trigger an
 // update to the directories metadata.
-func (c *Client) RenterBubblePost(siaPath skymodules.SiaPath, force, recursive bool) (err error) {
+func (c *Client) RenterBubblePost(siaPath skymodules.SiaPath, recursive bool) (err error) {
 	rootsiapath := siaPath.IsRoot()
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("siapath", sp)
-	values.Set("force", strconv.FormatBool(force))
 	values.Set("recursive", strconv.FormatBool(recursive))
 	values.Set("rootsiapath", strconv.FormatBool(rootsiapath))
 	err = c.post("/renter/bubble", values.Encode(), nil)

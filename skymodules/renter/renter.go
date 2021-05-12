@@ -230,13 +230,11 @@ type Renter struct {
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []skymodules.HostDBEntry
 
-	// staticBubbleScheduler manages the bubble requests for the renter
-	staticBubbleScheduler *bubbleScheduler
-
-	// cachedUtilities contain contract information used when calculating metadata
-	// information about the filesystem, such as health. This information is used
-	// in various functions such as listing filesystem information and bubble.
-	// These values are cached to prevent recomputing them too often.
+	// cachedUtilities contain contract information used when calculating
+	// metadata information about the filesystem, such as health. This
+	// information is used in various functions such as listing filesystem
+	// information and updating directory metadata.  These values are cached to
+	// prevent recomputing them too often.
 	cachedUtilities cachedUtilities
 
 	// staticBatchManager manages batching skyfile uploads for the Renter.
@@ -278,6 +276,7 @@ type Renter struct {
 	staticAccountManager               *accountManager
 	staticAlerter                      *modules.GenericAlerter
 	staticConsensusSet                 modules.ConsensusSet
+	staticDirUpdateBatcher             *dirUpdateBatcher
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
 	staticGateway                      modules.Gateway
@@ -1102,15 +1101,15 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+	var err error
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
 	close(r.staticUploadHeap.pauseChan)
 
 	// Seed the rrs.
-	err := r.staticRRS.AddDatum(readRegistryStatsSeed)
+	err = r.staticRRS.AddDatum(readRegistryStatsSeed)
 	if err != nil {
 		return nil, err
 	}
@@ -1142,6 +1141,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	if err := r.tg.AfterStop(r.staticRepairLog.Close); err != nil {
 		return nil, err
+	}
+
+	// Initialize the dirUpdateBatcher.
+	r.staticDirUpdateBatcher, err = r.newDirUpdateBatcher()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new health update batcher")
 	}
 
 	// Initialize some of the components.
@@ -1210,11 +1215,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		}
 		go r.threadedHealthLoop()
 	}
-
-	// We do not group the staticBubbleScheduler's background thread with the
-	// threads disabled by "DisableRepairAndHealthLoops" so that manual calls to
-	// for bubble updates are processed.
-	go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
 
 	// Initialize the batch manager
 	r.newSkylinkBatchManager()

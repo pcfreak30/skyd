@@ -111,7 +111,7 @@ func (r *Renter) Upload(up skymodules.FileUploadParams) error {
 	//
 	// Queue a bubble to bubble the directory, ignore the return channel as we do
 	// not want to block on this update.
-	_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
+	r.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 
 	// Create nil maps for offline and goodForRenew to pass in to
 	// callBuildAndPushChunks. These maps are used to determine the health of

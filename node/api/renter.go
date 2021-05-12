@@ -356,15 +356,6 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// Parse the 'force' parameter
-	force := false
-	if f := req.FormValue("force"); f != "" {
-		force, err = scanBool(f)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
 	// Parse the 'recursive' parameter
 	recursive := false
 	if r := req.FormValue("recursive"); r != "" {
@@ -375,8 +366,8 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// Call bubble
-	err = api.renter.BubbleMetadata(siaPath, force, recursive)
+	// Update the corresponding metadata.
+	err = api.renter.UpdateMetadata(siaPath, recursive)
 	if err != nil {
 		WriteError(w, Error{"unable to bubble directory: " + err.Error()}, http.StatusInternalServerError)
 		return

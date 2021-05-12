@@ -898,7 +898,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// This test relies on state from the previous tests. Make sure we are
 	// starting from a place of updated metadata
-	err := r.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+	err := r.RenterBubblePost(skymodules.RootSiaPath(), true)
 	if err != nil {
 		t.Error(err)
 	}
@@ -996,7 +996,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Make sure that the filesystem is being updated
 		if tries%10 == 0 {
-			err = r.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+			err = r.RenterBubblePost(skymodules.RootSiaPath(), true)
 			if err != nil {
 				return err
 			}
@@ -1058,7 +1058,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Make sure that the filesystem is being updated
 		if tries%10 == 0 {
-			err = r.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+			err = r.RenterBubblePost(skymodules.RootSiaPath(), true)
 			if err != nil {
 				return err
 			}
