@@ -4,8 +4,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/persist"
 )
 
 // TestDirUpdateBatcherQueue verifies the callQueueDirUpdate method of the
