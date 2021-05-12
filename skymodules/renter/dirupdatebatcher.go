@@ -105,6 +105,13 @@ type (
 
 // managedExecute will execute a batch of updates.
 func (batch *dirUpdateBatch) managedExecute() {
+	start := time.Now()
+	dirs := 0
+	defer func() {
+		str := fmt.Sprintf("dirupdatebatch completed %v dirs in %v", dirs, time.Since(start))
+		batch.dirUpdateBatchDeps.renter.staticLog.Println(str, "dirupdatebatcher")
+	}()
+
 	// iterate through the batchSet backwards.
 	for i := len(batch.batchSet) - 1; i >= 0; i-- {
 		for dirPath := range batch.batchSet[i] {
@@ -113,15 +120,16 @@ func (batch *dirUpdateBatch) managedExecute() {
 			err := batch.managedUpdateDirMetadata(dirPath) // passes through to the renter except during testing
 			if err != nil {
 				str := fmt.Sprintf("error updating directory %v in dirUpdateBatch.execute: %v", dirPath, err)
-				batch.dirUpdateBatchDeps.renter.staticLog.Println(str, "health-verbose", "dirupdatebatcher")
+				batch.dirUpdateBatchDeps.renter.staticLog.Println(str, "health-verbose", "dirupdatebatcher", "error")
 				continue
 			}
+			dirs++ // Increment after the error.
 
 			// Add the parent.
 			if !dirPath.IsRoot() {
 				parent, err := dirPath.Dir()
 				if err != nil {
-					build.Critical("should not be getting an error when grabbing the dir of a non-root siadir:", dirPath, err)
+					batch.dirUpdateBatchDeps.renter.staticLog.Critical("should not be getting an error when grabbing the dir of a non-root siadir:", dirPath, err)
 				}
 				batch.batchSet[i-1][parent] = struct{}{}
 			}
