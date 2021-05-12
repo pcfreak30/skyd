@@ -5,7 +5,7 @@ import (
 
 	"errors"
 
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/types"
 )
 
 // scanAmount scans a types.Currency from a string.

@@ -13,10 +13,10 @@ import (
 
 	"github.com/vbauerster/mpb/v5"
 	"github.com/vbauerster/mpb/v5/decor"
-	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/node/api"
+	"go.sia.tech/siad/types"
 )
 
 // abs returns the absolute representation of a path.

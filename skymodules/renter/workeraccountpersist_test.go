@@ -6,10 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -17,6 +13,10 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 // newRandomAccountPersistence is a helper function that returns an
@@ -309,7 +309,7 @@ func testAccountCompatV150Basic(t *testing.T, rt *renterTester) {
 	}
 
 	// create a renter
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &modules.ProductionDependencies{})
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &skymodules.SkynetDependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +403,7 @@ func testAccountCompatV150_TmpFileExistsWithClean(t *testing.T, rt *renterTester
 	}
 
 	// create a renter
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &modules.ProductionDependencies{})
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, skymodules.RenterDir), &skymodules.SkynetDependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}

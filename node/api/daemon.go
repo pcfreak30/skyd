@@ -10,11 +10,11 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/profile"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 type (
@@ -247,7 +247,7 @@ func (api *API) daemonStopProfileHandlerPOST(w http.ResponseWriter, _ *http.Requ
 
 // daemonVersionHandler handles the API call that requests the daemon's version.
 func (api *API) daemonVersionHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	version := build.Version
+	version := build.NodeVersion
 	if build.ReleaseTag != "" {
 		version += "-" + build.ReleaseTag
 	}

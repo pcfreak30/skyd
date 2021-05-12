@@ -3,8 +3,8 @@ package daemon
 import (
 	"os"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"go.sia.tech/siad/persist"
 )
 
 // daemonTestDir creates a temporary testing directory for daemon tests. This

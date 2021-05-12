@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/persist"
 )
 
 // newRootDir creates a root directory for the test and removes old test files

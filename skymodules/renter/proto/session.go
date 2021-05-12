@@ -16,11 +16,11 @@ import (
 	"gitlab.com/NebulousLabs/log"
 	"gitlab.com/NebulousLabs/ratelimit"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // sessionDialTimeout determines how long a Session will try to dial a host

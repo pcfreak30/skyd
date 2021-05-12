@@ -10,9 +10,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
 )
 
 // fileData is a small helper for reading and returning the data from a file.

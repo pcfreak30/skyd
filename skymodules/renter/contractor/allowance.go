@@ -4,8 +4,8 @@ import (
 	"errors"
 	"reflect"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/types"
 )
 
 var (

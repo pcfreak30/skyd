@@ -13,9 +13,9 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/types"
 )
 
 type (

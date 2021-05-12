@@ -18,15 +18,15 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 var (
@@ -965,7 +965,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{"unable to parse usdConversionRate: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-		settings.CurrencyConversionRates[modules.CurrencyUSD] = usdConversionRate
+		settings.CurrencyConversionRates[skymodules.CurrencyUSD] = usdConversionRate
 	}
 
 	// Parse monetization base.

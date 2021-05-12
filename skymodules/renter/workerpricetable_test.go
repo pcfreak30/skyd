@@ -8,13 +8,13 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // TestUpdatePriceTableHostHeightLeeway verifies the worker will verify the
@@ -154,7 +154,7 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	deps.Disable()
 
 	// create a new worker tester
-	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.SkydProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}

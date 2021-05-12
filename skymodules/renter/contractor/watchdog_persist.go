@@ -3,8 +3,8 @@ package contractor
 import (
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/types"
 )
 
 // watchdogPersist defines what watchdog data persists across sessions.

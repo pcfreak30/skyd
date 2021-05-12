@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"

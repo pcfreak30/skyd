@@ -3,8 +3,8 @@ package hosttree
 import (
 	"math/big"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/types"
 )
 
 // ScoreBreakdown is an interface that allows us to mock the hostAdjustments
