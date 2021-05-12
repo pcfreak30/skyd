@@ -128,7 +128,7 @@ go test -v -race -tags='testing debug' -timeout=300s ./persist -run=Test
 === RUN   TestRelativePathSafeFile
 --- PASS: TestRelativePathSafeFile (0.00s)
 PASS
-ok  	gitlab.com/NebulousLabs/Sia/persist	1.485s
+ok  	go.sia.tech/siad/persist	1.485s
 $
 ``` 
 

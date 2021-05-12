@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/persist"
 )
 
 // TestSiadConfigPersistCompat confirms that the compat code for the writebps

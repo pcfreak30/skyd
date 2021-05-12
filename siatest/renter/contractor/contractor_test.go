@@ -9,10 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/sync"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -23,6 +19,10 @@ import (
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/sync"
+	"go.sia.tech/siad/types"
 )
 
 // test is a helper struct for running subtests when tests can use the same test
@@ -2254,14 +2254,22 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	}
 	r := nodes[0]
 
+	// Upload some data to make sure the contracts are not empty. Empty
+	// contracts won't cause the alert to have level critical.
+	_, _, err = r.UploadNewFileBlocking(100, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// The daemon shouldn't have any alerts besides the 3 testing alerts per
-	// module.
+	// module and a potential alert for the uploaded file which might have had
+	// it's health bubbled.
 	dag, err := r.DaemonAlertsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dag.Alerts) != 12 {
-		t.Fatal("number of alerts is not 0", len(dag.Alerts))
+	if len(dag.Alerts) != 12 && len(dag.Alerts) != 13 {
+		t.Fatal("number of alerts is not 12 or 13", len(dag.Alerts))
 	}
 
 	// Mine blocks to force contract renewal
@@ -2271,11 +2279,25 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	}
 
 	// Check for alert
-	expectedAlert := modules.Alert{
-		Severity: modules.SeverityCritical,
-		Cause:    "2 out of 2 renewals failed - number of total gfr contracts is 2 - see contractor.log for details",
-		Msg:      contractor.AlertMSGFailedContractRenewal,
-		Module:   "contractor",
+	expectedAlert := func() modules.Alert {
+		rag, err := r.RenterAllContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		gfrContracts := 0
+		gfrData := 0
+		for _, contract := range rag.Contracts {
+			if contract.GoodForRenew {
+				gfrContracts++
+				gfrData += int(contract.Size)
+			}
+		}
+		return modules.Alert{
+			Severity: modules.SeverityCritical,
+			Cause:    fmt.Sprintf("%v out of %v renewals failed (%v bytes out of %v) - number of total gfr contracts is 2 - see contractor.log for details", gfrContracts, gfrContracts, gfrData, gfrData),
+			Msg:      contractor.AlertMSGFailedContractRenewal,
+			Module:   "contractor",
+		}
 	}
 	m := tg.Miners()[0]
 	numTries := 0
@@ -2294,7 +2316,7 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 			return err
 		}
 		for _, alert := range dag.Alerts {
-			if alert.EqualsWithErrorCause(expectedAlert, expectedAlert.Cause) {
+			if alert.EqualsWithErrorCause(expectedAlert(), expectedAlert().Cause) {
 				return nil
 			}
 		}
@@ -2324,7 +2346,7 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 			return err
 		}
 		for _, alert := range dag.Alerts {
-			if alert.EqualsWithErrorCause(expectedAlert, expectedAlert.Cause) {
+			if alert.EqualsWithErrorCause(expectedAlert(), expectedAlert().Cause) {
 				return errors.New("alert is registered")
 			}
 		}
@@ -2376,7 +2398,7 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 			return err
 		}
 		for _, alert := range dag.Alerts {
-			if alert.EqualsWithErrorCause(expectedAlert, expectedAlert.Cause) {
+			if alert.EqualsWithErrorCause(expectedAlert(), expectedAlert().Cause) {
 				return nil
 			}
 		}
@@ -2406,7 +2428,7 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 			return err
 		}
 		for _, alert := range dag.Alerts {
-			if alert.EqualsWithErrorCause(expectedAlert, expectedAlert.Cause) {
+			if alert.EqualsWithErrorCause(expectedAlert(), expectedAlert().Cause) {
 				return errors.New("alert is registered")
 			}
 		}
@@ -2735,7 +2757,7 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   1,
+		Hosts:   2,
 		Renters: 0,
 		Miners:  1,
 	}
@@ -2814,7 +2836,7 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 	// Check for alert
 	expectedAlert := modules.Alert{
 		Severity: modules.SeverityError,
-		Cause:    "1 out of 1 renewals failed - number of total gfr contracts is 1 - see contractor.log for details",
+		Cause:    "2 out of 2 renewals failed (0 bytes out of 0) - number of total gfr contracts is 2 - see contractor.log for details",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
 	}

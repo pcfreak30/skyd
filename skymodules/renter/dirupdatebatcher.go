@@ -23,6 +23,7 @@ package renter
 // mind if the batcher seems to be causing issues in production.
 
 import (
+	"container/list"
 	"fmt"
 	"sync"
 	"time"
@@ -82,7 +83,7 @@ type (
 		// updates are certain to have completed, even if those updates were
 		// submitted to previous batches.
 		completeChan      chan struct{}
-		priorCompleteChan chan struct{}
+		priorCompleteChan <-chan struct{}
 
 		// Contains a renter, and also has some dependency injection logic.
 		dirUpdateBatchDeps
@@ -103,8 +104,15 @@ type (
 	}
 )
 
-// execute will execute a batch of updates.
-func (batch *dirUpdateBatch) execute() {
+// managedExecute will execute a batch of updates.
+func (batch *dirUpdateBatch) managedExecute() {
+	start := time.Now()
+	dirs := 0
+	defer func() {
+		str := fmt.Sprintf("dirupdatebatch completed %v dirs in %v", dirs, time.Since(start))
+		batch.dirUpdateBatchDeps.renter.staticLog.Println(str, "dirupdatebatcher")
+	}()
+
 	// iterate through the batchSet backwards.
 	for i := len(batch.batchSet) - 1; i >= 0; i-- {
 		for dirPath := range batch.batchSet[i] {
@@ -112,15 +120,17 @@ func (batch *dirUpdateBatch) execute() {
 			// the file healths themselves, we just use the file metadata.
 			err := batch.managedUpdateDirMetadata(dirPath) // passes through to the renter except during testing
 			if err != nil {
-				// TODO: Verbose log?
+				str := fmt.Sprintf("error updating directory %v in dirUpdateBatch.execute: %v", dirPath, err)
+				batch.dirUpdateBatchDeps.renter.staticLog.Println(str, "health-verbose", "dirupdatebatcher", "error")
 				continue
 			}
+			dirs++ // Increment after the error.
 
 			// Add the parent.
 			if !dirPath.IsRoot() {
 				parent, err := dirPath.Dir()
 				if err != nil {
-					build.Critical("should not be getting an error when grabbing the dir of a non-root siadir:", dirPath, err)
+					batch.dirUpdateBatchDeps.renter.staticLog.Critical("should not be getting an error when grabbing the dir of a non-root siadir:", dirPath, err)
 				}
 				batch.batchSet[i-1][parent] = struct{}{}
 			}
@@ -182,7 +192,7 @@ func (dub *dirUpdateBatcher) callFlush() {
 }
 
 // newBatch returns a new dirUpdateBatch ready for use.
-func (dub *dirUpdateBatcher) newBatch(priorCompleteChan chan struct{}) *dirUpdateBatch {
+func (dub *dirUpdateBatcher) newBatch(priorCompleteChan <-chan struct{}) *dirUpdateBatch {
 	return &dirUpdateBatch{
 		completeChan:      make(chan struct{}),
 		priorCompleteChan: priorCompleteChan,
@@ -202,7 +212,7 @@ func (dub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 			dub.mu.Lock()
 			dub.closed = true
 			dub.mu.Unlock()
-			dub.nextBatch.execute()
+			dub.nextBatch.managedExecute()
 			return
 		case <-dub.staticFlushChan:
 		case <-time.After(maxTimeBetweenBatchExecutions):
@@ -215,9 +225,8 @@ func (dub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 		batch := dub.nextBatch
 		dub.nextBatch = dub.newBatch(batch.priorCompleteChan)
 		dub.mu.Unlock()
-
 		// Execute the batch now that we aren't blocking anymore.
-		batch.execute()
+		batch.managedExecute()
 	}
 }
 
@@ -256,11 +265,13 @@ func (r *Renter) UpdateMetadata(siaPath skymodules.SiaPath, recursive bool) erro
 	}
 	defer r.tg.Done()
 
-	// TODO: change this to a list.
-	dirPaths := []skymodules.SiaPath{siaPath}
-	for len(dirPaths) > 0 {
-		siaPath := dirPaths[0]
-		dirPaths = dirPaths[1:]
+	// Use a list to track all of the siapaths we want.
+	dirPaths := list.New()
+	dirPaths.PushBack(siaPath)
+	for dirPaths.Front() != nil {
+		e := dirPaths.Front()
+		dirPaths.Remove(e)
+		siaPath := e.Value.(skymodules.SiaPath)
 		err := r.managedUpdateFilesInDir(siaPath)
 		if err != nil {
 			context := fmt.Sprintf("unable to update the metadata of the files in dir %v", siaPath)
@@ -280,7 +291,9 @@ func (r *Renter) UpdateMetadata(siaPath skymodules.SiaPath, recursive bool) erro
 			context := fmt.Sprintf("unable to load list of subdirs for %v", siaPath)
 			return errors.AddContext(err, context)
 		}
-		dirPaths = append(dirPaths, subDirPaths...)
+		for _, subDir := range subDirPaths {
+			dirPaths.PushBack(subDir)
+		}
 	}
 
 	// Block until all updates are represented in the root aggregate metadata.

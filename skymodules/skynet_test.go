@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 // monetizationTestReader is a helper that allows for deterministically testing

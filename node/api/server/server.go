@@ -17,13 +17,13 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // A Server is a collection of siad modules that can be communicated with over
@@ -176,7 +176,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		}
 
 		// Create the api for the server.
-		api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		srv := &Server{
 			api: api,
 			apiServer: &http.Server{
@@ -237,7 +237,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 
 		// Server wasn't shut down. Add node and replace skymodules.
 		srv.node = n
-		api.SetModules(n.Accounting, n.ConsensusSet, n.Explorer, n.FeeManager, n.Gateway, n.Host, n.Miner, n.Renter, n.TransactionPool, n.Wallet)
+		api.SetModules(n.Accounting, n.ConsensusSet, n.Explorer, n.Gateway, n.Host, n.Miner, n.Renter, n.TransactionPool, n.Wallet)
 		return srv, nil
 	}()
 	if err != nil {

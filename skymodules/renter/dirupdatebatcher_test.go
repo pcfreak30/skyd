@@ -1,9 +1,11 @@
 package renter
 
 import (
+	"io/ioutil"
 	"testing"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/persist"
 )
 
 // TestDirUpdateBatcherQueue verifies the callQueueDirUpdate method of the
@@ -13,9 +15,12 @@ func TestDirUpdateBatcherQueue(t *testing.T) {
 	dub := new(dirUpdateBatcher)
 	dub.nextBatch = new(dirUpdateBatch)
 	dub.nextBatch.completeChan = make(chan struct{})
-	dub.nextBatch.priorCompleteChan = make(chan struct{})
-	close(dub.nextBatch.priorCompleteChan)
+	priorChan := make(chan struct{})
+	close(priorChan)
+	dub.nextBatch.priorCompleteChan = priorChan
 	dub.nextBatch.dirUpdateBatchDeps.renter = new(Renter)
+	logger, err := persist.NewLogger(ioutil.Discard)
+	dub.nextBatch.dirUpdateBatchDeps.renter.staticLog = logger
 	dub.nextBatch.dirUpdateBatchDeps.executeTracker.executedDirs = make(map[skymodules.SiaPath]struct{})
 	dub.nextBatch.dirUpdateBatchDeps.executeTracker.lastDepth = 10e3
 	depthFive, err := skymodules.NewSiaPath("one/two/three/four/five")
@@ -151,7 +156,7 @@ func TestDirUpdateBatcherQueue(t *testing.T) {
 	// Set up the dependency injection to track calls to execute, then call
 	// execute and verify that everything we wanted got called.
 	dub.nextBatch.dirUpdateBatchDeps.testSwitch = "testExecute"
-	dub.nextBatch.execute()
+	dub.nextBatch.managedExecute()
 	executedDirs := dub.nextBatch.dirUpdateBatchDeps.executeTracker.executedDirs
 	if len(executedDirs) != 13 {
 		t.Error("wrong number of directories executed")

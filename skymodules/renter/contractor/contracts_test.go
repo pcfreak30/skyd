@@ -3,9 +3,9 @@ package contractor
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
 )
 
 // TestPubkeysToContractIDMap tests updating the contractor's

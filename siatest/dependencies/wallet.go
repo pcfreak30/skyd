@@ -1,6 +1,6 @@
 package dependencies
 
-import "gitlab.com/NebulousLabs/Sia/modules"
+import "go.sia.tech/siad/modules"
 
 // DependencyUnsyncedConsensus makes the consensus set appear unsynced
 type DependencyUnsyncedConsensus struct {

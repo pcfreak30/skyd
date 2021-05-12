@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/eventials/go-tus"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/node"
@@ -19,6 +17,8 @@ import (
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 )
 
 // TestSkynetTUSUploader runs all skynetTUSUploader related tests.

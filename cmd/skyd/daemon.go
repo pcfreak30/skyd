@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -83,25 +83,22 @@ func processModules(modules string) (string, error) {
 	case "tpool":
 		return "gct", nil
 	case "wallet":
-		// Add Accounting and FeeManager modules to all nodes that have at least
-		// a wallet
-		return "gctwaf", nil
+		// Add Accounting module to all nodes that have at least a wallet
+		return "gctwa", nil
 	case "renter":
-		return "gctwafr", nil
+		return "gctwar", nil
 	case "host":
-		return "gctwafh", nil
+		return "gctwah", nil
 	case "miner":
-		return "gctwafm", nil
-	case "feemanager":
-		return "gctwaf", nil
+		return "gctwam", nil
 	case "accounting":
-		return "gctwaf", nil
+		return "gctwa", nil
 	case "explorer":
 		return "gce", nil
 	}
 
 	// Check module letters provided
-	validModules := "acghmrtwef"
+	validModules := "acghmrtwe"
 	invalidModules := modules
 	for _, m := range validModules {
 		invalidModules = strings.Replace(invalidModules, string(m), "", 1)
@@ -155,7 +152,7 @@ func loadAPIPassword(config Config) (_ Config, err error) {
 
 // printVersionAndRevision prints the daemon's version and revision numbers.
 func printVersionAndRevision() {
-	fmt.Println("Skynet daemon v" + build.Version)
+	fmt.Println("Skynet daemon v" + build.NodeVersion)
 	if build.GitRevision == "" {
 		fmt.Println("WARN: compiled without build commit or version. To compile correctly, please use the makefile")
 	} else {

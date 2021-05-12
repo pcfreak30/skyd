@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/types"
 )
 
 const (
