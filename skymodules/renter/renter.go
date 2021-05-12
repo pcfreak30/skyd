@@ -1102,10 +1102,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticTPool:          tpool,
 	}
 	var err error
-	r.staticDirUpdateBatcher, err = r.newDirUpdateBatcher()
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to create new health update batcher")
-	}
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
@@ -1145,6 +1141,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	if err := r.tg.AfterStop(r.staticRepairLog.Close); err != nil {
 		return nil, err
+	}
+
+	// Initialize the dirUpdateBatcher.
+	r.staticDirUpdateBatcher, err = r.newDirUpdateBatcher()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new health update batcher")
 	}
 
 	// Initialize some of the components.
