@@ -1554,6 +1554,9 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
+	// Set the Skylink response header
+	w.Header().Set("Skynet-Skylink", skylink.String())
+
 	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {

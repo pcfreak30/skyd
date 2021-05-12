@@ -196,9 +196,13 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, error) {
 
 // SkynetMetadataGet uses the /skynet/metadata endpoint to fetch a skylink's
 // metadata.
-func (c *Client) SkynetMetadataGet(skylink string) (sm skymodules.SkyfileMetadata, err error) {
-	err = c.get(fmt.Sprintf("/skynet/metadata/%s", skylink), &sm)
-	return
+func (c *Client) SkynetMetadataGet(skylink string) (_ http.Header, sm skymodules.SkyfileMetadata, _ error) {
+	header, body, err := c.getRawResponse(fmt.Sprintf("/skynet/metadata/%s", skylink))
+	if err != nil {
+		return nil, skymodules.SkyfileMetadata{}, err
+	}
+	err = json.Unmarshal(body, &sm)
+	return header, sm, err
 }
 
 // SkynetSkylinkRange uses the /skynet/skylink endpoint to download a range from
@@ -387,7 +391,7 @@ func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) err
 	defer drainAndClose(reader)
 
 	// Read the SkyfileMetadata
-	sm, err := c.SkynetMetadataGet(skylinkStr)
+	_, sm, err := c.SkynetMetadataGet(skylinkStr)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch metadata")
 	}

@@ -543,7 +543,7 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata, err := r.SkynetMetadataGet(skylink)
+	_, metadata, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -620,7 +620,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata, err := r.SkynetMetadataGet(skylink)
+	_, metadata, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
