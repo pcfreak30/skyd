@@ -160,7 +160,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata, err := r.SkynetMetadataGet(skylink)
+	h, metadata, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,9 +175,12 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if metadata.Filename != filename {
 		t.Error("bad filename")
 	}
+	if skylink != h.Get("Skynet-Skylink") {
+		t.Fatal("skylink mismatch")
+	}
 
 	// Fetch the links metadata and compare it. Should match.
-	metadata2, err := r.SkynetMetadataGet(skylink)
+	h2, metadata2, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,6 +188,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Log(metadata)
 		t.Log(metadata2)
 		t.Fatal("metadata doesn't match")
+	}
+	if skylink != h2.Get("Skynet-Skylink") {
+		t.Fatal("skylink mismatch")
 	}
 
 	// Try to download the file explicitly using the ReaderGet method with the
@@ -407,7 +413,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata, err = r.SkynetMetadataGet(emptySkylink)
+	h3, metadata, err := r.SkynetMetadataGet(emptySkylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,6 +422,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if metadata.Length != 0 {
 		t.Fatal("Unexpected metadata")
+	}
+	if emptySkylink != h3.Get("Skynet-Skylink") {
+		t.Fatal("skylink mismatch")
 	}
 
 	// Upload another skyfile, this time ensure that the skyfile is more than
@@ -734,7 +743,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Expected download of empty file to succeed")
 	}
-	md, err := r.SkynetMetadataGet(skylink)
+	_, md, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -760,7 +769,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		// Try to download the file behind the skylink.
-		fileMetadata, err := r.SkynetMetadataGet(skylink)
+		_, fileMetadata, err := r.SkynetMetadataGet(skylink)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2085,7 +2094,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata, err := r.SkynetMetadataGet(skylink)
+	_, metadata, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3718,7 +3727,7 @@ func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to upload a single file.", err)
 	}
-	metadata, err := r.SkynetMetadataGet(skylink)
+	_, metadata, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4232,7 +4241,7 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	md, err := r.SkynetMetadataGet(skylink)
+	_, md, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4247,7 +4256,7 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	md, err = r.SkynetMetadataGet(skylink)
+	_, md, err = r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4266,7 +4275,7 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Download the whole thing.
-	md, err = r.SkynetMetadataGet(skylink)
+	_, md, err = r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4293,7 +4302,7 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
 	}
-	md, err = r.SkynetMetadataGet(sshp.Skylink)
+	_, md, err = r.SkynetMetadataGet(sshp.Skylink)
 	if err != nil {
 		t.Fatal(err)
 	}

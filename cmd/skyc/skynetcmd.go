@@ -508,7 +508,7 @@ func skynetPin(skylink string, siaPath skymodules.SiaPath) (string, error) {
 	}()
 
 	// Get the SkyfileMetadata.
-	sm, err := httpClient.SkynetMetadataGet(skylink)
+	_, sm, err := httpClient.SkynetMetadataGet(skylink)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to fetch skyfile metadata")
 	}

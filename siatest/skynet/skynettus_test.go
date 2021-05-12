@@ -83,7 +83,7 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 		if err != nil {
 			return err
 		}
-		sm, err := r.SkynetMetadataGet(skylink)
+		_, sm, err := r.SkynetMetadataGet(skylink)
 		if err != nil {
 			return err
 		}

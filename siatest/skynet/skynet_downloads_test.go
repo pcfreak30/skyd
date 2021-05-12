@@ -184,7 +184,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 		DisableDefaultPath: false,
 	}
 
-	md, err := r.SkynetMetadataGet(skylink)
+	_, md, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	md, err := r.SkynetMetadataGet(skylink)
+	_, md, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
