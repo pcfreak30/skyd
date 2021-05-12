@@ -82,7 +82,7 @@ type (
 		// updates are certain to have completed, even if those updates were
 		// submitted to previous batches.
 		completeChan      chan struct{}
-		priorCompleteChan chan struct{}
+		priorCompleteChan <-chan struct{}
 
 		// Contains a renter, and also has some dependency injection logic.
 		dirUpdateBatchDeps
@@ -182,7 +182,7 @@ func (dub *dirUpdateBatcher) callFlush() {
 }
 
 // newBatch returns a new dirUpdateBatch ready for use.
-func (dub *dirUpdateBatcher) newBatch(priorCompleteChan chan struct{}) *dirUpdateBatch {
+func (dub *dirUpdateBatcher) newBatch(priorCompleteChan <-chan struct{}) *dirUpdateBatch {
 	return &dirUpdateBatch{
 		completeChan:      make(chan struct{}),
 		priorCompleteChan: priorCompleteChan,
