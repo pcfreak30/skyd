@@ -103,8 +103,8 @@ type (
 	}
 )
 
-// execute will execute a batch of updates.
-func (batch *dirUpdateBatch) execute() {
+// managedExecute will execute a batch of updates.
+func (batch *dirUpdateBatch) managedExecute() {
 	// iterate through the batchSet backwards.
 	for i := len(batch.batchSet) - 1; i >= 0; i-- {
 		for dirPath := range batch.batchSet[i] {
@@ -112,7 +112,8 @@ func (batch *dirUpdateBatch) execute() {
 			// the file healths themselves, we just use the file metadata.
 			err := batch.managedUpdateDirMetadata(dirPath) // passes through to the renter except during testing
 			if err != nil {
-				// TODO: Verbose log?
+				str := fmt.Sprintf("error updating directory %v in dirUpdateBatch.execute: %v", dirPath, err)
+				batch.dirUpdateBatchDeps.renter.staticLog.Println(str, "health-verbose", "dirupdatebatcher")
 				continue
 			}
 
@@ -202,7 +203,7 @@ func (dub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 			dub.mu.Lock()
 			dub.closed = true
 			dub.mu.Unlock()
-			dub.nextBatch.execute()
+			dub.nextBatch.managedExecute()
 			return
 		case <-dub.staticFlushChan:
 		case <-time.After(maxTimeBetweenBatchExecutions):
@@ -215,9 +216,8 @@ func (dub *dirUpdateBatcher) threadedExecuteBatchUpdates() {
 		batch := dub.nextBatch
 		dub.nextBatch = dub.newBatch(batch.priorCompleteChan)
 		dub.mu.Unlock()
-
 		// Execute the batch now that we aren't blocking anymore.
-		batch.execute()
+		batch.managedExecute()
 	}
 }
 
