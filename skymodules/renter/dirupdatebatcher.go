@@ -23,6 +23,7 @@ package renter
 // mind if the batcher seems to be causing issues in production.
 
 import (
+	"container/list"
 	"fmt"
 	"sync"
 	"time"
@@ -264,11 +265,13 @@ func (r *Renter) UpdateMetadata(siaPath skymodules.SiaPath, recursive bool) erro
 	}
 	defer r.tg.Done()
 
-	// TODO: change this to a list.
-	dirPaths := []skymodules.SiaPath{siaPath}
-	for len(dirPaths) > 0 {
-		siaPath := dirPaths[0]
-		dirPaths = dirPaths[1:]
+	// Use a list to track all of the siapaths we want.
+	dirPaths := list.New()
+	dirPaths.PushBack(siaPath)
+	for dirPaths.Front() != nil {
+		e := dirPaths.Front()
+		dirPaths.Remove(e)
+		siaPath := e.Value.(skymodules.SiaPath)
 		err := r.managedUpdateFilesInDir(siaPath)
 		if err != nil {
 			context := fmt.Sprintf("unable to update the metadata of the files in dir %v", siaPath)
@@ -288,7 +291,9 @@ func (r *Renter) UpdateMetadata(siaPath skymodules.SiaPath, recursive bool) erro
 			context := fmt.Sprintf("unable to load list of subdirs for %v", siaPath)
 			return errors.AddContext(err, context)
 		}
-		dirPaths = append(dirPaths, subDirPaths...)
+		for _, subDir := range subDirPaths {
+			dirPaths.PushBack(subDir)
+		}
 	}
 
 	// Block until all updates are represented in the root aggregate metadata.
