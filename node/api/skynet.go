@@ -108,7 +108,6 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-<<<<<<< HEAD
 		NumCritAlerts int `json:"numcritalerts"`
 
 		// The amount of computational time that it takes the health loop to
@@ -1199,30 +1198,29 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	}
 
 	WriteJSON(w, &SkynetStatsGET{
-<<<<<<< HEAD
 		NumCritAlerts: len(critAlerts),
 
-		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.TotalDataPoints[0],
+		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.DataPoints[0],
 		BaseSectorUpload15mP99ms:      float64(renterPerf.BaseSectorUploadStats.Nines[0][1]) / float64(time.Millisecond),
 		BaseSectorUpload15mP999ms:     float64(renterPerf.BaseSectorUploadStats.Nines[0][2]) / float64(time.Millisecond),
 		BaseSectorUpload15mP9999ms:    float64(renterPerf.BaseSectorUploadStats.Nines[0][3]) / float64(time.Millisecond),
 
-		ChunkUpload15mDataPoints: renterPerf.ChunkUploadStats.TotalDataPoints[0],
+		ChunkUpload15mDataPoints: renterPerf.ChunkUploadStats.DataPoints[0],
 		ChunkUpload15mP99ms:      float64(renterPerf.ChunkUploadStats.Nines[0][1]) / float64(time.Millisecond),
 		ChunkUpload15mP999ms:     float64(renterPerf.ChunkUploadStats.Nines[0][2]) / float64(time.Millisecond),
 		ChunkUpload15mP9999ms:    float64(renterPerf.ChunkUploadStats.Nines[0][3]) / float64(time.Millisecond),
 
-		RegistryRead15mDataPoints: renterPerf.RegistryReadStats.TotalDataPoints[0],
+		RegistryRead15mDataPoints: renterPerf.RegistryReadStats.DataPoints[0],
 		RegistryRead15mP99ms:      float64(renterPerf.RegistryReadStats.Nines[0][1]) / float64(time.Millisecond),
 		RegistryRead15mP999ms:     float64(renterPerf.RegistryReadStats.Nines[0][2]) / float64(time.Millisecond),
 		RegistryRead15mP9999ms:    float64(renterPerf.RegistryReadStats.Nines[0][3]) / float64(time.Millisecond),
 
-		RegistryWrite15mDataPoints: renterPerf.RegistryWriteStats.TotalDataPoints[0],
+		RegistryWrite15mDataPoints: renterPerf.RegistryWriteStats.DataPoints[0],
 		RegistryWrite15mP99ms:      float64(renterPerf.RegistryWriteStats.Nines[0][1]) / float64(time.Millisecond),
 		RegistryWrite15mP999ms:     float64(renterPerf.RegistryWriteStats.Nines[0][2]) / float64(time.Millisecond),
 		RegistryWrite15mP9999ms:    float64(renterPerf.RegistryWriteStats.Nines[0][3]) / float64(time.Millisecond),
 
-		StreamBufferRead15mDataPoints: renterPerf.StreamBufferReadStats.TotalDataPoints[0],
+		StreamBufferRead15mDataPoints: renterPerf.StreamBufferReadStats.DataPoints[0],
 		StreamBufferRead15mP99ms:      float64(renterPerf.StreamBufferReadStats.Nines[0][1]) / float64(time.Millisecond),
 		StreamBufferRead15mP999ms:     float64(renterPerf.StreamBufferReadStats.Nines[0][2]) / float64(time.Millisecond),
 		StreamBufferRead15mP9999ms:    float64(renterPerf.StreamBufferReadStats.Nines[0][3]) / float64(time.Millisecond),
