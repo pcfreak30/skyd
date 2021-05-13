@@ -69,25 +69,24 @@ type (
 	Distribution struct {
 		// Determines the decay rate of data in the distribution. Zero value
 		// here means that no decay is applied.
-		StaticHalfLife time.Duration
+		staticHalfLife time.Duration
 
 		// Tracks the last time decay was applied so we know if we need to apply
 		// another round of decay when adding a datapoint.
-		LastDecay time.Time
+		lastDecay time.Time
 
 		// Keeps track of the total amount of time that this distribution has
 		// been alive. This time gets decayed alongside the values, which means
 		// you can get the total rate of objects being added by dividing the
 		// total number of objects by the decayed lifetime.
-		DecayedLifetime time.Duration
-		PreviousUpdate  time.Time
+		decayedLifetime time.Duration
 
 		// Buckets that represent the distribution. The first 64 buckets start
 		// at 4ms and are 4ms spaced apart. The next 48 buckets are spaced 16ms
 		// apart, then the next 48 are spaced 64ms apart, the spacings
 		// multiplying by 4 every 48 buckets. The final bucket is just over an
 		// hour, anything over will be put into that bucket as well.
-		Timings [64 + 48*statsTrackerNumIncrements]float64
+		timings [64 + 48*statsTrackerNumIncrements]float64
 	}
 
 	// StatsTracker will track the performance distribution of a series of
@@ -109,6 +108,36 @@ type (
 	}
 )
 
+// addDecay will decay the distribution.
+func (d *Distribution) addDecay() {
+	// Don't add any decay if the half life is zero.
+	if d.staticHalfLife == 0 {
+		return
+	}
+
+	// Determine if a decay should be applied based on the progression through
+	// the half life. We don't apply any decay if not much time has elapsed
+	// because applying decay over very short periods taxes the precision of the
+	// float64s that we use.
+	sincelastDecay := time.Since(d.lastDecay)
+	decayFrequency := d.staticHalfLife / statsTrackerDecayFrequencyDenom
+	if sincelastDecay < decayFrequency {
+		return
+	}
+
+	// Determine how much decay should be applied.
+	d.decayedLifetime += time.Since(d.lastDecay)
+	strength := float64(sincelastDecay) / float64(d.staticHalfLife)
+	mult := math.Pow(0.5, strength)
+
+	// Apply the decay to all values.
+	for i := 0; i < len(d.timings); i++ {
+		d.timings[i] *= mult
+	}
+	d.decayedLifetime = time.Duration(float64(d.decayedLifetime) * mult)
+	d.lastDecay = time.Now()
+}
+
 // AddDataPoint will add a sampled time to the distribution, performing a decay
 // operation if needed.
 func (d *Distribution) AddDataPoint(dur time.Duration) {
@@ -117,21 +146,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 		build.Critical("cannot call AddDataPoint with negatime timestamp")
 		return
 	}
-
-	sinceLastDecay := time.Since(d.LastDecay)
-	d.DecayedLifetime += time.Since(d.PreviousUpdate)
-	d.PreviousUpdate = time.Now()
-	decayFrequency := d.StaticHalfLife / statsTrackerDecayFrequencyDenom
-	if sinceLastDecay > decayFrequency {
-		// Perform a decay operation.
-		strength := float64(sinceLastDecay) / float64(d.StaticHalfLife)
-		mult := math.Pow(0.5, strength)
-		for i := 0; i < len(d.Timings); i++ {
-			d.Timings[i] *= mult
-		}
-		d.DecayedLifetime = time.Duration(float64(d.DecayedLifetime) * mult)
-		d.LastDecay = time.Now()
-	}
+	d.addDecay()
 
 	// Determine which bucket to add this datapoint to.
 	//
@@ -141,7 +156,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	max := stepSize * 64
 	if dur < max {
 		slot := dur / stepSize
-		d.Timings[slot]++
+		d.timings[slot]++
 		return
 	}
 	for i := 64; i < 64+48*statsTrackerNumIncrements; i += 48 {
@@ -149,11 +164,11 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 		max *= 4
 		if dur < max {
 			slot := int(dur/stepSize) + i - 16
-			d.Timings[slot]++
+			d.timings[slot]++
 			return
 		}
 	}
-	d.Timings[63+48*statsTrackerNumIncrements]++
+	d.timings[63+48*statsTrackerNumIncrements]++
 }
 
 // GetPStat will return the timing at which the percentage of requests is lower
@@ -167,15 +182,15 @@ func (d *Distribution) GetPStat(p float64) time.Duration {
 
 	// Get the total.
 	var total float64
-	for i := 0; i < len(d.Timings); i++ {
-		total += d.Timings[i]
+	for i := 0; i < len(d.timings); i++ {
+		total += d.timings[i]
 	}
 
 	// Count up until we reach p.
 	var run float64
 	var index int
 	for run/total < p && index < 64+48*statsTrackerNumIncrements {
-		run += d.Timings[index]
+		run += d.timings[index]
 		index++
 	}
 
@@ -201,8 +216,8 @@ func (d *Distribution) GetPStat(p float64) time.Duration {
 // distribution.
 func (d *Distribution) TotalDataPoints() float64 {
 	var total float64
-	for i := 0; i < len(d.Timings); i++ {
-		total += d.Timings[i]
+	for i := 0; i < len(d.timings); i++ {
+		total += d.timings[i]
 	}
 	return total
 }
@@ -264,19 +279,16 @@ func (dt *DistributionTracker) Stats() *DistributionTrackerStats {
 // hours, and 30 days.
 func NewDistributionTrackerStandard() *DistributionTracker {
 	d1 := &Distribution{
-		StaticHalfLife: 15 * time.Minute,
-		LastDecay:      time.Now(),
-		PreviousUpdate: time.Now(),
+		staticHalfLife: 15 * time.Minute,
+		lastDecay:      time.Now(),
 	}
 	d2 := &Distribution{
-		StaticHalfLife: 24 * time.Hour,
-		LastDecay:      time.Now(),
-		PreviousUpdate: time.Now(),
+		staticHalfLife: 24 * time.Hour,
+		lastDecay:      time.Now(),
 	}
 	d3 := &Distribution{
-		StaticHalfLife: 30 * 24 * time.Hour,
-		LastDecay:      time.Now(),
-		PreviousUpdate: time.Now(),
+		staticHalfLife: 30 * 24 * time.Hour,
+		lastDecay:      time.Now(),
 	}
 	return &DistributionTracker{
 		distributions: []*Distribution{

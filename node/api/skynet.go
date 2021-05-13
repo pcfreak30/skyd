@@ -108,6 +108,7 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
+<<<<<<< HEAD
 		NumCritAlerts int `json:"numcritalerts"`
 
 		// The amount of computational time that it takes the health loop to
@@ -1198,6 +1199,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	}
 
 	WriteJSON(w, &SkynetStatsGET{
+<<<<<<< HEAD
 		NumCritAlerts: len(critAlerts),
 
 		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.TotalDataPoints[0],
