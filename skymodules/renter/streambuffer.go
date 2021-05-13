@@ -211,9 +211,9 @@ type streamBuffer struct {
 type streamBufferSet struct {
 	streams map[skymodules.DataSourceID]*streamBuffer
 
-	staticStatsCollector  *skymodules.DistributionTracker
-	staticTG *threadgroup.ThreadGroup
-	mu       sync.Mutex
+	staticStatsCollector *skymodules.DistributionTracker
+	staticTG             *threadgroup.ThreadGroup
+	mu                   sync.Mutex
 }
 
 // newStreamBufferSet initializes and returns a stream buffer set.
@@ -222,7 +222,7 @@ func newStreamBufferSet(statsCollector *skymodules.DistributionTracker, tg *thre
 		streams: make(map[skymodules.DataSourceID]*streamBuffer),
 
 		staticStatsCollector: statsCollector,
-		staticTG: tg,
+		staticTG:             tg,
 	}
 }
 
