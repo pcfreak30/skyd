@@ -1,18 +1,23 @@
 package skymodules
 
-// statstracker.go creates a generic tool for tracking the performance of a
-// function that is expected to have volatile timings. You can add data points
-// to the tracker, and then you can learn the distribution of the data points.
-// For example, you can learn the p99 or p999 of the data points you have been
-// adding.
+// statstracker.go creates a generic tool for tracking the performace of some
+// function over time. It keeps a distribution of data points that has a time
+// based exponential decay. At any point, the pXX can be requested. For example,
+// requesting the p99 will tell you the smallest duration that is greater than
+// 99% of all data points. Any float value can be requested between 0 and 1.
 //
 // The stats tracker has been designed to be high performance, low memory
 // overhead, and able to cover a range of values starting at 4ms and going up to
-// over an hour.
+// over an hour. The stats tracker is bucketed rather than continuous, which
+// means the return values won't always be accurate, however they will always be
+// accurate to within 4% as long as the result is under 1 hour total in
+// duration.
 //
-// NOTE: There are a lot of hardcoded magic numbers in this file. At first I
-// tried to make those numbers constants, however some of the numbers felt too
-// heavily interconnected to be properly turned into constants.
+// NOTE: There are a handful of hardcoded numbers in this file. This is because
+// they have some tricky mathematical relationships to make the bucket ordering
+// really nice, and I couldn't find a good way to make them generic. These
+// relationships may also enable some performance optimizations in the future
+// that wouldn't be possible with generic values.
 
 import (
 	"math"
@@ -45,9 +50,9 @@ const (
 	//
 	// Decreasing this will give better granularity on things that take very
 	// little time, but will also proportionally reduce the maximum amount of
-	// time that can be measured. For every time you halve this value, you
-	// should increase the statsTrackerNumIncrements by '1' to maintain the same
-	// upper bound on the time.
+	// time that can be measured. For every time you decrease this value by a
+	// factor of 4, you should increase the statsTrackerNumIncrements by '1' to
+	// maintain the same upper bound on the time.
 	statsTrackerInitialStepSize = 4 * time.Millisecond
 
 	// statsTrackerNumIncrements defines the number of times the stats get
@@ -56,11 +61,8 @@ const (
 )
 
 type (
-	// Distribution tracks the distribution of request timings for a particular
-	// half life.
-	//
-	// A distribution is useful for tracking requests over a range of times from
-	// 4ms to about one hour.
+	// Distribution tracks the distribution of durations for a particular half
+	// life.
 	//
 	// NOTE: This struct is not thread safe, thread safety is derived from the
 	// parent object.
@@ -80,16 +82,16 @@ type (
 		DecayedLifetime time.Duration
 		PreviousUpdate  time.Time
 
-		// 400 buckets that represent the distribution. The first 64 buckets
-		// start at 4ms and are 4ms spaced apart. The next 48 buckets are spaced
-		// 16ms apart, then the next 48 are spaced 64ms apart, the spacings
+		// Buckets that represent the distribution. The first 64 buckets start
+		// at 4ms and are 4ms spaced apart. The next 48 buckets are spaced 16ms
+		// apart, then the next 48 are spaced 64ms apart, the spacings
 		// multiplying by 4 every 48 buckets. The final bucket is just over an
 		// hour, anything over will be put into that bucket as well.
 		Timings [64 + 48*statsTrackerNumIncrements]float64
 	}
 
-	// DistributionTracker will track the performance distribution of a series
-	// of operations over a set of time ranges. Each time range corresponds to a
+	// StatsTracker will track the performance distribution of a series of
+	// operations over a set of time ranges. Each time range corresponds to a
 	// different half life. A common choice is to track the half lives for {15
 	// minutes, 24 hours, Lifetime}.
 	DistributionTracker struct {
