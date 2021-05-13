@@ -6,7 +6,7 @@ import (
 )
 
 // TestFullDistributionTracker attempts to use a distribution tracker in full,
-// including using actual sleeps instead of artifical clock manipulation.
+// including using actual sleeps instead of artificial clock manipulation.
 func TestFullDistributionTracker(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
