@@ -150,9 +150,9 @@ func TestDistributionDecay(t *testing.T) {
 	}
 }
 
-// TestDistributiondecayedLifetime checks that the total counted decayed
+// TestDistributionDecayedLifetime checks that the total counted decayed
 // lifetime of the distribution is being tracked correctly.
-func TestDistributiondecayedLifetime(t *testing.T) {
+func TestDistributionDecayedLifetime(t *testing.T) {
 	// Create a distribution with a half life of 100 minutes, which means a
 	// decay operation should trigger every minute.
 	d := &Distribution{
@@ -200,7 +200,7 @@ func TestDistributionBucketing(t *testing.T) {
 		total += 4 * time.Millisecond
 		i++
 
-		pstat := d.GetPStat(0.99999999999)
+		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
@@ -214,7 +214,7 @@ func TestDistributionBucketing(t *testing.T) {
 		total += 16 * time.Millisecond
 		i++
 
-		pstat := d.GetPStat(0.99999999999)
+		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
@@ -228,7 +228,7 @@ func TestDistributionBucketing(t *testing.T) {
 		total += 64 * time.Millisecond
 		i++
 
-		pstat := d.GetPStat(0.99999999999)
+		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
@@ -242,7 +242,7 @@ func TestDistributionBucketing(t *testing.T) {
 		total += 256 * time.Millisecond
 		i++
 
-		pstat := d.GetPStat(0.99999999999)
+		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
@@ -256,7 +256,7 @@ func TestDistributionBucketing(t *testing.T) {
 		total += 1024 * time.Millisecond
 		i++
 
-		pstat := d.GetPStat(0.99999999999)
+		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
@@ -270,7 +270,7 @@ func TestDistributionBucketing(t *testing.T) {
 		total += 4096 * time.Millisecond
 		i++
 
-		pstat := d.GetPStat(0.99999999999)
+		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
@@ -284,7 +284,7 @@ func TestDistributionBucketing(t *testing.T) {
 		total += 16384 * time.Millisecond
 		i++
 
-		pstat := d.GetPStat(0.99999999999)
+		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
@@ -298,7 +298,7 @@ func TestDistributionBucketing(t *testing.T) {
 		total += 65536 * time.Millisecond
 		i++
 
-		pstat := d.GetPStat(0.99999999999)
+		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
@@ -308,7 +308,7 @@ func TestDistributionBucketing(t *testing.T) {
 	expectedPStat := total - time.Millisecond
 	total += 1e9 * time.Millisecond
 	d.AddDataPoint(total)
-	pstat := d.GetPStat(0.99999999999)
+	pstat := d.PStat(0.99999999999)
 	if pstat != expectedPStat {
 		t.Error("bad")
 	}

@@ -103,8 +103,8 @@ type (
 	// DistributionTracker which display the values of the underlying
 	// distributions.
 	DistributionTrackerStats struct {
-		Nines           [][]time.Duration
-		TotalDataPoints []float64
+		Nines      [][]time.Duration
+		DataPoints []float64
 	}
 )
 
@@ -171,11 +171,12 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	d.timings[63+48*statsTrackerNumIncrements]++
 }
 
-// GetPStat will return the timing at which the percentage of requests is lower
+// PStat will return the timing at which the percentage of requests is lower
 // than the provided p. P must be greater than 0 and less than 1.
 //
 // A bad input will return 0.
-func (d *Distribution) GetPStat(p float64) time.Duration {
+func (d *Distribution) PStat(p float64) time.Duration {
+	// Check for an error value.
 	if p <= 0 || p >= 1 {
 		return 0
 	}
@@ -212,9 +213,14 @@ func (d *Distribution) GetPStat(p float64) time.Duration {
 	return prevMax
 }
 
-// TotalDataPoints returns the total number of data points contained within the
+// DataPoints returns the total number of data points contained within the
 // distribution.
-func (d *Distribution) TotalDataPoints() float64 {
+func (d *Distribution) DataPoints() float64 {
+	// Decay is not applied automatically. If it has been a while since the last
+	// datapoint was added, decay should be applied so that the rates are
+	// correct.
+	d.addDecay()
+
 	var total float64
 	for i := 0; i < len(d.timings); i++ {
 		total += d.timings[i]
@@ -245,22 +251,22 @@ func (dt *DistributionTracker) AllNines() [][]time.Duration {
 	timings := make([][]time.Duration, len(dt.distributions))
 	for i := 0; i < len(timings); i++ {
 		timings[i] = make([]time.Duration, 4)
-		timings[i][0] = dt.distributions[i].GetPStat(.9)
-		timings[i][1] = dt.distributions[i].GetPStat(.99)
-		timings[i][2] = dt.distributions[i].GetPStat(.999)
-		timings[i][3] = dt.distributions[i].GetPStat(.9999)
+		timings[i][0] = dt.distributions[i].PStat(.9)
+		timings[i][1] = dt.distributions[i].PStat(.99)
+		timings[i][2] = dt.distributions[i].PStat(.999)
+		timings[i][3] = dt.distributions[i].PStat(.9999)
 	}
 	return timings
 }
 
-// TotalDataPoints returns the total number of items represented in each distribution.
-func (dt *DistributionTracker) TotalDataPoints() []float64 {
+// DataPoints returns the total number of items represented in each distribution.
+func (dt *DistributionTracker) DataPoints() []float64 {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
 	var totals []float64
 	for _, d := range dt.distributions {
-		totals = append(totals, d.TotalDataPoints())
+		totals = append(totals, d.DataPoints())
 	}
 	return totals
 }
@@ -269,8 +275,8 @@ func (dt *DistributionTracker) TotalDataPoints() []float64 {
 // tracker.
 func (dt *DistributionTracker) Stats() *DistributionTrackerStats {
 	return &DistributionTrackerStats{
-		Nines:           dt.AllNines(),
-		TotalDataPoints: dt.TotalDataPoints(),
+		Nines:      dt.AllNines(),
+		DataPoints: dt.DataPoints(),
 	}
 }
 
