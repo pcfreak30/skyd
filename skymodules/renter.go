@@ -1359,10 +1359,6 @@ type Renter interface {
 	// Skykeys returns a slice containing each Skykey being stored by the renter.
 	Skykeys() ([]skykey.Skykey, error)
 
-	// BatchSkyfile will submit a skyfile to the batch manager to be uploaded as
-	// a batch to skynet.
-	BatchSkyfile(sup SkyfileUploadParameters, reader SkyfileUploadReader) (Skylink, error)
-
 	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector skyfile needs to be uploaded
 	// separately, and if there is a fanout expansion that needs to be uploaded
