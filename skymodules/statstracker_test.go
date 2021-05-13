@@ -15,9 +15,9 @@ func TestFullDistributionTracker(t *testing.T) {
 
 	// Get the standard distributions but then fix their half lives.
 	dt := NewDistributionTrackerStandard()
-	dt.distributions[0].StaticHalfLife = 5 * time.Second
-	dt.distributions[1].StaticHalfLife = 20 * time.Second
-	dt.distributions[2].StaticHalfLife = time.Hour
+	dt.distributions[0].staticHalfLife = 5 * time.Second
+	dt.distributions[1].staticHalfLife = 20 * time.Second
+	dt.distributions[2].staticHalfLife = time.Hour
 
 	// 1000 data points to the first bucket.
 	for i := 0; i < 1e3; i++ {
@@ -110,12 +110,12 @@ func TestDistributionDecay(t *testing.T) {
 	// Create a distribution with a half life of 100 minutes, which means a
 	// decay operation should trigger every minute.
 	d := &Distribution{
-		StaticHalfLife: time.Minute * 100,
+		staticHalfLife: time.Minute * 100,
 	}
 	totalPoints := func() float64 {
 		var total float64
-		for i := 0; i < len(d.Timings); i++ {
-			total += d.Timings[i]
+		for i := 0; i < len(d.timings); i++ {
+			total += d.timings[i]
 		}
 		return total
 	}
@@ -134,51 +134,47 @@ func TestDistributionDecay(t *testing.T) {
 	}
 
 	// Simulate exactly the half life of time passing.
-	d.LastDecay = time.Now().Add(-100 * time.Minute)
-	d.PreviousUpdate = time.Now().Add(-100 * time.Minute)
+	d.lastDecay = time.Now().Add(-100 * time.Minute)
 	d.AddDataPoint(time.Millisecond)
 	if totalPoints() < 250 || totalPoints() > 252 {
 		t.Error("bad", totalPoints())
 	}
 
 	// Simulate exactly one quarter of the half life passing twice.
-	d.LastDecay = time.Now().Add(-50 * time.Minute)
-	d.PreviousUpdate = time.Now().Add(-50 * time.Minute)
+	d.lastDecay = time.Now().Add(-50 * time.Minute)
 	d.AddDataPoint(time.Millisecond)
-	d.LastDecay = time.Now().Add(-50 * time.Minute)
-	d.PreviousUpdate = time.Now().Add(-50 * time.Minute)
+	d.lastDecay = time.Now().Add(-50 * time.Minute)
 	d.AddDataPoint(time.Millisecond)
 	if totalPoints() < 126 || totalPoints() > 128 {
 		t.Error("bad", totalPoints())
 	}
 }
 
-// TestDistributionDecayedLifetime checks that the total counted decayed
+// TestDistributiondecayedLifetime checks that the total counted decayed
 // lifetime of the distribution is being tracked correctly.
-func TestDistributionDecayedLifetime(t *testing.T) {
+func TestDistributiondecayedLifetime(t *testing.T) {
 	// Create a distribution with a half life of 100 minutes, which means a
 	// decay operation should trigger every minute.
 	d := &Distribution{
-		StaticHalfLife: time.Minute * 300,
+		staticHalfLife: time.Minute * 300,
 	}
 	totalPoints := func() float64 {
 		var total float64
-		for i := 0; i < len(d.Timings); i++ {
-			total += d.Timings[i]
+		for i := 0; i < len(d.timings); i++ {
+			total += d.timings[i]
 		}
 		return total
 	}
 
 	// Do 10k steps, each step advancing one minute. Every third step should
 	// trigger a decay. Add 1 data point each step.
-	for i := 0; i < 5e3; i++ {
-		d.LastDecay = d.LastDecay.Add(-1 * time.Minute)
-		d.PreviousUpdate = time.Now().Add(-1 * time.Minute)
+	for i := 0; i < 10e3; i++ {
+		d.lastDecay = d.lastDecay.Add(-1 * time.Minute)
 		d.AddDataPoint(time.Millisecond)
 	}
-	pointsPerHour := totalPoints() / float64(d.DecayedLifetime/time.Hour)
+	pointsPerHour := totalPoints() / (float64(d.decayedLifetime) / float64(time.Hour))
 	if pointsPerHour < 55 || pointsPerHour > 65 {
-		t.Error("bad")
+		t.Error("bad", pointsPerHour)
 	}
 }
 
@@ -188,7 +184,7 @@ func TestDistributionBucketing(t *testing.T) {
 	// Adding a half life prevents it from decaying every time we add a data
 	// point.
 	d := &Distribution{
-		StaticHalfLife: time.Minute * 100,
+		staticHalfLife: time.Minute * 100,
 	}
 
 	// Try adding a single datapoint to each bucket, by adding it at the right
@@ -197,7 +193,7 @@ func TestDistributionBucketing(t *testing.T) {
 	total := time.Millisecond
 	for i < 64 {
 		d.AddDataPoint(total)
-		if d.Timings[i] != 1 {
+		if d.timings[i] != 1 {
 			t.Error("bad:", i)
 		}
 
@@ -211,7 +207,7 @@ func TestDistributionBucketing(t *testing.T) {
 	}
 	for i < 64+48 {
 		d.AddDataPoint(total)
-		if d.Timings[i] != 1 {
+		if d.timings[i] != 1 {
 			t.Error("bad:", i)
 		}
 
@@ -225,7 +221,7 @@ func TestDistributionBucketing(t *testing.T) {
 	}
 	for i < 64+48*2 {
 		d.AddDataPoint(total)
-		if d.Timings[i] != 1 {
+		if d.timings[i] != 1 {
 			t.Error("bad:", i)
 		}
 
@@ -239,7 +235,7 @@ func TestDistributionBucketing(t *testing.T) {
 	}
 	for i < 64+48*3 {
 		d.AddDataPoint(total)
-		if d.Timings[i] != 1 {
+		if d.timings[i] != 1 {
 			t.Error("bad:", i)
 		}
 
@@ -253,7 +249,7 @@ func TestDistributionBucketing(t *testing.T) {
 	}
 	for i < 64+48*4 {
 		d.AddDataPoint(total)
-		if d.Timings[i] != 1 {
+		if d.timings[i] != 1 {
 			t.Error("bad:", i)
 		}
 
@@ -267,7 +263,7 @@ func TestDistributionBucketing(t *testing.T) {
 	}
 	for i < 64+48*5 {
 		d.AddDataPoint(total)
-		if d.Timings[i] != 1 {
+		if d.timings[i] != 1 {
 			t.Error("bad:", i)
 		}
 
@@ -281,7 +277,7 @@ func TestDistributionBucketing(t *testing.T) {
 	}
 	for i < 64+48*6 {
 		d.AddDataPoint(total)
-		if d.Timings[i] != 1 {
+		if d.timings[i] != 1 {
 			t.Error("bad:", i)
 		}
 
@@ -295,7 +291,7 @@ func TestDistributionBucketing(t *testing.T) {
 	}
 	for i < 64+48*7 {
 		d.AddDataPoint(total)
-		if d.Timings[i] != 1 {
+		if d.timings[i] != 1 {
 			t.Error("bad:", i)
 		}
 

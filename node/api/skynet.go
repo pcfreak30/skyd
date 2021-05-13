@@ -108,7 +108,7 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		RegistryStats    skymodules.RegistryStats          `json:"registrystats"`
+		RegistryStats skymodules.RegistryStats `json:"registrystats"`
 
 		Uptime      int64                  `json:"uptime"`
 		UploadStats skymodules.SkynetStats `json:"uploadstats"`
@@ -1076,7 +1076,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	}
 
 	WriteJSON(w, &SkynetStatsGET{
-		RegistryStats:    registryStats.ToMS(),
+		RegistryStats: registryStats.ToMS(),
 
 		Uptime:      int64(uptime),
 		UploadStats: stats,
