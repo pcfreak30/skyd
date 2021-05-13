@@ -1,14 +1,18 @@
 package skymodules
 
-// skynetperf2.go creates a generic performance tracking object which can absorb
-// datapoints and return a distribution for how they occur. This struct was
-// created with both performance in mind, and also the limited precision of
-// floating points in mind.
+// statstracker.go creates a generic tool for tracking the performance of a
+// function that is expected to have volatile timings. You can add data points
+// to the tracker, and then you can learn the distribution of the data points.
+// For example, you can learn the p99 or p999 of the data points you have been
+// adding.
 //
-// NOTE: There are a lot of values here that feel like they should be constants,
-// but I've elected not to make them constants because they are all highly
-// dependent on each other, and I don't want to give the impression that you can
-// tweak them.
+// The stats tracker has been designed to be high performance, low memory
+// overhead, and able to cover a range of values starting at 4ms and going up to
+// over an hour.
+//
+// NOTE: There are a lot of hardcoded magic numbers in this file. At first I
+// tried to make those numbers constants, however some of the numbers felt too
+// heavily interconnected to be properly turned into constants.
 
 import (
 	"math"
@@ -16,6 +20,39 @@ import (
 	"time"
 
 	"gitlab.com/SkynetLabs/skyd/build"
+)
+
+const (
+	// statsTrackerDecayFrequencyDenom determines what percentage of the half
+	// life must expire before a decay is applied. If the decay denominator is
+	// '100', it means that the decay will only be applied once 1/100 (1%) of
+	// the half life has elapsed.
+	//
+	// The main reason that the decay is performed in small blocks instead of
+	// continuously is the limited precision of floating point numbers. We found
+	// that in production, performing a decay after a very tiny amount of time
+	// had elapsed resulted in highly inaccurate data, because the floating
+	// points rounded the result too heavily. 100 is generally a good value,
+	// because it is infrequent enough that the float point precision can still
+	// provide strong accuracy, yet frequent enough that a value which has not
+	// been decayed recently is still also an accurate value.
+	statsTrackerDecayFrequencyDenom = 100
+
+	// statsTrackerInitialStepSize defines the step size that we use for the
+	// first 64 buckets of a distribution. This means that this is the smallest
+	// timing that is supported by the distribution. The highest value supported
+	// by the distribution is about 1 million times larger.
+	//
+	// Decreasing this will give better granularity on things that take very
+	// little time, but will also proportionally reduce the maximum amount of
+	// time that can be measured. For every time you halve this value, you
+	// should increase the statsTrackerNumIncrements by '1' to maintain the same
+	// upper bound on the time.
+	statsTrackerInitialStepSize = 4 * time.Millisecond
+
+	// statsTrackerNumIncrements defines the number of times the stats get
+	// incremented.
+	statsTrackerNumIncrements = 7
 )
 
 type (
@@ -48,7 +85,7 @@ type (
 		// 16ms apart, then the next 48 are spaced 64ms apart, the spacings
 		// multiplying by 4 every 48 buckets. The final bucket is just over an
 		// hour, anything over will be put into that bucket as well.
-		Timings [400]float64
+		Timings [64 + 48*statsTrackerNumIncrements]float64
 	}
 
 	// DistributionTracker will track the performance distribution of a series
@@ -82,7 +119,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	sinceLastDecay := time.Since(d.LastDecay)
 	d.DecayedLifetime += time.Since(d.PreviousUpdate)
 	d.PreviousUpdate = time.Now()
-	decayFrequency := d.StaticHalfLife / 100
+	decayFrequency := d.StaticHalfLife / statsTrackerDecayFrequencyDenom
 	if sinceLastDecay > decayFrequency {
 		// Perform a decay operation.
 		strength := float64(sinceLastDecay) / float64(d.StaticHalfLife)
@@ -98,14 +135,14 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	//
 	// The first case is a special case because it covers 64 buckets instead of
 	// 48.
-	stepSize := time.Millisecond * 4
-	max := time.Millisecond * 256
+	stepSize := statsTrackerInitialStepSize
+	max := stepSize * 64
 	if dur < max {
 		slot := dur / stepSize
 		d.Timings[slot]++
 		return
 	}
-	for i := 64; i < 400; i += 48 {
+	for i := 64; i < 64+48*statsTrackerNumIncrements; i += 48 {
 		stepSize *= 4
 		max *= 4
 		if dur < max {
@@ -114,7 +151,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 			return
 		}
 	}
-	d.Timings[399]++
+	d.Timings[63+48*statsTrackerNumIncrements]++
 }
 
 // GetPStat will return the timing at which the percentage of requests is lower
@@ -135,18 +172,18 @@ func (d *Distribution) GetPStat(p float64) time.Duration {
 	// Count up until we reach p.
 	var run float64
 	var index int
-	for run/total < p && index < 400 {
+	for run/total < p && index < 64+48*statsTrackerNumIncrements {
 		run += d.Timings[index]
 		index++
 	}
 
 	// Convert i into a duration.
-	stepSize := time.Millisecond * 4
+	stepSize := statsTrackerInitialStepSize
 	if index <= 64 {
 		return stepSize * time.Duration(index)
 	}
-	prevMax := time.Millisecond * 256
-	for i := 64; i <= 400; i += 48 {
+	prevMax := stepSize * 64
+	for i := 64; i <= 64+48*statsTrackerNumIncrements; i += 48 {
 		stepSize *= 4
 		if index < i+48 {
 			return stepSize*time.Duration(index-i) + prevMax
