@@ -267,20 +267,19 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reset the rrs by setting all buckets and the total to 0.
-	for i := range rt.renter.staticRRS.staticBuckets {
-		rt.renter.staticRRS.staticBuckets[i] = 0
-	}
-	rt.renter.staticRRS.total = 0
+	// Reset the stats collector.
+	dt := skymodules.NewDistributionTrackerStandard()
+	rt.renter.staticRegReadStats = dt
 
 	// Run the method.
-	rt.renter.staticRRS.threadedAddResponseSet(context.Background(), startTime, rrs, log)
+	rt.renter.threadedAddResponseSet(context.Background(), startTime, rrs, log)
 
 	// Check p99. The winning timing should be 1s which results in an estimate
 	// of 1.02s.
-	d := rt.renter.staticRRS.Estimate()[0]
-	if d != 1020*time.Millisecond {
-		t.Fatal("wrong d", d)
+	allNines := rt.renter.staticRegReadStats.AllNines()
+	p99 := allNines[0][2]
+	if p99 != 1020*time.Millisecond {
+		t.Fatal("wrong p99", p99)
 	}
 
 	// The buffer should contain the two messages printed when a worker either

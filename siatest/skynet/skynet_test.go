@@ -906,7 +906,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Check that there are files in the filesystem.
-	if stats.UploadStats.NumFiles == 0 {
+	if stats.NumFiles == 0 {
 		t.Fatal("test prereq requires files to exist")
 	}
 	// Check that the system scan duration has been set.
@@ -1011,11 +1011,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 			return err
 		}
 		var countErr, sizeErr, perfErr error
-		if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
-			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles)
+		if uint64(statsBefore.NumFiles)+uploadedFilesCount != uint64(statsAfter.NumFiles) {
+			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles)+uploadedFilesCount, statsAfter.NumFiles)
 		}
-		if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
-			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize)
+		if statsBefore.Storage+uploadedFilesSize != statsAfter.Storage {
+			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.Storage+uploadedFilesSize, statsAfter.Storage)
 		}
 		return errors.Compose(countErr, sizeErr, perfErr)
 	})
@@ -1069,11 +1069,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal(err)
 		}
 		var countErr, sizeErr error
-		if statsAfter.UploadStats.NumFiles != statsBefore.UploadStats.NumFiles {
-			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles), statsAfter.UploadStats.NumFiles)
+		if statsAfter.NumFiles != statsBefore.NumFiles {
+			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles), statsAfter.NumFiles)
 		}
-		if statsAfter.UploadStats.TotalSize != statsBefore.UploadStats.TotalSize {
-			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize, statsAfter.UploadStats.TotalSize)
+		if statsAfter.Storage != statsBefore.Storage {
+			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.Storage, statsAfter.Storage)
 		}
 		return errors.Compose(countErr, sizeErr)
 	})
