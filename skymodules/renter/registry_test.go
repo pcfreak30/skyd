@@ -278,7 +278,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 	// of 1.02s.
 	allNines := rt.renter.staticRegReadStats.AllNines()
 	p99 := allNines[0][2]
-	if p99 != 1020*time.Millisecond {
+	if p99 != 1008*time.Millisecond {
 		t.Fatal("wrong p99", p99)
 	}
 

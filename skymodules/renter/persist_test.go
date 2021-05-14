@@ -96,8 +96,8 @@ func TestRenterSaveLoad(t *testing.T) {
 	allNines := rt.renter.staticRegReadStats.AllNines()
 	for i, distribution := range allNines {
 		for j, nine := range distribution {
-			if nine != readRegistryStatsSeed+readRegistryStatsInterval {
-				t.Fatalf("registry stats aren't seeded correctly %v != %v -- %v %v", nine, readRegistryStatsSeed+readRegistryStatsInterval, i, j)
+			if nine < (readRegistryStatsSeed*95/100) || nine > (readRegistryStatsSeed*105/11) {
+				t.Fatalf("registry stats aren't seeded correctly %v != %v -- %v %v", nine, readRegistryStatsSeed, i, j)
 			}
 		}
 	}

@@ -96,11 +96,6 @@ var (
 	// information to figure out why it took that long.
 	readRegistryStatsDebugThreshold = 10 * time.Second
 
-	// readRegistryStatsInterval is the granularity with which read registry
-	// stats are collected. The smaller the number the faster updating the stats
-	// is but the less accurate the estimate.
-	readRegistryStatsInterval = 20 * time.Millisecond
-
 	// readRegistryStatsDecay is the decay applied to the registry stats.
 	readRegistryStatsDecay = 0.995
 
@@ -122,7 +117,7 @@ var (
 	minRegistryReadTimeout = build.Select(build.Var{
 		Dev:      200 * time.Millisecond,
 		Standard: 800 * time.Millisecond,
-		Testing:  readRegistryStatsInterval,
+		Testing:  20 * time.Millisecond,
 	}).(time.Duration)
 )
 

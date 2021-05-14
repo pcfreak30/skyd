@@ -1117,7 +1117,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, errors.AddContext(err, "unable to create new health update batcher")
 	}
 	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticRegReadStats.AddDataPoint(2 * time.Second) // Seed the stats so that startup doesn't say 0.
+	r.staticRegReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.
 	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
 	r.staticRegWriteStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
 	r.staticBaseSectorUploadStats = skymodules.NewDistributionTrackerStandard()
