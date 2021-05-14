@@ -109,9 +109,7 @@ func TestFullDistributionTracker(t *testing.T) {
 func TestDistributionDecay(t *testing.T) {
 	// Create a distribution with a half life of 100 minutes, which means a
 	// decay operation should trigger every minute.
-	d := &Distribution{
-		staticHalfLife: time.Minute * 100,
-	}
+	d := NewDistribution(time.Minute * 100)
 	totalPoints := func() float64 {
 		var total float64
 		for i := 0; i < len(d.timings); i++ {
@@ -155,9 +153,7 @@ func TestDistributionDecay(t *testing.T) {
 func TestDistributionDecayedLifetime(t *testing.T) {
 	// Create a distribution with a half life of 100 minutes, which means a
 	// decay operation should trigger every minute.
-	d := &Distribution{
-		staticHalfLife: time.Minute * 300,
-	}
+	d := NewDistribution(time.Minute * 300)
 	totalPoints := func() float64 {
 		var total float64
 		for i := 0; i < len(d.timings); i++ {
@@ -183,9 +179,7 @@ func TestDistributionDecayedLifetime(t *testing.T) {
 func TestDistributionBucketing(t *testing.T) {
 	// Adding a half life prevents it from decaying every time we add a data
 	// point.
-	d := &Distribution{
-		staticHalfLife: time.Minute * 100,
-	}
+	d := NewDistribution(time.Minute * 100)
 
 	// Try adding a single datapoint to each bucket, by adding it at the right
 	// millisecond offset.

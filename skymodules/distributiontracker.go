@@ -281,27 +281,23 @@ func (dt *DistributionTracker) Stats() *DistributionTrackerStats {
 	}
 }
 
+// NewDistribution will create a distribution with the provided half life.
+func NewDistribution(halfLife time.Duration) *Distribution {
+	return &Distribution{
+		staticHalfLife: halfLife,
+		lastDecay:      time.Now(),
+	}
+}
+
 // NewDistributionTrackerStandard returns a standard distribution tracker, which
 // tracks data points over distributions with half lives of 15 minutes, 24
 // hours, and 30 days.
 func NewDistributionTrackerStandard() *DistributionTracker {
-	d1 := &Distribution{
-		staticHalfLife: 15 * time.Minute,
-		lastDecay:      time.Now(),
-	}
-	d2 := &Distribution{
-		staticHalfLife: 24 * time.Hour,
-		lastDecay:      time.Now(),
-	}
-	d3 := &Distribution{
-		staticHalfLife: 30 * 24 * time.Hour,
-		lastDecay:      time.Now(),
-	}
 	return &DistributionTracker{
 		distributions: []*Distribution{
-			d1,
-			d2,
-			d3,
+			NewDistribution(15 * time.Minute),
+			NewDistribution(24 * time.Hour),
+			NewDistribution(30 * 24 * time.Hour),
 		},
 	}
 }
