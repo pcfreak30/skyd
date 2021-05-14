@@ -103,12 +103,6 @@ type FileListFunc func(FileInfo)
 // over the filesystem.
 type DirListFunc func(DirectoryInfo)
 
-// SkynetStats contains statistical data about skynet
-type SkynetStats struct {
-	NumFiles  int    `json:"numfiles"`
-	TotalSize uint64 `json:"totalsize"`
-}
-
 // RenterPerformance contains a collection of information that can be exported
 // from the renter about its performance.
 type RenterPerformance struct {

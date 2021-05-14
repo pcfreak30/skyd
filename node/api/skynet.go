@@ -108,12 +108,6 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		NumCritAlerts int `json:"numcritalerts"`
-
-		// The amount of computational time that it takes the health loop to
-		// scan the entire filesystem. Unit is given in hours.
-		SystemHealthScanDurationHours float64 `json:"systemhealthscanduration"`
-
 		// Base Sector Upload Stats
 		BaseSectorUpload15mDataPoints float64 `json:"basesectorupload15mdatapoints"`
 		BaseSectorUpload15mP99ms      float64 `json:"basesectorupload15mp99ms"`
@@ -144,17 +138,23 @@ type (
 		StreamBufferRead15mP999ms     float64 `json:"streambufferread15mp999ms"`
 		StreamBufferRead15mP9999ms    float64 `json:"streambufferread15mp9999ms"`
 
-		// General Statuses
-		AllowanceStatus string `json:"allowancestatus"` // 'low', 'good', 'high'
-		ContractStorage uint64 `json:"contractstorage"`
-		MaxStoragePrice string `json:"maxstorageprice"`
-		Repair          uint64 `json:"repair"`
-		Storage         uint64 `json:"storage"`
-		StuckChunks     uint64 `json:"stuckchunks"`
-		WalletStatus    string `json:"walletstatus"` // 'low', 'good', 'high'
+		// The amount of computational time that it takes the health loop to
+		// scan the entire filesystem. Unit is given in hours.
+		SystemHealthScanDurationHours float64 `json:"systemhealthscanduration"`
 
+		// General Statuses
+		AllowanceStatus string         `json:"allowancestatus"` // 'low', 'good', 'high'
+		ContractStorage uint64         `json:"contractstorage"` // bytes
+		MaxStoragePrice types.Currency `json:"maxstorageprice"` // Hastings per byte per block
+		NumCritAlerts   int            `json:"numcritalerts"`
+		NumFiles        uint64         `json:"numfiles"`
+		Repair          uint64         `json:"repair"`  // bytes
+		Storage         uint64         `json:"storage"` // bytes
+		StuckChunks     uint64         `json:"stuckchunks"`
+		WalletStatus    string         `json:"walletstatus"` // 'low', 'good', 'high'
+
+		// Update and version information.
 		Uptime      int64                  `json:"uptime"`
-		UploadStats skymodules.SkynetStats `json:"uploadstats"`
 		VersionInfo SkynetVersion          `json:"versioninfo"`
 	}
 
@@ -1086,9 +1086,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
 func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// Define the SkynetStats
-	var stats skymodules.SkynetStats
-
 	// Pull the skynet stats from the root directory
 	dirs, err := api.renter.DirList(skymodules.RootSiaPath())
 	if err != nil {
@@ -1096,10 +1093,6 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		return
 	}
 	rootDir := dirs[0]
-	stats = skymodules.SkynetStats{
-		NumFiles:  int(rootDir.AggregateSkynetFiles),
-		TotalSize: rootDir.AggregateSkynetSize,
-	}
 
 	// get version
 	version := build.NodeVersion
@@ -1118,30 +1111,30 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	}
 
 	// Check for any critical alerts.
-	critAlerts := make([]modules.Alert, 0, 6)
+	numCritAlerts := 0
 	if api.gateway != nil {
-		c, _, _ := api.gateway.Alerts()
-		critAlerts = append(critAlerts, c...)
+		a, _, _ := api.gateway.Alerts()
+		numCritAlerts += len(a)
 	}
 	if api.cs != nil {
-		c, _, _ := api.cs.Alerts()
-		critAlerts = append(critAlerts, c...)
+		a, _, _ := api.cs.Alerts()
+		numCritAlerts += len(a)
 	}
 	if api.tpool != nil {
-		c, _, _ := api.tpool.Alerts()
-		critAlerts = append(critAlerts, c...)
+		a, _, _ := api.tpool.Alerts()
+		numCritAlerts += len(a)
 	}
 	if api.wallet != nil {
-		c, _, _ := api.wallet.Alerts()
-		critAlerts = append(critAlerts, c...)
+		a, _, _ := api.wallet.Alerts()
+		numCritAlerts += len(a)
 	}
 	if api.renter != nil {
-		c, _, _ := api.renter.Alerts()
-		critAlerts = append(critAlerts, c...)
+		a, _, _ := api.renter.Alerts()
+		numCritAlerts += len(a)
 	}
 	if api.host != nil {
-		c, _, _ := api.host.Alerts()
-		critAlerts = append(critAlerts, c...)
+		a, _, _ := api.host.Alerts()
+		numCritAlerts += len(a)
 	}
 
 	// Determine the wallet status.
@@ -1198,8 +1191,6 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	}
 
 	WriteJSON(w, &SkynetStatsGET{
-		NumCritAlerts: len(critAlerts),
-
 		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.DataPoints[0],
 		BaseSectorUpload15mP99ms:      float64(renterPerf.BaseSectorUploadStats.Nines[0][1]) / float64(time.Millisecond),
 		BaseSectorUpload15mP999ms:     float64(renterPerf.BaseSectorUploadStats.Nines[0][2]) / float64(time.Millisecond),
@@ -1229,14 +1220,15 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 
 		AllowanceStatus: allowanceStatus,
 		ContractStorage: totalStorage,
-		MaxStoragePrice: allowance.MaxStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte).HumanString(),
+		NumCritAlerts:   numCritAlerts,
+		NumFiles:        rootDir.AggregateSkynetFiles,
+		MaxStoragePrice: allowance.MaxStoragePrice,
 		Repair:          rootDir.AggregateRepairSize,
-		Storage:         rootDir.AggregateSize,
+		Storage:         rootDir.AggregateSkynetSize,
 		StuckChunks:     rootDir.AggregateNumStuckChunks,
 		WalletStatus:    walletStatus,
 
 		Uptime:      int64(uptime),
-		UploadStats: stats,
 		VersionInfo: SkynetVersion{
 			Version:     version,
 			GitRevision: build.GitRevision,

@@ -254,7 +254,6 @@ type Renter struct {
 	staticRL *ratelimit.RateLimit
 
 	// stats cache related fields.
-	stats     *skymodules.SkynetStats
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
