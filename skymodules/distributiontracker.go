@@ -90,8 +90,8 @@ type (
 		timings [64 + 48*distributionTrackerNumIncrements]float64
 	}
 
-	// StatsTracker will track the performance distribution of a series of
-	// operations over a set of time ranges. Each time range corresponds to a
+	// DistributionTracker will track the performance distribution of a series
+	// of operations over a set of time ranges. Each time range corresponds to a
 	// different half life. A common choice is to track the half lives for {15
 	// minutes, 24 hours, Lifetime}.
 	DistributionTracker struct {
