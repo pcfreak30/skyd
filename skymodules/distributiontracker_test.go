@@ -6,7 +6,7 @@ import (
 )
 
 // TestFullDistributionTracker attempts to use a distribution tracker in full,
-// including using actual sleeps instead of artifical clock manipulation.
+// including using actual sleeps instead of artificial clock manipulation.
 func TestFullDistributionTracker(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -109,9 +109,7 @@ func TestFullDistributionTracker(t *testing.T) {
 func TestDistributionDecay(t *testing.T) {
 	// Create a distribution with a half life of 100 minutes, which means a
 	// decay operation should trigger every minute.
-	d := &Distribution{
-		staticHalfLife: time.Minute * 100,
-	}
+	d := NewDistribution(time.Minute * 100)
 	totalPoints := func() float64 {
 		var total float64
 		for i := 0; i < len(d.timings); i++ {
@@ -153,11 +151,9 @@ func TestDistributionDecay(t *testing.T) {
 // TestDistributionDecayedLifetime checks that the total counted decayed
 // lifetime of the distribution is being tracked correctly.
 func TestDistributionDecayedLifetime(t *testing.T) {
-	// Create a distribution with a half life of 100 minutes, which means a
-	// decay operation should trigger every minute.
-	d := &Distribution{
-		staticHalfLife: time.Minute * 300,
-	}
+	// Create a distribution with a half life of 300 minutes, which means a
+	// decay operation should trigger every three minutes.
+	d := NewDistribution(time.Minute * 300)
 	totalPoints := func() float64 {
 		var total float64
 		for i := 0; i < len(d.timings); i++ {
@@ -183,8 +179,11 @@ func TestDistributionDecayedLifetime(t *testing.T) {
 func TestDistributionBucketing(t *testing.T) {
 	// Adding a half life prevents it from decaying every time we add a data
 	// point.
-	d := &Distribution{
-		staticHalfLife: time.Minute * 100,
+	d := NewDistribution(time.Minute * 100)
+
+	// Get a distribution with no data collected.
+	if d.PStat(0.55) != distributionDuration(64+48*distributionTrackerNumIncrements) {
+		t.Error("expecting a distribution with no data to return the max possible value")
 	}
 
 	// Try adding a single datapoint to each bucket, by adding it at the right
@@ -204,6 +203,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != distributionDuration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 	for i < 64+48 {
 		d.AddDataPoint(total)
@@ -216,6 +223,14 @@ func TestDistributionBucketing(t *testing.T) {
 
 		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != distributionDuration((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -232,6 +247,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != distributionDuration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 	for i < 64+48*3 {
 		d.AddDataPoint(total)
@@ -244,6 +267,14 @@ func TestDistributionBucketing(t *testing.T) {
 
 		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != distributionDuration((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -260,6 +291,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != distributionDuration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 	for i < 64+48*5 {
 		d.AddDataPoint(total)
@@ -272,6 +311,14 @@ func TestDistributionBucketing(t *testing.T) {
 
 		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != distributionDuration((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -288,6 +335,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != distributionDuration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 	for i < 64+48*7 {
 		d.AddDataPoint(total)
@@ -302,6 +357,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != distributionDuration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 
 	// Test off the end of the bucket.
@@ -311,5 +374,13 @@ func TestDistributionBucketing(t *testing.T) {
 	pstat := d.PStat(0.99999999999)
 	if pstat != expectedPStat {
 		t.Error("bad")
+	}
+	pstat = d.PStat(0.00000001)
+	if pstat != distributionTrackerInitialStepSize {
+		t.Error("bad", i, pstat, total)
+	}
+	pstat = d.PStat(0.5)
+	if pstat != distributionDuration(((64+48*distributionTrackerNumIncrements)/2)+1) {
+		t.Error("bad", pstat, distributionDuration(201))
 	}
 }

@@ -1,17 +1,18 @@
 package skymodules
 
-// statstracker.go creates a generic tool for tracking the performace of some
-// function over time. It keeps a distribution of data points that has a time
-// based exponential decay. At any point, the pXX can be requested. For example,
-// requesting the p99 will tell you the smallest duration that is greater than
-// 99% of all data points. Any float value can be requested between 0 and 1.
+// distributiontracker.go creates a generic tool for tracking the performance of
+// some function over time. It keeps a distribution of data points that has a
+// time based exponential decay. At any point, the pXX can be requested. For
+// example, requesting the p99 will tell you the smallest duration that is
+// greater than 99% of all data points. Any float value can be requested between
+// 0 and 1.
 //
-// The stats tracker has been designed to be high performance, low memory
+// The distribution tracker has been designed to be high performance, low memory
 // overhead, and able to cover a range of values starting at 4ms and going up to
-// over an hour. The stats tracker is bucketed rather than continuous, which
-// means the return values won't always be accurate, however they will always be
-// accurate to within 4% as long as the result is under 1 hour total in
-// duration.
+// over an hour. The distribution tracker is bucketed rather than continuous,
+// which means the return values won't always be accurate, however they will
+// always be accurate to within 4% as long as the result is under 1 hour total
+// in duration.
 //
 // NOTE: There are a handful of hardcoded numbers in this file. This is because
 // they have some tricky mathematical relationships to make the bucket ordering
@@ -28,9 +29,9 @@ import (
 )
 
 const (
-	// statsTrackerDecayFrequencyDenom determines what percentage of the half
-	// life must expire before a decay is applied. If the decay denominator is
-	// '100', it means that the decay will only be applied once 1/100 (1%) of
+	// distributionTrackerDecayFrequencyDenom determines what percentage of the
+	// half life must expire before a decay is applied. If the decay denominator
+	// is '100', it means that the decay will only be applied once 1/100 (1%) of
 	// the half life has elapsed.
 	//
 	// The main reason that the decay is performed in small blocks instead of
@@ -41,9 +42,9 @@ const (
 	// because it is infrequent enough that the float point precision can still
 	// provide strong accuracy, yet frequent enough that a value which has not
 	// been decayed recently is still also an accurate value.
-	statsTrackerDecayFrequencyDenom = 100
+	distributionTrackerDecayFrequencyDenom = 100
 
-	// statsTrackerInitialStepSize defines the step size that we use for the
+	// distributionTrackerInitialStepSize defines the step size that we use for the
 	// first 64 buckets of a distribution. This means that this is the smallest
 	// timing that is supported by the distribution. The highest value supported
 	// by the distribution is about 1 million times larger.
@@ -51,13 +52,13 @@ const (
 	// Decreasing this will give better granularity on things that take very
 	// little time, but will also proportionally reduce the maximum amount of
 	// time that can be measured. For every time you decrease this value by a
-	// factor of 4, you should increase the statsTrackerNumIncrements by '1' to
-	// maintain the same upper bound on the time.
-	statsTrackerInitialStepSize = 4 * time.Millisecond
+	// factor of 4, you should increase the distributionTrackerNumIncrements by
+	// '1' to maintain the same upper bound on the time.
+	distributionTrackerInitialStepSize = 4 * time.Millisecond
 
-	// statsTrackerNumIncrements defines the number of times the stats get
-	// incremented.
-	statsTrackerNumIncrements = 7
+	// distributionTrackerNumIncrements defines the number of times the stats
+	// get incremented.
+	distributionTrackerNumIncrements = 7
 )
 
 type (
@@ -86,11 +87,11 @@ type (
 		// apart, then the next 48 are spaced 64ms apart, the spacings
 		// multiplying by 4 every 48 buckets. The final bucket is just over an
 		// hour, anything over will be put into that bucket as well.
-		timings [64 + 48*statsTrackerNumIncrements]float64
+		timings [64 + 48*distributionTrackerNumIncrements]float64
 	}
 
-	// StatsTracker will track the performance distribution of a series of
-	// operations over a set of time ranges. Each time range corresponds to a
+	// DistributionTracker will track the performance distribution of a series
+	// of operations over a set of time ranges. Each time range corresponds to a
 	// different half life. A common choice is to track the half lives for {15
 	// minutes, 24 hours, Lifetime}.
 	DistributionTracker struct {
@@ -108,6 +109,29 @@ type (
 	}
 )
 
+// timingIndexToDuration converts the index of a timing bucket into a timing.
+func distributionDuration(index int) time.Duration {
+	if index < 0 || index > 64+48*distributionTrackerNumIncrements {
+		build.Critical("distribution duration index out of bounds:", index)
+	}
+
+	stepSize := distributionTrackerInitialStepSize
+	if index <= 64 {
+		return stepSize * time.Duration(index)
+	}
+	prevMax := stepSize * 64
+	for i := 64; i <= 64+48*distributionTrackerNumIncrements; i += 48 {
+		stepSize *= 4
+		if index < i+48 {
+			return stepSize*time.Duration(index-i) + prevMax
+		}
+		prevMax *= 4
+	}
+
+	// The final bucket value.
+	return prevMax
+}
+
 // addDecay will decay the distribution.
 func (d *Distribution) addDecay() {
 	// Don't add any decay if the half life is zero.
@@ -120,7 +144,7 @@ func (d *Distribution) addDecay() {
 	// because applying decay over very short periods taxes the precision of the
 	// float64s that we use.
 	sincelastDecay := time.Since(d.lastDecay)
-	decayFrequency := d.staticHalfLife / statsTrackerDecayFrequencyDenom
+	decayFrequency := d.staticHalfLife / distributionTrackerDecayFrequencyDenom
 	if sincelastDecay < decayFrequency {
 		return
 	}
@@ -152,14 +176,14 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	//
 	// The first case is a special case because it covers 64 buckets instead of
 	// 48.
-	stepSize := statsTrackerInitialStepSize
+	stepSize := distributionTrackerInitialStepSize
 	max := stepSize * 64
 	if dur < max {
 		slot := dur / stepSize
 		d.timings[slot]++
 		return
 	}
-	for i := 64; i < 64+48*statsTrackerNumIncrements; i += 48 {
+	for i := 64; i < 64+48*distributionTrackerNumIncrements; i += 48 {
 		stepSize *= 4
 		max *= 4
 		if dur < max {
@@ -168,7 +192,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 			return
 		}
 	}
-	d.timings[63+48*statsTrackerNumIncrements]++
+	d.timings[63+48*distributionTrackerNumIncrements]++
 }
 
 // PStat will return the timing at which the percentage of requests is lower
@@ -178,6 +202,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 func (d *Distribution) PStat(p float64) time.Duration {
 	// Check for an error value.
 	if p <= 0 || p >= 1 {
+		build.Critical("PStat needs to be called with a value inside of the range 0 to 1, used:", p)
 		return 0
 	}
 
@@ -186,31 +211,21 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	for i := 0; i < len(d.timings); i++ {
 		total += d.timings[i]
 	}
+	if total == 0 {
+		// No data collected, just return the worst case.
+		return distributionDuration(len(d.timings))
+	}
 
 	// Count up until we reach p.
 	var run float64
 	var index int
-	for run/total < p && index < 64+48*statsTrackerNumIncrements {
+	for run/total < p && index < 64+48*distributionTrackerNumIncrements {
 		run += d.timings[index]
 		index++
 	}
 
 	// Convert i into a duration.
-	stepSize := statsTrackerInitialStepSize
-	if index <= 64 {
-		return stepSize * time.Duration(index)
-	}
-	prevMax := stepSize * 64
-	for i := 64; i <= 64+48*statsTrackerNumIncrements; i += 48 {
-		stepSize *= 4
-		if index < i+48 {
-			return stepSize*time.Duration(index-i) + prevMax
-		}
-		prevMax *= 4
-	}
-
-	// The final bucket value.
-	return prevMax
+	return distributionDuration(index)
 }
 
 // DataPoints returns the total number of data points contained within the
@@ -280,27 +295,23 @@ func (dt *DistributionTracker) Stats() *DistributionTrackerStats {
 	}
 }
 
+// NewDistribution will create a distribution with the provided half life.
+func NewDistribution(halfLife time.Duration) *Distribution {
+	return &Distribution{
+		staticHalfLife: halfLife,
+		lastDecay:      time.Now(),
+	}
+}
+
 // NewDistributionTrackerStandard returns a standard distribution tracker, which
 // tracks data points over distributions with half lives of 15 minutes, 24
 // hours, and 30 days.
 func NewDistributionTrackerStandard() *DistributionTracker {
-	d1 := &Distribution{
-		staticHalfLife: 15 * time.Minute,
-		lastDecay:      time.Now(),
-	}
-	d2 := &Distribution{
-		staticHalfLife: 24 * time.Hour,
-		lastDecay:      time.Now(),
-	}
-	d3 := &Distribution{
-		staticHalfLife: 30 * 24 * time.Hour,
-		lastDecay:      time.Now(),
-	}
 	return &DistributionTracker{
 		distributions: []*Distribution{
-			d1,
-			d2,
-			d3,
+			NewDistribution(15 * time.Minute),
+			NewDistribution(24 * time.Hour),
+			NewDistribution(30 * 24 * time.Hour),
 		},
 	}
 }
