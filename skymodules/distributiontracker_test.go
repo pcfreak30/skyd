@@ -198,6 +198,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != duration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 	for i < 64+48 {
 		d.AddDataPoint(total)
@@ -210,6 +218,14 @@ func TestDistributionBucketing(t *testing.T) {
 
 		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != duration((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -226,6 +242,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != duration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 	for i < 64+48*3 {
 		d.AddDataPoint(total)
@@ -238,6 +262,14 @@ func TestDistributionBucketing(t *testing.T) {
 
 		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != duration((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -254,6 +286,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != duration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 	for i < 64+48*5 {
 		d.AddDataPoint(total)
@@ -266,6 +306,14 @@ func TestDistributionBucketing(t *testing.T) {
 
 		pstat := d.PStat(0.99999999999)
 		if pstat != total-time.Millisecond {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != duration((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -282,6 +330,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != duration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 	for i < 64+48*7 {
 		d.AddDataPoint(total)
@@ -296,6 +352,14 @@ func TestDistributionBucketing(t *testing.T) {
 		if pstat != total-time.Millisecond {
 			t.Error("bad", i, pstat, total)
 		}
+		pstat = d.PStat(0.00000001)
+		if pstat != time.Millisecond*4 {
+			t.Error("bad", i, pstat, total)
+		}
+		pstat = d.PStat(0.5)
+		if pstat != duration((i+1)/2) {
+			t.Error("bad", i, pstat, total)
+		}
 	}
 
 	// Test off the end of the bucket.
@@ -305,5 +369,13 @@ func TestDistributionBucketing(t *testing.T) {
 	pstat := d.PStat(0.99999999999)
 	if pstat != expectedPStat {
 		t.Error("bad")
+	}
+	pstat = d.PStat(0.00000001)
+	if pstat != time.Millisecond*4 {
+		t.Error("bad", i, pstat, total)
+	}
+	pstat = d.PStat(0.5)
+	if pstat != duration(201) {
+		t.Error("bad", pstat, duration(201))
 	}
 }

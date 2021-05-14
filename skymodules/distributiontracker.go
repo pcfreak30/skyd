@@ -197,6 +197,11 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	}
 
 	// Convert i into a duration.
+	return duration(index)
+}
+
+// timingIndexToDuration converts the index of a timing bucket into a timing.
+func duration(index int) time.Duration {
 	stepSize := distributionTrackerInitialStepSize
 	if index <= 64 {
 		return stepSize * time.Duration(index)
