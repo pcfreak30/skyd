@@ -109,6 +109,29 @@ type (
 	}
 )
 
+// timingIndexToDuration converts the index of a timing bucket into a timing.
+func distributionDuration(index int) time.Duration {
+	if index < 0 || index > 64+48*distributionTrackerNumIncrements {
+		build.Critical("distribution duration index out of bounds:", index)
+	}
+
+	stepSize := distributionTrackerInitialStepSize
+	if index <= 64 {
+		return stepSize * time.Duration(index)
+	}
+	prevMax := stepSize * 64
+	for i := 64; i <= 64+48*distributionTrackerNumIncrements; i += 48 {
+		stepSize *= 4
+		if index < i+48 {
+			return stepSize*time.Duration(index-i) + prevMax
+		}
+		prevMax *= 4
+	}
+
+	// The final bucket value.
+	return prevMax
+}
+
 // addDecay will decay the distribution.
 func (d *Distribution) addDecay() {
 	// Don't add any decay if the half life is zero.
@@ -179,6 +202,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 func (d *Distribution) PStat(p float64) time.Duration {
 	// Check for an error value.
 	if p <= 0 || p >= 1 {
+		build.Critical("PStat needs to be called with a value inside of the range 0 to 1, used:", p)
 		return 0
 	}
 
@@ -186,6 +210,10 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	var total float64
 	for i := 0; i < len(d.timings); i++ {
 		total += d.timings[i]
+	}
+	if total == 0 {
+		// No data collected, just return the worst case.
+		return distributionDuration(len(d.timings))
 	}
 
 	// Count up until we reach p.
@@ -197,26 +225,7 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	}
 
 	// Convert i into a duration.
-	return duration(index)
-}
-
-// timingIndexToDuration converts the index of a timing bucket into a timing.
-func duration(index int) time.Duration {
-	stepSize := distributionTrackerInitialStepSize
-	if index <= 64 {
-		return stepSize * time.Duration(index)
-	}
-	prevMax := stepSize * 64
-	for i := 64; i <= 64+48*distributionTrackerNumIncrements; i += 48 {
-		stepSize *= 4
-		if index < i+48 {
-			return stepSize*time.Duration(index-i) + prevMax
-		}
-		prevMax *= 4
-	}
-
-	// The final bucket value.
-	return prevMax
+	return distributionDuration(index)
 }
 
 // DataPoints returns the total number of data points contained within the
