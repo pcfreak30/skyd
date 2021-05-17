@@ -35,7 +35,7 @@ func TestFullDistributionTracker(t *testing.T) {
 	dt.AddDataPoint(time.Millisecond * 266)
 
 	// Check how the distributions seem.
-	nines := dt.AllNines()
+	nines := dt.Percentiles()
 	// Each nine should be less than the next, and equal across all
 	// distribuitons.
 	if nines[0][0] >= nines[0][1] || nines[0][1] >= nines[0][2] || nines[0][2] >= nines[0][3] {
@@ -66,7 +66,7 @@ func TestFullDistributionTracker(t *testing.T) {
 	for i := 0; i < 2e3; i++ {
 		dt.AddDataPoint(time.Millisecond * 3)
 	}
-	nines = dt.AllNines()
+	nines = dt.Percentiles()
 	if nines[0][0] != nines[0][1] {
 		t.Log(nines)
 		t.Error("bad")
@@ -85,7 +85,7 @@ func TestFullDistributionTracker(t *testing.T) {
 	for i := 0; i < 5e3; i++ {
 		dt.AddDataPoint(time.Millisecond * 3)
 	}
-	nines = dt.AllNines()
+	nines = dt.Percentiles()
 	if nines[0][1] != nines[0][2] {
 		t.Log(nines)
 		t.Error("bad")
@@ -107,6 +107,8 @@ func TestFullDistributionTracker(t *testing.T) {
 // TestDistributionDecay will test that the distribution is being decayed
 // correctly when enough time has passed.
 func TestDistributionDecay(t *testing.T) {
+	t.Parallel()
+
 	// Create a distribution with a half life of 100 minutes, which means a
 	// decay operation should trigger every minute.
 	d := NewDistribution(time.Minute * 100)
@@ -127,6 +129,8 @@ func TestDistributionDecay(t *testing.T) {
 			d.AddDataPoint(time.Millisecond * 100)
 		}
 	}
+	// We accept a range of values to compensate for the limited precision of
+	// floating points.
 	if totalPoints() < 499 || totalPoints() > 501 {
 		t.Error("bad", totalPoints())
 	}
@@ -134,6 +138,8 @@ func TestDistributionDecay(t *testing.T) {
 	// Simulate exactly the half life of time passing.
 	d.lastDecay = time.Now().Add(-100 * time.Minute)
 	d.AddDataPoint(time.Millisecond)
+	// We accept a range of values to compensate for the limited precision of
+	// floating points.
 	if totalPoints() < 250 || totalPoints() > 252 {
 		t.Error("bad", totalPoints())
 	}
@@ -143,6 +149,8 @@ func TestDistributionDecay(t *testing.T) {
 	d.AddDataPoint(time.Millisecond)
 	d.lastDecay = time.Now().Add(-50 * time.Minute)
 	d.AddDataPoint(time.Millisecond)
+	// We accept a range of values to compensate for the limited precision of
+	// floating points.
 	if totalPoints() < 126 || totalPoints() > 128 {
 		t.Error("bad", totalPoints())
 	}
@@ -151,6 +159,8 @@ func TestDistributionDecay(t *testing.T) {
 // TestDistributionDecayedLifetime checks that the total counted decayed
 // lifetime of the distribution is being tracked correctly.
 func TestDistributionDecayedLifetime(t *testing.T) {
+	t.Parallel()
+
 	// Create a distribution with a half life of 300 minutes, which means a
 	// decay operation should trigger every three minutes.
 	d := NewDistribution(time.Minute * 300)
@@ -169,6 +179,8 @@ func TestDistributionDecayedLifetime(t *testing.T) {
 		d.AddDataPoint(time.Millisecond)
 	}
 	pointsPerHour := totalPoints() / (float64(d.decayedLifetime) / float64(time.Hour))
+	// We accept a range of values to compensate for the limited precision of
+	// floating points.
 	if pointsPerHour < 55 || pointsPerHour > 65 {
 		t.Error("bad", pointsPerHour)
 	}
@@ -177,6 +189,8 @@ func TestDistributionDecayedLifetime(t *testing.T) {
 // TestDistributionBucketing will check that the distribution is placing timings
 // into the right buckets and then reporting the right timings in the pstats.
 func TestDistributionBucketing(t *testing.T) {
+	t.Parallel()
+
 	// Adding a half life prevents it from decaying every time we add a data
 	// point.
 	d := NewDistribution(time.Minute * 100)

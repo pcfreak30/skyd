@@ -254,12 +254,13 @@ func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
 	}
 }
 
-// AllNines returns 4 timings for each distribution in the tracker:
+// Percentiles returns the percentiles for 4 timings for each distribution in
+// the tracker:
 //	 + the p90
 //	 + the p99
 //	 + the p999
 //	 + the p9999
-func (dt *DistributionTracker) AllNines() [][]time.Duration {
+func (dt *DistributionTracker) Percentiles() [][]time.Duration {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -290,7 +291,7 @@ func (dt *DistributionTracker) DataPoints() []float64 {
 // tracker.
 func (dt *DistributionTracker) Stats() *DistributionTrackerStats {
 	return &DistributionTrackerStats{
-		Nines:      dt.AllNines(),
+		Nines:      dt.Percentiles(),
 		DataPoints: dt.DataPoints(),
 	}
 }
