@@ -276,7 +276,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 
 	// Check p99. The winning timing should be 1s which results in an estimate
 	// of 1.02s.
-	allNines := rt.renter.staticRegReadStats.AllNines()
+	allNines := rt.renter.staticRegReadStats.Percentiles()
 	p99 := allNines[0][2]
 	if p99 != 1008*time.Millisecond {
 		t.Fatal("wrong p99", p99)

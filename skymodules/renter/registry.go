@@ -478,7 +478,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	}()
 
 	// Use the p999 of the registry read stats to determine the timeout.
-	nines := r.staticRegReadStats.AllNines()
+	nines := r.staticRegReadStats.Percentiles()
 	estimate := nines[0][2]
 	if estimate < minRegistryReadTimeout {
 		estimate = minRegistryReadTimeout
