@@ -35,7 +35,7 @@ func TestFullDistributionTracker(t *testing.T) {
 	dt.AddDataPoint(time.Millisecond * 266)
 
 	// Check how the distributions seem.
-	nines := dt.AllNines()
+	nines := dt.Percentiles()
 	// Each nine should be less than the next, and equal across all
 	// distribuitons.
 	if nines[0][0] >= nines[0][1] || nines[0][1] >= nines[0][2] || nines[0][2] >= nines[0][3] {
@@ -66,7 +66,7 @@ func TestFullDistributionTracker(t *testing.T) {
 	for i := 0; i < 2e3; i++ {
 		dt.AddDataPoint(time.Millisecond * 3)
 	}
-	nines = dt.AllNines()
+	nines = dt.Percentiles()
 	if nines[0][0] != nines[0][1] {
 		t.Log(nines)
 		t.Error("bad")
@@ -85,7 +85,7 @@ func TestFullDistributionTracker(t *testing.T) {
 	for i := 0; i < 5e3; i++ {
 		dt.AddDataPoint(time.Millisecond * 3)
 	}
-	nines = dt.AllNines()
+	nines = dt.Percentiles()
 	if nines[0][1] != nines[0][2] {
 		t.Log(nines)
 		t.Error("bad")
