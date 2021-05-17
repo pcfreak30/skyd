@@ -141,6 +141,8 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 	}
 }
 
+// TestAddUploadChunkCritial is a test that triggers the critical within
+// callAddUploadChunk.
 func TestAddUploadChunkCritical(t *testing.T) {
 	log, _ := persist.NewLogger(ioutil.Discard)
 	r := &Renter{
