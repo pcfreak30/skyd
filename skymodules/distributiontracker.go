@@ -44,10 +44,11 @@ const (
 	// been decayed recently is still also an accurate value.
 	distributionTrackerDecayFrequencyDenom = 100
 
-	// distributionTrackerInitialStepSize defines the step size that we use for the
-	// first 64 buckets of a distribution. This means that this is the smallest
-	// timing that is supported by the distribution. The highest value supported
-	// by the distribution is about 1 million times larger.
+	// distributionTrackerInitialStepSize defines the step size that we use for
+	// the first bucketsPerStepChange buckets of a distribution. This means that
+	// this is the smallest timing that is supported by the distribution. The
+	// highest value supported by the distribution is about 1 million times
+	// larger.
 	//
 	// Decreasing this will give better granularity on things that take very
 	// little time, but will also proportionally reduce the maximum amount of
@@ -59,6 +60,32 @@ const (
 	// distributionTrackerNumIncrements defines the number of times the stats
 	// get incremented.
 	distributionTrackerNumIncrements = 7
+)
+
+// NOTE: These consts are interconnected, do not change them.
+// distriubtionTrackerInitialBuckets needs to be a power of 2,
+// distriubtionTrackerStepChangeMultiple needs to be a power of 2, and
+// distriubtionTrackerBucketsPerStepChange needs to be:
+// 		distributionTrackerInitialBuckets - (distributionTrackerInitialBuckets/distributionTrackerStepChangeMultiple)
+const (
+	// bucketsPerStepChange defines the number of buckets that are used in the
+	// first step. It has a mathematical relationship to
+	// distributoinTrackerBucketsPerStepChange, because we want every step range
+	// to cover the same amount of new ground, but the first step range has no
+	// history. By adding an extra few buckets at the beginning, we can give it
+	// that history and bootstrap the data structure.
+	distributionTrackerInitialBuckets = 64
+
+	// distributionTrackerBucketsPerStepChange defines the number of buckets per
+	// step change. Increasing this number will give better granularity at each
+	// step range at the cost of more memory and more computation.
+	distributionTrackerBucketsPerStepChange = 48
+
+	// distributionTrackerStepChangeMultiple defines the multiple that is used
+	// when a step change is applied. A larger multiple means the data structure
+	// can cover a greater range of data in fewer buckets at the cost of
+	// granularity. This saves computation and memory.
+	distributionTrackerStepChangeMultiple = 4
 )
 
 type (
@@ -82,11 +109,12 @@ type (
 		// total number of objects by the decayed lifetime.
 		decayedLifetime time.Duration
 
-		// Buckets that represent the distribution. The first 64 buckets start
-		// at 4ms and are 4ms spaced apart. The next 48 buckets are spaced 16ms
-		// apart, then the next 48 are spaced 64ms apart, the spacings
-		// multiplying by 4 every 48 buckets. The final bucket is just over an
-		// hour, anything over will be put into that bucket as well.
+		// Buckets that represent the distribution. The first
+		// bucketsPerStepChange buckets start at 4ms and are 4ms spaced apart.
+		// The next 48 buckets are spaced 16ms apart, then the next 48 are
+		// spaced 64ms apart, the spacings multiplying by 4 every 48 buckets.
+		// The final bucket is just over an hour, anything over will be put into
+		// that bucket as well.
 		timings [64 + 48*distributionTrackerNumIncrements]float64
 	}
 
@@ -116,16 +144,16 @@ func distributionDuration(index int) time.Duration {
 	}
 
 	stepSize := distributionTrackerInitialStepSize
-	if index <= 64 {
+	if index <= distributionTrackerInitialBuckets {
 		return stepSize * time.Duration(index)
 	}
-	prevMax := stepSize * 64
-	for i := 64; i <= 64+48*distributionTrackerNumIncrements; i += 48 {
-		stepSize *= 4
-		if index < i+48 {
+	prevMax := stepSize * distributionTrackerInitialBuckets
+	for i := distributionTrackerInitialBuckets; i <= distributionTrackerInitialBuckets+distributionTrackerBucketsPerStepChange*distributionTrackerNumIncrements; i += distributionTrackerBucketsPerStepChange {
+		stepSize *= distributionTrackerStepChangeMultiple
+		if index < i+distributionTrackerBucketsPerStepChange {
 			return stepSize*time.Duration(index-i) + prevMax
 		}
-		prevMax *= 4
+		prevMax *= distributionTrackerStepChangeMultiple
 	}
 
 	// The final bucket value.
@@ -152,7 +180,7 @@ func (d *Distribution) addDecay() {
 	// Determine how much decay should be applied.
 	d.decayedLifetime += time.Since(d.lastDecay)
 	strength := float64(sincelastDecay) / float64(d.staticHalfLife)
-	mult := math.Pow(0.5, strength)
+	mult := math.Pow(0.5, strength) // 0.5 is the power you use to perform half life calculations
 
 	// Apply the decay to all values.
 	for i := 0; i < len(d.timings); i++ {
@@ -173,26 +201,23 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	d.addDecay()
 
 	// Determine which bucket to add this datapoint to.
-	//
-	// The first case is a special case because it covers 64 buckets instead of
-	// 48.
 	stepSize := distributionTrackerInitialStepSize
-	max := stepSize * 64
+	max := stepSize * distributionTrackerInitialBuckets
 	if dur < max {
 		slot := dur / stepSize
 		d.timings[slot]++
 		return
 	}
-	for i := 64; i < 64+48*distributionTrackerNumIncrements; i += 48 {
-		stepSize *= 4
-		max *= 4
+	for i := distributionTrackerInitialBuckets; i < distributionTrackerInitialBuckets+distributionTrackerBucketsPerStepChange*distributionTrackerNumIncrements; i += distributionTrackerBucketsPerStepChange {
+		stepSize *= distributionTrackerStepChangeMultiple
+		max *= distributionTrackerStepChangeMultiple
 		if dur < max {
-			slot := int(dur/stepSize) + i - 16
+			slot := int(dur/stepSize) + i - (distributionTrackerInitialBuckets / distributionTrackerStepChangeMultiple)
 			d.timings[slot]++
 			return
 		}
 	}
-	d.timings[63+48*distributionTrackerNumIncrements]++
+	d.timings[(distributionTrackerInitialBuckets-1)+distributionTrackerBucketsPerStepChange*distributionTrackerNumIncrements]++
 }
 
 // PStat will return the timing at which the percentage of requests is lower
