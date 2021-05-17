@@ -538,15 +538,18 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 // SkynetSkylinkConcatReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'concat' format specified.
 func (c *Client) SkynetSkylinkConcatReaderGet(skylink string) (io.ReadCloser, error) {
-	_, reader, err := c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatConcat)
+	_, reader, err := c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatConcat, types.ZeroCurrency)
 	return reader, err
 }
 
 // SkynetSkylinkFormatGet uses the /skynet/skylink endpoint to fetch a reader of
 // the file data with the format specified.
-func (c *Client) SkynetSkylinkFormatGet(skylink string, format skymodules.SkyfileFormat) (http.Header, io.ReadCloser, error) {
+func (c *Client) SkynetSkylinkFormatGet(skylink string, format skymodules.SkyfileFormat, scps types.Currency) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(format))
+	if !scps.IsZero() {
+		values.Set("scps", scps.String())
+	}
 	getQuery := skylinkQueryWithValues(skylink, values)
 	header, reader, err := c.getReaderResponse(getQuery)
 	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
@@ -555,19 +558,37 @@ func (c *Client) SkynetSkylinkFormatGet(skylink string, format skymodules.Skyfil
 // SkynetSkylinkTarReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'tar' format specified.
 func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
-	return c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatTar)
+	return c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatTar, types.ZeroCurrency)
+}
+
+// SkynetSkylinkTarReaderGetWithSCPS uses the /skynet/skylink endpoint to fetch
+// a reader of the file data with the 'tar' format and 'scps' specified.
+func (c *Client) SkynetSkylinkTarReaderGetWithSCPS(skylink string, scps types.Currency) (http.Header, io.ReadCloser, error) {
+	return c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatTar, scps)
 }
 
 // SkynetSkylinkTarGzReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'targz' format specified.
 func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
-	return c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatTarGz)
+	return c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatTarGz, types.ZeroCurrency)
+}
+
+// SkynetSkylinkTarGzReaderGetWithSCPS uses the /skynet/skylink endpoint to
+// fetch a reader of the file data with the 'targz' format and 'scps' specified.
+func (c *Client) SkynetSkylinkTarGzReaderGetWithSCPS(skylink string, scps types.Currency) (http.Header, io.ReadCloser, error) {
+	return c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatTarGz, scps)
 }
 
 // SkynetSkylinkZipReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'zip' format specified.
 func (c *Client) SkynetSkylinkZipReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
-	return c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatZip)
+	return c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatZip, types.ZeroCurrency)
+}
+
+// SkynetSkylinkZipReaderGetWithSCPS uses the /skynet/skylink endpoint to fetch
+// a reader of the file data with the 'zip' format and 'scps' specified.
+func (c *Client) SkynetSkylinkZipReaderGetWithSCPS(skylink string, scps types.Currency) (http.Header, io.ReadCloser, error) {
+	return c.SkynetSkylinkFormatGet(skylink, skymodules.SkyfileFormatZip, scps)
 }
 
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the

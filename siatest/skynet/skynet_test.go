@@ -4519,6 +4519,7 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 	// Prepare a base of 1SC and a usd conversion rate of USD 1 == 100SC.
 	mb := types.SiacoinPrecision
 	cr := types.SiacoinPrecision.Mul64(100)
+	scps := types.SiacoinPrecision
 	err := r.RenterSetMonetizationBase(mb)
 	if err != nil {
 		t.Fatal(err)
@@ -4568,17 +4569,17 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Download it raw.
-	_, _, err = r.SkynetSkylinkGet(skylink)
+	_, _, err = r.SkynetSkylinkGetWithSCPS(skylink, scps)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Download it with the concat format.
-	_, _, err = r.SkynetSkylinkConcatGet(skylink)
+	_, _, err = r.SkynetSkylinkConcatGetWithSCPS(skylink, scps)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Download it as tar.
-	_, reader, err := r.SkynetSkylinkTarReaderGet(skylink)
+	_, reader, err := r.SkynetSkylinkTarReaderGetWithSCPS(skylink, scps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4590,7 +4591,7 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Download it as tar gz.
-	_, reader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	_, reader, err = r.SkynetSkylinkTarGzReaderGetWithSCPS(skylink, scps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4602,7 +4603,7 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Download it as zip.
-	_, reader, err = r.SkynetSkylinkZipReaderGet(skylink)
+	_, reader, err = r.SkynetSkylinkZipReaderGetWithSCPS(skylink, scps)
 	if err != nil {
 		t.Fatal(err)
 	}
