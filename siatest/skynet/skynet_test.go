@@ -4105,7 +4105,7 @@ func TestRegistryUpdateRead(t *testing.T) {
 // seeing as it requires a 10-30 EC schema for the overdrive code to launch
 // extra overdrive workers immediatelely after launching the initial workers.
 // This requires a test group with at least 10 hosts and a portal with a custom
-// dependancy seeing as we don't allow (yet) to configure the fanout redundancy.
+// dependency seeing as we don't allow (yet) to configure the fanout redundancy.
 func TestSkynetSkyfileStandardUploadRedundancy(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
