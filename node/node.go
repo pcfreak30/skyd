@@ -11,20 +11,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/explorer"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/explorer"
 
-	"gitlab.com/NebulousLabs/Sia/modules/consensus"
-	"gitlab.com/NebulousLabs/Sia/modules/feemanager"
-	"gitlab.com/NebulousLabs/Sia/modules/gateway"
-	"gitlab.com/NebulousLabs/Sia/modules/host"
-	"gitlab.com/NebulousLabs/Sia/modules/miner"
-	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
-	"gitlab.com/NebulousLabs/Sia/modules/wallet"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/accounting"
@@ -32,6 +24,13 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
+	"go.sia.tech/siad/modules/consensus"
+	"go.sia.tech/siad/modules/gateway"
+	"go.sia.tech/siad/modules/host"
+	"go.sia.tech/siad/modules/miner"
+	"go.sia.tech/siad/modules/transactionpool"
+	"go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/persist"
 )
 
 // NodeParams contains a bunch of parameters for creating a new test node. As
@@ -62,7 +61,6 @@ type NodeParams struct {
 	CreateAccounting      bool
 	CreateConsensusSet    bool
 	CreateExplorer        bool
-	CreateFeeManager      bool
 	CreateGateway         bool
 	CreateHost            bool
 	CreateMiner           bool
@@ -77,7 +75,6 @@ type NodeParams struct {
 	Accounting      skymodules.Accounting
 	ConsensusSet    modules.ConsensusSet
 	Explorer        modules.Explorer
-	FeeManager      modules.FeeManager
 	Gateway         modules.Gateway
 	Host            modules.Host
 	Miner           modules.TestMiner
@@ -91,10 +88,9 @@ type NodeParams struct {
 	ContractorDeps   modules.Dependencies
 	ContractSetDeps  modules.Dependencies
 	GatewayDeps      modules.Dependencies
-	FeeManagerDeps   modules.Dependencies
 	HostDeps         modules.Dependencies
 	HostDBDeps       modules.Dependencies
-	RenterDeps       modules.Dependencies
+	RenterDeps       skymodules.SkydDependencies
 	TPoolDeps        modules.Dependencies
 	WalletDeps       modules.Dependencies
 
@@ -139,7 +135,6 @@ type Node struct {
 	Accounting      skymodules.Accounting
 	ConsensusSet    modules.ConsensusSet
 	Explorer        modules.Explorer
-	FeeManager      modules.FeeManager
 	Gateway         modules.Gateway
 	Host            modules.Host
 	Miner           modules.TestMiner
@@ -177,9 +172,6 @@ func (np NodeParams) NumModules() (n int) {
 		n++
 	}
 	if !np.CreateExplorer || np.Explorer != nil {
-		n++
-	}
-	if np.CreateFeeManager || np.FeeManager != nil {
 		n++
 	}
 	if np.CreateAccounting || np.Accounting != nil {
@@ -232,10 +224,6 @@ func (n *Node) Close() (err error) {
 	if n.Explorer != nil {
 		printlnRelease("Closing explorer...")
 		err = errors.Compose(err, n.Explorer.Close())
-	}
-	if n.FeeManager != nil {
-		printlnRelease("Closing feemanager...")
-		err = errors.Compose(err, n.FeeManager.Close())
 	}
 	if n.ConsensusSet != nil {
 		printlnRelease("Closing consensusset...")
@@ -403,30 +391,6 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		return nil, errChan
 	}
 
-	// FeeManager.
-	fm, err := func() (modules.FeeManager, error) {
-		if !params.CreateFeeManager && params.FeeManager != nil {
-			return nil, errors.New("cannot create feemanager and also use custom feemanager")
-		}
-		if params.FeeManager != nil {
-			return params.FeeManager, nil
-		}
-		if !params.CreateFeeManager {
-			return nil, nil
-		}
-		feeManagerDeps := params.FeeManagerDeps
-		if feeManagerDeps == nil {
-			feeManagerDeps = modules.ProdDependencies
-		}
-		i++
-		printfRelease("(%d/%d) Loading feemanager...\n", i, numModules)
-		return feemanager.NewCustomFeeManager(cs, tp, w, filepath.Join(dir, modules.FeeManagerDir), feeManagerDeps)
-	}()
-	if err != nil {
-		errChan <- errors.Extend(err, errors.New("unable to create feemanager"))
-		return nil, errChan
-	}
-
 	// Miner.
 	m, err := func() (modules.TestMiner, error) {
 		if params.CreateMiner && params.Miner != nil {
@@ -513,7 +477,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		renterDeps := params.RenterDeps
 		if renterDeps == nil {
-			renterDeps = modules.ProdDependencies
+			renterDeps = skymodules.SkydProdDependencies
 		}
 		persistDir := filepath.Join(dir, skymodules.RenterDir)
 
@@ -586,7 +550,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		printfRelease("(%d/%d) Loading accounting...\n", i, numModules)
 
 		// Load Accounting module
-		acc, err := accounting.NewCustomAccounting(fm, h, m, r, w, persistDir, accoutingDeps)
+		acc, err := accounting.NewCustomAccounting(h, m, r, w, persistDir, accoutingDeps)
 		if err != nil {
 			return nil, err
 		}
@@ -610,7 +574,6 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		Accounting:      acc,
 		ConsensusSet:    cs,
 		Explorer:        e,
-		FeeManager:      fm,
 		Gateway:         g,
 		Host:            h,
 		Miner:           m,

@@ -8,7 +8,6 @@ import (
 	"sync"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -16,6 +15,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"go.sia.tech/siad/modules"
 )
 
 // TestSkynetBackupAndRestore verifies the back up and restoration functionality
@@ -424,13 +424,13 @@ func verifyDownloadByAll(portal1, portal2 *siatest.TestNode, skylink string) err
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		data1, sm1, err1 = portal1.SkynetSkylinkGet(skylink)
+		data1, err1 = portal1.SkynetSkylinkGet(skylink)
 		err1 = errors.AddContext(err1, "portal 1 download error")
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		data2, sm2, err2 = portal2.SkynetSkylinkGet(skylink)
+		data2, err2 = portal2.SkynetSkylinkGet(skylink)
 		err2 = errors.AddContext(err2, "portal 2 download error")
 	}()
 	wg.Wait()

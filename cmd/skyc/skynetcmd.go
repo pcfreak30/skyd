@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -19,12 +18,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5/decor"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 )
 
 var (
@@ -508,14 +507,10 @@ func skynetPin(skylink string, siaPath skymodules.SiaPath) (string, error) {
 		}
 	}()
 
-	// Get the SkyfileMetadata from the Header
-	var sm skymodules.SkyfileMetadata
-	strMetadata := resp.Header.Get("Skynet-File-Metadata")
-	if strMetadata != "" {
-		err = json.Unmarshal([]byte(strMetadata), &sm)
-		if err != nil {
-			return "", errors.AddContext(err, "unable to unmarshal skyfile metadata")
-		}
+	// Get the SkyfileMetadata.
+	_, sm, err := httpClient.SkynetMetadataGet(skylink)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to fetch skyfile metadata")
 	}
 
 	// Upload the skyfile to pin it to the renter node

@@ -23,12 +23,6 @@ func TestAccounting(t *testing.T) {
 		np := node.Accounting(testDir)
 		testAccounting(t, np)
 	})
-	t.Run("FeeManager", func(t *testing.T) {
-		testDir := accountingTestDir(t.Name())
-		np := node.FeeManager(testDir)
-		np.CreateAccounting = true
-		testAccounting(t, np)
-	})
 	t.Run("Host", func(t *testing.T) {
 		testDir := accountingTestDir(t.Name())
 		np := node.Host(testDir)

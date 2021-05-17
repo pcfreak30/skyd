@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/persist"
 )
 
 // TestSystemScanDurationEstimator checks that the logic for computing the

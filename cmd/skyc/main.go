@@ -8,11 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
+	"go.sia.tech/siad/modules"
 )
 
 var (
@@ -302,8 +302,8 @@ func main() {
 func initCmds() *cobra.Command {
 	root := &cobra.Command{
 		Use:   os.Args[0],
-		Short: "Sia Client v" + build.Version,
-		Long:  "Sia Client v" + build.Version,
+		Short: "Skynet Client v" + build.NodeVersion,
+		Long:  "Skynet Client v" + build.NodeVersion,
 		Run:   wrap(statuscmd),
 	}
 
@@ -313,10 +313,6 @@ func initCmds() *cobra.Command {
 	accountingCmd.Flags().Int64Var(&accountingRangeStartTime, "start", 0, "Unix timestamp for the start of the accounting info range.")
 	root.AddCommand(consensusCmd)
 	root.AddCommand(jsonCmd)
-
-	// Add feemanager commands
-	root.AddCommand(feeManagerCmd)
-	feeManagerCmd.AddCommand(feeManagerCancelFeeCmd)
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayAddressCmd, gatewayBandwidthCmd, gatewayBlocklistCmd, gatewayConnectCmd, gatewayDisconnectCmd, gatewayListCmd, gatewayRatelimitCmd)

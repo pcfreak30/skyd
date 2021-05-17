@@ -18,14 +18,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 const (
@@ -1362,7 +1362,7 @@ func renterbubblecmd(directory string) {
 	fmt.Println("Calling bubble on:", directory)
 
 	// Bubble Directory
-	err := httpClient.RenterBubblePost(siaPath, true, renterBubbleAll)
+	err := httpClient.RenterBubblePost(siaPath, renterBubbleAll)
 	if err != nil {
 		die("Unable to bubble", directory, ":", err)
 	}

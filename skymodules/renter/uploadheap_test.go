@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 )
 
 // TestUploadHeap tests the uploadheap subsystem
@@ -428,7 +428,6 @@ func testManagedAddChunksToHeap(t *testing.T) {
 
 	// Create files in multiple directories
 	var numChunks uint64
-	dirSiaPaths := rt.renter.callNewUniqueRefreshPaths()
 	names := []string{"rootFile", "subdir/File", "subdir2/file"}
 	for _, name := range names {
 		siaPath, err := skymodules.NewSiaPath(name)
@@ -461,14 +460,10 @@ func testManagedAddChunksToHeap(t *testing.T) {
 		if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 			t.Fatal(err)
 		}
-		err = dirSiaPaths.callAdd(dirSiaPath)
-		if err != nil {
-			t.Fatal(err)
-		}
+		rt.renter.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 	}
-
-	// Call bubbled to ensure directory metadata is updated
-	dirSiaPaths.callRefreshAllBlocking()
+	// Make sure all of the updates complete.
+	rt.renter.staticDirUpdateBatcher.callFlush()
 
 	// Wait until the root health has been updated
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -500,17 +495,13 @@ func testManagedAddChunksToHeap(t *testing.T) {
 	}
 
 	// call managedAddChunksTo Heap
-	siaPaths, err := rt.renter.managedAddChunksToHeap(hosts)
+	err = rt.renter.managedAddChunksToHeap(hosts)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm that all chunks from all the directories were added since there
 	// are not enough chunks in only one directory to fill the heap
-	totalDirs := len(siaPaths.childDirs) + len(siaPaths.parentDirs)
-	if totalDirs != 3 {
-		t.Fatal("Expected 3 siaPaths to be returned, got", totalDirs)
-	}
 	if rt.renter.staticUploadHeap.managedLen() != int(numChunks) {
 		t.Fatalf("Expected uploadHeap to have %v chunks but it has %v chunks", numChunks, rt.renter.staticUploadHeap.managedLen())
 	}
@@ -546,7 +537,6 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 
 	// Create local and remote files in the root directory an a sub directory
 	var numChunks int
-	dirSiaPaths := rt.renter.callNewUniqueRefreshPaths()
 	names := []string{"remoteFile", "localFile", "sub/remoteFile", "sub/localFile"}
 	for _, name := range names {
 		// Create the SiaPath for the file
@@ -585,17 +575,10 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 		if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 			t.Fatal(err)
 		}
-		dirSiaPaths.callAdd(dirSiaPath)
+		rt.renter.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 	}
-
-	// Call bubbled to ensure directory metadata is updated
-	err = dirSiaPaths.callRefreshAll()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Block until all bubbles are done
-	rt.managedBlockUntilBubblesComplete()
+	// Block until the metadata updates are complete.
+	rt.renter.staticDirUpdateBatcher.callFlush()
 
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
@@ -612,7 +595,7 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 	}
 
 	// call managedAddChunksToHeap
-	_, err = rt.renter.managedAddChunksToHeap(hosts)
+	err = rt.renter.managedAddChunksToHeap(hosts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1242,26 +1225,4 @@ func testAddChunksToHeapPanic(t *testing.T) {
 
 	// Call managedAddChunksToHeap
 	rt.renter.managedAddChunksToHeap(nil)
-}
-
-// managedBlockUntilBubblesComplete is a helper that blocks until all pending
-// bubbles are complete
-func (rt *renterTester) managedBlockUntilBubblesComplete() {
-	bs := rt.renter.staticBubbleScheduler
-	for {
-		select {
-		case <-rt.renter.tg.StopChan():
-			return
-		default:
-		}
-		// Sleep to start the loop since most of the time bubble is called in a
-		// go routine so we want to give it time to start.
-		time.Sleep(100 * time.Millisecond)
-		bs.mu.Lock()
-		if len(bs.bubbleUpdates) == 0 {
-			bs.mu.Unlock()
-			return
-		}
-		bs.mu.Unlock()
-	}
 }

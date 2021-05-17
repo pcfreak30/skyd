@@ -19,11 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api"
@@ -34,6 +29,11 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/host/contractmanager"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 // TestRenterOne executes a number of subtests using the same TestGroup to save
@@ -939,7 +939,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// Make sure that the file system is updated
-	err = renterNode.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+	err = renterNode.RenterBubblePost(skymodules.RootSiaPath(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5075,7 +5075,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	}
 
 	// Download the file.
-	_, _, err = renter.SkynetSkylinkGet(skylink)
+	_, err = renter.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5116,7 +5116,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 
 	// Download again
 	possibleErrs := "all workers failed;download timed out"
-	_, _, err = renter.SkynetSkylinkGet(skylink)
+	_, err = renter.SkynetSkylinkGet(skylink)
 	if err == nil || strings.Contains(possibleErrs, err.Error()) {
 		t.Fatal(err)
 	}
@@ -5128,7 +5128,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	// Download one more time. It should work again. Do it in a loop since the
 	// workers might be on a cooldown.
 	err = build.Retry(600, 100*time.Millisecond, func() error {
-		_, _, err = renter.SkynetSkylinkGet(skylink)
+		_, err = renter.SkynetSkylinkGet(skylink)
 		return err
 	})
 	if err != nil {
@@ -5491,7 +5491,7 @@ func TestRenterRepairSize(t *testing.T) {
 	checkDirRepairSize := func(dirSiaPath skymodules.SiaPath, repairExpected, stuckExpected uint64) error {
 		return build.Retry(15, time.Second, func() error {
 			// Make sure the directory is being updated
-			err := r.RenterBubblePost(dirSiaPath, true, true)
+			err := r.RenterBubblePost(dirSiaPath, true)
 			if err != nil {
 				return err
 			}
@@ -5891,8 +5891,8 @@ func TestRenterBubble(t *testing.T) {
 	}
 
 	// Call bubble on root
-	var force, recursive bool
-	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
+	var recursive bool
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), recursive)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5931,9 +5931,8 @@ func TestRenterBubble(t *testing.T) {
 	}
 
 	// Call bubble on root recursively
-	force = true
 	recursive = true
-	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), recursive)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5980,46 +5979,6 @@ func TestRenterBubble(t *testing.T) {
 				return err
 			}
 			return checkDirInfo(rd.Directories[0], test.expected)
-		})
-		if err != nil {
-			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
-		}
-	}
-
-	// Call bubble on root recursively without force, this should result in only
-	// the root directory being updated.
-	checkTime := time.Now()
-	force = false
-	recursive = true
-	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, test := range tests {
-		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
-		err = build.Retry(100, 100*time.Millisecond, func() error {
-			rd, err := r.RenterDirRootGet(test.siaPath)
-			if err != nil {
-				return err
-			}
-			dir := rd.Directories[0]
-
-			// Check LastHealthCheckTimes
-			var badALHCT, badLHCT bool
-			if test.siaPath.IsRoot() {
-				// Root should have a lastHealthCheckTime after checkTime but an
-				// AggregateLastHealthCheckTime after checkTime
-				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
-				badLHCT = dir.LastHealthCheckTime.Before(checkTime)
-			} else {
-				// All other directories should have both lastHealthCheckTimes before checkTime
-				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
-				badLHCT = dir.LastHealthCheckTime.After(checkTime)
-			}
-			if badALHCT || badLHCT {
-				return fmt.Errorf("badALHCT %v badLHCT %v", badALHCT, badLHCT)
-			}
-			return nil
 		})
 		if err != nil {
 			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)

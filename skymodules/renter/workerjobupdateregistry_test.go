@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/host/registry"
+	"go.sia.tech/siad/types"
 )
 
 // TestUpdateRegistryJob tests the various cases of running an UpdateRegistry
@@ -25,7 +26,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	t.Parallel()
 
 	deps := dependencies.NewDependencyCorruptMDMOutput()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.SkydProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}
 	t.Parallel()
 
-	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, &dependencies.DependencyRegistryUpdateLyingHost{})
+	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.SkydProdDependencies, &dependencies.DependencyRegistryUpdateLyingHost{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +264,7 @@ func TestUpdateRegistryInvalidCached(t *testing.T) {
 
 	deps := dependencies.NewDependencyRegistryUpdateNoOp()
 	deps.Disable()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), skymodules.SkydProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}

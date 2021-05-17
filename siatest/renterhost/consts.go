@@ -3,8 +3,8 @@ package renterhost
 import (
 	"os"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"go.sia.tech/siad/persist"
 )
 
 // renterHostTestDir creates a temporary testing directory for a renterhost

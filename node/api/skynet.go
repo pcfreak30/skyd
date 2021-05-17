@@ -18,9 +18,6 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
@@ -28,6 +25,9 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // The SkynetPerformanceStats are stateful and tracked globally, bound by a
@@ -587,17 +587,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// Parse the `no-response-metadata` query string parameter.
-	var noResponseMetadata bool
-	noResponseMetadataStr := queryForm.Get("no-response-metadata")
-	if noResponseMetadataStr != "" {
-		noResponseMetadata, err = strconv.ParseBool(noResponseMetadataStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'no-response-metadata' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-
 	// Parse the `include-layout` query string parameter.
 	var includeLayout bool
 	includeLayoutStr := queryForm.Get("include-layout")
@@ -838,12 +827,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
 	}
 	w.Header().Set("Content-Disposition", cdh)
-
-	// Set the Skynet-File-Metadata
-	includeMetadata := !noResponseMetadata
-	if includeMetadata {
-		w.Header().Set("Skynet-File-Metadata", string(streamer.RawMetadata()))
-	}
 
 	// Create a write monetizer.
 	writeMonetizer, err := newMonetizer(req.Context(), metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase, scps)
@@ -1215,7 +1198,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	}
 
 	// get version
-	version := build.Version
+	version := build.NodeVersion
 	if build.ReleaseTag != "" {
 		version += "-" + build.ReleaseTag
 	}
@@ -1587,6 +1570,9 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
+	// Set the Skylink response header
+	w.Header().Set("Skynet-Skylink", skylink.String())
+
 	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
@@ -1606,12 +1592,23 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Decrypt it if necessary.
+	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
+	if encrypted {
+		_, err = api.renter.DecryptBaseSector(baseSector)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to decrypt base sector: %v", err)}, http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Parse it.
 	_, _, _, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	http.ServeContent(w, req, "", time.Time{}, bytes.NewReader(rawMD))
 }
 

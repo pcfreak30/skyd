@@ -18,15 +18,15 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 var (
@@ -356,15 +356,6 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// Parse the 'force' parameter
-	force := false
-	if f := req.FormValue("force"); f != "" {
-		force, err = scanBool(f)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
 	// Parse the 'recursive' parameter
 	recursive := false
 	if r := req.FormValue("recursive"); r != "" {
@@ -375,8 +366,8 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// Call bubble
-	err = api.renter.BubbleMetadata(siaPath, force, recursive)
+	// Update the corresponding metadata.
+	err = api.renter.UpdateMetadata(siaPath, recursive)
 	if err != nil {
 		WriteError(w, Error{"unable to bubble directory: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -974,7 +965,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{"unable to parse usdConversionRate: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-		settings.CurrencyConversionRates[modules.CurrencyUSD] = usdConversionRate
+		settings.CurrencyConversionRates[skymodules.CurrencyUSD] = usdConversionRate
 	}
 
 	// Parse monetization base.

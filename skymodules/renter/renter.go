@@ -40,11 +40,6 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	siasync "gitlab.com/NebulousLabs/Sia/sync"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -53,6 +48,11 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetblocklist"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
+	siasync "go.sia.tech/siad/sync"
+	"go.sia.tech/siad/types"
 )
 
 var (
@@ -230,13 +230,11 @@ type Renter struct {
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []skymodules.HostDBEntry
 
-	// staticBubbleScheduler manages the bubble requests for the renter
-	staticBubbleScheduler *bubbleScheduler
-
-	// cachedUtilities contain contract information used when calculating metadata
-	// information about the filesystem, such as health. This information is used
-	// in various functions such as listing filesystem information and bubble.
-	// These values are cached to prevent recomputing them too often.
+	// cachedUtilities contain contract information used when calculating
+	// metadata information about the filesystem, such as health. This
+	// information is used in various functions such as listing filesystem
+	// information and updating directory metadata.  These values are cached to
+	// prevent recomputing them too often.
 	cachedUtilities cachedUtilities
 
 	// staticBatchManager manages batching skyfile uploads for the Renter.
@@ -278,6 +276,7 @@ type Renter struct {
 	staticAccountManager               *accountManager
 	staticAlerter                      *modules.GenericAlerter
 	staticConsensusSet                 modules.ConsensusSet
+	staticDirUpdateBatcher             *dirUpdateBatcher
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
 	staticGateway                      modules.Gateway
@@ -294,7 +293,7 @@ type Renter struct {
 	persist         persistence
 	persistDir      string
 	mu              *siasync.RWMutex
-	staticDeps      modules.Dependencies
+	staticDeps      skymodules.SkydDependencies
 	staticLog       *persist.Logger
 	staticMux       *siamux.SiaMux
 	staticRepairLog *persist.Logger
@@ -863,7 +862,7 @@ func (r *Renter) threadedPaySkynetFee() {
 	// Pay periodically.
 	ticker := time.NewTicker(skymodules.SkynetFeePayoutCheckInterval)
 	for {
-		na := r.staticDeps.NebulousAddress()
+		na := r.staticDeps.SkynetAddress()
 
 		// Compute the threshold.
 		_, max := r.staticTPool.FeeEstimation()
@@ -1037,7 +1036,7 @@ func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
 var _ skymodules.Renter = (*Renter)(nil)
 
 // renterBlockingStartup handles the blocking portion of NewCustomRenter.
-func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*Renter, error) {
+func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, error) {
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -1102,15 +1101,15 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+	var err error
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
 	close(r.staticUploadHeap.pauseChan)
 
 	// Seed the rrs.
-	err := r.staticRRS.AddDatum(readRegistryStatsSeed)
+	err = r.staticRRS.AddDatum(readRegistryStatsSeed)
 	if err != nil {
 		return nil, err
 	}
@@ -1142,6 +1141,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	if err := r.tg.AfterStop(r.staticRepairLog.Close); err != nil {
 		return nil, err
+	}
+
+	// Initialize the dirUpdateBatcher.
+	r.staticDirUpdateBatcher, err = r.newDirUpdateBatcher()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new health update batcher")
 	}
 
 	// Initialize some of the components.
@@ -1210,11 +1215,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		}
 		go r.threadedHealthLoop()
 	}
-
-	// We do not group the staticBubbleScheduler's background thread with the
-	// threads disabled by "DisableRepairAndHealthLoops" so that manual calls to
-	// for bubble updates are processed.
-	go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
 
 	// Initialize the batch manager
 	r.newSkylinkBatchManager()
@@ -1304,7 +1304,7 @@ func (r *Renter) threadedUpdateRenterContractsAndUtilities() {
 }
 
 // NewCustomRenter initializes a renter and returns it.
-func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*Renter, <-chan error) {
+func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Blocking startup.
@@ -1343,7 +1343,7 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 		errChan <- err
 		return nil, errChan
 	}
-	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, modules.ProdDependencies)
+	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, skymodules.SkydProdDependencies)
 	if err := modules.PeekErr(errChanRenter); err != nil {
 		errChan <- err
 		return nil, errChan

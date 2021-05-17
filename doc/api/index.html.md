@@ -455,7 +455,6 @@ Returns the settings for the daemon
   "modules": { 
     "consensus":       true,  // bool
     "explorer":        false, // bool
-    "feemanager":      true,  // bool
     "gateway":         true,  // bool
     "host":            true,  // bool
     "miner":           true,  // bool
@@ -3786,12 +3785,6 @@ returned. Currently, we support the following values:
  
 If the format is not specified, and the skylink points at a directory, we
 default to the zip format and the contents will be downloaded as a zip archive.
-
-**no-response-metadata** | string  
-If 'no-response-metadata' is set to true, the API will not return the metadata
-in the "Skynet-File-Metadata" response header. This might be useful in cases
-where the metadata is not used, or where the size of the response header is
-proving to be an issue.
 
 **include-layout** | string  
 If 'include-layout' is set to true, the API will return the layout in the

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"go.sia.tech/siad/crypto"
 )
 
 // TestSkyfileFanout probes the fanout encoding.

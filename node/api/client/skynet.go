@@ -18,13 +18,13 @@ import (
 	"time"
 
 	"github.com/eventials/go-tus"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // tusStore is a simple implementation of the tus.Store interface.
@@ -190,27 +190,31 @@ func (c *Client) RenterSkyfileGet(siaPath skymodules.SiaPath, root bool) (rf api
 
 // SkynetSkylinkGet uses the /skynet/skylink endpoint to download a skylink
 // file.
-func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, skymodules.SkyfileMetadata, error) {
+func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, error) {
 	return c.SkynetSkylinkGetCustom(skylink, types.ZeroCurrency, -1)
 }
 
 // SkynetSkylinkGetWithTimeout uses the /skynet/skylink endpoint to download a
 // skylink file, specifying the given timeout.
-func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byte, skymodules.SkyfileMetadata, error) {
+func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byte, error) {
 	return c.SkynetSkylinkGetCustom(skylink, types.ZeroCurrency, timeout)
 }
 
 // SkynetSkylinkGetWithSCPS uses the /skynet/skylink endpoint to download a
 // skylink file, specifying the given siacoin per second monetization rate.
-func (c *Client) SkynetSkylinkGetWithSCPS(skylink string, scps types.Currency) ([]byte, skymodules.SkyfileMetadata, error) {
+func (c *Client) SkynetSkylinkGetWithSCPS(skylink string, scps types.Currency) ([]byte, error) {
 	return c.SkynetSkylinkGetCustom(skylink, scps, -1)
 }
 
 // SkynetMetadataGet uses the /skynet/metadata endpoint to fetch a skylink's
 // metadata.
-func (c *Client) SkynetMetadataGet(skylink string) (sm skymodules.SkyfileMetadata, err error) {
-	err = c.get(fmt.Sprintf("/skynet/metadata/%s", skylink), &sm)
-	return
+func (c *Client) SkynetMetadataGet(skylink string) (_ http.Header, sm skymodules.SkyfileMetadata, _ error) {
+	header, body, err := c.getRawResponse(fmt.Sprintf("/skynet/metadata/%s", skylink))
+	if err != nil {
+		return nil, skymodules.SkyfileMetadata{}, err
+	}
+	err = json.Unmarshal(body, &sm)
+	return header, sm, err
 }
 
 // SkynetSkylinkRange uses the /skynet/skylink endpoint to download a range from
@@ -222,7 +226,7 @@ func (c *Client) SkynetSkylinkRange(skylink string, from, to uint64) ([]byte, er
 
 // SkynetSkylinkGetCustom uses the /skynet/skylink endpoint to download a
 // skylink file, specifying custom parameters.
-func (c *Client) SkynetSkylinkGetCustom(skylink string, scps types.Currency, timeout int) ([]byte, skymodules.SkyfileMetadata, error) {
+func (c *Client) SkynetSkylinkGetCustom(skylink string, scps types.Currency, timeout int) ([]byte, error) {
 	params := make(map[string]string)
 	// Only set the timeout if it's valid. Seeing as 0 is a valid timeout,
 	// callers need to pass -1 to ignore it.
@@ -259,33 +263,15 @@ func (c *Client) SkynetSkylinkGetWithLayout(skylink string, incLayout bool) ([]b
 	return fileData, layout, nil
 }
 
-// SkynetSkylinkGetWithNoMetadata uses the /skynet/skylink endpoint to download
-// a skylink file, specifying the given value for the 'no-response-metadata'
-// parameter.
-func (c *Client) SkynetSkylinkGetWithNoMetadata(skylink string, nometadata bool) ([]byte, skymodules.SkyfileMetadata, error) {
-	return c.skynetSkylinkGetWithParameters(skylink, map[string]string{
-		"no-response-metadata": fmt.Sprintf("%t", nometadata),
-	})
-}
-
 // skynetSkylinkGetWithParameters uses the /skynet/skylink endpoint to download
 // a skylink file, specifying the given parameters.
 // The caller of this function is responsible for validating the parameters!
-func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[string]string) ([]byte, skymodules.SkyfileMetadata, error) {
-	header, fileData, err := c.skynetSkylinkGetWithParametersRaw(skylink, params)
+func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[string]string) ([]byte, error) {
+	_, fileData, err := c.skynetSkylinkGetWithParametersRaw(skylink, params)
 	if err != nil {
-		return nil, skymodules.SkyfileMetadata{}, err
+		return nil, err
 	}
-
-	var sm skymodules.SkyfileMetadata
-	strMetadata := header.Get("Skynet-File-Metadata")
-	if strMetadata != "" {
-		err = json.Unmarshal([]byte(strMetadata), &sm)
-		if err != nil {
-			return nil, skymodules.SkyfileMetadata{}, errors.AddContext(err, "unable to unmarshal skyfile metadata")
-		}
-	}
-	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
+	return fileData, errors.AddContext(err, "unable to fetch skylink data")
 }
 
 // skynetSkylinkGetWithParametersRaw uses the /skynet/skylink endpoint to
@@ -347,13 +333,13 @@ func (c *Client) SkynetSkylinkHeadWithParameters(skylink string, values url.Valu
 
 // SkynetSkylinkConcatGet uses the /skynet/skylink endpoint to download a
 // skylink file with the 'concat' format specified.
-func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, _ skymodules.SkyfileMetadata, err error) {
+func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, err error) {
 	return c.SkynetSkylinkConcatGetWithSCPS(skylink, types.ZeroCurrency)
 }
 
 // SkynetSkylinkConcatGetWithSCPS uses the /skynet/skylink endpoint to download
 // a skylink file with the 'concat' format and 'scps' specified.
-func (c *Client) SkynetSkylinkConcatGetWithSCPS(skylink string, scps types.Currency) (_ []byte, _ skymodules.SkyfileMetadata, err error) {
+func (c *Client) SkynetSkylinkConcatGetWithSCPS(skylink string, scps types.Currency) (_ []byte, err error) {
 	values := url.Values{}
 	values.Set("format", string(skymodules.SkyfileFormatConcat))
 	if !scps.IsZero() {
@@ -361,9 +347,9 @@ func (c *Client) SkynetSkylinkConcatGetWithSCPS(skylink string, scps types.Curre
 	}
 	getQuery := skylinkQueryWithValues(skylink, values)
 	var reader io.Reader
-	header, body, err := c.getReaderResponse(getQuery)
+	_, body, err := c.getReaderResponse(getQuery)
 	if err != nil {
-		return nil, skymodules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response for GET with format=concat")
+		return nil, errors.AddContext(err, "error fetching api response for GET with format=concat")
 	}
 	defer func() {
 		err = errors.Compose(err, body.Close())
@@ -373,18 +359,9 @@ func (c *Client) SkynetSkylinkConcatGetWithSCPS(skylink string, scps types.Curre
 	// Read the fileData.
 	fileData, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return nil, skymodules.SkyfileMetadata{}, errors.AddContext(err, "unable to reader data from reader")
+		return nil, errors.AddContext(err, "unable to reader data from reader")
 	}
-
-	var sm skymodules.SkyfileMetadata
-	strMetadata := header.Get("Skynet-File-Metadata")
-	if strMetadata != "" {
-		err = json.Unmarshal([]byte(strMetadata), &sm)
-		if err != nil {
-			return nil, skymodules.SkyfileMetadata{}, errors.AddContext(err, "unable to unmarshal skyfile metadata")
-		}
-	}
-	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
+	return fileData, errors.AddContext(err, "unable to fetch skylink data")
 }
 
 // SkynetSkylinkBackup uses the /skynet/skylink endpoint to fetch the Skyfile's
@@ -431,23 +408,16 @@ func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) err
 
 	// Fetch the header and reader for the Skylink
 	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylinkStr)
-	header, reader, err := c.getReaderResponse(getQuery)
+	_, reader, err := c.getReaderResponse(getQuery)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch skylink data")
 	}
 	defer drainAndClose(reader)
 
 	// Read the SkyfileMetadata
-	var sm skymodules.SkyfileMetadata
-	strMetadata := header.Get("Skynet-File-Metadata")
-	if strMetadata == "" {
-		return errors.AddContext(err, "no skyfile metadata returned")
-	}
-
-	// Unmarshal the metadata so we can check for subFiles
-	err = json.Unmarshal([]byte(strMetadata), &sm)
+	_, sm, err := c.SkynetMetadataGet(skylinkStr)
 	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal skyfile metadata")
+		return errors.AddContext(err, "unable to fetch metadata")
 	}
 
 	// If there are no subFiles then we have all the information we need to
