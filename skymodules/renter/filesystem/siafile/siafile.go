@@ -1057,24 +1057,25 @@ func (sf *SiaFile) updateUsedHosts(used []types.SiaPublicKey) (_ []writeaheadlog
 	// the file might be in flux while it uploads or repairs
 	tooManyUnusedHosts := unusedHosts > pubKeyTablePruneThreshold
 	enoughUsedHosts := len(usedMap) > sf.staticMetadata.staticErasureCode.NumPieces()
-	var updates []writeaheadlog.Update
 	if tooManyUnusedHosts && enoughUsedHosts {
-		// If we prune the hosts the pruneUpdates already include the updates to
-		// save the header.
+		// If we prune the hosts, we apply the update right away and return an
+		// empty set of updates. That's because pruning the hosts involves
+		// updating the pieces on disk as well and the calling code might be
+		// dependent on the pieces being up-to-date. Since we don't expect to
+		// prune the host pubkey table frequently, this shouldn't impact
+		// performance.
 		pruneUpdates, err := sf.pruneHosts()
 		if err != nil {
 			return nil, errors.AddContext(err, "pruneHosts failed")
 		}
-		updates = append(updates, pruneUpdates...)
-	} else {
-		// If we don't prune the hosts we explicitly save the header.
-		headerUpdates, err := sf.saveHeaderUpdates()
-		if err != nil {
-			return nil, err
-		}
-		updates = append(updates, headerUpdates...)
+		return []writeaheadlog.Update{}, sf.createAndApplyTransaction(pruneUpdates...)
 	}
-	return updates, nil
+	// If we don't prune the hosts we explicitly save the header.
+	headerUpdates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return nil, err
+	}
+	return headerUpdates, nil
 }
 
 // defragChunk removes pieces which belong to bad hosts and if that wasn't

@@ -1618,4 +1618,9 @@ func TestUpdateMetadataPruneHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Pubkeytable should have a length of 3 afterwards.
+	if len(sf.pubKeyTable) != 3 {
+		t.Fatal("wrong length", len(sf.pubKeyTable))
+	}
 }
