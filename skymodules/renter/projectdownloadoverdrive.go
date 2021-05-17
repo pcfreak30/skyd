@@ -274,7 +274,16 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 
 	// If there are not enough LWF workers to complete the download, return the
 	// number of workers that need to launch in order to complete the download.
+	//
+	// The number of workers that we want is 20% more than the number of min
+	// pieces required to complete the download. We kick off a few extra workers
+	// because workers are often unstable. We are essentially trading throughput
+	// for latency, we download as much as 20% extra data, but a lagging worker
+	// here or there will no longer hold back the download. This might be worth
+	// revisiting in the future when workers are more stable, it may not be
+	// necessary.
 	workersWanted := pdc.workerSet.staticErasureCoder.MinPieces()
+	workersWanted += workersWanted / 5
 	if numLWF < workersWanted {
 		return workersWanted - numLWF, latestReturn
 	}
