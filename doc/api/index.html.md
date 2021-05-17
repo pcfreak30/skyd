@@ -4146,12 +4146,6 @@ Version is the siad version the node is running.
 **gitrevision** | string  
 Gitrevision refers to the commit hash used to build siad.
 
-**performancestats** | object - api.SkynetPerformanceStats  
-PerformanceStats is an object that contains a breakdown of performance metrics
-for the skynet endpoints. Things are broken down into containers based on the
-type of action performed. For example, there is a container for downloads less
-than 64kb in size.
-
 Within each container, there is a bucket of half lives. Every time a data point
 is added to a container, it is put in to every bucket, counting up the total
 number of requests. The buckets decay at the stated half life, which means they
