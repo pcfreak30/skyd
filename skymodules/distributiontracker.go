@@ -221,7 +221,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 			return
 		}
 	}
-	d.timings[distirbutionTrackerTotalBuckets-1]++
+	d.timings[distributionTrackerTotalBuckets-1]++
 }
 
 // PStat will return the timing at which the percentage of requests is lower
