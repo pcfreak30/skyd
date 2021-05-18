@@ -96,13 +96,6 @@ var (
 	// information to figure out why it took that long.
 	readRegistryStatsDebugThreshold = 10 * time.Second
 
-	// readRegistryStatsDecay is the decay applied to the registry stats.
-	readRegistryStatsDecay = 0.995
-
-	// readRegistryStatsPercentiles are the percentile returned by the read
-	// registry stats Estimate method.
-	readRegistryStatsPercentiles = []float64{0.99, 0.999, 0.9999}
-
 	// readRegistrySeed is the first duration added to the registry stats after
 	// creating it.
 	// NOTE: This needs to be <= readRegistryBackgroundTimeout

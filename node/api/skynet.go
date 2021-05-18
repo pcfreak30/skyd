@@ -154,8 +154,8 @@ type (
 		WalletStatus    string         `json:"walletstatus"` // 'low', 'good', 'high'
 
 		// Update and version information.
-		Uptime      int64                  `json:"uptime"`
-		VersionInfo SkynetVersion          `json:"versioninfo"`
+		Uptime      int64         `json:"uptime"`
+		VersionInfo SkynetVersion `json:"versioninfo"`
 	}
 
 	// SkynetVersion contains version information
@@ -1191,7 +1191,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		StuckChunks:     rootDir.AggregateNumStuckChunks,
 		WalletStatus:    walletStatus,
 
-		Uptime:      int64(uptime),
+		Uptime: int64(uptime),
 		VersionInfo: SkynetVersion{
 			Version:     version,
 			GitRevision: build.GitRevision,
