@@ -64,7 +64,6 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
 		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "DisableForce", Test: testSkynetDisableForce},
-		{Name: "Stats", Test: testSkynetStats},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "IncludeLayout", Test: testSkynetIncludeLayout},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
@@ -82,6 +81,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
 		{Name: "Monetization", Test: testSkynetMonetization},
+		{Name: "Stats", Test: testSkynetStats},
 	}
 
 	// Run tests
@@ -1095,6 +1095,31 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	})
 	if err != nil {
 		t.Error(err)
+	}
+
+	// Check that the throughput information for the various throughput fields
+	// is not blank.
+	//
+	// NOTE: this test depends on other tests to have performed each type of
+	// activity already, this test does not do the activity itself.
+	stats, err = r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.BaseSectorUpload15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.BaseSectorUpload15mDataPoints)
+	}
+	if stats.ChunkUpload15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.ChunkUpload15mDataPoints)
+	}
+	if stats.RegistryRead15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.RegistryRead15mDataPoints)
+	}
+	if stats.RegistryWrite15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.RegistryWrite15mDataPoints)
+	}
+	if stats.StreamBufferRead15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.StreamBufferRead15mDataPoints)
 	}
 }
 
