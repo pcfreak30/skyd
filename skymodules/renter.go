@@ -120,9 +120,6 @@ type RenterStats struct {
 	// Any alerts that are in place for this renter.
 	Alerts []modules.Alert `json:"alerts"`
 
-	// Performance and throughput information related to the API.
-	SkynetPerformance SkynetPerformanceStats `json:"skynetperformance"`
-
 	// The total amount of contract data that hosts are maintaining on behalf of
 	// the renter is the sum of these fields.
 	ActiveContractData  uint64 `json:"activecontractdata"`

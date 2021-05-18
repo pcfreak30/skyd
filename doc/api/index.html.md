@@ -4049,60 +4049,6 @@ returns statistical information about Skynet, e.g. number of files uploaded
     "version":     "1.4.4-master", // string
     "gitrevision": "cd5a83712"     // string
   },
-  "performancestats": {
-    "timetofirstbyte": {
-      "lastupdate": "2021-03-18T13:29:53.397408+01:00", // timestamp
-      "oneminute": {
-        "n60ms": 0,     // uint64
-        "n120ms": 0,    // uint64
-        "n240ms": 0,    // uint64
-        "n500ms": 0,    // uint64
-        "n1000ms": 0,   // uint64
-        "n2000ms": 0,   // uint64
-        "n5000ms": 0,   // uint64
-        "n10s": 0,      // uint64
-        "nlong": 0,     // uint64
-        "nerr": 0,      // uint64
-        "totalsize": 0  // uint64
-      },
-      "fiveminutes": {
-        // ...
-      },
-      "fifteenminutes": {
-        // ...
-      },
-      "twentyfourhours": {
-        // ...
-      },
-      "lifetime": {
-        // ...
-      }
-    },
-    "download64kb": {
-      // ...
-    },
-    "download1mb": {
-      // ...
-    },
-    "download4mb": {
-      // ...
-    },
-    "downloadlarge": {
-      // ...
-    },
-    "upload4mb": {
-      // ...
-    },
-    "uploadlarge": {
-      // ...
-    },
-    "registryread": {
-      // ...
-    },
-    "registrywrite": {
-      // ...
-    }
-  },
   "registrystats": {
     "readprojectp99": 5020,   // uint64
     "readprojectp999": 5020,  // uint64
@@ -4131,12 +4077,6 @@ Version is the siad version the node is running.
 
 **gitrevision** | string  
 Gitrevision refers to the commit hash used to build siad.
-
-**performancestats** | object - api.SkynetPerformanceStats  
-PerformanceStats is an object that contains a breakdown of performance metrics
-for the skynet endpoints. Things are broken down into containers based on the
-type of action performed. For example, there is a container for downloads less
-than 64kb in size.
 
 Within each container, there is a bucket of half lives. Every time a data point
 is added to a container, it is put in to every bucket, counting up the total
