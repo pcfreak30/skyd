@@ -124,7 +124,8 @@ func TestStreamSmoke(t *testing.T) {
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSectionSize := uint64(16)
 	dataSource := newMockDataSource(data, dataSectionSize)
-	sbs := newStreamBufferSet(&tg)
+	dt := skymodules.NewDistributionTrackerStandard()
+	sbs := newStreamBufferSet(dt, &tg)
 	stream := sbs.callNewStream(dataSource, 0, 0, types.ZeroCurrency)
 
 	// Check that there is one reference in the stream buffer.

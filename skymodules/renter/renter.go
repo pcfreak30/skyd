@@ -32,6 +32,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -205,6 +206,11 @@ type cachedUtilities struct {
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
+	// An atomic variable to export the estimated system scan duration from the
+	// health loop code to the renter. We use a uint64 because that's what's
+	// friendly to the atomic package, but actually it's a time.Duration.
+	atomicSystemHealthScanDuration uint64
+
 	// Skynet Management
 	staticSkylinkManager    *skylinkManager
 	staticSkynetBlocklist   *skynetblocklist.SkynetBlocklist
@@ -248,12 +254,15 @@ type Renter struct {
 	staticRL *ratelimit.RateLimit
 
 	// stats cache related fields.
-	stats     *skymodules.SkynetStats
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
-	// read registry stats
-	staticRRS *readRegistryStats
+	// various performance stats
+	staticBaseSectorUploadStats *skymodules.DistributionTracker
+	staticChunkUploadStats      *skymodules.DistributionTracker
+	staticRegReadStats          *skymodules.DistributionTracker
+	staticRegWriteStats         *skymodules.DistributionTracker
+	staticStreamBufferStats     *skymodules.DistributionTracker
 
 	// Memory management
 	//
@@ -788,6 +797,21 @@ func (r *Renter) OldContracts() []skymodules.RenterContract {
 	return r.staticHostContractor.OldContracts()
 }
 
+// Performance is a function call that returns all of the performance
+// information about the renter.
+func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
+	healthDuration := time.Duration(atomic.LoadUint64(&r.atomicSystemHealthScanDuration))
+	return skymodules.RenterPerformance{
+		SystemHealthScanDuration: healthDuration,
+
+		BaseSectorUploadStats: r.staticBaseSectorUploadStats.Stats(),
+		ChunkUploadStats:      r.staticChunkUploadStats.Stats(),
+		RegistryReadStats:     r.staticRegReadStats.Stats(),
+		RegistryWriteStats:    r.staticRegWriteStats.Stats(),
+		StreamBufferReadStats: r.staticStreamBufferStats.Stats(),
+	}, nil
+}
+
 // PeriodSpending returns the host contractor's period spending
 func (r *Renter) PeriodSpending() (skymodules.ContractorSpending, error) {
 	return r.staticHostContractor.PeriodSpending()
@@ -802,20 +826,6 @@ func (r *Renter) RecoverableContracts() []skymodules.RecoverableContract {
 // refreshed
 func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 	return r.staticHostContractor.RefreshedContract(fcid)
-}
-
-// RegistryStats returns some registry related information.
-func (r *Renter) RegistryStats() (skymodules.RegistryStats, error) {
-	if err := r.tg.Add(); err != nil {
-		return skymodules.RegistryStats{}, err
-	}
-	defer r.tg.Done()
-	estimates := r.staticRRS.Estimate()
-	return skymodules.RegistryStats{
-		ReadProjectP99:   estimates[0],
-		ReadProjectP999:  estimates[1],
-		ReadProjectP9999: estimates[2],
-	}, nil
 }
 
 // Settings returns the Renter's current settings.
@@ -1102,17 +1112,24 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticTPool:          tpool,
 	}
 	var err error
-	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
-	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
-	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentiles)
-	close(r.staticUploadHeap.pauseChan)
-
-	// Seed the rrs.
-	err = r.staticRRS.AddDatum(readRegistryStatsSeed)
+	r.staticDirUpdateBatcher, err = r.newDirUpdateBatcher()
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to create new health update batcher")
 	}
+	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
+	r.staticRegReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.
+	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
+	r.staticRegWriteStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
+	r.staticBaseSectorUploadStats = skymodules.NewDistributionTrackerStandard()
+	r.staticBaseSectorUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
+	r.staticChunkUploadStats = skymodules.NewDistributionTrackerStandard()
+	r.staticChunkUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
+	r.staticStreamBufferStats = skymodules.NewDistributionTrackerStandard()
+	r.staticStreamBufferStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
+	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
+	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
+	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
+	close(r.staticUploadHeap.pauseChan)
 
 	// Init the spending history.
 	sh, err := NewSpendingHistory(r.persistDir, skymodules.SkynetSpendingHistoryFilename)

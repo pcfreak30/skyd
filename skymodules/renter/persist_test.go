@@ -93,14 +93,13 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 
 	// The registry stats should be seeded.
-	for i := range readRegistryStatsPercentiles {
-		if rt.renter.staticRRS.Estimate()[i] != readRegistryStatsSeed+readRegistryStatsInterval {
-			t.Fatalf("registry stats aren't seeded correctly %v != %v", rt.renter.staticRRS.Estimate(), readRegistryStatsSeed+readRegistryStatsInterval)
+	allNines := rt.renter.staticRegReadStats.Percentiles()
+	for i, distribution := range allNines {
+		for j, nine := range distribution {
+			if nine < (readRegistryStatsSeed*95/100) || nine > (readRegistryStatsSeed*105/11) {
+				t.Fatalf("registry stats aren't seeded correctly %v != %v -- %v %v", nine, readRegistryStatsSeed, i, j)
+			}
 		}
-	}
-	// It should be possible to add a ReadRegistryBackgroundTimeout measurement.
-	if err := rt.renter.staticRRS.AddDatum(ReadRegistryBackgroundTimeout); err != nil {
-		t.Fatal(err)
 	}
 
 	// Update the settings of the renter to have a new stream cache size and

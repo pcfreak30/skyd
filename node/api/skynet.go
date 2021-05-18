@@ -108,11 +108,54 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		RegistryStats skymodules.RegistryStats `json:"registrystats"`
+		// Base Sector Upload Stats
+		BaseSectorUpload15mDataPoints float64 `json:"basesectorupload15mdatapoints"`
+		BaseSectorUpload15mP99ms      float64 `json:"basesectorupload15mp99ms"`
+		BaseSectorUpload15mP999ms     float64 `json:"basesectorupload15mp999ms"`
+		BaseSectorUpload15mP9999ms    float64 `json:"basesectorupload15mp9999ms"`
 
-		Uptime      int64                  `json:"uptime"`
-		UploadStats skymodules.SkynetStats `json:"uploadstats"`
-		VersionInfo SkynetVersion          `json:"versioninfo"`
+		// Chunk Upload Stats
+		ChunkUpload15mDataPoints float64 `json:"chunkupload15mdatapoints"`
+		ChunkUpload15mP99ms      float64 `json:"chunkupload15mp99ms"`
+		ChunkUpload15mP999ms     float64 `json:"chunkupload15mp999ms"`
+		ChunkUpload15mP9999ms    float64 `json:"chunkupload15mp9999ms"`
+
+		// Registry performance stats, unit is given in milliseconds.
+		RegistryRead15mDataPoints float64 `json:"registryread15mdatapoints"`
+		RegistryRead15mP99ms      float64 `json:"registryread15mp99ms"`
+		RegistryRead15mP999ms     float64 `json:"registryread15mp999ms"`
+		RegistryRead15mP9999ms    float64 `json:"registryread15mp9999ms"`
+
+		// Registry performance stats, unit is given in milliseconds.
+		RegistryWrite15mDataPoints float64 `json:"registrywrite15mdatapoints"`
+		RegistryWrite15mP99ms      float64 `json:"registrywrite15mp99ms"`
+		RegistryWrite15mP999ms     float64 `json:"registrywrite15mp999ms"`
+		RegistryWrite15mP9999ms    float64 `json:"registrywrite15mp9999ms"`
+
+		// Stream Buffer Download Stats
+		StreamBufferRead15mDataPoints float64 `json:"streambufferread15mdatapoints"`
+		StreamBufferRead15mP99ms      float64 `json:"streambufferread15mp99ms"`
+		StreamBufferRead15mP999ms     float64 `json:"streambufferread15mp999ms"`
+		StreamBufferRead15mP9999ms    float64 `json:"streambufferread15mp9999ms"`
+
+		// The amount of computational time that it takes the health loop to
+		// scan the entire filesystem. Unit is given in hours.
+		SystemHealthScanDurationHours float64 `json:"systemhealthscandurationhours"`
+
+		// General Statuses
+		AllowanceStatus string         `json:"allowancestatus"` // 'low', 'good', 'high'
+		ContractStorage uint64         `json:"contractstorage"` // bytes
+		MaxStoragePrice types.Currency `json:"maxstorageprice"` // Hastings per byte per block
+		NumCritAlerts   int            `json:"numcritalerts"`
+		NumFiles        uint64         `json:"numfiles"`
+		Repair          uint64         `json:"repair"`  // bytes
+		Storage         uint64         `json:"storage"` // bytes
+		StuckChunks     uint64         `json:"stuckchunks"`
+		WalletStatus    string         `json:"walletstatus"` // 'low', 'good', 'high'
+
+		// Update and version information.
+		Uptime      int64         `json:"uptime"`
+		VersionInfo SkynetVersion `json:"versioninfo"`
 	}
 
 	// SkynetVersion contains version information
@@ -1006,21 +1049,13 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
 func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// Define the SkynetStats
-	var stats skymodules.SkynetStats
-
 	// Pull the skynet stats from the root directory
-	dis, err := api.renter.DirList(skymodules.RootSiaPath())
-	if err == nil {
-		// If there is an error we just return null stats
-		//
-		// Update the stats with the information from the root directory
-		di := dis[0]
-		stats = skymodules.SkynetStats{
-			NumFiles:  int(di.AggregateSkynetFiles),
-			TotalSize: di.AggregateSkynetSize,
-		}
+	dirs, err := api.renter.DirList(skymodules.RootSiaPath())
+	if err != nil {
+		WriteError(w, Error{"unable to get root directory status: " + err.Error()}, http.StatusBadRequest)
+		return
 	}
+	rootDir := dirs[0]
 
 	// get version
 	version := build.NodeVersion
@@ -1032,17 +1067,131 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	uptime := time.Since(api.StartTime()).Seconds()
 
 	// Get the registry stats.
-	registryStats, err := api.renter.RegistryStats()
+	renterPerf, err := api.renter.Performance()
 	if err != nil {
 		WriteError(w, Error{"unable to get renter registry status: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
-	WriteJSON(w, &SkynetStatsGET{
-		RegistryStats: registryStats.ToMS(),
+	// Check for any critical alerts.
+	numCritAlerts := 0
+	if api.gateway != nil {
+		a, _, _ := api.gateway.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.cs != nil {
+		a, _, _ := api.cs.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.tpool != nil {
+		a, _, _ := api.tpool.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.wallet != nil {
+		a, _, _ := api.wallet.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.renter != nil {
+		a, _, _ := api.renter.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.host != nil {
+		a, _, _ := api.host.Alerts()
+		numCritAlerts += len(a)
+	}
 
-		Uptime:      int64(uptime),
-		UploadStats: stats,
+	// Determine the wallet status.
+	var walletStatus string
+	var allowance skymodules.Allowance
+	unlocked, err := api.wallet.Unlocked()
+	if err != nil {
+		WriteError(w, Error{"unable to get wallet lock status: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	walletFunds, _, _, err := api.wallet.ConfirmedBalance()
+	if err != nil {
+		WriteError(w, Error{"unable to get wallet balance: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	renterSettings, err := api.renter.Settings()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter settings: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	allowance = renterSettings.Allowance
+	if !unlocked {
+		walletStatus = "locked"
+	} else if walletFunds.Cmp(allowance.Funds.Div64(3)) < 0 {
+		walletStatus = "low"
+	} else if walletFunds.Cmp(allowance.Funds.Mul64(3)) > 0 {
+		walletStatus = "high"
+	} else {
+		walletStatus = "healthy"
+	}
+
+	// Determine the allowance status.
+	financialMetrics, err := api.renter.PeriodSpending()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter financial breakdonw: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	_, _, unspentUnallocated := financialMetrics.SpendingBreakdown()
+	var allowanceStatus string
+	if unspentUnallocated.Cmp(types.NewCurrency64(10e3)) < 0 {
+		allowanceStatus = "low"
+	} else if unspentUnallocated.Cmp(allowance.Funds.Div64(5)) < 0 {
+		allowanceStatus = "low"
+	} else if unspentUnallocated.Cmp(allowance.Funds.Mul64(3).Div64(4)) > 0 && allowance.Funds.Cmp(types.NewCurrency64(50e3)) > 0 {
+		allowanceStatus = "high"
+	} else {
+		allowanceStatus = "healthy"
+	}
+
+	// Get information about the total contracts size.
+	var totalStorage uint64
+	for _, c := range api.renter.Contracts() {
+		totalStorage += c.Size()
+	}
+
+	WriteJSON(w, &SkynetStatsGET{
+		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.DataPoints[0],
+		BaseSectorUpload15mP99ms:      float64(renterPerf.BaseSectorUploadStats.Nines[0][1]) / float64(time.Millisecond),
+		BaseSectorUpload15mP999ms:     float64(renterPerf.BaseSectorUploadStats.Nines[0][2]) / float64(time.Millisecond),
+		BaseSectorUpload15mP9999ms:    float64(renterPerf.BaseSectorUploadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		ChunkUpload15mDataPoints: renterPerf.ChunkUploadStats.DataPoints[0],
+		ChunkUpload15mP99ms:      float64(renterPerf.ChunkUploadStats.Nines[0][1]) / float64(time.Millisecond),
+		ChunkUpload15mP999ms:     float64(renterPerf.ChunkUploadStats.Nines[0][2]) / float64(time.Millisecond),
+		ChunkUpload15mP9999ms:    float64(renterPerf.ChunkUploadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		RegistryRead15mDataPoints: renterPerf.RegistryReadStats.DataPoints[0],
+		RegistryRead15mP99ms:      float64(renterPerf.RegistryReadStats.Nines[0][1]) / float64(time.Millisecond),
+		RegistryRead15mP999ms:     float64(renterPerf.RegistryReadStats.Nines[0][2]) / float64(time.Millisecond),
+		RegistryRead15mP9999ms:    float64(renterPerf.RegistryReadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		RegistryWrite15mDataPoints: renterPerf.RegistryWriteStats.DataPoints[0],
+		RegistryWrite15mP99ms:      float64(renterPerf.RegistryWriteStats.Nines[0][1]) / float64(time.Millisecond),
+		RegistryWrite15mP999ms:     float64(renterPerf.RegistryWriteStats.Nines[0][2]) / float64(time.Millisecond),
+		RegistryWrite15mP9999ms:    float64(renterPerf.RegistryWriteStats.Nines[0][3]) / float64(time.Millisecond),
+
+		StreamBufferRead15mDataPoints: renterPerf.StreamBufferReadStats.DataPoints[0],
+		StreamBufferRead15mP99ms:      float64(renterPerf.StreamBufferReadStats.Nines[0][1]) / float64(time.Millisecond),
+		StreamBufferRead15mP999ms:     float64(renterPerf.StreamBufferReadStats.Nines[0][2]) / float64(time.Millisecond),
+		StreamBufferRead15mP9999ms:    float64(renterPerf.StreamBufferReadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
+
+		AllowanceStatus: allowanceStatus,
+		ContractStorage: totalStorage,
+		NumCritAlerts:   numCritAlerts,
+		NumFiles:        rootDir.AggregateSkynetFiles,
+		MaxStoragePrice: allowance.MaxStoragePrice,
+		Repair:          rootDir.AggregateRepairSize,
+		Storage:         rootDir.AggregateSkynetSize,
+		StuckChunks:     rootDir.AggregateNumStuckChunks,
+		WalletStatus:    walletStatus,
+
+		Uptime: int64(uptime),
 		VersionInfo: SkynetVersion{
 			Version:     version,
 			GitRevision: build.GitRevision,

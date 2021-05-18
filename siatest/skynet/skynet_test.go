@@ -64,7 +64,6 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
 		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "DisableForce", Test: testSkynetDisableForce},
-		{Name: "Stats", Test: testSkynetStats},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "IncludeLayout", Test: testSkynetIncludeLayout},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
@@ -82,6 +81,8 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
 		{Name: "Monetization", Test: testSkynetMonetization},
+		{Name: "Registry", Test: testSkynetRegistryReadWrite},
+		{Name: "Stats", Test: testSkynetStats},
 	}
 
 	// Run tests
@@ -911,12 +912,23 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Error(err)
 	}
-	time.Sleep(time.Second)
+
+	// Sleep for a few seconds to give all of the health and repair loops time
+	// to get settled.
+	time.Sleep(time.Second * 3)
 
 	// Get the stats
 	stats, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Check that there are files in the filesystem.
+	if stats.NumFiles == 0 {
+		t.Fatal("test prereq requires files to exist")
+	}
+	// Check that the system scan duration has been set.
+	if stats.SystemHealthScanDurationHours == 0 {
+		t.Fatal("system health scan duration is not set")
 	}
 
 	// verify it contains the node's version information
@@ -937,13 +949,13 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check registry stats are set
-	if stats.RegistryStats.ReadProjectP99 == 0 {
+	if stats.RegistryRead15mP99ms == 0 {
 		t.Error("readregistry p99 is zero")
 	}
-	if stats.RegistryStats.ReadProjectP999 == 0 {
+	if stats.RegistryRead15mP999ms == 0 {
 		t.Error("readregistry p999 is zero")
 	}
-	if stats.RegistryStats.ReadProjectP9999 == 0 {
+	if stats.RegistryRead15mP9999ms == 0 {
 		t.Error("readregistry p9999 is zero")
 	}
 
@@ -1016,11 +1028,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 			return err
 		}
 		var countErr, sizeErr, perfErr error
-		if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
-			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles)
+		if uint64(statsBefore.NumFiles)+uploadedFilesCount != uint64(statsAfter.NumFiles) {
+			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles)+uploadedFilesCount, statsAfter.NumFiles)
 		}
-		if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
-			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize)
+		if statsBefore.Storage+uploadedFilesSize != statsAfter.Storage {
+			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.Storage+uploadedFilesSize, statsAfter.Storage)
 		}
 		return errors.Compose(countErr, sizeErr, perfErr)
 	})
@@ -1074,16 +1086,41 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal(err)
 		}
 		var countErr, sizeErr error
-		if statsAfter.UploadStats.NumFiles != statsBefore.UploadStats.NumFiles {
-			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles), statsAfter.UploadStats.NumFiles)
+		if statsAfter.NumFiles != statsBefore.NumFiles {
+			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles), statsAfter.NumFiles)
 		}
-		if statsAfter.UploadStats.TotalSize != statsBefore.UploadStats.TotalSize {
-			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize, statsAfter.UploadStats.TotalSize)
+		if statsAfter.Storage != statsBefore.Storage {
+			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.Storage, statsAfter.Storage)
 		}
 		return errors.Compose(countErr, sizeErr)
 	})
 	if err != nil {
 		t.Error(err)
+	}
+
+	// Check that the throughput information for the various throughput fields
+	// is not blank.
+	//
+	// NOTE: this test depends on other tests to have performed each type of
+	// activity already, this test does not do the activity itself.
+	stats, err = r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.BaseSectorUpload15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.BaseSectorUpload15mDataPoints)
+	}
+	if stats.ChunkUpload15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.ChunkUpload15mDataPoints)
+	}
+	if stats.RegistryRead15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.RegistryRead15mDataPoints)
+	}
+	if stats.RegistryWrite15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.RegistryWrite15mDataPoints)
+	}
+	if stats.StreamBufferRead15mDataPoints <= 1 {
+		t.Error("throughput is being recorded at or below baseline:", stats.StreamBufferRead15mDataPoints)
 	}
 }
 
@@ -3451,6 +3488,92 @@ func testNoIndexSingleFileNoDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetRegistryReadWrite does some basic reads and writes on the registry
+// to build out a buffer of stats.
+func testSkynetRegistryReadWrite(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Create some random skylinks to use later.
+	skylink1, err := skymodules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink2, err := skymodules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	data1 := skylink1.Bytes()
+	data2 := skylink2.Bytes()
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Force a refresh of the worker pool for testing.
+	_, err = r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the regisry.
+	err = r.RegistryUpdate(spk, dataKey, srv1.Revision, srv1.Signature, skylink1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read it.
+	readSRV, err := r.RegistryRead(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv1, readSRV) {
+		t.Log(srv1)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Update the registry again, with a higher revision.
+	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read it.
+	readSRV, err = r.RegistryRead(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv2, readSRV) {
+		t.Log(srv2)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Update the registry again using the same revision but higher pow.
+	srvHigherPoW := srv2
+	slHigherPow := skylink2
+	for !srvHigherPoW.HasMoreWork(srv2.RegistryValue) {
+		sl, err := skymodules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srvHigherPoW.Data = sl.Bytes()
+		srvHigherPoW = srvHigherPoW.Sign(sk)
+		slHigherPow = sl
+	}
+	err = r.RegistryUpdate(spk, dataKey, srvHigherPoW.Revision, srvHigherPoW.Signature, slHigherPow)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // testSkynetDefaultPath_TableTest tests all combinations of inputs in relation
 // to default path.
 func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
@@ -4664,8 +4787,8 @@ func TestReadUnknownRegistryEntry(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if ss.RegistryStats.ReadProjectP99 >= renter.ReadRegistryBackgroundTimeout {
-			return fmt.Errorf("%v >= %v", ss.RegistryStats.ReadProjectP99, renter.ReadRegistryBackgroundTimeout)
+		if ss.RegistryRead15mP99ms >= float64(renter.ReadRegistryBackgroundTimeout)/float64(time.Millisecond) {
+			return fmt.Errorf("%v >= %v", ss.RegistryRead15mP99ms, renter.ReadRegistryBackgroundTimeout)
 		}
 		return nil
 	})

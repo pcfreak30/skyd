@@ -103,10 +103,16 @@ type FileListFunc func(FileInfo)
 // over the filesystem.
 type DirListFunc func(DirectoryInfo)
 
-// SkynetStats contains statistical data about skynet
-type SkynetStats struct {
-	NumFiles  int    `json:"numfiles"`
-	TotalSize uint64 `json:"totalsize"`
+// RenterPerformance contains a collection of information that can be exported
+// from the renter about its performance.
+type RenterPerformance struct {
+	SystemHealthScanDuration time.Duration
+
+	BaseSectorUploadStats *DistributionTrackerStats
+	ChunkUploadStats      *DistributionTrackerStats
+	RegistryReadStats     *DistributionTrackerStats
+	RegistryWriteStats    *DistributionTrackerStats
+	StreamBufferReadStats *DistributionTrackerStats
 }
 
 // RenterStats is a struct which tracks key metrics in a single renter. This
@@ -602,23 +608,6 @@ type MemoryManagerStatus struct {
 	PriorityBase      uint64 `json:"prioritybase"`
 	PriorityRequested uint64 `json:"priorityrequested"`
 	PriorityReserve   uint64 `json:"priorityreserve"`
-}
-
-// RegistryStats is some registry related information returned by the renter.
-type RegistryStats struct {
-	ReadProjectP99   time.Duration `json:"readprojectp99"`
-	ReadProjectP999  time.Duration `json:"readprojectp999"`
-	ReadProjectP9999 time.Duration `json:"readprojectp9999"`
-}
-
-// ToMS adjusts all stats in the RegistryStats object to milliseconds and
-// returns a new stats object.
-func (rs RegistryStats) ToMS() RegistryStats {
-	// Adjust stats from nanoseconds to milliseconds.
-	rs.ReadProjectP99 /= time.Millisecond
-	rs.ReadProjectP999 /= time.Millisecond
-	rs.ReadProjectP9999 /= time.Millisecond
-	return rs
 }
 
 // Add combines two MemoryManagerStatus objects into one.
@@ -1168,6 +1157,9 @@ type Renter interface {
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error
 
+	// Performance returns performance information about the renter.
+	Performance() (RenterPerformance, error)
+
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
 	PeriodSpending() (ContractorSpending, error)
@@ -1184,9 +1176,6 @@ type Renter interface {
 
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
-
-	// RegistryStats returns some registry related information.
-	RegistryStats() (RegistryStats, error)
 
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
