@@ -10,6 +10,11 @@ import (
 )
 
 type (
+	// DependencyDelayChunkDistribution delays the chunk distribution in
+	// callAddUploadChunk by 1 second and skips the actual distribution.
+	DependencyDelayChunkDistribution struct {
+		skymodules.SkynetDependencies
+	}
 	// DependencyAcceptHostRevision tells a contract set to accept a host's
 	// revision without having a corresponding open wal txn.
 	DependencyAcceptHostRevision struct {
@@ -382,6 +387,11 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyReadRegistryBlocking) Disrupt(s string) bool {
 	return s == "ReadRegistryBlocking"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyDelayChunkDistribution) Disrupt(s string) bool {
+	return s == "DelayChunkDistribution"
 }
 
 // Disrupt returns true if the correct string is provided.
