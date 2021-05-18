@@ -140,7 +140,7 @@ type (
 
 		// The amount of computational time that it takes the health loop to
 		// scan the entire filesystem. Unit is given in hours.
-		SystemHealthScanDurationHours float64 `json:"systemhealthscanduration"`
+		SystemHealthScanDurationHours float64 `json:"systemhealthscandurationhours"`
 
 		// General Statuses
 		AllowanceStatus string         `json:"allowancestatus"` // 'low', 'good', 'high'
