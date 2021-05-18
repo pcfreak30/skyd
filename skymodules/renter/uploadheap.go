@@ -750,8 +750,7 @@ func (r *Renter) managedBlockUntilSynced() bool {
 // this by popping directories off the directory heap and adding the chunks from
 // that directory to the upload heap. If the worst health directory found is
 // sufficiently healthy then we return.
-func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefreshPaths, error) {
-	siaPaths := r.callNewUniqueRefreshPaths()
+func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) error {
 	prevHeapLen := r.staticUploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
@@ -760,7 +759,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 	for r.staticUploadHeap.managedLen() < maxUploadHeapChunks && r.staticDirectoryHeap.managedLen() > 0 {
 		select {
 		case <-r.tg.StopChan():
-			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
+			return errors.New("renter shutdown before we could finish adding chunks to heap")
 		default:
 		}
 
@@ -769,14 +768,14 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		if errors.Contains(err, threadgroup.ErrStopped) {
 			// Check to see if the error is due to a shutdown. If so then avoid the
 			// log Severe.
-			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
+			return errors.New("renter shutdown before we could finish adding chunks to heap")
 		} else if err != nil {
 			r.staticRepairLog.Severe("error fetching directory for repair:", err)
 			// Log the error and then decide whether or not to continue of to return
 			consecutiveDirHeapFailures++
 			if consecutiveDirHeapFailures > maxConsecutiveDirHeapFailures {
 				r.staticDirectoryHeap.managedReset()
-				return siaPaths, errors.AddContext(err, "too many consecutive dir heap failures")
+				return errors.AddContext(err, "too many consecutive dir heap failures")
 			}
 			continue
 		}
@@ -785,7 +784,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		// Sanity Check if directory was returned
 		if dir == nil {
 			r.staticRepairLog.Debugln("no more chunks added to the upload heap because there are no more directories")
-			return siaPaths, nil
+			return nil
 		}
 
 		// If the directory that was just popped does not need to be repaired then
@@ -793,7 +792,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		heapHealth, _ := dir.managedHeapHealth()
 		if !skymodules.NeedsRepair(heapHealth) {
 			r.staticRepairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
-			return siaPaths, nil
+			return nil
 		}
 
 		// Add chunks from the directory to the uploadHeap.
@@ -810,14 +809,11 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		prevHeapLen = heapLen
 
 		// Since we added chunks from this directory, track the siaPath
-		err = siaPaths.callAdd(dir.staticSiaPath)
-		if err != nil {
-			r.staticRepairLog.Println("WARN: error adding siapath to tracked paths to bubble:", err)
-		}
-		r.staticRepairLog.Printf("Added %v chunks from %s to the repair heap", chunksAdded, dir.staticSiaPath)
+		r.staticDirUpdateBatcher.callQueueDirUpdate(dir.staticSiaPath)
+		r.staticRepairLog.Printf("Added %v chunks from %s to the repair heap", chunksAdded, dir.staticSiaPath) // TODO: Tag log
 	}
 
-	return siaPaths, nil
+	return nil
 }
 
 // managedBuildAndPushRandomChunk randomly selects a stuck chunk from a file and
@@ -1578,7 +1574,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Add chunks to heap.
-		dirSiaPaths, err := r.managedAddChunksToHeap(hosts)
+		err := r.managedAddChunksToHeap(hosts)
 		if err != nil {
 			// Log the error but don't sleep as there are potentially chunks in
 			// the heap from new uploads. If the heap is empty the next check
@@ -1611,10 +1607,11 @@ func (r *Renter) threadedUploadAndRepair() {
 			}
 		}
 
-		// Update the filesystem.
-		dirSiaPaths.callRefreshAll()
-		if err != nil {
-			r.staticRepairLog.Println("WARN: unable to update the filesystem:", err)
-		}
+		// Make sure all of the repairs we made are now represented in the
+		// aggregate statistics of the filesystem.
+		//
+		// TODO: Get some stats/traces on this call, so we can understand how it
+		// is limiting the repair heap.
+		r.staticDirUpdateBatcher.callFlush()
 	}
 }

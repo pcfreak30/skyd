@@ -1123,6 +1123,12 @@ type Renter interface {
 	// nil, the backup will be encrypted using the provided secret.
 	CreateBackup(dst string, secret []byte) error
 
+	// DecryptBaseSector attempts to decrypt the baseSector. If it has the
+	// necessary Skykey, it will decrypt the baseSector in-place. It returns the
+	// file-specific skykey to be used for decrypting the rest of the associated
+	// skyfile.
+	DecryptBaseSector(baseSector []byte) (skykey.Skykey, error)
+
 	// LoadBackup loads the siafiles of a previously created backup into the
 	// renter. If the backup is encrypted, secret will be used to decrypt it.
 	// Otherwise the argument is ignored.
@@ -1422,16 +1428,10 @@ type Renter interface {
 	// WorkerPoolStatus returns the current status of the Renter's worker pool
 	WorkerPoolStatus() (WorkerPoolStatus, error)
 
-	// BubbleMetadata calculates the updated values of a directory's metadata and
-	// updates the siadir metadata on disk then calls callThreadedBubbleMetadata
-	// on the parent directory so that it is only blocking for the current
-	// directory
-	//
-	// If the recursive boolean is supplied, all sub directories will be bubbled.
-	//
-	// If the force boolean is supplied, the LastHealthCheckTime of the directories
-	// will be ignored so all directories will be considered.
-	BubbleMetadata(siaPath SiaPath, force, recursive bool) error
+	// UpdateMetadata will ensure that the metadata of the provided directory is
+	// updated and that the updated stats are represented in the aggregate
+	// statistics of the root folder.
+	UpdateMetadata(siaPath SiaPath, recursive bool) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

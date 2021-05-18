@@ -263,9 +263,9 @@ func TestNewGroupPortal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err1 = p2.SkynetSkylinkGet(skylink)
+	_, err1 = p2.SkynetSkylinkGet(skylink)
 	err1 = errors.AddContext(err1, "p1 download failed")
-	_, _, err2 = p2.SkynetSkylinkGet(skylink)
+	_, err2 = p2.SkynetSkylinkGet(skylink)
 	err2 = errors.AddContext(err2, "p2 download failed")
 	err = errors.Compose(err1, err2)
 	if err != nil {

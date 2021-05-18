@@ -378,9 +378,14 @@ func TestRenewContractEmptyPriceTableUID(t *testing.T) {
 	}
 
 	// Overwrite the UID of the price table.
+	//
+	// Neet to copy the received price table before modifying it to prevent a
+	// race condition.
+	var pt workerPriceTable
 	wpt := wt.staticPriceTable()
-	wpt.staticPriceTable.UID = modules.UniqueID{}
-	wt.staticSetPriceTable(wpt)
+	pt = *wpt
+	pt.staticPriceTable.UID = modules.UniqueID{}
+	wt.staticSetPriceTable(&pt)
 
 	// Renew the contract. This should work without error.
 	_, _, err = wt.RenewContract(context.Background(), oldContractPreRenew.ID, params, txnBuilder)

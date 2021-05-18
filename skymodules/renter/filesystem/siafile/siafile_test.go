@@ -1556,3 +1556,71 @@ func TestUnrecoverable(t *testing.T) {
 		}
 	}
 }
+
+// TestUpdateMetadataPruneHosts is a regression test for UpdateMetadata. It
+// covers the edge case where the host pubkey table is pruned, causing host
+// offsets within pieces to become invalid.
+func TestUpdateMetadataPruneHosts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Get a blank siafile with a 1-1 ec.
+	sf, _, _ := newBlankTestFileAndWAL(2) // make sure we have 1 full chunk at the beginning of sf.fullChunks
+	ec, err := skymodules.NewRSSubCode(1, 1, crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf.staticMetadata.staticErasureCode = ec
+
+	// Use the first chunk of the file for testing.
+	c, err := sf.chunk(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add 4 hosts to the table.
+	_, pk1 := crypto.GenerateKeyPair()
+	hpk1 := types.Ed25519PublicKey(pk1)
+	_, pk2 := crypto.GenerateKeyPair()
+	hpk2 := types.Ed25519PublicKey(pk2)
+	_, pk3 := crypto.GenerateKeyPair()
+	hpk3 := types.Ed25519PublicKey(pk3)
+	_, pk4 := crypto.GenerateKeyPair()
+	hpk4 := types.Ed25519PublicKey(pk4)
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true, PublicKey: hpk1})
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true, PublicKey: hpk2})
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true, PublicKey: hpk3})
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true, PublicKey: hpk4})
+
+	// Add 2 pieces to each set of pieces. One for hpk1 and one for hpk4.
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+	for i := range c.Pieces {
+		c.Pieces[i] = append(c.Pieces[i], piece{HostTableOffset: uint32(len(sf.pubKeyTable) - 1)})
+		c.Pieces[i] = append(c.Pieces[i], piece{HostTableOffset: 0})
+	}
+
+	// Add more hosts to reach the threshold of max unused hosts.
+	for i := 0; i < pubKeyTablePruneThreshold; i++ {
+		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+	}
+
+	// Saves changes.
+	err = sf.saveFile([]chunk{c})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the metadata.
+	m := make(map[string]bool)
+	contracts := make(map[string]skymodules.RenterContract)
+	err = sf.UpdateMetadata(m, m, contracts, []types.SiaPublicKey{hpk1, hpk2, hpk3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pubkeytable should have a length of 3 afterwards.
+	if len(sf.pubKeyTable) != 3 {
+		t.Fatal("wrong length", len(sf.pubKeyTable))
+	}
+}

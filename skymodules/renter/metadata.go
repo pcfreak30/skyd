@@ -238,15 +238,6 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			// Get next dir's metadata.
 			dirMetadata := dirMetadatas[0]
 			dirMetadatas = dirMetadatas[1:]
-
-			// Check if the directory's AggregateLastHealthCheckTime is Zero. If so
-			// set the time to now and call bubble on that directory to try and fix
-			// the directories metadata.
-			//
-			// The LastHealthCheckTime is not a field that is initialized when
-			// a directory is created, so we can reach this point if a directory is
-			// created and gets a bubble called on it outside of the health loop
-			// before the health loop has been able to set the LastHealthCheckTime.
 			if dirMetadata.AggregateLastHealthCheckTime.IsZero() {
 				dirMetadata.AggregateLastHealthCheckTime = time.Now()
 				// Check for the dependency to disable the LastHealthCheckTime
@@ -255,10 +246,9 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 					// Queue a bubble to bubble the directory, ignore the return channel
 					// as we do not want to block on this update.
 					r.staticLog.Debugf("Found zero time for ALHCT at '%v'", dirMetadata.sp)
-					_ = r.staticBubbleScheduler.callQueueBubble(dirMetadata.sp)
+					r.staticDirUpdateBatcher.callQueueDirUpdate(dirMetadata.sp)
 				}
 			}
-
 			// Record Values that compare against files
 			aggregateHealth = dirMetadata.AggregateHealth
 			aggregateStuckHealth = dirMetadata.AggregateStuckHealth
@@ -328,8 +318,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 // managedCachedFileMetadata returns the cached metadata information of
 // a siafiles that needs to be bubbled.
 func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledSiaFileMetadata, error) {
-	// Open SiaFile in a read only state so that it doesn't need to be
-	// closed
+	// Load the siafile.
 	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return bubbledSiaFileMetadata{}, err
@@ -340,12 +329,13 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 
 	// First check if the fileNode is blocked. Blocking a file does not remove the
 	// file so this is required to ensuring the node is purging blocked files.
+	//
+	// TODO: This delete/unpin code should be replaced with another system.
 	if r.managedIsFileNodeBlocked(sf) && !r.staticDeps.Disrupt("DisableDeleteBlockedFiles") {
 		// Delete the file
 		r.staticLog.Println("Deleting blocked fileNode at:", siaPath)
 		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)
 	}
-
 	// Check if there is a pending unpin request
 	if r.staticSkylinkManager.callIsUnpinned(sf) {
 		// Delete the file
@@ -353,22 +343,17 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkUnpinned)
 	}
 
-	// Grab the metadata to pull the cached information from
-	md := sf.Metadata()
-
 	// Check if original file is on disk
 	_, err = os.Stat(sf.LocalPath())
 	onDisk := err == nil
 
 	// Check if file is unrecoverable and log it
+	md := sf.Metadata()
 	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
 	unrecoverable := siafile.Unrecoverable(maxHealth, onDisk)
 	if unrecoverable {
 		r.staticLog.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
-
-	// Grab the number of skylinks
-	numSkylinks := len(sf.Metadata().Skylinks)
 
 	// Return the metadata
 	return bubbledSiaFileMetadata{
@@ -377,7 +362,7 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 			Health:              md.CachedHealth,
 			LastHealthCheckTime: sf.LastHealthCheckTime(),
 			ModTime:             sf.ModTime(),
-			NumSkylinks:         uint64(numSkylinks),
+			NumSkylinks:         uint64(len(md.Skylinks)),
 			NumStuckChunks:      md.CachedNumStuckChunks,
 			OnDisk:              onDisk,
 			Redundancy:          md.CachedRedundancy,
