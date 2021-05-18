@@ -797,7 +797,7 @@ func (r *Renter) OldContracts() []skymodules.RenterContract {
 	return r.staticHostContractor.OldContracts()
 }
 
-// Performance is a function call that returns all of the performacne
+// Performance is a function call that returns all of the performance
 // information about the renter.
 func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 	healthDuration := time.Duration(atomic.LoadUint64(&r.atomicSystemHealthScanDuration))
