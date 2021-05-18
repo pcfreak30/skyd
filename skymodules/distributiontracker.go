@@ -86,6 +86,10 @@ const (
 	// can cover a greater range of data in fewer buckets at the cost of
 	// granularity. This saves computation and memory.
 	distributionTrackerStepChangeMultiple = 4
+
+	// distributionTrackerTotalBuckets is a shortcut defining one of the
+	// commonly used relationships between the other consts.
+	distributionTrackerTotalBuckets = distributionTrackerInitialBuckets + distributionTrackerBucketsPerStepChange*distributionTrackerNumIncrements
 )
 
 type (
@@ -148,7 +152,7 @@ func distributionDuration(index int) time.Duration {
 		return stepSize * time.Duration(index)
 	}
 	prevMax := stepSize * distributionTrackerInitialBuckets
-	for i := distributionTrackerInitialBuckets; i <= distributionTrackerInitialBuckets+distributionTrackerBucketsPerStepChange*distributionTrackerNumIncrements; i += distributionTrackerBucketsPerStepChange {
+	for i := distributionTrackerInitialBuckets; i <= distributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
 		stepSize *= distributionTrackerStepChangeMultiple
 		if index < i+distributionTrackerBucketsPerStepChange {
 			return stepSize*time.Duration(index-i) + prevMax
@@ -208,7 +212,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 		d.timings[slot]++
 		return
 	}
-	for i := distributionTrackerInitialBuckets; i < distributionTrackerInitialBuckets+distributionTrackerBucketsPerStepChange*distributionTrackerNumIncrements; i += distributionTrackerBucketsPerStepChange {
+	for i := distributionTrackerInitialBuckets; i < distributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
 		stepSize *= distributionTrackerStepChangeMultiple
 		max *= distributionTrackerStepChangeMultiple
 		if dur < max {
@@ -217,7 +221,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 			return
 		}
 	}
-	d.timings[(distributionTrackerInitialBuckets-1)+distributionTrackerBucketsPerStepChange*distributionTrackerNumIncrements]++
+	d.timings[distirbutionTrackerTotalBuckets-1]++
 }
 
 // PStat will return the timing at which the percentage of requests is lower
