@@ -349,7 +349,10 @@ func (dirFinder *healthLoopDirFinder) processNextDir() error {
 	for !nextDir.IsRoot() {
 		parent, err := nextDir.Dir()
 		if err != nil {
-			build.Critical("unable to get the parent of the non-root siapath:", nextDir, err)
+			str := fmt.Sprint("unable to get the parent of the non-root siapath:", nextDir)
+			err = errors.AddContext(err, str)
+			build.Critical(err)
+			return err
 		}
 		nextDir = parent
 		err = dirFinder.renter.managedUpdateDirMetadata(nextDir)

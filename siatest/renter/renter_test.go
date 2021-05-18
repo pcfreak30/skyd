@@ -5075,7 +5075,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	}
 
 	// Download the file.
-	_, _, err = renter.SkynetSkylinkGet(skylink)
+	_, err = renter.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5116,7 +5116,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 
 	// Download again
 	possibleErrs := "all workers failed;download timed out"
-	_, _, err = renter.SkynetSkylinkGet(skylink)
+	_, err = renter.SkynetSkylinkGet(skylink)
 	if err == nil || strings.Contains(possibleErrs, err.Error()) {
 		t.Fatal(err)
 	}
@@ -5128,7 +5128,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	// Download one more time. It should work again. Do it in a loop since the
 	// workers might be on a cooldown.
 	err = build.Retry(600, 100*time.Millisecond, func() error {
-		_, _, err = renter.SkynetSkylinkGet(skylink)
+		_, err = renter.SkynetSkylinkGet(skylink)
 		return err
 	})
 	if err != nil {

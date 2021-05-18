@@ -79,7 +79,11 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 		}
 
 		// Download the uploaded data and compare it to the uploaded data.
-		downloadedData, sm, err := r.SkynetSkylinkGet(skylink)
+		downloadedData, err := r.SkynetSkylinkGet(skylink)
+		if err != nil {
+			return err
+		}
+		_, sm, err := r.SkynetMetadataGet(skylink)
 		if err != nil {
 			return err
 		}
@@ -282,7 +286,7 @@ func testTUSUploaderUnstableConnection(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Download the uploaded data and compare it to the uploaded data.
-	downloadedData, _, err := r.SkynetSkylinkGet(skylink)
+	downloadedData, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}

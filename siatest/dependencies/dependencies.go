@@ -32,6 +32,12 @@ type (
 	DependencyLegacyRenew struct {
 		skymodules.SkynetDependencies
 	}
+	// DependencyStandardUploadRedundancy uses the standard amount of data
+	// pieces and parity pieces as if the upload were to happen when using the
+	// Standard release.
+	DependencyStandardUploadRedundancy struct {
+		skymodules.SkynetDependencies
+	}
 	// DependencyNoSnapshotSync prevents the renter from syncing snapshots.
 	DependencyNoSnapshotSync struct {
 		skymodules.SkynetDependencies
@@ -402,6 +408,11 @@ func (d *DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown) Disrupt(s strin
 		return true
 	}
 	return false
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyStandardUploadRedundancy) Disrupt(s string) bool {
+	return s == "StandardUploadRedundancy"
 }
 
 // Disrupt returns true if the correct string is provided.

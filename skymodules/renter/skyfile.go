@@ -545,8 +545,17 @@ func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodul
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
 
+	// Disrupt and use custom redundancy if the StandardUploadRedundancy
+	// dependency is set.
+	dataPieces := skymodules.RenterDefaultDataPieces
+	parityPieces := skymodules.RenterDefaultParityPieces
+	if r.staticDeps.Disrupt("StandardUploadRedundancy") {
+		dataPieces = 10
+		parityPieces = 20
+	}
+
 	// Create the FileUploadParams
-	fup, err := fileUploadParams(siaPath, skymodules.RenterDefaultDataPieces, skymodules.RenterDefaultParityPieces, sup.Force, crypto.TypePlain)
+	fup, err := fileUploadParams(siaPath, dataPieces, parityPieces, sup.Force, crypto.TypePlain)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create FileUploadParams for large file")
 	}
@@ -578,7 +587,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodul
 	// Figure out how to create the fanout. If only one piece is needed, we
 	// create it from the node directly after the upload.
 	cipherType := fileNode.MasterKey().Type()
-	dataPieces := fileNode.ErasureCode().MinPieces()
+	dataPieces = fileNode.ErasureCode().MinPieces()
 	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
 
 	// Wrap the reader in a FanoutChunkReader.
