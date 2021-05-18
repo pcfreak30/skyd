@@ -557,6 +557,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 // to always make sure we update as many hosts as possble.
 func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) (err error) {
 	// Start tracing.
+	start := time.Now()
 	tracer := opentracing.GlobalTracer()
 	span := tracer.StartSpan("managedUpdateRegistry")
 	defer span.Finish()
@@ -685,5 +686,6 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
+	r.staticRegWriteStats.AddDataPoint(time.Since(start))
 	return nil
 }

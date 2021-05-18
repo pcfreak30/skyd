@@ -586,7 +586,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		case response := <-responseChan:
 			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
 			ds.externData = response.staticData
-			if ds.externErr != nil {
+			if ds.externErr == nil {
 				sb.staticStreamBufferSet.staticStatsCollector.AddDataPoint(time.Since(start))
 			}
 		case <-sb.staticTG.StopChan():

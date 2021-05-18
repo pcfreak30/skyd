@@ -271,7 +271,6 @@ func (w *worker) initJobUpdateRegistryQueue() {
 
 // UpdateRegistry is a helper method to run a UpdateRegistry job on a worker.
 func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
-	start := time.Now()
 	updateRegistryRespChan := make(chan *jobUpdateRegistryResponse)
 	span := opentracing.GlobalTracer().StartSpan("UpdateRegistry")
 	defer span.Finish()
@@ -290,7 +289,6 @@ func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv 
 		return errors.New("UpdateRegistry interrupted")
 	case resp = <-updateRegistryRespChan:
 	}
-	w.staticRenter.staticRegWriteStats.AddDataPoint(time.Since(start))
 	return resp.staticErr
 }
 

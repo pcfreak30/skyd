@@ -81,6 +81,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
 		{Name: "Monetization", Test: testSkynetMonetization},
+		{Name: "Registry", Test: testSkynetRegistryReadWrite},
 		{Name: "Stats", Test: testSkynetStats},
 	}
 
@@ -3484,6 +3485,92 @@ func testNoIndexSingleFileNoDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(content, files[0].Data) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
+	}
+}
+
+// testSkynetRegistryReadWrite does some basic reads and writes on the registry
+// to build out a buffer of stats.
+func testSkynetRegistryReadWrite(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Create some random skylinks to use later.
+	skylink1, err := skymodules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink2, err := skymodules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	data1 := skylink1.Bytes()
+	data2 := skylink2.Bytes()
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Force a refresh of the worker pool for testing.
+	_, err = r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the regisry.
+	err = r.RegistryUpdate(spk, dataKey, srv1.Revision, srv1.Signature, skylink1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read it.
+	readSRV, err := r.RegistryRead(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv1, readSRV) {
+		t.Log(srv1)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Update the registry again, with a higher revision.
+	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read it.
+	readSRV, err = r.RegistryRead(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv2, readSRV) {
+		t.Log(srv2)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Update the registry again using the same revision but higher pow.
+	srvHigherPoW := srv2
+	slHigherPow := skylink2
+	for !srvHigherPoW.HasMoreWork(srv2.RegistryValue) {
+		sl, err := skymodules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srvHigherPoW.Data = sl.Bytes()
+		srvHigherPoW = srvHigherPoW.Sign(sk)
+		slHigherPow = sl
+	}
+	err = r.RegistryUpdate(spk, dataKey, srvHigherPoW.Revision, srvHigherPoW.Signature, slHigherPow)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
