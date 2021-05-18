@@ -4049,60 +4049,6 @@ returns statistical information about Skynet, e.g. number of files uploaded
     "version":     "1.4.4-master", // string
     "gitrevision": "cd5a83712"     // string
   },
-  "performancestats": {
-    "timetofirstbyte": {
-      "lastupdate": "2021-03-18T13:29:53.397408+01:00", // timestamp
-      "oneminute": {
-        "n60ms": 0,     // uint64
-        "n120ms": 0,    // uint64
-        "n240ms": 0,    // uint64
-        "n500ms": 0,    // uint64
-        "n1000ms": 0,   // uint64
-        "n2000ms": 0,   // uint64
-        "n5000ms": 0,   // uint64
-        "n10s": 0,      // uint64
-        "nlong": 0,     // uint64
-        "nerr": 0,      // uint64
-        "totalsize": 0  // uint64
-      },
-      "fiveminutes": {
-        // ...
-      },
-      "fifteenminutes": {
-        // ...
-      },
-      "twentyfourhours": {
-        // ...
-      },
-      "lifetime": {
-        // ...
-      }
-    },
-    "download64kb": {
-      // ...
-    },
-    "download1mb": {
-      // ...
-    },
-    "download4mb": {
-      // ...
-    },
-    "downloadlarge": {
-      // ...
-    },
-    "upload4mb": {
-      // ...
-    },
-    "uploadlarge": {
-      // ...
-    },
-    "registryread": {
-      // ...
-    },
-    "registrywrite": {
-      // ...
-    }
-  },
   "registrystats": {
     "readprojectp99": 5020,   // uint64
     "readprojectp999": 5020,  // uint64
