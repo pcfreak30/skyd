@@ -1,2 +1,0 @@
-+ Need to consider the size of files (num chunks) when considering whether or not we should scan them
-+ Need to trace through the upload heap code to make sure it's doing the dir updates correctly
