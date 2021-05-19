@@ -302,7 +302,9 @@ func (j *jobReadRegistry) callExecute() {
 	// Success.
 	jobTime := time.Since(start)
 	j.staticSpan.SetTag("success", true)
-	j.staticSpan.LogKV("revision", srv.Revision)
+	if srv != nil {
+		j.staticSpan.LogKV("revision", srv.Revision)
+	}
 
 	// Send the response and report success.
 	sendResponse(srv, nil)
