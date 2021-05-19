@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -124,7 +124,8 @@ func TestStreamSmoke(t *testing.T) {
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSectionSize := uint64(16)
 	dataSource := newMockDataSource(data, dataSectionSize)
-	sbs := newStreamBufferSet(&tg)
+	dt := skymodules.NewDistributionTrackerStandard()
+	sbs := newStreamBufferSet(dt, &tg)
 	stream := sbs.callNewStream(dataSource, 0, 0, types.ZeroCurrency)
 
 	// Check that there is one reference in the stream buffer.

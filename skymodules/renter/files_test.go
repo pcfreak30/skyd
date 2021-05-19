@@ -12,20 +12,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/persist"
 )
-
-// newSiaPath returns a new SiaPath for testing and panics on error
-func newSiaPath(str string) skymodules.SiaPath {
-	sp, err := skymodules.NewSiaPath(str)
-	if err != nil {
-		panic(err)
-	}
-	return sp
-}
 
 // createRenterTestFile creates a test file when the test has a renter so that the
 // file is properly added to the renter. It returns the SiaFileSetEntry that the

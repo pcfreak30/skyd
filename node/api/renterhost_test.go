@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/node/api"
+	"go.sia.tech/siad/types"
 )
 
 // TestHostObligationAcceptingContracts verifies that the host will complete
@@ -175,7 +175,8 @@ func TestHostAndRentVanilla(t *testing.T) {
 	// Inject a dependency that forces legacy contract renewal without clearing
 	// the contract.
 	pd := modules.ProdDependencies
-	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, pd, pd)
+	sd := skymodules.SkydProdDependencies
+	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, sd, pd, pd, pd, pd)
 	if err != nil {
 		t.Fatal(err)
 	}

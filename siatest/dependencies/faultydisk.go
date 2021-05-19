@@ -5,8 +5,8 @@ import (
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/modules"
 )
 
 var (

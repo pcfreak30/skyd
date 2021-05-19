@@ -14,13 +14,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
@@ -28,19 +24,10 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
-
-// The SkynetPerformanceStats are stateful and tracked globally, bound by a
-// mutex.
-var (
-	skynetPerformanceStats   *skymodules.SkynetPerformanceStats
-	skynetPerformanceStatsMu sync.Mutex
-)
-
-// Initialize the global performance tracking.
-func init() {
-	skynetPerformanceStats = skymodules.NewSkynetPerformanceStats()
-}
 
 const (
 	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
@@ -121,12 +108,54 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		PerformanceStats skymodules.SkynetPerformanceStats `json:"performancestats"`
-		RegistryStats    skymodules.RegistryStats          `json:"registrystats"`
+		// Base Sector Upload Stats
+		BaseSectorUpload15mDataPoints float64 `json:"basesectorupload15mdatapoints"`
+		BaseSectorUpload15mP99ms      float64 `json:"basesectorupload15mp99ms"`
+		BaseSectorUpload15mP999ms     float64 `json:"basesectorupload15mp999ms"`
+		BaseSectorUpload15mP9999ms    float64 `json:"basesectorupload15mp9999ms"`
 
-		Uptime      int64                  `json:"uptime"`
-		UploadStats skymodules.SkynetStats `json:"uploadstats"`
-		VersionInfo SkynetVersion          `json:"versioninfo"`
+		// Chunk Upload Stats
+		ChunkUpload15mDataPoints float64 `json:"chunkupload15mdatapoints"`
+		ChunkUpload15mP99ms      float64 `json:"chunkupload15mp99ms"`
+		ChunkUpload15mP999ms     float64 `json:"chunkupload15mp999ms"`
+		ChunkUpload15mP9999ms    float64 `json:"chunkupload15mp9999ms"`
+
+		// Registry performance stats, unit is given in milliseconds.
+		RegistryRead15mDataPoints float64 `json:"registryread15mdatapoints"`
+		RegistryRead15mP99ms      float64 `json:"registryread15mp99ms"`
+		RegistryRead15mP999ms     float64 `json:"registryread15mp999ms"`
+		RegistryRead15mP9999ms    float64 `json:"registryread15mp9999ms"`
+
+		// Registry performance stats, unit is given in milliseconds.
+		RegistryWrite15mDataPoints float64 `json:"registrywrite15mdatapoints"`
+		RegistryWrite15mP99ms      float64 `json:"registrywrite15mp99ms"`
+		RegistryWrite15mP999ms     float64 `json:"registrywrite15mp999ms"`
+		RegistryWrite15mP9999ms    float64 `json:"registrywrite15mp9999ms"`
+
+		// Stream Buffer Download Stats
+		StreamBufferRead15mDataPoints float64 `json:"streambufferread15mdatapoints"`
+		StreamBufferRead15mP99ms      float64 `json:"streambufferread15mp99ms"`
+		StreamBufferRead15mP999ms     float64 `json:"streambufferread15mp999ms"`
+		StreamBufferRead15mP9999ms    float64 `json:"streambufferread15mp9999ms"`
+
+		// The amount of computational time that it takes the health loop to
+		// scan the entire filesystem. Unit is given in hours.
+		SystemHealthScanDurationHours float64 `json:"systemhealthscandurationhours"`
+
+		// General Statuses
+		AllowanceStatus string         `json:"allowancestatus"` // 'low', 'good', 'high'
+		ContractStorage uint64         `json:"contractstorage"` // bytes
+		MaxStoragePrice types.Currency `json:"maxstorageprice"` // Hastings per byte per block
+		NumCritAlerts   int            `json:"numcritalerts"`
+		NumFiles        uint64         `json:"numfiles"`
+		Repair          uint64         `json:"repair"`  // bytes
+		Storage         uint64         `json:"storage"` // bytes
+		StuckChunks     uint64         `json:"stuckchunks"`
+		WalletStatus    string         `json:"walletstatus"` // 'low', 'good', 'high'
+
+		// Update and version information.
+		Uptime      int64         `json:"uptime"`
+		VersionInfo SkynetVersion `json:"versioninfo"`
 	}
 
 	// SkynetVersion contains version information
@@ -174,17 +203,6 @@ type (
 // skynetBaseSectorHandlerGET accepts a skylink as input and will return the
 // encoded basesector.
 func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Start the timer for the performance measurement.
-	startTime := time.Now()
-	isErr := true
-	defer func() {
-		if isErr {
-			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.TimeToFirstByte.AddRequest(0, 0)
-			skynetPerformanceStatsMu.Unlock()
-		}
-	}()
-
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
@@ -222,12 +240,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -236,51 +249,14 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	}
-	if errors.Contains(err, renter.ErrRootNotFound) {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		handleSkynetError(w, "failed to fetch base sector", err)
 		return
 	}
-	isErr = false
 	defer func() {
 		// At this point we have already responded so we can't write a potential
 		// error here.
 		_ = streamer.Close()
-	}()
-
-	// Stop the time here for TTFB.
-	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime), 0)
-	skynetPerformanceStatsMu.Unlock()
-	// Defer a function to record the total performance time.
-	defer func() {
-		skynetPerformanceStatsMu.Lock()
-		defer skynetPerformanceStatsMu.Unlock()
-
-		_, fetchSize, err := skylink.OffsetAndFetchSize()
-		if err != nil {
-			return
-		}
-		if fetchSize <= 64e3 {
-			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime), fetchSize)
-			return
-		}
-		if fetchSize <= 1e6 {
-			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime), fetchSize)
-			return
-		}
-		if fetchSize <= 4e6 {
-			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime), fetchSize)
-			return
-		}
-		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime), fetchSize)
 	}()
 
 	// Serve the basesector
@@ -419,17 +395,6 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynetRootHandlerGET handles the api call for a download by root request.
 // This call returns the encoded sector.
 func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Start the timer for the performance measurement.
-	startTime := time.Now()
-	isErr := true
-	defer func() {
-		if isErr {
-			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.TimeToFirstByte.AddRequest(0, 0)
-			skynetPerformanceStatsMu.Unlock()
-		}
-	}()
-
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -495,12 +460,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -509,43 +469,10 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 	// Fetch the skyfile's  streamer to serve the basesector of the file
 	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	}
-	if errors.Contains(err, renter.ErrRootNotFound) {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusInternalServerError)
+		handleSkynetError(w, "failed to fetch root", err)
 		return
 	}
-	isErr = false
-
-	// Stop the time here for TTFB.
-	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime), 0)
-	skynetPerformanceStatsMu.Unlock()
-	// Defer a function to record the total performance time.
-	defer func() {
-		skynetPerformanceStatsMu.Lock()
-		defer skynetPerformanceStatsMu.Unlock()
-
-		if length <= 64e3 {
-			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime), length)
-			return
-		}
-		if length <= 1e6 {
-			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime), length)
-			return
-		}
-		if length <= 4e6 {
-			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime), length)
-			return
-		}
-		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime), length)
-	}()
 
 	streamer := renter.StreamerFromSlice(sector)
 	defer func() {
@@ -562,17 +489,6 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Start the timer for the performance measurement.
-	startTime := time.Now()
-	isErr := true
-	defer func() {
-		if isErr {
-			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.TimeToFirstByte.AddRequest(0, 0)
-			skynetPerformanceStatsMu.Unlock()
-		}
-	}()
-
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
@@ -613,17 +529,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// Parse the `no-response-metadata` query string parameter.
-	var noResponseMetadata bool
-	noResponseMetadataStr := queryForm.Get("no-response-metadata")
-	if noResponseMetadataStr != "" {
-		noResponseMetadata, err = strconv.ParseBool(noResponseMetadataStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'no-response-metadata' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-
 	// Parse the `include-layout` query string parameter.
 	var includeLayout bool
 	includeLayoutStr := queryForm.Get("include-layout")
@@ -656,12 +561,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -677,16 +577,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Fetch the skyfile's metadata and a streamer to download the file
 	streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	}
-	if errors.Contains(err, renter.ErrRootNotFound) {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		handleSkynetError(w, "failed to fetch skylink", err)
 		return
 	}
 	defer func() {
@@ -812,37 +704,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Encode the Layout
 	encLayout := streamer.Layout().Encode()
 
-	// Metadata and layout has been parsed successfully, stop the time here for
-	// TTFB.  Metadata was fetched from Skynet itself.
-	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime), 0)
-	skynetPerformanceStatsMu.Unlock()
-
-	// No more errors, defer a function to record the total performance time.
-	isErr = false
-	defer func() {
-		skynetPerformanceStatsMu.Lock()
-		defer skynetPerformanceStatsMu.Unlock()
-
-		_, fetchSize, err := skylink.OffsetAndFetchSize()
-		if err != nil {
-			return
-		}
-		if fetchSize <= 64e3 {
-			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime), fetchSize)
-			return
-		}
-		if fetchSize <= 1e6 {
-			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime), fetchSize)
-			return
-		}
-		if fetchSize <= 4e6 {
-			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime), fetchSize)
-			return
-		}
-		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime), fetchSize)
-	}()
-
 	// Set the common Header fields
 	//
 	// Set the Skylink response header
@@ -867,12 +728,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
 	}
 	w.Header().Set("Content-Disposition", cdh)
-
-	// Set the Skynet-File-Metadata
-	includeMetadata := !noResponseMetadata
-	if includeMetadata {
-		w.Header().Set("Skynet-File-Metadata", string(streamer.RawMetadata()))
-	}
 
 	// Declare a function for monetizing a writer.
 	monetize := func(w io.Writer) io.Writer {
@@ -975,12 +830,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -1036,17 +886,10 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	err = api.renter.PinSkylink(skylink, lup, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	} else if errors.Contains(err, renter.ErrRootNotFound) {
-		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusNotFound)
-		return
-	} else if err != nil {
-		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusInternalServerError)
+	if err != nil {
+		handleSkynetError(w, "failed to pin file to skynet", err)
 		return
 	}
-
 	WriteSuccess(w)
 }
 
@@ -1084,9 +927,6 @@ func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, req *http.Reque
 // set, this is essentially an upload streaming endpoint for Skynet which
 // returns a skylink.
 func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Start the timer for the performance measurement.
-	startTime := time.Now()
-
 	// parse the request headers and parameters
 	headers, params, err := parseUploadHeadersAndRequestParameters(req, ps)
 	if err != nil {
@@ -1132,11 +972,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// streaming upload.
 	if params.convertPath == "" {
 		skylink, err := api.renter.UploadSkyfile(req.Context(), sup, reader)
-		if errors.Contains(err, renter.ErrSkylinkBlocked) {
-			WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-			return
-		} else if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
+		if err != nil {
+			handleSkynetError(w, "failed to upload file to skynet", err)
 			return
 		}
 
@@ -1170,24 +1007,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		if err == nil && err2 == nil {
 			filesize += file2.Filesize
 		}
-		if err == nil && filesize <= 4300e3 {
-			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime), filesize)
-			skynetPerformanceStatsMu.Unlock()
-		} else if err == nil {
-			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.UploadLarge.AddRequest(time.Since(startTime), filesize)
-			skynetPerformanceStatsMu.Unlock()
-		} else if err != nil {
-			// Mark an errored upload.
-			//
-			// NOTE: This shouldn't really happen, and I almost want to drop a
-			// build.Critical here. If there weren't any other errors up until
-			// this point, there shouldn't be any errors grabbing the file.
-			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.UploadLarge.AddRequest(0, 0)
-			skynetPerformanceStatsMu.Unlock()
-		}
 
 		// Set the Skylink response header
 		w.Header().Set("Skynet-Skylink", skylink.String())
@@ -1212,20 +1031,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	skylink, err := api.renter.CreateSkylinkFromSiafile(sup, convertPath)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
+		handleSkynetError(w, "failed to convert siafile to skyfile", err)
 		return
 	}
-
-	// No more errors, add metrics for the upload time. A convert is a 4MB
-	// upload.
-	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime), 0)
-	skynetPerformanceStatsMu.Unlock()
 
 	// Set the Skylink response header
 	w.Header().Set("Skynet-Skylink", skylink.String())
@@ -1240,50 +1049,149 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
 func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// Define the SkynetStats
-	var stats skymodules.SkynetStats
-
 	// Pull the skynet stats from the root directory
-	dis, err := api.renter.DirList(skymodules.RootSiaPath())
-	if err == nil {
-		// If there is an error we just return null stats
-		//
-		// Update the stats with the information from the root directory
-		di := dis[0]
-		stats = skymodules.SkynetStats{
-			NumFiles:  int(di.AggregateSkynetFiles),
-			TotalSize: di.AggregateSkynetSize,
-		}
+	dirs, err := api.renter.DirList(skymodules.RootSiaPath())
+	if err != nil {
+		WriteError(w, Error{"unable to get root directory status: " + err.Error()}, http.StatusBadRequest)
+		return
 	}
+	rootDir := dirs[0]
 
 	// get version
-	version := build.Version
+	version := build.NodeVersion
 	if build.ReleaseTag != "" {
 		version += "-" + build.ReleaseTag
 	}
-
-	// Grab a copy of the performance stats.
-	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.Update()
-	perfStats := skynetPerformanceStats.Copy()
-	skynetPerformanceStatsMu.Unlock()
 
 	// Grab the siad uptime
 	uptime := time.Since(api.StartTime()).Seconds()
 
 	// Get the registry stats.
-	registryStats, err := api.renter.RegistryStats()
+	renterPerf, err := api.renter.Performance()
 	if err != nil {
 		WriteError(w, Error{"unable to get renter registry status: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
-	WriteJSON(w, &SkynetStatsGET{
-		PerformanceStats: perfStats,
-		RegistryStats:    registryStats.ToMS(),
+	// Check for any critical alerts.
+	numCritAlerts := 0
+	if api.gateway != nil {
+		a, _, _ := api.gateway.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.cs != nil {
+		a, _, _ := api.cs.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.tpool != nil {
+		a, _, _ := api.tpool.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.wallet != nil {
+		a, _, _ := api.wallet.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.renter != nil {
+		a, _, _ := api.renter.Alerts()
+		numCritAlerts += len(a)
+	}
+	if api.host != nil {
+		a, _, _ := api.host.Alerts()
+		numCritAlerts += len(a)
+	}
 
-		Uptime:      int64(uptime),
-		UploadStats: stats,
+	// Determine the wallet status.
+	var walletStatus string
+	var allowance skymodules.Allowance
+	unlocked, err := api.wallet.Unlocked()
+	if err != nil {
+		WriteError(w, Error{"unable to get wallet lock status: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	walletFunds, _, _, err := api.wallet.ConfirmedBalance()
+	if err != nil {
+		WriteError(w, Error{"unable to get wallet balance: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	renterSettings, err := api.renter.Settings()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter settings: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	allowance = renterSettings.Allowance
+	if !unlocked {
+		walletStatus = "locked"
+	} else if walletFunds.Cmp(allowance.Funds.Div64(3)) < 0 {
+		walletStatus = "low"
+	} else if walletFunds.Cmp(allowance.Funds.Mul64(3)) > 0 {
+		walletStatus = "high"
+	} else {
+		walletStatus = "healthy"
+	}
+
+	// Determine the allowance status.
+	financialMetrics, err := api.renter.PeriodSpending()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter financial breakdonw: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	_, _, unspentUnallocated := financialMetrics.SpendingBreakdown()
+	var allowanceStatus string
+	if unspentUnallocated.Cmp(types.NewCurrency64(10e3)) < 0 {
+		allowanceStatus = "low"
+	} else if unspentUnallocated.Cmp(allowance.Funds.Div64(5)) < 0 {
+		allowanceStatus = "low"
+	} else if unspentUnallocated.Cmp(allowance.Funds.Mul64(3).Div64(4)) > 0 && allowance.Funds.Cmp(types.NewCurrency64(50e3)) > 0 {
+		allowanceStatus = "high"
+	} else {
+		allowanceStatus = "healthy"
+	}
+
+	// Get information about the total contracts size.
+	var totalStorage uint64
+	for _, c := range api.renter.Contracts() {
+		totalStorage += c.Size()
+	}
+
+	WriteJSON(w, &SkynetStatsGET{
+		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.DataPoints[0],
+		BaseSectorUpload15mP99ms:      float64(renterPerf.BaseSectorUploadStats.Nines[0][1]) / float64(time.Millisecond),
+		BaseSectorUpload15mP999ms:     float64(renterPerf.BaseSectorUploadStats.Nines[0][2]) / float64(time.Millisecond),
+		BaseSectorUpload15mP9999ms:    float64(renterPerf.BaseSectorUploadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		ChunkUpload15mDataPoints: renterPerf.ChunkUploadStats.DataPoints[0],
+		ChunkUpload15mP99ms:      float64(renterPerf.ChunkUploadStats.Nines[0][1]) / float64(time.Millisecond),
+		ChunkUpload15mP999ms:     float64(renterPerf.ChunkUploadStats.Nines[0][2]) / float64(time.Millisecond),
+		ChunkUpload15mP9999ms:    float64(renterPerf.ChunkUploadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		RegistryRead15mDataPoints: renterPerf.RegistryReadStats.DataPoints[0],
+		RegistryRead15mP99ms:      float64(renterPerf.RegistryReadStats.Nines[0][1]) / float64(time.Millisecond),
+		RegistryRead15mP999ms:     float64(renterPerf.RegistryReadStats.Nines[0][2]) / float64(time.Millisecond),
+		RegistryRead15mP9999ms:    float64(renterPerf.RegistryReadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		RegistryWrite15mDataPoints: renterPerf.RegistryWriteStats.DataPoints[0],
+		RegistryWrite15mP99ms:      float64(renterPerf.RegistryWriteStats.Nines[0][1]) / float64(time.Millisecond),
+		RegistryWrite15mP999ms:     float64(renterPerf.RegistryWriteStats.Nines[0][2]) / float64(time.Millisecond),
+		RegistryWrite15mP9999ms:    float64(renterPerf.RegistryWriteStats.Nines[0][3]) / float64(time.Millisecond),
+
+		StreamBufferRead15mDataPoints: renterPerf.StreamBufferReadStats.DataPoints[0],
+		StreamBufferRead15mP99ms:      float64(renterPerf.StreamBufferReadStats.Nines[0][1]) / float64(time.Millisecond),
+		StreamBufferRead15mP999ms:     float64(renterPerf.StreamBufferReadStats.Nines[0][2]) / float64(time.Millisecond),
+		StreamBufferRead15mP9999ms:    float64(renterPerf.StreamBufferReadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
+
+		AllowanceStatus: allowanceStatus,
+		ContractStorage: totalStorage,
+		NumCritAlerts:   numCritAlerts,
+		NumFiles:        rootDir.AggregateSkynetFiles,
+		MaxStoragePrice: allowance.MaxStoragePrice,
+		Repair:          rootDir.AggregateRepairSize,
+		Storage:         rootDir.AggregateSkynetSize,
+		StuckChunks:     rootDir.AggregateNumStuckChunks,
+		WalletStatus:    walletStatus,
+
+		Uptime: int64(uptime),
 		VersionInfo: SkynetVersion{
 			Version:     version,
 			GitRevision: build.GitRevision,
@@ -1474,8 +1382,6 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 
 // registryHandlerPOST handles the POST calls to /skynet/registry.
 func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	startTime := time.Now()
-
 	// Decode request.
 	dec := json.NewDecoder(req.Body)
 	var rhp RegistryHandlerRequestPOST
@@ -1496,25 +1402,14 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
 	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
-		skynetPerformanceStatsMu.Lock()
-		skynetPerformanceStats.RegistryWrite.AddRequest(0, 0)
-		skynetPerformanceStatsMu.Unlock()
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-
-	// Update the registry write stats.
-	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.RegistryWrite.AddRequest(time.Since(startTime), 0)
-	skynetPerformanceStatsMu.Unlock()
 	WriteSuccess(w)
 }
 
 // registryHandlerGET handles the GET calls to /skynet/registry.
 func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// Grab a start time for the registry read stats.
-	startTime := time.Now()
-
 	// Parse public key
 	var spk types.SiaPublicKey
 	err := spk.LoadString(req.FormValue("publickey"))
@@ -1551,20 +1446,10 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
 	srv, err := api.renter.ReadRegistry(ctx, spk, dataKey)
-	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
-		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
-		WriteError(w, Error{err.Error()}, http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusInternalServerError)
+		handleSkynetError(w, "unable to read from the registry", err)
 		return
 	}
-
-	// Update the registry read stats.
-	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.RegistryRead.AddRequest(time.Since(startTime), 0)
-	skynetPerformanceStatsMu.Unlock()
 
 	// Send response.
 	WriteJSON(w, RegistryHandlerGET{
@@ -1627,30 +1512,20 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
 
+	// Set the Skylink response header
+	w.Header().Set("Skynet-Skylink", skylink.String())
+
 	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	}
-	if errors.Contains(err, renter.ErrRootNotFound) {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		handleSkynetError(w, "failed to fetch base sector", err)
 		return
 	}
 	defer func() {
@@ -1666,12 +1541,23 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Decrypt it if necessary.
+	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
+	if encrypted {
+		_, err = api.renter.DecryptBaseSector(baseSector)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to decrypt base sector: %v", err)}, http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Parse it.
 	_, _, _, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	http.ServeContent(w, req, "", time.Time{}, bytes.NewReader(rawMD))
 }
 
@@ -1703,7 +1589,7 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 			WriteError(w, Error{fmt.Sprintf("failed to parse siapath: %v", err)}, http.StatusBadRequest)
 			return
 		}
-		extendedSiaPath, err := skymodules.NewSiaPath(siaPath.String() + skymodules.ExtendedSuffix)
+		extendedSiaPath, err := siaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to create extended siapath: %v", err)}, http.StatusBadRequest)
 			return
@@ -1726,13 +1612,9 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 
 	// Unpin the Skylink
 	err = api.renter.UnpinSkylink(skylink)
-	if errors.Contains(err, renter.ErrSkylinkBlocked) {
-		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
-		return
-	} else if err != nil {
-		WriteError(w, Error{fmt.Sprintf("Failed to unpin skylink: %v", err)}, http.StatusInternalServerError)
+	if err != nil {
+		handleSkynetError(w, "failed to unpin skylink", err)
 		return
 	}
-
 	WriteSuccess(w)
 }

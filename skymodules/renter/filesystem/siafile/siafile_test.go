@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math"
 	"os"
@@ -15,10 +14,10 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // randomChunk is a helper method for testing that creates a random chunk.
@@ -48,63 +47,6 @@ func randomPiece() piece {
 	piece.HostTableOffset = uint32(fastrand.Intn(100))
 	fastrand.Read(piece.MerkleRoot[:])
 	return piece
-}
-
-// setCombinedChunkOfTestFile adds one or two Combined chunks to a SiaFile for
-// tests to be able to use a SiaFile that already has its partial chunk
-// contained within a combined chunk. If the SiaFile doesn't have a partial
-// chunk, this is a no-op. The combined chunk will be stored in the provided
-// 'dir'.
-func setCombinedChunkOfTestFile(sf *SiaFile) error {
-	if true {
-		// PARTIAL TODO: remove when partial chunks are enabled again
-		return nil
-	}
-	return setCustomCombinedChunkOfTestFile(sf, fastrand.Intn(2)+1)
-}
-
-// setCustomCombinedChunkOfTestFile sets either 1 or 2 combined chunks of a
-// SiaFile for testing and changes its status to completed.
-func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error {
-	if true {
-		// PARTIAL TODO: remove when partial chunks are enabled again
-		return nil
-	}
-	if numCombinedChunks != 1 && numCombinedChunks != 2 {
-		return errors.New("numCombinedChunks should be 1 or 2")
-	}
-	partialChunkSize := sf.Size() % sf.ChunkSize()
-	if partialChunkSize == 0 {
-		// no partial chunk
-		return nil
-	}
-	var partialChunks []skymodules.PartialChunk
-	for i := 0; i < numCombinedChunks; i++ {
-		partialChunks = append(partialChunks, skymodules.PartialChunk{
-			ChunkID:        skymodules.CombinedChunkID(hex.EncodeToString(fastrand.Bytes(16))),
-			InPartialsFile: false,
-		})
-	}
-	var err error
-	if numCombinedChunks == 1 {
-		partialChunks[0].Offset = 0
-		partialChunks[0].Length = partialChunkSize
-		err = sf.SetPartialChunks(partialChunks, nil)
-	} else if numCombinedChunks == 2 {
-		partialChunks[0].Offset = sf.ChunkSize() - 1
-		partialChunks[0].Length = 1
-		partialChunks[1].Offset = 0
-		partialChunks[1].Length = partialChunkSize - 1
-		err = sf.SetPartialChunks(partialChunks, nil)
-	}
-	if err != nil {
-		return err
-	}
-	// Force the status to completed.
-	for i := 0; i < numCombinedChunks; i++ {
-		err = errors.Compose(err, sf.SetChunkStatusCompleted(uint64(i)))
-	}
-	return err
 }
 
 // TestFileNumChunks checks the numChunks method of the file type.
@@ -196,11 +138,6 @@ func TestFileRedundancy(t *testing.T) {
 		rsc, _ := skymodules.NewRSCode(nData, 10)
 		siaFilePath, _, source, _, sk, fileSize, numChunks, fileMode := newTestFileParamsWithRC(2, false, rsc)
 		f, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, fileSize, numChunks, fileMode)
-		// If the file has a partial chunk, fake a combined chunk to make sure we can
-		// add a piece to it.
-		if err := setCombinedChunkOfTestFile(f); err != nil {
-			t.Fatal(err)
-		}
 		// Test that an empty file has 0 redundancy.
 		r, ur, err := f.Redundancy(neverOffline, goodForRenew)
 		if err != nil {
@@ -372,16 +309,6 @@ func TestFileHealth(t *testing.T) {
 		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
 	}
 
-	// Add good pieces to first Piece Set
-	if err := setCustomCombinedChunkOfTestFile(f, 1); err != nil {
-		t.Fatal(err)
-	}
-	/*
-		PARTIAL TODO
-			if f.PartialChunks()[0].Status != CombinedChunkStatusCompleted {
-				t.Fatal("File has wrong combined chunk status")
-			}
-	*/
 	for i := 0; i < 2; i++ {
 		spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{byte(i)}}
 		offlineMap[spk.String()] = false
@@ -586,11 +513,6 @@ func TestFileHealth(t *testing.T) {
 		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
 	}
 
-	// Add good pieces to second chunk, confirm health is 1.40 since both chunks
-	// have 2 good pieces.
-	if err := setCustomCombinedChunkOfTestFile(f, 1); err != nil {
-		t.Fatal(err)
-	}
 	for i := 0; i < 4; i++ {
 		spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{byte(i)}}
 		offlineMap[spk.String()] = false
@@ -1008,9 +930,6 @@ func TestChunkHealth(t *testing.T) {
 	spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{1}}
 	offlineMap[spk.String()] = false
 	goodForRenewMap[spk.String()] = true
-	if err := setCombinedChunkOfTestFile(sf); err != nil {
-		t.Fatal(err)
-	}
 	if err := sf.AddPiece(spk, 0, 0, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
@@ -1116,9 +1035,6 @@ func TestStuckChunks(t *testing.T) {
 		if (chunkIndex % 2) != 0 {
 			continue
 		}
-		if sf.staticMetadata.HasPartialChunk && len(sf.PartialChunks()) == 0 && chunkIndex == sf.numChunks-1 {
-			continue // not included partial chunk at the end can't be stuck
-		}
 		if err := sf.SetStuck(uint64(chunkIndex), true); err != nil {
 			t.Fatal(err)
 		}
@@ -1144,10 +1060,6 @@ func TestStuckChunks(t *testing.T) {
 
 	// Check chunks and Stuck Chunk Table
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
-		if sf.staticMetadata.HasPartialChunk && len(sf.staticMetadata.PartialChunks) == 0 &&
-			uint64(chunk.Index) == sf.NumChunks()-1 {
-			return nil // partial chunk at the end can't be stuck
-		}
 		if chunk.Index%2 != 0 {
 			if chunk.Stuck {
 				t.Fatal("Found stuck chunk when un-stuck chunk was expected")
@@ -1175,9 +1087,6 @@ func TestUploadedBytes(t *testing.T) {
 	}
 	// Create a new blank test file
 	f := newBlankTestFile()
-	if err := setCombinedChunkOfTestFile(f); err != nil {
-		t.Fatal(err)
-	}
 	// Add multiple pieces to the first pieceSet of the first piece of the first
 	// chunk
 	for i := 0; i < 4; i++ {
@@ -1208,9 +1117,6 @@ func TestFileUploadProgressPinning(t *testing.T) {
 		t.SkipNow()
 	}
 	f := newBlankTestFile()
-	if err := setCombinedChunkOfTestFile(f); err != nil {
-		t.Fatal(err)
-	}
 
 	for chunkIndex := uint64(0); chunkIndex < f.NumChunks(); chunkIndex++ {
 		for pieceIndex := uint64(0); pieceIndex < uint64(f.ErasureCode().NumPieces()); pieceIndex++ {
@@ -1240,10 +1146,6 @@ func TestFileExpiration(t *testing.T) {
 	_ = f.Expiration(contracts)
 	if f.staticMetadata.CachedExpiration != 0 {
 		t.Error("file with no pieces should report as having no time remaining")
-	}
-	// Set a combined chunk for the file if necessary.
-	if err := setCombinedChunkOfTestFile(f); err != nil {
-		t.Fatal(err)
 	}
 	// Create 3 public keys
 	pk1 := types.SiaPublicKey{Key: []byte{0}}
@@ -1303,7 +1205,7 @@ func BenchmarkLoadSiaFile(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode, nil, true) // 1 chunk file
+	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1355,7 +1257,7 @@ func benchmarkRandomChunkWrite(numThreads int, b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode, nil, true) // 1 chunk file
+	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1418,7 +1320,7 @@ func BenchmarkRandomChunkRead(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode, nil, true) // 1 chunk file
+	sf, err := New(siaFilePath, source, wal, rc, sk, 1, fileMode) // 1 chunk file
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1652,5 +1554,73 @@ func TestUnrecoverable(t *testing.T) {
 		if Unrecoverable(test.health, test.onDisk) != test.unrecoverable {
 			t.Error("Unexpected results", test)
 		}
+	}
+}
+
+// TestUpdateMetadataPruneHosts is a regression test for UpdateMetadata. It
+// covers the edge case where the host pubkey table is pruned, causing host
+// offsets within pieces to become invalid.
+func TestUpdateMetadataPruneHosts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Get a blank siafile with a 1-1 ec.
+	sf, _, _ := newBlankTestFileAndWAL(2) // make sure we have 1 full chunk at the beginning of sf.fullChunks
+	ec, err := skymodules.NewRSSubCode(1, 1, crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf.staticMetadata.staticErasureCode = ec
+
+	// Use the first chunk of the file for testing.
+	c, err := sf.chunk(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add 4 hosts to the table.
+	_, pk1 := crypto.GenerateKeyPair()
+	hpk1 := types.Ed25519PublicKey(pk1)
+	_, pk2 := crypto.GenerateKeyPair()
+	hpk2 := types.Ed25519PublicKey(pk2)
+	_, pk3 := crypto.GenerateKeyPair()
+	hpk3 := types.Ed25519PublicKey(pk3)
+	_, pk4 := crypto.GenerateKeyPair()
+	hpk4 := types.Ed25519PublicKey(pk4)
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true, PublicKey: hpk1})
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true, PublicKey: hpk2})
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true, PublicKey: hpk3})
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: true, PublicKey: hpk4})
+
+	// Add 2 pieces to each set of pieces. One for hpk1 and one for hpk4.
+	sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+	for i := range c.Pieces {
+		c.Pieces[i] = append(c.Pieces[i], piece{HostTableOffset: uint32(len(sf.pubKeyTable) - 1)})
+		c.Pieces[i] = append(c.Pieces[i], piece{HostTableOffset: 0})
+	}
+
+	// Add more hosts to reach the threshold of max unused hosts.
+	for i := 0; i < pubKeyTablePruneThreshold; i++ {
+		sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
+	}
+
+	// Saves changes.
+	err = sf.saveFile([]chunk{c})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the metadata.
+	m := make(map[string]bool)
+	contracts := make(map[string]skymodules.RenterContract)
+	err = sf.UpdateMetadata(m, m, contracts, []types.SiaPublicKey{hpk1, hpk2, hpk3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pubkeytable should have a length of 3 afterwards.
+	if len(sf.pubKeyTable) != 3 {
+		t.Fatal("wrong length", len(sf.pubKeyTable))
 	}
 }

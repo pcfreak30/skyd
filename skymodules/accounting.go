@@ -1,7 +1,7 @@
 package skymodules
 
 import (
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/types"
 )
 
 const (
@@ -15,7 +15,6 @@ type (
 	AccountingInfo struct {
 		// Not implemented yet
 		//
-		// FeeManager FeeManagerAccounting `json:"feemanager"`
 		// Host       HostAccounting       `json:"host"`
 		// Miner      MinerAccounting      `json:"miner"`
 

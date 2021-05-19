@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/modules"
 )
 
 var (
@@ -163,11 +163,11 @@ func profilestopcmd() {
 
 // version prints the version of siac and siad.
 func versioncmd() {
-	fmt.Println("Sia Client")
+	fmt.Println("Skynet Client")
 	if build.ReleaseTag == "" {
-		fmt.Println("\tVersion " + build.Version)
+		fmt.Println("\tVersion " + build.NodeVersion)
 	} else {
-		fmt.Println("\tVersion " + build.Version + "-" + build.ReleaseTag)
+		fmt.Println("\tVersion " + build.NodeVersion + "-" + build.ReleaseTag)
 	}
 	if build.GitRevision != "" {
 		fmt.Println("\tGit Revision " + build.GitRevision)

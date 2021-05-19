@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -556,21 +556,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	err = pdc.launchInitialWorkers()
 	if err != nil {
 		return nil, errors.Compose(err, ErrRootNotFound)
-	}
-
-	// Empirically we've found that launching a couple of overdrive workers
-	// immediately after the initial workers have launched drastically improves
-	// the TTFB on large downloads. The amount of workers we want to launch
-	// depends on the data pieces used by the erasure coder, for skyfiles that
-	// were uploaded with a 10-30 schema we want to launch 2 workers.
-	minWorkers := pdc.workerSet.staticErasureCoder.MinPieces()
-	for i := 0; i < minWorkers/5; i++ {
-		err := pdc.workerState.staticRenter.tg.Launch(func() {
-			pdc.tryLaunchOverdriveWorker()
-		})
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// All initial workers have been launched. The function can return now,

@@ -10,11 +10,11 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 type (
@@ -103,10 +103,16 @@ type FileListFunc func(FileInfo)
 // over the filesystem.
 type DirListFunc func(DirectoryInfo)
 
-// SkynetStats contains statistical data about skynet
-type SkynetStats struct {
-	NumFiles  int    `json:"numfiles"`
-	TotalSize uint64 `json:"totalsize"`
+// RenterPerformance contains a collection of information that can be exported
+// from the renter about its performance.
+type RenterPerformance struct {
+	SystemHealthScanDuration time.Duration
+
+	BaseSectorUploadStats *DistributionTrackerStats
+	ChunkUploadStats      *DistributionTrackerStats
+	RegistryReadStats     *DistributionTrackerStats
+	RegistryWriteStats    *DistributionTrackerStats
+	StreamBufferReadStats *DistributionTrackerStats
 }
 
 // RenterStats is a struct which tracks key metrics in a single renter. This
@@ -119,9 +125,6 @@ type RenterStats struct {
 
 	// Any alerts that are in place for this renter.
 	Alerts []modules.Alert `json:"alerts"`
-
-	// Performance and throughput information related to the API.
-	SkynetPerformance SkynetPerformanceStats `json:"skynetperformance"`
 
 	// The total amount of contract data that hosts are maintaining on behalf of
 	// the renter is the sum of these fields.
@@ -258,14 +261,6 @@ type (
 	// CombinedChunkID is a unique identifier for a combined chunk which makes up
 	// part of its filename on disk.
 	CombinedChunkID string
-
-	// PartialChunk holds some information about a combined chunk
-	PartialChunk struct {
-		ChunkID        CombinedChunkID // The ChunkID of the combined chunk the partial is in.
-		InPartialsFile bool            // 'true' if the combined chunk is already in the partials siafile.
-		Length         uint64          // length of the partial chunk within the combined chunk.
-		Offset         uint64          // offset of the partial chunk within the combined chunk.
-	}
 )
 
 // An Allowance dictates how much the Renter is allowed to spend in a given
@@ -613,23 +608,6 @@ type MemoryManagerStatus struct {
 	PriorityBase      uint64 `json:"prioritybase"`
 	PriorityRequested uint64 `json:"priorityrequested"`
 	PriorityReserve   uint64 `json:"priorityreserve"`
-}
-
-// RegistryStats is some registry related information returned by the renter.
-type RegistryStats struct {
-	ReadProjectP99   time.Duration `json:"readprojectp99"`
-	ReadProjectP999  time.Duration `json:"readprojectp999"`
-	ReadProjectP9999 time.Duration `json:"readprojectp9999"`
-}
-
-// ToMS adjusts all stats in the RegistryStats object to milliseconds and
-// returns a new stats object.
-func (rs RegistryStats) ToMS() RegistryStats {
-	// Adjust stats from nanoseconds to milliseconds.
-	rs.ReadProjectP99 /= time.Millisecond
-	rs.ReadProjectP999 /= time.Millisecond
-	rs.ReadProjectP9999 /= time.Millisecond
-	return rs
 }
 
 // Add combines two MemoryManagerStatus objects into one.
@@ -1134,6 +1112,12 @@ type Renter interface {
 	// nil, the backup will be encrypted using the provided secret.
 	CreateBackup(dst string, secret []byte) error
 
+	// DecryptBaseSector attempts to decrypt the baseSector. If it has the
+	// necessary Skykey, it will decrypt the baseSector in-place. It returns the
+	// file-specific skykey to be used for decrypting the rest of the associated
+	// skyfile.
+	DecryptBaseSector(baseSector []byte) (skykey.Skykey, error)
+
 	// LoadBackup loads the siafiles of a previously created backup into the
 	// renter. If the backup is encrypted, secret will be used to decrypt it.
 	// Otherwise the argument is ignored.
@@ -1173,6 +1157,9 @@ type Renter interface {
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error
 
+	// Performance returns performance information about the renter.
+	Performance() (RenterPerformance, error)
+
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
 	PeriodSpending() (ContractorSpending, error)
@@ -1189,9 +1176,6 @@ type Renter interface {
 
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
-
-	// RegistryStats returns some registry related information.
-	RegistryStats() (RegistryStats, error)
 
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
@@ -1433,16 +1417,10 @@ type Renter interface {
 	// WorkerPoolStatus returns the current status of the Renter's worker pool
 	WorkerPoolStatus() (WorkerPoolStatus, error)
 
-	// BubbleMetadata calculates the updated values of a directory's metadata and
-	// updates the siadir metadata on disk then calls callThreadedBubbleMetadata
-	// on the parent directory so that it is only blocking for the current
-	// directory
-	//
-	// If the recursive boolean is supplied, all sub directories will be bubbled.
-	//
-	// If the force boolean is supplied, the LastHealthCheckTime of the directories
-	// will be ignored so all directories will be considered.
-	BubbleMetadata(siaPath SiaPath, force, recursive bool) error
+	// UpdateMetadata will ensure that the metadata of the provided directory is
+	// updated and that the updated stats are represented in the aggregate
+	// statistics of the root folder.
+	UpdateMetadata(siaPath SiaPath, recursive bool) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

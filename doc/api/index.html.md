@@ -455,7 +455,6 @@ Returns the settings for the daemon
   "modules": { 
     "consensus":       true,  // bool
     "explorer":        false, // bool
-    "feemanager":      true,  // bool
     "gateway":         true,  // bool
     "host":            true,  // bool
     "miner":           true,  // bool
@@ -3338,9 +3337,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 ### Response Body
 
@@ -3436,9 +3433,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 ### JSON Response
 > JSON Response Example
@@ -3488,9 +3483,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 **root** | bool\
 If the siapath should reference the root of the renter's filesystem.
@@ -3793,12 +3786,6 @@ returned. Currently, we support the following values:
 If the format is not specified, and the skylink points at a directory, we
 default to the zip format and the contents will be downloaded as a zip archive.
 
-**no-response-metadata** | string  
-If 'no-response-metadata' is set to true, the API will not return the metadata
-in the "Skynet-File-Metadata" response header. This might be useful in cases
-where the metadata is not used, or where the size of the response header is
-proving to be an issue.
-
 **include-layout** | string  
 If 'include-layout' is set to true, the API will return the layout in the
 "Skynet-File-Layout" response header. In most cases the layout is not needed for
@@ -3820,9 +3807,7 @@ downloader will always select the cheapest hosts that it is able to download
 from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
 by choosing more expensive hosts to download from, it will choose those hosts if
 and only if the total cost of the download increases by less than 10 SC,
-otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
-"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
-value will be treated as hastings. The default ppms is 100nS.
+otherwise it will continue using the cheaper hosts. The default ppms is 100nS.
 
 ### Response Header
 
@@ -4064,60 +4049,6 @@ returns statistical information about Skynet, e.g. number of files uploaded
     "version":     "1.4.4-master", // string
     "gitrevision": "cd5a83712"     // string
   },
-  "performancestats": {
-    "timetofirstbyte": {
-      "lastupdate": "2021-03-18T13:29:53.397408+01:00", // timestamp
-      "oneminute": {
-        "n60ms": 0,     // uint64
-        "n120ms": 0,    // uint64
-        "n240ms": 0,    // uint64
-        "n500ms": 0,    // uint64
-        "n1000ms": 0,   // uint64
-        "n2000ms": 0,   // uint64
-        "n5000ms": 0,   // uint64
-        "n10s": 0,      // uint64
-        "nlong": 0,     // uint64
-        "nerr": 0,      // uint64
-        "totalsize": 0  // uint64
-      },
-      "fiveminutes": {
-        // ...
-      },
-      "fifteenminutes": {
-        // ...
-      },
-      "twentyfourhours": {
-        // ...
-      },
-      "lifetime": {
-        // ...
-      }
-    },
-    "download64kb": {
-      // ...
-    },
-    "download1mb": {
-      // ...
-    },
-    "download4mb": {
-      // ...
-    },
-    "downloadlarge": {
-      // ...
-    },
-    "upload4mb": {
-      // ...
-    },
-    "uploadlarge": {
-      // ...
-    },
-    "registryread": {
-      // ...
-    },
-    "registrywrite": {
-      // ...
-    }
-  },
   "registrystats": {
     "readprojectp99": 5020,   // uint64
     "readprojectp999": 5020,  // uint64
@@ -4146,12 +4077,6 @@ Version is the siad version the node is running.
 
 **gitrevision** | string  
 Gitrevision refers to the commit hash used to build siad.
-
-**performancestats** | object - api.SkynetPerformanceStats  
-PerformanceStats is an object that contains a breakdown of performance metrics
-for the skynet endpoints. Things are broken down into containers based on the
-type of action performed. For example, there is a container for downloads less
-than 64kb in size.
 
 Within each container, there is a bucket of half lives. Every time a data point
 is added to a container, it is put in to every bucket, counting up the total

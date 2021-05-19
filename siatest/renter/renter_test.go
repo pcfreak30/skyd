@@ -19,11 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api"
@@ -34,6 +29,11 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/host/contractmanager"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 // TestRenterOne executes a number of subtests using the same TestGroup to save
@@ -279,7 +279,6 @@ func TestRenterFour(t *testing.T) {
 		{Name: "TestNextPeriod", Test: testNextPeriod},
 		{Name: "TestPauseAndResumeRepairAndUploads", Test: testPauseAndResumeRepairAndUploads},
 		{Name: "TestDownloadServedFromDisk", Test: testDownloadServedFromDisk},
-		{Name: "TestDirMode", Test: testDirMode},
 		{Name: "TestEscapeSiaPath", Test: testEscapeSiaPath}, // Runs last because it uploads many files
 	}
 
@@ -940,7 +939,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// Make sure that the file system is updated
-	err = renterNode.RenterBubblePost(skymodules.RootSiaPath(), true, true)
+	err = renterNode.RenterBubblePost(skymodules.RootSiaPath(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2628,6 +2627,10 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Remove stopped host for map now that we know we have a new contract with
 	// the previously unused host.
 	delete(contractHosts, pk.String())
+
+	// Sleep for long enough that the health loop has time to kick in and detect
+	// the missing host.
+	time.Sleep(2 * renter.TargetHealthCheckFrequency)
 
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
@@ -4690,76 +4693,6 @@ func testDownloadServedFromDisk(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testDirMode is a subtest that makes sure that various ways of creating a dir
-// all set the correct permissions.
-func testDirMode(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the first of the group's renters
-	renter := tg.Renters()[0]
-	// Upload file, creating a piece for each host in the group
-	dataPieces := uint64(1)
-	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
-
-	dirSP, err := skymodules.NewSiaPath("dir")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir, err := renter.FilesDir().CreateDir(dirSP.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	lf, err := dir.NewFile(fileSize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = renter.UploadBlocking(lf, dataPieces, parityPieces, false)
-	if err != nil {
-		t.Fatal("Failed to upload a file for testing: ", err)
-	}
-	// The fileupload should have created a dir. That dir should have the same
-	// permissions as the file.
-	rd, err := renter.RenterDirGet(dirSP)
-	if err != nil {
-		t.Fatal(err)
-	}
-	di := rd.Directories[0]
-	fi, err := lf.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if di.DirMode != fi.Mode() {
-		t.Fatalf("Expected folder permissions to be %v but was %v", fi.Mode(), di.DirMode)
-	}
-	// Test creating dir using endpoint.
-	dir2SP := skymodules.RandomSiaPath()
-	if err := renter.RenterDirCreatePost(dir2SP); err != nil {
-		t.Fatal(err)
-	}
-	rd, err = renter.RenterDirGet(dir2SP)
-	if err != nil {
-		t.Fatal(err)
-	}
-	di = rd.Directories[0]
-	// The created dir should have the default permissions.
-	if di.DirMode != skymodules.DefaultDirPerm {
-		t.Fatalf("Expected folder permissions to be %v but was %v", skymodules.DefaultDirPerm, di.DirMode)
-	}
-	dir3SP := skymodules.RandomSiaPath()
-	mode := os.FileMode(0777)
-	if err := renter.RenterDirCreateWithModePost(dir3SP, mode); err != nil {
-		t.Fatal(err)
-	}
-	rd, err = renter.RenterDirGet(dir3SP)
-	if err != nil {
-		t.Fatal(err)
-	}
-	di = rd.Directories[0]
-	// The created dir should have the specified permissions.
-	if di.DirMode != mode {
-		t.Fatalf("Expected folder permissions to be %v but was %v", mode, di.DirMode)
-	}
-}
-
 // TestWorkerStatus probes the WorkerPoolStatus
 func TestWorkerStatus(t *testing.T) {
 	if testing.Short() {
@@ -5142,7 +5075,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	}
 
 	// Download the file.
-	_, _, err = renter.SkynetSkylinkGet(skylink)
+	_, err = renter.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5183,7 +5116,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 
 	// Download again
 	possibleErrs := "all workers failed;download timed out"
-	_, _, err = renter.SkynetSkylinkGet(skylink)
+	_, err = renter.SkynetSkylinkGet(skylink)
 	if err == nil || strings.Contains(possibleErrs, err.Error()) {
 		t.Fatal(err)
 	}
@@ -5195,7 +5128,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	// Download one more time. It should work again. Do it in a loop since the
 	// workers might be on a cooldown.
 	err = build.Retry(600, 100*time.Millisecond, func() error {
-		_, _, err = renter.SkynetSkylinkGet(skylink)
+		_, err = renter.SkynetSkylinkGet(skylink)
 		return err
 	})
 	if err != nil {
@@ -5558,7 +5491,7 @@ func TestRenterRepairSize(t *testing.T) {
 	checkDirRepairSize := func(dirSiaPath skymodules.SiaPath, repairExpected, stuckExpected uint64) error {
 		return build.Retry(15, time.Second, func() error {
 			// Make sure the directory is being updated
-			err := r.RenterBubblePost(dirSiaPath, true, true)
+			err := r.RenterBubblePost(dirSiaPath, true)
 			if err != nil {
 				return err
 			}
@@ -5901,6 +5834,9 @@ func TestRenterBubble(t *testing.T) {
 		expected.UID = found.UID
 		expected.SiaPath = found.SiaPath
 
+		// Ignore the mode
+		expected.DirMode = found.DirMode
+
 		// Check the remaining fields
 		if !reflect.DeepEqual(found, expected) {
 			err := fmt.Errorf("Non Time fields mismatch\nfound\n%v\nexpected\n%v", siatest.PrintJSON(found), siatest.PrintJSON(expected))
@@ -5955,8 +5891,8 @@ func TestRenterBubble(t *testing.T) {
 	}
 
 	// Call bubble on root
-	var force, recursive bool
-	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
+	var recursive bool
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), recursive)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5995,9 +5931,8 @@ func TestRenterBubble(t *testing.T) {
 	}
 
 	// Call bubble on root recursively
-	force = true
 	recursive = true
-	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), recursive)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -6044,46 +5979,6 @@ func TestRenterBubble(t *testing.T) {
 				return err
 			}
 			return checkDirInfo(rd.Directories[0], test.expected)
-		})
-		if err != nil {
-			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
-		}
-	}
-
-	// Call bubble on root recursively without force, this should result in only
-	// the root directory being updated.
-	checkTime := time.Now()
-	force = false
-	recursive = true
-	err = r.RenterBubblePost(skymodules.RootSiaPath(), force, recursive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, test := range tests {
-		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
-		err = build.Retry(100, 100*time.Millisecond, func() error {
-			rd, err := r.RenterDirRootGet(test.siaPath)
-			if err != nil {
-				return err
-			}
-			dir := rd.Directories[0]
-
-			// Check LastHealthCheckTimes
-			var badALHCT, badLHCT bool
-			if test.siaPath.IsRoot() {
-				// Root should have a lastHealthCheckTime after checkTime but an
-				// AggregateLastHealthCheckTime after checkTime
-				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
-				badLHCT = dir.LastHealthCheckTime.Before(checkTime)
-			} else {
-				// All other directories should have both lastHealthCheckTimes before checkTime
-				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
-				badLHCT = dir.LastHealthCheckTime.After(checkTime)
-			}
-			if badALHCT || badLHCT {
-				return fmt.Errorf("badALHCT %v badLHCT %v", badALHCT, badLHCT)
-			}
-			return nil
 		})
 		if err != nil {
 			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)

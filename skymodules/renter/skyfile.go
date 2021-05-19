@@ -40,13 +40,13 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/fixtures"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 var (
@@ -524,10 +524,12 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 	}
 
 	// Upload the base sector.
+	start := time.Now()
 	err = r.managedUploadBaseSector(sup, baseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
 	}
+	r.staticBaseSectorUploadStats.AddDataPoint(time.Since(start))
 	return skylink, nil
 }
 
@@ -538,13 +540,22 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (_ skymodules.Skylink, err error) {
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	siaPath, err := skymodules.NewSiaPath(sup.SiaPath.String() + skymodules.ExtendedSuffix)
+	siaPath, err := sup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
 
+	// Disrupt and use custom redundancy if the StandardUploadRedundancy
+	// dependency is set.
+	dataPieces := skymodules.RenterDefaultDataPieces
+	parityPieces := skymodules.RenterDefaultParityPieces
+	if r.staticDeps.Disrupt("StandardUploadRedundancy") {
+		dataPieces = 10
+		parityPieces = 20
+	}
+
 	// Create the FileUploadParams
-	fup, err := fileUploadParams(siaPath, skymodules.RenterDefaultDataPieces, skymodules.RenterDefaultParityPieces, sup.Force, crypto.TypePlain)
+	fup, err := fileUploadParams(siaPath, dataPieces, parityPieces, sup.Force, crypto.TypePlain)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create FileUploadParams for large file")
 	}
@@ -576,7 +587,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodul
 	// Figure out how to create the fanout. If only one piece is needed, we
 	// create it from the node directly after the upload.
 	cipherType := fileNode.MasterKey().Type()
-	dataPieces := fileNode.ErasureCode().MinPieces()
+	dataPieces = fileNode.ErasureCode().MinPieces()
 	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
 
 	// Wrap the reader in a FanoutChunkReader.
@@ -666,23 +677,9 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 
 	// Check if link needs to be resolved from V2 to V1.
-	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
-	// the API to return a 404.
-	if link.Version() == 2 {
-		srv, err := r.ReadRegistryRID(ctx, link.RegistryEntryID())
-		if err != nil {
-			return nil, err
-		}
-		if len(srv.Data) == 0 {
-			return nil, errors.New("failed to resolve skylink")
-		}
-		err = link.LoadBytes(srv.Data)
-		if err != nil {
-			return nil, errors.AddContext(err, "failed to parse skylink")
-		}
-		if link == (skymodules.Skylink{}) {
-			return nil, ErrRootNotFound
-		}
+	link, err := r.managedTryResolveSkylinkV2(ctx, link)
+	if err != nil {
+		return nil, err
 	}
 
 	// Check if link is blocked
@@ -706,17 +703,23 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	}
 	defer r.tg.Done()
 
-	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(link) {
-		return nil, ErrSkylinkBlocked
-	}
-
 	// Create the context
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
+	}
+
+	// Check if link needs to be resolved from V2 to V1.
+	link, err := r.managedTryResolveSkylinkV2(ctx, link)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if link is blocked
+	if r.staticSkynetBlocklist.IsBlocked(link) {
+		return nil, ErrSkylinkBlocked
 	}
 
 	// Find the fetch size.
@@ -855,7 +858,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	fup.SiaPath, err = skymodules.NewSiaPath(lup.SiaPath.String() + skymodules.ExtendedSuffix)
+	fup.SiaPath, err = lup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
@@ -973,7 +976,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 
 	// Create erasure coder and FileUploadParams
-	extendedPath, err := skymodules.NewSiaPath(sup.SiaPath.String() + skymodules.ExtendedSuffix)
+	extendedPath, err := sup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create extended siapath")
 	}
@@ -1067,10 +1070,11 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 				r.staticLog.Printf("error deleting siafile after upload error: %v", err)
 			}
 
-			extendedPath := sup.SiaPath.String() + skymodules.ExtendedSuffix
-			extendedSiaPath, _ := skymodules.NewSiaPath(extendedPath)
-			if err := r.DeleteFile(extendedSiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
-				r.staticLog.Printf("error deleting extended siafile after upload error: %v\n", err)
+			extendedSiaPath, spErr := sup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
+			if spErr == nil {
+				if err := r.DeleteFile(extendedSiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
+					r.staticLog.Printf("error deleting extended siafile after upload error: %v\n", err)
+				}
 			}
 		}
 	}()
@@ -1115,4 +1119,35 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 		}
 	}
 	return false
+}
+
+// managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
+// skylink is not a V2 skylink, the input link is returned.
+func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, error) {
+	if sl.Version() != 2 {
+		return sl, nil
+	}
+	// Get link from registry entry.
+	srv, err := r.ReadRegistryRID(ctx, sl.RegistryEntryID())
+	if err != nil {
+		return skymodules.Skylink{}, err
+	}
+	if len(srv.Data) == 0 {
+		return skymodules.Skylink{}, errors.New("failed to resolve skylink")
+	}
+	var link skymodules.Skylink
+	err = link.LoadBytes(srv.Data)
+	if err != nil {
+		return skymodules.Skylink{}, errors.AddContext(err, "failed to parse skylink")
+	}
+	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
+	// the API to return a 404.
+	if link == (skymodules.Skylink{}) {
+		return skymodules.Skylink{}, ErrRootNotFound
+	}
+	// Check if link is blocked
+	if r.staticSkynetBlocklist.IsBlocked(link) {
+		return skymodules.Skylink{}, ErrSkylinkBlocked
+	}
+	return link, nil
 }

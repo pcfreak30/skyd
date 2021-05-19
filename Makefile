@@ -3,7 +3,10 @@ BUILD_TIME=$(shell date)
 GIT_REVISION=$(shell git rev-parse --short HEAD)
 GIT_DIRTY=$(shell git diff-index --quiet HEAD -- || echo "✗-")
 
-ldflags= -X gitlab.com/SkynetLabs/skyd/build.GitRevision=${GIT_DIRTY}${GIT_REVISION} \
+ldflags= \
+-X "gitlab.com/SkynetLabs/skyd/build.BinaryName=skyd" \
+-X "gitlab.com/SkynetLabs/skyd/build.NodeVersion=1.6.0" \
+-X "gitlab.com/SkynetLabs/skyd/build.GitRevision=${GIT_DIRTY}${GIT_REVISION}" \
 -X "gitlab.com/SkynetLabs/skyd/build.BuildTime=${BUILD_TIME}"
 
 racevars= history_size=3 halt_on_error=1 atexit_sleep_ms=2000
@@ -23,7 +26,6 @@ cpkg = ./skymodules/renter
 lockcheckpkgs = \
 	./benchmark \
 	./build \
-	./cmd/sia-node-scanner \
 	./cmd/skyc \
 	./cmd/skyd \
 	./cmd/skynet-benchmark \
@@ -46,13 +48,11 @@ lockcheckpkgs = \
 	./skykey \
 	./skymodules \
 	./skymodules/accounting \
-	./skymodules/renter/contractor \
 	./skymodules/renter/filesystem \
 	./skymodules/renter/filesystem/siadir \
 	./skymodules/renter/filesystem/siafile \
 	./skymodules/renter/hostdb \
 	./skymodules/renter/hostdb/hosttree \
-	./skymodules/renter/proto \
 	./skymodules/renter/skynetblocklist \
 	./skymodules/renter/skynetportals \
 
@@ -60,7 +60,9 @@ lockcheckpkgs = \
 # tests are run during testing.
 pkgs = \
 	$(lockcheckpkgs) \
-	./skymodules/renter 
+	./skymodules/renter \
+	./skymodules/renter/contractor \
+	./skymodules/renter/proto
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
@@ -72,7 +74,7 @@ run = .
 
 # util-pkgs determine the set of packages that are built when running
 # 'make utils'
-util-pkgs = ./cmd/sia-node-scanner ./cmd/skynet-benchmark
+util-pkgs = ./cmd/skynet-benchmark
 
 # dependencies list all packages needed to run make commands used to build, test
 # and lint siac/siad locally and in CI systems.
@@ -92,7 +94,7 @@ vet:
 # markdown-spellcheck runs codespell on all markdown files that are not
 # vendored.
 markdown-spellcheck:
-	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
+	git ls-files "*.md" :\!:"vendor/**" | xargs codespell 
 
 # lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
 # and other linters), the custom analyzers, and also a markdown spellchecker.

@@ -4,13 +4,11 @@ import (
 	"errors"
 	"reflect"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/types"
 )
 
 var (
-	errAllowanceNotSynced = errors.New("you must be synced to set an allowance")
-
 	// ErrAllowanceZeroFunds is returned if the allowance funds are being set to
 	// zero when not cancelling the allowance
 	ErrAllowanceZeroFunds = errors.New("funds must be non-zero")
@@ -88,8 +86,6 @@ func (c *Contractor) SetAllowance(a skymodules.Allowance) error {
 		return ErrAllowanceZeroExpectedRedundancy
 	} else if a.MaxPeriodChurn == 0 {
 		return ErrAllowanceZeroMaxPeriodChurn
-	} else if !c.staticCS.Synced() {
-		return errAllowanceNotSynced
 	}
 	c.staticLog.Println("INFO: setting allowance to", a)
 

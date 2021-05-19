@@ -10,9 +10,9 @@ import (
 	"reflect"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -146,17 +146,6 @@ func (sd *SiaDir) SetPath(targetPath string) error {
 	return nil
 }
 
-// UpdateBubbledMetadata updates the SiaDir Metadata that is bubbled and saves
-// the changes to disk. For fields that are not bubbled, this method sets them
-// to the current values in the SiaDir metadata
-func (sd *SiaDir) UpdateBubbledMetadata(metadata Metadata) error {
-	sd.mu.Lock()
-	defer sd.mu.Unlock()
-	metadata.Mode = sd.metadata.Mode
-	metadata.Version = sd.metadata.Version
-	return sd.updateMetadata(metadata)
-}
-
 // UpdateLastHealthCheckTime updates the SiaDir LastHealthCheckTime and
 // AggregateLastHealthCheckTime and saves the changes to disk
 func (sd *SiaDir) UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, lastHealthCheckTime time.Time) error {
@@ -237,7 +226,12 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.SkynetFiles = metadata.SkynetFiles
 	sd.metadata.SkynetSize = metadata.SkynetSize
 
-	sd.metadata.Version = metadata.Version
+	// NOTE: We're setting the version manually here because we are saving the
+	// metadata to disk using the most recent code. If the metadata used to have
+	// an older version, it'll have the most recent version following this
+	// update.
+	sd.metadata.Version = metadataVersion
+	metadata.Version = metadataVersion
 
 	// Testing check to ensure new fields aren't missed
 	if build.Release == "testing" && !reflect.DeepEqual(sd.metadata, metadata) {

@@ -7,15 +7,15 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // dependencyTestJobSerialExecution is a special dependency to change the
 // behavior of 'externTryLaunchSerialJob' to check that it does a good job of
 // only having a single serial job run at a time.
 type dependencyTestJobSerialExecution struct {
-	modules.ProductionDependencies
+	skymodules.SkynetDependencies
 
 	// Making this a time.Duration means we don't have to typecast it when
 	// comparing the number of jobs to the amount of time it took to complete
@@ -117,7 +117,7 @@ type dependencyTestAsyncJobLauncher struct {
 	queue *jobGenericQueue
 
 	mu sync.Mutex
-	modules.ProductionDependencies
+	skymodules.SkynetDependencies
 }
 
 // jobTestAsync is a basic job for testing the async launch loop.

@@ -5,9 +5,9 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/crypto"
 )
 
 // TestErasureCode groups all of the tests the three implementations of the
@@ -231,27 +231,6 @@ func testUniqueIdentifier(t *testing.T) {
 	}
 	if ec6.Identifier() != "ECPassthrough" {
 		t.Error("wrong identifier for ec6")
-	}
-	sp1 := CombinedSiaFilePath(ec1)
-	sp2 := CombinedSiaFilePath(ec2)
-	sp3 := CombinedSiaFilePath(ec3)
-	sp4 := CombinedSiaFilePath(ec4)
-	sp5 := CombinedSiaFilePath(ec5)
-	sp6 := CombinedSiaFilePath(ec6)
-	if !sp1.Equals(sp2) {
-		t.Error("sp1 and sp2 should have the same path")
-	}
-	if sp1.Equals(sp3) {
-		t.Error("sp1 and sp3 should have different path")
-	}
-	if sp1.Equals(sp4) {
-		t.Error("sp1 and sp4 should have different path")
-	}
-	if sp1.Equals(sp5) {
-		t.Error("sp1 and sp5 should have different path")
-	}
-	if sp1.Equals(sp6) {
-		t.Error("sp1 and sp6 should have different path")
 	}
 }
 

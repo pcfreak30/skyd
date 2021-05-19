@@ -17,23 +17,23 @@ import (
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/threadgroup"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/consensus"
-	"gitlab.com/NebulousLabs/Sia/modules/explorer"
-	"gitlab.com/NebulousLabs/Sia/modules/gateway"
-	"gitlab.com/NebulousLabs/Sia/modules/host"
-	"gitlab.com/NebulousLabs/Sia/modules/miner"
-	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
-	"gitlab.com/NebulousLabs/Sia/modules/wallet"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/consensus"
+	"go.sia.tech/siad/modules/explorer"
+	"go.sia.tech/siad/modules/gateway"
+	"go.sia.tech/siad/modules/host"
+	"go.sia.tech/siad/modules/miner"
+	"go.sia.tech/siad/modules/transactionpool"
+	"go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 // A Server is a collection of siad modules that can be communicated with over
@@ -108,8 +108,8 @@ func (srv *Server) Serve() error {
 // the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be
 // used if the APIaddr is localhost.
-func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet) (*Server, error) {
-	return NewCustomServer(dir, APIaddr, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, &modules.ProductionDependencies{})
+func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet) (*Server, error) {
+	return NewCustomServer(dir, APIaddr, requiredUserAgent, requiredPassword, acc, cs, e, g, h, m, r, tp, w, &modules.ProductionDependencies{})
 }
 
 // NewCustomServer creates a new API server from the provided skymodules. The API
@@ -118,7 +118,7 @@ func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPas
 // authentication sends passwords in plaintext and should therefore only be used
 // if the APIaddr is localhost. It is custom because it allows injecting custom
 // API dependencies.
-func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet, apiDeps modules.Dependencies) (*Server, error) {
+func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet, apiDeps modules.Dependencies) (*Server, error) {
 	listener, err := net.Listen("tcp", APIaddr)
 	if err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requi
 		return nil, errors.AddContext(err, "failed to load siad config")
 	}
 
-	api := NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, apiDeps)
+	api := NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, g, h, m, r, tp, w, apiDeps)
 	srv := &Server{
 		api: api,
 		apiServer: &http.Server{
@@ -163,7 +163,7 @@ type serverTester struct {
 // assembleServerTesterWithDeps creates a bunch of modules with injected
 // dependencies and assembles them into a server tester, without creating any
 // directories or mining any blocks.
-func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
+func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, cDeps, tDeps, wDeps, hDeps modules.Dependencies, rDeps skymodules.SkydDependencies, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
 	// assembleServerTester should not get called during short tests, as it
 	// takes a long time to run.
 	if testing.Short() {
@@ -238,7 +238,7 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	srv, err := NewCustomServer(testdir, "localhost:0", "Sia-Agent", "", nil, cs, nil, nil, g, h, m, r, tp, w, apiDeps)
+	srv, err := NewCustomServer(testdir, "localhost:0", "Sia-Agent", "", nil, cs, nil, g, h, m, r, tp, w, apiDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +272,7 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 // assembleServerTester creates a bunch of modules and assembles them into a
 // server tester, without creating any directories or mining any blocks.
 func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, error) {
-	return assembleServerTesterWithDeps(key, testdir, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
+	return assembleServerTesterWithDeps(key, testdir, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, skymodules.SkydProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
 }
 
 // assembleAuthenticatedServerTester creates a bunch of modules and assembles
@@ -336,7 +336,7 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	srv, err := NewServer(testdir, "localhost:0", "Sia-Agent", requiredPassword, nil, cs, nil, nil, g, h, m, r, tp, w)
+	srv, err := NewServer(testdir, "localhost:0", "Sia-Agent", requiredPassword, nil, cs, nil, g, h, m, r, tp, w)
 	if err != nil {
 		return nil, err
 	}
@@ -390,7 +390,7 @@ func assembleExplorerServerTester(testdir string) (*serverTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	srv, err := NewServer(testdir, "localhost:0", "", "", nil, cs, e, nil, g, nil, nil, nil, nil, nil)
+	srv, err := NewServer(testdir, "localhost:0", "", "", nil, cs, e, g, nil, nil, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +438,7 @@ func blankServerTester(name string) (*serverTester, error) {
 // createServerTesterWithDeps creates a server tester object with injected
 // dependencies that is ready for testing, including money in the wallet and all
 // modules initialized.
-func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
+func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps modules.Dependencies, rDeps skymodules.SkydDependencies, hdbDeps, hcDeps, csDeps, apiDeps modules.Dependencies) (*serverTester, error) {
 	// createServerTester is expensive, and therefore should not be called
 	// during short tests.
 	if testing.Short() {
@@ -473,7 +473,9 @@ func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, 
 // createServerTester creates a server tester object that is ready for testing,
 // including money in the wallet and all modules initialized.
 func createServerTester(name string) (*serverTester, error) {
-	return createServerTesterWithDeps(name, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
+	pd := modules.ProdDependencies
+	sd := skymodules.SkydProdDependencies
+	return createServerTesterWithDeps(name, pd, pd, pd, pd, pd, sd, pd, pd, pd, pd)
 }
 
 // createAuthenticatedServerTester creates an authenticated server tester

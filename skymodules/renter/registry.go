@@ -8,14 +8,14 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/host/registry"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 var (
@@ -96,18 +96,6 @@ var (
 	// information to figure out why it took that long.
 	readRegistryStatsDebugThreshold = 10 * time.Second
 
-	// readRegistryStatsInterval is the granularity with which read registry
-	// stats are collected. The smaller the number the faster updating the stats
-	// is but the less accurate the estimate.
-	readRegistryStatsInterval = 20 * time.Millisecond
-
-	// readRegistryStatsDecay is the decay applied to the registry stats.
-	readRegistryStatsDecay = 0.995
-
-	// readRegistryStatsPercentiles are the percentile returned by the read
-	// registry stats Estimate method.
-	readRegistryStatsPercentiles = []float64{0.99, 0.999, 0.9999}
-
 	// readRegistrySeed is the first duration added to the registry stats after
 	// creating it.
 	// NOTE: This needs to be <= readRegistryBackgroundTimeout
@@ -122,7 +110,7 @@ var (
 	minRegistryReadTimeout = build.Select(build.Var{
 		Dev:      200 * time.Millisecond,
 		Standard: 800 * time.Millisecond,
-		Testing:  readRegistryStatsInterval,
+		Testing:  20 * time.Millisecond,
 	}).(time.Duration)
 )
 
@@ -184,7 +172,7 @@ func (rrs *readResponseSet) responsesLeft() int {
 // as secondBest. If we find a valid secondBest we use that timing, otherwise we
 // stick to the best. That way we get the fastest response for the best entry
 // even if an update caused a slow worker to be considered best at first.
-func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
+func (r *Renter) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
 	responseCtx, responseCancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
 	defer responseCancel()
 
@@ -336,7 +324,7 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 
 	// The error is ignored since it only returns an error if the measurement is
 	// outside of the 5 minute bounds the stats were created with.
-	_ = rs.AddDatum(d)
+	r.staticRegReadStats.AddDataPoint(d)
 }
 
 // ReadRegistry starts a registry lookup on all available workers. The jobs have
@@ -454,7 +442,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 			continue
 		}
 
-		jrr := worker.newJobReadRegistrySID(backgroundCtx, span, staticResponseChan, rid, spk, tweak)
+		jrr := worker.newJobReadRegistryEID(backgroundCtx, span, staticResponseChan, rid, spk, tweak)
 		if !worker.staticJobReadRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
@@ -471,11 +459,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	}
 	numWorkers := len(workers)
 
-	// Sanity check the time it took to distribute the jobs to the worker.
-	if passed := time.Since(startTime); passed > 20*time.Millisecond {
-		build.Critical(fmt.Sprintf("distributing readRegistry jobs took more than 20ms: %v", passed))
-	}
-
 	// If specified, increment numWorkers. This will cause the loop to never
 	// exit without any of the context being closed since the response set won't
 	// be able to read the last response.
@@ -489,14 +472,14 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Add the response set to the stats after this method is done.
 	defer func() {
 		_ = r.tg.Launch(func() {
-			r.staticRRS.threadedAddResponseSet(r.tg.StopCtx(), startTime, responseSet, r.staticLog)
+			r.threadedAddResponseSet(r.tg.StopCtx(), startTime, responseSet, r.staticLog)
 			backgroundCancel()
 		})
 	}()
 
-	// Further restrict the input timeout using historical data.
-	// We use the first estimate returned here which is p99.
-	estimate := r.staticRRS.Estimate()[0]
+	// Use the p999 of the registry read stats to determine the timeout.
+	nines := r.staticRegReadStats.Percentiles()
+	estimate := nines[0][2]
 	if estimate < minRegistryReadTimeout {
 		estimate = minRegistryReadTimeout
 	}
@@ -569,6 +552,12 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 // before the timeout. It doesn't stop the update jobs. That's because we want
 // to always make sure we update as many hosts as possble.
 func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) (err error) {
+	// Start tracing.
+	start := time.Now()
+	tracer := opentracing.GlobalTracer()
+	span := tracer.StartSpan("managedUpdateRegistry")
+	defer span.Finish()
+
 	// Verify the signature before updating the hosts.
 	if err := srv.Verify(spk.ToPublicKey()); err != nil {
 		return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")
@@ -618,7 +607,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		}
 
 		// Create the job.
-		jrr := worker.newJobUpdateRegistry(updateTimeoutCtx, staticResponseChan, spk, srv)
+		jrr := worker.newJobUpdateRegistry(updateTimeoutCtx, span, staticResponseChan, spk, srv)
 		if !worker.staticJobUpdateRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
@@ -693,5 +682,6 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
+	r.staticRegWriteStats.AddDataPoint(time.Since(start))
 	return nil
 }

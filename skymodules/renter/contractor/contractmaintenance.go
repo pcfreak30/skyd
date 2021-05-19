@@ -14,12 +14,12 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 // MaxCriticalRenewFailThreshold is the maximum number of contracts failing to
@@ -49,6 +49,7 @@ type (
 	fileContractRenewal struct {
 		id         types.FileContractID
 		amount     types.Currency
+		data       uint64
 		hostPubKey types.SiaPublicKey
 	}
 )
@@ -1282,11 +1283,13 @@ func (c *Contractor) threadedContractMaintenance() {
 	endHeight := c.contractEndHeight()
 	c.mu.Unlock()
 
-	// Get the number of gfrContracts we have.
+	// Get the number of gfrContracts we have as well as the data they hold.
 	var gfrContracts uint64
+	var gfrData uint64
 	for _, c := range c.staticContracts.ViewAll() {
 		if c.Utility.GoodForRenew {
 			gfrContracts++
+			gfrData += c.Size()
 		}
 	}
 
@@ -1353,6 +1356,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			renewSet = append(renewSet, fileContractRenewal{
 				id:         contract.ID,
 				amount:     renewAmount,
+				data:       contract.Size(),
 				hostPubKey: contract.HostPublicKey,
 			})
 			c.staticLog.Debugln("Contract has been added to the renew set for being past the renew height")
@@ -1394,6 +1398,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			refreshSet = append(refreshSet, fileContractRenewal{
 				id:         contract.ID,
 				amount:     refreshAmount,
+				data:       contract.Size(),
 				hostPubKey: contract.HostPublicKey,
 			})
 			c.staticLog.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
@@ -1441,8 +1446,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	c.staticLog.Debugln("Remaining funds in allowance:", fundsRemaining.HumanString())
 
-	// Keep track of the total number of renews that failed for any reason.
+	// Keep track of the amount of data that failed to renew.
 	var numRenewFails int
+	var failedRenewData uint64
 
 	// Register or unregister and alerts related to contract renewal or
 	// formation.
@@ -1457,15 +1463,15 @@ func (c *Contractor) threadedContractMaintenance() {
 
 		alertSeverity := modules.SeverityError
 		// Increase the alert severity for renewal fails to critical if the
-		// number of contracts which failed to renew is more than 20% of the
-		// number of gfr contracts.
-		if float64(numRenewFails) > math.Ceil(float64(gfrContracts)*MaxCriticalRenewFailThreshold) {
+		// number of data which might be lost is more than 20% of the total data
+		// in gfr contracts.
+		if float64(failedRenewData) > math.Ceil(float64(gfrData)*MaxCriticalRenewFailThreshold) {
 			alertSeverity = modules.SeverityCritical
 		}
 		if renewErr != nil {
 			c.staticLog.Debugln("SEVERE", numRenewFails, float64(allowance.Hosts)*MaxCriticalRenewFailThreshold)
 			c.staticLog.Debugln("alert err: ", renewErr)
-			alertMSG := fmt.Sprintf("%v out of %v renewals failed - number of total gfr contracts is %v - see contractor.log for details", numRenewFails, len(renewSet)+len(refreshSet), gfrContracts)
+			alertMSG := fmt.Sprintf("%v out of %v renewals failed (%v bytes out of %v) - number of total gfr contracts is %v - see contractor.log for details", numRenewFails, len(renewSet)+len(refreshSet), failedRenewData, gfrData, gfrContracts)
 			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, alertMSG, modules.AlertSeverity(alertSeverity))
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterContractRenewalError)
@@ -1514,6 +1520,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.staticLog.Println("Error renewing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
 			numRenewFails++
+			failedRenewData += renewal.data
 		} else {
 			c.staticLog.Println("Renewal completed without error")
 		}
@@ -1554,6 +1561,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.staticLog.Println("Error refreshing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
 			numRenewFails++
+			failedRenewData += renewal.data
 		} else {
 			c.staticLog.Println("Refresh completed without error")
 		}

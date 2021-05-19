@@ -9,8 +9,8 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/tus/tusd/pkg/handler"
-	siaapi "gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/log"
+	siaapi "go.sia.tech/siad/node/api"
 
 	"gitlab.com/SkynetLabs/skyd/build"
 )
@@ -60,11 +60,6 @@ func (api *API) buildHTTPRoutes() {
 	// Explorer API Calls
 	if api.explorer != nil {
 		siaapi.RegisterRoutesExplorer(router, api.explorer, api.cs)
-	}
-
-	// FeeManager API Calls
-	if api.feemanager != nil {
-		siaapi.RegisterRoutesFeeManager(router, api.feemanager, requiredPassword)
 	}
 
 	// Gateway API Calls
@@ -162,22 +157,17 @@ func (api *API) buildHTTPRoutes() {
 
 		// Check if the maxsize can be read from the environment.  Otherwise
 		// it's unlimited.
-		var maxSize int64
-		maxSizeStr, ok := build.TUSMaxSize()
+		maxSize, ok := build.TUSMaxSize()
 		if ok {
-			_, err := fmt.Sscan(maxSizeStr, &maxSize)
-			if err != nil {
-				build.Critical("failed to marshal TUS_MAXSIZE environment variable")
-			} else {
-				fmt.Printf("INFO: max size for tus uploads set to %v\n", maxSize)
-			}
+			fmt.Printf("INFO: max size for tus uploads set to %v\n", maxSize)
 		}
 
 		// Create the TUS handler and register its routes.
 		tusHandler, err := handler.NewUnroutedHandler(handler.Config{
-			BasePath:      "/skynet/tus",
-			MaxSize:       maxSize,
-			StoreComposer: storeComposer,
+			BasePath:                "/skynet/tus",
+			MaxSize:                 maxSize,
+			RespectForwardedHeaders: true,
+			StoreComposer:           storeComposer,
 
 			// NOTE: comment logger out for debugging
 			Logger: log.DiscardLogger.Logger, // discard third party logging

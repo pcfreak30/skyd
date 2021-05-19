@@ -3,10 +3,10 @@ package renter
 import (
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -261,11 +261,11 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	if length <= 1<<16 {
-		jq.weightedJobTime64k = expMovingAvg(jq.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
+		jq.weightedJobTime64k = expMovingAvgHotStart(jq.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
 	} else if length <= 1<<20 {
-		jq.weightedJobTime1m = expMovingAvg(jq.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
+		jq.weightedJobTime1m = expMovingAvgHotStart(jq.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
 	} else {
-		jq.weightedJobTime4m = expMovingAvg(jq.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
+		jq.weightedJobTime4m = expMovingAvgHotStart(jq.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
 	}
 }
 

@@ -9,8 +9,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 )
 
 type (
@@ -18,18 +18,16 @@ type (
 	// can be accessed without locking at the cost of being a frozen readonly
 	// representation of a siafile which only exists in memory.
 	Snapshot struct {
-		staticChunks          []Chunk
-		staticFileSize        int64
-		staticPieceSize       uint64
-		staticErasureCode     skymodules.ErasureCoder
-		staticHasPartialChunk bool
-		staticMasterKey       crypto.CipherKey
-		staticMode            os.FileMode
-		staticPubKeyTable     []HostPublicKey
-		staticSiaPath         skymodules.SiaPath
-		staticLocalPath       string
-		staticPartialChunks   []PartialChunkInfo
-		staticUID             SiafileUID
+		staticChunks      []Chunk
+		staticFileSize    int64
+		staticPieceSize   uint64
+		staticErasureCode skymodules.ErasureCoder
+		staticMasterKey   crypto.CipherKey
+		staticMode        os.FileMode
+		staticPubKeyTable []HostPublicKey
+		staticSiaPath     skymodules.SiaPath
+		staticLocalPath   string
+		staticUID         SiafileUID
 	}
 )
 
@@ -94,17 +92,6 @@ func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 func (s *Snapshot) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
 	chunkIndex = offset / s.ChunkSize()
 	off = offset % s.ChunkSize()
-	// If the offset points within a partial chunk, we need to adjust our
-	// calculation to compensate for the potential offset within a combined chunk.
-	var totalOffset uint64
-	for _, cc := range s.staticPartialChunks {
-		totalOffset += cc.Offset
-	}
-	if _, ok := s.IsIncludedPartialChunk(chunkIndex); ok {
-		offset += totalOffset
-		chunkIndex = offset / s.ChunkSize()
-		off = offset % s.ChunkSize()
-	}
 	return
 }
 
@@ -113,35 +100,9 @@ func (s *Snapshot) ChunkSize() uint64 {
 	return s.staticPieceSize * uint64(s.staticErasureCode.MinPieces())
 }
 
-// PartialChunks returns the snapshot's PartialChunks.
-func (s *Snapshot) PartialChunks() []PartialChunkInfo {
-	return s.staticPartialChunks
-}
-
 // ErasureCode returns the erasure coder used by the file.
 func (s *Snapshot) ErasureCode() skymodules.ErasureCoder {
 	return s.staticErasureCode
-}
-
-// IsIncludedPartialChunk returns 'true' if the provided index points to a
-// partial chunk which has been added to the partials sia file already.
-func (s *Snapshot) IsIncludedPartialChunk(chunkIndex uint64) (PartialChunkInfo, bool) {
-	idx := CombinedChunkIndex(s.NumChunks(), chunkIndex, len(s.staticPartialChunks))
-	if idx == -1 {
-		return PartialChunkInfo{}, false
-	}
-	cc := s.staticPartialChunks[idx]
-	return cc, cc.Status >= CombinedChunkStatusInComplete
-}
-
-// IsIncompletePartialChunk returns 'true' if the provided index points to a
-// partial chunk which hasn't been added to a partials siafile yet.
-func (s *Snapshot) IsIncompletePartialChunk(chunkIndex uint64) bool {
-	idx := CombinedChunkIndex(s.NumChunks(), chunkIndex, len(s.staticPartialChunks))
-	if idx == -1 {
-		return s.staticHasPartialChunk && chunkIndex == uint64(len(s.staticChunks)-1)
-	}
-	return s.staticPartialChunks[idx].Status < CombinedChunkStatusCompleted
 }
 
 // LocalPath returns the localPath used to repair the file.
@@ -238,24 +199,6 @@ func (sf *SiaFile) readlockSnapshot(sp skymodules.SiaPath, chunks []chunk) (*Sna
 	// Copy chunks.
 	exportedChunks := make([]Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
-		// Handle complete partial chunk.
-		if cci, ok := sf.isIncludedPartialChunk(uint64(chunk.Index)); ok {
-			pieces, err := sf.partialsSiaFile.Pieces(cci.Index)
-			if err != nil {
-				return nil, err
-			}
-			exportedChunks = append(exportedChunks, Chunk{
-				Pieces: pieces,
-			})
-			continue
-		}
-		// Handle incomplete partial chunk.
-		if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
-			exportedChunks = append(exportedChunks, Chunk{
-				Pieces: make([][]Piece, sf.staticMetadata.staticErasureCode.NumPieces()),
-			})
-			continue
-		}
 		// Handle full chunk
 		pieces := allPieceSets[:len(chunk.Pieces)]
 		allPieceSets = allPieceSets[len(chunk.Pieces):]
@@ -277,23 +220,19 @@ func (sf *SiaFile) readlockSnapshot(sp skymodules.SiaPath, chunks []chunk) (*Sna
 	fileSize := sf.staticMetadata.FileSize
 	mode := sf.staticMetadata.Mode
 	uid := sf.staticMetadata.UniqueID
-	hasPartial := sf.staticMetadata.HasPartialChunk
-	pcs := sf.staticMetadata.PartialChunks
 	localPath := sf.staticMetadata.LocalPath
 
 	return &Snapshot{
-		staticChunks:          exportedChunks,
-		staticPartialChunks:   pcs,
-		staticHasPartialChunk: hasPartial,
-		staticFileSize:        fileSize,
-		staticPieceSize:       sf.staticMetadata.StaticPieceSize,
-		staticErasureCode:     sf.staticMetadata.staticErasureCode,
-		staticMasterKey:       mk,
-		staticMode:            mode,
-		staticPubKeyTable:     pkt,
-		staticSiaPath:         sp,
-		staticLocalPath:       localPath,
-		staticUID:             uid,
+		staticChunks:      exportedChunks,
+		staticFileSize:    fileSize,
+		staticPieceSize:   sf.staticMetadata.StaticPieceSize,
+		staticErasureCode: sf.staticMetadata.staticErasureCode,
+		staticMasterKey:   mk,
+		staticMode:        mode,
+		staticPubKeyTable: pkt,
+		staticSiaPath:     sp,
+		staticLocalPath:   localPath,
+		staticUID:         uid,
 	}, nil
 }
 

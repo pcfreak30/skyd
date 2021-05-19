@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // testingFileParams generates the ErasureCoder with random dataPieces and
@@ -87,20 +87,19 @@ func TestRenterSaveLoad(t *testing.T) {
 	if len(settings.CurrencyConversionRates) != 1 {
 		t.Error("invalid currency conversion")
 	}
-	usd, exists := settings.CurrencyConversionRates[modules.CurrencyUSD]
+	usd, exists := settings.CurrencyConversionRates[skymodules.CurrencyUSD]
 	if !exists || !usd.Equals(types.ZeroCurrency) {
 		t.Error("wrong usd rate")
 	}
 
 	// The registry stats should be seeded.
-	for i := range readRegistryStatsPercentiles {
-		if rt.renter.staticRRS.Estimate()[i] != readRegistryStatsSeed+readRegistryStatsInterval {
-			t.Fatalf("registry stats aren't seeded correctly %v != %v", rt.renter.staticRRS.Estimate(), readRegistryStatsSeed+readRegistryStatsInterval)
+	allNines := rt.renter.staticRegReadStats.Percentiles()
+	for i, distribution := range allNines {
+		for j, nine := range distribution {
+			if nine < (readRegistryStatsSeed*95/100) || nine > (readRegistryStatsSeed*105/11) {
+				t.Fatalf("registry stats aren't seeded correctly %v != %v -- %v %v", nine, readRegistryStatsSeed, i, j)
+			}
 		}
-	}
-	// It should be possible to add a ReadRegistryBackgroundTimeout measurement.
-	if err := rt.renter.staticRRS.AddDatum(ReadRegistryBackgroundTimeout); err != nil {
-		t.Fatal(err)
 	}
 
 	// Update the settings of the renter to have a new stream cache size and
@@ -110,7 +109,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	settings.MaxDownloadSpeed = newDownSpeed
 	settings.MaxUploadSpeed = newUpSpeed
 	settings.MonetizationBase = types.SiacoinPrecision
-	settings.CurrencyConversionRates[modules.CurrencyUSD] = types.SiacoinPrecision
+	settings.CurrencyConversionRates[skymodules.CurrencyUSD] = types.SiacoinPrecision
 	err = rt.renter.SetSettings(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +167,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	if len(newSettings.CurrencyConversionRates) != 1 {
 		t.Error("currency conversion should have 1 currency")
 	}
-	usdRate, exists := newSettings.CurrencyConversionRates[modules.CurrencyUSD]
+	usdRate, exists := newSettings.CurrencyConversionRates[skymodules.CurrencyUSD]
 	if !exists {
 		t.Error("rate doesn't exist")
 	}
@@ -241,15 +240,15 @@ func TestRenterPaths(t *testing.T) {
 	sk := crypto.GenerateSiaKey(crypto.TypeThreefish)
 	fileSize := uint64(modules.SectorSize)
 	fileMode := os.FileMode(0600)
-	f1, err := siafile.New(siaPath1.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil, true)
+	f1, err := siafile.New(siaPath1.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f2, err := siafile.New(siaPath2.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil, true)
+	f2, err := siafile.New(siaPath2.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f3, err := siafile.New(siaPath3.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode, nil, true)
+	f3, err := siafile.New(siaPath3.SiaFileSysPath(rt.renter.staticFileSystem.Root()), "", wal, rc, sk, fileSize, fileMode)
 	if err != nil {
 		t.Fatal(err)
 	}

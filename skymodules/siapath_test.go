@@ -173,6 +173,25 @@ func TestSiapath(t *testing.T) {
 		if err == nil && pathtest.valid && sp.String() != pathtest.out {
 			t.Fatalf("Unexpected SiaPath From New; got %v, expected %v, for test %v", sp.String(), pathtest.out, pathtest.in)
 		}
+
+		// Only test Suffix for valid SiaPaths
+		if !pathtest.valid {
+			continue
+		}
+
+		// Test Add Suffix
+		extendedSiaPath, err := sp.AddSuffixStr(ExtendedSuffix)
+		// Verify expected Error
+		if err != nil && pathtest.valid {
+			t.Fatal("AddSuffixStr failed on valid path: ", pathtest.in)
+		}
+		if err == nil && !pathtest.valid {
+			t.Fatal("AddSuffixStr succeeded on invalid path: ", pathtest.in)
+		}
+		// Verify expected path
+		if err == nil && pathtest.valid && extendedSiaPath.String() != pathtest.out+ExtendedSuffix {
+			t.Fatalf("Unexpected SiaPath From AddSuffixStr; got %v, expected %v, for test %v", sp.String(), pathtest.out+ExtendedSuffix, pathtest.in)
+		}
 	}
 
 	// Test LoadString
@@ -309,5 +328,67 @@ func TestSiapathName(t *testing.T) {
 		if name != pathtest.name {
 			t.Errorf("name %v not the same as expected name %v ", name, pathtest.name)
 		}
+	}
+}
+
+// TestSiaPathDepth checks that the Depth() call returns the right value for a
+// siapath.
+func TestSiaPathDepth(t *testing.T) {
+	var sp SiaPath
+	if sp.Depth() != 0 {
+		t.Error("bad")
+	}
+
+	// This is the old way we could calculate it, and it worked well in
+	// production, so it's what we verify against.
+	oldLevels := func(sp SiaPath) int {
+		levels := 0
+		next := sp
+		for !next.IsRoot() {
+			parent, err := next.Dir()
+			if err != nil {
+				t.Fatal(err)
+			}
+			next = parent
+			levels++
+		}
+		return levels
+	}
+	root := RootSiaPath()
+	if root.Depth() != 0 {
+		t.Error("bad", root.Depth(), root.String())
+	}
+	if oldLevels(root) != root.Depth() {
+		t.Error("bad")
+	}
+	one, err := NewSiaPath("one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if one.Depth() != 1 {
+		t.Error("bad", one.Depth(), one.String())
+	}
+	if oldLevels(one) != one.Depth() {
+		t.Error("bad")
+	}
+	two, err := NewSiaPath("two/two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if two.Depth() != 2 {
+		t.Error("bad", two.Depth(), two.String())
+	}
+	if oldLevels(two) != two.Depth() {
+		t.Error("bad")
+	}
+	three, err := NewSiaPath("three/three/three")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if three.Depth() != 3 {
+		t.Error("bad", three.Depth(), three.String())
+	}
+	if oldLevels(three) != three.Depth() {
+		t.Error("bad")
 	}
 }

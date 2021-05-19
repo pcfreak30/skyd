@@ -10,15 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // dummyCloser is a helper type that counts the number of times Close is called.
@@ -630,7 +631,8 @@ func TestSubscriptionNotifications(t *testing.T) {
 	// affecting the cache.
 	update := func(spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
 		c := make(chan *jobUpdateRegistryResponse, 1)
-		j := wt.newJobUpdateRegistry(context.Background(), c, spk, rv)
+		span := opentracing.GlobalTracer().StartSpan(t.Name())
+		j := wt.newJobUpdateRegistry(context.Background(), span, c, spk, rv)
 		_, err = j.managedUpdateRegistry()
 		return err
 	}

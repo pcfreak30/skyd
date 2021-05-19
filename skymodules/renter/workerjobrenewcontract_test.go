@@ -5,11 +5,11 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // TestRenewContract is a unit test for the worker's RenewContract method.
@@ -378,9 +378,14 @@ func TestRenewContractEmptyPriceTableUID(t *testing.T) {
 	}
 
 	// Overwrite the UID of the price table.
+	//
+	// Neet to copy the received price table before modifying it to prevent a
+	// race condition.
+	var pt workerPriceTable
 	wpt := wt.staticPriceTable()
-	wpt.staticPriceTable.UID = modules.UniqueID{}
-	wt.staticSetPriceTable(wpt)
+	pt = *wpt
+	pt.staticPriceTable.UID = modules.UniqueID{}
+	wt.staticSetPriceTable(&pt)
 
 	// Renew the contract. This should work without error.
 	_, _, err = wt.RenewContract(context.Background(), oldContractPreRenew.ID, params, txnBuilder)

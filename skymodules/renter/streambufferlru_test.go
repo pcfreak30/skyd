@@ -3,9 +3,10 @@ package renter
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/types"
 )
 
 // TestStreamLRU checks that all of the code that forms the LRU for a
@@ -22,7 +23,8 @@ func TestStreamLRU(t *testing.T) {
 	var tg threadgroup.ThreadGroup
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSource := newMockDataSource(data, 16)
-	sbs := newStreamBufferSet(&tg)
+	dt := skymodules.NewDistributionTrackerStandard()
+	sbs := newStreamBufferSet(dt, &tg)
 	stream := sbs.callNewStream(dataSource, 0, 0, types.ZeroCurrency)
 
 	// Extract the LRU from the stream to test it directly.

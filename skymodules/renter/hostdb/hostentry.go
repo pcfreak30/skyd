@@ -3,9 +3,9 @@ package hostdb
 import (
 	"math"
 
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/types"
 )
 
 // updateHostDBEntry updates a HostDBEntries's historic interactions if more

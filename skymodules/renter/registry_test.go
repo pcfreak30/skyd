@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 )
 
 // TestReadResponseSet is a unit test for the readResponseSet.
@@ -267,30 +267,29 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reset the rrs by setting all buckets and the total to 0.
-	for i := range rt.renter.staticRRS.staticBuckets {
-		rt.renter.staticRRS.staticBuckets[i] = 0
-	}
-	rt.renter.staticRRS.total = 0
+	// Reset the stats collector.
+	dt := skymodules.NewDistributionTrackerStandard()
+	rt.renter.staticRegReadStats = dt
 
 	// Run the method.
-	rt.renter.staticRRS.threadedAddResponseSet(context.Background(), startTime, rrs, log)
+	rt.renter.threadedAddResponseSet(context.Background(), startTime, rrs, log)
 
 	// Check p99. The winning timing should be 1s which results in an estimate
 	// of 1.02s.
-	d := rt.renter.staticRRS.Estimate()[0]
-	if d != 1020*time.Millisecond {
-		t.Fatal("wrong d", d)
+	allNines := rt.renter.staticRegReadStats.Percentiles()
+	p99 := allNines[0][2]
+	if p99 != 1008*time.Millisecond {
+		t.Fatal("wrong p99", p99)
 	}
 
 	// The buffer should contain the two messages printed when a worker either
 	// failed to respond or retrieved a nil value.
 	logs := buf.String()
-	if !strings.Contains(logs, "threadedAddResponseSet: worker that successfully retrieved a registry value failed to retrieve it again") {
+	if strings.Count(logs, "threadedAddResponseSet: worker that successfully retrieved a registry value failed to retrieve it again") != 1 {
 		t.Log("logs", logs)
 		t.Fatal("didn't log first line")
 	}
-	if !strings.Contains(logs, "threadedAddResponseSet: worker that successfully retrieved a non-nil registry value returned nil") {
+	if strings.Count(logs, "threadedAddResponseSet: worker that successfully retrieved a non-nil registry value returned nil") != 1 {
 		t.Log("logs", logs)
 		t.Fatal("didn't log second line")
 	}

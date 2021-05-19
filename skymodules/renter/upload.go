@@ -14,10 +14,10 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"go.sia.tech/siad/crypto"
 )
 
 var (
@@ -111,7 +111,7 @@ func (r *Renter) Upload(up skymodules.FileUploadParams) error {
 	//
 	// Queue a bubble to bubble the directory, ignore the return channel as we do
 	// not want to block on this update.
-	_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
+	r.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
 
 	// Create nil maps for offline and goodForRenew to pass in to
 	// callBuildAndPushChunks. These maps are used to determine the health of

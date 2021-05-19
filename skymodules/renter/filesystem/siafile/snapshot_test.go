@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
 )
 
 // TestSnapshot tests if a snapshot is created correctly from a SiaFile.
@@ -44,9 +44,6 @@ func TestSnapshot(t *testing.T) {
 	if sf.staticMetadata.staticErasureCode.NumPieces() != snap.staticErasureCode.NumPieces() {
 		t.Errorf("numPieces was %v but should be %v",
 			sf.staticMetadata.staticErasureCode.NumPieces(), snap.staticErasureCode.NumPieces())
-	}
-	if !reflect.DeepEqual(sf.staticMetadata.PartialChunks, snap.staticPartialChunks) {
-		t.Errorf("combinedChunks don't match %v %v", sf.staticMetadata.PartialChunks, snap.staticPartialChunks)
 	}
 	if !bytes.Equal(sf.staticMetadata.StaticMasterKey, snap.staticMasterKey.Key()) {
 		t.Error("masterkeys don't match")

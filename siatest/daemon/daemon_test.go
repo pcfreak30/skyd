@@ -10,13 +10,13 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/profile"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 )
 
 // TestDaemonAPIPassword makes sure that the daemon rejects requests with the
@@ -284,9 +284,6 @@ func TestDaemonConfig(t *testing.T) {
 	if dsg.Modules.Explorer {
 		t.Error("Explorer should be set as false")
 	}
-	if !dsg.Modules.FeeManager {
-		t.Error("FeeManager should be set as true")
-	}
 	if !dsg.Modules.Gateway {
 		t.Error("Gateway should be set as true")
 	}
@@ -334,9 +331,6 @@ func TestDaemonConfig(t *testing.T) {
 	}
 	if dsg.Modules.Explorer {
 		t.Error("Explorer should be set as false")
-	}
-	if dsg.Modules.FeeManager {
-		t.Error("FeeManager should be set as false")
 	}
 	if !dsg.Modules.Gateway {
 		t.Error("Gateway should be set as true")
