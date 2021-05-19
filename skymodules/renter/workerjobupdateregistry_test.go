@@ -8,13 +8,11 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/host/registry"
-	"go.sia.tech/siad/types"
 )
 
 // TestUpdateRegistryJob tests the various cases of running an UpdateRegistry
@@ -37,17 +35,8 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000) + 1
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	sid := modules.DeriveRegistryEntryID(spk, tweak)
+	rv, spk, sk := randomRegistryValue()
+	sid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -57,7 +46,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 
 	// Manually try to read the entry from the host.
 	span := opentracing.GlobalTracer().StartSpan(t.Name())
-	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &tweak)
+	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &rv.Tweak)
 	span.Finish()
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +144,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	wt.staticJobUpdateRegistryQueue.mu.Unlock()
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &tweak)
+	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +163,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &tweak)
+	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,17 +193,8 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000) + 1
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	sid := modules.DeriveRegistryEntryID(spk, tweak)
+	rv, spk, sk := randomRegistryValue()
+	sid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -223,7 +203,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &tweak)
+	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,16 +255,7 @@ func TestUpdateRegistryInvalidCached(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000) + 1
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv, spk, sk := randomRegistryValue()
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)

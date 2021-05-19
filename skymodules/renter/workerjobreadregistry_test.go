@@ -8,12 +8,9 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 )
 
 // TestReadRegistryJob tests running a ReadRegistry job on a host.
@@ -34,16 +31,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000)
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv, spk, _ := randomRegistryValue()
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -97,16 +85,7 @@ func TestReadRegistryJobManual(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000)
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv, spk, _ := randomRegistryValue()
 	eid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 
 	// Prepare a span.
@@ -206,16 +185,7 @@ func TestReadRegistryInvalidCached(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000) + 1
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv, spk, sk := randomRegistryValue()
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -273,17 +243,8 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000) + 1
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	sid := modules.DeriveRegistryEntryID(spk, tweak)
+	rv, spk, sk := randomRegistryValue()
+	sid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
