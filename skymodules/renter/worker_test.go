@@ -259,8 +259,7 @@ func TestJobQueueInitialEstimate(t *testing.T) {
 }
 
 // TestWorkerSpending is a unit test that verifies several actions and whether
-// or not those actions 's spending is properly reflected in the contract
-// header.
+// or not those actions' spending are properly reflected in the contract header.
 func TestWorkerSpending(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
