@@ -23,14 +23,11 @@ type (
 
 // callExecute executes the jobReadSector.
 func (j *jobReadSector) callExecute() {
-	j.staticSpan.LogKV("callExecute")
-
-	// Finish job span at the end.
-	defer j.staticSpan.Finish()
-
-	// Capture callExecute in new span.
-	span := opentracing.GlobalTracer().StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
-	defer span.Finish()
+	if j.staticSpan != nil {
+		// Capture callExecute in new span.
+		span := opentracing.GlobalTracer().StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+		defer span.Finish()
+	}
 
 	// Track how long the job takes.
 	start := time.Now()
