@@ -860,12 +860,16 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 		return nil
 	}
 
-	// If we reach this point, we are corrupting our on-disk state. That's
-	// because we are only updating the revision on disk without fetching the
-	// roots.
-	err := errors.New("revision mismatch unfixable")
+	// The revision mismatch is not fixable since we don't have an open wal txn
+	// that can fix it. Mark the contract as bad for it to be swapped out. This
+	// should never happen.
+	u := c.Utility()
+	u.GoodForUpload = false
+	u.GoodForRenew = false
+	u.BadContract = true
+	err := fmt.Errorf("revision mismatch unfixable for contract: %v", c.Metadata().ID)
 	build.Critical(err)
-	return err
+	return errors.Compose(c.UpdateUtility(u), err)
 }
 
 // managedInsertContract inserts a contract into the set in an ACID fashion
