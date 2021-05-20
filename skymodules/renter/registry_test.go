@@ -272,7 +272,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 	rt.renter.staticRegReadStats = dt
 
 	// Run the method.
-	rt.renter.threadedAddResponseSet(context.Background(), startTime, rrs, log)
+	rt.renter.threadedAddResponseSet(context.Background(), testSpan(), startTime, rrs, log)
 
 	// Check p99. The winning timing should be 1s which results in an estimate
 	// of 1.02s.
