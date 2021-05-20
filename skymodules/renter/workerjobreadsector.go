@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -22,6 +23,15 @@ type (
 
 // callExecute executes the jobReadSector.
 func (j *jobReadSector) callExecute() {
+	j.staticSpan.LogKV("callExecute")
+
+	// Finish job span at the end.
+	defer j.staticSpan.Finish()
+
+	// Capture callExecute in new span.
+	span := opentracing.GlobalTracer().StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+	defer span.Finish()
+
 	// Track how long the job takes.
 	start := time.Now()
 	data, err := j.managedReadSector()

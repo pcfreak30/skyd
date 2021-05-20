@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -175,12 +176,12 @@ type projectChunkWorkerSet struct {
 // chunkFetcher is an interface that exposes a download function, the PCWS
 // implements this interface.
 type chunkFetcher interface {
-	Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error)
+	Download(ctx context.Context, span opentracing.Span, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error)
 }
 
 // Download will download a range from a chunk.
-func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
-	return pcws.managedDownload(ctx, pricePerMS, offset, length)
+func (pcws *projectChunkWorkerSet) Download(ctx context.Context, span opentracing.Span, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+	return pcws.managedDownload(ctx, span, pricePerMS, offset, length)
 }
 
 // checkPCWSGouging verifies the cost of grabbing the HasSector information from
@@ -464,7 +465,7 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // expected to trim 100 milliseconds off of the download time, the download code
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
-func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, span opentracing.Span, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
 	// Potentially force a timeout via a disrupt for testing.
 	if pcws.staticRenter.staticDeps.Disrupt("timeoutProjectDownloadByRoot") {
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
@@ -546,6 +547,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		downloadResponseChan: make(chan *downloadResponse, 1),
 		workerSet:            pcws,
 		workerState:          ws,
+
+		staticSpan: span,
 	}
 
 	// Set debug variables on the pdc

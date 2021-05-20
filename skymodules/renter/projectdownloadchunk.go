@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
@@ -108,6 +109,9 @@ type (
 		uid             [8]byte
 		launchTime      time.Time
 		launchedWorkers []*launchedWorkerInfo
+
+		// Tracing
+		staticSpan opentracing.Span
 	}
 
 	// launchedWorkerInfo tracks information about the worker that has been
@@ -301,6 +305,12 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 
 // fail will send an error down the download response channel.
 func (pdc *projectDownloadChunk) fail(err error) {
+	// Log info and finish span.
+	pdc.staticSpan.LogKV("fail", err)
+	pdc.staticSpan.SetTag("success", false)
+	defer pdc.staticSpan.Finish()
+
+	// Create and return a response
 	dr := &downloadResponse{
 		data: nil,
 		err:  err,
@@ -314,6 +324,10 @@ func (pdc *projectDownloadChunk) fail(err error) {
 // and then send the result down the response channel. If there is an error
 // during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
+	// Log info and finish span.
+	pdc.staticSpan.SetTag("success", true)
+	pdc.staticSpan.Finish()
+
 	// Determine the amount of bytes the EC will need to skip from the recovered
 	// data when returning the data.
 	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
@@ -404,6 +418,14 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 		build.Critical("pieceOffset or pieceLength is not segment aligned")
 	}
 
+	// Create a job span
+	jobSpan := opentracing.StartSpan("ReadSectorJob", opentracing.ChildOf(pdc.staticSpan.Context()))
+	jobSpan.SetTag("Host", w.staticHostPubKeyStr)
+	jobSpan.SetTag("PieceIndex", pieceIndex)
+	jobSpan.SetTag("PieceOffset", pdc.pieceOffset)
+	jobSpan.SetTag("PieceLength", pdc.pieceLength)
+	jobSpan.SetTag("Overdrive", isOverdrive)
+
 	// Create the read sector job for the worker.
 	launchedWorkerIndex := uint64(len(pdc.launchedWorkers))
 	sectorRoot := pdc.workerSet.staticPieceRoots[pieceIndex]
@@ -411,6 +433,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 		jobRead: jobRead{
 			staticResponseChan: pdc.workerResponseChan,
 			staticLength:       pdc.pieceLength,
+			staticSpan:         jobSpan,
 
 			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadMetadata{
 				staticWorker:              w,

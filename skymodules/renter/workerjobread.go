@@ -3,6 +3,7 @@ package renter
 import (
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -27,6 +28,7 @@ type (
 	jobRead struct {
 		staticLength       uint64
 		staticResponseChan chan *jobReadResponse
+		staticSpan         opentracing.Span
 
 		*jobGeneric
 	}
@@ -86,6 +88,11 @@ func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
+	// Log info and finish span.
+	j.staticSpan.LogKV("callDiscard", err)
+	j.staticSpan.SetTag("success", false)
+	defer j.staticSpan.Finish()
+
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobReadResponse{
@@ -107,6 +114,12 @@ func (j *jobRead) callDiscard(err error) {
 // after execution. It updates the performance metrics, records whether the
 // execution was successful and returns the response.
 func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
+	// Log result
+	j.staticSpan.LogKV(
+		"readErr", readErr,
+		"readJobTime", readJobTime,
+	)
+
 	// Send the response in a goroutine so that the worker resources can be
 	// released faster. Need to check if the job was canceled so that the
 	// goroutine will exit.
@@ -131,9 +144,11 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 
 	// Report success or failure to the queue.
 	if readErr != nil {
+		j.staticSpan.SetTag("success", false)
 		j.staticQueue.callReportFailure(readErr)
 		return
 	}
+	j.staticSpan.SetTag("success", true)
 	j.staticQueue.callReportSuccess()
 
 	// Job succeeded.
