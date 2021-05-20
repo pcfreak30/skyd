@@ -30,10 +30,9 @@ type (
 		staticResponseChan chan *jobReadResponse
 
 		// staticSpan is used for tracing. Note that this can be nil, and
-		// therefore one should always check whether it is nil before using it.
-		// We allow it to be nil in order to avoid having to add tracing in
-		// regions where we currently do not require it, avoiding unnecessary
-		// overhead.
+		// therefore should always be checked before using it. We allow it to be
+		// nil in order to avoid having to add tracing to parts in our code base
+		// where we currently do not require it, avoiding unnecessary overhead.
 		staticSpan opentracing.Span
 
 		*jobGeneric
