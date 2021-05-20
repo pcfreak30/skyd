@@ -684,9 +684,13 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 
 	// Start tracing.
+	fmt.Println("started DL skylink span")
 	tracer := opentracing.GlobalTracer()
 	span := tracer.StartSpan("DownloadSkylink")
-	defer span.Finish()
+	defer func() {
+		span.Finish()
+		fmt.Println("finished DL skylink span")
+	}()
 
 	// Check if link needs to be resolved from V2 to V1.
 	link, err := r.managedTryResolveSkylinkV2(ctx, link)
