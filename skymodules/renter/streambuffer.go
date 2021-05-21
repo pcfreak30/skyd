@@ -14,7 +14,6 @@ package renter
 import (
 	"context"
 	"io"
-	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +41,10 @@ const (
 )
 
 var (
+	// errTimeout is returned when the context cancels before the data is
+	// available.
+	errTimeout = errors.New("could not get data from data section, context timed out")
+
 	// bytesBufferedPerStream is the total amount of data that gets allocated
 	// per stream. If the RequestSize of a stream buffer is less than three
 	// times the bytesBufferedPerStream, that much data will be allocated
@@ -154,14 +157,15 @@ type readResponse struct {
 // the dataSection has no mutex, the refCount falls under the consistency domain
 // of the object holding it, which should always be a streamBuffer.
 type dataSection struct {
-	// dataAvailable, externData, and externErr work together. The data and
-	// error are not allowed to be accessed by external threads until the data
-	// available channel has been closed. Once the dataAvailable channel has
-	// been closed, externData and externErr are to be treated like static
-	// fields.
-	dataAvailable chan struct{}
-	externData    []byte
-	externErr     error
+	// dataAvailable, externData, externDuration, and externErr work together.
+	// The data and error are not allowed to be accessed by external threads
+	// until the data available channel has been closed. Once the dataAvailable
+	// channel has been closed, externData, externDuration and externErr are to
+	// be treated like static fields.
+	dataAvailable  chan struct{}
+	externDuration time.Duration
+	externData     []byte
+	externErr      error
 
 	refCount uint64
 }
@@ -291,27 +295,25 @@ func (sbs *streamBufferSet) callNewStreamFromID(ctx context.Context, id skymodul
 // then return the data. The data is not safe to modify.
 func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error) {
 	// Trace info.
+	var duration time.Duration
 	span := opentracing.SpanFromContext(ctx)
 	if span != nil {
-		start := time.Now()
 		defer func() {
-			if err != nil {
-				span.SetTag("err", true)
-				span.SetTag("timeout", strings.Contains(err.Error(), "timed out"))
-			} else {
-				span.SetTag("err", false)
-			}
-			span.LogKV("duration", time.Since(start))
+			span.SetTag("success", err == nil)
+			span.SetTag("timeout", errors.Contains(err, errTimeout))
+			span.SetTag("err", err)
+			span.LogKV("duration", duration)
 		}()
 	}
 
 	select {
 	case <-ds.dataAvailable:
 	case <-ctx.Done():
-		return nil, errors.New("could not get data from data section, context timed out")
+		return nil, errTimeout
 	}
 
 	data = ds.externData
+	duration = ds.externDuration
 	err = ds.externErr
 	return
 }
@@ -328,6 +330,9 @@ func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error)
 // of a resource substantially improves performance in practice, in many cases
 // causing a 4x reduction in response latency.
 func (s *stream) Close() error {
+	// Finish the span
+	s.staticSpan.Finish()
+
 	s.staticStreamBuffer.staticStreamBufferSet.staticTG.Launch(func() {
 		// Convenience variables.
 		sb := s.staticStreamBuffer
@@ -375,16 +380,14 @@ func (s *stream) Read(b []byte) (int, error) {
 	}
 
 	// Create a child span.
-	if s.staticSpan != nil {
-		span := opentracing.StartSpan(
-			"Read",
-			opentracing.ChildOf(s.staticSpan.Context()),
-		)
-		defer span.Finish()
+	span := opentracing.StartSpan(
+		"StreamRead",
+		opentracing.ChildOf(s.staticSpan.Context()),
+	)
+	defer span.Finish()
 
-		// Attach the span to the ctx.
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
+	// Attach the span to the ctx.
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Convenience variables.
 	dataSize := s.staticStreamBuffer.staticDataSize
@@ -622,9 +625,10 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		select {
 		case response := <-responseChan:
 			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
+			ds.externDuration = time.Since(start)
 			ds.externData = response.staticData
 			if ds.externErr == nil {
-				sb.staticStreamBufferSet.staticStatsCollector.AddDataPoint(time.Since(start))
+				sb.staticStreamBufferSet.staticStatsCollector.AddDataPoint(ds.externDuration)
 			}
 		case <-sb.staticTG.StopChan():
 			ds.externErr = errors.New("failed to read response from ReadStream")
