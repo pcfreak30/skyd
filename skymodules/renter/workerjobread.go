@@ -126,7 +126,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 			"err", readErr,
 			"duration", readJobTime,
 		)
-		j.staticSpan.SetTag("success", readErr != nil)
+		j.staticSpan.SetTag("success", readErr == nil)
 		j.staticSpan.Finish()
 	}
 

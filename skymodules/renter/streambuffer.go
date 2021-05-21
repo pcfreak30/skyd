@@ -294,26 +294,30 @@ func (sbs *streamBufferSet) callNewStreamFromID(ctx context.Context, id skymodul
 // managedData will block until the data for a data section is available, and
 // then return the data. The data is not safe to modify.
 func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error) {
+	start := time.Now()
+
 	// Trace info.
-	var duration time.Duration
-	span := opentracing.SpanFromContext(ctx)
-	if span != nil {
+	var duration, dsDuration time.Duration
+	if span := opentracing.SpanFromContext(ctx); span != nil {
 		defer func() {
 			span.SetTag("success", err == nil)
 			span.SetTag("timeout", errors.Contains(err, errTimeout))
 			span.SetTag("err", err)
+
+			span.LogKV("duration datasection", dsDuration)
 			span.LogKV("duration", duration)
 		}()
 	}
 
 	select {
 	case <-ds.dataAvailable:
+		duration = time.Since(start)
 	case <-ctx.Done():
 		return nil, errTimeout
 	}
 
 	data = ds.externData
-	duration = ds.externDuration
+	dsDuration = ds.externDuration
 	err = ds.externErr
 	return
 }
