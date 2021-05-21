@@ -109,9 +109,6 @@ type (
 		uid             [8]byte
 		launchTime      time.Time
 		launchedWorkers []*launchedWorkerInfo
-
-		// Tracing
-		staticSpan opentracing.Span
 	}
 
 	// launchedWorkerInfo tracks information about the worker that has been
@@ -306,9 +303,11 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 // fail will send an error down the download response channel.
 func (pdc *projectDownloadChunk) fail(err error) {
 	// Log info and finish span.
-	pdc.staticSpan.LogKV("fail", err)
-	pdc.staticSpan.SetTag("success", false)
-	defer pdc.staticSpan.Finish()
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.LogKV("fail", err)
+		span.SetTag("success", false)
+		span.Finish()
+	}
 
 	// Create and return a response
 	dr := &downloadResponse{
@@ -325,8 +324,10 @@ func (pdc *projectDownloadChunk) fail(err error) {
 // during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
 	// Log info and finish span.
-	pdc.staticSpan.SetTag("success", true)
-	pdc.staticSpan.Finish()
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.SetTag("success", true)
+		span.Finish()
+	}
 
 	// Determine the amount of bytes the EC will need to skip from the recovered
 	// data when returning the data.
@@ -419,33 +420,26 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	}
 
 	// Create a job span
-	jobSpan := opentracing.StartSpan("ReadSectorJob", opentracing.ChildOf(pdc.staticSpan.Context()))
-	jobSpan.SetTag("Host", w.staticHostPubKeyStr)
-	jobSpan.SetTag("PieceIndex", pieceIndex)
-	jobSpan.SetTag("PieceOffset", pdc.pieceOffset)
-	jobSpan.SetTag("PieceLength", pdc.pieceLength)
-	jobSpan.SetTag("Overdrive", isOverdrive)
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.LogKV(
+			"launchWorker", w.staticHostPubKeyStr,
+			"overdriveWorker", isOverdrive,
+		)
+	}
 
-	// Create the read sector job for the worker.
+	// Create the read job metadata.
 	launchedWorkerIndex := uint64(len(pdc.launchedWorkers))
 	sectorRoot := pdc.workerSet.staticPieceRoots[pieceIndex]
-	jrs := &jobReadSector{
-		jobRead: jobRead{
-			staticResponseChan: pdc.workerResponseChan,
-			staticLength:       pdc.pieceLength,
-			staticSpan:         jobSpan,
-
-			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadMetadata{
-				staticWorker:              w,
-				staticSectorRoot:          sectorRoot,
-				staticSpendingCategory:    categoryDownload,
-				staticPieceRootIndex:      pieceIndex,
-				staticLaunchedWorkerIndex: launchedWorkerIndex,
-			}),
-		},
-		staticOffset: pdc.pieceOffset,
-		staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
+	jobMetadata := jobReadMetadata{
+		staticWorker:              w,
+		staticSectorRoot:          sectorRoot,
+		staticSpendingCategory:    categoryDownload,
+		staticPieceRootIndex:      pieceIndex,
+		staticLaunchedWorkerIndex: launchedWorkerIndex,
 	}
+	
+	// Create the read sector job for the worker.
+	jrs := w.newJobReadSector(pdc.ctx, w.staticJobReadQueue, pdc.workerResponseChan, jobMetadata, sectorRoot, pdc.pieceOffset, pdc.pieceLength)
 
 	// Submit the job.
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)

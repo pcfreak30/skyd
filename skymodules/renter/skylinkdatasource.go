@@ -169,11 +169,8 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 			return responseChan
 		}
 
-		// Create a child span
-		childSpan := opentracing.StartSpan("ChunkDownload", opentracing.ChildOf(sds.staticSpan.Context()))
-
 		// Schedule the download.
-		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, childSpan, pricePerMS, offsetInChunk, downloadSize)
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize)
 		if err != nil {
 			responseChan <- &readResponse{
 				staticErr: errors.AddContext(err, "unable to start download"),
@@ -219,7 +216,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 }
 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
-func (r *Renter) managedDownloadByRoot(ctx context.Context, span opentracing.Span, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, error) {
+func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, error) {
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -246,7 +243,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, span opentracing.Spa
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	respChan, err := pcws.managedDownload(ctx, span, pricePerMS, offset, length)
+	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to start download")
 	}
@@ -273,9 +270,13 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, span opentracing.Spa
 // requested, but we should only do so after gathering some real world feedback
 // that indicates we would benefit from this.
 func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
-	// Start tracing.
+	// Create a span.
 	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("managedSkylinkDataSource")
+	span := tracer.StartSpan("SkylinkDataSource")
+	span.SetTag("Skylink", link.String())
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := link.OffsetAndFetchSize()
@@ -283,22 +284,15 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 		return nil, errors.AddContext(err, "unable to parse skylink")
 	}
 
-	// Capture the base sector download in a new span.
-	childSpan := opentracing.GlobalTracer().StartSpan("baseSectorDownload", opentracing.ChildOf(span.Context()))
-
 	// Download the base sector. The base sector contains the metadata, without
 	// it we can't provide a completed data source.
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	baseSector, err := r.managedDownloadByRoot(ctx, span, link.MerkleRoot(), offset, fetchSize, pricePerMS)
+	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
 	if err != nil {
-		childSpan.SetTag("success", false)
-		childSpan.Finish()
 		return nil, errors.AddContext(err, "unable to download base sector")
 	}
-	childSpan.SetTag("success", true)
-	childSpan.Finish()
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
@@ -319,6 +313,9 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	// Create the context for the data source - a child of the renter
 	// threadgroup but otherwise independent.
 	dsCtx, cancelFunc := context.WithCancel(r.tg.StopCtx())
+
+	// Attach the span to the ctx
+	dsCtx = opentracing.ContextWithSpan(dsCtx, span)
 
 	// If there's a fanout create a PCWS for every chunk.
 	var fanoutChunkFetchers []chunkFetcher

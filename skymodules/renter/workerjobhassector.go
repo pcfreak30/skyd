@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -34,12 +35,16 @@ var errEstimateAboveMax = errors.New("can't add job since estimate is above max 
 type (
 	// jobHasSector contains information about a hasSector query.
 	jobHasSector struct {
-		staticSectors []crypto.Hash
-
+		staticSectors      []crypto.Hash
 		staticResponseChan chan *jobHasSectorResponse
 
 		staticPostExecutionHook func(*jobHasSectorResponse)
 		once                    sync.Once
+
+		// staticSpan is used for tracing. Note that this can be nil, and
+		// therefore should always be checked. Not all read jobs require
+		// tracing. By allowing it to be nil we avoid the extra overhead.
+		staticSpan opentracing.Span
 
 		*jobGeneric
 	}
@@ -108,16 +113,33 @@ func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasS
 // HasSector job with a post execution hook that is executed after the response
 // is available but before sending it over the channel.
 func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, responseChan chan *jobHasSectorResponse, hook func(*jobHasSectorResponse), roots ...crypto.Hash) *jobHasSector {
+	// Create a job span if the given context has a reference span.
+	var jobSpan opentracing.Span
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		jobSpan = opentracing.StartSpan(
+			"HasSectorJob",
+			opentracing.ChildOf(span.Context()),
+		)
+	}
+
 	return &jobHasSector{
 		staticSectors:           roots,
 		staticResponseChan:      responseChan,
 		staticPostExecutionHook: hook,
+		staticSpan:              jobSpan,
 		jobGeneric:              newJobGeneric(ctx, w.staticJobHasSectorQueue, nil),
 	}
 }
 
 // callDiscard will discard a job, sending the provided error.
 func (j *jobHasSector) callDiscard(err error) {
+	// Log info and finish span.
+	if j.staticSpan != nil {
+		j.staticSpan.LogKV("jobHasSector_callDiscard", err)
+		j.staticSpan.SetTag("success", false)
+		j.staticSpan.Finish()
+	}
+
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobHasSectorResponse{
@@ -239,10 +261,22 @@ func (j jobHasSectorBatch) callExpectedBandwidth() (ul, dl uint64) {
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
-func (j *jobHasSectorBatch) managedHasSector() ([][]bool, error) {
+func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
 	if len(j.staticJobs) == 0 {
 		return nil, nil
 	}
+
+	// Defer a function that finishes all HS job spans, we consider either the
+	// entire batch as successful or as failed.
+	defer func() {
+		for _, hsj := range j.staticJobs {
+			if hsj.staticSpan != nil {
+				hsj.staticSpan.SetTag("success", err == nil)
+				hsj.staticSpan.Finish()
+			}
+		}
+	}()
+
 	w := j.staticJobs[0].staticQueue.staticWorker()
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
@@ -263,7 +297,7 @@ func (j *jobHasSectorBatch) managedHasSector() ([][]bool, error) {
 	// Execute the program and parse the responses.
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryDownload, cost)
+	responses, _, err = w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}
@@ -276,7 +310,7 @@ func (j *jobHasSectorBatch) managedHasSector() ([][]bool, error) {
 	if len(responses) != len(program) {
 		return nil, errors.New("received invalid number of responses but no error")
 	}
-	results := make([][]bool, 0, len(j.staticJobs))
+
 	for _, hsj := range j.staticJobs {
 		results = append(results, hasSectors[:len(hsj.staticSectors)])
 		hasSectors = hasSectors[len(hsj.staticSectors):]

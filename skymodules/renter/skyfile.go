@@ -660,7 +660,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	defer span.Finish()
 
 	// Fetch the data
-	data, err := r.managedDownloadByRoot(ctx, span, root, offset, length, pricePerMS)
+	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -683,32 +683,28 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 		defer cancel()
 	}
 
-	// Start tracing.
-	fmt.Println("started DL skylink span")
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("DownloadSkylink")
-	defer func() {
-		span.Finish()
-		fmt.Println("finished DL skylink span")
-	}()
-
 	// Check if link needs to be resolved from V2 to V1.
 	link, err := r.managedTryResolveSkylinkV2(ctx, link)
 	if err != nil {
 		return nil, err
 	}
 
-	// Log the skylink.
-	span.LogKV("Skylink", link.String())
-
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(link) {
 		return nil, ErrSkylinkBlocked
 	}
 
+	// Create a new span.
+	tracer := opentracing.GlobalTracer()
+	span := tracer.StartSpan("DownloadSkylink")
+	span.SetTag("Skylink", link.String())
+	defer span.Finish()
+
 	// Download the data
 	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
+		span.LogKV("DownloadSkylink_timeout", timeout)
+		span.SetTag("timeout", true)
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
 	return streamer, err
@@ -753,7 +749,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	}
 
 	// Download the base sector
-	baseSector, err := r.managedDownloadByRoot(ctx, span, link.MerkleRoot(), offset, fetchSize, pricePerMS)
+	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
 	return StreamerFromSlice(baseSector), err
 }
 

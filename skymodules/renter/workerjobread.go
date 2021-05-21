@@ -30,9 +30,8 @@ type (
 		staticResponseChan chan *jobReadResponse
 
 		// staticSpan is used for tracing. Note that this can be nil, and
-		// therefore should always be checked before using it. We allow it to be
-		// nil in order to avoid having to add tracing to parts in our code base
-		// where we currently do not require it, avoiding unnecessary overhead.
+		// therefore should always be checked. Not all read jobs require
+		// tracing. By allowing it to be nil we avoid the extra overhead.
 		staticSpan opentracing.Span
 
 		*jobGeneric
@@ -95,9 +94,9 @@ func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 func (j *jobRead) callDiscard(err error) {
 	// Log info and finish span.
 	if j.staticSpan != nil {
-		j.staticSpan.LogKV("callDiscard", err)
+		j.staticSpan.LogKV("jobRead_callDiscard", err)
 		j.staticSpan.SetTag("success", false)
-		defer j.staticSpan.Finish()
+		j.staticSpan.Finish()
 	}
 
 	w := j.staticQueue.staticWorker()
@@ -124,11 +123,11 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	// Log result and finish
 	if j.staticSpan != nil {
 		j.staticSpan.LogKV(
-			"readErr", readErr,
-			"readJobTime", readJobTime,
+			"err", readErr,
+			"duration", readJobTime,
 		)
 		j.staticSpan.SetTag("success", readErr != nil)
-		defer j.staticSpan.Finish()
+		j.staticSpan.Finish()
 	}
 
 	// Send the response in a goroutine so that the worker resources can be

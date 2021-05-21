@@ -280,7 +280,14 @@ func TestProcessDownloadChunk(t *testing.T) {
 	// helper to add jobs to the queue.
 	addBlankJobs := func(n int) {
 		for i := 0; i < n; i++ {
-			j := wt.newJobReadSector(context.Background(), wt.staticJobLowPrioReadQueue, make(chan *jobReadResponse), categoryDownload, crypto.Hash{}, 0, 0)
+			// Create the job metadata
+			jobMetadata := jobReadMetadata{
+				staticWorker:              wt.worker,
+				staticSectorRoot:          crypto.Hash{},
+				staticSpendingCategory:    categoryDownload,
+			}
+
+			j := wt.newJobReadSector(context.Background(), wt.staticJobLowPrioReadQueue, make(chan *jobReadResponse), jobMetadata, crypto.Hash{}, 0, 0)
 			wt.staticJobLowPrioReadQueue.mu.Lock()
 			wt.staticJobLowPrioReadQueue.jobs.PushBack(j)
 			wt.staticJobLowPrioReadQueue.mu.Unlock()
