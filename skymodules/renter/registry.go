@@ -172,9 +172,12 @@ func (rrs *readResponseSet) responsesLeft() int {
 // as secondBest. If we find a valid secondBest we use that timing, otherwise we
 // stick to the best. That way we get the fastest response for the best entry
 // even if an update caused a slow worker to be considered best at first.
-func (r *Renter) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
+func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentracing.Span, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
 	responseCtx, responseCancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
 	defer responseCancel()
+
+	span := opentracing.StartSpan("threadedAddResponseSet", opentracing.ChildOf(parentSpan.Context()))
+	defer span.Finish()
 
 	// Get all responses.
 	resps := rrs.collect(responseCtx)
@@ -262,9 +265,9 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, startTime time.Time
 		var srv *modules.SignedRegistryValue
 		var err error
 		if resp.staticSPK == nil || resp.staticTweak == nil {
-			srv, err = resp.staticWorker.ReadRegistryEID(secondBestCtx, resp.staticEID)
+			srv, err = resp.staticWorker.ReadRegistryEID(secondBestCtx, span, resp.staticEID)
 		} else {
-			srv, err = resp.staticWorker.ReadRegistry(secondBestCtx, *resp.staticSPK, *resp.staticTweak)
+			srv, err = resp.staticWorker.ReadRegistry(secondBestCtx, span, *resp.staticSPK, *resp.staticTweak)
 		}
 		// Ignore responses with errors and without revision.
 		if err != nil {
@@ -465,7 +468,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Add the response set to the stats after this method is done.
 	defer func() {
 		_ = r.tg.Launch(func() {
-			r.threadedAddResponseSet(r.tg.StopCtx(), startTime, responseSet, r.staticLog)
+			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)
 			backgroundCancel()
 		})
 	}()

@@ -302,6 +302,9 @@ func (j *jobReadRegistry) callExecute() {
 	// Success.
 	jobTime := time.Since(start)
 	j.staticSpan.SetTag("success", true)
+	if srv != nil {
+		j.staticSpan.LogKV("revision", srv.Revision)
+	}
 
 	// Send the response and report success.
 	sendResponse(srv, nil)
@@ -334,9 +337,9 @@ func (w *worker) initJobReadRegistryQueue() {
 }
 
 // ReadRegistry is a helper method to run a ReadRegistry job on a worker.
-func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistry(ctx context.Context, parentSpan opentracing.Span, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
-	span := opentracing.GlobalTracer().StartSpan("ReadRegistry")
+	span := opentracing.GlobalTracer().StartSpan("ReadRegistry", opentracing.ChildOf(parentSpan.Context()))
 	defer span.Finish()
 
 	jur := w.newJobReadRegistry(ctx, span, readRegistryRespChan, spk, tweak)
@@ -363,9 +366,9 @@ func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 
 // ReadRegistryEID is a helper method to run a ReadRegistry job on a worker
 // without a pubkey or tweak.
-func (w *worker) ReadRegistryEID(ctx context.Context, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistryEID(ctx context.Context, parentSpan opentracing.Span, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
-	span := opentracing.GlobalTracer().StartSpan("ReadRegistryEID")
+	span := opentracing.GlobalTracer().StartSpan("ReadRegistryEID", opentracing.ChildOf(parentSpan.Context()))
 	defer span.Finish()
 
 	jur := w.newJobReadRegistryEID(ctx, span, readRegistryRespChan, sid, nil, nil)

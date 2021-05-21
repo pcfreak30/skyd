@@ -579,7 +579,7 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	}
 
 	// read from the registry
-	_, err = wt.ReadRegistry(context.Background(), spk, rv.Tweak)
+	_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}

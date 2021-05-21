@@ -52,7 +52,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 
 	// Create a ReadRegistry job to read the entry.
-	lookedUpRV, err := wt.ReadRegistry(context.Background(), spk, rv.Tweak)
+	lookedUpRV, err := wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 
 	// Do it again without the pubkey or tweak. Should also work.
-	lookedUpRV, err = wt.ReadRegistryEID(context.Background(), modules.DeriveRegistryEntryID(spk, rv.Tweak))
+	lookedUpRV, err = wt.ReadRegistryEID(context.Background(), testSpan(), modules.DeriveRegistryEntryID(spk, rv.Tweak))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestReadRegistryInvalidCached(t *testing.T) {
 
 	// Read the value. This should result in an error due to the host providing a
 	// lower revision number than expected.
-	_, err = wt.ReadRegistry(context.Background(), spk, rv.Tweak)
+	_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if !errors.Contains(err, errHostLowerRevisionThanCache) {
 		t.Fatal(err)
 	}
@@ -305,7 +305,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	}
 
 	// Read the registry value.
-	readRV, err := wt.ReadRegistry(context.Background(), spk, rv.Tweak)
+	readRV, err := wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	}
 
 	// Read the registry value. Should be rv2.
-	readRV, err = wt.ReadRegistry(context.Background(), spk, rv2.Tweak)
+	readRV, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv2.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
