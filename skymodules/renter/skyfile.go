@@ -700,6 +700,9 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	span.SetTag("Skylink", link.String())
 	defer span.Finish()
 
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
 	// Download the data
 	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
@@ -726,11 +729,6 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 		defer cancel()
 	}
 
-	// Start tracing.
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("DownloadSkylinkBaseSector")
-	defer span.Finish()
-
 	// Check if link needs to be resolved from V2 to V1.
 	link, err := r.managedTryResolveSkylinkV2(ctx, link)
 	if err != nil {
@@ -747,6 +745,14 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to get offset and fetch size")
 	}
+
+	// Create a span
+	tracer := opentracing.GlobalTracer()
+	span := tracer.StartSpan("DownloadSkylinkBaseSector")
+	defer span.Finish()
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Download the base sector
 	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
@@ -772,9 +778,9 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 	// skip the lookup procedure and use any data that other threads have
 	// cached.
 	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, streamReadTimeout)
+	stream, exists := r.staticStreamBufferSet.callNewStreamFromID(ctx, id, 0, streamReadTimeout)
 	if exists {
-		return streamer, nil
+		return stream, nil
 	}
 
 	// Create the data source and add it to the stream buffer set.
@@ -782,7 +788,7 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, streamReadTimeout, pricePerMS)
+	stream = r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0, streamReadTimeout, pricePerMS)
 	return stream, nil
 }
 
@@ -794,12 +800,19 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 		return ErrSkylinkBlocked
 	}
 
+	// Create a span.
+	tracer := opentracing.GlobalTracer()
+	span := tracer.StartSpan("PinSkylink")
+	defer span.Finish()
+
+	// Create a context.
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout, pricePerMS)
@@ -888,7 +901,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	if err != nil {
 		return errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
+	stream := r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0, timeout, pricePerMS)
 
 	// Upload directly from the stream.
 	fileNode, err := r.callUploadStreamFromReader(fup, stream)

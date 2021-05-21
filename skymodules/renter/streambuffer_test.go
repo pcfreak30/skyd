@@ -126,7 +126,7 @@ func TestStreamSmoke(t *testing.T) {
 	dataSource := newMockDataSource(data, dataSectionSize)
 	dt := skymodules.NewDistributionTrackerStandard()
 	sbs := newStreamBufferSet(dt, &tg)
-	stream := sbs.callNewStream(dataSource, 0, 0, types.ZeroCurrency)
+	stream := sbs.callNewStream(context.Background(), dataSource, 0, 0, types.ZeroCurrency)
 
 	// Check that there is one reference in the stream buffer.
 	sbs.mu.Lock()
@@ -136,7 +136,7 @@ func TestStreamSmoke(t *testing.T) {
 		t.Fatal("bad")
 	}
 	// Create a new stream from an id, check that the ref count goes up.
-	streamFromID, exists := sbs.callNewStreamFromID(dataSource.ID(), 0, 0)
+	streamFromID, exists := sbs.callNewStreamFromID(context.Background(), dataSource.ID(), 0, 0)
 	if !exists {
 		t.Fatal("bad")
 	}
@@ -149,7 +149,7 @@ func TestStreamSmoke(t *testing.T) {
 	// Create a second, different data source with the same id and try to use
 	// that.
 	dataSource2 := newMockDataSource(data, dataSectionSize)
-	repeatStream := sbs.callNewStream(dataSource2, 0, 0, types.ZeroCurrency)
+	repeatStream := sbs.callNewStream(context.Background(), dataSource2, 0, 0, types.ZeroCurrency)
 	sbs.mu.Lock()
 	refs = stream.staticStreamBuffer.externRefCount
 	sbs.mu.Unlock()
@@ -320,7 +320,7 @@ func TestStreamSmoke(t *testing.T) {
 	// the same ID, they are actually separate objects which need to be closed
 	// individually.
 	dataSource3 := newMockDataSource(data, dataSectionSize)
-	stream2 := sbs.callNewStream(dataSource3, 0, 0, types.ZeroCurrency)
+	stream2 := sbs.callNewStream(context.Background(), dataSource3, 0, 0, types.ZeroCurrency)
 	bytesRead, err = io.ReadFull(stream2, buf)
 	if err != nil {
 		t.Fatal(err)
@@ -448,7 +448,7 @@ func TestStreamSmoke(t *testing.T) {
 
 	// Check that if the tg is stopped, the stream closes immediately.
 	dataSource4 := newMockDataSource(data, dataSectionSize)
-	stream3 := sbs.callNewStream(dataSource4, 0, 0, types.ZeroCurrency)
+	stream3 := sbs.callNewStream(context.Background(), dataSource4, 0, 0, types.ZeroCurrency)
 	bytesRead, err = io.ReadFull(stream3, buf)
 	if err != nil {
 		t.Fatal(err)

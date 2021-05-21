@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -25,7 +26,7 @@ func TestStreamLRU(t *testing.T) {
 	dataSource := newMockDataSource(data, 16)
 	dt := skymodules.NewDistributionTrackerStandard()
 	sbs := newStreamBufferSet(dt, &tg)
-	stream := sbs.callNewStream(dataSource, 0, 0, types.ZeroCurrency)
+	stream := sbs.callNewStream(context.Background(), dataSource, 0, 0, types.ZeroCurrency)
 
 	// Extract the LRU from the stream to test it directly.
 	lru := stream.lru

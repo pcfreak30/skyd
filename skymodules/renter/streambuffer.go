@@ -14,9 +14,11 @@ package renter
 import (
 	"context"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
@@ -179,6 +181,7 @@ type stream struct {
 	staticStreamBuffer *streamBuffer
 
 	staticContext     context.Context
+	staticSpan        opentracing.Span
 	staticReadTimeout time.Duration
 }
 
@@ -240,7 +243,7 @@ func newStreamBufferSet(statsCollector *skymodules.DistributionTracker, tg *thre
 // Each stream has a separate LRU for determining what data to buffer. Because
 // the LRU is distinct to the stream, the shared cache feature will not result
 // in one stream evicting data from another stream's LRU.
-func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency) *stream {
+func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource streamBufferDataSource, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency) *stream {
 	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
 	// the sourceID exists, create a new one.
 	sourceID := dataSource.ID()
@@ -265,14 +268,14 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset, timeout)
+	return streamBuf.managedPrepareNewStream(ctx, initialOffset, timeout)
 }
 
 // callNewStreamFromID will check the stream buffer set to see if a stream
 // buffer exists for the given data source id. If so, a new stream will be
 // created using the data source, and the bool will be set to 'true'. Otherwise,
 // the stream returned will be nil and the bool will be set to 'false'.
-func (sbs *streamBufferSet) callNewStreamFromID(id skymodules.DataSourceID, initialOffset uint64, timeout time.Duration) (*stream, bool) {
+func (sbs *streamBufferSet) callNewStreamFromID(ctx context.Context, id skymodules.DataSourceID, initialOffset uint64, timeout time.Duration) (*stream, bool) {
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[id]
 	if !exists {
@@ -281,18 +284,36 @@ func (sbs *streamBufferSet) callNewStreamFromID(id skymodules.DataSourceID, init
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset, timeout), true
+	return streamBuf.managedPrepareNewStream(ctx, initialOffset, timeout), true
 }
 
 // managedData will block until the data for a data section is available, and
 // then return the data. The data is not safe to modify.
-func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
+func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error) {
+	// Trace info.
+	span := opentracing.SpanFromContext(ctx)
+	if span != nil {
+		start := time.Now()
+		defer func() {
+			if err != nil {
+				span.SetTag("err", true)
+				span.SetTag("timeout", strings.Contains(err.Error(), "timed out"))
+			} else {
+				span.SetTag("err", false)
+			}
+			span.LogKV("duration", time.Since(start))
+		}()
+	}
+
 	select {
 	case <-ds.dataAvailable:
 	case <-ctx.Done():
 		return nil, errors.New("could not get data from data section, context timed out")
 	}
-	return ds.externData, ds.externErr
+
+	data = ds.externData
+	err = ds.externErr
+	return
 }
 
 // Close will release all of the resources held by a stream.
@@ -351,6 +372,18 @@ func (s *stream) Read(b []byte) (int, error) {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, s.staticReadTimeout)
 		defer cancel()
+	}
+
+	// Create a child span.
+	if s.staticSpan != nil {
+		span := opentracing.StartSpan(
+			"Read",
+			opentracing.ChildOf(s.staticSpan.Context()),
+		)
+		defer span.Finish()
+
+		// Attach the span to the ctx.
+		ctx = opentracing.ContextWithSpan(ctx, span)
 	}
 
 	// Convenience variables.
@@ -519,12 +552,15 @@ func (sb *streamBuffer) callRemoveDataSection(index uint64) {
 // managedPrepareNewStream creates a new stream from an existing stream buffer.
 // The ref count for the buffer needs to be incremented under the
 // streamBufferSet lock, before this method is called.
-func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout time.Duration) *stream {
+func (sb *streamBuffer) managedPrepareNewStream(ctx context.Context, initialOffset uint64, timeout time.Duration) *stream {
 	// Determine how many data sections the stream should cache.
 	dataSectionsToCache := bytesBufferedPerStream / sb.staticDataSectionSize
 	if dataSectionsToCache < minimumDataSections {
 		dataSectionsToCache = minimumDataSections
 	}
+
+	// Fetch the span from the context
+	span := opentracing.SpanFromContext(ctx)
 
 	// Create a stream that points to the stream buffer.
 	stream := &stream{
@@ -534,6 +570,7 @@ func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout ti
 		staticContext:      sb.staticTG.StopCtx(),
 		staticReadTimeout:  timeout,
 		staticStreamBuffer: sb,
+		staticSpan:         span,
 	}
 	stream.prepareOffset()
 	return stream
