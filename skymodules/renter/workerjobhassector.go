@@ -116,10 +116,8 @@ func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, respo
 	// Create a job span if the given context has a reference span.
 	var jobSpan opentracing.Span
 	if span := opentracing.SpanFromContext(ctx); span != nil {
-		jobSpan = opentracing.StartSpan(
-			"HasSectorJob",
-			opentracing.ChildOf(span.Context()),
-		)
+		spanRef := opentracing.ChildOf(span.Context())
+		jobSpan = opentracing.StartSpan("HasSectorJob", spanRef)
 	}
 
 	return &jobHasSector{

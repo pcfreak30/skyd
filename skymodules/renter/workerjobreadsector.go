@@ -25,7 +25,7 @@ type (
 func (j *jobReadSector) callExecute() {
 	if j.staticSpan != nil {
 		// Capture callExecute in new span.
-		span := opentracing.GlobalTracer().StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+		span := opentracing.GlobalTracer().StartSpan("jobReadSector_ callExecute", opentracing.ChildOf(j.staticSpan.Context()))
 		defer span.Finish()
 	}
 
@@ -74,10 +74,8 @@ func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, resp
 	// Create a job span if the given context has a reference span.
 	var jobSpan opentracing.Span
 	if span := opentracing.SpanFromContext(ctx); span != nil {
-		jobSpan = opentracing.StartSpan(
-			"ReadSectorJob",
-			opentracing.ChildOf(span.Context()),
-		)
+		spanRef := opentracing.ChildOf(span.Context())
+		jobSpan = opentracing.StartSpan("ReadSectorJob", spanRef)
 		jobSpan.SetTag("Root", root)
 	}
 
@@ -99,11 +97,11 @@ func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, resp
 func (w *worker) ReadSectorLowPrio(ctx context.Context, category spendingCategory, root crypto.Hash, offset, length uint64) ([]byte, error) {
 	// Create the job metadata
 	jobMetadata := jobReadMetadata{
-		staticWorker:              w,
-		staticSectorRoot:          root,
-		staticSpendingCategory:    category,
+		staticWorker:           w,
+		staticSectorRoot:       root,
+		staticSpendingCategory: category,
 	}
-	
+
 	// Create the job
 	readSectorRespChan := make(chan *jobReadResponse)
 	jro := w.newJobReadSector(ctx, w.staticJobLowPrioReadQueue, readSectorRespChan, jobMetadata, root, offset, length)
@@ -135,9 +133,9 @@ func (w *worker) ReadSectorLowPrio(ctx context.Context, category spendingCategor
 func (w *worker) ReadSector(ctx context.Context, category spendingCategory, root crypto.Hash, offset, length uint64) ([]byte, error) {
 	// Create the job metadata.
 	jobMetadata := jobReadMetadata{
-		staticWorker:              w,
-		staticSectorRoot:          root,
-		staticSpendingCategory:    category,
+		staticWorker:           w,
+		staticSectorRoot:       root,
+		staticSpendingCategory: category,
 	}
 
 	// Create the job.

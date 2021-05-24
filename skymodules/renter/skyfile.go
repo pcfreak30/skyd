@@ -657,7 +657,11 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	// Start tracing.
 	tracer := opentracing.GlobalTracer()
 	span := tracer.StartSpan("DownloadByRoot")
+	span.SetTag("Root", root)
 	defer span.Finish()
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Fetch the data
 	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
@@ -705,7 +709,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	// Download the data
 	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
-		span.LogKV("DownloadSkylink_timeout", timeout)
+		span.LogKV("timeout", timeout)
 		span.SetTag("timeout", true)
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -748,6 +752,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	// Create a span
 	tracer := opentracing.GlobalTracer()
 	span := tracer.StartSpan("DownloadSkylinkBaseSector")
+	span.SetTag("Skylink", link.String())
 	defer span.Finish()
 
 	// Attach the span to the ctx
@@ -804,11 +809,6 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 		return ErrSkylinkBlocked
 	}
 
-	// Create a span.
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("PinSkylink")
-	defer span.Finish()
-
 	// Create a context.
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
@@ -816,6 +816,13 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
+
+	// Create a span.
+	tracer := opentracing.GlobalTracer()
+	span := tracer.StartSpan("PinSkylink")
+	defer span.Finish()
+
+	// Attach the span to the ctx
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Fetch the leading chunk.
