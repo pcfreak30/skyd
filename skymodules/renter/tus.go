@@ -253,10 +253,17 @@ func (u *skynetTUSUpload) tryUploadSmallFile(reader io.Reader) ([]byte, bool, er
 }
 
 // WriteChunk writes the chunk to the provided offset.
-func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (int64, error) {
+func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (n int64, err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	uploader := u.staticUploader
+
+	// Update the lastWrite time if more than 0 bytes were written.
+	defer func() {
+		if n > 0 {
+			u.lastWrite = time.Now()
+		}
+	}()
 
 	// If the offset is 0, we try to determine if the upload is large or small.
 	if offset == 0 {
@@ -265,7 +272,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 			return 0, err
 		}
 		// If it is a small file we are done.
-		n := int64(len(buf))
+		n = int64(len(buf))
 		if smallFile {
 			u.fi.Offset += n
 			return n, nil
@@ -314,16 +321,11 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	// Upload.
 	onlyOnePieceNeeded := ec.MinPieces() == 1 && fileNode.MasterKey().Type() == crypto.TypePlain
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
-	n, err := uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, cr, offset)
+	n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, cr, offset)
 
 	// Increment offset and append fanout.
 	u.fi.Offset += n
 	u.fanout = append(u.fanout, cr.Fanout()...)
-
-	// Update the lastWrite time if more than 0 bytes were written.
-	if n > 0 {
-		u.lastWrite = time.Now()
-	}
 	return n, err
 }
 
