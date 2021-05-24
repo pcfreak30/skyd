@@ -270,13 +270,8 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // requested, but we should only do so after gathering some real world feedback
 // that indicates we would benefit from this.
 func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
-	// Create a span.
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("SkylinkDataSource")
-	span.SetTag("Skylink", link.String())
-
-	// Attach the span to the ctx
-	ctx = opentracing.ContextWithSpan(ctx, span)
+	// Fetch the span from the context.
+	// span := opentracing.SpanFromContext(ctx)
 
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := link.OffsetAndFetchSize()
@@ -314,8 +309,13 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	// threadgroup but otherwise independent.
 	dsCtx, cancelFunc := context.WithCancel(r.tg.StopCtx())
 
+	// Create a span for the data source.
+	tracer := opentracing.GlobalTracer()
+	dsSpan := tracer.StartSpan("SkylinkDataSource")
+	dsSpan.SetTag("Skylink", link.String())
+
 	// Attach the span to the ctx
-	dsCtx = opentracing.ContextWithSpan(dsCtx, span)
+	dsCtx = opentracing.ContextWithSpan(dsCtx, dsSpan)
 
 	// If there's a fanout create a PCWS for every chunk.
 	var fanoutChunkFetchers []chunkFetcher
@@ -389,7 +389,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 		staticCtx:        dsCtx,
 		staticCancelFunc: cancelFunc,
 		staticRenter:     r,
-		staticSpan:       span,
+		staticSpan:       dsSpan,
 	}
 	return sds, nil
 }
