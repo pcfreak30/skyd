@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -271,7 +272,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // that indicates we would benefit from this.
 func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
 	// Fetch the span from the context.
-	// span := opentracing.SpanFromContext(ctx)
+	span := opentracing.SpanFromContext(ctx)
 
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := link.OffsetAndFetchSize()
@@ -284,10 +285,12 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
+	start := time.Now()
 	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to download base sector")
 	}
+	span.LogKV("baseSectorDownloaded", time.Since(start))
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.

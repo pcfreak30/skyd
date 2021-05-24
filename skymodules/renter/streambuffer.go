@@ -210,6 +210,7 @@ type streamBuffer struct {
 	staticStreamID        skymodules.DataSourceID
 	staticPricePerMS      types.Currency
 	staticWallet          modules.SiacoinSenderMulti
+	staticSpan            opentracing.Span
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.
@@ -263,6 +264,7 @@ func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource stream
 			staticPricePerMS:      pricePerMS,
 			staticStreamBufferSet: sbs,
 			staticStreamID:        sourceID,
+			staticSpan:            opentracing.SpanFromContext(ctx),
 		}
 		sbs.streams[sourceID] = streamBuf
 	} else {
@@ -297,14 +299,12 @@ func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error)
 	start := time.Now()
 
 	// Trace info.
-	var duration, dsDuration time.Duration
+	var duration time.Duration
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		defer func() {
 			span.SetTag("success", err == nil)
 			span.SetTag("timeout", errors.Contains(err, errTimeout))
 			span.SetTag("err", err)
-
-			span.LogKV("duration datasection", dsDuration)
 			span.LogKV("duration", duration)
 		}()
 	}
@@ -317,7 +317,6 @@ func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error)
 	}
 
 	data = ds.externData
-	dsDuration = ds.externDuration
 	err = ds.externErr
 	return
 }
@@ -384,10 +383,8 @@ func (s *stream) Read(b []byte) (int, error) {
 	}
 
 	// Create a child span.
-	span := opentracing.StartSpan(
-		"StreamRead",
-		opentracing.ChildOf(s.staticSpan.Context()),
-	)
+	spanRef := opentracing.ChildOf(s.staticSpan.Context())
+	span := opentracing.StartSpan("stream_Read", spanRef)
 	defer span.Finish()
 
 	// Attach the span to the ctx.
@@ -609,10 +606,22 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	}
 	sb.dataSections[index] = ds
 
+	// Create a child span for the data section
+	spanRef := opentracing.ChildOf(sb.staticSpan.Context())
+	span := opentracing.StartSpan("streamBuffer_newDataSection", spanRef)
+	span.SetTag("index", index)
+
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
 	go func() {
 		defer close(ds.dataAvailable)
+
+		// Defer finishing the span
+		defer func() {
+			span.SetTag("success", ds.externErr == nil)
+			span.SetTag("duration", ds.externDuration)
+			span.Finish()
+		}()
 
 		// Ensure that the streambuffer has not closed.
 		err := sb.staticTG.Add()
@@ -666,4 +675,7 @@ func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
 	// data source being accessed after it has been closed.
 	sb.staticTG.Stop()
 	sb.staticDataSource.SilentClose()
+
+	// Finish the span.
+	sb.staticSpan.Finish()
 }
