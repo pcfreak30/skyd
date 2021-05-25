@@ -80,6 +80,8 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,
+
+		ctx: context.Background(),
 	}
 
 	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
@@ -379,6 +381,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 
 	// mock a pdc, ensure available pieces is not nil
 	pdc := new(projectDownloadChunk)
+	pdc.ctx = context.Background()
 	pdc.workerSet = pcws
 	pdc.pieceLength = 1 << 16 // 64kb
 	pdc.availablePieces = make([][]*pieceDownload, ec.NumPieces())
