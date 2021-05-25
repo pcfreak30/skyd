@@ -196,33 +196,9 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 		if resp.staticSignedRegistryValue != nil {
 			goodResps = append(goodResps, resp)
 		}
-		// If there is no best yet, always set it.
-		if best == nil {
+		// If the new response is better, remember it.
+		if isBetterReadRegistryResponse(best, resp) {
 			best = resp
-			continue
-		}
-		// If there is no rv yet, always set it.
-		bestRV := best.staticSignedRegistryValue
-		respRV := resp.staticSignedRegistryValue
-		if bestRV == nil && respRV != nil {
-			best = resp
-			continue
-		}
-		// If there is an rv but the new response doesn't have one, ignore it.
-		if bestRV != nil && respRV == nil {
-			continue
-		}
-		// The one with the higher revision gets priority if both have an rv.
-		if bestRV != nil && respRV != nil && respRV.Revision != bestRV.Revision {
-			if respRV.Revision > bestRV.Revision {
-				best = resp
-			}
-			continue
-		}
-		// Otherwise the faster one wins.
-		if resp.staticCompleteTime.Before(best.staticCompleteTime) {
-			best = resp
-			continue
 		}
 	}
 
@@ -684,4 +660,45 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	}
 	r.staticRegWriteStats.AddDataPoint(time.Since(start))
 	return nil
+}
+
+func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
+	// Check for nil response.
+	if resp1 == nil && resp2 == nil {
+		return false
+	}
+	if resp1 == nil && resp2 != nil {
+		return true
+	}
+	if resp1 != nil && resp2 == nil {
+		return false
+	}
+	// Check nil values.
+	srv1 := resp1.staticSignedRegistryValue
+	srv2 := resp2.staticSignedRegistryValue
+	if srv1 == nil && srv2 == nil {
+		return false
+	}
+	if srv1 == nil && srv2 != nil {
+		return true
+	}
+	if srv1 != nil && srv2 == nil {
+		return false
+	}
+	// Check revision.
+	if srv1.Revision > srv2.Revision {
+		return false
+	}
+	if srv1.Revision < srv2.Revision {
+		return true
+	}
+	// Check work.
+	if srv1.HasMoreWork(srv2.RegistryValue) {
+		return false
+	}
+	if srv2.HasMoreWork(srv1.RegistryValue) {
+		return true
+	}
+	// Check time if everything else matches.
+	return resp2.staticCompleteTime.Before(resp1.staticCompleteTime)
 }
