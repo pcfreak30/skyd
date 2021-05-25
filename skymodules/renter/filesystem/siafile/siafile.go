@@ -20,16 +20,19 @@ import (
 )
 
 var (
+	// ErrDeleted is returned when an operation failed due to the siafile being
+	// deleted already.
+	ErrDeleted = errors.New("files was deleted")
 	// ErrPathOverload is an error when a file already exists at that location
 	ErrPathOverload = errors.New("a file already exists at that location")
+	// ErrUnfinished is returned when an operation failed due to the siafile being
+	// unfinished.
+	ErrUnfinished = errors.New("file is unfinished")
 	// ErrUnknownPath is an error when a file cannot be found with the given path
 	ErrUnknownPath = errors.New("no file known with that path")
 	// ErrUnknownThread is an error when a SiaFile is trying to be closed by a
 	// thread that is not in the threadMap
 	ErrUnknownThread = errors.New("thread should not be calling Close(), does not have control of the siafile")
-	// ErrDeleted is returned when an operation failed due to the siafile being
-	// deleted already.
-	ErrDeleted = errors.New("files was deleted")
 )
 
 type (
@@ -879,6 +882,12 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't call SetStuck on deleted file")
 	}
+
+	// If the file is unfinished then do not set the chunks as stuck
+	if !sf.staticMetadata.Finished && stuck {
+		return errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
+	}
+
 	// Backup metadata before doing any kind of persistence.
 	defer func(backup Metadata) {
 		if err != nil {
@@ -1326,6 +1335,11 @@ func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't call SetStuck on deleted file")
 	}
+	// A file can only be marked as stuck if the file has previously finished
+	if !sf.staticMetadata.Finished && stuck {
+		return errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
+	}
+
 	//  Get chunk.
 	chunk, err := sf.chunk(int(index))
 	if err != nil {

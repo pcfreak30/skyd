@@ -91,6 +91,9 @@ type (
 
 		// Repair loop fields
 		//
+		// Finished indicates if the file ever finished uploading. A file is
+		// considered to have finished uploading if the health was ever < 1.
+		//
 		// Health is the worst health of the file's unstuck chunks and
 		// represents the percent of redundancy missing
 		//
@@ -106,6 +109,7 @@ type (
 		// was checked
 		//
 		// StuckHealth is the worst health of any of the file's stuck chunks
+		Finished            bool      `json:"finished"`
 		Health              float64   `json:"health"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
@@ -156,6 +160,7 @@ type (
 
 	// BubbledMetadata is the metadata of a siafile that gets bubbled
 	BubbledMetadata struct {
+		Finished            bool
 		Health              float64
 		LastHealthCheckTime time.Time
 		ModTime             time.Time
@@ -217,6 +222,13 @@ func (sf *SiaFile) CreateTime() time.Time {
 // ChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) ChunkSize() uint64 {
 	return sf.staticChunkSize()
+}
+
+// Finished returns whether or not the file finished uploading
+func (sf *SiaFile) Finished() bool {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.staticMetadata.Finished
 }
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
@@ -319,6 +331,7 @@ func (md Metadata) backup() (b Metadata) {
 	b.CachedExpiration = md.CachedExpiration
 	b.CachedUploadedBytes = md.CachedUploadedBytes
 	b.CachedUploadProgress = md.CachedUploadProgress
+	b.Finished = md.Finished
 	b.Health = md.Health
 	b.LastHealthCheckTime = md.LastHealthCheckTime
 	b.NumStuckChunks = md.NumStuckChunks
@@ -368,6 +381,7 @@ func (md *Metadata) restore(b Metadata) {
 	md.CachedExpiration = b.CachedExpiration
 	md.CachedUploadedBytes = b.CachedUploadedBytes
 	md.CachedUploadProgress = b.CachedUploadProgress
+	md.Finished = b.Finished
 	md.Health = b.Health
 	md.LastHealthCheckTime = b.LastHealthCheckTime
 	md.NumStuckChunks = b.NumStuckChunks

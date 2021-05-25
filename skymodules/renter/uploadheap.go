@@ -569,8 +569,10 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 	pieces, err := entry.Pieces(chunkIndex)
 	if err != nil {
 		r.staticLog.Println("failed to get pieces for building incomplete chunks", err)
-		if err := entry.SetStuck(chunkIndex, true); err != nil {
-			r.staticLog.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
+		if entry.Finished() {
+			if err := entry.SetStuck(chunkIndex, true); err != nil {
+				r.staticLog.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
+			}
 		}
 		return nil, errors.AddContext(err, "error trying to get the pieces for the chunk")
 	}
@@ -640,10 +642,13 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// with the file after marking the chunks as stuck
 		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks {
 			// There are not enough hosts in the allowance for the file to reach
-			// minimum redundancy. Mark all chunks as stuck
+			// minimum redundancy.
 			r.staticLog.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for file %v", allowance.Hosts, minPieces, entry.SiaFilePath())
-			if err := entry.SetAllStuck(true); err != nil {
-				r.staticLog.Println("WARN: unable to mark all chunks as stuck:", err)
+			// If the file is considered finished then mark all chunks as stuck
+			if entry.Finished() {
+				if err := entry.SetAllStuck(true); err != nil {
+					r.staticLog.Println("WARN: unable to mark all chunks as stuck:", err)
+				}
 			}
 		}
 		return nil
@@ -1382,6 +1387,7 @@ func (r *Renter) managedRepairLoop() error {
 			r.staticRepairLog.Printf("WARN: Not enough workers to repair %s, have %v but need %v", chunkPath, availableWorkers, nextChunk.staticMinimumPieces)
 			// If the chunk is not stuck, check whether there are enough hosts
 			// in the allowance to support the chunk.
+			setStuck := !nextChunk.stuck
 			if !nextChunk.stuck {
 				// There are not enough available workers for the chunk to reach
 				// minimum redundancy. Check if the allowance has enough hosts
@@ -1392,17 +1398,13 @@ func (r *Renter) managedRepairLoop() error {
 					// chunk to reach minimum redundancy. Log an error, set the
 					// chunk as stuck, and close the file
 					r.staticRepairLog.Printf("Allowance has insufficient hosts for %s, have %v, need %v", chunkPath, allowance.Hosts, nextChunk.staticMinimumPieces)
-					err := nextChunk.fileEntry.SetStuck(nextChunk.staticIndex, true)
-					if err != nil {
-						r.staticRepairLog.Printf("WARN: unable to mark chunk %v of %s as stuck: %v", nextChunk.staticIndex, chunkPath, err)
-					}
+					nextChunk.stuck = true
 				}
 			}
-
-			// There are enough hosts set in the allowance so this is a
-			// temporary issue with available workers, just ignore the chunk
-			// for now and close the file
-			nextChunk.fileEntry.Close()
+			err := r.managedSetStuckAndClose(nextChunk, setStuck)
+			if err != nil {
+				r.staticRepairLog.Println("Unable to set chunk stuck status and close:", err)
+			}
 			// Remove the chunk from the repairingChunks map
 			r.staticUploadHeap.managedMarkRepairDone(nextChunk)
 			continue
