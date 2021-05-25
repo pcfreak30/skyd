@@ -437,7 +437,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 		staticPieceRootIndex:      pieceIndex,
 		staticLaunchedWorkerIndex: launchedWorkerIndex,
 	}
-	
+
 	// Create the read sector job for the worker.
 	jrs := w.newJobReadSector(pdc.ctx, w.staticJobReadQueue, pdc.workerResponseChan, jobMetadata, sectorRoot, pdc.pieceOffset, pdc.pieceLength)
 

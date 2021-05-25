@@ -282,9 +282,9 @@ func TestProcessDownloadChunk(t *testing.T) {
 		for i := 0; i < n; i++ {
 			// Create the job metadata
 			jobMetadata := jobReadMetadata{
-				staticWorker:              wt.worker,
-				staticSectorRoot:          crypto.Hash{},
-				staticSpendingCategory:    categoryDownload,
+				staticWorker:           wt.worker,
+				staticSectorRoot:       crypto.Hash{},
+				staticSpendingCategory: categoryDownload,
 			}
 
 			j := wt.newJobReadSector(context.Background(), wt.staticJobLowPrioReadQueue, make(chan *jobReadResponse), jobMetadata, crypto.Hash{}, 0, 0)
