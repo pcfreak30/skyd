@@ -10,7 +10,7 @@ function package {
   os=$1
   arch=$2
  	
-	echo Packaging ${os}...
+	echo Packaging ${os} ${arch}...
  	folder=$binDir/skyd-$version-$os-$arch
  	(
 		cd $binDir

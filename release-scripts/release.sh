@@ -21,7 +21,7 @@ function build {
   os=$1
   arch=$2
 
-	echo Building ${os}...
+	echo Building ${os} ${arch}...
 	# create workspace
 	folder=release/skyd-$version-$os-$arch
 	rm -rf $folder
