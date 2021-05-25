@@ -160,6 +160,7 @@ type (
 
 	// BubbledMetadata is the metadata of a siafile that gets bubbled
 	BubbledMetadata struct {
+		CreateTime          time.Time
 		Finished            bool
 		Health              float64
 		LastHealthCheckTime time.Time
