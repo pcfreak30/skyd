@@ -666,6 +666,9 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	return nil
 }
 
+// isBetterReadRegistryResponse returns true if resp2 is a better response than
+// resp1 and false otherwise. Better means that the response either has a higher
+// revision number, more work or was faster.
 func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
 	// Check for nil response.
 	if resp1 == nil && resp2 == nil {
