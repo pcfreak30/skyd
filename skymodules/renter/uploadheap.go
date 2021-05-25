@@ -320,7 +320,7 @@ func (uh *uploadHeap) managedPause(duration time.Duration) {
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool {
 	// Grab chunk stuck status and update the chunkCreationTime
 	uuc.mu.Lock()
-	chunkStuck := uuc.stuck
+	chunkStuck := uuc.stuck || uuc.stuckRepair
 	if uuc.chunkCreationTime.IsZero() {
 		uuc.chunkCreationTime = time.Now()
 	}
@@ -640,15 +640,12 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// Only perform this check when we are looking for unstuck chunks. This
 		// will prevent log spam from repeatedly logging to the user the issue
 		// with the file after marking the chunks as stuck
-		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks {
+		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks && entry.Finished() {
 			// There are not enough hosts in the allowance for the file to reach
-			// minimum redundancy.
+			// minimum redundancy. Mark all chunks as stuck.
 			r.staticLog.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for file %v", allowance.Hosts, minPieces, entry.SiaFilePath())
-			// If the file is considered finished then mark all chunks as stuck
-			if entry.Finished() {
-				if err := entry.SetAllStuck(true); err != nil {
-					r.staticLog.Println("WARN: unable to mark all chunks as stuck:", err)
-				}
+			if err := entry.SetAllStuck(true); err != nil {
+				r.staticLog.Println("WARN: unable to mark all chunks as stuck:", err)
 			}
 		}
 		return nil
@@ -663,6 +660,8 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 			r.staticLog.Debugln("failed to get 'stuck' status of entry:", err)
 			continue
 		}
+		// Update stuck status to account for unfinished chunks
+		stuck = stuck || !entry.Finished()
 		if (target == targetStuckChunks) == stuck {
 			chunkIndexes = append(chunkIndexes, i)
 		}
@@ -1144,7 +1143,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath skymodules.SiaPath, hosts map[
 		}
 
 		// For stuck chunk repairs, check to see if file has stuck chunks
-		if target == targetStuckChunks && file.NumStuckChunks() == 0 {
+		if target == targetStuckChunks && file.NumStuckChunks() == 0 && file.Finished() {
 			// Close unneeded files
 			err = file.Close()
 			if err != nil {
@@ -1152,15 +1151,15 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath skymodules.SiaPath, hosts map[
 			}
 			continue
 		}
-		// For normal repairs, ignore files that don't have any unstuck chunks
-		// or are healthy and not in need of repair.
+		// For normal repairs, ignore files that don't have any unstuck chunks,
+		// are healthy and not in need of repair, or are unfinished.
 		//
 		// We can used the cached value of health because it is updated during
 		// bubble. Since the repair loop operates off of the metadata
 		// information updated by bubble this cached health is accurate enough
 		// to use in order to determine if a file has any chunks that need
 		// repair
-		ignore := file.NumChunks() == file.NumStuckChunks() || !skymodules.NeedsRepair(file.Metadata().CachedHealth)
+		ignore := file.NumChunks() == file.NumStuckChunks() || !skymodules.NeedsRepair(file.Metadata().CachedHealth) || !file.Finished()
 		if target == targetUnstuckChunks && ignore {
 			err = file.Close()
 			if err != nil {

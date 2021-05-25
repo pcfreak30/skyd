@@ -382,6 +382,7 @@ type DirectoryInfo struct {
 	AggregateNumLostFiles        uint64    `json:"aggregatenumlostfiles"`
 	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+	AggregateNumUnfinishedFiles  uint64    `json:"aggregatenumunfinishedfiles"`
 	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
@@ -404,6 +405,7 @@ type DirectoryInfo struct {
 	NumLostFiles        uint64      `json:"numlostfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
+	NumUnfinishedFiles  uint64      `json:"numunfinishedfiles"`
 	RepairSize          uint64      `json:"repairsize"`
 	SiaPath             SiaPath     `json:"siapath"`
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
@@ -481,6 +483,7 @@ type FileInfo struct {
 	CreateTime       time.Time         `json:"createtime"`
 	Expiration       types.BlockHeight `json:"expiration"`
 	Filesize         uint64            `json:"filesize"`
+	Finished         bool              `json:"finished"`
 	Health           float64           `json:"health"`
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
