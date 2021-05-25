@@ -11,6 +11,8 @@ fi
 
 # setup build-time vars
 ldflags="-s -w \
+-X 'gitlab.com/SkynetLabs/skyd/build.NodeVersion=${version:1}' \
+-X 'gitlab.com/SkynetLabs/skyd/build.BinaryName=skyd' \
 -X 'gitlab.com/SkynetLabs/skyd/build.GitRevision=`git rev-parse --short HEAD`' \
 -X 'gitlab.com/SkynetLabs/skyd/build.BuildTime=`git show -s --format=%ci HEAD`' \
 -X 'gitlab.com/SkynetLabs/skyd/build.ReleaseTag=${rc}'"
@@ -37,7 +39,7 @@ function build {
 		)
   done
 
-	cp -r doc LICENSE README.md $folder
+	cp -r doc LICENSE.md README.md $folder
 }
 
 # Build amd64 binaries.

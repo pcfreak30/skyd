@@ -1,6 +1,6 @@
 # Release Scripts
 
-This directory contains all the scripts used to build releases of Sia.
+This directory contains all the scripts used to build releases of skyd.
 
 `./release.sh` compiles `skyc` and `skyd` for each supported system. It places
 those binaries along with documentation into a separate directory for each
@@ -33,7 +33,7 @@ The changelog generator readme is located at `../changelog/README.md`
 
 
 ## Example
-The following list of commands shows how one could use the scripts in this directory to build Sia.
+The following list of commands shows how one could use the scripts in this directory to build skyd.
 
 1. `./build-in-docker.sh master v1.6.0`
 1. `cd ../release && sha256sum --check skyd-v1.6.0-SHA256SUMS.txt`
