@@ -655,8 +655,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	}
 
 	// Start tracing.
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("DownloadByRoot")
+	span := opentracing.StartSpan("DownloadByRoot")
 	span.SetTag("Root", root)
 	defer span.Finish()
 
@@ -699,8 +698,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 
 	// Create a new span.
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("DownloadSkylink")
+	span := opentracing.StartSpan("DownloadSkylink")
 	span.SetTag("Skylink", link.String())
 
 	// Attach the span to the ctx
@@ -750,8 +748,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	}
 
 	// Create a span
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("DownloadSkylinkBaseSector")
+	span := opentracing.StartSpan("DownloadSkylinkBaseSector")
 	span.SetTag("Skylink", link.String())
 	defer span.Finish()
 
@@ -821,8 +818,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Create a span.
-	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("PinSkylink")
+	span := opentracing.StartSpan("PinSkylink")
 	span.SetTag("Skylink", skylink.String())
 	defer span.Finish()
 

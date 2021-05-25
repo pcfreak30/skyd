@@ -303,9 +303,9 @@ func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error)
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		defer func() {
 			span.SetTag("success", err == nil)
+			span.SetTag("duration", duration)
 			span.SetTag("timeout", errors.Contains(err, errTimeout))
 			span.SetTag("err", err)
-			span.LogKV("duration", duration)
 		}()
 	}
 
