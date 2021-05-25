@@ -239,9 +239,7 @@ func (api *API) daemonStartProfileHandlerPOST(w http.ResponseWriter, req *http.R
 
 // daemonStopProfileHandlerPOST handles the API call that stops a profile for the daemon.
 func (api *API) daemonStopProfileHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	// Stop any CPU or Trace profiles. Memory Profiles do not have a stop function
-	profile.StopCPUProfile()
-	profile.StopTrace()
+	profile.StopContinuousProfile()
 	WriteSuccess(w)
 }
 

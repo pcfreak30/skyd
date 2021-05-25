@@ -25,6 +25,11 @@ var (
 	memLock     sync.Mutex
 	traceActive bool
 	traceLock   sync.Mutex
+
+	// profileChan is used to determine if the profile has been started or
+	// stopped.
+	profileChan chan struct{}
+	chanLock    sync.Mutex
 )
 
 var (
@@ -167,10 +172,17 @@ func startContinuousLog(dir string, sleepCap time.Duration, restart func()) {
 		// Collect statistics in an infinite loop.
 		sleepTime := time.Second * 10
 		for {
+			// Check if the profile was stopped
+			if isProfileStopped() {
+				return
+			}
+
+			// Profile is still running, trigger the reset func
+			restart()
+
 			// Sleep for an exponential amount of time each iteration, this
 			// keeps the size of the log small while still providing lots of
 			// information.
-			restart()
 			time.Sleep(sleepTime)
 			sleepTime = time.Duration(1.2 * float64(sleepTime))
 			if sleepCap != 0*time.Second && sleepTime > sleepCap {
@@ -188,6 +200,9 @@ func startContinuousLog(dir string, sleepCap time.Duration, restart func()) {
 // logger. Select one (recommended) or more functionalities by passing the
 // corresponding flag(s)
 func StartContinuousProfile(profileDir string, profileCPU bool, profileMem bool, profileTrace bool) {
+	// Initialize the profile chan
+	initProfileChan()
+
 	sleepCap := 0 * time.Second // Unlimited.
 	if profileTrace && sleepCap == 0 {
 		sleepCap = 10 * time.Minute
@@ -205,4 +220,63 @@ func StartContinuousProfile(profileDir string, profileCPU bool, profileMem bool,
 			StartTrace(profileDir, "continuousProfileTrace")
 		}
 	})
+}
+
+// StopContinuousProfile stops the profiling of the node
+func StopContinuousProfile() {
+	closeProfileChan()
+	StopCPUProfile()
+	StopTrace()
+}
+
+// closeProfileChan closes the profileChan
+func closeProfileChan() {
+	chanLock.Lock()
+	defer chanLock.Unlock()
+
+	// If the log chan is nil, initialize and then close the channel
+	if profileChan == nil {
+		profileChan = make(chan struct{})
+		close(profileChan)
+		return
+	}
+
+	// Close the channel if it is open
+	select {
+	case <-profileChan:
+	default:
+		close(profileChan)
+	}
+}
+
+// initProfileChan initializes the profileChan
+func initProfileChan() {
+	chanLock.Lock()
+	defer chanLock.Unlock()
+
+	// Initialize the channel if it is still nil
+	if profileChan == nil {
+		profileChan = make(chan struct{})
+		return
+	}
+
+	// Re-initialize the channel if it was closed
+	select {
+	case <-profileChan:
+		profileChan = make(chan struct{})
+	default:
+	}
+}
+
+// isProfileStopped returns whether or not the profile has been stopped, which
+// is indicated by whether or not the profileChan has been closed.
+func isProfileStopped() bool {
+	chanLock.Lock()
+	defer chanLock.Unlock()
+	select {
+	case <-profileChan:
+		return true
+	default:
+		return false
+	}
 }
