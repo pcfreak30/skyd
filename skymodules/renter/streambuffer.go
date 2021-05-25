@@ -38,6 +38,12 @@ const (
 	// minimumDataSections is only at play if there is not enough room for
 	// multiple cache nodes in the bytesBufferedPerStream.
 	minimumDataSections = 2
+
+	// longDownloadThreshold specifies when a download is considered to be
+	// taking long. This value might change in the future, it is based on the
+	// p99 values for downloads, which is above 3s on some of our servers in
+	// production currently.
+	longDownloadThreshold = time.Second * 3
 )
 
 var (
@@ -304,8 +310,12 @@ func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error)
 		defer func() {
 			span.SetTag("success", err == nil)
 			span.SetTag("duration", duration)
-			span.SetTag("timeout", errors.Contains(err, errTimeout))
-			span.SetTag("err", err)
+			if err != nil {
+				span.LogKV("error", err)
+				if errors.Contains(err, errTimeout) {
+					span.SetTag("timeout", true)
+				}
+			}
 		}()
 	}
 
@@ -619,7 +629,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		// Defer finishing the span
 		defer func() {
 			span.SetTag("success", ds.externErr == nil)
-			span.SetTag("duration", ds.externDuration)
+			span.SetTag("long", ds.externDuration >= longDownloadThreshold)
 			span.Finish()
 		}()
 
