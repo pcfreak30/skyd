@@ -874,10 +874,14 @@ func (sf *SiaFile) redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 }
 
 // SetAllStuck sets the Stuck field of all chunks to stuck.
-func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
+func (sf *SiaFile) SetAllStuck(stuck bool) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	return sf.setAllStuck(stuck)
+}
 
+// setAllStuck sets the Stuck field of all chunks to stuck.
+func (sf *SiaFile) setAllStuck(stuck bool) (err error) {
 	// If the file has been deleted we can't mark a chunk as stuck.
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't call SetStuck on deleted file")
@@ -1008,8 +1012,21 @@ func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, cont
 		return errors.AddContext(err, "unable to update cached redundancy")
 	}
 
+	// Compatibility check.
+	// If a file is unfinished it should not be stuck. This is the case for
+	// files prior to creating the Finished field in the metadata.
+	if !sf.staticMetadata.Finished && sf.staticMetadata.NumStuckChunks != 0 {
+		err = sf.setAllStuck(false)
+		if err != nil {
+			return errors.AddContext(err, "unable to mark unfinished file as unstuck")
+		}
+	}
+
 	// Update cached health values by calling the health method.
-	_, _, _, _, _, _, _ = sf.health(offlineMap, goodForRenew)
+	health, _, _, _, _, _, _ := sf.health(offlineMap, goodForRenew)
+
+	// Set the finished state of the file.
+	sf.setFinished(health)
 
 	// Set the LastHealthCheckTime
 	sf.staticMetadata.LastHealthCheckTime = time.Now()
@@ -1327,6 +1344,16 @@ func (sf *SiaFile) removeLastChunk() (err error) {
 	}
 	update := writeaheadlog.TruncateUpdate(sf.siaFilePath, fi.Size()-int64(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	return sf.createAndApplyTransaction(update)
+}
+
+// setFinished sets the file's Finished field in the metadata
+func (sf *SiaFile) setFinished(health float64) {
+	// Once a file is finished if cannot be unfinished.
+	if sf.staticMetadata.Finished {
+		return
+	}
+	// A file is finished if the health is < 1
+	sf.staticMetadata.Finished = health < 1
 }
 
 // setStuck sets the Stuck field of the chunk at the given index

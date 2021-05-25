@@ -50,6 +50,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 		AggregateNumLostFiles:        uint64(0),
 		AggregateNumStuckChunks:      uint64(0),
 		AggregateNumSubDirs:          uint64(0),
+		AggregateNumUnfinishedFiles:  uint64(0),
 		AggregateRemoteHealth:        siadir.DefaultDirHealth,
 		AggregateRepairSize:          uint64(0),
 		AggregateSize:                uint64(0),
@@ -67,6 +68,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 		NumLostFiles:        uint64(0),
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
+		NumUnfinishedFiles:  uint64(0),
 		RemoteHealth:        siadir.DefaultDirHealth,
 		RepairSize:          uint64(0),
 		Size:                uint64(0),
@@ -142,6 +144,15 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			bubbledMetadatas = bubbledMetadatas[1:]
 			fileSiaPath := bubbledMetadata.sp
 			fileMetadata := bubbledMetadata.bm
+
+			// Skip the file if it is unfinished
+			if !fileMetadata.Finished {
+				// If the file is unfinished we only update the unfinished metadata fields
+				metadata.AggregateNumUnfinishedFiles++
+				metadata.NumUnfinishedFiles++
+				continue
+			}
+
 			// If 75% or more of the redundancy is missing, register an alert
 			// for the file.
 			uid := string(fileMetadata.UID)
@@ -359,6 +370,7 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 	return bubbledSiaFileMetadata{
 		sp: siaPath,
 		bm: siafile.BubbledMetadata{
+			Finished:            md.Finished,
 			Health:              md.CachedHealth,
 			LastHealthCheckTime: sf.LastHealthCheckTime(),
 			ModTime:             sf.ModTime(),
