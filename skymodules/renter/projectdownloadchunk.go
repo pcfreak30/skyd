@@ -419,7 +419,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 		build.Critical("pieceOffset or pieceLength is not segment aligned")
 	}
 
-	// Create a job span
+	// Log the event.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 		span.LogKV(
 			"launchWorker", w.staticHostPubKeyStr,

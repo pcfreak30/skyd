@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -56,7 +55,6 @@ type (
 		staticCtx        context.Context
 		staticCancelFunc context.CancelFunc
 		staticRenter     *Renter
-		staticSpan       opentracing.Span
 	}
 )
 
@@ -92,8 +90,6 @@ func (sds *skylinkDataSource) RequestSize() uint64 {
 
 // SilentClose implements streamBufferDataSource
 func (sds *skylinkDataSource) SilentClose() {
-	sds.staticSpan.Finish()
-
 	// Cancelling the context for the data source should be sufficient. As all
 	// child processes (such as the pcws for each chunk) should be using
 	// contexts derived from the sds context.
@@ -223,6 +219,12 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Capture the base sector download in a new span.
+	spanRef := opentracing.ChildOf(opentracing.SpanFromContext(ctx).Context())
+	span := opentracing.StartSpan("managedDownloadByRoot", spanRef)
+	span.SetTag("root", root)
+	defer span.Finish()
+
 	// Create the pcws for the first chunk. We use a passthrough cipher and
 	// erasure coder. If the base sector is encrypted, we will notice and be
 	// able to decrypt it once we have fully downloaded it and are able to
@@ -271,9 +273,6 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // requested, but we should only do so after gathering some real world feedback
 // that indicates we would benefit from this.
 func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
-	// Fetch the span from the context.
-	span := opentracing.SpanFromContext(ctx)
-
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
@@ -285,12 +284,10 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	start := time.Now()
 	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to download base sector")
 	}
-	span.LogKV("baseSectorDownloaded", time.Since(start))
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
@@ -312,13 +309,9 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	// threadgroup but otherwise independent.
 	dsCtx, cancelFunc := context.WithCancel(r.tg.StopCtx())
 
-	// Create a span for the data source.
-	tracer := opentracing.GlobalTracer()
-	dsSpan := tracer.StartSpan("SkylinkDataSource")
-	dsSpan.SetTag("Skylink", link.String())
-
 	// Attach the span to the ctx
-	dsCtx = opentracing.ContextWithSpan(dsCtx, dsSpan)
+	span := opentracing.SpanFromContext(ctx)
+	dsCtx = opentracing.ContextWithSpan(dsCtx, span)
 
 	// If there's a fanout create a PCWS for every chunk.
 	var fanoutChunkFetchers []chunkFetcher
@@ -392,7 +385,6 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 		staticCtx:        dsCtx,
 		staticCancelFunc: cancelFunc,
 		staticRenter:     r,
-		staticSpan:       dsSpan,
 	}
 	return sds, nil
 }

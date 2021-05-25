@@ -778,21 +778,24 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 		return SkylinkStreamerFromSlice(sf.Content, sf.Metadata, rawMD, skymodules.SkyfileLayout{}), err
 	}
 
-	// Get the span from our context
+	// Get the span from our context and defer cached tag update.
+	var exists bool
 	span := opentracing.SpanFromContext(ctx)
+	defer func() {
+		span.SetTag("cached", exists)
+	}()
 
 	// Check if this skylink is already in the stream buffer set. If so, we can
 	// skip the lookup procedure and use any data that other threads have
 	// cached.
 	id := link.DataSourceID()
-	stream, exists := r.staticStreamBufferSet.callNewStreamFromID(ctx, id, 0, streamReadTimeout)
+	var stream *stream
+	stream, exists = r.staticStreamBufferSet.callNewStreamFromID(ctx, id, 0, streamReadTimeout)
 	if exists {
-		span.SetTag("cached", true)
 		return stream, nil
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	span.SetTag("cached", false)
 	dataSource, err := r.managedSkylinkDataSource(ctx, link, pricePerMS)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create data source for skylink")
@@ -820,6 +823,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	// Create a span.
 	tracer := opentracing.GlobalTracer()
 	span := tracer.StartSpan("PinSkylink")
+	span.SetTag("Skylink", skylink.String())
 	defer span.Finish()
 
 	// Attach the span to the ctx
