@@ -601,8 +601,6 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	workersLeft := len(workers)
 	responses := 0
 	successfulResponses := 0
-	highestInvalidRevNum := uint64(0)
-	invalidRevNum := false
 
 	var respErrs error
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
@@ -623,13 +621,11 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 		// Ignore error responses except for invalid revision errors.
 		if resp.staticErr != nil {
-			// If we receive ErrLowerRevNum or ErrSameRevNum, remember the revision number
-			// that was presented as proof. In the end we return the highest one to be able
-			// to determine the next revision number that is save to use.
-			if (errors.Contains(resp.staticErr, registry.ErrLowerRevNum) || errors.Contains(resp.staticErr, registry.ErrSameRevNum)) &&
-				resp.srv.Revision > highestInvalidRevNum {
-				highestInvalidRevNum = resp.srv.Revision
-				invalidRevNum = true
+			// If we receive ErrLowerRevNum we consider the update failed
+			// immediately because our update won't be able to change the
+			// consensus of the network on the latest entry.
+			if errors.Contains(resp.staticErr, registry.ErrLowerRevNum) {
+				return resp.staticErr
 			}
 			respErrs = errors.Compose(respErrs, resp.staticErr)
 			continue
@@ -639,30 +635,16 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		successfulResponses++
 	}
 
-	// Check for an invalid revision error and return the right error according
-	// to the highest invalid revision we remembered.
-	if invalidRevNum {
-		if highestInvalidRevNum == srv.Revision {
-			err = registry.ErrSameRevNum
-		} else {
-			err = registry.ErrLowerRevNum
-		}
-	}
-
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
-		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", err)
+		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", respErrs)
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
-		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
+		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, respErrs)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
-	// Only collect the datapoint for our stats if not a single host
-	// successfully returned that the update is invalid.
-	if !invalidRevNum {
-		r.staticRegWriteStats.AddDataPoint(time.Since(start))
-	}
+	r.staticRegWriteStats.AddDataPoint(time.Since(start))
 	return nil
 }
 
