@@ -260,18 +260,8 @@ func (c *SafeContract) clearUnappliedTxns() error {
 	return nil
 }
 
-// LastRevision returns the most recent revision
-func (c *SafeContract) LastRevision() types.FileContractRevision {
-	c.mu.Lock()
-	h := c.header
-	c.mu.Unlock()
-	return h.LastRevision()
-}
-
-// Metadata returns the metadata of a renter contract
-func (c *SafeContract) Metadata() skymodules.RenterContract {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// metadata returns the metadata of a renter contract
+func (c *SafeContract) metadata() skymodules.RenterContract {
 	h := c.header
 	return skymodules.RenterContract{
 		ID:                  h.ID(),
@@ -291,6 +281,21 @@ func (c *SafeContract) Metadata() skymodules.RenterContract {
 		SiafundFee:          h.SiafundFee,
 		Utility:             h.Utility,
 	}
+}
+
+// LastRevision returns the most recent revision
+func (c *SafeContract) LastRevision() types.FileContractRevision {
+	c.mu.Lock()
+	h := c.header
+	c.mu.Unlock()
+	return h.LastRevision()
+}
+
+// Metadata returns the metadata of a renter contract
+func (c *SafeContract) Metadata() skymodules.RenterContract {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.metadata()
 }
 
 // PublicKey returns the public key capable of verifying the renter's signature
@@ -872,7 +877,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	u.GoodForUpload = false
 	u.GoodForRenew = false
 	u.BadContract = true
-	err := fmt.Errorf("revision mismatch unfixable for contract: %v", c.Metadata().ID)
+	err := fmt.Errorf("revision mismatch unfixable for contract: %v", c.metadata().ID)
 	build.Critical(err)
 	return errors.Compose(c.updateUtility(u), err)
 }
