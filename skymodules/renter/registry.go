@@ -658,7 +658,11 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
-	r.staticRegWriteStats.AddDataPoint(time.Since(start))
+	// Only collect the datapoint for our stats if not a single host
+	// successfully returned that the update is invalid.
+	if !invalidRevNum {
+		r.staticRegWriteStats.AddDataPoint(time.Since(start))
+	}
 	return nil
 }
 

@@ -136,10 +136,10 @@ func (j *jobUpdateRegistry) callExecute() {
 	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
 		// Report the failure if the host can't provide a signed registry entry
 		// with the error.
-		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
-			sendResponse(nil, err)
-			j.staticQueue.callReportFailure(err)
-			span.LogKV("error", err)
+		if errVerify := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); errVerify != nil {
+			sendResponse(nil, errVerify)
+			j.staticQueue.callReportFailure(errVerify)
+			span.LogKV("error", errVerify)
 			j.staticSpan.SetTag("success", false)
 			return
 		}
@@ -166,6 +166,8 @@ func (j *jobUpdateRegistry) callExecute() {
 			w.staticRegistryCache.Set(sid, rv, true) // adjust the cache
 			return
 		}
+		span.LogKV("error", err)
+		j.staticSpan.SetTag("success", false)
 		sendResponse(&rv, err)
 		return
 	} else if err != nil {
