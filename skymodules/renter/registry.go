@@ -311,8 +311,10 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	}
 
 	// If we found a secondBest, use that instead.
+	span.LogKV("best", d.Milliseconds())
 	if secondBest != nil {
 		span.SetTag("secondbest", true)
+		span.LogKV("secondbest", d2.Milliseconds())
 		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
 		d = d2
 	} else {
