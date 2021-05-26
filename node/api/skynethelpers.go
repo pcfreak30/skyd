@@ -166,6 +166,7 @@ func buildETag(skylink skymodules.Skylink, method, path string, format skymodule
 		method,
 		path,
 		string(format),
+		"1", // random variable to cache bust all existing ETags (SkylinkV2 fix)
 	).String()
 }
 
