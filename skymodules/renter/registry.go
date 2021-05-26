@@ -312,9 +312,11 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 
 	// If we found a secondBest, use that instead.
 	if secondBest != nil {
+		span.SetTag("secondbest", true)
 		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
 		d = d2
 	} else {
+		span.SetTag("secondbest", false)
 		l.Printf("threadedAddResponseSet: using best duration %v (secondBest: %v, nil: %v)", d, d2, secondBest == nil)
 	}
 
@@ -327,6 +329,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 
 	// The error is ignored since it only returns an error if the measurement is
 	// outside of the 5 minute bounds the stats were created with.
+	span.LogKV("datapoint", d.Milliseconds())
 	r.staticRegReadStats.AddDataPoint(d)
 }
 
