@@ -159,9 +159,6 @@ func (uc *unfinishedUploadChunk) managedSetStuckAndClose(setStuck bool) error {
 func (uc *unfinishedUploadChunk) staticAvailable() bool {
 	select {
 	case <-uc.staticAvailableChan:
-		if uc.staticSpan != nil {
-			uc.staticSpan.LogKV("available", true)
-		}
 		return true
 	default:
 		return false
@@ -173,10 +170,6 @@ func (uc *unfinishedUploadChunk) staticAvailable() bool {
 func (uc *unfinishedUploadChunk) staticUploadComplete() bool {
 	select {
 	case <-uc.staticUploadCompletedChan:
-		if uc.staticSpan != nil {
-			uc.staticSpan.LogKV("complete", true)
-			uc.staticSpan.Finish()
-		}
 		return true
 	default:
 		return false
@@ -624,6 +617,9 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if uc.piecesCompleted >= uc.staticMinimumPieces && !uc.staticAvailable() && !uc.released {
 		uc.chunkAvailableTime = time.Now()
 		close(uc.staticAvailableChan)
+		if uc.staticSpan != nil {
+			uc.staticSpan.LogKV("available", true)
+		}
 	}
 
 	// Check if the chunk can be marked as completed. This happens when the
@@ -633,6 +629,10 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if !uc.staticUploadComplete() && chunkComplete {
 		uc.chunkCompleteTime = time.Now()
 		close(uc.staticUploadCompletedChan)
+		if uc.staticSpan != nil {
+			uc.staticSpan.LogKV("completed", true)
+			uc.staticSpan.Finish()
+		}
 	}
 
 	// Check if the chunk needs to be removed from the list of active
