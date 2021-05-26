@@ -227,9 +227,10 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	}
 
 	// No successful responses. We can't update the stats.
-	if best == nil {
+	if best == nil || best.staticSignedRegistryValue == nil {
 		return
 	}
+	span.LogKV("revision", best.staticSignedRegistryValue.Revision)
 
 	// Drop any responses from goodResps that were slower or equal to best.
 	for i := 0; i < len(goodResps); i++ {
