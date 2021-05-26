@@ -258,10 +258,6 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	var secondBest *modules.SignedRegistryValue
 	var d2 time.Duration
 	for _, resp := range goodResps {
-		// Nothing to do if the best response doesn't have a revision.
-		if best.staticSignedRegistryValue == nil {
-			break
-		}
 		// Otherwise look up the same entry.
 		var srv *modules.SignedRegistryValue
 		var err error
