@@ -362,7 +362,7 @@ func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymod
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	return r.managedCreateSkylinkFromFileNode(sup, sm, u.fileNode, fanout)
+	return r.managedCreateSkylinkFromFileNode(ctx, sup, sm, u.fileNode, fanout)
 }
 
 // finishUploadSmall handles finishing up a small upload.
