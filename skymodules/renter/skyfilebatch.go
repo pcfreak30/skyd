@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -516,7 +517,7 @@ func (sb *skylinkBatch) threadedUploadData() {
 
 	// Create a reader from the basesector and upload.
 	baseSectorReader := bytes.NewReader(baseSector)
-	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader)
+	fileNode, err := r.callUploadStreamFromReader(context.Background(), fileUploadParams, baseSectorReader)
 	if err != nil {
 		sb.err = errors.AddContext(err, "batch upload failed to stream upload small skyfile")
 		return

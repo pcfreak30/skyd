@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -124,6 +125,8 @@ type unfinishedUploadChunk struct {
 	cancelMU sync.Mutex     // cancelMU needs to be held when adding to cancelWG and reading/writing canceled.
 	canceled bool           // cancel the work on this chunk.
 	cancelWG sync.WaitGroup // WaitGroup to wait on after canceling the uploadchunk.
+
+	staticSpan opentracing.Span
 }
 
 // managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
@@ -156,6 +159,9 @@ func (uc *unfinishedUploadChunk) managedSetStuckAndClose(setStuck bool) error {
 func (uc *unfinishedUploadChunk) staticAvailable() bool {
 	select {
 	case <-uc.staticAvailableChan:
+		if uc.staticSpan != nil {
+			uc.staticSpan.LogKV("available", true)
+		}
 		return true
 	default:
 		return false
@@ -167,6 +173,10 @@ func (uc *unfinishedUploadChunk) staticAvailable() bool {
 func (uc *unfinishedUploadChunk) staticUploadComplete() bool {
 	select {
 	case <-uc.staticUploadCompletedChan:
+		if uc.staticSpan != nil {
+			uc.staticSpan.LogKV("complete", true)
+			uc.staticSpan.Finish()
+		}
 		return true
 	default:
 		return false
@@ -188,8 +198,8 @@ func (uc *unfinishedUploadChunk) managedUpdateDistributionTime() {
 	uc.chunkDistributionTime = time.Now()
 }
 
-// managedNotifyStandbyWorkers is called when a worker fails to upload a piece, meaning
-// that the standby workers may now be needed to help the piece finish
+// managedNotifyStandbyWorkers is called when a worker fails to upload a piece,
+// meaning that the standby workers may now be needed to help the piece finish
 // uploading.
 func (uc *unfinishedUploadChunk) managedNotifyStandbyWorkers() {
 	// Copy the standby workers into a new slice and reset it since we can't
