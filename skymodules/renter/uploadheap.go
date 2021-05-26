@@ -527,8 +527,6 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 		spanRef := opentracing.ChildOf(parent.Context())
 		span = opentracing.StartSpan("unfinishedUploadChunk", spanRef)
 		fmt.Println("child span create for UUC")
-	} else {
-		fmt.Println("parent span not found")
 	}
 
 	uuc := &unfinishedUploadChunk{

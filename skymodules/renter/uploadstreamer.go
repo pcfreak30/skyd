@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -169,6 +170,8 @@ func (r *Renter) managedInitUploadStream(up skymodules.FileUploadParams) (*files
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
 func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fileNode *filesystem.FileNode, reader skymodules.ChunkReader, offset int64) (n int64, err error) {
+	fmt.Println("callUploadStreamFromReaderWithFileNode, span is set:", opentracing.SpanFromContext(ctx) != nil)
+
 	// Sanity check offset.
 	if offset%int64(fileNode.ChunkSize()) != 0 {
 		return 0, fmt.Errorf("callUploadStreamFromReaderWithFileNode called with invalid offset %v mod %v != 0", offset, fileNode.ChunkSize())
@@ -289,7 +292,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 			return n, errors.AddContext(err, "upload streamer failed to get all data available")
 		}
 	}
-
+	fmt.Println("UL is done, span is set:", opentracing.SpanFromContext(ctx) != nil)
 	// Disrupt to force an error and ensure the fileNode is being closed
 	// correctly.
 	if r.staticDeps.Disrupt("failUploadStreamFromReader") {

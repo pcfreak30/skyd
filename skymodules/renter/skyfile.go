@@ -212,7 +212,7 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to generate the fanout bytes")
 	}
 
-	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fanoutBytes)
+	return r.managedCreateSkylinkFromFileNode(r.tg.StopCtx(), sup, metadata, fileNode, fanoutBytes)
 }
 
 // managedCreateSkylinkFromFileNode creates a skylink from a file node.
@@ -220,7 +220,7 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 // The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
+func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := skymodules.ValidateSkyfileMetadata(skyfileMetadata)
 	if err != nil {
@@ -319,7 +319,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 	}
 
 	// Upload the base sector.
-	err = r.managedUploadBaseSector(r.tg.StopCtx(), sup, baseSector, skylink)
+	err = r.managedUploadBaseSector(ctx, sup, baseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "Unable to upload base sector for file node. ")
 	}
@@ -662,7 +662,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodul
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	skylink, err = r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fanout)
+	skylink, err = r.managedCreateSkylinkFromFileNode(ctx, sup, metadata, fileNode, fanout)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create skylink from filenode")
 	}
