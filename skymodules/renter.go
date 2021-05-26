@@ -1439,6 +1439,7 @@ type SkyfileStreamer interface {
 	Layout() SkyfileLayout
 	Metadata() SkyfileMetadata
 	RawMetadata() []byte
+	Skylink() Skylink
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's
