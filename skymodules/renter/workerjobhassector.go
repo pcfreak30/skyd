@@ -41,11 +41,12 @@ type (
 		staticPostExecutionHook func(*jobHasSectorResponse)
 		once                    sync.Once
 
-		// staticSpan is used for tracing. Note that this can be nil, and
-		// therefore should always be checked. Not all read jobs require
-		// tracing. By allowing it to be nil we avoid the extra overhead.
+		// staticParentSpan is used for tracing. Note that this span refers to
+		// the parent span, rather than it being a span that represents the
+		// lifecycle of this job in particular. This is because HS jobs are
+		// being batched, so we can only create the job span when the batches
+		// are made.
 		staticParentSpan opentracing.Span
-		staticSpan       opentracing.Span
 
 		*jobGeneric
 	}
@@ -101,9 +102,13 @@ func (jq *jobHasSectorQueue) callNext() workerJob {
 	if len(jobs) == 0 {
 		return nil
 	}
+
+	// Create a job span from the first job's parent span.
+	spanRef := opentracing.ChildOf(jobs[0].staticParentSpan.Context())
+	jobSpan := opentracing.StartSpan("JobHasSectorBatch", spanRef)
 	return &jobHasSectorBatch{
 		staticJobs: jobs,
-		staticSpan: jobs[0].staticParentSpan,
+		staticSpan: jobSpan,
 	}
 }
 
@@ -116,33 +121,17 @@ func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasS
 // HasSector job with a post execution hook that is executed after the response
 // is available but before sending it over the channel.
 func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, responseChan chan *jobHasSectorResponse, hook func(*jobHasSectorResponse), roots ...crypto.Hash) *jobHasSector {
-	// Create a job span if the given context has a reference span.
-	var parentSpan opentracing.Span
-	var jobSpan opentracing.Span
-	if parentSpan = opentracing.SpanFromContext(ctx); parentSpan != nil {
-		spanRef := opentracing.ChildOf(parentSpan.Context())
-		jobSpan = opentracing.StartSpan("HasSectorJob", spanRef)
-	}
-
 	return &jobHasSector{
 		staticSectors:           roots,
 		staticResponseChan:      responseChan,
 		staticPostExecutionHook: hook,
-		staticParentSpan:        parentSpan,
-		staticSpan:              jobSpan,
+		staticParentSpan:        opentracing.SpanFromContext(ctx),
 		jobGeneric:              newJobGeneric(ctx, w.staticJobHasSectorQueue, nil),
 	}
 }
 
 // callDiscard will discard a job, sending the provided error.
 func (j *jobHasSector) callDiscard(err error) {
-	// Log info and finish span.
-	if j.staticSpan != nil {
-		j.staticSpan.LogKV("callDiscard", err)
-		j.staticSpan.SetTag("success", false)
-		j.staticSpan.Finish()
-	}
-
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobHasSectorResponse{
@@ -167,6 +156,9 @@ func (j jobHasSectorBatch) callDiscard(err error) {
 	for _, hsj := range j.staticJobs {
 		hsj.callDiscard(err)
 	}
+	j.staticSpan.LogKV("callDiscard", err)
+	j.staticSpan.SetTag("success", false)
+	j.staticSpan.Finish()
 }
 
 // staticCanceled always returns false. A batched job never resides in the
@@ -183,9 +175,12 @@ func (j jobHasSectorBatch) staticGetMetadata() interface{} {
 
 // callExecute will run the has sector job.
 func (j *jobHasSector) callExecute() {
+	spanRef := opentracing.ChildOf(j.staticParentSpan.Context())
+	jobSpan := opentracing.StartSpan("JobHasSectorBatch", spanRef)
+
 	batch := jobHasSectorBatch{
 		staticJobs: []*jobHasSector{j},
-		staticSpan: j.staticParentSpan,
+		staticSpan: jobSpan,
 	}
 	batch.callExecute()
 }
@@ -197,6 +192,11 @@ func (j jobHasSectorBatch) callExecute() {
 		return
 	}
 
+	// Finish job span at the end.
+	j.staticSpan.LogKV("numjobs", len(j.staticJobs))
+	defer j.staticSpan.SetTag("success", true)
+	defer j.staticSpan.Finish()
+
 	// Capture callExecute in new span.
 	spanRef := opentracing.ChildOf(j.staticSpan.Context())
 	span := opentracing.StartSpan("callExecute", spanRef)
@@ -206,6 +206,7 @@ func (j jobHasSectorBatch) callExecute() {
 	w := j.staticJobs[0].staticQueue.staticWorker()
 	availables, err := j.managedHasSector()
 	jobTime := time.Since(start)
+	span.LogKV("jobtime", jobTime)
 
 	for i := range j.staticJobs {
 		hsj := j.staticJobs[i]
@@ -274,15 +275,6 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
 	if len(j.staticJobs) == 0 {
 		return nil, nil
 	}
-
-	// Defer a function that finishes all HS job spans, we consider either the
-	// entire batch as successful or as failed.
-	defer func() {
-		for _, hsj := range j.staticJobs {
-			hsj.staticSpan.SetTag("success", err == nil)
-			hsj.staticSpan.Finish()
-		}
-	}()
 
 	w := j.staticJobs[0].staticQueue.staticWorker()
 	// Create the program.
