@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -19,6 +20,9 @@ func TestStreamLRU(t *testing.T) {
 		t.SkipNow()
 	}
 
+	// create a ctx with test span
+	ctx := opentracing.ContextWithSpan(context.Background(), testSpan())
+
 	// Create a usable stream, this creates the stream buffer that the LRU talks
 	// to and gives a good opporutnity to probe the LRU.
 	var tg threadgroup.ThreadGroup
@@ -26,7 +30,7 @@ func TestStreamLRU(t *testing.T) {
 	dataSource := newMockDataSource(data, 16)
 	dt := skymodules.NewDistributionTrackerStandard()
 	sbs := newStreamBufferSet(dt, &tg)
-	stream := sbs.callNewStream(context.Background(), dataSource, 0, 0, types.ZeroCurrency)
+	stream := sbs.callNewStream(ctx, dataSource, 0, 0, types.ZeroCurrency)
 
 	// Extract the LRU from the stream to test it directly.
 	lru := stream.lru
