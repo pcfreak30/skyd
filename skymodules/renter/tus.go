@@ -104,14 +104,21 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 
 	// Get a siapath.
 	sp := skymodules.RandomSkynetFilePath()
-	upload.fi.MetaData["SiaPath"] = sp.String()
+
+	// Get the filename from either the metadata or path.
+	fileName := sp.Name()
+	fileNameMD, fileNameFound := upload.fi.MetaData["filename"]
+	if fileNameFound {
+		fileName = fileNameMD
+	}
+	fileType := upload.fi.MetaData["filetype"]
 
 	// Create the skyfile upload params.
 	// TODO: use info.metadata to create skyfileuploadparameters different from
 	// the default.
 	upload.staticSUP = skymodules.SkyfileUploadParameters{
 		SiaPath:             sp,
-		Filename:            sp.Name(),
+		Filename:            fileName,
 		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
 	}
 	sup := upload.staticSUP
@@ -121,6 +128,13 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 		Filename:     sup.Filename,
 		Mode:         sup.Mode,
 		Monetization: sup.Monetization,
+		Subfiles: skymodules.SkyfileSubfiles{
+			sup.Filename: skymodules.SkyfileSubfileMetadata{
+				Filename:    fileName,
+				ContentType: fileType,
+				Offset:      0,
+			},
+		},
 	}
 
 	// Create the FileUploadParams
@@ -226,6 +240,9 @@ func (u *skynetTUSUpload) tryUploadSmallFile(reader io.Reader) ([]byte, bool, er
 	// prepare the metadata.
 	sm := u.sm
 	sm.Length = uint64(numBytes)
+	ssm := sm.Subfiles[sm.Filename]
+	ssm.Len = sm.Length
+	sm.Subfiles[sm.Filename] = ssm
 
 	// check whether it's valid
 	err = skymodules.ValidateSkyfileMetadata(sm)
@@ -352,6 +369,9 @@ func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymod
 	sup := u.staticSUP
 	sm := u.sm
 	sm.Length = uint64(u.fi.Size)
+	ssm := sm.Subfiles[sm.Filename]
+	ssm.Len = sm.Length
+	sm.Subfiles[sm.Filename] = ssm
 	err = skymodules.ValidateSkyfileMetadata(sm)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "metadata is invalid")
