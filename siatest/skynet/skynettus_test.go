@@ -75,7 +75,8 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	uploadTest := func(fileSize int64) error {
 		uploadedData := fastrand.Bytes(int(fileSize))
 		fileName := hex.EncodeToString(fastrand.Bytes(10))
-		skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize, fileName)
+		fileType := hex.EncodeToString(fastrand.Bytes(10))
+		skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize, fileName, fileType)
 		if err != nil {
 			return err
 		}
@@ -97,6 +98,25 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 		}
 		if sm.Filename != fileName {
 			t.Fatalf("Invalid filename %v != %v", sm.Filename, fileName)
+		}
+		if len(sm.Subfiles) != 1 {
+			t.Fatal("expected one subfile but got", len(sm.Subfiles))
+		}
+		ssm, exists := sm.Subfiles[fileName]
+		if !exists {
+			t.Fatal("subfile missing")
+		}
+		if ssm.Filename != sm.Filename {
+			t.Fatal("filename mismatch")
+		}
+		if ssm.Len != sm.Length {
+			t.Fatal("length mismatch")
+		}
+		if ssm.Offset != 0 {
+			t.Fatal("offset should be zero")
+		}
+		if ssm.ContentType != fileType {
+			t.Fatalf("wrong content-type %v != %v", ssm.ContentType, fileType)
 		}
 		return nil
 	}

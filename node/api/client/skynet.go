@@ -123,12 +123,13 @@ func (c *Client) SkynetTUSNewUploadFromBytes(data []byte, chunkSize int64) (*tus
 
 // SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
 // and the specified chunkSize.
-func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64, fileName string) (string, error) {
+func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64, fileName, fileType string) (string, error) {
 	tc, upload, err := c.SkynetTUSNewUploadFromBytes(data, chunkSize)
 	if err != nil {
 		return "", err
 	}
 	upload.Metadata["filename"] = fileName
+	upload.Metadata["filetype"] = fileName
 	uploader, err := tc.CreateUpload(upload)
 	if err != nil {
 		return "", err
