@@ -1178,7 +1178,7 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.S
 		childSpan := opentracing.StartSpan("managedTryResolveSkylinkV2", ref)
 		defer func() {
 			if err != nil {
-				childSpan.LogKV("error", err)	
+				childSpan.LogKV("error", err)
 			}
 			childSpan.SetTag("success", err == nil)
 			childSpan.SetTag("skylinkv2", skylink.String())
