@@ -327,7 +327,9 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 			result:   false,
 		},
 		{
-			existing: nil,
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: nil,
+			},
 			new: &jobReadRegistryResponse{
 				staticSignedRegistryValue: &modules.SignedRegistryValue{},
 			},
@@ -337,13 +339,19 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 			existing: &jobReadRegistryResponse{
 				staticSignedRegistryValue: &modules.SignedRegistryValue{},
 			},
-			new:    nil,
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: nil,
+			},
 			result: false,
 		},
 		{
-			existing: nil,
-			new:      nil,
-			result:   false,
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: nil,
+			},
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: nil,
+			},
+			result: false,
 		},
 		{
 			existing: &jobReadRegistryResponse{

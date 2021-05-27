@@ -656,18 +656,22 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 // revision number, more work or was faster.
 func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
 	// Check for nil response.
-	if resp1 == nil && resp2 == nil {
+	if resp2 == nil {
+		// A nil entry never replaces an existing entry.
 		return false
-	}
-	if resp1 == nil && resp2 != nil {
+	} else if resp1 == nil {
+		// A non-nil entry always replaces a nil entry.
 		return true
 	}
-	if resp1 != nil && resp2 == nil {
-		return false
-	}
-	// Check returned entries.
+	// Same but with the entries.
 	srv1 := resp1.staticSignedRegistryValue
 	srv2 := resp2.staticSignedRegistryValue
+	if srv2 == nil {
+		return false
+	} else if srv1 == nil {
+		return true
+	}
+	// Compare entries.
 	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue)
 
 	// If the entry is not capable of updating the existing one and both entries
