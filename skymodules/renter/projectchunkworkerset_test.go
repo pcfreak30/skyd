@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -45,6 +46,9 @@ func TestPCWS(t *testing.T) {
 // testBasic verifies the PCWS using a simple setup with a single host, looking
 // for a single sector.
 func testBasic(t *testing.T, wt *workerTester) {
+	// create a ctx with test span
+	ctx := opentracing.ContextWithSpan(context.Background(), testSpan())
+
 	// create a random sector
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
@@ -69,7 +73,7 @@ func testBasic(t *testing.T, wt *workerTester) {
 	}
 
 	// create PCWS
-	pcws, err := wt.staticRenter.newPCWSByRoots(context.Background(), []crypto.Hash{sectorRoot}, ptec, ptck, 0)
+	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{sectorRoot}, ptec, ptck, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +142,9 @@ func testBasic(t *testing.T, wt *workerTester) {
 // testMultiple verifies the PCWS for a multiple sector lookup on multiple
 // hosts.
 func testMultiple(t *testing.T, wt *workerTester) {
+	// create a ctx with test span
+	ctx := opentracing.ContextWithSpan(context.Background(), testSpan())
+
 	// create a helper function that adds a host
 	numHosts := 0
 	addHost := func() modules.Host {
@@ -251,7 +258,7 @@ func testMultiple(t *testing.T, wt *workerTester) {
 	})
 
 	// create PCWS
-	pcws, err := wt.staticRenter.newPCWSByRoots(context.Background(), roots, ec, ptck, 0)
+	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, roots, ec, ptck, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,6 +310,9 @@ func testNewPCWSByRoots(t *testing.T) {
 	r := new(Renter)
 	r.staticWorkerPool = new(workerPool)
 
+	// create a ctx with test span
+	ctx := opentracing.ContextWithSpan(context.Background(), testSpan())
+
 	// create random roots
 	var root1 crypto.Hash
 	var root2 crypto.Hash
@@ -318,14 +328,14 @@ func testNewPCWSByRoots(t *testing.T) {
 	}
 
 	// verify basic case
-	_, err = r.newPCWSByRoots(context.Background(), roots[:1], ptec, ptck, 0)
+	_, err = r.newPCWSByRoots(ctx, roots[:1], ptec, ptck, 0)
 	if err != nil {
 		t.Fatal("unexpected")
 	}
 
 	// verify the case where we the amount of roots does not equal num pieces
 	// defined in the erasure coder
-	_, err = r.newPCWSByRoots(context.Background(), roots, ptec, ptck, 0)
+	_, err = r.newPCWSByRoots(ctx, roots, ptec, ptck, 0)
 	if err == nil || !strings.Contains(err.Error(), "but erasure coder specifies 1 pieces") {
 		t.Fatal(err)
 	}
@@ -341,13 +351,13 @@ func testNewPCWSByRoots(t *testing.T) {
 	if len(roots[:1]) == ec.NumPieces() {
 		t.Fatal("unexpected")
 	}
-	_, err = r.newPCWSByRoots(context.Background(), roots[:1], ec, ptck, 0)
+	_, err = r.newPCWSByRoots(ctx, roots[:1], ec, ptck, 0)
 	if err != nil {
 		t.Fatal("unexpected")
 	}
 
 	// verify passing nil for the master key returns an error
-	_, err = r.newPCWSByRoots(context.Background(), roots[:1], ptec, nil, 0)
+	_, err = r.newPCWSByRoots(ctx, roots[:1], ptec, nil, 0)
 	if err == nil {
 		t.Fatal("unexpected")
 	}
