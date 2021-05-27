@@ -192,9 +192,12 @@ func (j jobHasSectorBatch) callExecute() {
 		return
 	}
 
-	// Finish job span at the end.
+	// Log num jobs and success, batch HS jobs are considered successful when
+	// they execute and not get discarded.
 	j.staticSpan.LogKV("numjobs", len(j.staticJobs))
-	defer j.staticSpan.SetTag("success", true)
+	j.staticSpan.SetTag("success", true)
+
+	// Finish job span at the end.
 	defer j.staticSpan.Finish()
 
 	// Capture callExecute in new span.
