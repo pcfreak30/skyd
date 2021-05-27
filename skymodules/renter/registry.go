@@ -227,9 +227,10 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	}
 
 	// No successful responses. We can't update the stats.
-	if best == nil {
+	if best == nil || best.staticSignedRegistryValue == nil {
 		return
 	}
+	span.LogKV("revision", best.staticSignedRegistryValue.Revision)
 
 	// Drop any responses from goodResps that were slower or equal to best.
 	for i := 0; i < len(goodResps); i++ {
@@ -257,10 +258,6 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	var secondBest *modules.SignedRegistryValue
 	var d2 time.Duration
 	for _, resp := range goodResps {
-		// Nothing to do if the best response doesn't have a revision.
-		if best.staticSignedRegistryValue == nil {
-			break
-		}
 		// Otherwise look up the same entry.
 		var srv *modules.SignedRegistryValue
 		var err error
@@ -311,10 +308,14 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	}
 
 	// If we found a secondBest, use that instead.
+	span.LogKV("best", d.Milliseconds())
 	if secondBest != nil {
+		span.SetTag("secondbest", true)
+		span.LogKV("secondbest", d2.Milliseconds())
 		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
 		d = d2
 	} else {
+		span.SetTag("secondbest", false)
 		l.Printf("threadedAddResponseSet: using best duration %v (secondBest: %v, nil: %v)", d, d2, secondBest == nil)
 	}
 
@@ -327,6 +328,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 
 	// The error is ignored since it only returns an error if the measurement is
 	// outside of the 5 minute bounds the stats were created with.
+	span.LogKV("datapoint", d.Milliseconds())
 	r.staticRegReadStats.AddDataPoint(d)
 }
 

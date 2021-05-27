@@ -33,6 +33,7 @@ type (
 		staticLayout      skymodules.SkyfileLayout
 		staticMetadata    skymodules.SkyfileMetadata
 		staticRawMetadata []byte
+		staticSkylink     skymodules.Skylink
 
 		// staticBaseSectorPayload will contain the raw data for the skylink
 		// if there is no fanout. However if there's a fanout it will be nil.
@@ -85,6 +86,11 @@ func (sds *skylinkDataSource) RawMetadata() []byte {
 // RequestSize implements streamBufferDataSource
 func (sds *skylinkDataSource) RequestSize() uint64 {
 	return skylinkDataSourceRequestSize
+}
+
+// Skylink implements streamBufferDataSource
+func (sds *skylinkDataSource) Skylink() skymodules.Skylink {
+	return sds.staticSkylink
 }
 
 // SilentClose implements streamBufferDataSource
@@ -265,9 +271,9 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // timeout. This can be optimized to always create the data source when it was
 // requested, but we should only do so after gathering some real world feedback
 // that indicates we would benefit from this.
-func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
+func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
 	// Get the offset and fetchsize from the skylink
-	offset, fetchSize, err := link.OffsetAndFetchSize()
+	offset, fetchSize, err := skylink.OffsetAndFetchSize()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to parse skylink")
 	}
@@ -277,7 +283,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
+	baseSector, err := r.managedDownloadByRoot(ctx, skylink.MerkleRoot(), offset, fetchSize, pricePerMS)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to download base sector")
 	}
@@ -361,10 +367,11 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	}
 
 	sds := &skylinkDataSource{
-		staticID:          link.DataSourceID(),
+		staticID:          skylink.DataSourceID(),
 		staticLayout:      layout,
 		staticMetadata:    metadata,
 		staticRawMetadata: rawMetadata,
+		staticSkylink:     skylink,
 
 		staticBaseSectorPayload: baseSectorPayload,
 		staticChunkFetchers:     fanoutChunkFetchers,

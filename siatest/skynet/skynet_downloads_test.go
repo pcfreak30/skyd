@@ -634,6 +634,40 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(file, data) {
 		t.Fatal("Unexpected response data")
 	}
+
+	// turn the skylink into a V2 skylink and verify we get the same ETag
+	var skylinkV1 skymodules.Skylink
+	err = skylinkV1.LoadString(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylinkV2, err := r.NewSkylinkV2(skylinkV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download the skylink using the V2 skylink
+	resp, err = uc.SkynetSkylinkGetWithETag(skylinkV2.String(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code")
+	}
+
+	// verify ETag header is set
+	eTagForV2Skylink := resp.Header.Get("ETag")
+	if eTagForV2Skylink == "" {
+		t.Fatal("Unexpected ETag response header")
+	}
+	if eTagForV2Skylink != eTag {
+		t.Fatal("Unexpected ETag")
+	}
 }
 
 // testSkynetSkylinkHeader tests that the 'Skynet-Skylink' is set both on the

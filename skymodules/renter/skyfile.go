@@ -128,9 +128,10 @@ type streamerFromReader struct {
 // method, which allows it to satisfy the modules.SkyfileStreamer interface.
 type skylinkStreamerFromReader struct {
 	modules.Streamer
-	staticLayout skymodules.SkyfileLayout
-	staticMD     skymodules.SkyfileMetadata
-	staticRawMD  []byte
+	staticLayout  skymodules.SkyfileLayout
+	staticMD      skymodules.SkyfileMetadata
+	staticRawMD   []byte
+	staticSkylink skymodules.Skylink
 }
 
 // Close is a no-op because a bytes.Reader doesn't need to be closed.
@@ -148,13 +149,14 @@ func StreamerFromSlice(b []byte) skymodules.Streamer {
 }
 
 // SkylinkStreamerFromSlice creates a modules.SkyfileStreamer from a byte slice.
-func SkylinkStreamerFromSlice(b []byte, md skymodules.SkyfileMetadata, rawMD []byte, layout skymodules.SkyfileLayout) skymodules.SkyfileStreamer {
+func SkylinkStreamerFromSlice(b []byte, md skymodules.SkyfileMetadata, rawMD []byte, skylink skymodules.Skylink, layout skymodules.SkyfileLayout) skymodules.SkyfileStreamer {
 	streamer := StreamerFromSlice(b)
 	return &skylinkStreamerFromReader{
-		Streamer:     streamer,
-		staticLayout: layout,
-		staticMD:     md,
-		staticRawMD:  rawMD,
+		Streamer:      streamer,
+		staticLayout:  layout,
+		staticMD:      md,
+		staticRawMD:   rawMD,
+		staticSkylink: skylink,
 	}
 }
 
@@ -171,6 +173,11 @@ func (sfr *skylinkStreamerFromReader) Metadata() skymodules.SkyfileMetadata {
 // RawMetadata implements the modules.SkyfileStreamer interface.
 func (sfr *skylinkStreamerFromReader) RawMetadata() []byte {
 	return sfr.staticRawMD
+}
+
+// Skylink implements the modules.SkyfileStreamer interface.
+func (sfr *skylinkStreamerFromReader) Skylink() skymodules.Skylink {
+	return sfr.staticSkylink
 }
 
 // CreateSkylinkFromSiafile creates a skyfile from a siafile. This requires
@@ -782,7 +789,7 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to fetch fixture")
 		}
-		return SkylinkStreamerFromSlice(sf.Content, sf.Metadata, rawMD, skymodules.SkyfileLayout{}), err
+		return SkylinkStreamerFromSlice(sf.Content, sf.Metadata, rawMD, link, skymodules.SkyfileLayout{}), err
 	}
 
 	// Check if this skylink is already in the stream buffer set. If so, we can
