@@ -630,7 +630,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		uc.chunkCompleteTime = time.Now()
 		close(uc.staticUploadCompletedChan)
 		if uc.staticSpan != nil {
-			fmt.Println("log comleted")
 			uc.staticSpan.LogKV("completed", true)
 			uc.staticSpan.Finish()
 		}

@@ -417,7 +417,7 @@ func (r *Renter) managedUploadBaseSector(ctx context.Context, sup skymodules.Sky
 	if parent := opentracing.SpanFromContext(ctx); parent != nil {
 		spanRef := opentracing.ChildOf(parent.Context())
 		span := opentracing.StartSpan("managedUploadBaseSector", spanRef)
-		span.SetTag("Skylink", skylink.String())
+		span.SetTag("skylink", skylink.String())
 		defer func() {
 			if err != nil {
 				span.LogKV("err", err)
@@ -1125,7 +1125,7 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 			span.LogKV("err", err)
 		}
 		span.SetTag("success", err == nil)
-		span.SetTag("Skylink", skylink.String())
+		span.SetTag("skylink", skylink.String())
 		span.Finish()
 	}()
 
