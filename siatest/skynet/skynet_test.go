@@ -5149,3 +5149,57 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 }
+
+// TestAddResponseSetIgnoreEntriesWithoutRevision makes sure that the registry
+// stats are not influenced by entries that don't exist on the network.
+func TestAddResponseSetIgnoreEntriesWithoutRevision(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Renters: 1,
+		Miners:  1,
+		Hosts:   2,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	_, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+
+	ssg, err := r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p99Before := ssg.RegistryRead15mP99ms
+
+	for i := 0; i < 100; i++ {
+		_, err := r.RegistryRead(spk, crypto.Hash{})
+		if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+			t.Fatal(err)
+		}
+	}
+
+	ssg, err = r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p99After := ssg.RegistryRead15mP99ms
+
+	if p99Before != p99After {
+		t.Fatal("p99 changed", p99Before, p99After)
+	}
+	t.Log("p99")
+}
