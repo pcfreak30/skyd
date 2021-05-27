@@ -2,6 +2,7 @@ package skynet
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -73,7 +74,8 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	// Declare a test helper that uploads a file and downloads it.
 	uploadTest := func(fileSize int64) error {
 		uploadedData := fastrand.Bytes(int(fileSize))
-		skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize)
+		fileName := hex.EncodeToString(fastrand.Bytes(10))
+		skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize, fileName)
 		if err != nil {
 			return err
 		}
@@ -92,6 +94,9 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 		}
 		if sm.Length != uint64(len(uploadedData)) {
 			return errors.New("wrong length in metadata")
+		}
+		if sm.Filename != fileName {
+			t.Fatalf("Invalid filename %v != %v", sm.Filename, fileName)
 		}
 		return nil
 	}

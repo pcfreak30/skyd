@@ -104,14 +104,20 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 
 	// Get a siapath.
 	sp := skymodules.RandomSkynetFilePath()
-	upload.fi.MetaData["SiaPath"] = sp.String()
+
+	// Get the filename from either the metadata or path.
+	fileName := sp.Name()
+	fileNameMD, fileNameFound := upload.fi.MetaData["filename"]
+	if fileNameFound {
+		fileName = fileNameMD
+	}
 
 	// Create the skyfile upload params.
 	// TODO: use info.metadata to create skyfileuploadparameters different from
 	// the default.
 	upload.staticSUP = skymodules.SkyfileUploadParameters{
 		SiaPath:             sp,
-		Filename:            sp.Name(),
+		Filename:            fileName,
 		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
 	}
 	sup := upload.staticSUP
