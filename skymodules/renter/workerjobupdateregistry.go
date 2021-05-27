@@ -168,8 +168,11 @@ func (j *jobUpdateRegistry) callExecute() {
 		// If the entry is the same as as the one we want to set, consider this
 		// a success. Otherwise return the error.
 		if !errors.Contains(shouldUpdateErr, modules.ErrSameRevNum) {
+			// Don't call callReportFailure here. The host provided a valid
+			// proof and we don't want to punish it. We still return the error
+			// though.
 			sendResponse(&rv, err)
-			j.staticQueue.callReportFailure(err)
+			j.staticQueue.callReportSuccess()
 			span.LogKV("error", err)
 			j.staticSpan.SetTag("success", false)
 			return
