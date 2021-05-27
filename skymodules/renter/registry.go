@@ -13,7 +13,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
@@ -653,7 +652,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 			// If we receive ErrLowerRevNum or ErrSameRevNum, remember the revision number
 			// that was presented as proof. In the end we return the highest one to be able
 			// to determine the next revision number that is save to use.
-			if (errors.Contains(resp.staticErr, registry.ErrLowerRevNum) || errors.Contains(resp.staticErr, registry.ErrSameRevNum)) &&
+			if (errors.Contains(resp.staticErr, modules.ErrLowerRevNum) || errors.Contains(resp.staticErr, modules.ErrSameRevNum)) &&
 				resp.srv.Revision > highestInvalidRevNum {
 				highestInvalidRevNum = resp.srv.Revision
 				invalidRevNum = true
@@ -670,9 +669,9 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// to the highest invalid revision we remembered.
 	if invalidRevNum {
 		if highestInvalidRevNum == srv.Revision {
-			err = registry.ErrSameRevNum
+			err = modules.ErrSameRevNum
 		} else {
-			err = registry.ErrLowerRevNum
+			err = modules.ErrLowerRevNum
 		}
 	}
 

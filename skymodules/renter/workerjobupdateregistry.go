@@ -8,7 +8,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -133,7 +132,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	// in the future in case we are certain that a host can't contain those
 	// errors.
 	rv, err := j.managedUpdateRegistry()
-	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+	if modules.IsRegistryEntryExistErr(err) {
 		// Report the failure if the host can't provide a signed registry entry
 		// with the error.
 		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
@@ -143,10 +142,10 @@ func (j *jobUpdateRegistry) callExecute() {
 			j.staticSpan.SetTag("success", false)
 			return
 		}
-		// If the entry is valid, check if the revision number is actually
-		// invalid or if the revision numbers match but the PoW is too low.
-		if j.staticSignedRegistryValue.Revision > rv.Revision ||
-			(j.staticSignedRegistryValue.Revision == rv.Revision && j.staticSignedRegistryValue.HasMoreWork(rv.RegistryValue)) {
+		// If the entry is valid, check if our suggested can actually not be
+		// used to update rv.
+		shouldUpdate, shouldUpdateErr := rv.ShouldUpdateWith(&j.staticSignedRegistryValue.RegistryValue)
+		if shouldUpdate {
 			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(errHostOutdatedProof)
 			span.LogKV("error", errHostOutdatedProof)
@@ -166,8 +165,15 @@ func (j *jobUpdateRegistry) callExecute() {
 			w.staticRegistryCache.Set(sid, rv, true) // adjust the cache
 			return
 		}
-		sendResponse(&rv, err)
-		return
+		// If the entry is the same as as the one we want to set, consider this
+		// a success. Otherwise return the error.
+		if !errors.Contains(shouldUpdateErr, modules.ErrSameRevNum) {
+			sendResponse(&rv, err)
+			j.staticQueue.callReportFailure(err)
+			span.LogKV("error", err)
+			j.staticSpan.SetTag("success", false)
+			return
+		}
 	} else if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
@@ -233,13 +239,16 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		// signed registry value from the response.
 		err = resp.Error
 		// Check for ErrLowerRevNum.
-		if err != nil && strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
-			err = registry.ErrLowerRevNum
+		if err != nil && strings.Contains(err.Error(), modules.ErrLowerRevNum.Error()) {
+			err = modules.ErrLowerRevNum
 		}
-		if err != nil && strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
-			err = registry.ErrSameRevNum
+		if err != nil && strings.Contains(err.Error(), modules.ErrSameRevNum.Error()) {
+			err = modules.ErrSameRevNum
 		}
-		if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+		if err != nil && strings.Contains(err.Error(), modules.ErrInsufficientWork.Error()) {
+			err = modules.ErrInsufficientWork
+		}
+		if modules.IsRegistryEntryExistErr(err) {
 			// Parse the proof.
 			_, _, data, revision, sig, parseErr := parseSignedRegistryValueResponse(resp.Output, false)
 			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig)

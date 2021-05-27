@@ -33,7 +33,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
@@ -4179,7 +4178,7 @@ func TestRegistryUpdateRead(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
 		t.Fatal(err)
 	}
-	if err == nil || !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+	if err == nil || !strings.Contains(err.Error(), modules.ErrSameRevNum.Error()) {
 		t.Fatal(err)
 	}
 
@@ -4205,7 +4204,7 @@ func TestRegistryUpdateRead(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
 		t.Fatal(err)
 	}
-	if err == nil || !strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
+	if err == nil || !strings.Contains(err.Error(), modules.ErrLowerRevNum.Error()) {
 		t.Fatal(err)
 	}
 
