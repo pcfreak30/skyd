@@ -13,7 +13,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
@@ -196,31 +195,8 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 		if resp.staticSignedRegistryValue != nil {
 			goodResps = append(goodResps, resp)
 		}
-		// If there is no best yet, always set it.
-		if best == nil {
-			best = resp
-			continue
-		}
-		// If there is no rv yet, always set it.
-		bestRV := best.staticSignedRegistryValue
-		respRV := resp.staticSignedRegistryValue
-		if bestRV == nil && respRV != nil {
-			best = resp
-			continue
-		}
-		// If there is an rv but the new response doesn't have one, ignore it.
-		if bestRV != nil && respRV == nil {
-			continue
-		}
-		// The one with the higher revision gets priority if both have an rv.
-		if bestRV != nil && respRV != nil && respRV.Revision != bestRV.Revision {
-			if respRV.Revision > bestRV.Revision {
-				best = resp
-			}
-			continue
-		}
-		// Otherwise the faster one wins.
-		if resp.staticCompleteTime.Before(best.staticCompleteTime) {
+		// If the new response is better, remember it.
+		if isBetterReadRegistryResponse(best, resp) {
 			best = resp
 			continue
 		}
@@ -627,8 +603,6 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	workersLeft := len(workers)
 	responses := 0
 	successfulResponses := 0
-	highestInvalidRevNum := uint64(0)
-	invalidRevNum := false
 
 	var respErrs error
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
@@ -649,13 +623,12 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 		// Ignore error responses except for invalid revision errors.
 		if resp.staticErr != nil {
-			// If we receive ErrLowerRevNum or ErrSameRevNum, remember the revision number
-			// that was presented as proof. In the end we return the highest one to be able
-			// to determine the next revision number that is save to use.
-			if (errors.Contains(resp.staticErr, registry.ErrLowerRevNum) || errors.Contains(resp.staticErr, registry.ErrSameRevNum)) &&
-				resp.srv.Revision > highestInvalidRevNum {
-				highestInvalidRevNum = resp.srv.Revision
-				invalidRevNum = true
+			// If we receive an error indicating that a better entry exists on
+			// the network we immediately return an error. That's because our
+			// update won't be able to change the consensus of the network on
+			// the latest entry.
+			if modules.IsRegistryEntryExistErr(resp.staticErr) {
+				return resp.staticErr
 			}
 			respErrs = errors.Compose(respErrs, resp.staticErr)
 			continue
@@ -665,25 +638,48 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		successfulResponses++
 	}
 
-	// Check for an invalid revision error and return the right error according
-	// to the highest invalid revision we remembered.
-	if invalidRevNum {
-		if highestInvalidRevNum == srv.Revision {
-			err = registry.ErrSameRevNum
-		} else {
-			err = registry.ErrLowerRevNum
-		}
-	}
-
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
-		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", err)
+		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", respErrs)
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
-		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
+		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, respErrs)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	r.staticRegWriteStats.AddDataPoint(time.Since(start))
 	return nil
+}
+
+// isBetterReadRegistryResponse returns true if resp2 is a better response than
+// resp1 and false otherwise. Better means that the response either has a higher
+// revision number, more work or was faster.
+func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
+	// Check for nil response.
+	if resp2 == nil {
+		// A nil entry never replaces an existing entry.
+		return false
+	} else if resp1 == nil {
+		// A non-nil entry always replaces a nil entry.
+		return true
+	}
+	// Same but with the entries.
+	srv1 := resp1.staticSignedRegistryValue
+	srv2 := resp2.staticSignedRegistryValue
+	if srv2 == nil {
+		return false
+	} else if srv1 == nil {
+		return true
+	}
+	// Compare entries.
+	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue)
+
+	// If the entry is not capable of updating the existing one and both entries
+	// have the same revision number, use the time.
+	if !shouldUpdate && errors.Contains(updateErr, modules.ErrSameRevNum) {
+		return resp2.staticCompleteTime.Before(resp1.staticCompleteTime)
+	}
+
+	// Otherwise we return the result
+	return shouldUpdate
 }

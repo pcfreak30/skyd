@@ -33,7 +33,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
@@ -4173,13 +4172,10 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatalf("read took too long to time out %v > %v", time.Since(start), 2*time.Second)
 	}
 
-	// Update the registry again, with the same revision and same PoW. Shouldn't
+	// Update the registry again, with the same revision and same PoW. Should
 	// work.
 	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
-		t.Fatal(err)
-	}
-	if err == nil || !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -4202,10 +4198,7 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 	// Update the registry again, with a lower revision. Shouldn't work.
 	err = r.RegistryUpdate(spk, dataKey, srv3.Revision, srv3.Signature, skylink3)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
-		t.Fatal(err)
-	}
-	if err == nil || !strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
+	if err == nil || !strings.Contains(err.Error(), modules.ErrLowerRevNum.Error()) {
 		t.Fatal(err)
 	}
 
