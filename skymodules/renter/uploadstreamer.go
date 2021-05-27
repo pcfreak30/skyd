@@ -6,7 +6,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/SkynetLabs/skyd/build"
