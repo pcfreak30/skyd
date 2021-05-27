@@ -129,7 +129,7 @@ func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64, fileName
 		return "", err
 	}
 	upload.Metadata["filename"] = fileName
-	upload.Metadata["filetype"] = fileName
+	upload.Metadata["filetype"] = fileType
 	uploader, err := tc.CreateUpload(upload)
 	if err != nil {
 		return "", err
