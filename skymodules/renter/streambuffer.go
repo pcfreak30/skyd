@@ -394,7 +394,7 @@ func (s *stream) Read(b []byte) (int, error) {
 
 	// Create a child span.
 	spanRef := opentracing.ChildOf(s.staticSpan.Context())
-	span := opentracing.StartSpan("stream_Read", spanRef)
+	span := opentracing.StartSpan("Read", spanRef)
 	defer span.Finish()
 
 	// Attach the span to the ctx.
