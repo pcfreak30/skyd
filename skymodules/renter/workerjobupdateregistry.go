@@ -62,7 +62,7 @@ type (
 // newJobUpdateRegistry is a helper method to create a new UpdateRegistry job.
 func (w *worker) newJobUpdateRegistry(ctx context.Context, span opentracing.Span, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, srv modules.SignedRegistryValue) *jobUpdateRegistry {
 	jobSpan := opentracing.StartSpan("UpdateRegistryJob", opentracing.ChildOf(span.Context()))
-	jobSpan.SetTag("Host", w.staticHostPubKeyStr)
+	jobSpan.SetTag("host", w.staticHostPubKeyStr)
 	return &jobUpdateRegistry{
 		staticSiaPublicKey:        spk,
 		staticSignedRegistryValue: srv,

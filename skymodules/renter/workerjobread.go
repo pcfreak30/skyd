@@ -94,7 +94,7 @@ func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 func (j *jobRead) callDiscard(err error) {
 	// Log info and finish span.
 	if j.staticSpan != nil {
-		j.staticSpan.LogKV("jobRead_callDiscard", err)
+		j.staticSpan.LogKV("callDiscard", err)
 		j.staticSpan.SetTag("success", false)
 		j.staticSpan.Finish()
 	}

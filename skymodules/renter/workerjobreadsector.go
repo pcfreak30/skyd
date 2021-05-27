@@ -25,7 +25,7 @@ type (
 func (j *jobReadSector) callExecute() {
 	if j.staticSpan != nil {
 		// Capture callExecute in new span.
-		span := opentracing.GlobalTracer().StartSpan("jobReadSector_ callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+		span := opentracing.StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
 		defer span.Finish()
 	}
 
@@ -76,7 +76,7 @@ func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, resp
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		spanRef := opentracing.ChildOf(span.Context())
 		jobSpan = opentracing.StartSpan("ReadSectorJob", spanRef)
-		jobSpan.SetTag("Root", root)
+		jobSpan.SetTag("root", root)
 	}
 
 	return &jobReadSector{

@@ -304,7 +304,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 func (pdc *projectDownloadChunk) fail(err error) {
 	// Log info and finish span.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.LogKV("fail", err)
+		span.LogKV("error", err)
 		span.SetTag("success", false)
 		span.Finish()
 	}

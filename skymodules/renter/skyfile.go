@@ -656,7 +656,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 	// Start tracing.
 	span := opentracing.StartSpan("DownloadByRoot")
-	span.SetTag("Root", root)
+	span.SetTag("root", root)
 	defer span.Finish()
 
 	// Attach the span to the ctx
@@ -686,6 +686,13 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 		defer cancel()
 	}
 
+	// Create a new span.
+	span := opentracing.StartSpan("DownloadSkylink")
+	span.SetTag("skylink", link.String())
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
 	// Check if link needs to be resolved from V2 to V1.
 	link, err := r.managedTryResolveSkylinkV2(ctx, link)
 	if err != nil {
@@ -696,13 +703,6 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	if r.staticSkynetBlocklist.IsBlocked(link) {
 		return nil, ErrSkylinkBlocked
 	}
-
-	// Create a new span.
-	span := opentracing.StartSpan("DownloadSkylink")
-	span.SetTag("Skylink", link.String())
-
-	// Attach the span to the ctx
-	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Download the data
 	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
@@ -730,6 +730,14 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 		defer cancel()
 	}
 
+	// Create a span
+	span := opentracing.StartSpan("DownloadSkylinkBaseSector")
+	span.SetTag("skylink", link.String())
+	defer span.Finish()
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
 	// Check if link needs to be resolved from V2 to V1.
 	link, err := r.managedTryResolveSkylinkV2(ctx, link)
 	if err != nil {
@@ -746,14 +754,6 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to get offset and fetch size")
 	}
-
-	// Create a span
-	span := opentracing.StartSpan("DownloadSkylinkBaseSector")
-	span.SetTag("Skylink", link.String())
-	defer span.Finish()
-
-	// Attach the span to the ctx
-	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Download the base sector
 	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
@@ -819,7 +819,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 
 	// Create a span.
 	span := opentracing.StartSpan("PinSkylink")
-	span.SetTag("Skylink", skylink.String())
+	span.SetTag("skylink", skylink.String())
 	defer span.Finish()
 
 	// Attach the span to the ctx
@@ -1167,31 +1167,47 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 
 // managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
 // skylink is not a V2 skylink, the input link is returned.
-func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, error) {
+func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skylink skymodules.Skylink, err error) {
 	if sl.Version() != 2 {
 		return sl, nil
 	}
+
+	// Create a child span to capture the resolve if the context has a span.
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		ref := opentracing.ChildOf(span.Context())
+		childSpan := opentracing.StartSpan("managedTryResolveSkylinkV2", ref)
+		defer func() {
+			if err != nil {
+				childSpan.LogKV("error", err)	
+			}
+			childSpan.SetTag("success", err == nil)
+			childSpan.SetTag("skylinkv2", skylink.String())
+			childSpan.Finish()
+		}()
+	}
+
 	// Get link from registry entry.
-	srv, err := r.ReadRegistryRID(ctx, sl.RegistryEntryID())
+	var srv modules.SignedRegistryValue
+	srv, err = r.ReadRegistryRID(ctx, sl.RegistryEntryID())
 	if err != nil {
 		return skymodules.Skylink{}, err
 	}
 	if len(srv.Data) == 0 {
 		return skymodules.Skylink{}, errors.New("failed to resolve skylink")
 	}
-	var link skymodules.Skylink
-	err = link.LoadBytes(srv.Data)
+
+	err = skylink.LoadBytes(srv.Data)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to parse skylink")
 	}
 	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
 	// the API to return a 404.
-	if link == (skymodules.Skylink{}) {
+	if skylink == (skymodules.Skylink{}) {
 		return skymodules.Skylink{}, ErrRootNotFound
 	}
 	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(link) {
+	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return skymodules.Skylink{}, ErrSkylinkBlocked
 	}
-	return link, nil
+	return skylink, nil
 }

@@ -616,18 +616,19 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	}
 	sb.dataSections[index] = ds
 
-	// Create a child span for the data section
-	spanRef := opentracing.ChildOf(sb.staticSpan.Context())
-	span := opentracing.StartSpan("streamBuffer_newDataSection", spanRef)
-	span.SetTag("index", index)
-
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
 	go func() {
 		defer close(ds.dataAvailable)
 
-		// Defer finishing the span
+		// Create a child span for the data section
+		spanRef := opentracing.ChildOf(sb.staticSpan.Context())
+		span := opentracing.StartSpan("newDataSection", spanRef)
+		span.LogKV("index", index)
 		defer func() {
+			if ds.externErr != nil {
+				span.LogKV("error", ds.externErr)
+			}
 			span.SetTag("success", ds.externErr == nil)
 			span.SetTag("long", ds.externDuration >= longDownloadThreshold)
 			span.Finish()
