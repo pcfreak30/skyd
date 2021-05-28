@@ -23,7 +23,7 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 			staticQueue: queue,
 			staticCtx:   context.Background(),
 		},
-		staticParentSpan: testSpan(),
+		staticSpan: testSpan(),
 	}
 
 	// add jobs
