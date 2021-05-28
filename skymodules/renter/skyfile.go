@@ -1172,19 +1172,16 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.S
 		return sl, nil
 	}
 
-	// Create a child span to capture the resolve if the context has a span.
-	if span := opentracing.SpanFromContext(ctx); span != nil {
-		ref := opentracing.ChildOf(span.Context())
-		childSpan := opentracing.StartSpan("managedTryResolveSkylinkV2", ref)
-		defer func() {
-			if err != nil {
-				childSpan.LogKV("error", err)
-			}
-			childSpan.SetTag("success", err == nil)
-			childSpan.SetTag("skylinkv2", skylink.String())
-			childSpan.Finish()
-		}()
-	}
+	// Create a child span to capture the resolve for v2 skylinks.
+	span, ctx := opentracing.StartSpanFromContext(ctx, "managedTryResolveSkylinkV2")
+	defer func() {
+		if err != nil {
+			span.LogKV("error", err)
+		}
+		span.SetTag("success", err == nil)
+		span.SetTag("skylinkv2", skylink.String())
+		span.Finish()
+	}()
 
 	// Get link from registry entry.
 	var srv modules.SignedRegistryValue

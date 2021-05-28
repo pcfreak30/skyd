@@ -220,8 +220,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	defer cancel()
 
 	// Capture the base sector download in a new span.
-	spanRef := opentracing.ChildOf(opentracing.SpanFromContext(ctx).Context())
-	span := opentracing.StartSpan("managedDownloadByRoot", spanRef)
+	span, ctx := opentracing.StartSpanFromContext(ctx, "managedDownloadByRoot")
 	span.SetTag("root", root)
 	defer span.Finish()
 
