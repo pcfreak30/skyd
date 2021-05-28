@@ -421,19 +421,15 @@ func (r *Renter) UpdateSkynetPortals(additions []skymodules.SkynetPortal, remova
 func (r *Renter) managedUploadBaseSector(ctx context.Context, sup skymodules.SkyfileUploadParameters, baseSector []byte, skylink skymodules.Skylink) (err error) {
 	// Trace the base sector upload in its own span if the given ctx already has
 	// a span attached.
-	if parent := opentracing.SpanFromContext(ctx); parent != nil {
-		spanRef := opentracing.ChildOf(parent.Context())
-		span := opentracing.StartSpan("managedUploadBaseSector", spanRef)
-		span.SetTag("skylink", skylink.String())
-		defer func() {
-			if err != nil {
-				span.LogKV("err", err)
-			}
-			span.SetTag("success", err == nil)
-			span.Finish()
-		}()
-		ctx = opentracing.ContextWithSpan(ctx, span)
-	}
+	span, ctx := opentracing.StartSpanFromContext(ctx, "managedUploadBaseSector")
+	span.SetTag("skylink", skylink.String())
+	defer func() {
+		if err != nil {
+			span.LogKV("err", err)
+		}
+		span.SetTag("success", err == nil)
+		span.Finish()
+	}()
 
 	uploadParams, err := baseSectorUploadParamsFromSUP(sup)
 	if err != nil {
