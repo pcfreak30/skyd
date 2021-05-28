@@ -574,7 +574,7 @@ func (sb *streamBuffer) managedPrepareNewStream(ctx context.Context, initialOffs
 	}
 
 	// Fetch the span from the context
-	span := opentracing.SpanFromContext(ctx)
+	span, _ := opentracing.StartSpanFromContext(ctx, "managedPrepareNewStream")
 
 	// Create a stream that points to the stream buffer.
 	stream := &stream{
