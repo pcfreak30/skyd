@@ -573,9 +573,6 @@ func (sb *streamBuffer) managedPrepareNewStream(ctx context.Context, initialOffs
 		dataSectionsToCache = minimumDataSections
 	}
 
-	// Fetch the span from the context
-	span, _ := opentracing.StartSpanFromContext(ctx, "managedPrepareNewStream")
-
 	// Create a stream that points to the stream buffer.
 	stream := &stream{
 		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, sb),
@@ -584,7 +581,7 @@ func (sb *streamBuffer) managedPrepareNewStream(ctx context.Context, initialOffs
 		staticContext:      sb.staticTG.StopCtx(),
 		staticReadTimeout:  timeout,
 		staticStreamBuffer: sb,
-		staticSpan:         span,
+		staticSpan:         opentracing.SpanFromContext(ctx),
 	}
 	stream.prepareOffset()
 	return stream
