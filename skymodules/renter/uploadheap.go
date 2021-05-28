@@ -522,7 +522,11 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	onDisk := err == nil
 
 	// Create a child trace for this unfinishedUploadChunk.
-	span, _ := opentracing.StartSpanFromContext(ctx, "unfinishedUploadChunk")
+	var span opentracing.Span
+	if parent := opentracing.SpanFromContext(ctx); parent != nil {
+		spanRef := opentracing.ChildOf(parent.Context())
+		span = opentracing.StartSpan("unfinishedUploadChunk", spanRef)
+	}
 
 	uuc := &unfinishedUploadChunk{
 		fileEntry: entryCopy,
