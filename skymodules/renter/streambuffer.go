@@ -639,9 +639,12 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		}
 		defer sb.staticTG.Done()
 
+		// Create a context from our span
+		ctx := opentracing.ContextWithSpan(sb.staticTG.StopCtx(), span)
+
 		// Grab the data from the data source.
 		start := time.Now()
-		responseChan := sb.staticDataSource.ReadStream(sb.staticTG.StopCtx(), index*dataSectionSize, fetchSize, sb.staticPricePerMS)
+		responseChan := sb.staticDataSource.ReadStream(ctx, index*dataSectionSize, fetchSize, sb.staticPricePerMS)
 
 		select {
 		case response := <-responseChan:
