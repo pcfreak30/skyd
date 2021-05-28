@@ -191,14 +191,18 @@ func (j jobHasSectorBatch) callExecute() {
 		build.Critical("empty hasSectorBatch")
 		return
 	}
-
-	// Log num jobs and success, batch HS jobs are considered successful when
-	// they execute and not get discarded.
+	// Log num jobs in this batch.
 	j.staticSpan.LogKV("numjobs", len(j.staticJobs))
-	j.staticSpan.SetTag("success", true)
 
 	// Finish job span at the end.
-	defer j.staticSpan.Finish()
+	var err error
+	defer func() {
+		if err != nil {
+			j.staticSpan.LogKV("error", err)
+		}
+		j.staticSpan.SetTag("success", err == nil)
+		j.staticSpan.Finish()
+	}()
 
 	// Capture callExecute in new span.
 	spanRef := opentracing.ChildOf(j.staticSpan.Context())
@@ -207,7 +211,8 @@ func (j jobHasSectorBatch) callExecute() {
 
 	start := time.Now()
 	w := j.staticJobs[0].staticQueue.staticWorker()
-	availables, err := j.managedHasSector()
+	var availables [][]bool
+	availables, err = j.managedHasSector()
 	jobTime := time.Since(start)
 	span.LogKV("jobtime", jobTime)
 
