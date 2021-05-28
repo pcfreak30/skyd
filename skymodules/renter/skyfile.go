@@ -515,13 +515,13 @@ func (r *Renter) managedUploadSkyfile(ctx context.Context, sup skymodules.Skyfil
 // leading chunk of a skyfile to the Sia network and returns the skylink that
 // can be used to access the file.
 func (r *Renter) managedUploadSkyfileSmallFile(ctx context.Context, sup skymodules.SkyfileUploadParameters, metadataBytes, fileBytes []byte) (skylink skymodules.Skylink, err error) {
-	// Fetch the span from our context and tag it as small.
+	// Fetch the span from our context and tag it as small (large=false).
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		defer func() {
 			if err != nil {
 				span.LogKV("err", err)
 			}
-			span.SetTag("small", true)
+			span.SetTag("large", false)
 		}()
 	}
 
