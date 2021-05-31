@@ -711,6 +711,21 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 		span.SetTag("timeout", true)
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
+
+	// Tag the span with its size. We tag it with 64kb, 1mb, 4mb and 10mb as
+	// those are the size increments used by the benchmark tool. This way we can
+	// run the benchmark and then filter the results using these tags.
+	metadata := streamer.Metadata()
+	if metadata.Length <= 1<<16 {
+		span.SetTag("64kb", true)
+	} else if metadata.Length <= 1<<20 {
+		span.SetTag("1mb", true)
+	} else if metadata.Length <= 1<<22 {
+		span.SetTag("4mb", true)
+	} else {
+		span.SetTag("10mb", true)
+	}
+
 	return streamer, err
 }
 
