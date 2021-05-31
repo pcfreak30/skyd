@@ -441,7 +441,12 @@ func TestDaemonProfile(t *testing.T) {
 	}
 }
 
+// TestDaemonReady tests the /daemon/ready endpoint.
 func TestDaemonReady(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
 		Hosts:  2,
