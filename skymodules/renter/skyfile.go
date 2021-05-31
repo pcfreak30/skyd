@@ -715,14 +715,18 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	// Tag the span with its size. We tag it with 64kb, 1mb, 4mb and 10mb as
 	// those are the size increments used by the benchmark tool. This way we can
 	// run the benchmark and then filter the results using these tags.
+	//
+	// NOTE: the sizes used are "exact sizes", meaning they are as close as
+	// possible to their eventual size after taking into account the size of the
+	// metadata. See cmd/skynet-benchmark/dl.go for more info.
 	metadata := streamer.Metadata()
-	if metadata.Length <= 1<<16 {
+	if metadata.Length <= 61e3 {
 		span.SetTag("64kb", true)
-	} else if metadata.Length <= 1<<20 {
+	} else if metadata.Length <= 982e3 {
 		span.SetTag("1mb", true)
-	} else if metadata.Length <= 1<<22 {
+	} else if metadata.Length <= 3931e3 {
 		span.SetTag("4mb", true)
-	} else {
+	} else if metadata.Length <= 10e6 {
 		span.SetTag("10mb", true)
 	}
 
