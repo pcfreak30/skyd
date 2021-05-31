@@ -305,6 +305,11 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	// The error is ignored since it only returns an error if the measurement is
 	// outside of the 5 minute bounds the stats were created with.
 	span.LogKV("datapoint", d.Milliseconds())
+	if d.Milliseconds() > 2000 {
+		span.SetTag("speed", "vslow")
+	} else if d.Milliseconds() > 200 {
+		span.SetTag("speed", "slow")
+	}
 	r.staticRegReadStats.AddDataPoint(d)
 }
 
