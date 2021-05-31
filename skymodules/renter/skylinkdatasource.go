@@ -304,12 +304,29 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
 
+	// Tag the span with its size. We tag it with 64kb, 1mb, 4mb and 10mb as
+	// those are the size increments used by the benchmark tool. This way we can
+	// run the benchmark and then filter the results using these tags.
+	//
+	// NOTE: the sizes used are "exact sizes", meaning they are as close as
+	// possible to their eventual size after taking into account the size of the
+	// metadata. See cmd/skynet-benchmark/dl.go for more info.
+	span := opentracing.SpanFromContext(ctx)
+	if metadata.Length <= 61e3 {
+		span.SetTag("64kb", true)
+	} else if metadata.Length <= 982e3 {
+		span.SetTag("1mb", true)
+	} else if metadata.Length <= 3931e3 {
+		span.SetTag("4mb", true)
+	} else if metadata.Length <= 10e6 {
+		span.SetTag("10mb", true)
+	}
+
 	// Create the context for the data source - a child of the renter
 	// threadgroup but otherwise independent.
 	dsCtx, cancelFunc := context.WithCancel(r.tg.StopCtx())
 
 	// Attach the span to the ctx
-	span := opentracing.SpanFromContext(ctx)
 	dsCtx = opentracing.ContextWithSpan(dsCtx, span)
 
 	// If there's a fanout create a PCWS for every chunk.
