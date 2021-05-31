@@ -189,6 +189,11 @@ func (sl Skylink) IsSkylinkV1() bool {
 	return isSkylinkV1(sl.bitfield)
 }
 
+// IsSkylinkV2 returns a boolean indicating if the Skylink is a V1 skylink
+func (sl Skylink) IsSkylinkV2() bool {
+	return isSkylinkV2(sl.bitfield)
+}
+
 // LoadString converts from a string and loads the result into sl.
 func (sl *Skylink) LoadString(s string) error {
 	// Trim any parameters that may exist after a question mark. Eventually, it
