@@ -261,7 +261,6 @@ func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource stream
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[sourceID]
 	if !exists {
-		span, _ := opentracing.StartSpanFromContext(ctx, "callNewStream")
 		streamBuf = &streamBuffer{
 			dataSections: make(map[uint64]*dataSection),
 
@@ -271,7 +270,7 @@ func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource stream
 			staticPricePerMS:      pricePerMS,
 			staticStreamBufferSet: sbs,
 			staticStreamID:        sourceID,
-			staticSpan:            span,
+			staticSpan:            opentracing.SpanFromContext(ctx),
 		}
 		sbs.streams[sourceID] = streamBuf
 	} else {
@@ -687,7 +686,4 @@ func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
 	// data source being accessed after it has been closed.
 	sb.staticTG.Stop()
 	sb.staticDataSource.SilentClose()
-
-	// Finish the span.
-	sb.staticSpan.Finish()
 }
