@@ -73,6 +73,10 @@ var (
 
 	// ErrSkylinkBlocked is the error returned when a skylink is blocked
 	ErrSkylinkBlocked = errors.New("skylink is blocked")
+
+	// ErrInvalidSkylinkVersion is returned when an operation fails due to the
+	// skylink having the wrong version.
+	ErrInvalidSkylinkVersion = errors.New("skylink had unexpected version")
 )
 
 // skyfileEstablishDefaults will set any zero values in the lup to be equal to
@@ -1140,7 +1144,7 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 		return skymodules.Skylink{}, err
 	}
 	if slResolved == sl {
-		return skymodules.Skylink{}, errors.New("failed to resolve skylink - provided skylink was not v2")
+		return skymodules.Skylink{}, ErrInvalidSkylinkVersion
 	}
 	return slResolved, nil
 }
