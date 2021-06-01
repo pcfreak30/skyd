@@ -261,6 +261,7 @@ func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource stream
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[sourceID]
 	if !exists {
+		span, _ := opentracing.StartSpanFromContext(ctx, "callNewStream")
 		streamBuf = &streamBuffer{
 			dataSections: make(map[uint64]*dataSection),
 
@@ -270,7 +271,7 @@ func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource stream
 			staticPricePerMS:      pricePerMS,
 			staticStreamBufferSet: sbs,
 			staticStreamID:        sourceID,
-			staticSpan:            opentracing.SpanFromContext(ctx),
+			staticSpan:            span,
 		}
 		sbs.streams[sourceID] = streamBuf
 	} else {
