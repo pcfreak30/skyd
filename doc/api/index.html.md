@@ -3604,7 +3604,7 @@ value of 5 minutes. The minimum is 1 second.
 > curl example
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/skynet/resolve/AQA_L3Bj8gtpGPaFa8_rFFmSlBbBCjMdqcoyM6fgMvzMzg"
+curl -A "Sia-Agent" "localhost:9980/skynet/resolve/AQBUUNFGvF261JuvCZjEBQILdfB1UqVmaWuLS8MKPv82Yw"
 ```
 
 This curl command performs a GET request that resolves a version 2 skylink to a version 1 skylink.
@@ -3626,7 +3626,7 @@ value of 5 minutes. The minimum is 1 second.
 
 ```go
 {
-  "skylink": "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg", // string
+  "skylink": "EAAm6tEKCIostb5TT8o-lkawuWhICWqegs-Ar_kFdr1vBg", // string
 }
 ```
 

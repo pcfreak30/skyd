@@ -1132,8 +1132,7 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 	return false
 }
 
-// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the skylink is not
-// a V2 skylink, the input link is returned.
+// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
 func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, error) {
 	if err := r.tg.Add(); err != nil {
 		return skymodules.Skylink{}, err

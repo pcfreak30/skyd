@@ -1270,8 +1270,7 @@ type Renter interface {
 	// used.
 	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error)
 
-	// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the skylink is not
-	// a V2 skylink, the input link is returned.
+	// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
 	ResolveSkylinkV2(ctx context.Context, sl Skylink) (Skylink, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
