@@ -401,6 +401,9 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 	}
 
 	for i, test := range tests {
+		if test.new != nil {
+			test.new.staticWorker = &worker{}
+		}
 		result := isBetterReadRegistryResponse(test.existing, test.new)
 		if result != test.result {
 			t.Errorf("%v: wrong result expected %v but was %v", i, test.result, result)
