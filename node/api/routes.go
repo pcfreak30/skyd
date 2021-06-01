@@ -133,6 +133,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/skynet/portals", RequirePassword(api.skynetPortalsHandlerPOST, requiredPassword))
 		router.POST("/skynet/registry", RequirePassword(api.registryHandlerPOST, requiredPassword))
 		router.GET("/skynet/registry", api.registryHandlerGET)
+		router.GET("/skynet/resolve/:skylink", api.skylinkResolveGET)
 		router.POST("/skynet/restore", RequirePassword(api.skynetRestoreHandlerPOST, requiredPassword))
 		router.GET("/skynet/root", api.skynetRootHandlerGET)
 		router.GET("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)

@@ -66,6 +66,14 @@ func TestHandleSkynetError(t *testing.T) {
 			statusCode: http.StatusNotFound,
 		},
 		{
+			err:        skymodules.ErrMalformedSkylink,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			err:        renter.ErrInvalidSkylinkVersion,
+			statusCode: http.StatusBadRequest,
+		},
+		{
 			err:        errors.New("other"),
 			statusCode: http.StatusInternalServerError,
 		},

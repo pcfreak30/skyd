@@ -5130,6 +5130,14 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(downloadedDataV1, data) {
 		t.Fatal("data doesn't match")
 	}
+	// Resolve using resolve endpoint.
+	resolvedSkylink, err := r.ResolveSkylinkV2(skylinkV2.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolvedSkylink != skylink.String() {
+		t.Fatal("skylink resolved wrong", resolvedSkylink, skylink.String())
+	}
 
 	// Update entry to empty skylink.
 	err = r.DeleteSkylinkV2(&skylinkV2)
@@ -5139,6 +5147,11 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 
 	// Download the file using v2 link again.
 	_, err = r.SkynetSkylinkGet(skylinkV2.String())
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
+		t.Fatal(err)
+	}
+	// Resolve using resolve endpoint.
+	_, err = r.ResolveSkylinkV2(skylinkV2.String())
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
 		t.Fatal(err)
 	}

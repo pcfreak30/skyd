@@ -73,6 +73,10 @@ var (
 
 	// ErrSkylinkBlocked is the error returned when a skylink is blocked
 	ErrSkylinkBlocked = errors.New("skylink is blocked")
+
+	// ErrInvalidSkylinkVersion is returned when an operation fails due to the
+	// skylink having the wrong version.
+	ErrInvalidSkylinkVersion = errors.New("skylink had unexpected version")
 )
 
 // skyfileEstablishDefaults will set any zero values in the lup to be equal to
@@ -1128,6 +1132,22 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 	return false
 }
 
+// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
+func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, error) {
+	if err := r.tg.Add(); err != nil {
+		return skymodules.Skylink{}, err
+	}
+	defer r.tg.Done()
+	slResolved, err := r.managedTryResolveSkylinkV2(ctx, sl)
+	if err != nil {
+		return skymodules.Skylink{}, err
+	}
+	if slResolved == sl {
+		return skymodules.Skylink{}, ErrInvalidSkylinkVersion
+	}
+	return slResolved, nil
+}
+
 // managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
 // skylink is not a V2 skylink, the input link is returned.
 func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, error) {
@@ -1145,7 +1165,7 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.S
 	var link skymodules.Skylink
 	err = link.LoadBytes(srv.Data)
 	if err != nil {
-		return skymodules.Skylink{}, errors.AddContext(err, "failed to parse skylink")
+		return skymodules.Skylink{}, err
 	}
 	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
 	// the API to return a 404.
