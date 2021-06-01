@@ -1486,7 +1486,6 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 			return
 		}
 	}
-	rid := sl.RegistryEntryID()
 
 	// Parse the timeout.
 	timeout := renter.MaxRegistryReadTimeout
@@ -1499,32 +1498,17 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 		}
 		timeout = time.Duration(timeoutInt) * time.Second
 		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			println("timeout", timeout)
 			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
 			return
 		}
 	}
 
-	// Read registry.
+	// Resolve skylink.
 	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
-	srv, err := api.renter.ReadRegistryRID(ctx, rid)
+	slV1, err := api.renter.ResolveSkylinkV2(ctx, sl)
 	if err != nil {
-		handleSkynetError(w, "unable to read from the registry", err)
-		return
-	}
-
-	// Parse v1 skylink.
-	var slV1 skymodules.Skylink
-	err = slV1.LoadBytes(srv.Data)
-	if err != nil {
-		WriteError(w, Error{"unable to parse v1 skylink" + err.Error()}, http.StatusInternalServerError)
-		return
-	}
-
-	// Check for deleted link.
-	if slV1 == (skymodules.Skylink{}) {
-		WriteError(w, Error{renter.ErrRootNotFound.Error()}, http.StatusNotFound)
+		handleSkynetError(w, "Failed to resolve skylink", err)
 		return
 	}
 
