@@ -44,6 +44,7 @@ func (api *API) buildHTTPRoutes() {
 	// Daemon API Calls
 	router.GET("/daemon/alerts", api.daemonAlertsHandlerGET)
 	router.GET("/daemon/constants", api.daemonConstantsHandler)
+	router.GET("/daemon/ready", api.daemonReadyGET)
 	router.GET("/daemon/settings", api.daemonSettingsHandlerGET)
 	router.POST("/daemon/settings", api.daemonSettingsHandlerPOST)
 	router.GET("/daemon/stack", api.daemonStackHandlerGET)

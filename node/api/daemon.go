@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 
@@ -98,7 +99,45 @@ type (
 		GitRevision string `json:"gitrevision"`
 		BuildTime   string `json:"buildtime"`
 	}
+
+	// DaemonReady is the response returned by /daemon/ready endpoint.
+	DaemonReady struct {
+		Ready     bool `json:"ready"`
+		Consensus bool `json:"consensus"`
+		Gateway   bool `json:"gateway"`
+		Renter    bool `json:"renter"`
+	}
 )
+
+// daemonReadyGET is the handler for the /daemon/ready endpoint.
+func (api *API) daemonReadyGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	resp := DaemonReady{}
+
+	// Check consensus set.
+	if api.cs != nil {
+		resp.Consensus = api.cs.Synced()
+	}
+	if api.gateway != nil {
+		resp.Gateway = api.gateway.Online()
+	}
+	if api.renter != nil {
+		settings, err := api.renter.Settings()
+		if err != nil {
+			WriteError(w, Error{"failed to retrieve renter settings"}, http.StatusInternalServerError)
+			return
+		}
+		a := settings.Allowance
+		if !reflect.DeepEqual(a, modules.Allowance{}) && a.Hosts > 0 {
+			contracts := api.parseRenterContracts(false, false, false)
+
+			// Ready if 2/3 of the contracts in our allowance are gfu.
+			expectedHosts := float64(a.Hosts) * 2.0 / 3.0
+			resp.Renter = float64(len(contracts.ActiveContracts)) >= expectedHosts
+		}
+	}
+	resp.Ready = resp.Consensus && resp.Gateway && resp.Renter
+	WriteJSON(w, resp)
+}
 
 // daemonAlertsHandlerGET handles the API call that returns the alerts of all
 // loaded skymodules.

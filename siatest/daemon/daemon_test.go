@@ -2,12 +2,14 @@ package daemon
 
 import (
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -15,6 +17,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/profile"
 	"gitlab.com/SkynetLabs/skyd/siatest"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
@@ -433,6 +436,124 @@ func TestDaemonProfile(t *testing.T) {
 
 	// Stop Profile
 	err = testNode.DaemonStopProfilePost()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDaemonReady tests the /daemon/ready endpoint.
+func TestDaemonReady(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	groupDir := daemonTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create a renter but don't set the allowance.
+	rt := node.RenterTemplate
+	rt.GatewayDeps = &dependencies.DependencyDisableAutoOnline{}
+	rt.SkipSetAllowance = true
+	rt.CreateMiner = true
+	rt.Dir = filepath.Join(groupDir, "renter")
+	renter, err := siatest.NewNode(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := renter.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Helper
+	assertReady := func(cs, g, r, ready bool) error {
+		dr, err := renter.DaemonReadyGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dr.Ready != ready {
+			err = errors.Compose(err, fmt.Errorf("Ready: %v != %v", dr.Ready, ready))
+		}
+		if dr.Gateway != g {
+			err = errors.Compose(err, fmt.Errorf("Gateway: %v != %v", dr.Gateway, g))
+		}
+		if dr.Consensus != cs {
+			err = errors.Compose(err, fmt.Errorf("Consensus: %v != %v", dr.Consensus, cs))
+		}
+		if dr.Renter != r {
+			err = errors.Compose(err, fmt.Errorf("Renter: %v != %v", dr.Renter, r))
+		}
+		return err
+	}
+
+	// Only consensus should be ready.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return assertReady(true, false, false, false)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Connect the renter to the group. Gateway should become ready.
+	for _, n := range tg.Nodes() {
+		err = renter.GatewayConnectPost(n.GatewayAddress())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return assertReady(true, true, false, false)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set some money from the miner to the renter for funding.
+	m := tg.Miners()[0]
+	balance, err := m.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wag, err := renter.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.WalletSiacoinsPost(balance.Div64(2), wag.Address, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the allowance to 3 hosts, renter should become available and "Ready"
+	// as well.
+	a := siatest.DefaultAllowance
+	a.Hosts = 3
+	err = renter.RenterPostAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(100, time.Second, func() error {
+		if err := m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		return assertReady(true, true, true, true)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
