@@ -1162,7 +1162,7 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.S
 	var link skymodules.Skylink
 	err = link.LoadBytes(srv.Data)
 	if err != nil {
-		return skymodules.Skylink{}, errors.AddContext(err, "failed to parse skylink")
+		return skymodules.Skylink{}, err
 	}
 	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
 	// the API to return a 404.

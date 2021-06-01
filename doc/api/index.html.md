@@ -3600,6 +3600,37 @@ value of 5 minutes. The minimum is 1 second.
 }
 ```
 
+## /skynet/resolve/:skylink [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/resolve/AQA_L3Bj8gtpGPaFa8_rFFmSlBbBCjMdqcoyM6fgMvzMzg"
+```
+
+This curl command performs a GET request that resolves a version 2 skylink to a version 1 skylink.
+
+### Path Parameters
+### REQUIRED
+**skylink** | string  
+The version 2 skylink that should be resolved.
+
+### Query String Parameters
+### OPTIONAL
+**timeout** | uint64  
+The timeout in seconds. Specifies how long it takes the request to time out
+in case no registry entry can be found. The default is the maximum allowed
+value of 5 minutes. The minimum is 1 second.
+
+### Response
+> JSON Response Example
+
+```go
+{
+  "skylink": "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg", // string
+}
+```
+
+
 ## /skynet/restore [POST]
 > curl example  
 
