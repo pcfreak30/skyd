@@ -677,7 +677,7 @@ func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
 		return true
 	}
 	// Compare entries.
-	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue)
+	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue, resp2.staticWorker.staticHostPubKey)
 
 	// If the entry is not capable of updating the existing one and both entries
 	// have the same revision number, use the time.

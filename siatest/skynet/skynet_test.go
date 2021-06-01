@@ -3508,8 +3508,8 @@ func testSkynetRegistryReadWrite(t *testing.T, tg *siatest.TestGroup) {
 	fastrand.Read(dataKey[:])
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
-	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
-	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 1
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -4104,9 +4104,9 @@ func TestRegistryUpdateRead(t *testing.T) {
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
 	data3 := skylink3.Bytes()
-	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
-	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
-	srv3 := modules.NewRegistryValue(dataKey, data3, 0).Sign(sk) // rev 0
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 1
+	srv3 := modules.NewRegistryValue(dataKey, data3, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],

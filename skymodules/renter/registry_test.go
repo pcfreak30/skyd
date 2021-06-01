@@ -302,7 +302,7 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 
 	srv := func(revision uint64, tweak crypto.Hash) *modules.SignedRegistryValue {
 		return &modules.SignedRegistryValue{
-			RegistryValue: modules.NewRegistryValue(tweak, nil, revision),
+			RegistryValue: modules.NewRegistryValue(tweak, nil, revision, modules.RegistryTypeWithoutPubkey),
 		}
 	}
 

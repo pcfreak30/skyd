@@ -45,7 +45,7 @@ func (tn *TestNode) NewSkylinkV2(sl skymodules.Skylink) (SkylinkV2, error) {
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	srv := modules.NewRegistryValue(dataKey, sl.Bytes(), 0).Sign(sk)
+	srv := modules.NewRegistryValue(dataKey, sl.Bytes(), 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	err := tn.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, sl)
 	if err != nil {
 		return SkylinkV2{}, err
@@ -132,7 +132,7 @@ func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykey
 
 // UpdateSkylinkV2 updates a V2 skylink with a new V1 skylink's value.
 func (tn *TestNode) UpdateSkylinkV2(sl *SkylinkV2, slNew skymodules.Skylink) error {
-	sl.srv = modules.NewRegistryValue(sl.srv.Tweak, slNew.Bytes(), sl.srv.Revision+1).Sign(sl.staticSK)
+	sl.srv = modules.NewRegistryValue(sl.srv.Tweak, slNew.Bytes(), sl.srv.Revision+1, modules.RegistryTypeWithoutPubkey).Sign(sl.staticSK)
 	return tn.RegistryUpdate(sl.staticPK, sl.srv.Tweak, sl.srv.Revision, sl.srv.Signature, slNew)
 }
 

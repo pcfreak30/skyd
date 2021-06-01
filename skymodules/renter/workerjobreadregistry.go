@@ -151,7 +151,7 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 		spk = &spkHost
 		tweak = &tweakHost
 	}
-	rv := modules.NewSignedRegistryValue(*tweak, data, revision, sig)
+	rv := modules.NewSignedRegistryValue(*tweak, data, revision, sig, modules.RegistryTypeWithoutPubkey)
 
 	// Verify signature.
 	if rv.Verify(spk.ToPublicKey()) != nil {
