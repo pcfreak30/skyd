@@ -209,6 +209,7 @@ func (j jobHasSectorBatch) callExecute() {
 		}
 		// If it was successful, attach the result.
 		if err == nil {
+			hsj.staticSpan.LogKV("availables", availables[i])
 			response.staticAvailables = availables[i]
 		}
 		// Send the response.
