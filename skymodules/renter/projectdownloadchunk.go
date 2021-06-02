@@ -476,6 +476,28 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 // If workers fail or are late, additional workers will be launched to ensure
 // that the download still completes.
 func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
+	// Immediately when the overdrive kicks in, we want to launch a couple of
+	// extra workers. We launch 20% of the total amount of workers necessary
+	// extra. We are essentially trading throughput for latency, we download as
+	// much as 20% extra data, but a lagging worker here or there will no longer
+	// hold back the download.
+	//
+	// NOTE: we want to launch workers immediately, and thus don't wait for the
+	// best workers but rather launch the best workers we have that are
+	// available right now.
+	extraWorkers := pdc.workerSet.staticErasureCoder.MinPieces() / 5
+	if extraWorkers == 0 {
+		extraWorkers = 1
+	}
+	for extraWorkers > 0 {
+		extraWorkers--
+		worker, pieceIndex, _ := pdc.findBestAvailableWorker()
+		if worker == nil {
+			break
+		}
+		pdc.launchWorker(worker, pieceIndex, true)
+	}
+
 	// Loop until the download has either failed or completed.
 	for {
 		// Check whether the download is comlete. An error means that the
