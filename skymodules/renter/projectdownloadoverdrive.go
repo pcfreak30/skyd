@@ -132,6 +132,37 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 	return exists, late, duration, waitDuration, workerIndex
 }
 
+// findBestAvailableWorker will search for the best available worker, if any.
+func (pdc *projectDownloadChunk) findBestAvailableWorker() (*worker, uint64, time.Duration) {
+	bawAdjustedDuration := time.Duration(math.MaxInt64)
+	bawPieceIndex := 0
+	var baw *worker
+
+	for i, activePiece := range pdc.availablePieces {
+		for _, pieceDownload := range activePiece {
+			// Don't consider any workers from this piece if the piece is
+			// completed.
+			if pieceDownload.completed {
+				break
+			}
+
+			// Skip over failed pieces or pieces that have already launched.
+			if pieceDownload.downloadErr != nil || pieceDownload.launched {
+				continue
+			}
+
+			// Determine if this worker is better than any existing worker.
+			workerAdjustedDuration := pdc.adjustedReadDuration(pieceDownload.worker)
+			if workerAdjustedDuration < bawAdjustedDuration {
+				bawAdjustedDuration = workerAdjustedDuration
+				bawPieceIndex = i
+				baw = pieceDownload.worker
+			}
+		}
+	}
+	return baw, uint64(bawPieceIndex), bawAdjustedDuration
+}
+
 // findBestOverdriveWorker will search for the best worker to contribute to an
 // overdrive. The selection criteria is to select a worker that is expected to
 // be the fastest. If the fastest worker is an unresolved worker, the worker
@@ -163,33 +194,8 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	// can assume that any launched piece is already late.
 	//
 	// baw = bestAvailableWorker
-	bawAdjustedDuration := time.Duration(math.MaxInt64)
-	bawPieceIndex := 0
-	var baw *worker
-
-	for i, activePiece := range pdc.availablePieces {
-		for _, pieceDownload := range activePiece {
-			// Don't consider any workers from this piece if the piece is
-			// completed.
-			if pieceDownload.completed {
-				break
-			}
-
-			// Skip over failed pieces or pieces that have already launched.
-			if pieceDownload.downloadErr != nil || pieceDownload.launched {
-				continue
-			}
-
-			// Determine if this worker is better than any existing worker.
-			workerAdjustedDuration := pdc.adjustedReadDuration(pieceDownload.worker)
-			if workerAdjustedDuration < bawAdjustedDuration {
-				bawAdjustedDuration = workerAdjustedDuration
-				bawPieceIndex = i
-				baw = pieceDownload.worker
-			}
-		}
-	}
-
+	baw, bawPieceIndex, bawAdjustedDuration := pdc.findBestAvailableWorker()
+	
 	// Return nil if there are no workers that can be launched.
 	if !buwExists && baw == nil {
 		// All 'nil' return values, meaning the download can succeed by waiting
@@ -274,16 +280,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 
 	// If there are not enough LWF workers to complete the download, return the
 	// number of workers that need to launch in order to complete the download.
-	//
-	// The number of workers that we want is 20% more than the number of min
-	// pieces required to complete the download. We kick off a few extra workers
-	// because workers are often unstable. We are essentially trading throughput
-	// for latency, we download as much as 20% extra data, but a lagging worker
-	// here or there will no longer hold back the download. This might be worth
-	// revisiting in the future when workers are more stable, it may not be
-	// necessary.
 	workersWanted := pdc.workerSet.staticErasureCoder.MinPieces()
-	workersWanted += workersWanted / 5
 	if numLWF < workersWanted {
 		return workersWanted - numLWF, latestReturn
 	}

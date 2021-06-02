@@ -115,36 +115,43 @@ type (
 	// launched. It is used solely for debugging purposes to enable tracking the
 	// chain of events that occurred when a download has timed out or failed.
 	launchedWorkerInfo struct {
-		// pieceIndex is the index of the piece the worker is set to download,
-		// this index corresponds with the index of the `availablePieces` array
-		// on the PDC.
-		pieceIndex uint64
+		// completeTime indicates when the worker eventually completed the
+		// download
+		completeTime time.Time
 
-		// overdriveWorker indicates whether this worker was launched as one of
-		// the initial workers, or as an overdrive worker.
-		overdriveWorker bool
-
-		launchTime           time.Time
-		completeTime         time.Time
-		expectedCompleteTime time.Time
-
-		// 'jobDuration' is the total amount of time it took to complete the job
+		// jobDuration is the total amount of time it took to complete the job
 		jobDuration time.Duration
-
-		// 'totalDuration' is the total amount of time it took for the worker to
-		// complete the download since it was launched, or the time it took to
-		// fail.
-		totalDuration time.Duration
-
-		// 'expectedDuration' is the estimated amount of time for this worker to
-		// complete the download.
-		expectedDuration time.Duration
 
 		// jobErr will contain the error in case it failed.
 		jobErr error
 
-		pdc    *projectDownloadChunk
-		worker *worker
+		// totalDuration is the total amount of time it took for the worker to
+		// complete the download since it was launched, or the time it took to
+		// fail.
+		totalDuration time.Duration
+
+		// staticExpectedCompleteTime is an estimate of when we expect the
+		// worker to have completed the download.
+		staticExpectedCompleteTime time.Time
+
+		// staticExpectedDuration is the estimated amount of time for this
+		// worker to complete the download.
+		staticExpectedDuration time.Duration
+
+		// staticLaunchTime is the time at which the worker was launched
+		staticLaunchTime time.Time
+
+		// staticIsOverdriveWorker indicates whether this worker was launched as
+		// one of the initial workers, or as an overdrive worker.
+		staticIsOverdriveWorker bool
+
+		// staticPieceIndex is the index of the piece the worker is set to
+		// download, this index corresponds with the index of the
+		// `availablePieces` array on the PDC.
+		staticPieceIndex uint64
+
+		staticPDC    *projectDownloadChunk
+		staticWorker *worker
 	}
 
 	// downloadResponse is sent via a channel to the caller of
@@ -163,12 +170,12 @@ type (
 
 // String implements the String interface.
 func (lwi *launchedWorkerInfo) String() string {
-	pdcId := hex.EncodeToString(lwi.pdc.uid[:])
-	hostKey := lwi.worker.staticHostPubKey.ShortString()
-	estimate := lwi.expectedDuration.Milliseconds()
+	pdcId := hex.EncodeToString(lwi.staticPDC.uid[:])
+	hostKey := lwi.staticWorker.staticHostPubKey.ShortString()
+	estimate := lwi.staticExpectedDuration.Milliseconds()
 
 	var wDescr string
-	if lwi.overdriveWorker {
+	if lwi.staticIsOverdriveWorker {
 		wDescr = fmt.Sprintf("overdrive worker %v", hostKey)
 	} else {
 		wDescr = fmt.Sprintf("initial worker %v", hostKey)
@@ -176,9 +183,9 @@ func (lwi *launchedWorkerInfo) String() string {
 
 	// if download is not complete yet
 	if lwi.completeTime.IsZero() {
-		duration := time.Since(lwi.launchTime).Milliseconds()
+		duration := time.Since(lwi.staticLaunchTime).Milliseconds()
 
-		return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | not responded after %vms", pdcId, wDescr, lwi.pieceIndex, estimate, duration)
+		return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | not responded after %vms", pdcId, wDescr, lwi.staticPieceIndex, estimate, duration)
 	}
 
 	// if download is complete
@@ -192,7 +199,7 @@ func (lwi *launchedWorkerInfo) String() string {
 	totalDur := lwi.totalDuration.Milliseconds()
 	jobDur := lwi.jobDuration.Milliseconds()
 
-	return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | responded after %vms | read job took %vms | %v", pdcId, wDescr, lwi.pieceIndex, estimate, totalDur, jobDur, jDescr)
+	return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | responded after %vms | read job took %vms | %v", pdcId, wDescr, lwi.staticPieceIndex, estimate, totalDur, jobDur, jDescr)
 }
 
 // successful is a small helper method that returns whether the piece was
@@ -256,7 +263,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	launchedWorker.completeTime = time.Now()
 	launchedWorker.jobDuration = jrr.staticJobTime
 	launchedWorker.jobErr = jrr.staticErr
-	launchedWorker.totalDuration = time.Since(launchedWorker.launchTime)
+	launchedWorker.totalDuration = time.Since(launchedWorker.staticLaunchTime)
 
 	// Check whether the job failed.
 	if jrr.staticErr != nil {
@@ -447,15 +454,15 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	// Track the launched worker
 	if added {
 		pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
-			pieceIndex:      pieceIndex,
-			overdriveWorker: isOverdrive,
+			staticPieceIndex:        pieceIndex,
+			staticIsOverdriveWorker: isOverdrive,
 
-			launchTime:           time.Now(),
-			expectedCompleteTime: expectedCompleteTime,
-			expectedDuration:     time.Until(expectedCompleteTime),
+			staticLaunchTime:           time.Now(),
+			staticExpectedCompleteTime: expectedCompleteTime,
+			staticExpectedDuration:     time.Until(expectedCompleteTime),
 
-			pdc:    pdc,
-			worker: w,
+			staticPDC:    pdc,
+			staticWorker: w,
 		})
 	}
 
@@ -486,6 +493,28 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 // If workers fail or are late, additional workers will be launched to ensure
 // that the download still completes.
 func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
+	// Immediately when the overdrive kicks in, we want to launch a couple of
+	// extra workers. We launch 20% of the total amount of workers necessary
+	// extra. We are essentially trading throughput for latency, we download as
+	// much as 20% extra data, but a lagging worker here or there will no longer
+	// hold back the download.
+	//
+	// NOTE: we want to launch workers immediately, and thus don't wait for the
+	// best workers but rather launch the best workers we have that are
+	// available right now.
+	extraWorkers := pdc.workerSet.staticErasureCoder.MinPieces() / 5
+	if extraWorkers == 0 {
+		extraWorkers = 1
+	}
+	for extraWorkers > 0 {
+		extraWorkers--
+		worker, pieceIndex, _ := pdc.findBestAvailableWorker()
+		if worker == nil {
+			break
+		}
+		pdc.launchWorker(worker, pieceIndex, true)
+	}
+
 	// Loop until the download has either failed or completed.
 	for {
 		// Check whether the download is comlete. An error means that the

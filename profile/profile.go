@@ -25,6 +25,10 @@ var (
 	memLock     sync.Mutex
 	traceActive bool
 	traceLock   sync.Mutex
+
+	// profileActive indicates if the profile is active.
+	profileActive   bool
+	profileActiveMu sync.Mutex
 )
 
 var (
@@ -167,10 +171,17 @@ func startContinuousLog(dir string, sleepCap time.Duration, restart func()) {
 		// Collect statistics in an infinite loop.
 		sleepTime := time.Second * 10
 		for {
+			// Check if the profile is still active
+			if !isProfileActive() {
+				return
+			}
+
+			// Profile is still running, trigger the reset func
+			restart()
+
 			// Sleep for an exponential amount of time each iteration, this
 			// keeps the size of the log small while still providing lots of
 			// information.
-			restart()
 			time.Sleep(sleepTime)
 			sleepTime = time.Duration(1.2 * float64(sleepTime))
 			if sleepCap != 0*time.Second && sleepTime > sleepCap {
@@ -188,6 +199,9 @@ func startContinuousLog(dir string, sleepCap time.Duration, restart func()) {
 // logger. Select one (recommended) or more functionalities by passing the
 // corresponding flag(s)
 func StartContinuousProfile(profileDir string, profileCPU bool, profileMem bool, profileTrace bool) {
+	// Activate the profile
+	activateProfile()
+
 	sleepCap := 0 * time.Second // Unlimited.
 	if profileTrace && sleepCap == 0 {
 		sleepCap = 10 * time.Minute
@@ -205,4 +219,32 @@ func StartContinuousProfile(profileDir string, profileCPU bool, profileMem bool,
 			StartTrace(profileDir, "continuousProfileTrace")
 		}
 	})
+}
+
+// StopContinuousProfile stops the profiling of the node
+func StopContinuousProfile() {
+	deactivateProfile()
+	StopCPUProfile()
+	StopTrace()
+}
+
+// activateProfile marks the profile as active
+func activateProfile() {
+	profileActiveMu.Lock()
+	defer profileActiveMu.Unlock()
+	profileActive = true
+}
+
+// deactivateProfile marks the profile as not active
+func deactivateProfile() {
+	profileActiveMu.Lock()
+	defer profileActiveMu.Unlock()
+	profileActive = false
+}
+
+// isProfileActive returns whether or not the profile is active.
+func isProfileActive() bool {
+	profileActiveMu.Lock()
+	defer profileActiveMu.Unlock()
+	return profileActive
 }

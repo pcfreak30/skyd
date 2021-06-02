@@ -195,6 +195,12 @@ type (
 		Data      []byte             `json:"data"`
 	}
 
+	// SkylinkResolveGET is the response returned by the /skylink/resolve
+	// endpoint.
+	SkylinkResolveGET struct {
+		Skylink string `json:"skylink"`
+	}
+
 	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
 	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error
@@ -661,7 +667,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.RawMetadata(), streamer.Layout(), offset, size)
+		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.RawMetadata(), streamer.Skylink(), streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -685,7 +691,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
 			return
 		}
-		streamer, err = NewLimitStreamer(streamer, metadataForPath, rawMetadataForPath, streamer.Layout(), offset, size)
+		streamer, err = NewLimitStreamer(streamer, metadataForPath, rawMetadataForPath, streamer.Skylink(), streamer.Layout(), offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -710,7 +716,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	w.Header().Set("Skynet-Skylink", skylink.String())
 
 	// Set the ETag response header
-	eTag := buildETag(skylink, req.Method, path, format)
+	//
+	// NOTE: we use the Skylink returned by the streamer to buid the ETag with,
+	// this is very important as the incoming skylink might have been a V2
+	// skylink that got resolved to a v1 skylink. We don't want to build the
+	// ETag on the V2 skylink as that is constant, even though the data might
+	// change.
+	eTag := buildETag(streamer.Skylink(), req.Method, path, format)
 	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
 
 	// Set the Layout
@@ -1456,6 +1468,53 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		Data:      hex.EncodeToString(srv.Data),
 		Revision:  srv.Revision,
 		Signature: hex.EncodeToString(srv.Signature[:]),
+	})
+}
+
+// skylinkResolveGET handles the GET calls to /skylink/resolve/:skylink.
+func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse Skylink
+	var sl skymodules.Skylink
+	err := sl.LoadString(ps.ByName("skylink"))
+	if err != nil {
+		WriteError(w, Error{"Unable to parse skylink" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	if !sl.IsSkylinkV2() {
+		if err != nil {
+			WriteError(w, Error{"Can only resolve v2 skylinks" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse the timeout.
+	timeout := renter.MaxRegistryReadTimeout
+	timeoutStr := req.FormValue("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Resolve skylink.
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+	slV1, err := api.renter.ResolveSkylinkV2(ctx, sl)
+	if err != nil {
+		handleSkynetError(w, "Failed to resolve skylink", err)
+		return
+	}
+
+	// Send response.
+	WriteJSON(w, SkylinkResolveGET{
+		Skylink: slV1.String(),
 	})
 }
 

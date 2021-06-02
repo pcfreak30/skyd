@@ -104,14 +104,21 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 
 	// Get a siapath.
 	sp := skymodules.RandomSkynetFilePath()
-	upload.fi.MetaData["SiaPath"] = sp.String()
+
+	// Get the filename from either the metadata or path.
+	fileName := sp.Name()
+	fileNameMD, fileNameFound := upload.fi.MetaData["filename"]
+	if fileNameFound {
+		fileName = fileNameMD
+	}
+	fileType := upload.fi.MetaData["filetype"]
 
 	// Create the skyfile upload params.
 	// TODO: use info.metadata to create skyfileuploadparameters different from
 	// the default.
 	upload.staticSUP = skymodules.SkyfileUploadParameters{
 		SiaPath:             sp,
-		Filename:            sp.Name(),
+		Filename:            fileName,
 		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
 	}
 	sup := upload.staticSUP
@@ -121,6 +128,13 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 		Filename:     sup.Filename,
 		Mode:         sup.Mode,
 		Monetization: sup.Monetization,
+		Subfiles: skymodules.SkyfileSubfiles{
+			sup.Filename: skymodules.SkyfileSubfileMetadata{
+				Filename:    fileName,
+				ContentType: fileType,
+				Offset:      0,
+			},
+		},
 	}
 
 	// Create the FileUploadParams
@@ -226,6 +240,9 @@ func (u *skynetTUSUpload) tryUploadSmallFile(reader io.Reader) ([]byte, bool, er
 	// prepare the metadata.
 	sm := u.sm
 	sm.Length = uint64(numBytes)
+	ssm := sm.Subfiles[sm.Filename]
+	ssm.Len = sm.Length
+	sm.Subfiles[sm.Filename] = ssm
 
 	// check whether it's valid
 	err = skymodules.ValidateSkyfileMetadata(sm)
@@ -253,10 +270,17 @@ func (u *skynetTUSUpload) tryUploadSmallFile(reader io.Reader) ([]byte, bool, er
 }
 
 // WriteChunk writes the chunk to the provided offset.
-func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (int64, error) {
+func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (n int64, err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	uploader := u.staticUploader
+
+	// Update the lastWrite time if more than 0 bytes were written.
+	defer func() {
+		if n > 0 {
+			u.lastWrite = time.Now()
+		}
+	}()
 
 	// If the offset is 0, we try to determine if the upload is large or small.
 	if offset == 0 {
@@ -265,7 +289,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 			return 0, err
 		}
 		// If it is a small file we are done.
-		n := int64(len(buf))
+		n = int64(len(buf))
 		if smallFile {
 			u.fi.Offset += n
 			return n, nil
@@ -314,16 +338,11 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	// Upload.
 	onlyOnePieceNeeded := ec.MinPieces() == 1 && fileNode.MasterKey().Type() == crypto.TypePlain
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
-	n, err := uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, cr, offset)
+	n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, cr, offset)
 
 	// Increment offset and append fanout.
 	u.fi.Offset += n
 	u.fanout = append(u.fanout, cr.Fanout()...)
-
-	// Update the lastWrite time if more than 0 bytes were written.
-	if n > 0 {
-		u.lastWrite = time.Now()
-	}
 	return n, err
 }
 
@@ -350,6 +369,9 @@ func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymod
 	sup := u.staticSUP
 	sm := u.sm
 	sm.Length = uint64(u.fi.Size)
+	ssm := sm.Subfiles[sm.Filename]
+	ssm.Len = sm.Length
+	sm.Subfiles[sm.Filename] = ssm
 	err = skymodules.ValidateSkyfileMetadata(sm)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "metadata is invalid")

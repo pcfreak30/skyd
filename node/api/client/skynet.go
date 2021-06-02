@@ -123,11 +123,13 @@ func (c *Client) SkynetTUSNewUploadFromBytes(data []byte, chunkSize int64) (*tus
 
 // SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
 // and the specified chunkSize.
-func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string, error) {
+func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64, fileName, fileType string) (string, error) {
 	tc, upload, err := c.SkynetTUSNewUploadFromBytes(data, chunkSize)
 	if err != nil {
 		return "", err
 	}
+	upload.Metadata["filename"] = fileName
+	upload.Metadata["filetype"] = fileType
 	uploader, err := tc.CreateUpload(upload)
 	if err != nil {
 		return "", err
@@ -819,6 +821,26 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 // RegistryRead queries the /skynet/registry [GET] endpoint.
 func (c *Client) RegistryRead(spk types.SiaPublicKey, dataKey crypto.Hash) (modules.SignedRegistryValue, error) {
 	return c.RegistryReadWithTimeout(spk, dataKey, 0)
+}
+
+// ResolveSkylinkV2 queries the /skynet/resolve/:skylink [GET] endpoint.
+func (c *Client) ResolveSkylinkV2(skylink string) (string, error) {
+	return c.ResolveSkylinkV2WithTimeout(skylink, 0)
+}
+
+// ResolveSkylinkV2WithTimeout queries the /skynet/resolve/:skylink [GET]
+// endpoint.
+func (c *Client) ResolveSkylinkV2WithTimeout(skylink string, timeout time.Duration) (string, error) {
+	// Set the values.
+	values := url.Values{}
+	if timeout > 0 {
+		values.Set("timeout", fmt.Sprint(int(timeout.Seconds())))
+	}
+
+	// Send request.
+	var srg api.SkylinkResolveGET
+	err := c.get(fmt.Sprintf("/skynet/resolve/%v?%v", skylink, values.Encode()), &srg)
+	return srg.Skylink, err
 }
 
 // RegistryReadWithTimeout queries the /skynet/registry [GET] endpoint with the

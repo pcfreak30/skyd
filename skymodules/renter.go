@@ -1270,6 +1270,9 @@ type Renter interface {
 	// used.
 	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error)
 
+	// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
+	ResolveSkylinkV2(ctx context.Context, sl Skylink) (Skylink, error)
+
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
 	ScoreBreakdown(entry HostDBEntry) (HostScoreBreakdown, error)
@@ -1344,10 +1347,6 @@ type Renter interface {
 
 	// Skykeys returns a slice containing each Skykey being stored by the renter.
 	Skykeys() ([]skykey.Skykey, error)
-
-	// BatchSkyfile will submit a skyfile to the batch manager to be uploaded as
-	// a batch to skynet.
-	BatchSkyfile(sup SkyfileUploadParameters, reader SkyfileUploadReader) (Skylink, error)
 
 	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector skyfile needs to be uploaded
@@ -1439,6 +1438,7 @@ type SkyfileStreamer interface {
 	Layout() SkyfileLayout
 	Metadata() SkyfileMetadata
 	RawMetadata() []byte
+	Skylink() Skylink
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's
