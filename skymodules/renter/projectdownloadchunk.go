@@ -512,7 +512,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		if worker == nil {
 			break
 		}
-		fmt.Println("launch immediate", dur)
+		fmt.Println("launch immediate", dur, pieceIndex)
 		pdc.launchWorker(worker, pieceIndex, true)
 	}
 
