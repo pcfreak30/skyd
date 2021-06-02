@@ -504,7 +504,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 	// available right now.
 	extraWorkers := pdc.workerSet.staticErasureCoder.MinPieces() / 5
 	if extraWorkers == 0 {
-		extraWorkers = 1
+		extraWorkers = 2
 	}
 	for extraWorkers > 0 {
 		extraWorkers--
