@@ -189,9 +189,9 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// Add the unresolved worker penalty. This penalty increases every
 		// iteration, as long as we have not launched the initial workers. By
 		// doing so we essentially favor resolved workers more and more as time
-		// passes, ensuring we are not blocking on an unresolved worker. 
+		// passes, ensuring we are not blocking on an unresolved worker.
 		resolveTime = resolveTime.Add(unresolvedWorkersPenalty)
-		
+
 		// Determine the expected readDuration and cost for this worker. Add the
 		// readDuration to the hasSectorTime to get the full complete time for
 		// the download.
