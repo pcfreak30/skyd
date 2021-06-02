@@ -211,6 +211,19 @@ func (pd *pieceDownload) successful() bool {
 	return pd.completed && pd.downloadErr == nil
 }
 
+func (pdc *projectDownloadChunk) resolvedAvailWorkers() uint64 { 
+	ws := pdc.workerState
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	var avail uint64
+	for _, w := range ws.resolvedWorkers {
+		if len(w.pieceIndices) > 0 {
+			avail++
+		}
+	}
+	return avail
+}
 // unresolvedWorkers will return the set of unresolved workers from the worker
 // state of the pdc. This operation will also update the set of available pieces
 // within the pdc to reflect any previously unresolved workers that are now

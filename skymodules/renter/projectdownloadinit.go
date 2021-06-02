@@ -151,7 +151,7 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // cooldown for the read job. The worker heap optimizes for speed, not cost.
 // Cost is taken into account at a later point where the initial worker set is
 // built.
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
+func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker, unresolvedWorkersPenalty time.Duration) pdcWorkerHeap {
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
@@ -178,14 +178,14 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		}
 
 		// Fetch the resolveTime, which is the time until the HS job is expected
-		// to resolve. If that time is in the past, add a penalty that assumes
-		// that there is some unusual circumstance preventing the worker from
-		// being on time and that it may be another while before the worker
-		// resolves; favor some other worker instead.
+		// to resolve.
 		resolveTime := uw.staticExpectedResolvedTime
-		if resolveTime.Before(time.Now()) {
-			resolveTime = time.Now().Add(2 * time.Since(resolveTime))
-		}
+
+		// Add the unresolved worker penalty. This penalty increases every
+		// iteration, as long as we have not launched the initial workers. By
+		// doing so we essentially favor resolved workers more and more as time
+		// passes, ensuring we are not blocking on an unresolved worker.
+		resolveTime = resolveTime.Add(unresolvedWorkersPenalty)
 
 		// Determine the expected readDuration and cost for this worker. Add the
 		// readDuration to the hasSectorTime to get the full complete time for
@@ -545,9 +545,12 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		// newly returned set of values.
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
 
+		numAvailWorkers := pdc.resolvedAvailWorkers()
+
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+		unresolvedWorkersPenalty := time.Since(start) * time.Duration(numAvailWorkers)
+		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkersPenalty)
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
