@@ -902,6 +902,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		handleSkynetError(w, "failed to pin file to skynet", err)
 		return
 	}
+	w.Header().Set("Skynet-Skylink", skylink.String())
 	WriteSuccess(w)
 }
 
