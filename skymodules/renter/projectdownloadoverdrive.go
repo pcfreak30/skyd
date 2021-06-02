@@ -331,7 +331,11 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 
 	// All needed overdrive workers have been launched. No need to try again
 	// until the current set of workers are late.
-	return nil, time.After(time.Until(latestReturn))
+	currWorkersLate := time.Until(latestReturn)
+	if currWorkersLate > 100*time.Millisecond {
+		currWorkersLate = 100 * time.Millisecond
+	}
+	return nil, time.After(currWorkersLate)
 }
 
 // addCostPenalty takes a certain job time and adds a penalty to it depending on
