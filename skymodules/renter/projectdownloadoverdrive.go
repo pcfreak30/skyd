@@ -195,7 +195,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	//
 	// baw = bestAvailableWorker
 	baw, bawPieceIndex, bawAdjustedDuration := pdc.findBestAvailableWorker()
-	
+
 	// Return nil if there are no workers that can be launched.
 	if !buwExists && baw == nil {
 		// All 'nil' return values, meaning the download can succeed by waiting
@@ -278,9 +278,15 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 		}
 	}
 
-	// If there are not enough LWF workers to complete the download, return the
-	// number of workers that need to launch in order to complete the download.
+	// The number of workers that we want is 10% more than the number of min
+	// pieces required to complete the download. We kick off a few extra workers
+	// because workers are often unstable. We are essentially trading throughput
+	// for latency, we download as much as 10% extra data, but a lagging worker
+	// here or there will no longer hold back the download. This might be worth
+	// revisiting in the future when workers are more stable, it may not be
+	// necessary.
 	workersWanted := pdc.workerSet.staticErasureCoder.MinPieces()
+	workersWanted += workersWanted / 10
 	if numLWF < workersWanted {
 		return workersWanted - numLWF, latestReturn
 	}
