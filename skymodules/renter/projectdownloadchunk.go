@@ -508,10 +508,11 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 	}
 	for extraWorkers > 0 {
 		extraWorkers--
-		worker, pieceIndex, _ := pdc.findBestAvailableWorker()
+		worker, pieceIndex, dur := pdc.findBestAvailableWorker()
 		if worker == nil {
 			break
 		}
+		fmt.Println("launch immediate", dur)
 		pdc.launchWorker(worker, pieceIndex, true)
 	}
 
