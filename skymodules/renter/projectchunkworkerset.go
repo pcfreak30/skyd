@@ -528,6 +528,16 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
+	// Immediately after launching the initial workers, we want to launch a
+	// couple of overdrive workers. We launch 20% of the total amount of workers
+	// necessary extra, and at a minimum 2 extra. We are essentially trading
+	// throughput for latency, we download as much as 20% extra data, but a
+	// lagging worker here or there will no longer hold back the download.
+	immediateOverdriveWorkers := pcws.staticErasureCoder.MinPieces() / 5
+	if immediateOverdriveWorkers == 0 {
+		immediateOverdriveWorkers = 2
+	}
+
 	// Build the full pdc.
 	pdc := &projectDownloadChunk{
 		offsetInChunk: offset,
@@ -540,6 +550,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 		availablePieces: make([][]*pieceDownload, ec.NumPieces()),
 		dataPieces:      make([][]byte, ec.NumPieces()),
+
+		immediateOverdriveWorkers: immediateOverdriveWorkers,
 
 		ctx:                  ctx,
 		workerResponseChan:   workerResponseChan,
