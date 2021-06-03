@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -47,6 +46,16 @@ type (
 // for the worker.
 func (wls *workerLoopState) staticSerialJobRunning() bool {
 	return atomic.LoadUint64(&wls.atomicSerialJobRunning) == 1
+}
+
+// staticAsyncDataLimitReached indicates whether a worker has reached its
+// asynchronous data limit, at which time we're not scheduling extra async jobs.
+func (wls *workerLoopState) staticAsyncDataLimitReached() bool {
+	readLimit := atomic.LoadUint64(&wls.atomicReadDataLimit)
+	writeLimit := atomic.LoadUint64(&wls.atomicWriteDataLimit)
+	readOutstanding := atomic.LoadUint64(&wls.atomicReadDataOutstanding)
+	writeOutstanding := atomic.LoadUint64(&wls.atomicWriteDataOutstanding)
+	return readOutstanding > readLimit || writeOutstanding > writeLimit
 }
 
 // externLaunchSerialJob will launch a serial job for the worker, ensuring that
@@ -190,6 +199,11 @@ func (w *worker) managedAsyncReady() bool {
 		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
 		return false
 	}
+
+	if w.staticLoopState.staticAsyncDataLimitReached() {
+		return false
+	}
+
 	return true
 }
 
@@ -210,13 +224,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 
 	// Verify that the worker has not reached its limits for doing multiple
 	// jobs at once.
-	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	writeLimit := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataLimit)
-	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
-	if readOutstanding > readLimit || writeOutstanding > writeLimit {
-		fmt.Println("read limit hit", readOutstanding > readLimit)
-		fmt.Println("write limit hit", writeOutstanding > writeLimit)
+	if w.staticLoopState.staticAsyncDataLimitReached() {
 		// Worker does not need to discard jobs, it is making progress, it's
 		// just not launching any new jobs until its current jobs finish up.
 		return false
