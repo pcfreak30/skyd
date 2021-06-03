@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -214,6 +215,8 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
 	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
 	if readOutstanding > readLimit || writeOutstanding > writeLimit {
+		fmt.Println("read limit hit", readOutstanding > readLimit)
+		fmt.Println("write limit hit", writeOutstanding > writeLimit)
 		// Worker does not need to discard jobs, it is making progress, it's
 		// just not launching any new jobs until its current jobs finish up.
 		return false
