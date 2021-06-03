@@ -492,6 +492,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	w := new(worker)
 	w.newCache()
 	w.newPriceTable()
+	w.newWorkerLoopState()
 	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
 

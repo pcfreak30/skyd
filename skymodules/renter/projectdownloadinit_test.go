@@ -73,6 +73,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 		w := new(worker)
 		w.atomicCache = unsafe.Pointer(new(workerCache))
 		w.staticHostPubKeyStr = hostName
+		w.newWorkerLoopState()
 		w.newMaintenanceState()
 		pt := &workerPriceTable{
 			staticExpiryTime: time.Now().Add(time.Minute),
