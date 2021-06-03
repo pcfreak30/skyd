@@ -221,7 +221,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
 		pb.V154AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	} else {
-		pb.AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
+		pb.V156AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	}
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)

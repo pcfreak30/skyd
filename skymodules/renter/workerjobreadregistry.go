@@ -97,9 +97,9 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 		build.Critical(err)
 		return nil, err
 	} else if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 {
-		refund, err = pb.AddReadRegistryInstruction(*spk, *tweak)
+		refund, err = pb.V156AddReadRegistryInstruction(*spk, *tweak)
 	} else {
-		refund, err = pb.AddReadRegistryEIDInstruction(sid, needPKAndTweak)
+		refund, err = pb.V156AddReadRegistryEIDInstruction(sid, needPKAndTweak)
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to add read registry instruction")
