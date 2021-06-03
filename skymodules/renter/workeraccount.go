@@ -632,7 +632,10 @@ func (w *worker) managedRefillAccount() {
 	// the max expected balance when refilling to avoid exceeding any host
 	// maximums.
 	balance := w.staticAccount.managedMaxExpectedBalance()
-	amount := w.staticBalanceTarget.Sub(balance)
+	amount := types.ZeroCurrency
+	if w.staticBalanceTarget.Cmp(balance) > 0 {
+		amount = w.staticBalanceTarget.Sub(balance)
+	}
 	pt := w.staticPriceTable().staticPriceTable
 
 	// If the target amount is larger than the remaining money, adjust the

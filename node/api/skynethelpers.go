@@ -522,6 +522,14 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 		WriteError(w, httpErr, http.StatusNotFound)
 		return
 	}
+	if errors.Contains(err, skymodules.ErrMalformedSkylink) {
+		WriteError(w, httpErr, http.StatusBadRequest)
+		return
+	}
+	if errors.Contains(err, renter.ErrInvalidSkylinkVersion) {
+		WriteError(w, httpErr, http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		WriteError(w, httpErr, http.StatusInternalServerError)
 		return
