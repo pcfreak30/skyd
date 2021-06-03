@@ -58,6 +58,19 @@ func (wls *workerLoopState) staticAsyncDataLimitReached() bool {
 	return readOutstanding > readLimit || writeOutstanding > writeLimit
 }
 
+// newWorkerLoopState initializes the read and write limits for the async worker
+// tasks. These may be updated in real time as the worker collects metrics about
+// itself.
+func (w *worker) newWorkerLoopState() {
+	if w.staticLoopState != nil {
+		w.staticRenter.staticLog.Critical("workerloopstate already exists")
+	}
+	w.staticLoopState = &workerLoopState{
+		atomicReadDataLimit:  initialConcurrentAsyncReadData,
+		atomicWriteDataLimit: initialConcurrentAsyncWriteData,
+	}
+}
+
 // externLaunchSerialJob will launch a serial job for the worker, ensuring that
 // exclusivity is handled correctly.
 //
@@ -194,13 +207,14 @@ func (w *worker) managedAsyncReady() bool {
 		return false
 	}
 
-	// RHP3 must not be on cooldown to perform async tasks.
-	if w.managedOnMaintenanceCooldown() {
-		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
+	// The worker should not have reached its async data limits.
+	if w.staticLoopState.staticAsyncDataLimitReached() {
 		return false
 	}
 
-	if w.staticLoopState.staticAsyncDataLimitReached() {
+	// RHP3 must not be on cooldown to perform async tasks.
+	if w.managedOnMaintenanceCooldown() {
+		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
 		return false
 	}
 

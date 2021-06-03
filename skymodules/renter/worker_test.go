@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -198,7 +199,6 @@ func TestManagedAsyncReady(t *testing.T) {
 	w.initJobLowPrioReadQueue()
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
-
 	timeInFuture := time.Now().Add(time.Hour)
 	timeInPast := time.Now().Add(-time.Hour)
 
@@ -208,6 +208,9 @@ func TestManagedAsyncReady(t *testing.T) {
 
 	// ensure the worker has a maintenancestate, by default it will pass
 	w.newMaintenanceState()
+
+	// ensure the worker has a loop state
+	w.newWorkerLoopState()
 
 	// verify worker is considered async ready
 	if !w.managedAsyncReady() {
@@ -225,6 +228,16 @@ func TestManagedAsyncReady(t *testing.T) {
 	badWorkerMaintenanceState := w
 	badWorkerMaintenanceState.staticMaintenanceState.cooldownUntil = timeInFuture
 	if badWorkerMaintenanceState.managedAsyncReady() {
+		t.Fatal("unexpected")
+	}
+
+	// tweak the worker loop state making it non ready by exceeding the
+	// outstanding async data limit
+	badWorkerLoopState := w
+	wsl := badWorkerLoopState.staticLoopState
+	limit := atomic.LoadUint64(&wsl.atomicReadDataLimit)
+	atomic.StoreUint64(&wsl.atomicReadDataOutstanding, limit+1)
+	if badWorkerLoopState.managedAsyncReady() {
 		t.Fatal("unexpected")
 	}
 }
