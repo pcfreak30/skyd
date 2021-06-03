@@ -300,6 +300,8 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate ti
 	if !jq.add(j) {
 		return time.Time{}, errors.New("unable to add job to queue")
 	}
+
+	estimate += jq.staticWorker().staticAsyncQueueTimeEstimate()
 	return now.Add(estimate), nil
 }
 

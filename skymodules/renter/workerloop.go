@@ -58,6 +58,27 @@ func (wls *workerLoopState) staticAsyncDataLimitReached() bool {
 	return readOutstanding > readLimit || writeOutstanding > writeLimit
 }
 
+// staticAsyncDataLimitReached indicates whether a worker has reached its
+// asynchronous data limit, at which time we're not scheduling extra async jobs.
+func (w *worker) staticAsyncDataLimitReached() bool {
+	return w.staticLoopState.staticAsyncDataLimitReached()
+}
+
+// staticAsyncQueueTimeEstimate returns the time estimated a new async job will
+// sit in queue before being executed.
+//
+// TODO: this should extended with an actual estimate, for now though we only
+// want to ensure that when a worker has reached its async data limit, it is
+// reflected in the estimates as they're used in the download code. This is why
+// we're defaulting to a very conservative estimate of 1s that should ensure
+// this worker is very unlikely to be selected.
+func (w *worker) staticAsyncQueueTimeEstimate() time.Duration {
+	if w.staticAsyncDataLimitReached() {
+		return time.Second
+	}
+	return 0
+}
+
 // newWorkerLoopState initializes the read and write limits for the async worker
 // tasks. These may be updated in real time as the worker collects metrics about
 // itself.
@@ -204,11 +225,6 @@ func (w *worker) managedAsyncReady() bool {
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
 		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
-		return false
-	}
-
-	// The worker should not have reached its async data limits.
-	if w.staticLoopState.staticAsyncDataLimitReached() {
 		return false
 	}
 

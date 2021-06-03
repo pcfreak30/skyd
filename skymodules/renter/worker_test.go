@@ -190,6 +190,23 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	}
 }
 
+// TestAsyncDataLimitRead is a unit test that verifies
+// staticAsyncDataLimitReached
+func TestAsyncDataLimitRead(t *testing.T) {
+	w := new(worker)
+	w.newWorkerLoopState()
+	if w.staticAsyncDataLimitReached() {
+		t.Fatal("unexpected")
+	}
+
+	wsl := w.staticLoopState
+	limit := atomic.LoadUint64(&wsl.atomicReadDataLimit)
+	atomic.StoreUint64(&wsl.atomicReadDataOutstanding, limit+1)
+	if !w.staticAsyncDataLimitReached() {
+		t.Fatal("unexpected")
+	}
+}
+
 // TestManagedAsyncReady is a unit test that probes the 'managedAsyncReady'
 // function on the worker
 func TestManagedAsyncReady(t *testing.T) {
@@ -228,16 +245,6 @@ func TestManagedAsyncReady(t *testing.T) {
 	badWorkerMaintenanceState := w
 	badWorkerMaintenanceState.staticMaintenanceState.cooldownUntil = timeInFuture
 	if badWorkerMaintenanceState.managedAsyncReady() {
-		t.Fatal("unexpected")
-	}
-
-	// tweak the worker loop state making it non ready by exceeding the
-	// outstanding async data limit
-	badWorkerLoopState := w
-	wsl := badWorkerLoopState.staticLoopState
-	limit := atomic.LoadUint64(&wsl.atomicReadDataLimit)
-	atomic.StoreUint64(&wsl.atomicReadDataOutstanding, limit+1)
-	if badWorkerLoopState.managedAsyncReady() {
 		t.Fatal("unexpected")
 	}
 }
