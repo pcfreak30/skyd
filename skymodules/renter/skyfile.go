@@ -780,6 +780,17 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 // PinSkylink will fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
 func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) error {
+	err := r.tg.Add()
+	if err != nil {
+		return err
+	}
+	defer r.tg.Done()
+
+	// Check if link is v2.
+	if skylink.IsSkylinkV2() {
+		return errors.New("can't pin version 2 skylink")
+	}
+
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return ErrSkylinkBlocked
