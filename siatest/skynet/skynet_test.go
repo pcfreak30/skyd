@@ -5016,6 +5016,20 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64,
 	}
 	siaPath = sup.SiaPath
 
+	// Try pinning the link as v2. Shouldn't work.
+	var slV1 skymodules.Skylink
+	err = slV1.LoadString(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slV2, err := p1.NewSkylinkV2(slV1)
+	err = p1.SkynetSkylinkPinPost(slV2.String(), skymodules.SkyfilePinParameters{
+		SiaPath: skymodules.RandomSiaPath(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "can't pin version 2 skylink") {
+		t.Fatal(err)
+	}
+
 	// Pin to the other portal a random number of times.
 	//
 	// This will test the case of the skylink being associated with multiple
@@ -5077,6 +5091,11 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64,
 		t.Fatal(err)
 	}
 
+	// Unpin the v2 skylink. Shouldn't work.
+	err = p1.SkynetSkylinkUnpinPost(slV2.String())
+	if err == nil || !strings.Contains(err.Error(), "can't unpin version 2 skylink") {
+		t.Fatal(err)
+	}
 	// Verify that all the siafiles have been deleted on both portals
 	err = fileCheck(0, 0)
 	if err != nil {
