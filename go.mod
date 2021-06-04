@@ -23,7 +23,7 @@ require (
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
 	gitlab.com/NebulousLabs/errors v0.0.0-20200929122200-06c536cf6975
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
-	gitlab.com/NebulousLabs/log v0.0.0-20200604091839-0ba4a941cdc2
+	gitlab.com/NebulousLabs/log v0.0.0-20210525183242-36461cfd56ab
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200811080431-99b8f0768b2e
 	gitlab.com/NebulousLabs/siamux v0.0.0-20210409140711-e667c5f458e4
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
