@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 )
@@ -101,6 +102,11 @@ func (r *Renter) UnpinSkylink(skylink skymodules.Skylink) error {
 		return err
 	}
 	defer r.tg.Done()
+
+	// Check if link is v2.
+	if skylink.IsSkylinkV2() {
+		return errors.New("can't unpin version 2 skylink")
+	}
 
 	// Check if skylink is blocked. If it is we can return early since the bubble
 	// code will handle deletion of blocked files.
