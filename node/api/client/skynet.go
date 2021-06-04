@@ -179,6 +179,15 @@ func (uc *UnsafeClient) SkynetSkyfilePostRawResponse(sup skymodules.SkyfileUploa
 	return uc.postRawResponse(query, sup.Reader)
 }
 
+// SkynetSkylinkPinPostRawResponse uses the /skynet/pin endpoint to pin the file
+// at the given skylink. This function is unsafe as it returns the raw response
+// alongside the http headers.
+func (uc *UnsafeClient) SkynetSkylinkPinPostRawResponse(skylink string, spp skymodules.SkyfilePinParameters) (http.Header, []byte, error) {
+	values := urlValuesFromSkyfilePinParameters(spp)
+	query := fmt.Sprintf("/skynet/pin/%s?%s", skylink, values.Encode())
+	return uc.postRawResponse(query, nil)
+}
+
 // RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
 func (c *Client) RenterSkyfileGet(siaPath skymodules.SiaPath, root bool) (rf api.RenterFile, err error) {
 	if !root {
