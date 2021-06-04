@@ -534,4 +534,5 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 		WriteError(w, httpErr, http.StatusInternalServerError)
 		return
 	}
+	panic("should never be reached")
 }
