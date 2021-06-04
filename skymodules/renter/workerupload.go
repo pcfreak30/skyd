@@ -152,12 +152,12 @@ func (w *worker) managedHasUploadJob() bool {
 func (w *worker) managedPerformUploadChunkJob() {
 	// Fetch any available chunk for uploading. If no chunk is found, return
 	// false.
-	uploadLogger := w.staticRenter.staticLog.WithTags(w.staticHostPubKeyStr, "managedPerformUploadChunkJob")
+	log := w.staticRenter.staticLog
 	w.mu.Lock()
 	nextChunk := w.unprocessedChunks.Pop()
 	w.mu.Unlock()
 	if nextChunk == nil {
-		uploadLogger.Println("nextChunk == nil")
+		log.Println(w.staticHostPubKeyStr, "nextChunk == nil")
 		return
 	}
 
@@ -168,7 +168,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 		// If the chunk was canceled then we drop the chunk. This will decrement the
 		// chunk's remainingWorkers and perform any clean up work necessary
 		w.managedDropChunk(nextChunk)
-		uploadLogger.Println("nextChunk is canceled")
+		log.Println(w.staticHostPubKeyStr, "nextChunk is canceled")
 		return
 	}
 	// Add this worker to the chunk's cancelWG for the duration of this method.
@@ -180,7 +180,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// because there may be more chunks in the queue.
 	uc, pieceIndex := w.managedProcessUploadChunk(nextChunk)
 	if uc == nil {
-		uploadLogger.Println("chunk not necessary")
+		log.Println(w.staticHostPubKeyStr, "chunk not necessary")
 		return
 	}
 	// Open an editing connection to the host.
@@ -188,7 +188,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to acquire an editor: %v", err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
-		uploadLogger.Println("Session failed", failureErr.Error())
+		log.Println(w.staticHostPubKeyStr, "Session failed", failureErr.Error())
 		return
 	}
 	defer func() {
@@ -204,7 +204,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	if err != nil && !w.staticRenter.staticDeps.Disrupt("DisableUploadGouging") {
 		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
-		uploadLogger.Println("upload gouging failed", failureErr.Error())
+		log.Println(w.staticHostPubKeyStr, "upload gouging failed", failureErr.Error())
 		return
 	}
 
@@ -218,7 +218,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	if err != nil && !ignoreErr {
 		failureErr := fmt.Errorf("Worker failed to upload root %v via the editor: %v", root, err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
-		uploadLogger.Println("upload failed", failureErr.Error())
+		log.Println(w.staticHostPubKeyStr, "upload failed", failureErr.Error())
 		return
 	}
 	w.mu.Lock()
@@ -230,10 +230,10 @@ func (w *worker) managedPerformUploadChunkJob() {
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
-		uploadLogger.Println("addPiece failed", failureErr.Error())
+		log.Println(w.staticHostPubKeyStr, "addPiece failed", failureErr.Error())
 		return
 	}
-	uploadLogger.Println("success")
+	log.Println(w.staticHostPubKeyStr, "success")
 
 	id := w.staticRenter.mu.Lock()
 	w.staticRenter.mu.Unlock(id)
