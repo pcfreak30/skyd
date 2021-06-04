@@ -655,6 +655,7 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 func mockWorker(jobTime time.Duration) *worker {
 	worker := new(worker)
 	worker.newPriceTable()
+	worker.newWorkerLoopState()
 	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
 	worker.initJobReadQueue()
 	worker.staticJobReadQueue.weightedJobTime64k = float64(jobTime)
