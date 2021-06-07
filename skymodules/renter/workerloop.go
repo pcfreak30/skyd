@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/modules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -67,14 +68,12 @@ func (w *worker) staticAsyncDataLimitReached() bool {
 // staticAsyncQueueTimeEstimate returns the time estimated a new async job will
 // sit in queue before being executed.
 //
-// TODO: this should extended with an actual estimate, for now though we only
-// want to ensure that when a worker has reached its async data limit, it is
-// reflected in the estimates as they're used in the download code. This is why
-// we're defaulting to a very conservative estimate of 1s that should ensure
-// this worker is very unlikely to be selected.
+// TODO: use a better estimate, for now though we only want to ensure that when
+// a worker has reached its async data limit, it is reflected in the estimates
+// as they're used in the download code.
 func (w *worker) staticAsyncQueueTimeEstimate() time.Duration {
 	if w.staticAsyncDataLimitReached() {
-		return time.Second
+		return w.staticJobReadQueue.callExpectedJobTime(modules.SectorSize)
 	}
 	return 0
 }
