@@ -20,6 +20,43 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// TestProjectDownloadChunkMaxWaitLateWorkers is a unit test that verifies
+// whether 'tryOverdrive' caps the 'workersLateChan' on 'maxWaitLateWorkers'
+func TestProjectDownloadChunkMaxWaitLateWorkers(t *testing.T) {
+	t.Parallel()
+
+	// pass a latest return that does not exceed `maxWaitLateWorkers` cap
+	now := time.Now()
+	pdc := &projectDownloadChunk{}
+	_, workersLateChan := pdc.tryOverdrive(0, now.Add(maxWaitLateWorkers/2))
+
+	// ensure we have not capped the channel, but instead use the value passed
+	select {
+	case <-workersLateChan:
+	case <-time.After(maxWaitLateWorkers):
+		t.Fatal("unexpected")
+	}
+
+	// pass a latest return that does exceed the `maxWaitLateWorkers` cap
+	now = time.Now()
+	_, workersLateChan = pdc.tryOverdrive(0, now.Add(maxWaitLateWorkers*2))
+
+	// ensure the return channel was capped at `maxWaitLateWorkers`
+	select {
+	case <-workersLateChan:
+		maxWaitMS := float64(maxWaitLateWorkers.Milliseconds())
+
+		// verify whether `maxWaitLateWorkers` was indeed used to construct the
+		// channel, allow a 5% margin to avoid NDFs
+		elapsedMS := float64(time.Since(now).Milliseconds())
+		if !(0.95*maxWaitMS <= elapsedMS && elapsedMS <= 1.05*maxWaitMS) {
+			t.Fatal("unexpected", elapsedMS, maxWaitMS)
+		}
+	case <-time.After(maxWaitLateWorkers * 2):
+		t.Fatal("unexpected")
+	}
+}
+
 // TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.

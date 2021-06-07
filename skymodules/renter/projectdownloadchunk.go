@@ -490,12 +490,16 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 			return
 		}
 
+		// Fetch the number of overdrive workers that are needed, and the latest
+		// return time of any active worker.
+		neededOverdriveWorkers, latestReturn := pdc.overdriveStatus()
+
 		// Run the overdrive code. This code needs to be asynchronous so that it
 		// does not block receiving on the workerResponseChan. The overdrive
 		// code will determine whether launching an overdrive worker is
 		// necessary, and will return a channel that will be closed when enough
 		// time has elapsed that another overdrive worker should be considered.
-		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
+		workersUpdatedChan, workersLateChan := pdc.tryOverdrive(neededOverdriveWorkers, latestReturn)
 
 		// Determine when the next overdrive check needs to run.
 		select {
