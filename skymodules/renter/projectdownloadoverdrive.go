@@ -23,6 +23,13 @@ const (
 	// this is set to 12 as that would induce a minimum wait of over 4s, which
 	// is higher than the current maxExpBackoffDelayMS.
 	maxExpBackoffRetryCount = 12
+
+	// maxWaitLateWorkers defines a maximum amount of time we wait for the
+	// current latest worker to return. So if the current worker that is
+	// expected to come in last, is expected to come in at 200ms from now, we
+	// cap that value to 100ms when we use it to create a channel that signals
+	// when to schedule the next overdrive worker.
+	maxWaitLateWorkers = 100 * time.Millisecond
 )
 
 // TODO: Better handling of time.After
@@ -332,8 +339,8 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 	// All needed overdrive workers have been launched. No need to try again
 	// until the current set of workers are late.
 	currWorkersLate := time.Until(latestReturn)
-	if currWorkersLate > 100*time.Millisecond {
-		currWorkersLate = 100 * time.Millisecond
+	if currWorkersLate > maxWaitLateWorkers {
+		currWorkersLate = maxWaitLateWorkers
 	}
 	return nil, time.After(currWorkersLate)
 }
