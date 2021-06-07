@@ -64,25 +64,20 @@ func (w *worker) staticAsyncDataLimitReached() bool {
 	return w.staticLoopState.staticAsyncDataLimitReached()
 }
 
-// callAsyncQueueTimeEstimate returns the time estimated a new async job will
+// staticAsyncQueueTimeEstimate returns the time estimated a new async job will
 // sit in queue before being executed.
 //
 // TODO: use a better estimate, for now though we only want to ensure that when
 // a worker has reached its async data limit, it is reflected in the estimates
 // as they're used in the download code.
-func (w *worker) callAsyncQueueTimeEstimate() time.Duration {
+func (w *worker) staticAsyncQueueTimeEstimate() time.Duration {
 	if w.staticAsyncDataLimitReached() {
 		// return a pessimistic estimate of 1s to ensure it is unlikely this
 		// worker gets selected as part of the initial worker set, without
 		// excluding it all together.
 		return time.Second
 	}
-
-	wls := w.staticLoopState
-	readOutstanding := atomic.LoadUint64(&wls.atomicReadDataOutstanding)
-	writeOutstanding := atomic.LoadUint64(&wls.atomicWriteDataOutstanding)
-	totalOutstanding := readOutstanding + writeOutstanding
-	return w.staticJobReadQueue.callExpectedJobTime(totalOutstanding)
+	return 0
 }
 
 // newWorkerLoopState initializes the read and write limits for the async worker

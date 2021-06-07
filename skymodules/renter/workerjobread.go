@@ -202,7 +202,7 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 		return time.Time{}, false
 	}
 
-	estimate += jq.staticWorkerObj.callAsyncQueueTimeEstimate()
+	estimate += jq.staticWorkerObj.staticAsyncQueueTimeEstimate()
 	return time.Now().Add(estimate), true
 }
 
