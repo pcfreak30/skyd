@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"gitlab.com/SkynetLabs/skyd/build"
-	"go.sia.tech/siad/modules"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -73,7 +72,8 @@ func (w *worker) staticAsyncDataLimitReached() bool {
 // as they're used in the download code.
 func (w *worker) staticAsyncQueueTimeEstimate() time.Duration {
 	if w.staticAsyncDataLimitReached() {
-		return w.staticJobReadQueue.callExpectedJobTime(modules.SectorSize)
+		return time.Second
+		// return w.staticJobReadQueue.callExpectedJobTime(modules.SectorSize)
 	}
 	return 0
 }
