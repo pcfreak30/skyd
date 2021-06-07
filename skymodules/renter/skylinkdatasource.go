@@ -313,13 +313,13 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, link skymodules.S
 	// metadata. See cmd/skynet-benchmark/dl.go for more info.
 	span := opentracing.SpanFromContext(ctx)
 	if metadata.Length <= 61e3 {
-		span.SetTag("64kb", true)
+		span.SetTag("length", "64kb")
 	} else if metadata.Length <= 982e3 {
-		span.SetTag("1mb", true)
+		span.SetTag("length", "1mb")
 	} else if metadata.Length <= 3931e3 {
-		span.SetTag("4mb", true)
+		span.SetTag("length", "4mb")
 	} else if metadata.Length <= 10e6 {
-		span.SetTag("10mb", true)
+		span.SetTag("length", "10mb")
 	}
 
 	// Create the context for the data source - a child of the renter
