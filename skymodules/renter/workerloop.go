@@ -72,8 +72,10 @@ func (w *worker) staticAsyncDataLimitReached() bool {
 // as they're used in the download code.
 func (w *worker) staticAsyncQueueTimeEstimate() time.Duration {
 	if w.staticAsyncDataLimitReached() {
+		// return a pessimistic estimate of 1s to ensure it is unlikely this
+		// worker gets selected as part of the initial worker set, without
+		// excluding it all together.
 		return time.Second
-		// return w.staticJobReadQueue.callExpectedJobTime(modules.SectorSize)
 	}
 	return 0
 }
