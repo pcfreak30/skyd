@@ -45,8 +45,8 @@ const (
 	// The worker may adjust these values dynamically as it starts to run and
 	// determines how much stuff it can do simultaneously before its jobs start
 	// to have significant latency impact.
-	initialConcurrentAsyncReadData  = 25e6
-	initialConcurrentAsyncWriteData = 25e6
+	initialConcurrentAsyncReadData  = 10e6
+	initialConcurrentAsyncWriteData = 10e6
 )
 
 type (
