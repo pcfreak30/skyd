@@ -25,6 +25,16 @@ import (
 func TestProjectDownloadChunkMaxWaitLateWorkers(t *testing.T) {
 	t.Parallel()
 
+	// isExpectedElapsedTimeMS is a helper function that returns whether the
+	// given elapsed time is within a certain margin from the given expected
+	// time, in milliseconds. The margin can be passed in.
+	isExpectedElapsedTimeMS := func(elapsed, expected time.Duration, margin float64) bool {
+		elapsedMS := float64(elapsed.Milliseconds())
+		minAllowed := (1 - margin) * float64(expected.Milliseconds())
+		maxAllowed := (1 + margin) * float64(expected.Milliseconds())
+		return minAllowed <= elapsedMS && elapsedMS <= maxAllowed
+	}
+
 	// pass a latest return that does not exceed `maxWaitLateWorkers` cap
 	now := time.Now()
 	pdc := &projectDownloadChunk{}
@@ -33,6 +43,10 @@ func TestProjectDownloadChunkMaxWaitLateWorkers(t *testing.T) {
 	// ensure we have not capped the channel, but instead use the value passed
 	select {
 	case <-workersLateChan:
+		elapsed := time.Since(now)
+		if !isExpectedElapsedTimeMS(elapsed, maxWaitLateWorkers/2, 0.1) {
+			t.Fatal("unexpected")
+		}
 	case <-time.After(maxWaitLateWorkers):
 		t.Fatal("unexpected")
 	}
@@ -44,13 +58,9 @@ func TestProjectDownloadChunkMaxWaitLateWorkers(t *testing.T) {
 	// ensure the return channel was capped at `maxWaitLateWorkers`
 	select {
 	case <-workersLateChan:
-		maxWaitMS := float64(maxWaitLateWorkers.Milliseconds())
-
-		// verify whether `maxWaitLateWorkers` was indeed used to construct the
-		// channel, allow a 5% margin to avoid NDFs
-		elapsedMS := float64(time.Since(now).Milliseconds())
-		if !(0.95*maxWaitMS <= elapsedMS && elapsedMS <= 1.05*maxWaitMS) {
-			t.Fatal("unexpected", elapsedMS, maxWaitMS)
+		elapsed := time.Since(now)
+		if !isExpectedElapsedTimeMS(elapsed, maxWaitLateWorkers, 0.1) {
+			t.Fatal("unexpected")
 		}
 	case <-time.After(maxWaitLateWorkers * 2):
 		t.Fatal("unexpected")
