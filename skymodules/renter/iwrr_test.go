@@ -214,7 +214,7 @@ func testNext(t *testing.T) {
 		t.Fatal("wrong index or round", iwrr.currentIndex, iwrr.currentRound)
 	}
 
-	// The next element should be from q1 again.
+	// The next element should be from q1 again in round 1.
 	wj = iwrr.next()
 	if wj == nil {
 		t.Fatal("job is nil")
@@ -228,7 +228,7 @@ func testNext(t *testing.T) {
 	if q3.callLen() != 1 {
 		t.Fatal("q3 got wrong length", q3.callLen())
 	}
-	if iwrr.currentIndex != 1 || iwrr.currentRound != 0 {
+	if iwrr.currentIndex != 1 || iwrr.currentRound != 1 {
 		t.Fatal("wrong index or round", iwrr.currentIndex, iwrr.currentRound)
 	}
 

@@ -55,7 +55,7 @@ const (
 	readRegistryQueueMaxWeight   = 100
 	updateRegistryQueueMaxWeight = 100
 
-	// Renewing is so rare that we also give it the same priority as the hight
+	// Renewing is so rare that we also give it the same priority as the high
 	// weight jobs
 	renewQueueMaxWeight = 100
 )
@@ -111,7 +111,7 @@ func (rr *iwrr) next() workerJob {
 	// long as we have jobs, we should eventually fetch one of them.
 	for rr.numJobs() > 0 {
 		// Loop over the remaining rounds.
-		for rr.currentRound <= rr.staticMaxWeight {
+		for ; rr.currentRound <= rr.staticMaxWeight; rr.currentRound++ {
 			// Loop over the remaining queues in this round.
 			for ; rr.currentIndex < len(rr.staticQueues); rr.currentIndex++ {
 				queue := rr.staticQueues[rr.currentIndex]
