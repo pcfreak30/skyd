@@ -35,6 +35,12 @@ type weightedJobQueue interface {
 // These constants determine the max weight for a in the iwrr. For most queues
 // the max weight equals the weight for the job except for dynamic jobs like
 // downloads where the weight depends on the download length.
+//
+// NOTE: These values can be tweaked. The higher the weight, the more often a
+// job can be scheduled within a cycle.
+// The highest weight determines the number of times the algorithm loops over
+// the queues. So make sure those numbers are reasonably low because a high
+// weight might cause an unnecessary performance impact.
 const (
 	// The job with the lowest weight. Async system repairs.
 	lowPrioReadQueueMaxWeight = 1
