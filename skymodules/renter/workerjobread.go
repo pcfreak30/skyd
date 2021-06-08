@@ -26,6 +26,7 @@ type (
 	// jobRead contains information about a Read query.
 	jobRead struct {
 		staticLength       uint64
+		staticLowPrio      bool
 		staticResponseChan chan *jobReadResponse
 
 		*jobGeneric
@@ -42,6 +43,7 @@ type (
 		weightedJobTime1m  float64
 		weightedJobTime4m  float64
 
+		staticLowPrio bool
 		*jobGenericQueue
 	}
 
@@ -73,6 +75,24 @@ type (
 		staticWorker *worker
 	}
 )
+
+// staticMaxWeight returns the max weight of the queue.
+func (jq *jobReadQueue) staticMaxWeight() uint64 {
+	if jq.staticLowPrio {
+		return lowPrioReadQueueMaxWeight
+	}
+	return readQueueMaxWeight
+}
+
+// callWeight returns the weight of the job.
+func (j *jobRead) callWeight() uint64 {
+	// NOTE: (f/u?) This might be improved by dynamically adjusting the weight
+	// to a value 0 <= maxWeight depending on the length.
+	if j.staticLowPrio {
+		return lowPrioReadQueueMaxWeight
+	}
+	return readQueueMaxWeight
+}
 
 // staticJobReadMetadata returns the read job's metadata.
 func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
@@ -277,6 +297,7 @@ func (w *worker) initJobReadQueue() {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobReadQueue = &jobReadQueue{
+		staticLowPrio:   false,
 		jobGenericQueue: newJobGenericQueue(w),
 	}
 }
@@ -289,6 +310,7 @@ func (w *worker) initJobLowPrioReadQueue() {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
+		staticLowPrio:   true,
 		jobGenericQueue: newJobGenericQueue(w),
 	}
 }

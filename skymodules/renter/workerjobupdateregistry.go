@@ -58,6 +58,16 @@ type (
 	}
 )
 
+// callWeight returns the weight of the job.
+func (j *jobUpdateRegistry) callWeight() uint64 {
+	return updateRegistryQueueMaxWeight
+}
+
+// staticMaxWeight returns the max weight of the queue.
+func (jq *jobUpdateRegistryQueue) staticMaxWeight() uint64 {
+	return updateRegistryQueueMaxWeight
+}
+
 // newJobUpdateRegistry is a helper method to create a new UpdateRegistry job.
 func (w *worker) newJobUpdateRegistry(ctx context.Context, span opentracing.Span, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, srv modules.SignedRegistryValue) *jobUpdateRegistry {
 	jobSpan := opentracing.StartSpan("UpdateRegistryJob", opentracing.ChildOf(span.Context()))

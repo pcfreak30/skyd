@@ -40,6 +40,16 @@ type (
 	}
 )
 
+// callWeight returns the weight of the job.
+func (j *jobRenew) callWeight() uint64 {
+	return renewQueueMaxWeight
+}
+
+// staticMaxWeight returns the max weight of the queue.
+func (jq *jobRenewQueue) staticMaxWeight() uint64 {
+	return renewQueueMaxWeight
+}
+
 // renewJobExpectedBandwidth is a helper function that returns the expected
 // bandwidth consumption of a renew job.
 func renewJobExpectedBandwidth() (ul, dl uint64) {

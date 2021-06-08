@@ -4,8 +4,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gitlab.com/SkynetLabs/skyd/build"
-
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -227,32 +225,8 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return true
 	}
 
-	// Check every potential async job that can be launched.
-	job := w.staticJobHasSectorQueue.callNext()
-	if job != nil {
-		w.externLaunchAsyncJob(job)
-		return true
-	}
-	// Check if registry jobs are supported.
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) >= 0 {
-		job = w.staticJobUpdateRegistryQueue.callNext()
-		if job != nil {
-			w.externLaunchAsyncJob(job)
-			return true
-		}
-		job = w.staticJobReadRegistryQueue.callNext()
-		if job != nil {
-			w.externLaunchAsyncJob(job)
-			return true
-		}
-	}
-	job = w.staticJobReadQueue.callNext()
-	if job != nil {
-		w.externLaunchAsyncJob(job)
-		return true
-	}
-	job = w.staticJobLowPrioReadQueue.callNext()
+	// Get the next job from the iwrr.
+	job := w.staticIWRR.next()
 	if job != nil {
 		w.externLaunchAsyncJob(job)
 		return true

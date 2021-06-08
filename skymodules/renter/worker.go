@@ -98,6 +98,8 @@ type (
 		staticAccount       *account
 		staticBalanceTarget types.Currency
 
+		staticIWRR *iwrr
+
 		// The loop state contains information about the worker loop. It is
 		// mostly atomic variables that the worker uses to ratelimit the
 		// launching of async jobs.
@@ -255,6 +257,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
+	w.initIWRR()
 
 	// Close the worker when the renter is stopped.
 	err = r.tg.OnStop(func() error {

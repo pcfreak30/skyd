@@ -67,6 +67,16 @@ type (
 	}
 )
 
+// callWeight returns the weight of the job.
+func (j *jobReadRegistry) callWeight() uint64 {
+	return readRegistryQueueMaxWeight
+}
+
+// staticMaxWeight returns the max weight of the queue.
+func (jq *jobReadRegistryQueue) staticMaxWeight() uint64 {
+	return readRegistryQueueMaxWeight
+}
+
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
 func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool) (spk types.SiaPublicKey, tweak crypto.Hash, data []byte, rev uint64, sig crypto.Signature, err error) {

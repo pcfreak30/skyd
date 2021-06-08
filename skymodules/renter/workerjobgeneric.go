@@ -74,6 +74,9 @@ type (
 		// staticCanceled returns true if the job has been canceled, false
 		// otherwise.
 		staticCanceled() bool
+
+		// callWeight returns the weight of a job for the iwrr.
+		callWeight() uint64
 	}
 
 	// workerJobQueue defines an interface to create a worker job queue.
@@ -193,6 +196,14 @@ func (jq *jobGenericQueue) callLen() int {
 // callNext returns the next job in the worker queue. If there is no job in the
 // queue, 'nil' will be returned.
 func (jq *jobGenericQueue) callNext() workerJob {
+	return jq.callNextWithWeight(0)
+}
+
+// callNextWithWeight returns the next job in the worker queue if it is
+// has a certain minimum weight. If there is no job in the queue, or the
+// next job doesn't fullfil the weight requirement, 'nil' will be
+// returned.
+func (jq *jobGenericQueue) callNextWithWeight(minWeight uint64) workerJob {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
@@ -207,6 +218,12 @@ func (jq *jobGenericQueue) callNext() workerJob {
 		if wj.staticCanceled() {
 			wj.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
 			continue
+		}
+
+		// Found a job. Check if it has the right weight.
+		if wj.callWeight() < minWeight {
+			jq.jobs.PushFront(wj) // push job back in front
+			return nil
 		}
 		return wj
 	}

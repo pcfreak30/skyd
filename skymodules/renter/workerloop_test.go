@@ -125,6 +125,11 @@ type jobTestAsync struct {
 	*jobGeneric
 }
 
+// callWeight returns the weight of the job.
+func (j *jobTestAsync) callWeight() uint64 {
+	return 1
+}
+
 // callDiscard implements discarding for jobTestAsync. It's a stub.
 func (j *jobTestAsync) callDiscard(err error) {
 	return

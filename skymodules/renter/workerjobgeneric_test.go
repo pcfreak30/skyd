@@ -38,6 +38,11 @@ type jobTest struct {
 	mu               sync.Mutex
 }
 
+// callWeight returns the weight of the job.
+func (j *jobTest) callWeight() uint64 {
+	return 1
+}
+
 // jobTestResult is a minimum viable implementation for a worker job result.
 type jobTestResult struct {
 	// Generally a caller minimally needs to know if there was an error. Often

@@ -48,6 +48,16 @@ type (
 	}
 )
 
+// callWeight returns the weight of the job.
+func (j *jobUploadSnapshot) callWeight() uint64 {
+	return uploadSnapshotQueueMaxWeight
+}
+
+// staticMaxWeight returns the max weight of the queue.
+func (jq *jobUploadSnapshotQueue) staticMaxWeight() uint64 {
+	return uploadSnapshotQueueMaxWeight
+}
+
 // checkUploadSnapshotGouging looks at the current renter allowance and the
 // active settings for a host and determines whether a snapshot upload should be
 // halted due to price gouging.

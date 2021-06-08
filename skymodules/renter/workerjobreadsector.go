@@ -68,6 +68,7 @@ func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, resp
 		jobRead: jobRead{
 			staticResponseChan: respChan,
 			staticLength:       length,
+			staticLowPrio:      queue.staticLowPrio,
 
 			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, jobReadMetadata{
 				staticSectorRoot:       root,

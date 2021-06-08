@@ -75,6 +75,21 @@ type (
 	}
 )
 
+// callWeight returns the weight of the job.
+func (j *jobHasSector) callWeight() uint64 {
+	return hasSectorQueueMaxWeight
+}
+
+// callWeight returns the weight of the job.
+func (j *jobHasSectorBatch) callWeight() uint64 {
+	return hasSectorQueueMaxWeight
+}
+
+// staticMaxWeight returns the max weight of the queue.
+func (jq *jobHasSectorQueue) staticMaxWeight() uint64 {
+	return hasSectorQueueMaxWeight
+}
+
 // callNext overwrites the generic call next and batches a certain number of has
 // sector jobs together.
 func (jq *jobHasSectorQueue) callNext() workerJob {
