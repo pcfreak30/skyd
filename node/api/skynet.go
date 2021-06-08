@@ -1412,7 +1412,7 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	}
 
 	// Update the registry.
-	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
+	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, modules.RegistryTypeWithoutPubkey)
 	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)

@@ -144,7 +144,7 @@ func (j *jobUpdateRegistry) callExecute() {
 		}
 		// If the entry is valid, check if our suggested can actually not be
 		// used to update rv.
-		shouldUpdate, shouldUpdateErr := rv.ShouldUpdateWith(&j.staticSignedRegistryValue.RegistryValue)
+		shouldUpdate, shouldUpdateErr := rv.ShouldUpdateWith(&j.staticSignedRegistryValue.RegistryValue, w.staticHostPubKey)
 		if shouldUpdate {
 			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(errHostOutdatedProof)
@@ -221,7 +221,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
 		pb.V154AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	} else {
-		pb.AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
+		pb.V156AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	}
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
@@ -254,7 +254,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		if modules.IsRegistryEntryExistErr(err) {
 			// Parse the proof.
 			_, _, data, revision, sig, parseErr := parseSignedRegistryValueResponse(resp.Output, false)
-			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig)
+			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig, modules.RegistryTypeWithoutPubkey)
 			return rv, errors.Compose(err, parseErr)
 		}
 		if err != nil {
