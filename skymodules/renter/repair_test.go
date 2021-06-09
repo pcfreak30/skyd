@@ -1,8 +1,19 @@
 package renter
 
 import (
-	"gitlab.com/NebulousLabs/errors"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/persist"
+
+	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 )
@@ -22,199 +33,6 @@ func (rt *renterTester) openAndUpdateDir(siapath skymodules.SiaPath, metadata si
 	}
 	err = siadir.UpdateMetadata(metadata)
 	return errors.Compose(err, siadir.Close())
-}
-
-/* TODO: bring back in some form
-// TestOldestHealthCheckTime probes managedOldestHealthCheckTime to verify that
-// the directory with the oldest LastHealthCheckTime is returned
-func TestOldestHealthCheckTime(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create test renter
-	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := rt.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// Create a test directory with sub folders
-	//
-	// root/ 1
-	// root/SubDir1/
-	// root/SubDir1/SubDir1/
-	// root/SubDir1/SubDir2/
-	// root/SubDir2/
-	// root/SubDir3/
-	directories := []string{
-		"root",
-		"root/SubDir1",
-		"root/SubDir1/SubDir1",
-		"root/SubDir1/SubDir2",
-		"root/SubDir2",
-		"root/SubDir3",
-	}
-
-	// Create directory tree with consistent metadata
-	now := time.Now()
-	nowMD := siadir.Metadata{
-		Health:                       1,
-		StuckHealth:                  0,
-		AggregateLastHealthCheckTime: now,
-		LastHealthCheckTime:          now,
-	}
-	for _, dir := range directories {
-		// Create Directory
-		dirSiaPath := newSiaPath(dir)
-		if err := rt.renter.CreateDir(dirSiaPath, skymodules.DefaultDirPerm); err != nil {
-			t.Fatal(err)
-		}
-		err = rt.openAndUpdateDir(dirSiaPath, nowMD)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Put two files in the directory
-		for i := 0; i < 2; i++ {
-			fileSiaPath, err := dirSiaPath.Join(persist.RandomSuffix())
-			if err != nil {
-				t.Fatal(err)
-			}
-			sf, err := rt.renter.createRenterTestFile(fileSiaPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			sf.SetLastHealthCheckTime()
-			err = errors.Compose(sf.SaveMetadata(), sf.Close())
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-
-	// Update all common directories to same health check time.
-	err1 := rt.openAndUpdateDir(skymodules.RootSiaPath(), nowMD)
-	err2 := rt.openAndUpdateDir(skymodules.BackupFolder, nowMD)
-	err3 := rt.openAndUpdateDir(skymodules.HomeFolder, nowMD)
-	err4 := rt.openAndUpdateDir(skymodules.SkynetFolder, nowMD)
-	err5 := rt.openAndUpdateDir(skymodules.UserFolder, nowMD)
-	err6 := rt.openAndUpdateDir(skymodules.VarFolder, nowMD)
-	err = errors.Compose(err1, err2, err3, err4, err5, err6)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Set the LastHealthCheckTime of SubDir1/SubDir2 to be the oldest
-	oldestCheckTime := now.AddDate(0, 0, -1)
-	oldestHealthCheckUpdate := siadir.Metadata{
-		Health:                       1,
-		StuckHealth:                  0,
-		AggregateLastHealthCheckTime: oldestCheckTime,
-		LastHealthCheckTime:          oldestCheckTime,
-	}
-	subDir1_2 := newSiaPath("root/SubDir1/SubDir2")
-	if err := rt.openAndUpdateDir(subDir1_2, oldestHealthCheckUpdate); err != nil {
-		t.Fatal(err)
-	}
-
-	// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
-	// SubDir1/SubDir2 gets bubbled up
-	subDir1 := newSiaPath("root/SubDir1")
-	if err := rt.bubbleBlocking(subDir1); err != nil {
-		t.Fatal(err)
-	}
-	err = build.Retry(60, time.Second, func() error {
-		// Find the oldest directory, even though SubDir1/SubDir2 is the oldest,
-		// SubDir1 should be returned since it is the lowest level directory tree
-		// containing the Oldest LastHealthCheckTime
-		dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
-		if err != nil {
-			return err
-		}
-		if !dir.Equals(subDir1) {
-			return fmt.Errorf("Expected to find %v but found %v", subDir1.String(), dir.String())
-		}
-		if !lastCheck.Equal(oldestCheckTime) {
-			return fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Now add more files to SubDir1, this will force the return of SubDir1_2
-	// since the subtree including SubDir1 now has too many files
-	for i := uint64(0); i < healthLoopNumBatchFiles; i++ {
-		fileSiaPath, err := subDir1.Join(persist.RandomSuffix())
-		if err != nil {
-			t.Fatal(err)
-		}
-		sf, err := rt.renter.createRenterTestFile(fileSiaPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sf.SetLastHealthCheckTime()
-		err = errors.Compose(sf.SaveMetadata(), sf.Close())
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := rt.bubbleBlocking(subDir1); err != nil {
-		t.Fatal(err)
-	}
-	err = build.Retry(60, time.Second, func() error {
-		// Find the oldest directory, should be SubDir1_2 now
-		dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
-		if err != nil {
-			return err
-		}
-		if !dir.Equals(subDir1_2) {
-			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
-		}
-		if !lastCheck.Equal(oldestCheckTime) {
-			return fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Now update the root directory to have an older AggregateLastHealthCheckTime
-	// than the sub directory but a more recent LastHealthCheckTime. This will
-	// simulate a shutdown before all the pending bubbles could finish.
-	entry, err := rt.renter.staticFileSystem.OpenSiaDir(skymodules.RootSiaPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	rootTime := now.AddDate(0, 0, -3)
-	err = entry.UpdateLastHealthCheckTime(rootTime, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = entry.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// A call to managedOldestHealthCheckTime should still return the same
-	// subDir1_2
-	dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !dir.Equals(subDir1_2) {
-		t.Error(fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String()))
-	}
-	if !lastCheck.Equal(oldestCheckTime) {
-		t.Error(fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck))
-	}
 }
 
 // TestDirectoryModTime verifies that the last update time of a directory is
@@ -263,7 +81,7 @@ func TestDirectoryModTime(t *testing.T) {
 	}
 
 	// Call Bubble to update filesystem ModTimes so there are no zero times
-	if err := rt.bubbleBlocking(subDir1_2); err != nil {
+	if err := rt.renter.UpdateMetadata(subDir1_2, false); err != nil {
 		t.Fatal(err)
 	}
 	// Sleep for 1 second to allow bubbles to update filesystem. Retry doesn't
@@ -316,7 +134,7 @@ func TestDirectoryModTime(t *testing.T) {
 
 	// Call bubble on lowest lever and confirm top level reports accurate last
 	// update time
-	if err := rt.bubbleBlocking(subDir1_2); err != nil {
+	if err := rt.renter.UpdateMetadata(subDir1_2, false); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -445,7 +263,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// but the repair loop could have marked the rest as stuck so we just want
 	// to ensure that the root directory reflects at least the 3 we marked as
 	// stuck
-	if err := rt.bubbleBlocking(subDir1_2); err != nil {
+	if err := rt.renter.UpdateMetadata(skymodules.RootSiaPath(), true); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -455,8 +273,8 @@ func TestRandomStuckDirectory(t *testing.T) {
 			return err
 		}
 		// Check Aggregate number of stuck chunks
-		if metadata.AggregateNumStuckChunks != uint64(3) {
-			return fmt.Errorf("Incorrect number of stuck chunks, should be 3")
+		if metadata.AggregateNumStuckChunks < uint64(3) {
+			return fmt.Errorf("Incorrect number of stuck chunks, got %v expected at least 3", metadata.AggregateNumStuckChunks)
 		}
 		return nil
 	})
@@ -560,14 +378,14 @@ func TestRandomStuckFile(t *testing.T) {
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	if err := rt.bubbleBlocking(skymodules.UserFolder); err != nil {
+	if err := rt.renter.UpdateMetadata(skymodules.UserFolder, false); err != nil {
 		t.Fatal(err)
 	}
 	i := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			if err := rt.bubbleBlocking(skymodules.RootSiaPath()); err != nil {
+			if err := rt.renter.UpdateMetadata(skymodules.RootSiaPath(), true); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -623,14 +441,14 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	if err := rt.bubbleBlocking(dir); err != nil {
+	if err := rt.renter.UpdateMetadata(dir, false); err != nil {
 		t.Fatal(err)
 	}
 	i = 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			if err := rt.bubbleBlocking(dir); err != nil {
+			if err := rt.renter.UpdateMetadata(dir, false); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -990,166 +808,3 @@ func TestRandomStuckFileRegression(t *testing.T) {
 		t.Fatalf("Stuck siapath should have been the one file in the directory, expected %v got %v", siaPath, stuckSiaPath)
 	}
 }
-
-// TestPrepareForBubble probes managedPrepareForBubble
-func TestPrepareForBubble(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create renter tester
-	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err = rt.renter.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// Create empty directory
-	emptyDir, err := skymodules.NewSiaPath("emptyDir")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = rt.renter.CreateDir(emptyDir, persist.DefaultDiskPermissionsTest)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// call prepare for bubble
-	urp, err := rt.renter.callPrepareForBubble(emptyDir, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Validate expectations
-	if urp.callNumChildDirs() != 1 {
-		t.Errorf("expected %v got %v", 1, urp.callNumChildDirs())
-	}
-	urp.mu.Lock()
-	_, ok := urp.childDirs[emptyDir]
-	urp.mu.Unlock()
-	if !ok {
-		t.Error("unexpected")
-	}
-	if urp.callNumParentDirs() != 1 {
-		t.Errorf("expected %v got %v", 1, urp.callNumParentDirs())
-	}
-	urp.mu.Lock()
-	_, ok = urp.parentDirs[skymodules.RootSiaPath()]
-	urp.mu.Unlock()
-	if !ok {
-		t.Error("unexpected")
-	}
-
-	// Define helper to reset the lastHealthCheckTimes for the directories
-	resetTimes := func() {
-		// Update HomeFolder, BackupFolder, and VarFolder to have an old lastHealthCheckTime
-		old := time.Now().AddDate(-1, 0, 0)
-		oldMetadata := siadir.Metadata{
-			AggregateLastHealthCheckTime: old,
-			LastHealthCheckTime:          old,
-		}
-		oldSiaPaths := []skymodules.SiaPath{skymodules.HomeFolder, skymodules.BackupFolder, skymodules.VarFolder}
-		for _, sp := range oldSiaPaths {
-			err = rt.openAndUpdateDir(sp, oldMetadata)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		// Make sure the root directory has a current lastHealthCheckTime
-		currentMetadata := siadir.Metadata{
-			AggregateLastHealthCheckTime: time.Now(),
-			LastHealthCheckTime:          time.Now(),
-		}
-		err = rt.openAndUpdateDir(skymodules.RootSiaPath(), currentMetadata)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Update emptyDir, UserFolder, and SkynetFolder to have future lastHealthCheckTime
-		future := time.Now().AddDate(1, 0, 0)
-		futureMetadata := siadir.Metadata{
-			AggregateLastHealthCheckTime: future,
-			LastHealthCheckTime:          future,
-		}
-		futureSiaPaths := []skymodules.SiaPath{emptyDir, skymodules.UserFolder, skymodules.SkynetFolder}
-		for _, sp := range futureSiaPaths {
-			err = rt.openAndUpdateDir(sp, futureMetadata)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-
-	// Reset Times
-	resetTimes()
-
-	// call prepare for bubble on root
-	urp, err = rt.renter.callPrepareForBubble(skymodules.RootSiaPath(), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Validate that the directories with future LastHealthCheckTimes are ignored
-	if urp.callNumChildDirs() != 3 {
-		t.Log(urp.childDirs)
-		t.Errorf("expected %v got %v", 3, urp.callNumChildDirs())
-	}
-	urp.mu.Lock()
-	_, okHome := urp.childDirs[skymodules.HomeFolder]
-	_, okBackup := urp.childDirs[skymodules.BackupFolder]
-	_, okVar := urp.childDirs[skymodules.VarFolder]
-	urp.mu.Unlock()
-	if !okHome || !okBackup || !okVar {
-		t.Error("unexpected", okHome, okBackup, okVar)
-	}
-	if urp.callNumParentDirs() != 1 {
-		t.Errorf("expected %v got %v", 1, urp.callNumParentDirs())
-	}
-	urp.mu.Lock()
-	_, ok = urp.parentDirs[skymodules.RootSiaPath()]
-	urp.mu.Unlock()
-	if !ok {
-		t.Error("unexpected")
-	}
-
-	// Reset Times so everything is in the future.
-	resetTimes()
-
-	// call prepare for bubble on root
-	urp, err = rt.renter.callPrepareForBubble(skymodules.RootSiaPath(), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Validate that the directories with future LastHealthCheckTimes are not ignored
-	if urp.callNumChildDirs() != 4 {
-		t.Log(urp.childDirs)
-		t.Errorf("expected %v got %v", 4, urp.callNumChildDirs())
-	}
-	urp.mu.Lock()
-	_, okEmpty := urp.childDirs[emptyDir]
-	_, okUser := urp.childDirs[skymodules.UserFolder]
-	_, okBackup = urp.childDirs[skymodules.BackupFolder]
-	_, okSkynet := urp.childDirs[skymodules.SkynetFolder]
-	urp.mu.Unlock()
-	if !okEmpty || !okUser || !okBackup || !okSkynet {
-		t.Error("unexpected", okEmpty, okUser, okBackup, okSkynet)
-	}
-	if urp.callNumParentDirs() != 3 {
-		t.Errorf("expected %v got %v", 3, urp.callNumParentDirs())
-	}
-	urp.mu.Lock()
-	_, ok = urp.parentDirs[skymodules.RootSiaPath()]
-	_, okHome = urp.parentDirs[skymodules.HomeFolder]
-	_, okVar = urp.parentDirs[skymodules.VarFolder]
-	urp.mu.Unlock()
-	if !ok || !okHome || !okVar {
-		t.Error("unexpected", ok, okHome, okVar)
-	}
-}
-*/
