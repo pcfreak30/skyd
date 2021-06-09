@@ -46,9 +46,9 @@ const (
 	lowPrioReadQueueWeight = 1
 
 	// Medium weighted jobs.
-	readQueueWeight             = 100
 	downloadSnapshotQueueWeight = 10
 	uploadSnapshotQueueWeight   = 10
+	readQueueWeight             = 50
 
 	// These are the high weight jobs since they are the fastest ones.
 	hasSectorQueueWeight      = 100
