@@ -46,15 +46,15 @@ const (
 	lowPrioReadQueueWeight = 1
 
 	// Medium weighted jobs.
-	readQueueMaxWeight          = 1000
+	readQueueMaxWeight          = 100
 	readQueueMinWeight          = 10
 	downloadSnapshotQueueWeight = 10
 	uploadSnapshotQueueWeight   = 10
 
 	// These are the high weight jobs since they are the fastest ones.
-	hasSectorQueueWeight      = 1000
-	readRegistryQueueWeight   = 1000
-	updateRegistryQueueWeight = 1000
+	hasSectorQueueWeight      = 100
+	readRegistryQueueWeight   = 100
+	updateRegistryQueueWeight = 100
 
 	// Renewing is so rare that we also give it the same priority as the high
 	// weight jobs
