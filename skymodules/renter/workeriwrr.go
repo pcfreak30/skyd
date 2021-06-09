@@ -21,10 +21,9 @@ type weightedJobQueue interface {
 	// callLen returns the length of the queue.
 	callLen() int
 
-	// callNextWithWeight returns the next job in the worker queue if it is
-	// has a certain minimum weight. If there is no job in the queue, or the
-	// next job doesn't fullfil the weight requirement, 'nil' will be
-	// returned.
+	// callNextWithWeight returns the next job in the worker queue if it meets a
+	// certain minimum weight. If there is no job in the queue, or the next job
+	// doesn't fullfil the weight requirement, 'nil' will be returned.
 	callNextWithWeight(minWeight uint64) workerJob
 
 	// staticMaxWeight returns the max weight that a job from this queue can
@@ -32,9 +31,9 @@ type weightedJobQueue interface {
 	staticMaxWeight() uint64
 }
 
-// These constants determine the max weight for a in the iwrr. For most queues
-// the max weight equals the weight for the job except for dynamic jobs like
-// downloads where the weight depends on the download length.
+// These constants determine the max weight for a queue in the iwrr. For most
+// queues the max weight equals the weight for the job except for dynamic jobs
+// like downloads where the weight depends on the download length.
 //
 // NOTE: These values can be tweaked. The higher the weight, the more often a
 // job can be scheduled within a cycle.
@@ -43,21 +42,21 @@ type weightedJobQueue interface {
 // weight might cause an unnecessary performance impact.
 const (
 	// The job with the lowest weight. Async system repairs.
-	lowPrioReadQueueMaxWeight = 1
+	lowPrioReadQueueWeight = 1
 
 	// Medium weighted jobs.
-	readQueueMaxWeight             = 10
-	downloadSnapshotQueueMaxWeight = 10
-	uploadSnapshotQueueMaxWeight   = 10
+	readQueueWeight             = 10
+	downloadSnapshotQueueWeight = 10
+	uploadSnapshotQueueWeight   = 10
 
 	// These are the high weight jobs since they are the fastest ones.
-	hasSectorQueueMaxWeight      = 100
-	readRegistryQueueMaxWeight   = 100
-	updateRegistryQueueMaxWeight = 100
+	hasSectorQueueWeight      = 100
+	readRegistryQueueWeight   = 100
+	updateRegistryQueueWeight = 100
 
 	// Renewing is so rare that we also give it the same priority as the high
 	// weight jobs
-	renewQueueMaxWeight = 100
+	renewQueueWeight = 100
 )
 
 // newIWRR creates a new iwrr from queues.

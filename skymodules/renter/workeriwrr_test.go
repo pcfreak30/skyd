@@ -75,35 +75,35 @@ func testNewIWRR(t *testing.T) {
 // testMaxWeights make sure that all jobs queues return the right max weight.
 func testMaxWeights(t *testing.T) {
 	mw := (&jobRenewQueue{}).staticMaxWeight()
-	if mw != renewQueueMaxWeight {
+	if mw != renewQueueWeight {
 		t.Error("wrong weight")
 	}
 	mw = (&jobHasSectorQueue{}).staticMaxWeight()
-	if mw != hasSectorQueueMaxWeight {
+	if mw != hasSectorQueueWeight {
 		t.Error("wrong weight")
 	}
 	mw = (&jobReadRegistryQueue{}).staticMaxWeight()
-	if mw != readRegistryQueueMaxWeight {
+	if mw != readRegistryQueueWeight {
 		t.Error("wrong weight")
 	}
 	mw = (&jobUpdateRegistryQueue{}).staticMaxWeight()
-	if mw != updateRegistryQueueMaxWeight {
+	if mw != updateRegistryQueueWeight {
 		t.Error("wrong weight")
 	}
 	mw = (&jobReadQueue{staticLowPrio: false}).staticMaxWeight()
-	if mw != readQueueMaxWeight {
+	if mw != readQueueWeight {
 		t.Error("wrong weight")
 	}
 	mw = (&jobDownloadSnapshotQueue{}).staticMaxWeight()
-	if mw != downloadSnapshotQueueMaxWeight {
+	if mw != downloadSnapshotQueueWeight {
 		t.Error("wrong weight")
 	}
 	mw = (&jobUploadSnapshotQueue{}).staticMaxWeight()
-	if mw != uploadSnapshotQueueMaxWeight {
+	if mw != uploadSnapshotQueueWeight {
 		t.Error("wrong weight")
 	}
 	mw = (&jobReadQueue{staticLowPrio: true}).staticMaxWeight()
-	if mw != lowPrioReadQueueMaxWeight {
+	if mw != lowPrioReadQueueWeight {
 		t.Error("wrong weight")
 	}
 }
@@ -111,35 +111,35 @@ func testMaxWeights(t *testing.T) {
 // testWeights tests the weights of the jobs.
 func testWeights(t *testing.T) {
 	w := (&jobRenew{}).callWeight()
-	if w != renewQueueMaxWeight {
+	if w != renewQueueWeight {
 		t.Error("wrong weight")
 	}
 	w = (&jobHasSector{}).callWeight()
-	if w != hasSectorQueueMaxWeight {
+	if w != hasSectorQueueWeight {
 		t.Error("wrong weight")
 	}
 	w = (&jobReadRegistry{}).callWeight()
-	if w != readRegistryQueueMaxWeight {
+	if w != readRegistryQueueWeight {
 		t.Error("wrong weight")
 	}
 	w = (&jobUpdateRegistry{}).callWeight()
-	if w != updateRegistryQueueMaxWeight {
+	if w != updateRegistryQueueWeight {
 		t.Error("wrong weight")
 	}
 	w = (&jobDownloadSnapshot{}).callWeight()
-	if w != downloadSnapshotQueueMaxWeight {
+	if w != downloadSnapshotQueueWeight {
 		t.Error("wrong weight")
 	}
 	w = (&jobUploadSnapshot{}).callWeight()
-	if w != uploadSnapshotQueueMaxWeight {
+	if w != uploadSnapshotQueueWeight {
 		t.Error("wrong weight")
 	}
 	w = (&jobRead{staticLength: modules.SectorSize}).callWeight()
-	if w != readQueueMaxWeight {
+	if w != readQueueWeight {
 		t.Error("wrong weight", w)
 	}
 	w = (&jobRead{staticLowPrio: true, staticLength: modules.SectorSize}).callWeight()
-	if w != lowPrioReadQueueMaxWeight {
+	if w != lowPrioReadQueueWeight {
 		t.Error("wrong weight", w)
 	}
 }
@@ -153,7 +153,7 @@ func testNext(t *testing.T) {
 
 	iwrr := newIWRR(queues)
 
-	// The round should be 1 and index should be 0.
+	// Both the round and index should be 0.
 	if iwrr.currentIndex != 0 || iwrr.currentRound != 0 {
 		t.Fatal("wrong index or round", iwrr.currentIndex, iwrr.currentRound)
 	}

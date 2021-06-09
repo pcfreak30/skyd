@@ -199,10 +199,9 @@ func (jq *jobGenericQueue) callNext() workerJob {
 	return jq.callNextWithWeight(0)
 }
 
-// callNextWithWeight returns the next job in the worker queue if it is
-// has a certain minimum weight. If there is no job in the queue, or the
-// next job doesn't fullfil the weight requirement, 'nil' will be
-// returned.
+// callNextWithWeight returns the next job in the worker queue if it meets a
+// certain minimum weight. If there is no job in the queue, or the next job
+// doesn't fullfil the weight requirement, 'nil' will be returned.
 func (jq *jobGenericQueue) callNextWithWeight(minWeight uint64) workerJob {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()

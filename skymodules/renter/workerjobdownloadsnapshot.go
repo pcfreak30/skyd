@@ -42,12 +42,12 @@ type (
 
 // callWeight returns the weight of the job.
 func (j *jobDownloadSnapshot) callWeight() uint64 {
-	return downloadSnapshotQueueMaxWeight
+	return downloadSnapshotQueueWeight
 }
 
 // staticMaxWeight returns the max weight of the queue.
 func (jq *jobDownloadSnapshotQueue) staticMaxWeight() uint64 {
-	return downloadSnapshotQueueMaxWeight
+	return downloadSnapshotQueueWeight
 }
 
 // checkDownloadSnapshotGouging looks at the current renter allowance and the

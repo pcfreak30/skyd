@@ -69,12 +69,12 @@ type (
 
 // callWeight returns the weight of the job.
 func (j *jobReadRegistry) callWeight() uint64 {
-	return readRegistryQueueMaxWeight
+	return readRegistryQueueWeight
 }
 
 // staticMaxWeight returns the max weight of the queue.
 func (jq *jobReadRegistryQueue) staticMaxWeight() uint64 {
-	return readRegistryQueueMaxWeight
+	return readRegistryQueueWeight
 }
 
 // parseSignedRegistryValueResponse is a helper function to parse a response
