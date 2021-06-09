@@ -23,6 +23,9 @@ import (
 // TestProjectDownloadChunkMaxWaitLateWorkers is a unit test that verifies
 // whether 'tryOverdrive' caps the 'workersLateChan' on 'maxWaitLateWorkers'
 func TestProjectDownloadChunkMaxWaitLateWorkers(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	// isExpectedElapsedTimeMS is a helper function that returns whether the
