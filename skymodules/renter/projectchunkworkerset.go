@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -527,6 +528,10 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// as with the goroutine-on-block method, exceeding the limit merely causes
 	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
+
+	// Create a child span, we can ignore the returned span since we pass the
+	// context.
+	_, ctx = opentracing.StartSpanFromContext(ctx, "managedDownload")
 
 	// Build the full pdc.
 	pdc := &projectDownloadChunk{

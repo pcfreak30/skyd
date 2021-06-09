@@ -338,7 +338,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	// Upload.
 	onlyOnePieceNeeded := ec.MinPieces() == 1 && fileNode.MasterKey().Type() == crypto.TypePlain
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
-	n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, cr, offset)
+	n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNode(ctx, fileNode, cr, offset)
 
 	// Increment offset and append fanout.
 	u.fi.Offset += n
@@ -382,11 +382,11 @@ func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymod
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	return r.managedCreateSkylinkFromFileNode(sup, sm, u.fileNode, fanout)
+	return r.managedCreateSkylinkFromFileNode(ctx, sup, sm, u.fileNode, fanout)
 }
 
 // finishUploadSmall handles finishing up a small upload.
-func (u *skynetTUSUpload) finishUploadSmall(_ context.Context) (skylink skymodules.Skylink, err error) {
+func (u *skynetTUSUpload) finishUploadSmall(ctx context.Context) (skylink skymodules.Skylink, err error) {
 	r := u.staticUploader.staticRenter
 	sup := u.staticSUP
 	// edge case 0 byte file
@@ -396,7 +396,7 @@ func (u *skynetTUSUpload) finishUploadSmall(_ context.Context) (skylink skymodul
 			return
 		}
 	}
-	return r.managedUploadSkyfileSmallFile(sup, u.smBytes, u.buf)
+	return r.managedUploadSkyfileSmallFile(ctx, sup, u.smBytes, u.buf)
 }
 
 // FinishUpload is called when the upload is done.
