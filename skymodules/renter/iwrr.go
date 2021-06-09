@@ -46,8 +46,7 @@ const (
 	lowPrioReadQueueWeight = 1
 
 	// Medium weighted jobs.
-	readQueueMaxWeight          = 100
-	readQueueMinWeight          = 10
+	readQueueWeight             = 100
 	downloadSnapshotQueueWeight = 10
 	uploadSnapshotQueueWeight   = 10
 
