@@ -43,21 +43,22 @@ type weightedJobQueue interface {
 // weight might cause an unnecessary performance impact.
 const (
 	// The job with the lowest weight. Async system repairs.
-	lowPrioReadQueueMaxWeight = 1
+	lowPrioReadQueueWeight = 1
 
 	// Medium weighted jobs.
-	readQueueMaxWeight             = 10
-	downloadSnapshotQueueMaxWeight = 10
-	uploadSnapshotQueueMaxWeight   = 10
+	readQueueMaxWeight          = 1000
+	readQueueMinWeight          = 10
+	downloadSnapshotQueueWeight = 10
+	uploadSnapshotQueueWeight   = 10
 
 	// These are the high weight jobs since they are the fastest ones.
-	hasSectorQueueMaxWeight      = 100
-	readRegistryQueueMaxWeight   = 100
-	updateRegistryQueueMaxWeight = 100
+	hasSectorQueueWeight      = 1000
+	readRegistryQueueWeight   = 1000
+	updateRegistryQueueWeight = 1000
 
 	// Renewing is so rare that we also give it the same priority as the high
 	// weight jobs
-	renewQueueMaxWeight = 100
+	renewQueueMaxWeight = 1000
 )
 
 // newIWRR creates a new iwrr from queues.

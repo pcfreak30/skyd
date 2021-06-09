@@ -60,12 +60,12 @@ type (
 
 // callWeight returns the weight of the job.
 func (j *jobUpdateRegistry) callWeight() uint64 {
-	return updateRegistryQueueMaxWeight
+	return updateRegistryQueueWeight
 }
 
 // staticMaxWeight returns the max weight of the queue.
 func (jq *jobUpdateRegistryQueue) staticMaxWeight() uint64 {
-	return updateRegistryQueueMaxWeight
+	return updateRegistryQueueWeight
 }
 
 // newJobUpdateRegistry is a helper method to create a new UpdateRegistry job.

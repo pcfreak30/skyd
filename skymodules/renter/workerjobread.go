@@ -79,19 +79,21 @@ type (
 // staticMaxWeight returns the max weight of the queue.
 func (jq *jobReadQueue) staticMaxWeight() uint64 {
 	if jq.staticLowPrio {
-		return lowPrioReadQueueMaxWeight
+		return lowPrioReadQueueWeight
 	}
 	return readQueueMaxWeight
 }
 
 // callWeight returns the weight of the job.
 func (j *jobRead) callWeight() uint64 {
-	// NOTE: (f/u?) This might be improved by dynamically adjusting the weight
-	// to a value 0 <= maxWeight depending on the length.
 	if j.staticLowPrio {
-		return lowPrioReadQueueMaxWeight
+		return lowPrioReadQueueWeight
 	}
-	return readQueueMaxWeight
+	ratio := float64(j.staticLength) / float64(modules.SectorSize)
+	weightRange := readQueueMaxWeight - readQueueMinWeight
+	bonus := float64(weightRange) * ratio
+
+	return readQueueMinWeight + uint64(bonus)
 }
 
 // staticJobReadMetadata returns the read job's metadata.
