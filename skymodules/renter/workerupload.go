@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 const (
@@ -49,6 +50,11 @@ func checkUploadGouging(allowance skymodules.Allowance, hostSettings modules.Hos
 		errStr := fmt.Sprintf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.UploadBandwidthPrice, allowance.MaxUploadBandwidthPrice)
 		return errors.New(errStr)
 	}
+	// Check whether the download bandwidth price is too high.
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) < 0 {
+		errStr := fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.UploadBandwidthPrice, allowance.MaxDownloadBandwidthPrice)
+		return errors.New(errStr)
+	}
 
 	// If there is no allowance, general price gouging checks have to be
 	// disabled, because there is no baseline for understanding what might count
@@ -73,6 +79,80 @@ func checkUploadGouging(allowance skymodules.Allowance, hostSettings modules.Hos
 		return errors.New(errStr)
 	}
 
+	return nil
+}
+
+// checkUploadGouging looks at the current renter allowance and the active price
+// table for a host and determines whether an upload should be halted due to
+// price gouging.
+func checkUploadGougingPT(pt modules.RPCPriceTable, allowance skymodules.Allowance) error {
+	// Check MemoryTimeCost. This is unused by hosts right now and should be set to 1H.
+	if types.NewCurrency64(1).Cmp(pt.MemoryTimeCost) < 0 {
+		errStr := fmt.Sprintf("MemoryTimeCost of host is %v, which is above the maximum allowed by the allowance: %v", pt.MemoryTimeCost, types.NewCurrency64(1))
+		return errors.New(errStr)
+	}
+	// Check WriteLengthCost. This is unused by hosts right now and should be set to 1H.
+	if types.NewCurrency64(1).Cmp(pt.WriteLengthCost) < 0 {
+		errStr := fmt.Sprintf("WriteLengthCost of host is %v, which is above the maximum allowed by the allowance: %v", pt.WriteLengthCost, types.NewCurrency64(1))
+		return errors.New(errStr)
+	}
+	// Check InitBaseCost. This equals the BaseRPCPrice in the host settings.
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(pt.InitBaseCost) < 0 {
+		errStr := fmt.Sprintf("InitBaseCost of host is %v, which is above the maximum allowed by the allowance: %v", pt.InitBaseCost, allowance.MaxRPCPrice)
+		return errors.New(errStr)
+	}
+	// Check WriteBaseCost. This equals the SectorAccessPrice in the host settings.
+	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(pt.WriteBaseCost) < 0 {
+		errStr := fmt.Sprintf("WriteBaseCost of host is %v, which is above the maximum allowed by the allowance: %v", pt.WriteBaseCost, allowance.MaxSectorAccessPrice)
+		return errors.New(errStr)
+	}
+	// Check WriteStoreCost. This equals the StoragePrice in the host settings.
+	if !allowance.MaxStoragePrice.IsZero() && allowance.MaxStoragePrice.Cmp(pt.WriteStoreCost) < 0 {
+		errStr := fmt.Sprintf("WriteStoreCost of host is %v, which is above the maximum allowed by the allowance: %v", pt.WriteStoreCost, allowance.MaxStoragePrice)
+		return errors.New(errStr)
+	}
+	// Check whether the upload bandwidth price is too high.
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
+		errStr := fmt.Sprintf("UploadBandwidthPrice price of host is %v, which is above the maximum allowed by the allowance: %v", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
+		return errors.New(errStr)
+	}
+	// Check whether the download bandwidth price is too high.
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
+		errStr := fmt.Sprintf("DownloadBandwidthPrice price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
+		return errors.New(errStr)
+	}
+
+	// If there is no allowance, general price gouging checks have to be
+	// disabled, because there is no baseline for understanding what might count
+	// as price gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// Cost of initializing the MDM.
+	memory := modules.MDMInitMemory()
+	time := uint64(modules.MDMTimeInitProgram)
+	memoryCost := modules.MDMMemoryCost(&pt, memory, time)
+
+	// Cost of executing a single sector append.
+	memory += modules.MDMAppendMemory()
+	time += modules.MDMTimeAppend
+	memoryCost = memoryCost.Add(modules.MDMMemoryCost(&pt, memory, time))
+
+	// Cost of storage and bandwidth.
+	storageCost, _ := modules.MDMAppendCost(&pt, allowance.Period)
+	bandwidthCost := modules.MDMBandwidthCost(pt, modules.SectorSize+2920, 2920) // assume sector data + 2 packets of overhead
+
+	// Cost of full upload.
+	singleUploadCost := memoryCost.Add(bandwidthCost).Add(storageCost)
+	fullCostPerByte := singleUploadCost.Div64(modules.SectorSize)
+
+	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
+	reducedCost := allowanceStorageCost.Div64(uploadGougingFractionDenom)
+	if reducedCost.Cmp(allowance.Funds) > 0 {
+		errStr := fmt.Sprintf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
+		return errors.New(errStr)
+	}
 	return nil
 }
 
