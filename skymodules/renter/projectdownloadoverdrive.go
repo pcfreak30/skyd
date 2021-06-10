@@ -49,9 +49,10 @@ func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
 		jrq.mu.Unlock()
 	}
 
-	// Fetch the expected queue time
-	queueTime := jrq.staticExpectedQueueTime()
-	readDuration += queueTime
+	// If the worker has reached its async data limit, add a queue time penalty.
+	if jrq.staticWorkerObj.staticAsyncDataLimitReached() {
+		readDuration += asyncDataLimitReachedQueueTimePenalty
+	}
 
 	// Fetch the expected job time.
 	jobTime := jrq.callExpectedJobTime(pdc.pieceLength)

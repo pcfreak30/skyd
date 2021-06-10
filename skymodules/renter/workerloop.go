@@ -9,6 +9,19 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const (
+	// fullWorkerQueueTimePenalty is an arbitrary penalty that gets added to the
+	// job time estimate whenever a worker has reached its async data limit,
+	// when that happens we consider that worker to be "full".
+	//
+	// We return a pessimistic estimate of 1s to ensure it is unlikely this
+	// worker is selected by the download code as part of the initial set, or
+	// even as an overdrive worker. It's important to note however that this
+	// does not exclude the worker all together. If there are no better options
+	// the download code will still be able to schedule work to this worker.
+	fullWorkerQueueTimePenalty = time.Second
+)
+
 type (
 	// workerLoopState tracks the state of the worker loop.
 	workerLoopState struct {

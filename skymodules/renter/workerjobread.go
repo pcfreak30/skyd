@@ -202,7 +202,10 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 		return time.Time{}, false
 	}
 
-	estimate += jq.staticExpectedQueueTime()
+	if jq.staticWorkerObj.staticAsyncDataLimitReached() {
+		estimate += fullWorkerQueueTimePenalty
+	}
+
 	return time.Now().Add(estimate), true
 }
 

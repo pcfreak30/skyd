@@ -9,13 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const (
-	// asyncDataLimitReachedQueueTimePenalty is an arbitrary penalty that gets
-	// added to the queue time estimate whenever a worker has reached its async
-	// data limit.
-	asyncDataLimitReachedQueueTimePenalty = time.Second
-)
-
 var (
 	// ErrJobDiscarded is returned by a job if worker conditions have resulted
 	// in the worker being able to run this type of job. Perhaps another job of
@@ -280,25 +273,6 @@ func (jq *jobGenericQueue) discardAll(err error) {
 // staticWorker will return the worker that is associated with this job queue.
 func (jq *jobGenericQueue) staticWorker() *worker {
 	return jq.staticWorkerObj
-}
-
-// staticExpectedQueueTime returns an estimate of how long a job is expected to
-// sit in the queue once it's been added.
-//
-// NOTE: we return a pessimistic estimate of 1s when the worker has reached its
-// async data limit to ensure it is unlikely this worker is selected by the
-// download code as part of the initial set, or even as an overdrive worker.
-// It's important to note however that this does not exclude the worker, if
-// there are no better options it will still be used.
-//
-// TODO: we can extend upon this in the future when we are able to better
-// predict how long a job will sit in the queue, for now the most important
-// thing is that "full workers" are demoted in the worker selection algorightms.
-func (jq *jobGenericQueue) staticExpectedQueueTime() time.Duration {
-	if jq.staticWorkerObj.staticAsyncDataLimitReached() {
-		return asyncDataLimitReachedQueueTimePenalty
-	}
-	return 0
 }
 
 // onCooldown returns whether the queue is on cooldown.

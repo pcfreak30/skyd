@@ -124,7 +124,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	limit := atomic.LoadUint64(&wsl.atomicReadDataLimit)
 	atomic.StoreUint64(&wsl.atomicReadDataOutstanding, limit+1)
 
-	// verify the adjust read duration reflects the async data limit penalty
+	// verify the adjusted read duration reflects the penalty
 	expectedDuration := duration + asyncDataLimitReachedQueueTimePenalty
 	duration = pdc.adjustedReadDuration(worker)
 	if duration != expectedDuration {
