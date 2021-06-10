@@ -43,6 +43,12 @@ func (j *jobTest) callWeight() uint64 {
 	return 1
 }
 
+// staticMinHostVersion returns the minimum host version needed to execute the
+// job.
+func (j *jobTest) staticMinHostVersion() string {
+	return "1.0.0"
+}
+
 // jobTestResult is a minimum viable implementation for a worker job result.
 type jobTestResult struct {
 	// Generally a caller minimally needs to know if there was an error. Often

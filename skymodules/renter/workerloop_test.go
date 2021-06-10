@@ -130,6 +130,12 @@ func (j *jobTestAsync) callWeight() uint64 {
 	return 1
 }
 
+// staticMinHostVersion returns the minimum host version needed to execute the
+// job.
+func (j *jobTestAsync) staticMinHostVersion() string {
+	return "1.0.0"
+}
+
 // callDiscard implements discarding for jobTestAsync. It's a stub.
 func (j *jobTestAsync) callDiscard(err error) {
 	return

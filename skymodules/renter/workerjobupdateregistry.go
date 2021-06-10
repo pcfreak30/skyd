@@ -63,6 +63,12 @@ func (j *jobUpdateRegistry) callWeight() uint64 {
 	return updateRegistryQueueWeight
 }
 
+// staticMinHostVersion returns the minimum host version needed to execute the
+// job.
+func (j *jobUpdateRegistry) staticMinHostVersion() string {
+	return foundationHardforkVersion
+}
+
 // staticMaxWeight returns the max weight of the queue.
 func (jq *jobUpdateRegistryQueue) staticMaxWeight() uint64 {
 	return updateRegistryQueueWeight

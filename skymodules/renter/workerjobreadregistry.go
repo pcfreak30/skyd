@@ -29,6 +29,10 @@ const (
 	// minReadRegistrySIDVersion is the minimum host version that supports
 	// reading registry entries by subscription id.
 	minReadRegistrySIDVersion = "1.5.6"
+
+	// foundationHardforkVersion is the version at which the foundation hardfork
+	// occurred.
+	foundationHardforkVersion = "1.5.4"
 )
 
 type (
@@ -70,6 +74,15 @@ type (
 // callWeight returns the weight of the job.
 func (j *jobReadRegistry) callWeight() uint64 {
 	return readRegistryQueueWeight
+}
+
+// staticMinHostVersion returns the minimum host version needed to execute the
+// job.
+func (j *jobReadRegistry) staticMinHostVersion() string {
+	if j.staticSiaPublicKey == nil || j.staticTweak == nil {
+		return minReadRegistrySIDVersion
+	}
+	return foundationHardforkVersion
 }
 
 // staticMaxWeight returns the max weight of the queue.

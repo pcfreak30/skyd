@@ -18,6 +18,12 @@ type (
 	}
 )
 
+// staticMinHostVersion returns the minimum host version needed to execute the
+// job.
+func (j *jobReadOffset) staticMinHostVersion() string {
+	return foundationHardforkVersion
+}
+
 // callExecute executes the jobReadOffset.
 func (j *jobReadOffset) callExecute() {
 	// Track how long the job takes.

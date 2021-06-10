@@ -3,10 +3,12 @@ package renter
 import (
 	"container/list"
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/build"
 )
 
 var (
@@ -74,6 +76,8 @@ type (
 		// staticCanceled returns true if the job has been canceled, false
 		// otherwise.
 		staticCanceled() bool
+
+		staticMinHostVersion() string
 
 		// callWeight returns the weight of a job for the iwrr.
 		callWeight() uint64
@@ -206,6 +210,8 @@ func (jq *jobGenericQueue) callNextWithWeight(minWeight uint64) workerJob {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
+	cache := jq.staticWorker().staticCache()
+
 	// Loop through the jobs, looking for the first job that hasn't yet been
 	// canceled. Remove jobs from the queue along the way.
 	for job := jq.jobs.Front(); job != nil; job = job.Next() {
@@ -216,6 +222,12 @@ func (jq *jobGenericQueue) callNextWithWeight(minWeight uint64) workerJob {
 		wj := job.Value.(workerJob)
 		if wj.staticCanceled() {
 			wj.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
+			continue
+		}
+
+		// Check required job version against host version.
+		if build.VersionCmp(cache.staticHostVersion, wj.staticMinHostVersion()) < 0 {
+			wj.callDiscard(fmt.Errorf("callNext: discarding job due to invalid host version %v < %v", cache.staticHostVersion, wj.staticMinHostVersion()))
 			continue
 		}
 

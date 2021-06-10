@@ -45,6 +45,12 @@ func (j *jobDownloadSnapshot) callWeight() uint64 {
 	return downloadSnapshotQueueWeight
 }
 
+// staticMinHostVersion returns the minimum host version needed to execute the
+// job.
+func (j *jobDownloadSnapshot) staticMinHostVersion() string {
+	return foundationHardforkVersion
+}
+
 // staticMaxWeight returns the max weight of the queue.
 func (jq *jobDownloadSnapshotQueue) staticMaxWeight() uint64 {
 	return downloadSnapshotQueueWeight

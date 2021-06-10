@@ -40,6 +40,12 @@ type (
 	}
 )
 
+// staticMinHostVersion returns the minimum host version needed to execute the
+// job.
+func (j *jobRenew) staticMinHostVersion() string {
+	return foundationHardforkVersion
+}
+
 // callWeight returns the weight of the job.
 func (j *jobRenew) callWeight() uint64 {
 	return renewQueueWeight
