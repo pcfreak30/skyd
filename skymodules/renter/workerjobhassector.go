@@ -186,6 +186,9 @@ func (j jobHasSectorBatch) callExecute() {
 		hsj := j.staticJobs[i]
 		hsj.externJobFinishTime = finish
 
+		// Increment counter
+		hsj.staticQueue.callIncrementJobCounter()
+
 		// Create the response.
 		response := &jobHasSectorResponse{
 			staticErr:     err,

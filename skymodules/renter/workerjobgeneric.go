@@ -48,6 +48,8 @@ type (
 
 		killed bool
 
+		jobsProcessed uint64
+
 		cooldownUntil       time.Time
 		consecutiveFailures uint64
 		recentErr           error
@@ -84,6 +86,7 @@ type (
 
 	// workerJobQueue defines an interface to create a worker job queue.
 	workerJobQueue interface {
+		callIncrementJobCounter()
 		// callDiscardAll will discard all of the jobs in the queue using the
 		// provided error.
 		callDiscardAll(error)
@@ -110,6 +113,7 @@ type (
 		consecutiveFailures uint64
 		recentErr           error
 		recentErrTime       time.Time
+		jobsProcessed       uint64
 
 		jobTimeStats             *skymodules.DistributionTrackerStats
 		jobTimeEstimatesPosDelta *skymodules.DistributionTrackerStats
@@ -170,6 +174,12 @@ func (jq *jobGenericQueue) callAdd(j workerJob) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return jq.add(j)
+}
+
+func (jq *jobGenericQueue) callIncrementJobCounter() {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.jobsProcessed++
 }
 
 // callDiscardAll will discard all jobs in the queue using the provided error.
@@ -272,6 +282,7 @@ func (jq *jobGenericQueue) callStatus() workerJobQueueStatus {
 		consecutiveFailures: jq.consecutiveFailures,
 		recentErr:           jq.recentErr,
 		recentErrTime:       jq.recentErrTime,
+		jobsProcessed:       jq.jobsProcessed,
 
 		jobTimeStats: jq.staticJobTimeTracker.Stats(),
 	}

@@ -170,6 +170,8 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 // managedRead returns the sector data for the given read program and the merkle
 // proof.
 func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
+	j.staticQueue.callIncrementJobCounter()
+
 	// execute it
 	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
 	if err != nil {

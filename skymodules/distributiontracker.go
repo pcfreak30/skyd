@@ -295,7 +295,7 @@ func (dt *DistributionTracker) Percentiles() [][]time.Duration {
 
 	timings := make([][]time.Duration, len(dt.distributions))
 	for i := 0; i < len(timings); i++ {
-		timings[i] = make([]time.Duration, 4)
+		timings[i] = make([]time.Duration, 6)
 		timings[i][0] = dt.distributions[i].PStat(.9)
 		timings[i][1] = dt.distributions[i].PStat(.99)
 		timings[i][2] = dt.distributions[i].PStat(.999)

@@ -159,8 +159,10 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 		JobTimeEstPosP90: uint64(jobTimeEstPosStats.Nines[0][0].Milliseconds()),
 		JobTimeEstNegP90: uint64(jobTimeEstNegStats.Nines[0][0].Milliseconds()),
 
+		JobsProcessed: status.jobsProcessed,
+		JobQueueSize:  status.size,
+
 		ConsecutiveFailures: status.consecutiveFailures,
-		JobQueueSize:        status.size,
 		RecentErr:           recentErrString,
 		RecentErrTime:       status.recentErrTime,
 	}
@@ -185,7 +187,9 @@ func (w *worker) callHasSectorJobStatus() skymodules.WorkerHasSectorJobsStatus {
 	return skymodules.WorkerHasSectorJobsStatus{
 		AvgJobTime:          avgJobTimeInMs,
 		ConsecutiveFailures: status.consecutiveFailures,
-		JobQueueSize:        status.size,
+
+		JobsProcessed: status.jobsProcessed,
+		JobQueueSize:  status.size,
 
 		JobTimeP50:  uint64(jobTimeStats.Nines[0][3].Milliseconds()),
 		JobTimeP75:  uint64(jobTimeStats.Nines[0][4].Milliseconds()),

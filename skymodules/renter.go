@@ -1027,7 +1027,8 @@ type (
 
 		ConsecutiveFailures uint64 `json:"consecutivefailures"`
 
-		JobQueueSize uint64 `json:"jobqueuesize"`
+		JobQueueSize  uint64 `json:"jobqueuesize"`
+		JobsProcessed uint64 `json:"jobsprocessed"`
 
 		JobTime64kP50  uint64 `json:"jobtime64kp50"`  // in ms
 		JobTime64kP75  uint64 `json:"jobtime64kp75"`  // in ms
@@ -1061,7 +1062,8 @@ type (
 
 		ConsecutiveFailures uint64 `json:"consecutivefailures"`
 
-		JobQueueSize uint64 `json:"jobqueuesize"`
+		JobQueueSize  uint64 `json:"jobqueuesize"`
+		JobsProcessed uint64 `json:"jobsprocessed"`
 
 		JobTimeP50  uint64 `json:"jobtimep50"`
 		JobTimeP75  uint64 `json:"jobtimep75"`
