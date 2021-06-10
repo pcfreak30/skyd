@@ -503,6 +503,9 @@ func TestQueueMemoryLeak(t *testing.T) {
 	// Create queue.
 	w := new(worker)
 	w.staticRenter = new(Renter)
+	w.atomicCache = unsafe.Pointer(&workerCache{
+		staticHostVersion: foundationHardforkVersion,
+	})
 	jq := newJobGenericQueue(w)
 
 	// Prepare a job.
