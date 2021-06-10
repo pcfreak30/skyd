@@ -40,22 +40,29 @@ const (
 func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
 	jrq := w.staticJobReadQueue
 
+	var readDuration time.Duration
+
+	// If the queue is on cooldown, add the remaining cooldown period.
+	if jrq.callOnCooldown() {
+		jrq.mu.Lock()
+		readDuration += time.Until(jrq.cooldownUntil)
+		jrq.mu.Unlock()
+	}
+
+	// Fetch the expected queue time
+	queueTime := jrq.staticExpectedQueueTime()
+	readDuration += queueTime
+
 	// Fetch the expected job time.
 	jobTime := jrq.callExpectedJobTime(pdc.pieceLength)
 	if jobTime < 0 {
 		jobTime = 0
 	}
-
-	// If the queue is on cooldown, add the remaining cooldown period.
-	if jrq.callOnCooldown() {
-		jrq.mu.Lock()
-		jobTime = jobTime + time.Until(jrq.cooldownUntil)
-		jrq.mu.Unlock()
-	}
+	readDuration += jobTime
 
 	// Add a penalty to performance based on the cost of the job.
 	jobCost := jrq.callExpectedJobCost(pdc.pieceLength)
-	return addCostPenalty(jobTime, jobCost, pdc.pricePerMS)
+	return addCostPenalty(readDuration, jobCost, pdc.pricePerMS)
 }
 
 // bestOverdriveUnresolvedWorker will scan through a proveded list of unresolved

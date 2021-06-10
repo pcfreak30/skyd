@@ -2,6 +2,7 @@ package renter
 
 import (
 	"math"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -116,6 +117,18 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	duration = pdc.adjustedReadDuration(worker)
 	if duration <= jobTime {
 		t.Fatal("unexpected", duration, jobTime)
+	}
+
+	// push the worker over its async data limit
+	wsl := worker.staticLoopState
+	limit := atomic.LoadUint64(&wsl.atomicReadDataLimit)
+	atomic.StoreUint64(&wsl.atomicReadDataOutstanding, limit+1)
+
+	// verify the adjust read duration reflects the async data limit penalty
+	expectedDuration := duration + asyncDataLimitReachedQueueTimePenalty
+	duration = pdc.adjustedReadDuration(worker)
+	if duration != expectedDuration {
+		t.Fatal("unexpected", expectedDuration, duration)
 	}
 
 	// put the read queue on a cooldown, verify it is reflected in the duration

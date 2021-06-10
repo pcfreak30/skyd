@@ -160,7 +160,6 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	completeTimeInS := math.Round(time.Until(first.completeTime).Seconds())
-	t.Log(time.Until(first.completeTime))
 	if completeTimeInS != 2 {
 		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime))
 	}
