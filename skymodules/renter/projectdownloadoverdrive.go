@@ -23,6 +23,13 @@ const (
 	// this is set to 12 as that would induce a minimum wait of over 4s, which
 	// is higher than the current maxExpBackoffDelayMS.
 	maxExpBackoffRetryCount = 12
+
+	// maxWaitLateWorkers defines a maximum amount of time we wait for the
+	// current latest worker to return. So if the current worker that is
+	// expected to come in last, is expected to come in at 200ms from now, we
+	// cap that value to 100ms when we use it to create a channel that signals
+	// when to schedule the next overdrive worker.
+	maxWaitLateWorkers = 100 * time.Millisecond
 )
 
 // TODO: Better handling of time.After
@@ -304,11 +311,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 // channels, one of which will fire when tryOverdrive should be called again. If
 // there are no more overdrive workers to try, these channels may both be 'nil'
 // and therefore will never fire.
-func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Time) {
-	// Fetch the number of overdrive workers that are needed, and the latest
-	// return time of any active worker.
-	neededOverdriveWorkers, latestReturn := pdc.overdriveStatus()
-
+func (pdc *projectDownloadChunk) tryOverdrive(neededOverdriveWorkers int, latestReturn time.Time) (<-chan struct{}, <-chan time.Time) {
 	// Launch all of the workers that are needed. If at any point a launch
 	// fails, return the status channels to try again.
 	for i := 0; i < neededOverdriveWorkers; i++ {
@@ -331,7 +334,11 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 
 	// All needed overdrive workers have been launched. No need to try again
 	// until the current set of workers are late.
-	return nil, time.After(time.Until(latestReturn))
+	currWorkersLate := time.Until(latestReturn)
+	if currWorkersLate > maxWaitLateWorkers {
+		currWorkersLate = maxWaitLateWorkers
+	}
+	return nil, time.After(currWorkersLate)
 }
 
 // addCostPenalty takes a certain job time and adds a penalty to it depending on

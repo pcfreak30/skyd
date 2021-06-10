@@ -144,6 +144,9 @@ type streamBufferDataSource interface {
 	// if the closing fails.
 	SilentClose()
 
+	// Skylink returns the skylink of the datasource.
+	Skylink() skymodules.Skylink
+
 	// ReadStream allows the stream buffer to request specific data chunks from
 	// the data source. It returns a channel containing a read response.
 	ReadStream(context.Context, uint64, uint64, types.Currency) chan *readResponse
@@ -375,6 +378,11 @@ func (s *stream) RawMetadata() []byte {
 // Layout returns the skyfile layout associated with this stream.
 func (s *stream) Layout() skymodules.SkyfileLayout {
 	return s.staticStreamBuffer.staticDataSource.Layout()
+}
+
+// Skylink returns the skylink associated with this stream.
+func (s *stream) Skylink() skymodules.Skylink {
+	return s.staticStreamBuffer.staticDataSource.Skylink()
 }
 
 // Read will read data into 'b', returning the number of bytes read and any

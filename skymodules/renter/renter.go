@@ -243,9 +243,6 @@ type Renter struct {
 	// prevent recomputing them too often.
 	cachedUtilities cachedUtilities
 
-	// staticBatchManager manages batching skyfile uploads for the Renter.
-	staticBatchManager *skylinkBatchManager
-
 	// staticSubscriptionManager is the global manager of registry
 	// subscriptions.
 	staticSubscriptionManager *registrySubscriptionManager
@@ -1227,9 +1224,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		}
 		go r.threadedHealthLoop()
 	}
-
-	// Initialize the batch manager
-	r.newSkylinkBatchManager()
 
 	// If the spending history didn't exist before, manually init it with the
 	// current spending. We don't want portals to pay a huge fee right after

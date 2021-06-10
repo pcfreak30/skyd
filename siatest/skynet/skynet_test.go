@@ -33,7 +33,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
@@ -3509,8 +3508,8 @@ func testSkynetRegistryReadWrite(t *testing.T, tg *siatest.TestGroup) {
 	fastrand.Read(dataKey[:])
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
-	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
-	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 1
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -4105,9 +4104,9 @@ func TestRegistryUpdateRead(t *testing.T) {
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
 	data3 := skylink3.Bytes()
-	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
-	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
-	srv3 := modules.NewRegistryValue(dataKey, data3, 0).Sign(sk) // rev 0
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 1
+	srv3 := modules.NewRegistryValue(dataKey, data3, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -4173,13 +4172,10 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatalf("read took too long to time out %v > %v", time.Since(start), 2*time.Second)
 	}
 
-	// Update the registry again, with the same revision and same PoW. Shouldn't
+	// Update the registry again, with the same revision and same PoW. Should
 	// work.
 	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
-		t.Fatal(err)
-	}
-	if err == nil || !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -4202,10 +4198,7 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 	// Update the registry again, with a lower revision. Shouldn't work.
 	err = r.RegistryUpdate(spk, dataKey, srv3.Revision, srv3.Signature, skylink3)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
-		t.Fatal(err)
-	}
-	if err == nil || !strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
+	if err == nil || !strings.Contains(err.Error(), modules.ErrLowerRevNum.Error()) {
 		t.Fatal(err)
 	}
 
@@ -5023,6 +5016,20 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64,
 	}
 	siaPath = sup.SiaPath
 
+	// Try pinning the link as v2. Shouldn't work.
+	var slV1 skymodules.Skylink
+	err = slV1.LoadString(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slV2, err := p1.NewSkylinkV2(slV1)
+	err = p1.SkynetSkylinkPinPost(slV2.String(), skymodules.SkyfilePinParameters{
+		SiaPath: skymodules.RandomSiaPath(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "can't pin version 2 skylink") {
+		t.Fatal(err)
+	}
+
 	// Pin to the other portal a random number of times.
 	//
 	// This will test the case of the skylink being associated with multiple
@@ -5084,6 +5091,11 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64,
 		t.Fatal(err)
 	}
 
+	// Unpin the v2 skylink. Shouldn't work.
+	err = p1.SkynetSkylinkUnpinPost(slV2.String())
+	if err == nil || !strings.Contains(err.Error(), "can't unpin version 2 skylink") {
+		t.Fatal(err)
+	}
 	// Verify that all the siafiles have been deleted on both portals
 	err = fileCheck(0, 0)
 	if err != nil {
@@ -5137,6 +5149,14 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(downloadedDataV1, data) {
 		t.Fatal("data doesn't match")
 	}
+	// Resolve using resolve endpoint.
+	resolvedSkylink, err := r.ResolveSkylinkV2(skylinkV2.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolvedSkylink != skylink.String() {
+		t.Fatal("skylink resolved wrong", resolvedSkylink, skylink.String())
+	}
 
 	// Update entry to empty skylink.
 	err = r.DeleteSkylinkV2(&skylinkV2)
@@ -5149,4 +5169,63 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
 		t.Fatal(err)
 	}
+	// Resolve using resolve endpoint.
+	_, err = r.ResolveSkylinkV2(skylinkV2.String())
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
+		t.Fatal(err)
+	}
+}
+
+// TestAddResponseSetIgnoreEntriesWithoutRevision makes sure that the registry
+// stats are not influenced by entries that don't exist on the network.
+func TestAddResponseSetIgnoreEntriesWithoutRevision(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Renters: 1,
+		Miners:  1,
+		Hosts:   2,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	_, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+
+	ssg, err := r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p99Before := ssg.RegistryRead15mP99ms
+
+	for i := 0; i < 100; i++ {
+		_, err := r.RegistryRead(spk, crypto.Hash{})
+		if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+			t.Fatal(err)
+		}
+	}
+
+	ssg, err = r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p99After := ssg.RegistryRead15mP99ms
+
+	if p99Before != p99After {
+		t.Fatal("p99 changed", p99Before, p99After)
+	}
+	t.Log("p99")
 }

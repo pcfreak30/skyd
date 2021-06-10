@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -84,8 +85,8 @@ func (ss *StreamShard) ReadChunk() ([][]byte, uint64, error) {
 	return chunk, ss.n, ss.err
 }
 
-// UploadStreamFromReader reads from the provided reader until io.EOF is reached and
-// upload the data to the Sia network.
+// UploadStreamFromReader reads from the provided reader until io.EOF is reached
+// and upload the data to the Sia network.
 func (r *Renter) UploadStreamFromReader(up skymodules.FileUploadParams, reader io.Reader) error {
 	if err := r.tg.Add(); err != nil {
 		return err
@@ -93,7 +94,7 @@ func (r *Renter) UploadStreamFromReader(up skymodules.FileUploadParams, reader i
 	defer r.tg.Done()
 
 	// Perform the upload, close the filenode, and return.
-	fileNode, err := r.callUploadStreamFromReader(up, reader)
+	fileNode, err := r.callUploadStreamFromReader(r.tg.StopCtx(), up, reader)
 	if err != nil {
 		return errors.AddContext(err, "unable to stream an upload from a reader")
 	}
@@ -167,7 +168,7 @@ func (r *Renter) managedInitUploadStream(up skymodules.FileUploadParams) (*files
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.FileNode, reader skymodules.ChunkReader, offset int64) (n int64, err error) {
+func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fileNode *filesystem.FileNode, reader skymodules.ChunkReader, offset int64) (n int64, err error) {
 	// Sanity check offset.
 	if offset%int64(fileNode.ChunkSize()) != 0 {
 		return 0, fmt.Errorf("callUploadStreamFromReaderWithFileNode called with invalid offset %v mod %v != 0", offset, fileNode.ChunkSize())
@@ -213,7 +214,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 
 		// Start the chunk upload.
 		offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
-		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
+		uuc, err := r.managedBuildUnfinishedChunk(ctx, fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
 		if err != nil {
 			return n, errors.AddContext(err, "unable to fetch chunk for stream")
 		}
@@ -306,14 +307,14 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(fileNode *filesystem.Fil
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) callUploadStreamFromReader(up skymodules.FileUploadParams, reader io.Reader) (fileNode *filesystem.FileNode, err error) {
+func (r *Renter) callUploadStreamFromReader(ctx context.Context, up skymodules.FileUploadParams, reader io.Reader) (fileNode *filesystem.FileNode, err error) {
 	// Check the upload params first.
 	fileNode, err = r.managedInitUploadStream(up)
 	if err != nil {
 		return nil, err
 	}
 	chunkReader := NewChunkReader(reader, fileNode.ErasureCode(), fileNode.MasterKey())
-	_, err = r.callUploadStreamFromReaderWithFileNode(fileNode, chunkReader, 0)
+	_, err = r.callUploadStreamFromReaderWithFileNode(ctx, fileNode, chunkReader, 0)
 	if err != nil {
 		// Delete the file if the upload wasn't successful.
 		err = errors.Compose(err, fileNode.Close())

@@ -24,6 +24,12 @@ func (c *Client) DaemonAlertsGet() (dag api.DaemonAlertsGet, err error) {
 	return
 }
 
+// DaemonReadyGet requests the /daemon/ready resource.
+func (c *Client) DaemonReadyGet() (dr api.DaemonReady, err error) {
+	err = c.get("/daemon/ready", &dr)
+	return
+}
+
 // DaemonVersionGet requests the /daemon/version resource.
 func (c *Client) DaemonVersionGet() (dvg api.DaemonVersionGet, err error) {
 	err = c.get("/daemon/version", &dvg)

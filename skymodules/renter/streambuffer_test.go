@@ -113,6 +113,11 @@ func (mds *mockDataSource) SilentClose() {
 	mds.mu.Unlock()
 }
 
+// Skylink implements streamBufferDataSource
+func (mds *mockDataSource) Skylink() skymodules.Skylink {
+	return skymodules.Skylink{}
+}
+
 // TestStreamSmoke checks basic logic on the stream to see that reading and
 // seeking and closing works.
 func TestStreamSmoke(t *testing.T) {

@@ -123,11 +123,13 @@ func (c *Client) SkynetTUSNewUploadFromBytes(data []byte, chunkSize int64) (*tus
 
 // SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
 // and the specified chunkSize.
-func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64) (string, error) {
+func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64, fileName, fileType string) (string, error) {
 	tc, upload, err := c.SkynetTUSNewUploadFromBytes(data, chunkSize)
 	if err != nil {
 		return "", err
 	}
+	upload.Metadata["filename"] = fileName
+	upload.Metadata["filetype"] = fileType
 	uploader, err := tc.CreateUpload(upload)
 	if err != nil {
 		return "", err
@@ -175,6 +177,15 @@ func (uc *UnsafeClient) SkynetSkyfilePostRawResponse(sup skymodules.SkyfileUploa
 	}
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), encodedValues)
 	return uc.postRawResponse(query, sup.Reader)
+}
+
+// SkynetSkylinkPinPostRawResponse uses the /skynet/pin endpoint to pin the file
+// at the given skylink. This function is unsafe as it returns the raw response
+// alongside the http headers.
+func (uc *UnsafeClient) SkynetSkylinkPinPostRawResponse(skylink string, spp skymodules.SkyfilePinParameters) (http.Header, []byte, error) {
+	values := urlValuesFromSkyfilePinParameters(spp)
+	query := fmt.Sprintf("/skynet/pin/%s?%s", skylink, values.Encode())
+	return uc.postRawResponse(query, nil)
 }
 
 // RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
@@ -821,6 +832,26 @@ func (c *Client) RegistryRead(spk types.SiaPublicKey, dataKey crypto.Hash) (modu
 	return c.RegistryReadWithTimeout(spk, dataKey, 0)
 }
 
+// ResolveSkylinkV2 queries the /skynet/resolve/:skylink [GET] endpoint.
+func (c *Client) ResolveSkylinkV2(skylink string) (string, error) {
+	return c.ResolveSkylinkV2WithTimeout(skylink, 0)
+}
+
+// ResolveSkylinkV2WithTimeout queries the /skynet/resolve/:skylink [GET]
+// endpoint.
+func (c *Client) ResolveSkylinkV2WithTimeout(skylink string, timeout time.Duration) (string, error) {
+	// Set the values.
+	values := url.Values{}
+	if timeout > 0 {
+		values.Set("timeout", fmt.Sprint(int(timeout.Seconds())))
+	}
+
+	// Send request.
+	var srg api.SkylinkResolveGET
+	err := c.get(fmt.Sprintf("/skynet/resolve/%v?%v", skylink, values.Encode()), &srg)
+	return srg.Skylink, err
+}
+
 // RegistryReadWithTimeout queries the /skynet/registry [GET] endpoint with the
 // specified timeout.
 func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error) {
@@ -854,7 +885,7 @@ func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.
 		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected signature length %v != %v", len(sigBytes), len(sig))
 	}
 	copy(sig[:], sigBytes)
-	return modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig), nil
+	return modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig, modules.RegistryTypeWithoutPubkey), nil
 }
 
 // RegistryUpdate queries the /skynet/registry [POST] endpoint.

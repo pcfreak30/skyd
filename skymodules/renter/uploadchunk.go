@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -124,6 +125,8 @@ type unfinishedUploadChunk struct {
 	cancelMU sync.Mutex     // cancelMU needs to be held when adding to cancelWG and reading/writing canceled.
 	canceled bool           // cancel the work on this chunk.
 	cancelWG sync.WaitGroup // WaitGroup to wait on after canceling the uploadchunk.
+
+	staticSpan opentracing.Span
 }
 
 // managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
@@ -188,8 +191,8 @@ func (uc *unfinishedUploadChunk) managedUpdateDistributionTime() {
 	uc.chunkDistributionTime = time.Now()
 }
 
-// managedNotifyStandbyWorkers is called when a worker fails to upload a piece, meaning
-// that the standby workers may now be needed to help the piece finish
+// managedNotifyStandbyWorkers is called when a worker fails to upload a piece,
+// meaning that the standby workers may now be needed to help the piece finish
 // uploading.
 func (uc *unfinishedUploadChunk) managedNotifyStandbyWorkers() {
 	// Copy the standby workers into a new slice and reset it since we can't
@@ -614,6 +617,9 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if uc.piecesCompleted >= uc.staticMinimumPieces && !uc.staticAvailable() && !uc.released {
 		uc.chunkAvailableTime = time.Now()
 		close(uc.staticAvailableChan)
+		if uc.staticSpan != nil {
+			uc.staticSpan.LogKV("available", true)
+		}
 	}
 
 	// Check if the chunk can be marked as completed. This happens when the
@@ -623,6 +629,10 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if !uc.staticUploadComplete() && chunkComplete {
 		uc.chunkCompleteTime = time.Now()
 		close(uc.staticUploadCompletedChan)
+		if uc.staticSpan != nil {
+			uc.staticSpan.LogKV("completed", true)
+			uc.staticSpan.Finish()
+		}
 	}
 
 	// Check if the chunk needs to be removed from the list of active

@@ -166,6 +166,7 @@ func buildETag(skylink skymodules.Skylink, method, path string, format skymodule
 		method,
 		path,
 		string(format),
+		"1", // random variable to cache bust all existing ETags (SkylinkV2 fix)
 	).String()
 }
 
@@ -519,6 +520,14 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 	}
 	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {
 		WriteError(w, httpErr, http.StatusNotFound)
+		return
+	}
+	if errors.Contains(err, skymodules.ErrMalformedSkylink) {
+		WriteError(w, httpErr, http.StatusBadRequest)
+		return
+	}
+	if errors.Contains(err, renter.ErrInvalidSkylinkVersion) {
+		WriteError(w, httpErr, http.StatusBadRequest)
 		return
 	}
 	if err != nil {

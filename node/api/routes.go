@@ -44,6 +44,7 @@ func (api *API) buildHTTPRoutes() {
 	// Daemon API Calls
 	router.GET("/daemon/alerts", api.daemonAlertsHandlerGET)
 	router.GET("/daemon/constants", api.daemonConstantsHandler)
+	router.GET("/daemon/ready", api.daemonReadyGET)
 	router.GET("/daemon/settings", api.daemonSettingsHandlerGET)
 	router.POST("/daemon/settings", api.daemonSettingsHandlerPOST)
 	router.GET("/daemon/stack", api.daemonStackHandlerGET)
@@ -132,6 +133,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/skynet/portals", RequirePassword(api.skynetPortalsHandlerPOST, requiredPassword))
 		router.POST("/skynet/registry", RequirePassword(api.registryHandlerPOST, requiredPassword))
 		router.GET("/skynet/registry", api.registryHandlerGET)
+		router.GET("/skynet/resolve/:skylink", api.skylinkResolveGET)
 		router.POST("/skynet/restore", RequirePassword(api.skynetRestoreHandlerPOST, requiredPassword))
 		router.GET("/skynet/root", api.skynetRootHandlerGET)
 		router.GET("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)

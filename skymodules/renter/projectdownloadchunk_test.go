@@ -20,6 +20,56 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// TestProjectDownloadChunkMaxWaitLateWorkers is a unit test that verifies
+// whether 'tryOverdrive' caps the 'workersLateChan' on 'maxWaitLateWorkers'
+func TestProjectDownloadChunkMaxWaitLateWorkers(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// isExpectedElapsedTimeMS is a helper function that returns whether the
+	// given elapsed time is within a certain margin from the given expected
+	// time, in milliseconds. The margin can be passed in.
+	isExpectedElapsedTimeMS := func(elapsed, expected time.Duration, margin float64) bool {
+		elapsedMS := float64(elapsed.Milliseconds())
+		minAllowed := (1 - margin) * float64(expected.Milliseconds())
+		maxAllowed := (1 + margin) * float64(expected.Milliseconds())
+		return minAllowed <= elapsedMS && elapsedMS <= maxAllowed
+	}
+
+	// pass a latest return that does not exceed `maxWaitLateWorkers` cap
+	now := time.Now()
+	pdc := &projectDownloadChunk{}
+	_, workersLateChan := pdc.tryOverdrive(0, now.Add(maxWaitLateWorkers/2))
+
+	// ensure we have not capped the channel, but instead use the value passed
+	select {
+	case <-workersLateChan:
+		elapsed := time.Since(now)
+		if !isExpectedElapsedTimeMS(elapsed, maxWaitLateWorkers/2, 0.1) {
+			t.Fatal("unexpected")
+		}
+	case <-time.After(maxWaitLateWorkers):
+		t.Fatal("unexpected")
+	}
+
+	// pass a latest return that does exceed the `maxWaitLateWorkers` cap
+	now = time.Now()
+	_, workersLateChan = pdc.tryOverdrive(0, now.Add(maxWaitLateWorkers*2))
+
+	// ensure the return channel was capped at `maxWaitLateWorkers`
+	select {
+	case <-workersLateChan:
+		elapsed := time.Since(now)
+		if !isExpectedElapsedTimeMS(elapsed, maxWaitLateWorkers, 0.1) {
+			t.Fatal("unexpected")
+		}
+	case <-time.After(maxWaitLateWorkers * 2):
+		t.Fatal("unexpected")
+	}
+}
+
 // TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.
@@ -85,12 +135,12 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	}
 
 	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
-		launchTime:           time.Now(),
-		expectedCompleteTime: time.Now().Add(time.Minute),
-		expectedDuration:     time.Minute,
+		staticLaunchTime:           time.Now(),
+		staticExpectedCompleteTime: time.Now().Add(time.Minute),
+		staticExpectedDuration:     time.Minute,
 
-		pdc:    pdc,
-		worker: new(worker),
+		staticPDC:    pdc,
+		staticWorker: new(worker),
 	})
 
 	// call finalize
@@ -110,7 +160,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		t.Log("expected:\n", originalData[offset:offset+length])
 		t.Fatal("unexpected data")
 	}
-	if downloadResponse.launchedWorkers == nil || len(downloadResponse.launchedWorkers) != 1 || downloadResponse.launchedWorkers[0].expectedDuration != time.Minute {
+	if downloadResponse.launchedWorkers == nil || len(downloadResponse.launchedWorkers) != 1 || downloadResponse.launchedWorkers[0].staticExpectedDuration != time.Minute {
 		t.Fatal("unexpected")
 	}
 
@@ -278,7 +328,7 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 	}
 
 	lwi := launchedWorkerInfo{
-		launchTime: time.Now().Add(-time.Minute),
+		staticLaunchTime: time.Now().Add(-time.Minute),
 	}
 	pdc.launchedWorkers = []*launchedWorkerInfo{&lwi}
 
@@ -410,14 +460,14 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	lw := pdc.launchedWorkers[0]
 
 	// assert the launched worker info contains what we expect it to contain
-	if lw.launchTime == (time.Time{}) ||
+	if lw.staticLaunchTime == (time.Time{}) ||
 		lw.completeTime != (time.Time{}) ||
-		lw.expectedCompleteTime == (time.Time{}) ||
+		lw.staticExpectedCompleteTime == (time.Time{}) ||
 		lw.jobDuration != 0 ||
 		lw.totalDuration != 0 ||
-		lw.expectedDuration == 0 ||
-		!bytes.Equal(lw.pdc.uid[:], pdc.uid[:]) ||
-		lw.worker.staticHostPubKeyStr != spk.String() {
+		lw.staticExpectedDuration == 0 ||
+		!bytes.Equal(lw.staticPDC.uid[:], pdc.uid[:]) ||
+		lw.staticWorker.staticHostPubKeyStr != spk.String() {
 		t.Fatal("unexpected")
 	}
 
@@ -595,15 +645,15 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	}
 
 	lwi := &launchedWorkerInfo{
-		pieceIndex:      1,
-		overdriveWorker: false,
+		staticPieceIndex:        1,
+		staticIsOverdriveWorker: false,
 
-		launchTime:           time.Now().Add(-5 * time.Second),
-		expectedCompleteTime: time.Now().Add(10 * time.Second),
-		expectedDuration:     10 * time.Second,
+		staticLaunchTime:           time.Now().Add(-5 * time.Second),
+		staticExpectedCompleteTime: time.Now().Add(10 * time.Second),
+		staticExpectedDuration:     10 * time.Second,
 
-		pdc:    pdc,
-		worker: w,
+		staticPDC:    pdc,
+		staticWorker: w,
 	}
 
 	// assert output when download not complete
@@ -621,7 +671,7 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	// assert output when download complete
 	lwi.completeTime = time.Now()
 	lwi.jobDuration = 20 * time.Second
-	lwi.totalDuration = time.Since(lwi.launchTime)
+	lwi.totalDuration = time.Since(lwi.staticLaunchTime)
 
 	expectedDurInfo = "responded after 5000ms"
 	expectedJobInfo := "read job took 20000ms"
@@ -645,7 +695,7 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	}
 
 	// assert output when worker is overdrive worker
-	lwi.overdriveWorker = true
+	lwi.staticIsOverdriveWorker = true
 	expectedWorkerInfo = "overdrive worker " + w.staticHostPubKey.ShortString()
 	if !strings.Contains(lwi.String(), expectedWorkerInfo) {
 		t.Fatal("unexpected", lwi.String())

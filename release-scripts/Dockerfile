@@ -8,8 +8,8 @@ RUN useradd -ms /bin/bash builder
 USER builder
 WORKDIR /home/builder
 
-RUN git clone https://gitlab.com/NebulousLabs/Sia
-WORKDIR /home/builder/Sia
+RUN git clone https://gitlab.com/SkynetLabs/skyd
+WORKDIR /home/builder/skyd
 RUN git fetch --all && git checkout $branch
 
 RUN ./release-scripts/release.sh $version
