@@ -70,6 +70,7 @@ func (w *worker) staticAsyncDataLimitReached() bool {
 func (w *worker) newWorkerLoopState() {
 	if w.staticLoopState != nil {
 		w.staticRenter.staticLog.Critical("workerloopstate already exists")
+		return
 	}
 	w.staticLoopState = &workerLoopState{
 		atomicReadDataLimit:  initialConcurrentAsyncReadData,
