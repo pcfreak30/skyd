@@ -351,7 +351,7 @@ func NewDistributionTrackerStandard() *DistributionTracker {
 func NewDistributionTrackerWorker() *DistributionTracker {
 	return &DistributionTracker{
 		distributions: []*Distribution{
-			NewDistribution(30 * time.Second),
+			NewDistribution(15 * time.Minute),
 			NewDistribution(24 * time.Hour),
 			NewDistribution(30 * 24 * time.Hour),
 		},
