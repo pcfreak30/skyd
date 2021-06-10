@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/SkynetLabs/skyd/build"
 	"golang.org/x/net/context"
@@ -140,6 +141,9 @@ func TestWorkerJobGeneric(t *testing.T) {
 	// Create a job queue.
 	w := new(worker)
 	w.staticRenter = new(Renter)
+	w.atomicCache = unsafe.Pointer(&workerCache{
+		staticHostVersion: foundationHardforkVersion,
+	})
 	jq := newJobGenericQueue(w)
 	cancelCtx, cancel := context.WithCancel(context.Background())
 
