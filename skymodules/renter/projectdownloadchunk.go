@@ -317,6 +317,32 @@ func (pdc *projectDownloadChunk) fail(err error) {
 	pdc.downloadResponseChan <- dr
 }
 
+func (pdc *projectDownloadChunk) printDistributions() {
+	log := pdc.workerState.staticRenter.staticLog
+	for _, lwi := range pdc.launchedWorkers {
+		jrq := lwi.staticWorker.staticJobReadQueue
+		jhsq := lwi.staticWorker.staticJobHasSectorQueue
+
+		hsTracker := jhsq.staticJobTimeTracker
+		var rjTracker *skymodules.DistributionTracker
+		length := pdc.lengthInChunk
+		if length <= 1<<16 {
+			rjTracker = jrq.staticJobTimeTracker64k
+		} else if length <= 1<<20 {
+			rjTracker = jrq.staticJobTimeTracker1m
+		} else {
+			rjTracker = jrq.staticJobTimeTracker4m
+		}
+
+		hsPercentiles := hsTracker.Percentiles()[0]
+		rjPercentiles := rjTracker.Percentiles()[0]
+
+		log.Println("Distributions for worker", lwi.staticWorker.staticHostPubKeyStr)
+		log.Printf("HS distribution: \np90: %v\np99: %v\np999: %v\n", hsPercentiles[0], hsPercentiles[1], hsPercentiles[2])
+		log.Printf("RJ distribution: \np90: %v\np99: %v\np999: %v\n", rjPercentiles[0], rjPercentiles[1], rjPercentiles[2])
+	}
+}
+
 // finalize will take the completed pieces of the download, decode them,
 // and then send the result down the response channel. If there is an error
 // during decode, 'pdc.fail()' will be called.
@@ -483,6 +509,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		completed, err := pdc.finished()
 		if completed {
 			pdc.finalize()
+			pdc.printDistributions()
 			return
 		}
 		if err != nil {
