@@ -551,6 +551,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// result of the job, even if this thread is not listening.
 	workers := r.staticWorkerPool.callWorkers()
 	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(workers))
+	span.LogKV("workers", len(workers))
 
 	// Create a context to continue updating registry values in the background.
 	updateTimeoutCtx, updateTimeoutCancel := context.WithTimeout(r.tg.StopCtx(), updateRegistryBackgroundTimeout)
