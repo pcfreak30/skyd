@@ -77,6 +77,8 @@ type (
 		// otherwise.
 		staticCanceled() bool
 
+		// staticMinHostVersion returns the minimum host version necessary to
+		// execute the job.
 		staticMinHostVersion() string
 
 		// callWeight returns the weight of a job for the iwrr.

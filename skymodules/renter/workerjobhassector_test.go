@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"testing"
+	"unsafe"
 
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -16,7 +17,11 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 
 	// Create queue and job.
 	queue := jobHasSectorQueue{
-		jobGenericQueue: newJobGenericQueue(&worker{}),
+		jobGenericQueue: newJobGenericQueue(&worker{
+			atomicCache: unsafe.Pointer(&workerCache{
+				staticHostVersion: foundationHardforkVersion,
+			}),
+		}),
 	}
 	jhs := &jobHasSector{
 		jobGeneric: &jobGeneric{
