@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -41,6 +42,14 @@ type (
 		weightedJobTime64k float64
 		weightedJobTime1m  float64
 		weightedJobTime4m  float64
+
+		// These distribution trackers track the job time performance of the
+		// read jobs, taking into account their length. The 'jobReadQueue' does
+		// not use the tracker exposed on the generic job queue seeing as it has
+		// to track in several categories.
+		staticJobTimeTracker64k *skymodules.DistributionTracker
+		staticJobTimeTracker1m  *skymodules.DistributionTracker
+		staticJobTimeTracker4m  *skymodules.DistributionTracker
 
 		*jobGenericQueue
 	}
@@ -106,7 +115,10 @@ func (j *jobRead) callDiscard(err error) {
 // managedFinishExecute will execute code that is shared by multiple read jobs
 // after execution. It updates the performance metrics, records whether the
 // execution was successful and returns the response.
-func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
+func (j *jobRead) managedFinishExecute(readData []byte, readErr error) {
+	// Calculate the job time
+	jobTime := j.externJobFinishTime.Sub(j.externJobStartTime)
+
 	// Send the response in a goroutine so that the worker resources can be
 	// released faster. Need to check if the job was canceled so that the
 	// goroutine will exit.
@@ -115,7 +127,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticErr:  readErr,
 
 		staticMetadata: j.staticJobReadMetadata(),
-		staticJobTime:  readJobTime,
+		staticJobTime:  jobTime,
 	}
 	w := j.staticQueue.staticWorker()
 	err := w.staticRenter.tg.Launch(func() {
@@ -143,7 +155,8 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	// result in an error. Because there was no failure, the consecutive
 	// failures stat can be reset.
 	jq := j.staticQueue.(*jobReadQueue)
-	jq.callUpdateJobTimeMetrics(j.staticLength, readJobTime)
+	jq.callUpdateJobTimeMetrics(j.staticLength, jobTime)
+	jq.callUpdateJobTimeEstimateMetrics(*j.jobGeneric)
 }
 
 // callExpectedBandwidth returns the bandwidth that gets consumed by a
@@ -197,11 +210,15 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
+	now := time.Now()
 	estimate := jq.expectedJobTime(j.staticLength)
+
+	j.externJobEnqueueTime = now
+	j.externEstimatedJobDuration = estimate
 	if !jq.add(j) {
 		return time.Time{}, false
 	}
-	return time.Now().Add(estimate), true
+	return now.Add(estimate), true
 }
 
 // callExpectedJobTime will return the recent performance of the worker
@@ -262,10 +279,13 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 	defer jq.mu.Unlock()
 	if length <= 1<<16 {
 		jq.weightedJobTime64k = expMovingAvgHotStart(jq.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
+		jq.staticJobTimeTracker64k.AddDataPoint(jobTime)
 	} else if length <= 1<<20 {
 		jq.weightedJobTime1m = expMovingAvgHotStart(jq.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
+		jq.staticJobTimeTracker1m.AddDataPoint(jobTime)
 	} else {
 		jq.weightedJobTime4m = expMovingAvgHotStart(jq.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
+		jq.staticJobTimeTracker4m.AddDataPoint(jobTime)
 	}
 }
 
@@ -278,6 +298,11 @@ func (w *worker) initJobReadQueue() {
 	}
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
+
+		// initialise the distribution trackers
+		staticJobTimeTracker64k: skymodules.NewDistributionTrackerStandard(),
+		staticJobTimeTracker1m:  skymodules.NewDistributionTrackerStandard(),
+		staticJobTimeTracker4m:  skymodules.NewDistributionTrackerStandard(),
 	}
 }
 

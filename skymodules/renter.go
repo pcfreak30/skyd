@@ -1029,6 +1029,10 @@ type (
 
 		JobQueueSize uint64 `json:"jobqueuesize"`
 
+		JobTimeDistribution64k *DistributionTrackerStats `json:"jobtimedistribution64k"`
+		JobTimeDistribution1m  *DistributionTrackerStats `json:"jobtimedistribution1m"`
+		JobTimeDistribution4m  *DistributionTrackerStats `json:"jobtimedistribution4m"`
+
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
 	}
@@ -1041,6 +1045,8 @@ type (
 		ConsecutiveFailures uint64 `json:"consecutivefailures"`
 
 		JobQueueSize uint64 `json:"jobqueuesize"`
+
+		JobTimeDistribution *DistributionTrackerStats `json:"jobtimedistribution"`
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`

@@ -171,13 +171,21 @@ func (j jobHasSectorBatch) callExecute() {
 		return
 	}
 
+	// Set start time on all jobs
 	start := time.Now()
+	for _, hsj := range j.staticJobs {
+		hsj.externJobStartTime = start
+	}
+
 	w := j.staticJobs[0].staticQueue.staticWorker()
 	availables, err := j.managedHasSector()
+	finish := time.Now()
 	jobTime := time.Since(start)
 
 	for i := range j.staticJobs {
 		hsj := j.staticJobs[i]
+		hsj.externJobFinishTime = finish
+
 		// Create the response.
 		response := &jobHasSectorResponse{
 			staticErr:     err,
@@ -197,6 +205,10 @@ func (j jobHasSectorBatch) callExecute() {
 			case <-w.staticRenter.tg.StopChan():
 			}
 		})
+		if err2 != nil {
+			w.staticRenter.staticLog.Println("callExecute: launch failed", err)
+		}
+
 		// Report success or failure to the queue.
 		if err != nil {
 			hsj.staticQueue.callReportFailure(err)
@@ -207,9 +219,7 @@ func (j jobHasSectorBatch) callExecute() {
 		// Job was a success, update the performance stats on the queue.
 		jq := hsj.staticQueue.(*jobHasSectorQueue)
 		jq.callUpdateJobTimeMetrics(jobTime)
-		if err2 != nil {
-			w.staticRenter.staticLog.Println("callExecute: launch failed", err)
-		}
+		jq.callUpdateJobTimeEstimateMetrics(*hsj.jobGeneric)
 	}
 }
 
@@ -295,7 +305,7 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate ti
 	if estimate > maxEstimate {
 		return time.Time{}, errEstimateAboveMax
 	}
-	j.externJobStartTime = now
+	j.externJobEnqueueTime = now
 	j.externEstimatedJobDuration = estimate
 	if !jq.add(j) {
 		return time.Time{}, errors.New("unable to add job to queue")
@@ -320,6 +330,8 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
+
+	jq.staticJobTimeTracker.AddDataPoint(jobTime)
 }
 
 // expectedJobTime will return the amount of time that a job is expected to

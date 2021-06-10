@@ -127,9 +127,14 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 	}
 
 	return skymodules.WorkerReadJobsStatus{
-		AvgJobTime64k:       avgJobTimeInMs(1 << 16),
-		AvgJobTime1m:        avgJobTimeInMs(1 << 20),
-		AvgJobTime4m:        avgJobTimeInMs(1 << 22),
+		AvgJobTime64k: avgJobTimeInMs(1 << 16),
+		AvgJobTime1m:  avgJobTimeInMs(1 << 20),
+		AvgJobTime4m:  avgJobTimeInMs(1 << 22),
+
+		JobTimeDistribution64k: jrq.staticJobTimeTracker64k.Stats(),
+		JobTimeDistribution1m:  jrq.staticJobTimeTracker1m.Stats(),
+		JobTimeDistribution4m:  jrq.staticJobTimeTracker4m.Stats(),
+
 		ConsecutiveFailures: status.consecutiveFailures,
 		JobQueueSize:        status.size,
 		RecentErr:           recentErrString,

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 var (
@@ -32,7 +33,9 @@ type (
 		// These fields are set when the job is added to the job queue and used
 		// after execution to log the delta between the estimated job time and
 		// the actual job time.
+		externJobEnqueueTime       time.Time
 		externJobStartTime         time.Time
+		externJobFinishTime        time.Time
 		externEstimatedJobDuration time.Duration
 	}
 
@@ -50,8 +53,11 @@ type (
 		recentErr           error
 		recentErrTime       time.Time
 
-		staticWorkerObj *worker // name conflict with staticWorker method
-		mu              sync.Mutex
+		staticJobTimeTracker       *skymodules.DistributionTracker
+		staticJobTimeEstPosTracker *skymodules.DistributionTracker
+		staticJobTimeEstNegTracker *skymodules.DistributionTracker
+		staticWorkerObj            *worker // name conflict with staticWorker method
+		mu                         sync.Mutex
 	}
 
 	// workerJob defines a job that the worker is able to perform.
@@ -104,6 +110,10 @@ type (
 		consecutiveFailures uint64
 		recentErr           error
 		recentErrTime       time.Time
+
+		jobTimeStats             *skymodules.DistributionTrackerStats
+		jobTimeEstimatesPosDelta *skymodules.DistributionTrackerStats
+		jobTimeEstimatesNegDelta *skymodules.DistributionTrackerStats
 	}
 )
 
@@ -121,8 +131,12 @@ func newJobGeneric(ctx context.Context, queue workerJobQueue, metadata interface
 // newJobGenericQueue will return an initialized generic job queue.
 func newJobGenericQueue(w *worker) *jobGenericQueue {
 	return &jobGenericQueue{
-		jobs:            list.New(),
-		staticWorkerObj: w,
+		jobs: list.New(),
+
+		staticJobTimeTracker:       skymodules.NewDistributionTrackerStandard(),
+		staticJobTimeEstPosTracker: skymodules.NewDistributionTrackerStandard(),
+		staticJobTimeEstNegTracker: skymodules.NewDistributionTrackerStandard(),
+		staticWorkerObj:            w,
 	}
 }
 
@@ -258,7 +272,25 @@ func (jq *jobGenericQueue) callStatus() workerJobQueueStatus {
 		consecutiveFailures: jq.consecutiveFailures,
 		recentErr:           jq.recentErr,
 		recentErrTime:       jq.recentErrTime,
+
+		jobTimeStats: jq.staticJobTimeTracker.Stats(),
 	}
+}
+
+// callUpdateJobTimeEstimateMetrics takes a job and updates the job time
+// estimates distribution tracker. We track these in two separate trackers, one
+// for a "positive" estimate and another for a "negative" estimate. A positive
+// estimate is when it was an overestimate.
+//
+// TODO: not sure whether pos. and neg. are the best term here
+func (jq *jobGenericQueue) callUpdateJobTimeEstimateMetrics(job jobGeneric) {
+	estimatedDur := job.externEstimatedJobDuration
+	actualDur := job.externJobFinishTime.Sub(job.externJobStartTime)
+	if estimatedDur > actualDur {
+		jq.staticJobTimeEstPosTracker.AddDataPoint(estimatedDur - actualDur)
+		return
+	}
+	jq.staticJobTimeEstNegTracker.AddDataPoint(actualDur - estimatedDur)
 }
 
 // discardAll will drop all jobs from the queue.

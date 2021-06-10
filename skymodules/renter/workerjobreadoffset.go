@@ -20,13 +20,13 @@ type (
 
 // callExecute executes the jobReadOffset.
 func (j *jobReadOffset) callExecute() {
-	// Track how long the job takes.
-	start := time.Now()
+	// Track when the job starts and finishes.
+	j.externJobStartTime = time.Now()
 	data, err := j.managedReadOffset()
-	jobTime := time.Since(start)
+	j.externJobFinishTime = time.Now()
 
 	// Finish the execution.
-	j.jobRead.managedFinishExecute(data, err, jobTime)
+	j.jobRead.managedFinishExecute(data, err)
 }
 
 // managedReadOffset returns the sector data for given root.
