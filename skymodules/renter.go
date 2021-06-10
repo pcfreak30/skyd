@@ -1029,14 +1029,20 @@ type (
 
 		JobQueueSize uint64 `json:"jobqueuesize"`
 
+		JobTime64kP50  uint64 `json:"jobtime64kp50"`  // in ms
+		JobTime64kP75  uint64 `json:"jobtime64kp75"`  // in ms
 		JobTime64kP90  uint64 `json:"jobtime64kp90"`  // in ms
 		JobTime64kP99  uint64 `json:"jobtime64kp99"`  // in ms
 		JobTime64kP999 uint64 `json:"jobtime64kp999"` // in ms
 
+		JobTime1mP50  uint64 `json:"jobtime1mp50"`  // in ms
+		JobTime1mP75  uint64 `json:"jobtime1mp75"`  // in ms
 		JobTime1mP90  uint64 `json:"jobtime1mp90"`  // in ms
 		JobTime1mP99  uint64 `json:"jobtime1mp99"`  // in ms
 		JobTime1mP999 uint64 `json:"jobtime1mp999"` // in ms
 
+		JobTime4mP50  uint64 `json:"jobtime4mp50"`  // in ms
+		JobTime4mP75  uint64 `json:"jobtime4mp75"`  // in ms
 		JobTime4mP90  uint64 `json:"jobtime4mp90"`  // in ms
 		JobTime4mP99  uint64 `json:"jobtime4mp99"`  // in ms
 		JobTime4mP999 uint64 `json:"jobtime4mp999"` // in ms
@@ -1057,6 +1063,8 @@ type (
 
 		JobQueueSize uint64 `json:"jobqueuesize"`
 
+		JobTimeP50  uint64 `json:"jobtimep50"`
+		JobTimeP75  uint64 `json:"jobtimep75"`
 		JobTimeP90  uint64 `json:"jobtimep90"`
 		JobTimeP99  uint64 `json:"jobtimep99"`
 		JobTimeP999 uint64 `json:"jobtimep999"`

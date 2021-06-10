@@ -138,14 +138,20 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 		AvgJobTime1m:  avgJobTimeInMs(1 << 20),
 		AvgJobTime4m:  avgJobTimeInMs(1 << 22),
 
+		JobTime64kP50:  uint64(jobTimeStats64k.Nines[0][3].Milliseconds()),
+		JobTime64kP75:  uint64(jobTimeStats64k.Nines[0][4].Milliseconds()),
 		JobTime64kP90:  uint64(jobTimeStats64k.Nines[0][0].Milliseconds()),
 		JobTime64kP99:  uint64(jobTimeStats64k.Nines[0][1].Milliseconds()),
 		JobTime64kP999: uint64(jobTimeStats64k.Nines[0][2].Milliseconds()),
 
+		JobTime1mP50:  uint64(jobTimeStats1m.Nines[0][3].Milliseconds()),
+		JobTime1mP75:  uint64(jobTimeStats1m.Nines[0][4].Milliseconds()),
 		JobTime1mP90:  uint64(jobTimeStats1m.Nines[0][0].Milliseconds()),
 		JobTime1mP99:  uint64(jobTimeStats1m.Nines[0][1].Milliseconds()),
 		JobTime1mP999: uint64(jobTimeStats1m.Nines[0][2].Milliseconds()),
 
+		JobTime4mP50:  uint64(jobTimeStats4m.Nines[0][3].Milliseconds()),
+		JobTime4mP75:  uint64(jobTimeStats4m.Nines[0][4].Milliseconds()),
 		JobTime4mP90:  uint64(jobTimeStats4m.Nines[0][0].Milliseconds()),
 		JobTime4mP99:  uint64(jobTimeStats4m.Nines[0][1].Milliseconds()),
 		JobTime4mP999: uint64(jobTimeStats4m.Nines[0][2].Milliseconds()),
@@ -181,6 +187,8 @@ func (w *worker) callHasSectorJobStatus() skymodules.WorkerHasSectorJobsStatus {
 		ConsecutiveFailures: status.consecutiveFailures,
 		JobQueueSize:        status.size,
 
+		JobTimeP50:  uint64(jobTimeStats.Nines[0][3].Milliseconds()),
+		JobTimeP75:  uint64(jobTimeStats.Nines[0][4].Milliseconds()),
 		JobTimeP90:  uint64(jobTimeStats.Nines[0][0].Milliseconds()),
 		JobTimeP99:  uint64(jobTimeStats.Nines[0][1].Milliseconds()),
 		JobTimeP999: uint64(jobTimeStats.Nines[0][2].Milliseconds()),

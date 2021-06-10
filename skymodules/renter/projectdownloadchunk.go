@@ -338,8 +338,8 @@ func (pdc *projectDownloadChunk) printDistributions() {
 		rjPercentiles := rjTracker.Percentiles()[0]
 
 		log.Println("Distributions for worker", lwi.staticWorker.staticHostPubKeyStr)
-		log.Printf("HS distribution: \np90: %v\np99: %v\np999: %v\n", hsPercentiles[0], hsPercentiles[1], hsPercentiles[2])
-		log.Printf("RJ distribution: \np90: %v\np99: %v\np999: %v\n", rjPercentiles[0], rjPercentiles[1], rjPercentiles[2])
+		log.Printf("HS distribution: \np50: %v\np75: %v\np90: %v\np99: %v\np999: %v\n", hsPercentiles[3], hsPercentiles[4], hsPercentiles[0], hsPercentiles[1], hsPercentiles[2])
+		log.Printf("RJ distribution: \np50: %v\np75: %v\np90: %v\np99: %v\np999: %v\n", rjPercentiles[3], rjPercentiles[4], rjPercentiles[0], rjPercentiles[1], rjPercentiles[2])
 	}
 }
 

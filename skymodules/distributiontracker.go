@@ -300,6 +300,10 @@ func (dt *DistributionTracker) Percentiles() [][]time.Duration {
 		timings[i][1] = dt.distributions[i].PStat(.99)
 		timings[i][2] = dt.distributions[i].PStat(.999)
 		timings[i][3] = dt.distributions[i].PStat(.9999)
+
+		// tmp add p50 and p75
+		timings[i][4] = dt.distributions[i].PStat(.5)
+		timings[i][5] = dt.distributions[i].PStat(.75)
 	}
 	return timings
 }
