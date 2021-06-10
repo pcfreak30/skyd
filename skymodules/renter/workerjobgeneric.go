@@ -133,9 +133,9 @@ func newJobGenericQueue(w *worker) *jobGenericQueue {
 	return &jobGenericQueue{
 		jobs: list.New(),
 
-		staticJobTimeTracker:       skymodules.NewDistributionTrackerStandard(),
-		staticJobTimeEstPosTracker: skymodules.NewDistributionTrackerStandard(),
-		staticJobTimeEstNegTracker: skymodules.NewDistributionTrackerStandard(),
+		staticJobTimeTracker:       skymodules.NewDistributionTrackerWorker(),
+		staticJobTimeEstPosTracker: skymodules.NewDistributionTrackerWorker(),
+		staticJobTimeEstNegTracker: skymodules.NewDistributionTrackerWorker(),
 		staticWorkerObj:            w,
 	}
 }

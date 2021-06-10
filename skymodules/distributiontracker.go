@@ -345,3 +345,15 @@ func NewDistributionTrackerStandard() *DistributionTracker {
 		},
 	}
 }
+
+// NewDistributionTrackerWorker returns a distribution tracker used by the
+// workers
+func NewDistributionTrackerWorker() *DistributionTracker {
+	return &DistributionTracker{
+		distributions: []*Distribution{
+			NewDistribution(30 * time.Second),
+			NewDistribution(24 * time.Hour),
+			NewDistribution(30 * 24 * time.Hour),
+		},
+	}
+}

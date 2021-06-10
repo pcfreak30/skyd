@@ -300,9 +300,9 @@ func (w *worker) initJobReadQueue() {
 		jobGenericQueue: newJobGenericQueue(w),
 
 		// initialise the distribution trackers
-		staticJobTimeTracker64k: skymodules.NewDistributionTrackerStandard(),
-		staticJobTimeTracker1m:  skymodules.NewDistributionTrackerStandard(),
-		staticJobTimeTracker4m:  skymodules.NewDistributionTrackerStandard(),
+		staticJobTimeTracker64k: skymodules.NewDistributionTrackerWorker(),
+		staticJobTimeTracker1m:  skymodules.NewDistributionTrackerWorker(),
+		staticJobTimeTracker4m:  skymodules.NewDistributionTrackerWorker(),
 	}
 }
 
