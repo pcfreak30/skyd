@@ -1029,9 +1029,20 @@ type (
 
 		JobQueueSize uint64 `json:"jobqueuesize"`
 
-		JobTimeDistribution64k *DistributionTrackerStats `json:"jobtimedistribution64k"`
-		JobTimeDistribution1m  *DistributionTrackerStats `json:"jobtimedistribution1m"`
-		JobTimeDistribution4m  *DistributionTrackerStats `json:"jobtimedistribution4m"`
+		JobTime64kP90  uint64 `json:"jobtime64kp90"`  // in ms
+		JobTime64kP99  uint64 `json:"jobtime64kp99"`  // in ms
+		JobTime64kP999 uint64 `json:"jobtime64kp999"` // in ms
+
+		JobTime1mP90  uint64 `json:"jobtime1mp90"`  // in ms
+		JobTime1mP99  uint64 `json:"jobtime1mp99"`  // in ms
+		JobTime1mP999 uint64 `json:"jobtime1mp999"` // in ms
+
+		JobTime4mP90  uint64 `json:"jobtime4mp90"`  // in ms
+		JobTime4mP99  uint64 `json:"jobtime4mp99"`  // in ms
+		JobTime4mP999 uint64 `json:"jobtime4mp999"` // in ms
+
+		JobTimeEstPosP90 uint64 `json:"jobtimeestposp90"` // in ms
+		JobTimeEstNegP90 uint64 `json:"jobtimeestnegp90"` // in ms
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
@@ -1046,7 +1057,12 @@ type (
 
 		JobQueueSize uint64 `json:"jobqueuesize"`
 
-		JobTimeDistribution *DistributionTrackerStats `json:"jobtimedistribution"`
+		JobTimeP90  uint64 `json:"jobtimep90"`
+		JobTimeP99  uint64 `json:"jobtimep99"`
+		JobTimeP999 uint64 `json:"jobtimep999"`
+
+		JobTimeEstPosP90 uint64 `json:"jobtimeestposp90"` // in ms
+		JobTimeEstNegP90 uint64 `json:"jobtimeestnegp90"` // in ms
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`

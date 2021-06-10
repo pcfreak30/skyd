@@ -126,14 +126,32 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 		return 0
 	}
 
+	jobTimeStats64k := jrq.staticJobTimeTracker64k.Stats()
+	jobTimeStats1m := jrq.staticJobTimeTracker1m.Stats()
+	jobTimeStats4m := jrq.staticJobTimeTracker4m.Stats()
+
+	jobTimeEstPosStats := jrq.staticJobTimeEstPosTracker.Stats()
+	jobTimeEstNegStats := jrq.staticJobTimeEstNegTracker.Stats()
+
 	return skymodules.WorkerReadJobsStatus{
 		AvgJobTime64k: avgJobTimeInMs(1 << 16),
 		AvgJobTime1m:  avgJobTimeInMs(1 << 20),
 		AvgJobTime4m:  avgJobTimeInMs(1 << 22),
 
-		JobTimeDistribution64k: jrq.staticJobTimeTracker64k.Stats(),
-		JobTimeDistribution1m:  jrq.staticJobTimeTracker1m.Stats(),
-		JobTimeDistribution4m:  jrq.staticJobTimeTracker4m.Stats(),
+		JobTime64kP90:  uint64(jobTimeStats64k.Nines[0][0].Milliseconds()),
+		JobTime64kP99:  uint64(jobTimeStats64k.Nines[0][1].Milliseconds()),
+		JobTime64kP999: uint64(jobTimeStats64k.Nines[0][2].Milliseconds()),
+
+		JobTime1mP90:  uint64(jobTimeStats1m.Nines[0][0].Milliseconds()),
+		JobTime1mP99:  uint64(jobTimeStats1m.Nines[0][1].Milliseconds()),
+		JobTime1mP999: uint64(jobTimeStats1m.Nines[0][2].Milliseconds()),
+
+		JobTime4mP90:  uint64(jobTimeStats4m.Nines[0][0].Milliseconds()),
+		JobTime4mP99:  uint64(jobTimeStats4m.Nines[0][1].Milliseconds()),
+		JobTime4mP999: uint64(jobTimeStats4m.Nines[0][2].Milliseconds()),
+
+		JobTimeEstPosP90: uint64(jobTimeEstPosStats.Nines[0][0].Milliseconds()),
+		JobTimeEstNegP90: uint64(jobTimeEstNegStats.Nines[0][0].Milliseconds()),
 
 		ConsecutiveFailures: status.consecutiveFailures,
 		JobQueueSize:        status.size,
@@ -154,12 +172,24 @@ func (w *worker) callHasSectorJobStatus() skymodules.WorkerHasSectorJobsStatus {
 
 	avgJobTimeInMs := uint64(hsq.callExpectedJobTime().Milliseconds())
 
+	jobTimeStats := hsq.staticJobTimeTracker.Stats()
+	jobTimeEstPosStats := hsq.staticJobTimeEstPosTracker.Stats()
+	jobTimeEstNegStats := hsq.staticJobTimeEstNegTracker.Stats()
+
 	return skymodules.WorkerHasSectorJobsStatus{
 		AvgJobTime:          avgJobTimeInMs,
 		ConsecutiveFailures: status.consecutiveFailures,
 		JobQueueSize:        status.size,
-		RecentErr:           recentErrStr,
-		RecentErrTime:       status.recentErrTime,
+
+		JobTimeP90:  uint64(jobTimeStats.Nines[0][0].Milliseconds()),
+		JobTimeP99:  uint64(jobTimeStats.Nines[0][1].Milliseconds()),
+		JobTimeP999: uint64(jobTimeStats.Nines[0][2].Milliseconds()),
+
+		JobTimeEstPosP90: uint64(jobTimeEstPosStats.Nines[0][0].Milliseconds()),
+		JobTimeEstNegP90: uint64(jobTimeEstNegStats.Nines[0][0].Milliseconds()),
+
+		RecentErr:     recentErrStr,
+		RecentErrTime: status.recentErrTime,
 	}
 }
 
