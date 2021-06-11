@@ -4,7 +4,33 @@ import (
 	"math"
 
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+)
+
+const (
+	// lowPrioWeightPenalty is the weight penalty a low prio read job gets
+	// over a regular one.
+	lowPrioWeightPenalty = 10
+)
+
+// These constants determine the max weight for a queue in the iwrr. For most
+// queues the max weight equals the weight for the job except for dynamic jobs
+// like downloads where the weight depends on the download length.
+//
+// NOTE: These values can be tweaked. The higher the weight, the more often a
+// job can be scheduled within a cycle.
+// The highest weight determines the number of times the algorithm loops over
+// the queues. So make sure those numbers are reasonably low because a high
+// weight might cause an unnecessary performance impact.
+var (
+	downloadSnapshotQueueWeight uint64
+	uploadSnapshotQueueWeight   uint64
+	readQueueWeight             uint64
+	hasSectorQueueWeight        uint64
+	readRegistryQueueWeight     uint64
+	updateRegistryQueueWeight   uint64
+	renewQueueWeight            uint64
 )
 
 // iwrr implements the interleaved weighted round robin algorithm for the
@@ -34,34 +60,36 @@ type weightedJobQueue interface {
 	staticMaxWeight() uint64
 }
 
-// These constants determine the max weight for a queue in the iwrr. For most
-// queues the max weight equals the weight for the job except for dynamic jobs
-// like downloads where the weight depends on the download length.
-//
-// NOTE: These values can be tweaked. The higher the weight, the more often a
-// job can be scheduled within a cycle.
-// The highest weight determines the number of times the algorithm loops over
-// the queues. So make sure those numbers are reasonably low because a high
-// weight might cause an unnecessary performance impact.
-var (
-	// The job with the lowest weight. Async system repairs.
-	lowPrioReadQueueWeight uint64 = 1
+// init initializes the weights for the iwrr.
+func init() {
+	// Compute the max bandwidth that each job type might require.
+	_, bwDownloadSnapshot := (&jobDownloadSnapshot{}).callExpectedBandwidth()
+	_, bwUploadSnapshot := (&jobUploadSnapshot{}).callExpectedBandwidth()
+	_, bwRead := (&jobRead{staticLength: modules.SectorSize}).callExpectedBandwidth()
+	_, bwHasSector := (&jobHasSector{staticSectors: []crypto.Hash{{}}}).callExpectedBandwidth()
+	_, bwReadRegistry := (&jobReadRegistry{}).callExpectedBandwidth()
+	_, bwUpdateRegistry := (&jobUpdateRegistry{}).callExpectedBandwidth()
+	_, bwRenew := (&jobRenew{}).callExpectedBandwidth()
 
-	// Medium weighted jobs.
-	readQueueMinWeight          uint64 = 10
-	readQueueMaxWeight          uint64 = readQueueMinWeight + modules.SectorSize
-	downloadSnapshotQueueWeight uint64 = 10
-	uploadSnapshotQueueWeight   uint64 = 10
+	// Find the max weight.
+	var maxWeight uint64
+	for _, bw := range []uint64{bwDownloadSnapshot, bwUploadSnapshot, bwRead, bwHasSector, bwReadRegistry, bwUpdateRegistry, bwRenew} {
+		if bw > maxWeight {
+			maxWeight = bw
+		}
+	}
 
-	// These are the high weight jobs since they are the fastest ones.
-	hasSectorQueueWeight      uint64 = readQueueMaxWeight
-	readRegistryQueueWeight   uint64 = readQueueMaxWeight
-	updateRegistryQueueWeight uint64 = readQueueMaxWeight
+	// Assign the weights. The highest bandwidth gets the lowest weight.
+	downloadSnapshotQueueWeight = maxWeight - bwDownloadSnapshot
+	uploadSnapshotQueueWeight = maxWeight - bwUploadSnapshot
+	readQueueWeight = maxWeight - bwRead
+	hasSectorQueueWeight = maxWeight - bwHasSector
+	readRegistryQueueWeight = maxWeight - bwReadRegistry
+	updateRegistryQueueWeight = maxWeight - bwUpdateRegistry
 
-	// Renewing is so rare that we also give it the same priority as the high
-	// weight jobs
-	renewQueueWeight = readQueueMaxWeight
-)
+	// Special case. Renew gets the max weight.
+	renewQueueWeight = maxWeight
+}
 
 // newIWRR creates a new iwrr from queues.
 func newIWRR(queues []weightedJobQueue) *iwrr {

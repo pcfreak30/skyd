@@ -96,7 +96,7 @@ func testMaxWeights(t *testing.T) {
 		t.Error("wrong weight")
 	}
 	mw = (&jobReadQueue{staticLowPrio: false}).staticMaxWeight()
-	if mw != readQueueMaxWeight {
+	if mw != readQueueWeight {
 		t.Error("wrong weight")
 	}
 	mw = (&jobDownloadSnapshotQueue{}).staticMaxWeight()
@@ -108,7 +108,7 @@ func testMaxWeights(t *testing.T) {
 		t.Error("wrong weight")
 	}
 	mw = (&jobReadQueue{staticLowPrio: true}).staticMaxWeight()
-	if mw != lowPrioReadQueueWeight {
+	if mw != readQueueWeight/lowPrioWeightPenalty {
 		t.Error("wrong weight")
 	}
 }
@@ -140,19 +140,19 @@ func testWeights(t *testing.T) {
 		t.Error("wrong weight")
 	}
 	w = (&jobRead{staticLength: modules.SectorSize}).callWeight()
-	if w != readQueueMinWeight {
+	if w != readQueueWeight {
 		t.Error("wrong weight", w)
 	}
 	w = (&jobRead{staticLength: 1}).callWeight()
-	if w != readQueueMaxWeight {
-		t.Error("wrong weight", w)
-	}
-	w = (&jobRead{staticLength: modules.SectorSize / 2}).callWeight()
-	if w != readQueueMinWeight+(readQueueMaxWeight-readQueueMinWeight)/2 {
+	if w != readQueueWeight+modules.SectorSize-1 {
 		t.Error("wrong weight", w)
 	}
 	w = (&jobRead{staticLowPrio: true, staticLength: modules.SectorSize}).callWeight()
-	if w != lowPrioReadQueueWeight {
+	if w != readQueueWeight/lowPrioWeightPenalty {
+		t.Error("wrong weight", w)
+	}
+	w = (&jobRead{staticLowPrio: true, staticLength: 1}).callWeight()
+	if w != readQueueWeight/lowPrioWeightPenalty+modules.SectorSize-1 {
 		t.Error("wrong weight", w)
 	}
 }
