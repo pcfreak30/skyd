@@ -9,6 +9,11 @@ import (
 )
 
 const (
+
+	// asyncDataLimitReachedQueueTimePenalty is the penalty applied to a
+	// worker that has reached it's async data limit.
+	asyncDataLimitReachedQueueTimePenalty = time.Second
+
 	// maxExpBackoffJitterMS defines the maximum number of milliseconds that can
 	// get added as jitter to the wait time in the exponential backoff
 	// mechanism.
