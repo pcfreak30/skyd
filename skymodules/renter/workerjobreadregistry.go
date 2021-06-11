@@ -169,7 +169,7 @@ func (w *worker) newJobReadRegistry(ctx context.Context, span opentracing.Span, 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
 func (w *worker) newJobReadRegistryEID(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
 	jobSpan := opentracing.StartSpan("ReadRegistryJob", opentracing.ChildOf(span.Context()))
-	jobSpan.SetTag("Host", w.staticHostPubKeyStr)
+	jobSpan.SetTag("host", w.staticHostPubKeyStr)
 	return &jobReadRegistry{
 		staticSiaPublicKey:    spk,
 		staticRegistryEntryID: sid,

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
@@ -76,8 +77,10 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// create a ctx with test span
+	ctx := opentracing.ContextWithSpan(context.Background(), testSpan())
+
 	// run a couple of has sector jobs to spend money
-	ctx := context.Background()
 	rc := make(chan *jobHasSectorResponse)
 	jhs := w.newJobHasSector(ctx, rc, crypto.Hash{})
 	for i := 0; i < 100; i++ {

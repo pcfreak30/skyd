@@ -529,8 +529,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
-	// Create a child span, we can ignore the returned span since we pass the
-	// context.
+	// Start a span for the PDC.
 	_, ctx = opentracing.StartSpanFromContext(ctx, "managedDownload")
 
 	// Build the full pdc.

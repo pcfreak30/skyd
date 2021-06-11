@@ -697,6 +697,14 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		defer cancel()
 	}
 
+	// Start tracing.
+	span := opentracing.StartSpan("DownloadByRoot")
+	span.SetTag("root", root)
+	defer span.Finish()
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
 	// Fetch the data
 	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
@@ -713,12 +721,20 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 	defer r.tg.Done()
 
+	// Create a context
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
 	}
+
+	// Create a new span.
+	span := opentracing.StartSpan("DownloadSkylink")
+	span.SetTag("skylink", link.String())
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Check if link needs to be resolved from V2 to V1.
 	link, err := r.managedTryResolveSkylinkV2(ctx, link)
@@ -734,8 +750,11 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	// Download the data
 	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
+		span.LogKV("timeout", timeout)
+		span.SetTag("timeout", true)
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
+
 	return streamer, err
 }
 
@@ -754,6 +773,14 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
 	}
+
+	// Create a span
+	span := opentracing.StartSpan("DownloadSkylinkBaseSector")
+	span.SetTag("skylink", link.String())
+	defer span.Finish()
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Check if link needs to be resolved from V2 to V1.
 	link, err := r.managedTryResolveSkylinkV2(ctx, link)
@@ -792,13 +819,21 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 		return SkylinkStreamerFromSlice(sf.Content, sf.Metadata, rawMD, link, skymodules.SkyfileLayout{}), err
 	}
 
+	// Get the span from our context and defer cached tag update.
+	var exists bool
+	span := opentracing.SpanFromContext(ctx)
+	defer func() {
+		span.SetTag("cached", exists)
+	}()
+
 	// Check if this skylink is already in the stream buffer set. If so, we can
 	// skip the lookup procedure and use any data that other threads have
 	// cached.
 	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, streamReadTimeout)
+	var stream *stream
+	stream, exists = r.staticStreamBufferSet.callNewStreamFromID(ctx, id, 0, streamReadTimeout)
 	if exists {
-		return streamer, nil
+		return stream, nil
 	}
 
 	// Create the data source and add it to the stream buffer set.
@@ -806,7 +841,7 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, streamReadTimeout, pricePerMS)
+	stream = r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0, streamReadTimeout, pricePerMS)
 	return stream, nil
 }
 
@@ -829,12 +864,21 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 		return ErrSkylinkBlocked
 	}
 
+	// Create a context.
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
+
+	// Create a span.
+	span := opentracing.StartSpan("PinSkylink")
+	span.SetTag("skylink", skylink.String())
+	defer span.Finish()
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout, pricePerMS)
@@ -923,7 +967,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	if err != nil {
 		return errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
+	stream := r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0, timeout, pricePerMS)
 
 	// Upload directly from the stream.
 	fileNode, err := r.callUploadStreamFromReader(ctx, fup, stream)
@@ -1207,31 +1251,44 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 
 // managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
 // skylink is not a V2 skylink, the input link is returned.
-func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, error) {
+func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skylink skymodules.Skylink, err error) {
 	if sl.Version() != 2 {
 		return sl, nil
 	}
+
+	// Create a child span to capture the resolve for v2 skylinks.
+	span, ctx := opentracing.StartSpanFromContext(ctx, "managedTryResolveSkylinkV2")
+	defer func() {
+		if err != nil {
+			span.LogKV("error", err)
+		}
+		span.SetTag("success", err == nil)
+		span.SetTag("skylinkv2", skylink.String())
+		span.Finish()
+	}()
+
 	// Get link from registry entry.
-	srv, err := r.ReadRegistryRID(ctx, sl.RegistryEntryID())
+	var srv modules.SignedRegistryValue
+	srv, err = r.ReadRegistryRID(ctx, sl.RegistryEntryID())
 	if err != nil {
 		return skymodules.Skylink{}, err
 	}
 	if len(srv.Data) == 0 {
 		return skymodules.Skylink{}, errors.New("failed to resolve skylink")
 	}
-	var link skymodules.Skylink
-	err = link.LoadBytes(srv.Data)
+
+	err = skylink.LoadBytes(srv.Data)
 	if err != nil {
 		return skymodules.Skylink{}, err
 	}
 	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
 	// the API to return a 404.
-	if link == (skymodules.Skylink{}) {
+	if skylink == (skymodules.Skylink{}) {
 		return skymodules.Skylink{}, ErrRootNotFound
 	}
 	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(link) {
+	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return skymodules.Skylink{}, ErrSkylinkBlocked
 	}
-	return link, nil
+	return skylink, nil
 }

@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -224,6 +225,11 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Capture the base sector download in a new span.
+	span, ctx := opentracing.StartSpanFromContext(ctx, "managedDownloadByRoot")
+	span.SetTag("root", root)
+	defer span.Finish()
+
 	// Create the pcws for the first chunk. We use a passthrough cipher and
 	// erasure coder. If the base sector is encrypted, we will notice and be
 	// able to decrypt it once we have fully downloaded it and are able to
@@ -304,9 +310,31 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
 
+	// Tag the span with its size. We tag it with 64kb, 1mb, 4mb and 10mb as
+	// those are the size increments used by the benchmark tool. This way we can
+	// run the benchmark and then filter the results using these tags.
+	//
+	// NOTE: the sizes used are "exact sizes", meaning they are as close as
+	// possible to their eventual size after taking into account the size of the
+	// metadata. See cmd/skynet-benchmark/dl.go for more info.
+	span := opentracing.SpanFromContext(ctx)
+	switch length := metadata.Length; {
+	case length <= 61e3:
+		span.SetTag("length", "64kb")
+	case length <= 982e3:
+		span.SetTag("length", "1mb")
+	case length <= 3931e3:
+		span.SetTag("length", "4mb")
+	default:
+		span.SetTag("length", "10mb")
+	}
+
 	// Create the context for the data source - a child of the renter
 	// threadgroup but otherwise independent.
 	dsCtx, cancelFunc := context.WithCancel(r.tg.StopCtx())
+
+	// Attach the span to the ctx
+	dsCtx = opentracing.ContextWithSpan(dsCtx, span)
 
 	// If there's a fanout create a PCWS for every chunk.
 	var fanoutChunkFetchers []chunkFetcher
