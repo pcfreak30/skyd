@@ -1,7 +1,10 @@
 package renter
 
 import (
+	"math"
+
 	"gitlab.com/SkynetLabs/skyd/build"
+	"go.sia.tech/siad/modules"
 )
 
 // iwrr implements the interleaved weighted round robin algorithm for the
@@ -24,7 +27,7 @@ type weightedJobQueue interface {
 	// callNextWithWeight returns the next job in the worker queue if it meets a
 	// certain minimum weight. If there is no job in the queue, or the next job
 	// doesn't fullfil the weight requirement, 'nil' will be returned.
-	callNextWithWeight(minWeight uint64) workerJob
+	callNextWithWeight(minWeight uint64) (uint64, workerJob)
 
 	// staticMaxWeight returns the max weight that a job from this queue can
 	// have.
@@ -40,23 +43,24 @@ type weightedJobQueue interface {
 // The highest weight determines the number of times the algorithm loops over
 // the queues. So make sure those numbers are reasonably low because a high
 // weight might cause an unnecessary performance impact.
-const (
+var (
 	// The job with the lowest weight. Async system repairs.
-	lowPrioReadQueueWeight = 1
+	lowPrioReadQueueWeight uint64 = 1
 
 	// Medium weighted jobs.
-	readQueueWeight             = 10
-	downloadSnapshotQueueWeight = 10
-	uploadSnapshotQueueWeight   = 10
+	readQueueMinWeight          uint64 = 10
+	readQueueMaxWeight          uint64 = readQueueMinWeight + modules.SectorSize
+	downloadSnapshotQueueWeight uint64 = 10
+	uploadSnapshotQueueWeight   uint64 = 10
 
 	// These are the high weight jobs since they are the fastest ones.
-	hasSectorQueueWeight      = 100
-	readRegistryQueueWeight   = 100
-	updateRegistryQueueWeight = 100
+	hasSectorQueueWeight      uint64 = readQueueMaxWeight
+	readRegistryQueueWeight   uint64 = readQueueMaxWeight
+	updateRegistryQueueWeight uint64 = readQueueMaxWeight
 
 	// Renewing is so rare that we also give it the same priority as the high
 	// weight jobs
-	renewQueueWeight = 100
+	renewQueueWeight = readQueueMaxWeight
 )
 
 // newIWRR creates a new iwrr from queues.
@@ -110,16 +114,25 @@ func (rr *iwrr) next() workerJob {
 	// long as we have jobs, we should eventually fetch one of them.
 	for rr.numJobs() > 0 {
 		// Loop over the remaining rounds.
-		for ; rr.currentRound <= rr.staticMaxWeight; rr.currentRound++ {
+		for rr.currentRound <= rr.staticMaxWeight {
 			// Loop over the remaining queues in this round.
+			lowestNextWeight := uint64(math.MaxUint64)
+			nextHighestNextWeight := uint64(math.MaxUint64)
 			for ; rr.currentIndex < len(rr.staticQueues); rr.currentIndex++ {
 				queue := rr.staticQueues[rr.currentIndex]
 
 				// Try to fetch a valid job from the queue.
-				wj := queue.callNextWithWeight(rr.currentRound)
+				nextWeight, wj := queue.callNextWithWeight(rr.currentRound)
+				if nextWeight < lowestNextWeight {
+					lowestNextWeight = nextWeight
+				}
+				if nextWeight < nextHighestNextWeight && nextWeight > rr.currentRound {
+					nextHighestNextWeight = nextWeight
+				}
 				if wj == nil {
 					continue // try next queue
 				}
+
 				// Increment the index to make sure we don't look at the same
 				// queue again the next time.
 				rr.currentIndex++
@@ -127,6 +140,15 @@ func (rr *iwrr) next() workerJob {
 			}
 			// Reset the index after the round.
 			rr.currentIndex = 0
+
+			// Figure out the next round that's not a no-op.
+			if lowestNextWeight == math.MaxUint64 && nextHighestNextWeight == math.MaxUint64 {
+				break // no next weight found
+			} else if nextHighestNextWeight < math.MaxUint64 {
+				rr.currentRound = nextHighestNextWeight // found a higher weight
+			} else {
+				rr.currentRound = lowestNextWeight // use the lowest weight
+			}
 		}
 		// Reset the round after the cycle.
 		rr.currentRound = 0

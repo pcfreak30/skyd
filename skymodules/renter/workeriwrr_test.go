@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
@@ -32,12 +33,16 @@ func (tq *testWQueue) staticMaxWeight() uint64 {
 }
 
 // callNextWithWeight implements the weightedJobQueue interface.
-func (tq *testWQueue) callNextWithWeight(minWeight uint64) workerJob {
+func (tq *testWQueue) callNextWithWeight(minWeight uint64) (uint64, workerJob) {
 	if tq.staticMW < minWeight || tq.length == 0 {
-		return nil
+		return math.MaxUint64, nil
 	}
 	tq.length--
-	return &jobTest{}
+	nextWeight := tq.staticMW
+	if tq.length == 0 {
+		nextWeight = math.MaxUint64
+	}
+	return nextWeight, &jobTest{}
 }
 
 // TestIWRR is the root test running all the tests related to the iwrr.
@@ -91,7 +96,7 @@ func testMaxWeights(t *testing.T) {
 		t.Error("wrong weight")
 	}
 	mw = (&jobReadQueue{staticLowPrio: false}).staticMaxWeight()
-	if mw != readQueueWeight {
+	if mw != readQueueMaxWeight {
 		t.Error("wrong weight")
 	}
 	mw = (&jobDownloadSnapshotQueue{}).staticMaxWeight()
@@ -135,7 +140,15 @@ func testWeights(t *testing.T) {
 		t.Error("wrong weight")
 	}
 	w = (&jobRead{staticLength: modules.SectorSize}).callWeight()
-	if w != readQueueWeight {
+	if w != readQueueMinWeight {
+		t.Error("wrong weight", w)
+	}
+	w = (&jobRead{staticLength: 1}).callWeight()
+	if w != readQueueMaxWeight {
+		t.Error("wrong weight", w)
+	}
+	w = (&jobRead{staticLength: modules.SectorSize / 2}).callWeight()
+	if w != readQueueMinWeight+(readQueueMaxWeight-readQueueMinWeight)/2 {
 		t.Error("wrong weight", w)
 	}
 	w = (&jobRead{staticLowPrio: true, staticLength: modules.SectorSize}).callWeight()
@@ -228,7 +241,7 @@ func testNext(t *testing.T) {
 	if q3.callLen() != 1 {
 		t.Fatal("q3 got wrong length", q3.callLen())
 	}
-	if iwrr.currentIndex != 1 || iwrr.currentRound != 1 {
+	if iwrr.currentIndex != 1 || iwrr.currentRound != 0 {
 		t.Fatal("wrong index or round", iwrr.currentIndex, iwrr.currentRound)
 	}
 

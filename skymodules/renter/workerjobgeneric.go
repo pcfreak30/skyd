@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -202,13 +203,14 @@ func (jq *jobGenericQueue) callLen() int {
 // callNext returns the next job in the worker queue. If there is no job in the
 // queue, 'nil' will be returned.
 func (jq *jobGenericQueue) callNext() workerJob {
-	return jq.callNextWithWeight(0)
+	_, wj := jq.callNextWithWeight(0)
+	return wj
 }
 
 // callNextWithWeight returns the next job in the worker queue if it meets a
 // certain minimum weight. If there is no job in the queue, or the next job
 // doesn't fullfil the weight requirement, 'nil' will be returned.
-func (jq *jobGenericQueue) callNextWithWeight(minWeight uint64) workerJob {
+func (jq *jobGenericQueue) callNextWithWeight(minWeight uint64) (uint64, workerJob) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
@@ -236,13 +238,19 @@ func (jq *jobGenericQueue) callNextWithWeight(minWeight uint64) workerJob {
 		// Found a job. Check if it has the right weight.
 		if wj.callWeight() < minWeight {
 			jq.jobs.PushFront(wj) // push job back in front
-			return nil
+			return wj.callWeight(), nil
 		}
-		return wj
+
+		// Return the job with the next job's weight.
+		nextJob := jq.jobs.Front()
+		if nextJob == nil {
+			return math.MaxUint64, wj
+		}
+		return nextJob.Value.(workerJob).callWeight(), wj
 	}
 
 	// Job queue is empty, return nil.
-	return nil
+	return math.MaxUint64, nil
 }
 
 // callOnCooldown returns whether the queue is on cooldown.
