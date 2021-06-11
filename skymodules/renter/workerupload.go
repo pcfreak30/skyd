@@ -130,24 +130,22 @@ func checkUploadGougingPT(pt modules.RPCPriceTable, allowance skymodules.Allowan
 	}
 
 	// Cost of initializing the MDM.
-	memory := modules.MDMInitMemory()
-	time := uint64(modules.MDMTimeInitProgram)
-	memoryCost := modules.MDMMemoryCost(&pt, memory, time)
+	cost := modules.MDMInitCost(&pt, modules.SectorSize, 1)
 
 	// Cost of executing a single sector append.
-	memory += modules.MDMAppendMemory()
-	time += modules.MDMTimeAppend
-	memoryCost = memoryCost.Add(modules.MDMMemoryCost(&pt, memory, time))
+	memory := modules.MDMInitMemory() + modules.MDMAppendMemory()
+	cost = cost.Add(modules.MDMMemoryCost(&pt, memory, modules.MDMTimeAppend))
+
+	// Finalize the program.
+	cost = cost.Add(modules.MDMMemoryCost(&pt, memory, modules.MDMTimeCommit))
 
 	// Cost of storage and bandwidth.
 	storageCost, _ := modules.MDMAppendCost(&pt, allowance.Period)
 	bandwidthCost := modules.MDMBandwidthCost(pt, modules.SectorSize+2920, 2920) // assume sector data + 2 packets of overhead
+	cost = cost.Add(storageCost).Add(bandwidthCost)
 
 	// Cost of full upload.
-	singleUploadCost := memoryCost.Add(bandwidthCost).Add(storageCost)
-	fullCostPerByte := singleUploadCost.Div64(modules.SectorSize)
-
-	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
+	allowanceStorageCost := cost.Mul64(allowance.ExpectedStorage).Div64(modules.SectorSize)
 	reducedCost := allowanceStorageCost.Div64(uploadGougingFractionDenom)
 	if reducedCost.Cmp(allowance.Funds) > 0 {
 		errStr := fmt.Sprintf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)

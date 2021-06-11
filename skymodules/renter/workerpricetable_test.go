@@ -318,5 +318,9 @@ func newDefaultPriceTable() modules.RPCPriceTable {
 
 		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
 		UploadBandwidthCost:   hes.UploadBandwidthPrice,
+
+		WriteBaseCost:   oneCurrency,
+		WriteLengthCost: oneCurrency,
+		WriteStoreCost:  oneCurrency,
 	}
 }
