@@ -51,6 +51,16 @@ import (
 )
 
 var (
+	// MaxSkylinkV2ResolvingDepth defines the maximum recursion depth the
+	// renter tries to resolve when downloading v2 skylinks.
+	MaxSkylinkV2ResolvingDepth = build.Select(build.Var{
+		Standard: uint8(2),
+		Dev:      uint8(5),
+		Testing:  uint8(5),
+	}).(uint8)
+)
+
+var (
 	// SkyfileDefaultBaseChunkRedundancy establishes the default redundancy for
 	// the base chunk of a skyfile.
 	SkyfileDefaultBaseChunkRedundancy = build.Select(build.Var{
@@ -737,9 +747,17 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Check if link needs to be resolved from V2 to V1.
-	link, err := r.managedTryResolveSkylinkV2(ctx, link)
-	if err != nil {
-		return nil, err
+	var err error
+	for i := 0; i < int(MaxSkylinkV2ResolvingDepth) && link.IsSkylinkV2(); i++ {
+		link, err = r.managedTryResolveSkylinkV2(ctx, link)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Check if link resolved to a v1 link.
+	if !link.IsSkylinkV1() {
+		return nil, errors.AddContext(ErrRootNotFound, "failed to fully resolve skylink - max number of recursions reached")
 	}
 
 	// Check if link is blocked
