@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -189,6 +190,43 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	}
 }
 
+// TestAsyncDataLimitRead is a unit test that verifies
+// staticAsyncDataLimitReached
+func TestAsyncDataLimitRead(t *testing.T) {
+	t.Parallel()
+
+	w := new(worker)
+	w.newWorkerLoopState()
+
+	// verify default
+	if w.staticAsyncDataLimitReached() {
+		t.Fatal("unexpected")
+	}
+
+	// verify whether read limit is considered
+	wsl := w.staticLoopState
+	limit := atomic.LoadUint64(&wsl.atomicReadDataLimit)
+	atomic.StoreUint64(&wsl.atomicReadDataOutstanding, limit+1)
+	if !w.staticAsyncDataLimitReached() {
+		t.Fatal("unexpected")
+	}
+	atomic.StoreUint64(&wsl.atomicReadDataOutstanding, limit)
+	if w.staticAsyncDataLimitReached() {
+		t.Fatal("unexpected")
+	}
+
+	// verify whether write limit is considered
+	limit = atomic.LoadUint64(&wsl.atomicReadDataLimit)
+	atomic.StoreUint64(&wsl.atomicWriteDataOutstanding, limit+1)
+	if !w.staticAsyncDataLimitReached() {
+		t.Fatal("unexpected")
+	}
+	atomic.StoreUint64(&wsl.atomicWriteDataOutstanding, limit)
+	if w.staticAsyncDataLimitReached() {
+		t.Fatal("unexpected")
+	}
+}
+
 // TestManagedAsyncReady is a unit test that probes the 'managedAsyncReady'
 // function on the worker
 func TestManagedAsyncReady(t *testing.T) {
@@ -198,7 +236,6 @@ func TestManagedAsyncReady(t *testing.T) {
 	w.initJobLowPrioReadQueue()
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
-
 	timeInFuture := time.Now().Add(time.Hour)
 	timeInPast := time.Now().Add(-time.Hour)
 
@@ -208,6 +245,9 @@ func TestManagedAsyncReady(t *testing.T) {
 
 	// ensure the worker has a maintenancestate, by default it will pass
 	w.newMaintenanceState()
+
+	// ensure the worker has a loop state
+	w.newWorkerLoopState()
 
 	// verify worker is considered async ready
 	if !w.managedAsyncReady() {

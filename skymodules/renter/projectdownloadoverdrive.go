@@ -9,6 +9,11 @@ import (
 )
 
 const (
+
+	// asyncDataLimitReachedQueueTimePenalty is the penalty applied to a
+	// worker that has reached it's async data limit.
+	asyncDataLimitReachedQueueTimePenalty = time.Second
+
 	// maxExpBackoffJitterMS defines the maximum number of milliseconds that can
 	// get added as jitter to the wait time in the exponential backoff
 	// mechanism.
@@ -40,22 +45,30 @@ const (
 func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
 	jrq := w.staticJobReadQueue
 
+	var readDuration time.Duration
+
+	// If the queue is on cooldown, add the remaining cooldown period.
+	if jrq.callOnCooldown() {
+		jrq.mu.Lock()
+		readDuration += time.Until(jrq.cooldownUntil)
+		jrq.mu.Unlock()
+	}
+
+	// If the worker has reached its async data limit, add a queue time penalty.
+	if jrq.staticWorkerObj.staticAsyncDataLimitReached() {
+		readDuration += asyncDataLimitReachedQueueTimePenalty
+	}
+
 	// Fetch the expected job time.
 	jobTime := jrq.callExpectedJobTime(pdc.pieceLength)
 	if jobTime < 0 {
 		jobTime = 0
 	}
-
-	// If the queue is on cooldown, add the remaining cooldown period.
-	if jrq.callOnCooldown() {
-		jrq.mu.Lock()
-		jobTime = jobTime + time.Until(jrq.cooldownUntil)
-		jrq.mu.Unlock()
-	}
+	readDuration += jobTime
 
 	// Add a penalty to performance based on the cost of the job.
 	jobCost := jrq.callExpectedJobCost(pdc.pieceLength)
-	return addCostPenalty(jobTime, jobCost, pdc.pricePerMS)
+	return addCostPenalty(readDuration, jobCost, pdc.pricePerMS)
 }
 
 // bestOverdriveUnresolvedWorker will scan through a proveded list of unresolved

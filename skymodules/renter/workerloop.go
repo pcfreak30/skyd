@@ -7,6 +7,19 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const (
+	// fullWorkerQueueTimePenalty is an arbitrary penalty that gets added to the
+	// job time estimate whenever a worker has reached its async data limit,
+	// when that happens we consider that worker to be "full".
+	//
+	// We return a pessimistic estimate of 1s to ensure it is unlikely this
+	// worker is selected by the download code as part of the initial set, or
+	// even as an overdrive worker. It's important to note however that this
+	// does not exclude the worker all together. If there are no better options
+	// the download code will still be able to schedule work to this worker.
+	fullWorkerQueueTimePenalty = time.Second
+)
+
 type (
 	// workerLoopState tracks the state of the worker loop.
 	workerLoopState struct {
@@ -44,6 +57,36 @@ type (
 // for the worker.
 func (wls *workerLoopState) staticSerialJobRunning() bool {
 	return atomic.LoadUint64(&wls.atomicSerialJobRunning) == 1
+}
+
+// staticAsyncDataLimitReached indicates whether a worker has reached its
+// asynchronous data limit, at which time we're not scheduling extra async jobs.
+func (wls *workerLoopState) staticAsyncDataLimitReached() bool {
+	readLimit := atomic.LoadUint64(&wls.atomicReadDataLimit)
+	writeLimit := atomic.LoadUint64(&wls.atomicWriteDataLimit)
+	readOutstanding := atomic.LoadUint64(&wls.atomicReadDataOutstanding)
+	writeOutstanding := atomic.LoadUint64(&wls.atomicWriteDataOutstanding)
+	return readOutstanding > readLimit || writeOutstanding > writeLimit
+}
+
+// staticAsyncDataLimitReached indicates whether a worker has reached its
+// asynchronous data limit, at which time we're not scheduling extra async jobs.
+func (w *worker) staticAsyncDataLimitReached() bool {
+	return w.staticLoopState.staticAsyncDataLimitReached()
+}
+
+// newWorkerLoopState initializes the read and write limits for the async worker
+// tasks. These may be updated in real time as the worker collects metrics about
+// itself.
+func (w *worker) newWorkerLoopState() {
+	if w.staticLoopState != nil {
+		w.staticRenter.staticLog.Critical("workerloopstate already exists")
+		return
+	}
+	w.staticLoopState = &workerLoopState{
+		atomicReadDataLimit:  initialConcurrentAsyncReadData,
+		atomicWriteDataLimit: initialConcurrentAsyncWriteData,
+	}
 }
 
 // externLaunchSerialJob will launch a serial job for the worker, ensuring that
@@ -187,6 +230,7 @@ func (w *worker) managedAsyncReady() bool {
 		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
 		return false
 	}
+
 	return true
 }
 
@@ -207,11 +251,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 
 	// Verify that the worker has not reached its limits for doing multiple
 	// jobs at once.
-	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	writeLimit := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataLimit)
-	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
-	if readOutstanding > readLimit || writeOutstanding > writeLimit {
+	if w.staticLoopState.staticAsyncDataLimitReached() {
 		// Worker does not need to discard jobs, it is making progress, it's
 		// just not launching any new jobs until its current jobs finish up.
 		return false

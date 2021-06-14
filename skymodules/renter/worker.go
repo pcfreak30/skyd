@@ -237,20 +237,13 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			staticManager:  r.staticSubscriptionManager,
 		},
 
-		// Initialize the read and write limits for the async worker tasks.
-		// These may be updated in real time as the worker collects metrics
-		// about itself.
-		staticLoopState: &workerLoopState{
-			atomicReadDataLimit:  initialConcurrentAsyncReadData,
-			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
-		},
-
 		unprocessedChunks: newUploadChunks(),
 		wakeChan:          make(chan struct{}, 1),
 		staticRenter:      r,
 	}
 	w.newPriceTable()
 	w.newMaintenanceState()
+	w.newWorkerLoopState()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
 	w.initJobLowPrioReadQueue()
