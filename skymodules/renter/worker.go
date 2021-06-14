@@ -98,6 +98,8 @@ type (
 		staticAccount       *account
 		staticBalanceTarget types.Currency
 
+		// staticIWRR is the interleaved weighted round robin instance
+		// that is responsible for scheduling async worker jobs.
 		staticIWRR *iwrr
 
 		// The loop state contains information about the worker loop. It is
