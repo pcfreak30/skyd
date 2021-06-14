@@ -5151,28 +5151,32 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("data doesn't match")
 	}
 
-	// Create a recursive v2 link.
-	skylinkV2V2, err := r.NewSkylinkV2(skylinkV2.Skylink)
-	if err != nil {
-		t.Fatal(err)
+	// Create a recursive v2 link of the max depth.
+	recursiveLink := skylink
+	for i := 0; i < int(renter.MaxSkylinkV2ResolvingDepth); i++ {
+		slv2, err := r.NewSkylinkV2(recursiveLink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recursiveLink = slv2.Skylink
 	}
 
 	// Download the file using that link.
-	downloadedDataV2V2, err := r.SkynetSkylinkGet(skylinkV2V2.String())
+	downloadedDataRecursive, err := r.SkynetSkylinkGet(recursiveLink.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(downloadedDataV1, downloadedDataV2V2) {
+	if !bytes.Equal(downloadedDataV1, downloadedDataRecursive) {
 		t.Fatal("data doesn't match")
 	}
 
-	// Create a double recursion v2 link.
-	skylinkV2V2V2, err := r.NewSkylinkV2(skylinkV2V2.Skylink)
+	// Add another level of recursion.
+	slv2, err := r.NewSkylinkV2(recursiveLink)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Download the file using that link. Should fail.
-	_, err = r.SkynetSkylinkGet(skylinkV2V2V2.String())
+	_, err = r.SkynetSkylinkGet(slv2.String())
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
 		t.Fatal("should fail to resolve v2 skylink with more than 2 layers of recursion", err)
 	}

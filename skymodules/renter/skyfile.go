@@ -50,10 +50,14 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-const (
-	// maxSkylinkV2ResolvingDepth defines the maximum recursion depth the
+var (
+	// MaxSkylinkV2ResolvingDepth defines the maximum recursion depth the
 	// renter tries to resolve when downloading v2 skylinks.
-	maxSkylinkV2ResolvingDepth = 2
+	MaxSkylinkV2ResolvingDepth = build.Select(build.Var{
+		Standard: uint8(2),
+		Dev:      uint8(5),
+		Testing:  uint8(5),
+	}).(uint8)
 )
 
 var (
@@ -744,7 +748,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 
 	// Check if link needs to be resolved from V2 to V1.
 	var err error
-	for i := 0; i < maxSkylinkV2ResolvingDepth && link.IsSkylinkV2(); i++ {
+	for i := 0; i < int(MaxSkylinkV2ResolvingDepth) && link.IsSkylinkV2(); i++ {
 		link, err = r.managedTryResolveSkylinkV2(ctx, link)
 		if err != nil {
 			return nil, err
