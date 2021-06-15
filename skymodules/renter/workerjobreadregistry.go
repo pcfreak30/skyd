@@ -9,6 +9,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -56,7 +57,7 @@ type (
 
 	// jobReadRegistryResponse contains the result of a ReadRegistry query.
 	jobReadRegistryResponse struct {
-		staticSignedRegistryValue *modules.SignedRegistryValue
+		staticSignedRegistryValue *skymodules.RegistryEntry
 		staticErr                 error
 		staticCompleteTime        time.Time
 		staticExecuteTime         time.Time
@@ -84,7 +85,7 @@ func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool) (spk typ
 }
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
-func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*modules.SignedRegistryValue, error) {
+func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*skymodules.RegistryEntry, error) {
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
@@ -152,12 +153,13 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 		tweak = &tweakHost
 	}
 	rv := modules.NewSignedRegistryValue(*tweak, data, revision, sig, modules.RegistryTypeWithoutPubkey)
+	entry := skymodules.NewRegistryEntry(*spk, rv)
 
 	// Verify signature.
-	if rv.Verify(spk.ToPublicKey()) != nil {
+	if entry.Verify() != nil {
 		return nil, errors.New("failed to verify returned registry value's signature")
 	}
-	return &rv, nil
+	return &entry, nil
 }
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
@@ -221,7 +223,7 @@ func (j *jobReadRegistry) callExecute() {
 	defer span.Finish()
 
 	// Prepare a method to send a response asynchronously.
-	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
+	sendResponse := func(srv *skymodules.RegistryEntry, err error) {
 		errLaunch := w.staticRenter.tg.Launch(func() {
 			response := &jobReadRegistryResponse{
 				staticCompleteTime:        time.Now(),
@@ -292,10 +294,10 @@ func (j *jobReadRegistry) callExecute() {
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
 			span.LogKV("error", errHostLowerRevisionThanCache)
 			j.staticSpan.SetTag("success", false)
-			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, true) // adjust the cache
+			w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, true) // adjust the cache
 			return
 		} else if !cached || srv.Revision > cachedRevision {
-			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, false) // adjust the cache
+			w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, false) // adjust the cache
 		}
 	}
 
@@ -337,7 +339,7 @@ func (w *worker) initJobReadRegistryQueue() {
 }
 
 // ReadRegistry is a helper method to run a ReadRegistry job on a worker.
-func (w *worker) ReadRegistry(ctx context.Context, parentSpan opentracing.Span, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistry(ctx context.Context, parentSpan opentracing.Span, spk types.SiaPublicKey, tweak crypto.Hash) (*skymodules.RegistryEntry, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
 	span := opentracing.GlobalTracer().StartSpan("ReadRegistry", opentracing.ChildOf(parentSpan.Context()))
 	defer span.Finish()
@@ -366,7 +368,7 @@ func (w *worker) ReadRegistry(ctx context.Context, parentSpan opentracing.Span, 
 
 // ReadRegistryEID is a helper method to run a ReadRegistry job on a worker
 // without a pubkey or tweak.
-func (w *worker) ReadRegistryEID(ctx context.Context, parentSpan opentracing.Span, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistryEID(ctx context.Context, parentSpan opentracing.Span, sid modules.RegistryEntryID) (*skymodules.RegistryEntry, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
 	span := opentracing.GlobalTracer().StartSpan("ReadRegistryEID", opentracing.ChildOf(parentSpan.Context()))
 	defer span.Finish()

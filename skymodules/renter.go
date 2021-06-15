@@ -1262,16 +1262,16 @@ type Renter interface {
 	// have time to finish their jobs and return a response until the context is
 	// closed. Otherwise the response with the highest revision number will be
 	// used.
-	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error)
+	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntry, error)
 
 	// ReadRegistry starts a registry lookup on all available workers. The jobs
 	// have time to finish their jobs and return a response until the context is
 	// closed. Otherwise the response with the highest revision number will be
 	// used.
-	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error)
+	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (RegistryEntry, error)
 
 	// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
-	ResolveSkylinkV2(ctx context.Context, sl Skylink) (Skylink, error)
+	ResolveSkylinkV2(ctx context.Context, sl Skylink) (Skylink, *RegistryEntry, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
@@ -1366,7 +1366,7 @@ type Renter interface {
 	// time that exceeds the given timeout value. Passing a timeout of 0 is
 	// considered as no timeout. The pricePerMS acts as a budget to spend on
 	// faster, and thus potentially more expensive, hosts.
-	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileStreamer, error)
+	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileStreamer, []RegistryEntry, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
 	// download without any decoding of the metadata, fanout, or decryption. The
@@ -1374,7 +1374,7 @@ type Renter interface {
 	// exceeds the given timeout value. Passing a timeout of 0 is considered as
 	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
 	// potentially more expensive, hosts.
-	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, error)
+	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, []RegistryEntry, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the

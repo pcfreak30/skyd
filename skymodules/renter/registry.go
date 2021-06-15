@@ -231,11 +231,11 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	// Determine the secondBest response by asking all workers with valid responses
 	// again, one-by-one. The secondBest is the first that returns a revision >= the
 	// best one.
-	var secondBest *modules.SignedRegistryValue
+	var secondBest *skymodules.RegistryEntry
 	var d2 time.Duration
 	for _, resp := range goodResps {
 		// Otherwise look up the same entry.
-		var srv *modules.SignedRegistryValue
+		var srv *skymodules.RegistryEntry
 		var err error
 		if resp.staticSPK == nil || resp.staticTweak == nil {
 			srv, err = resp.staticWorker.ReadRegistryEID(secondBestCtx, span, resp.staticEID)
@@ -316,7 +316,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 // ReadRegistry starts a registry lookup on all available workers. The jobs have
 // until ctx is closed to return a response. Otherwise the response with the
 // highest revision number will be used.
-func (r *Renter) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+func (r *Renter) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (skymodules.RegistryEntry, error) {
 	start := time.Now()
 	srv, err := r.managedReadRegistry(ctx, modules.DeriveRegistryEntryID(spk, tweak), &spk, &tweak)
 	if errors.Contains(err, ErrRegistryLookupTimeout) {
@@ -328,7 +328,7 @@ func (r *Renter) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 // ReadRegistryRID starts a registry lookup on all available workers. The jobs
 // have until ctx is closed to return a response. Otherwise the response with
 // the highest revision number will be used.
-func (r *Renter) ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error) {
+func (r *Renter) ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (skymodules.RegistryEntry, error) {
 	start := time.Now()
 	srv, err := r.managedReadRegistry(ctx, rid, nil, nil)
 	if errors.Contains(err, ErrRegistryLookupTimeout) {
@@ -369,7 +369,7 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // jobs have 'timeout' amount of time to finish their jobs and return a
 // response. Otherwise the response with the highest revision number will be
 // used.
-func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (modules.SignedRegistryValue, error) {
+func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (skymodules.RegistryEntry, error) {
 	// Start tracing.
 	tracer := opentracing.GlobalTracer()
 	span := tracer.StartSpan("managedReadRegistry")
@@ -386,7 +386,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
 	if !r.staticRegistryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
-		return modules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
+		return skymodules.RegistryEntry{}, errors.New("timeout while waiting in job queue - server is busy")
 	}
 	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
 
@@ -434,7 +434,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
 		backgroundCancel()
-		return modules.SignedRegistryValue{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
+		return skymodules.RegistryEntry{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
 	numWorkers := len(workers)
 
@@ -471,7 +471,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// the highest rev number and return the highest one we have so far.
 	var useHighestRevCtx context.Context
 
-	var srv *modules.SignedRegistryValue
+	var srv *skymodules.RegistryEntry
 	responses := 0
 	for responseSet.responsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
@@ -518,13 +518,13 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// If we don't have a successful response and also not a response for every
 	// worker, we timed out.
 	if srv == nil && responses < len(workers) {
-		return modules.SignedRegistryValue{}, ErrRegistryLookupTimeout
+		return skymodules.RegistryEntry{}, ErrRegistryLookupTimeout
 	}
 
 	// If we don't have a successful response but received a response from every
 	// worker, we were unable to look up the entry.
 	if srv == nil {
-		return modules.SignedRegistryValue{}, ErrRegistryEntryNotFound
+		return skymodules.RegistryEntry{}, ErrRegistryEntryNotFound
 	}
 	return *srv, nil
 }
