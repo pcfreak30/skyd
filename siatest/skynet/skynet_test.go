@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -24,6 +25,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
@@ -5153,12 +5155,14 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 
 	// Create a recursive v2 link of the max depth.
 	recursiveLink := skylink
+	var links []skymodules.Skylink
 	for i := 0; i < int(renter.MaxSkylinkV2ResolvingDepth); i++ {
 		slv2, err := r.NewSkylinkV2(recursiveLink)
 		if err != nil {
 			t.Fatal(err)
 		}
 		recursiveLink = slv2.Skylink
+		links = append(links, slv2.Skylink)
 	}
 
 	// Download the file using that link.
@@ -5168,6 +5172,52 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(downloadedDataV1, downloadedDataRecursive) {
 		t.Fatal("data doesn't match")
+	}
+
+	// Fetch the header.
+	_, h, err := r.SkynetSkylinkHead(recursiveLink.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// It should contain a valid proof.
+	var proof []api.RegistryHandlerGET
+	err = json.Unmarshal([]byte(h.Get("Proof")), &proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, rhg := range proof {
+		// Parse the element into a skymodules.RegistryEntry and verify
+		// it.
+		data, _ := hex.DecodeString(rhg.Data)
+		sigBytes, _ := hex.DecodeString(rhg.Signature)
+		var sig crypto.Signature
+		copy(sig[:], sigBytes)
+		v := modules.NewSignedRegistryValue(rhg.DataKey, data, rhg.Revision, sig, rhg.Type)
+		entry := skymodules.NewRegistryEntry(rhg.PublicKey, v)
+		if err := entry.Verify(); err != nil {
+			t.Fatal("verification failed", err)
+		}
+
+		// Get the current v2 link that points to the parsed entry as well as the next
+		// link which is contained within its entry payload.
+		currentLink := skymodules.NewSkylinkV2(entry.PubKey, entry.Tweak)
+		var nextLink skymodules.Skylink
+		err = nextLink.LoadBytes(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The current link should match the link at the opposite end of
+		// the links slice.
+		if currentLink.String() != links[len(links)-i-1].String() {
+			t.Fatal("wrong link", currentLink, links[len(links)-i-1])
+		}
+		// The nextLink should match the next one. Except for the last
+		// one which should match the origin v1 skylink.
+		if i == len(proof)-1 && nextLink != skylink {
+			t.Fatal("wrong link", nextLink, skylink)
+		} else if i < len(proof)-1 && nextLink.String() != links[len(links)-i-2].String() {
+			t.Fatal("wrong link", nextLink, links[len(links)-i-2])
+		}
 	}
 
 	// Add another level of recursion.
