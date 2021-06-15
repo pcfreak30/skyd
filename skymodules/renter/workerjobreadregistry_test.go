@@ -46,7 +46,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
@@ -59,7 +59,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
@@ -110,7 +110,7 @@ func TestReadRegistryJobManual(t *testing.T) {
 	lookedUpRV := resp.staticSignedRegistryValue
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
@@ -142,7 +142,7 @@ func TestReadRegistryJobManual(t *testing.T) {
 	lookedUpRV = resp.staticSignedRegistryValue
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
