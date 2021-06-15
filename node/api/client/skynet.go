@@ -885,7 +885,9 @@ func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.
 		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected signature length %v != %v", len(sigBytes), len(sig))
 	}
 	copy(sig[:], sigBytes)
-	return modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig, modules.RegistryTypeWithoutPubkey), nil
+
+	srv := modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig, rhg.Type)
+	return srv, srv.Verify(spk.ToPublicKey())
 }
 
 // RegistryUpdate queries the /skynet/registry [POST] endpoint.

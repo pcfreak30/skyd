@@ -180,9 +180,11 @@ type (
 	// RegistryHandlerGET is the response returned by the registryHandlerGET
 	// handler.
 	RegistryHandlerGET struct {
-		Data      string `json:"data"`
-		Revision  uint64 `json:"revision"`
-		Signature string `json:"signature"`
+		Data      string                    `json:"data"`
+		Revision  uint64                    `json:"revision"`
+		DataKey   crypto.Hash               `json:"datakey"`
+		Signature string                    `json:"signature"`
+		Type      modules.RegistryEntryType `json:"type"`
 	}
 
 	// RegistryHandlerRequestPOST is the expected format of the json request for
@@ -1467,8 +1469,10 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	// Send response.
 	WriteJSON(w, RegistryHandlerGET{
 		Data:      hex.EncodeToString(srv.Data),
+		DataKey:   srv.Tweak,
 		Revision:  srv.Revision,
 		Signature: hex.EncodeToString(srv.Signature[:]),
+		Type:      srv.Type,
 	})
 }
 
