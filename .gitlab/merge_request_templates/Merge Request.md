@@ -16,7 +16,7 @@ Review and complete the checklist to ensure that the MR is complete before assig
  - [ ] Any new packages are added to Makefile and .gitlab-ci.yml
  - [ ] API documentation updated for API updates
  - [ ] Module README.md updated for changes to workflow
- - [ ] Changelog File Created
+ - [ ] Changelog file created
 
 ## Issues Closed
 <!--
