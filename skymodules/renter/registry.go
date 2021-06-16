@@ -578,13 +578,8 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		}
 
 		// check for price gouging
-		// TODO: use upload gouging for some basic protection. Should be
-		// replaced as part of the gouging overhaul.
-		host, ok, err := r.staticHostDB.Host(worker.staticHostPubKey)
-		if !ok || err != nil {
-			continue
-		}
-		err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
+		pt := worker.staticPriceTable().staticPriceTable
+		err = checkUploadGougingPT(pt, cache.staticRenterAllowance)
 		if err != nil {
 			r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
