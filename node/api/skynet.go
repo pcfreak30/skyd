@@ -269,7 +269,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}()
 
 	// Attach proof.
-	err = attachRegistryEntryProof(w, srvs...)
+	err = attachRegistryEntryProof(w, srvs)
 	if err != nil {
 		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -604,7 +604,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}()
 
 	// Attach proof.
-	err = attachRegistryEntryProof(w, srvs...)
+	err = attachRegistryEntryProof(w, srvs)
 	if err != nil {
 		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -1534,12 +1534,14 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 	}
 
 	// Attach proof.
+	var proof []skymodules.RegistryEntry
 	if srv != nil {
-		err = attachRegistryEntryProof(w, *srv)
-		if err != nil {
-			WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
-			return
-		}
+		proof = append(proof, *srv)
+	}
+	err = attachRegistryEntryProof(w, proof)
+	if err != nil {
+		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
+		return
 	}
 
 	// Send response.
@@ -1624,7 +1626,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}()
 
 	// Attach proof.
-	err = attachRegistryEntryProof(w, srvs...)
+	err = attachRegistryEntryProof(w, srvs)
 	if err != nil {
 		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
 		return

@@ -1309,7 +1309,7 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.S
 
 // managedTryResolveSkylinkV2Recursive resolves a V2 skylink to a V1 skylink. If
 // the skylink is not a V2 skylink, the input link is returned.
-func (r *Renter) managedTryResolveSkylinkV2Recursive(ctx context.Context, link skymodules.Skylink) (skylink skymodules.Skylink, srvs []skymodules.RegistryEntry, err error) {
+func (r *Renter) managedTryResolveSkylinkV2Recursive(ctx context.Context, link skymodules.Skylink) (_ skymodules.Skylink, srvs []skymodules.RegistryEntry, err error) {
 	// Check if link needs to be resolved from V2 to V1.
 	for i := 0; i < int(MaxSkylinkV2ResolvingDepth) && link.IsSkylinkV2(); i++ {
 		var srv *skymodules.RegistryEntry

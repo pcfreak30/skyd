@@ -540,7 +540,7 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 // attachRegistryEntryProof takes a number of registry entries and parses them.
 // The result is then attached to an API response for the client to verify the
 // response against.
-func attachRegistryEntryProof(w http.ResponseWriter, srvs ...skymodules.RegistryEntry) error {
+func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryEntry) error {
 	proofChain := make([]RegistryHandlerGET, 0, len(srvs))
 	for _, srv := range srvs {
 		proofChain = append(proofChain, RegistryHandlerGET{
