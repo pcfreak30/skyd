@@ -270,7 +270,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(rv, *readRV) {
+	if !reflect.DeepEqual(rv, readRV.SignedRegistryValue) {
 		t.Fatal("read value doesn't match set value")
 	}
 
@@ -307,7 +307,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(rv2, *readRV) {
+	if !reflect.DeepEqual(rv2, readRV.SignedRegistryValue) {
 		t.Fatal("read value doesn't match set value")
 	}
 
