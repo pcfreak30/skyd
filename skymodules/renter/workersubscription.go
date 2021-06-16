@@ -186,7 +186,11 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	// Check if the host was trying to cheat us with an outdated entry.
 	sid := modules.DeriveRegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)
 	latestRev, exists := w.staticRegistryCache.Get(sid)
-	if exists && sneu.Entry.Revision < latestRev {
+	var betterThanCached bool
+	if exists {
+		betterThanCached, _ = latestRev.ShouldUpdateWith(&latestRev, w.staticHostPubKey)
+	}
+	if exists && !betterThanCached {
 		return fmt.Errorf("host provided outdated entry %v < %v", sneu.Entry.Revision, latestRev)
 	}
 
@@ -496,6 +500,35 @@ func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe [
 	return nil
 }
 
+func (w *worker) managedCheckHostCheating(rid modules.RegistryEntryID, srv modules.SignedRegistryValue) error {
+	// Check if we have an entry in the cache already.
+	ce, exists := w.staticRegistryCache.Get(rid)
+	if !exists {
+		// If not we update the cache and are done.
+		w.staticRegistryCache.Set(rid, srv, false)
+		return nil
+	}
+	// If it is cached, check if the host's entry is better than our own.
+	better, err := ce.ShouldUpdateWith(&srv.RegistryValue, w.staticHostPubKey)
+
+	// If it is better, the host isn't cheating. So we update the cache.
+	if better && err == nil {
+		w.staticRegistryCache.Set(rid, srv, false)
+		return nil
+	}
+
+	// If it is not better, we expect it to be at least equal to our own.
+	if errors.Contains(err, modules.ErrSameRevNum) {
+		return nil
+	}
+
+	// The revision the host provided is worse than the one we already know
+	// it had. The host is cheating us. We force update the cache to reset
+	// our knowledge of what we think is the host's most recent revision.
+	w.staticRegistryCache.Set(rid, srv, true)
+	return errors.Compose(errHostCheating, err)
+}
+
 // managedSubscribeToRVs subscribes the workers to multiple registry values.
 func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []modules.RPCRegistrySubscriptionRequest, subChans []chan struct{}, budget *modules.RPCBudget, pt *modules.RPCPriceTable) error {
 	subInfo := w.staticSubscriptionInfo
@@ -506,12 +539,11 @@ func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []modul
 	}
 	// Check that the initial values are not outdated and update the cache.
 	for _, rv := range rvs {
-		sid := modules.DeriveRegistryEntryID(rv.PubKey, rv.Entry.Tweak)
-		cachedRevision, exists := w.staticRegistryCache.Get(sid)
-		if exists && rv.Entry.Revision < cachedRevision {
-			return fmt.Errorf("host returned an entry with revision %v which is smaller than cached revision %v for the same entry", rv.Entry.Revision, cachedRevision)
+		rid := modules.DeriveRegistryEntryID(rv.PubKey, rv.Entry.Tweak)
+		errCheating := w.managedCheckHostCheating(rid, rv.Entry)
+		if errCheating != nil {
+			return errors.AddContext(errCheating, "managedSubscribeToRVs: host is cheating")
 		}
-		w.staticRegistryCache.Set(sid, rv.Entry, false)
 	}
 	// Withdraw from budget.
 	if !budget.Withdraw(modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(toSubscribe)))) {
