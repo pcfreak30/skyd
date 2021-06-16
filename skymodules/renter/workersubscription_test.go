@@ -1080,7 +1080,7 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv.
-			if rev, found := wt.staticRegistryCache.Get(sid); !found || reflect.DeepEqual(rev, rv.RegistryValue) {
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv.RegistryValue) {
 				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv.Revision, found)
 			}
 			// Check subscription. Should be set to rv.
@@ -1112,7 +1112,7 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv.
-			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv.Revision) {
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv.RegistryValue) {
 				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv.Revision, found)
 			}
 			// Check subscription. Should be set to rv.

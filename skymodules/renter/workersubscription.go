@@ -183,32 +183,26 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 		}
 	}()
 
-	// Check if the host was trying to cheat us with an outdated entry.
-	sid := modules.DeriveRegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)
-	latestRev, exists := w.staticRegistryCache.Get(sid)
-	var betterThanCached bool
-	if exists {
-		betterThanCached, _ = latestRev.ShouldUpdateWith(&latestRev, w.staticHostPubKey)
-	}
-	if exists && !betterThanCached {
-		return fmt.Errorf("host provided outdated entry %v < %v", sneu.Entry.Revision, latestRev)
-	}
-
 	// Verify the signature.
 	err = sneu.Entry.Verify(sneu.PubKey.ToPublicKey())
 	if err != nil {
 		return errors.AddContext(err, "failed to verify signature")
 	}
 
-	// The entry is valid. Update the cache.
-	w.staticRegistryCache.Set(sid, sneu.Entry, false)
+	// Check if the host was trying to cheat us with an outdated entry.
+	rid := modules.DeriveRegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)
+	errCheating := w.managedCheckHostCheating(rid, sneu.Entry)
+	if errCheating != nil {
+		return errors.AddContext(err, "host provided outdated entry")
+	}
 
 	// Check if the host sent us an update we are not subsribed to. This might
 	// not seem bad, but the host might want to spam us with valid entries that
 	// we are not interested in simply to have us pay for bandwidth.
 	subInfo.mu.Lock()
 	sub, exists := subInfo.subscriptions[modules.DeriveRegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)]
-	if !exists || (sub.latestRV != nil && sub.latestRV.Revision >= sneu.Entry.Revision) {
+	shouldUpdate, _ := sub.latestRV.ShouldUpdateWith(&sneu.Entry.RegistryValue, w.staticHostPubKey)
+	if !exists || !shouldUpdate {
 		if exists && sub.latestRV != nil {
 			subInfo.mu.Unlock()
 			return fmt.Errorf("host sent an outdated revision %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
@@ -500,6 +494,9 @@ func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe [
 	return nil
 }
 
+// managedCheckHostCheating is a helper method that checks a registry entry
+// against the cache to determine whether the host is cheating or not. It also
+// updates the cache accordingly.
 func (w *worker) managedCheckHostCheating(rid modules.RegistryEntryID, srv modules.SignedRegistryValue) error {
 	// Check if we have an entry in the cache already.
 	ce, exists := w.staticRegistryCache.Get(rid)
