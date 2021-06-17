@@ -289,15 +289,10 @@ func testTUSUploaderUnstableConnection(t *testing.T, tg *siatest.TestGroup) {
 
 	// Get a tus client.
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
-	tc, err := r.SkynetTUSClient(chunkSize)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Upload some chunks.
 	uploadedData := fastrand.Bytes(int(chunkSize * 10))
-	src := bytes.NewReader(uploadedData)
-	upload := tus.NewUpload(src, src.Size(), tus.Metadata{}, "test")
+	tc, upload, err := r.SkynetTUSNewUploadFromBytes(uploadedData, chunkSize)
 
 	// Create uploader.
 	uploader, err := tc.CreateUpload(upload)
