@@ -637,15 +637,6 @@ func (w *worker) managedRefillAccount() {
 		return // don't refill account
 	}
 	start := time.Now()
-	msg := fmt.Sprintf("%v: start refill at %v with %v read and %v hasSector jobs\n", w.staticHostPubKey.ShortString(), start, w.staticJobReadQueue.callLen(), w.staticJobHasSectorQueue.callLen())
-	w.staticRenter.staticLog.Print(msg)
-	fmt.Print(msg)
-
-	defer func() {
-		msg = fmt.Sprintf("%v: finished refill after %v with %v read and %v hasSector jobs\n", w.staticHostPubKey.ShortString(), time.Since(start), w.staticJobReadQueue.callLen(), w.staticJobHasSectorQueue.callLen())
-		w.staticRenter.staticLog.Print(msg)
-		fmt.Print(msg)
-	}()
 
 	// The account balance dropped to below half the balance target, refill. Use
 	// the max expected balance when refilling to avoid exceeding any host
@@ -656,6 +647,16 @@ func (w *worker) managedRefillAccount() {
 		amount = w.staticBalanceTarget.Sub(balance)
 	}
 	pt := w.staticPriceTable().staticPriceTable
+
+	msg := fmt.Sprintf("%v: start refill (%v) at %v with %v read and %v hasSector jobs\n", w.staticHostPubKey.ShortString(), amount.String(), start, w.staticJobReadQueue.callLen(), w.staticJobHasSectorQueue.callLen())
+	w.staticRenter.staticLog.Print(msg)
+	fmt.Print(msg)
+
+	defer func() {
+		msg = fmt.Sprintf("%v: finished refill after %v with %v read and %v hasSector jobs\n", w.staticHostPubKey.ShortString(), time.Since(start), w.staticJobReadQueue.callLen(), w.staticJobHasSectorQueue.callLen())
+		w.staticRenter.staticLog.Print(msg)
+		fmt.Print(msg)
+	}()
 
 	// If the target amount is larger than the remaining money, adjust the
 	// target. Make sure it can still cover the funding cost.
@@ -727,96 +728,95 @@ func (w *worker) managedRefillAccount() {
 		}
 	}()
 
-	// create a new stream
-	var stream net.Conn
-	stream, err = w.staticNewStream()
-	if err != nil {
-		err = errors.AddContext(err, "Unable to create a new stream")
-		return
-	}
-	defer func() {
-		closeErr := stream.Close()
-		if closeErr != nil {
-			w.staticRenter.staticLog.Println("ERROR: failed to close stream", closeErr)
+	err = func() (err error) {
+		// create a new stream
+		var stream net.Conn
+		stream, err = w.staticNewStream()
+		if err != nil {
+			return errors.AddContext(err, "Unable to create a new stream")
 		}
-	}()
-
-	// prepare a buffer so we can optimize our writes
-	buffer := bytes.NewBuffer(nil)
-
-	// write the specifier
-	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
-	if err != nil {
-		err = errors.AddContext(err, "could not write fund account specifier")
-		return
-	}
-
-	// send price table uid
-	err = modules.RPCWrite(buffer, pt.UID)
-	if err != nil {
-		err = errors.AddContext(err, "could not write price table uid")
-		return
-	}
-
-	// send fund account request
-	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: w.staticAccount.staticID})
-	if err != nil {
-		err = errors.AddContext(err, "could not write the fund account request")
-		return
-	}
-
-	// write contents of the buffer to the stream
-	_, err = stream.Write(buffer.Bytes())
-	if err != nil {
-		err = errors.AddContext(err, "could not write the buffer contents")
-		return
-	}
-
-	// build payment details
-	details := contractor.PaymentDetails{
-		Host:          w.staticHostPubKey,
-		Amount:        amount.Add(pt.FundAccountCost),
-		RefundAccount: modules.ZeroAccountID,
-		SpendingDetails: skymodules.SpendingDetails{
-			FundAccountSpending: amount,
-			MaintenanceSpending: skymodules.MaintenanceSpending{
-				FundAccountCost: pt.FundAccountCost,
-			},
-		},
-	}
-
-	// provide payment
-	err = w.staticRenter.staticHostContractor.ProvidePayment(stream, &pt, details)
-	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
-		// The host reporting that the balance has been exceeded suggests that
-		// the host believes that we have more money than we believe that we
-		// have.
-		if !w.staticRenter.staticDeps.Disrupt("DisableCriticalOnMaxBalance") {
-			// Log a critical in testing as this is very unlikely to happen due
-			// to the order of events in the worker loop, seeing as we just
-			// synced our account balance with the host if that was necessary
-			if build.Release == "testing" {
-				build.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?", err)
+		defer func() {
+			if closeErr := stream.Close(); closeErr != nil {
+				w.staticRenter.staticLog.Println("ERROR: failed to close stream", closeErr)
 			}
-			w.staticRenter.staticLog.Println("worker account refill failed", err)
-		}
-		w.staticAccount.mu.Lock()
-		w.staticAccount.syncAt = time.Time{}
-		w.staticAccount.mu.Unlock()
-	}
-	if err != nil {
-		err = errors.AddContext(err, "could not provide payment for the account")
-		return
-	}
+		}()
 
-	// receive FundAccountResponse. The response contains a receipt and a
-	// signature, which is useful for places where accountability is required,
-	// but no accountability is required in this case, so we ignore the
-	// response.
-	var resp modules.FundAccountResponse
-	err = modules.RPCRead(stream, &resp)
+		// prepare a buffer so we can optimize our writes
+		buffer := bytes.NewBuffer(nil)
+
+		// write the specifier
+		err = modules.RPCWrite(buffer, modules.RPCFundAccount)
+		if err != nil {
+			return errors.AddContext(err, "could not write fund account specifier")
+		}
+
+		// send price table uid
+		err = modules.RPCWrite(buffer, pt.UID)
+		if err != nil {
+			return errors.AddContext(err, "could not write price table uid")
+		}
+
+		// send fund account request
+		err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: w.staticAccount.staticID})
+		if err != nil {
+			return errors.AddContext(err, "could not write the fund account request")
+		}
+
+		// write contents of the buffer to the stream
+		_, err = stream.Write(buffer.Bytes())
+		if err != nil {
+			return errors.AddContext(err, "could not write the buffer contents")
+		}
+
+		// build payment details
+		details := contractor.PaymentDetails{
+			Host:          w.staticHostPubKey,
+			Amount:        amount.Add(pt.FundAccountCost),
+			RefundAccount: modules.ZeroAccountID,
+			SpendingDetails: skymodules.SpendingDetails{
+				FundAccountSpending: amount,
+				MaintenanceSpending: skymodules.MaintenanceSpending{
+					FundAccountCost: pt.FundAccountCost,
+				},
+			},
+		}
+
+		// provide payment
+		err = w.staticRenter.staticHostContractor.ProvidePayment(stream, &pt, details)
+		if err != nil && strings.Contains(err.Error(), "balance exceeded") {
+			// The host reporting that the balance has been exceeded suggests that
+			// the host believes that we have more money than we believe that we
+			// have.
+			if !w.staticRenter.staticDeps.Disrupt("DisableCriticalOnMaxBalance") {
+				// Log a critical in testing as this is very unlikely to happen due
+				// to the order of events in the worker loop, seeing as we just
+				// synced our account balance with the host if that was necessary
+				if build.Release == "testing" {
+					build.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?", err)
+				}
+				w.staticRenter.staticLog.Println("worker account refill failed", err)
+			}
+			w.staticAccount.mu.Lock()
+			w.staticAccount.syncAt = time.Time{}
+			w.staticAccount.mu.Unlock()
+		}
+		if err != nil {
+			return errors.AddContext(err, "could not provide payment for the account")
+		}
+
+		// receive FundAccountResponse. The response contains a receipt and a
+		// signature, which is useful for places where accountability is required,
+		// but no accountability is required in this case, so we ignore the
+		// response.
+		var resp modules.FundAccountResponse
+		err = modules.RPCRead(stream, &resp)
+		if err != nil {
+			return errors.AddContext(err, "could not read the account response")
+		}
+		return nil
+	}()
 	if err != nil {
-		err = errors.AddContext(err, "could not read the account response")
+		w.staticRenter.staticLog.Printf("%v: refill failed: %v", w.staticHostPubKey.ShortString(), err)
 	}
 
 	// Wake the worker so that any jobs potentially blocking on getting more
