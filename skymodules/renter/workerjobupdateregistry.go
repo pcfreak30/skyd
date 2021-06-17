@@ -153,7 +153,7 @@ func (j *jobUpdateRegistry) callExecute() {
 		}
 		// If the entry is valid and the revision is also valid, check if we
 		// have a higher revision number in the cache than the provided one.
-		errCheating := w.managedCheckHostCheating(rid, rv)
+		errCheating := w.managedCheckHostCheating(rid, rv, true)
 		if errCheating != nil {
 			sendResponse(nil, errCheating)
 			j.staticQueue.callReportFailure(errCheating)

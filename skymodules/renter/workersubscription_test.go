@@ -1044,7 +1044,7 @@ func TestHandleNotification(t *testing.T) {
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv2.
 			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv2.RegistryValue) {
-				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv2.Revision, found)
+				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv2, found)
 			}
 			// Check subscription. Should be set to rv2.
 			subInfo.mu.Lock()
@@ -1056,7 +1056,7 @@ func TestHandleNotification(t *testing.T) {
 			subInfo.mu.Unlock()
 			// Stream should have been closed.
 			if closer.staticCount() != 1 {
-				return errors.New("stream should have been closed")
+				return fmt.Errorf("stream should have been closed: %v", closer.staticCount())
 			}
 			return nil
 		})

@@ -191,8 +191,8 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 
 	// Check if the host was trying to cheat us with an outdated entry.
 	rid := modules.DeriveRegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)
-	errCheating := w.managedCheckHostCheating(rid, sneu.Entry)
-	if errCheating != nil {
+	err = w.managedCheckHostCheating(rid, sneu.Entry, false)
+	if err != nil {
 		return errors.AddContext(err, "host provided outdated entry")
 	}
 
@@ -201,14 +201,17 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	// we are not interested in simply to have us pay for bandwidth.
 	subInfo.mu.Lock()
 	sub, exists := subInfo.subscriptions[modules.DeriveRegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)]
-	shouldUpdate, _ := sub.latestRV.ShouldUpdateWith(&sneu.Entry.RegistryValue, w.staticHostPubKey)
-	if !exists || !shouldUpdate {
-		if exists && sub.latestRV != nil {
+	if !exists {
+		subInfo.mu.Unlock()
+		return fmt.Errorf("subscription not found")
+	}
+	var shouldUpdate bool
+	if sub.latestRV != nil {
+		shouldUpdate, _ = sub.latestRV.ShouldUpdateWith(&sneu.Entry.RegistryValue, w.staticHostPubKey)
+		if !shouldUpdate {
 			subInfo.mu.Unlock()
 			return fmt.Errorf("host sent an outdated revision %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
 		}
-		subInfo.mu.Unlock()
-		return fmt.Errorf("subscription not found")
 	}
 
 	// Update the subscription.
@@ -497,7 +500,7 @@ func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe [
 // managedCheckHostCheating is a helper method that checks a registry entry
 // against the cache to determine whether the host is cheating or not. It also
 // updates the cache accordingly.
-func (w *worker) managedCheckHostCheating(rid modules.RegistryEntryID, srv modules.SignedRegistryValue) error {
+func (w *worker) managedCheckHostCheating(rid modules.RegistryEntryID, srv modules.SignedRegistryValue, overwrite bool) error {
 	// Check if we have an entry in the cache already.
 	ce, exists := w.staticRegistryCache.Get(rid)
 	if !exists {
@@ -521,8 +524,9 @@ func (w *worker) managedCheckHostCheating(rid modules.RegistryEntryID, srv modul
 
 	// The revision the host provided is worse than the one we already know
 	// it had. The host is cheating us. We force update the cache to reset
-	// our knowledge of what we think is the host's most recent revision.
-	w.staticRegistryCache.Set(rid, srv, true)
+	// our knowledge of what we think is the host's most recent revision if
+	// overwrite is specified.
+	w.staticRegistryCache.Set(rid, srv, overwrite)
 	return errors.Compose(errHostCheating, err)
 }
 
@@ -537,7 +541,7 @@ func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []modul
 	// Check that the initial values are not outdated and update the cache.
 	for _, rv := range rvs {
 		rid := modules.DeriveRegistryEntryID(rv.PubKey, rv.Entry.Tweak)
-		errCheating := w.managedCheckHostCheating(rid, rv.Entry)
+		errCheating := w.managedCheckHostCheating(rid, rv.Entry, false)
 		if errCheating != nil {
 			return errors.AddContext(errCheating, "managedSubscribeToRVs: host is cheating")
 		}

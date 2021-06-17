@@ -284,7 +284,7 @@ func (j *jobReadRegistry) callExecute() {
 	// has a higher revision number we update it. If it has a lower one we know that
 	// the host should be punished for losing it or trying to cheat us.
 	if srv != nil {
-		errCheating := w.managedCheckHostCheating(j.staticRegistryEntryID, *srv)
+		errCheating := w.managedCheckHostCheating(j.staticRegistryEntryID, *srv, true)
 		if errCheating != nil {
 			sendResponse(nil, errCheating)
 			j.staticQueue.callReportFailure(errCheating)
