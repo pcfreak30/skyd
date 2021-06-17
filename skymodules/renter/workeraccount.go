@@ -641,10 +641,14 @@ func (w *worker) managedRefillAccount() {
 	// The account balance dropped to below half the balance target, refill. Use
 	// the max expected balance when refilling to avoid exceeding any host
 	// maximums.
-	balance := w.staticAccount.managedMaxExpectedBalance()
+	balance := w.staticAccount.managedAvailableBalance()
 	amount := types.ZeroCurrency
 	if w.staticBalanceTarget.Cmp(balance) > 0 {
 		amount = w.staticBalanceTarget.Sub(balance)
+	}
+	// If the amount is zero now there is nothing to do.
+	if amount.IsZero() {
+		return
 	}
 	pt := w.staticPriceTable().staticPriceTable
 
