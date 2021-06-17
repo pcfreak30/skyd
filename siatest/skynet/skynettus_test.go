@@ -50,6 +50,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 	t.Run("Basic", func(t *testing.T) {
 		testTUSUploaderBasic(t, tg.Renters()[0])
 	})
+	t.Run("TooLarge", func(t *testing.T) {
+		testTUSUploaderTooLarge(t, tg.Renters()[0])
+	})
 	t.Run("PruneIdle", func(t *testing.T) {
 		testTUSUploaderPruneIdle(t, tg.Renters()[0])
 	})
@@ -183,6 +186,26 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	nFiles := dir.Directories[0].AggregateNumFiles
 	if nFiles-nFilesBefore != 6 {
 		t.Fatal("expected 6 new files but got", nFiles-nFilesBefore)
+	}
+}
+
+// testTUSUploaderTooLarge tests the user specified max size of the TUS
+// endpoints.
+func testTUSUploaderTooLarge(t *testing.T, r *siatest.TestNode) {
+	// Declare the chunkSize and data.
+	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
+	data := fastrand.Bytes(int(chunkSize))
+
+	// Upload with a max size that equals the uploaded data. This should work.
+	_, err := r.SkynetTUSUploadFromBytesWithMaxSize(data, chunkSize, "success", "", int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload with a max size that is 1 byte smaller than the file's size. This should fail.
+	_, err = r.SkynetTUSUploadFromBytesWithMaxSize(data, chunkSize, "failure", "", int64(len(data))-1)
+	if err == nil {
+		t.Fatal(err)
 	}
 }
 
