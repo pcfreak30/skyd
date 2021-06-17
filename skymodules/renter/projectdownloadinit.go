@@ -187,6 +187,9 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		if w.managedNeedsToRefillAccount() {
 			continue
 		}
+		if w.managedNeedsToUpdatePriceTable() {
+			continue
+		}
 
 		// Fetch the resolveTime, which is the time until the HS job is expected
 		// to resolve. If that time is in the past, add a penalty that assumes
@@ -261,6 +264,9 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				continue
 			}
 			if w.managedNeedsToRefillAccount() {
+				continue
+			}
+			if w.managedNeedsToUpdatePriceTable() {
 				continue
 			}
 
