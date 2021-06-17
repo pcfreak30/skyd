@@ -76,10 +76,13 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 		w.newMaintenanceState()
 		pt := &workerPriceTable{
 			staticExpiryTime: time.Now().Add(time.Minute),
+			staticUpdateTime: time.Now().Add(time.Minute),
 		}
 		w.staticSetPriceTable(pt)
 		w.initJobReadQueue()
 		w.staticJobReadQueue.weightedJobTime64k = float64(expectedJobTime)
+		w.staticLoopState = &workerLoopState{}
+		w.staticAccount = &account{syncAt: time.Now().Add(time.Minute)}
 		return w
 	}
 
