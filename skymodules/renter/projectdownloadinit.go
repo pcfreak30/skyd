@@ -324,7 +324,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if w == nil || (len(w.pieces) == 0 && !w.unresolved) {
 			continue
 		}
-		msg += fmt.Sprintf("%v: duration: %v unresolved: %v\n", w.readDuration, w.unresolved, w.completeTime)
+		msg += fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime)
 	}
 
 	// Build the best set that we can. Each iteration will attempt to improve
@@ -507,8 +507,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if w == nil {
 			continue
 		}
-		msg += fmt.Sprintf("%v: duration: %v unresolved: %v\n", w.readDuration, w.unresolved, w.completeTime)
+		msg += fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime)
 	}
+	msg += "************************************\n"
 	pdc.workerState.staticRenter.staticLog.Println(msg)
 	return bestSet, nil
 }
