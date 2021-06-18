@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -463,21 +464,25 @@ func (r *Renter) threadedPruneTUSUploads() {
 func TUSPreUploadCreateCallback(hook handler.HookEvent) error {
 	// Sanity check that the size is not deferred.
 	if hook.Upload.SizeIsDeferred {
-		return errors.New("uploads with deferred size are not supported")
+		err := errors.New("uploads with deferred size are not supported")
+		return handler.NewHTTPError(err, http.StatusBadRequest)
 	}
 	// Get user's max upload size from request.
 	maxSizeStr := hook.HTTPRequest.Header.Get("SkynetMaxUploadSize")
 	if maxSizeStr == "" {
-		return errors.New("SkynetMaxUploadSize header is missing")
+		err := errors.New("SkynetMaxUploadSize header is missing")
+		return handler.NewHTTPError(err, http.StatusBadRequest)
 	}
 	var maxSize int64
 	_, err := fmt.Sscan(maxSizeStr, &maxSize)
 	if err != nil {
-		return errors.New("failed to parse SkynetMaxUploadSize")
+		err = errors.AddContext(err, "failed to parse SkynetMaxUploadSize")
+		return handler.NewHTTPError(err, http.StatusBadRequest)
 	}
 	// Check upload size against max size.
 	if hook.Upload.Size > maxSize {
-		return fmt.Errorf("upload exceeds maximum size: %v > %v", hook.Upload.Size, maxSize)
+		err = fmt.Errorf("upload exceeds maximum size: %v > %v", hook.Upload.Size, maxSize)
+		return handler.NewHTTPError(err, http.StatusRequestEntityTooLarge)
 	}
 	return nil
 }
