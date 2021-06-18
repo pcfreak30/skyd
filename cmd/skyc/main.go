@@ -52,6 +52,7 @@ var (
 	renterListRoot            bool   // List path start from root instead of the UserFolder.
 	renterRenameRoot          bool   // Rename files relative to root instead of the UserFolder.
 	renterShowHistory         bool   // Show download history in addition to download queue.
+	renterWorkerShort         bool   // Shortens the outputs of the skys renter workers command
 
 	// Renter Allowance Flags
 	allowanceFunds       string // amount of money to be used within a period
@@ -340,6 +341,8 @@ func initCmds() *cobra.Command {
 		renterFuseCmd, renterLostCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
 		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd, renterWorkersCmd,
 		renterHealthSummaryCmd)
+
+	renterWorkersReadJobsCmd.Flags().BoolVarP(&renterWorkerShort, "short", "S", false, "Shorter output for skyc renter workers")
 	renterWorkersCmd.AddCommand(renterWorkersAccountsCmd, renterWorkersDownloadsCmd, renterWorkersPriceTableCmd, renterWorkersReadJobsCmd, renterWorkersHasSectorJobSCmd, renterWorkersUploadsCmd, renterWorkersReadRegistryCmd, renterWorkersUpdateRegistryCmd)
 
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)

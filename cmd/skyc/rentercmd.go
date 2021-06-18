@@ -2387,6 +2387,15 @@ func renterworkersrjcmd(cmd *cobra.Command, args []string) {
 			die("unknown size category - use '64k', '1m' or '4m'")
 		}
 
+		// When short is specified, ignore workers which have not
+		// finished any jobs yet. This means there are no early jobs and
+		// only up to 1 late job. That's because the initial estimate we
+		// get from fetching a price table will always count as a late
+		// job.
+		if numEarlyJobs == 0 && numLateJobs <= 1 {
+			continue
+		}
+
 		// Host Info
 		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
 
