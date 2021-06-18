@@ -398,6 +398,23 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 		}
 	}
 	if completedPieces >= ec.MinPieces() {
+		if time.Since(pdc.launchTime) > time.Millisecond*500 {
+			l := pdc.workerState.staticRenter.staticLog
+			l.Println("******************")
+			l.Println("finished download of len:", pdc.lengthInChunk)
+			l.Println("duration", time.Since(pdc.launchTime))
+			l.Println("remaining unresolved workers:", pdc.unresolvedWorkersRemaining)
+			l.Println("launched workers:", len(pdc.launchedWorkers))
+			for _, w := range pdc.launchedWorkers {
+				l.Println("host:", w.staticWorker.staticHostPubKey.ShortString())
+				l.Println("duration:", w.jobDuration)
+				l.Println("totalDuration:", w.totalDuration)
+				l.Println("expected complete time:", w.staticExpectedCompleteTime)
+				l.Println("expected duration:", w.staticExpectedDuration)
+				l.Println("overdrive:", w.staticIsOverdriveWorker)
+			}
+			l.Println("******************")
+		}
 		return true, nil
 	}
 
