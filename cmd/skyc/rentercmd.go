@@ -2356,7 +2356,7 @@ func renterworkersrjcmd(cmd *cobra.Command, args []string) {
 
 	// print header
 	size := args[0]
-	header := fmt.Sprintf("Host PubKey\tJobs\tAvgJobTime%s (ms)\tEarlyJobs%s\tAvgEarlyDelta%s\tLateJobs%s\tAvgLateDelta%s\tConsecFail\tErrorAt\tError", size, size, size, size, size)
+	header := fmt.Sprintf("Host PubKey\tJobs\tAvgJobTime%s (ms)\tEarlyJobs%s\tAvgEarlyDelta%s (ms)\tLateJobs%s\tAvgLateDelta%s (ms)\tConsecFail\tErrorAt\tError", size, size, size, size, size)
 	fmt.Fprintln(w, "\nWorker Read Jobs  \n\n"+header)
 
 	// print rows
@@ -2392,7 +2392,7 @@ func renterworkersrjcmd(cmd *cobra.Command, args []string) {
 		// only up to 1 late job. That's because the initial estimate we
 		// get from fetching a price table will always count as a late
 		// job.
-		if numEarlyJobs == 0 && numLateJobs <= 1 {
+		if renterWorkerShort && numEarlyJobs == 0 && numLateJobs <= 1 {
 			continue
 		}
 
