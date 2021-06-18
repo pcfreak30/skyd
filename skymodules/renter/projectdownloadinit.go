@@ -318,6 +318,15 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
+	msg := "************************************\n"
+	msg += "potential workers\n"
+	for _, w := range workerHeap {
+		if w == nil || (len(w.pieces) == 0 && !w.unresolved) {
+			continue
+		}
+		msg += fmt.Sprintf("%v: duration: %v unresolved: %v\n", w.readDuration, w.unresolved, w.completeTime)
+	}
+
 	// Build the best set that we can. Each iteration will attempt to improve
 	// the working set by adding a new worker. This may or may not succeed,
 	// depending on how cheap the worker is and how slow the worker is. Each
@@ -493,6 +502,14 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		return nil, nil
 	}
 
+	msg += "chosen workers\n"
+	for _, w := range bestSet {
+		if w == nil {
+			continue
+		}
+		msg += fmt.Sprintf("%v: duration: %v unresolved: %v\n", w.readDuration, w.unresolved, w.completeTime)
+	}
+	pdc.workerState.staticRenter.staticLog.Println(msg)
 	return bestSet, nil
 }
 
