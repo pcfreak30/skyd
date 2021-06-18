@@ -326,7 +326,7 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Use:   "rj",
 		Short: "View the workers' read jobs",
 		Long:  "View detailed information of the workers' read jobs",
-		Run:   wrap(renterworkersrjcmd),
+		Run:   renterworkersrjcmd,
 	}
 
 	renterWorkersUploadsCmd = &cobra.Command{
@@ -2296,7 +2296,11 @@ func renterworkersptcmd() {
 
 // renterworkersrjcmd is the handler for the command `skyc renter workers rj`.
 // It lists the status of the read job queue for every worker.
-func renterworkersrjcmd() {
+func renterworkersrjcmd(cmd *cobra.Command, args []string) {
+	if len(args) > 1 {
+		die("wrong number of args - should be either no argument or one of '64k', '1m' and '4m")
+	}
+
 	rw, err := httpClient.RenterWorkersSortedGet(true)
 	if err != nil {
 		die("Could not get workers:", err)
@@ -2310,29 +2314,95 @@ func renterworkersrjcmd() {
 		}
 	}()
 
+	// Handle no args.
+	if len(args) == 0 {
+		// print header
+		header := "Host PubKey\tJobs\tAvgJobTime64k (ms)\tAvgJobTime1m (ms)\tAvgJobTime4m (ms)\tConsecFail\tErrorAt\tError"
+		fmt.Fprintln(w, "\nWorker Read Jobs  \n\n"+header)
+
+		// print rows
+		for _, worker := range rw.Workers {
+			rjs := worker.ReadJobsStatus
+
+			// Host Info
+			fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+			// ReadJobs Info
+			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
+				rjs.JobQueueSize,
+				rjs.NumEarlyJobs64k,
+				rjs.NumLateJobs64k,
+				rjs.AvgJobTime64k,
+				rjs.AvgEarlyDelta64k,
+				rjs.AvgLateDelta64k,
+				rjs.NumEarlyJobs1m,
+				rjs.NumLateJobs1m,
+				rjs.AvgJobTime1m,
+				rjs.AvgEarlyDelta1m,
+				rjs.AvgLateDelta1m,
+				rjs.NumEarlyJobs4m,
+				rjs.NumLateJobs4m,
+				rjs.AvgJobTime4m,
+				rjs.AvgEarlyDelta4m,
+				rjs.AvgLateDelta4m,
+				rjs.ConsecutiveFailures,
+				sanitizeTime(rjs.RecentErrTime, rjs.RecentErr != ""),
+				sanitizeErr(rjs.RecentErr))
+		}
+		return
+	}
+
+	// Handle with arg.
+
 	// print header
-	hostInfo := "Host PubKey"
-	queueInfo := "\tJobs\tAvgJobTime64k (ms)\tAvgJobTime1m (ms)\tAvgJobTime4m (ms)\tConsecFail\tErrorAt\tError"
-	header := hostInfo + queueInfo
+	size := args[0]
+	header := fmt.Sprintf("Host PubKey\tJobs\tAvgJobTime%s (ms)\tEarlyJobs%s\tAvgEarlyDelta%s\tLateJobs%s\tAvgLateDelta%s\tConsecFail\tErrorAt\tError", size, size, size, size, size)
 	fmt.Fprintln(w, "\nWorker Read Jobs  \n\n"+header)
 
 	// print rows
 	for _, worker := range rw.Workers {
 		rjs := worker.ReadJobsStatus
 
+		var avgJobTime, numEarlyJobs, avgEarlyDelta, numLateJobs, avgLateDelta uint64
+		switch size {
+		case "64k":
+			avgJobTime = rjs.AvgJobTime64k
+			numEarlyJobs = rjs.NumEarlyJobs64k
+			avgEarlyDelta = rjs.AvgEarlyDelta64k
+			numLateJobs = rjs.NumLateJobs64k
+			avgLateDelta = rjs.AvgLateDelta64k
+		case "1m":
+			avgJobTime = rjs.AvgJobTime1m
+			numEarlyJobs = rjs.NumEarlyJobs1m
+			avgEarlyDelta = rjs.AvgEarlyDelta1m
+			numLateJobs = rjs.NumLateJobs1m
+			avgLateDelta = rjs.AvgLateDelta1m
+		case "4m":
+			avgJobTime = rjs.AvgJobTime4m
+			numEarlyJobs = rjs.NumEarlyJobs4m
+			avgEarlyDelta = rjs.AvgEarlyDelta4m
+			numLateJobs = rjs.NumLateJobs4m
+			avgLateDelta = rjs.AvgLateDelta4m
+		default:
+			die("unknown size category - use '64k', '1m' or '4m'")
+		}
+
 		// Host Info
 		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
 
 		// ReadJobs Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
 			rjs.JobQueueSize,
-			rjs.AvgJobTime64k,
-			rjs.AvgJobTime1m,
-			rjs.AvgJobTime4m,
+			avgJobTime,
+			numEarlyJobs,
+			avgEarlyDelta,
+			numLateJobs,
+			avgLateDelta,
 			rjs.ConsecutiveFailures,
 			sanitizeTime(rjs.RecentErrTime, rjs.RecentErr != ""),
 			sanitizeErr(rjs.RecentErr))
 	}
+	return
 }
 
 // renterworkershsjcmd is the handler for the command `skyc renter workers hs`.

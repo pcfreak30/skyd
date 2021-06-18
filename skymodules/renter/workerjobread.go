@@ -21,6 +21,12 @@ const (
 	// predictor tends to be more accurate over time, but is less responsive to
 	// things like network load.
 	jobReadPerformanceDecay = 0.9
+
+	// The following consts define the size of 64KiB, 1MiB and 4MiB for
+	// convenience.
+	size64K = 1 << 16
+	size1M  = 1 << 20
+	size4M  = 1 << 22
 )
 
 type (
@@ -47,6 +53,22 @@ type (
 		weightedJobTime64k float64
 		weightedJobTime1m  float64
 		weightedJobTime4m  float64
+
+		nLateJobs64k uint64
+		nLateJobs1m  uint64
+		nLateJobs4m  uint64
+
+		nEarlyJobs64k uint64
+		nEarlyJobs1m  uint64
+		nEarlyJobs4m  uint64
+
+		weightedLateJobs64kDelta float64
+		weightedLateJobs1mDelta  float64
+		weightedLateJobs4mDelta  float64
+
+		weightedEarlyJobs64kDelta float64
+		weightedEarlyJobs1mDelta  float64
+		weightedEarlyJobs4mDelta  float64
 
 		*jobGenericQueue
 	}
@@ -246,9 +268,9 @@ func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 // expectedJobTime returns the expected job time, based on recent performance,
 // for the given read length.
 func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
-	if length <= 1<<16 {
+	if length <= size64K {
 		return time.Duration(jq.weightedJobTime64k)
-	} else if length <= 1<<20 {
+	} else if length <= size1M {
 		return time.Duration(jq.weightedJobTime1m)
 	} else {
 		return time.Duration(jq.weightedJobTime4m)
@@ -283,13 +305,44 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-	if length <= 1<<16 {
-		jq.weightedJobTime64k = expMovingAvgHotStart(jq.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
-	} else if length <= 1<<20 {
-		jq.weightedJobTime1m = expMovingAvgHotStart(jq.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
+
+	// Choose the right fields to work with depending on the length.
+	var nLateJobs, nEarlyJobs *uint64
+	var weightedLateJobsDelta, weightedEarlyJobsDelta *float64
+	var weightedJobTime *float64
+	if length <= size64K {
+		nLateJobs = &jq.nLateJobs64k
+		nEarlyJobs = &jq.nEarlyJobs64k
+		weightedLateJobsDelta = &jq.weightedLateJobs64kDelta
+		weightedEarlyJobsDelta = &jq.weightedEarlyJobs64kDelta
+		weightedJobTime = &jq.weightedJobTime64k
+	} else if length <= size1M {
+		nLateJobs = &jq.nLateJobs1m
+		nEarlyJobs = &jq.nEarlyJobs1m
+		weightedLateJobsDelta = &jq.weightedLateJobs1mDelta
+		weightedEarlyJobsDelta = &jq.weightedEarlyJobs1mDelta
+		weightedJobTime = &jq.weightedJobTime1m
 	} else {
-		jq.weightedJobTime4m = expMovingAvgHotStart(jq.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
+		nLateJobs = &jq.nLateJobs4m
+		nEarlyJobs = &jq.nEarlyJobs4m
+		weightedLateJobsDelta = &jq.weightedLateJobs4mDelta
+		weightedEarlyJobsDelta = &jq.weightedEarlyJobs4mDelta
+		weightedJobTime = &jq.weightedJobTime4m
 	}
+
+	// Adjust the fields.
+	var delta time.Duration
+	expectedJobTime := jq.expectedJobTime(length)
+	if jobTime > expectedJobTime {
+		*nLateJobs++
+		delta = jobTime - expectedJobTime
+		*weightedLateJobsDelta = expMovingAvgHotStart(*weightedLateJobsDelta, float64(delta), jobReadPerformanceDecay)
+	} else if jobTime < expectedJobTime {
+		*nEarlyJobs++
+		delta = expectedJobTime - jobTime
+		*weightedEarlyJobsDelta = expMovingAvgHotStart(*weightedEarlyJobsDelta, float64(delta), jobReadPerformanceDecay)
+	}
+	*weightedJobTime = expMovingAvgHotStart(*weightedJobTime, float64(jobTime), jobReadPerformanceDecay)
 }
 
 // initJobReadQueue will initialize a queue for downloading sectors by

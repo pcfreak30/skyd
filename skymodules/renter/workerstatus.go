@@ -119,6 +119,12 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 		recentErrString = status.recentErr.Error()
 	}
 
+	toMS := func(t float64) uint64 {
+		if d := time.Duration(t); d > 0 {
+			return uint64(d.Milliseconds())
+		}
+		return 0
+	}
 	avgJobTimeInMs := func(l uint64) uint64 {
 		if d := jrq.callExpectedJobTime(l); d > 0 {
 			return uint64(d.Milliseconds())
@@ -127,9 +133,26 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 	}
 
 	return skymodules.WorkerReadJobsStatus{
-		AvgJobTime64k:       avgJobTimeInMs(1 << 16),
-		AvgJobTime1m:        avgJobTimeInMs(1 << 20),
-		AvgJobTime4m:        avgJobTimeInMs(1 << 22),
+		AvgJobTime64k: avgJobTimeInMs(size64K),
+		AvgJobTime1m:  avgJobTimeInMs(size1M),
+		AvgJobTime4m:  avgJobTimeInMs(size4M),
+
+		AvgEarlyDelta64k: toMS(jrq.weightedEarlyJobs64kDelta),
+		AvgEarlyDelta1m:  toMS(jrq.weightedEarlyJobs1mDelta),
+		AvgEarlyDelta4m:  toMS(jrq.weightedEarlyJobs4mDelta),
+
+		AvgLateDelta64k: toMS(jrq.weightedLateJobs64kDelta),
+		AvgLateDelta1m:  toMS(jrq.weightedLateJobs1mDelta),
+		AvgLateDelta4m:  toMS(jrq.weightedLateJobs4mDelta),
+
+		NumEarlyJobs64k: jrq.nEarlyJobs64k,
+		NumEarlyJobs1m:  jrq.nEarlyJobs1m,
+		NumEarlyJobs4m:  jrq.nEarlyJobs4m,
+
+		NumLateJobs64k: jrq.nLateJobs64k,
+		NumLateJobs1m:  jrq.nLateJobs1m,
+		NumLateJobs4m:  jrq.nLateJobs4m,
+
 		ConsecutiveFailures: status.consecutiveFailures,
 		JobQueueSize:        status.size,
 		RecentErr:           recentErrString,

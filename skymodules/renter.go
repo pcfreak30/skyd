@@ -1019,11 +1019,27 @@ type (
 		RecentErrTime time.Time `json:"recenterrtime"`
 	}
 
-	// WorkerReadJobsStatus contains detailed information about the read jobs
+	// WorkerReadJobsStatus contains detailed informatiomn about the read jobs
 	WorkerReadJobsStatus struct {
 		AvgJobTime64k uint64 `json:"avgjobtime64k"` // in ms
 		AvgJobTime1m  uint64 `json:"avgjobtime1m"`  // in ms
 		AvgJobTime4m  uint64 `json:"avgjobtime4m"`  // in ms
+
+		AvgLateDelta64k uint64 `json:"avglatedelta64k"` // in ms
+		AvgLateDelta1m  uint64 `json:"avglatedelta1m"`  // in ms
+		AvgLateDelta4m  uint64 `json:"avglatedelta4m"`  // in ms
+
+		AvgEarlyDelta64k uint64 `json:"avgearlydelta64k"` // in ms
+		AvgEarlyDelta1m  uint64 `json:"avgearlydelta1m"`  // in ms
+		AvgEarlyDelta4m  uint64 `json:"avgearlydelta4m"`  // in ms
+
+		NumLateJobs64k uint64 `json:"numlatejobs64k"`
+		NumLateJobs1m  uint64 `json:"numlatejobs1m"`
+		NumLateJobs4m  uint64 `json:"numlatejobs4m"`
+
+		NumEarlyJobs64k uint64 `json:"numearlyjobs64k"`
+		NumEarlyJobs1m  uint64 `json:"numearlyjobs1m"`
+		NumEarlyJobs4m  uint64 `json:"numearlyjobs4m"`
 
 		ConsecutiveFailures uint64 `json:"consecutivefailures"`
 
