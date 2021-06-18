@@ -138,6 +138,9 @@ type (
 		// worker to complete the download.
 		staticExpectedDuration time.Duration
 
+		// staticJobAddTime is the time at which the job was added to the worker.
+		staticJobAddTime time.Time
+
 		// staticLaunchTime is the time at which the worker was launched
 		staticLaunchTime time.Time
 
@@ -402,16 +405,18 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 			l := pdc.workerState.staticRenter.staticLog
 			l.Println("******************")
 			l.Println("finished download of len:", pdc.lengthInChunk)
-			l.Println("duration", time.Since(pdc.launchTime))
+			l.Println("duration", time.Since(pdc.launchTime).Milliseconds())
 			l.Println("remaining unresolved workers:", pdc.unresolvedWorkersRemaining)
 			l.Println("launched workers:", len(pdc.launchedWorkers))
 			for _, w := range pdc.launchedWorkers {
 				l.Println("host:", w.staticWorker.staticHostPubKey.ShortString())
-				l.Println("duration:", w.jobDuration)
-				l.Println("totalDuration:", w.totalDuration)
-				l.Println("expected complete time:", w.staticExpectedCompleteTime)
-				l.Println("expected duration:", w.staticExpectedDuration)
-				l.Println("overdrive:", w.staticIsOverdriveWorker)
+				l.Println("  duration:", w.jobDuration.Milliseconds())
+				l.Println("  totalDuration:", w.totalDuration.Milliseconds())
+				l.Println("  expected complete time:", w.staticExpectedCompleteTime)
+				l.Println("  expected duration:", w.staticExpectedDuration.Milliseconds())
+				l.Println("  overdrive:", w.staticIsOverdriveWorker)
+				l.Println("  timeUntilJobAdd:", w.staticJobAddTime.Sub(pdc.launchTime).Milliseconds())
+				l.Println("  timeBetweenAddAndComplete:", w.completeTime.Sub(w.staticJobAddTime).Milliseconds())
 			}
 			l.Println("******************")
 		}
@@ -474,6 +479,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 			staticPieceIndex:        pieceIndex,
 			staticIsOverdriveWorker: isOverdrive,
 
+			staticJobAddTime:           time.Now(),
 			staticLaunchTime:           time.Now(),
 			staticExpectedCompleteTime: expectedCompleteTime,
 			staticExpectedDuration:     time.Until(expectedCompleteTime),
