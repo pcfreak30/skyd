@@ -551,6 +551,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// result of the job, even if this thread is not listening.
 	workers := r.staticWorkerPool.callWorkers()
 	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(workers))
+	span.LogKV("workers", len(workers))
 
 	// Create a context to continue updating registry values in the background.
 	updateTimeoutCtx, updateTimeoutCancel := context.WithTimeout(r.tg.StopCtx(), updateRegistryBackgroundTimeout)
@@ -577,13 +578,8 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		}
 
 		// check for price gouging
-		// TODO: use upload gouging for some basic protection. Should be
-		// replaced as part of the gouging overhaul.
-		host, ok, err := r.staticHostDB.Host(worker.staticHostPubKey)
-		if !ok || err != nil {
-			continue
-		}
-		err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
+		pt := worker.staticPriceTable().staticPriceTable
+		err = checkUploadGougingPT(pt, cache.staticRenterAllowance)
 		if err != nil {
 			r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
@@ -677,7 +673,7 @@ func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
 		return true
 	}
 	// Compare entries.
-	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue)
+	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue, resp2.staticWorker.staticHostPubKey)
 
 	// If the entry is not capable of updating the existing one and both entries
 	// have the same revision number, use the time.

@@ -3,6 +3,7 @@ package renter
 import (
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -28,6 +29,11 @@ type (
 		staticLength       uint64
 		staticLowPrio      bool
 		staticResponseChan chan *jobReadResponse
+
+		// staticSpan is used for tracing. Note that this can be nil, and
+		// therefore should always be checked. Not all read jobs require
+		// tracing. By allowing it to be nil we avoid the extra overhead.
+		staticSpan opentracing.Span
 
 		*jobGeneric
 	}
@@ -107,6 +113,13 @@ func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
+	// Log info and finish span.
+	if j.staticSpan != nil {
+		j.staticSpan.LogKV("callDiscard", err)
+		j.staticSpan.SetTag("success", false)
+		j.staticSpan.Finish()
+	}
+
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobReadResponse{
@@ -128,6 +141,16 @@ func (j *jobRead) callDiscard(err error) {
 // after execution. It updates the performance metrics, records whether the
 // execution was successful and returns the response.
 func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
+	// Log result and finish
+	if j.staticSpan != nil {
+		j.staticSpan.LogKV(
+			"err", readErr,
+			"duration", readJobTime,
+		)
+		j.staticSpan.SetTag("success", readErr == nil)
+		j.staticSpan.Finish()
+	}
+
 	// Send the response in a goroutine so that the worker resources can be
 	// released faster. Need to check if the job was canceled so that the
 	// goroutine will exit.

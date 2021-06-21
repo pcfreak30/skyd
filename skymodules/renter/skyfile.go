@@ -37,6 +37,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/fixtures"
 
@@ -47,6 +48,16 @@ import (
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
+)
+
+var (
+	// MaxSkylinkV2ResolvingDepth defines the maximum recursion depth the
+	// renter tries to resolve when downloading v2 skylinks.
+	MaxSkylinkV2ResolvingDepth = build.Select(build.Var{
+		Standard: uint8(2),
+		Dev:      uint8(5),
+		Testing:  uint8(5),
+	}).(uint8)
 )
 
 var (
@@ -222,7 +233,7 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to generate the fanout bytes")
 	}
 
-	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fanoutBytes)
+	return r.managedCreateSkylinkFromFileNode(r.tg.StopCtx(), sup, metadata, fileNode, fanoutBytes)
 }
 
 // managedCreateSkylinkFromFileNode creates a skylink from a file node.
@@ -230,7 +241,7 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 // The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
+func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := skymodules.ValidateSkyfileMetadata(skyfileMetadata)
 	if err != nil {
@@ -329,7 +340,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup skymodules.SkyfileUploadPa
 	}
 
 	// Upload the base sector.
-	err = r.managedUploadBaseSector(sup, baseSector, skylink)
+	err = r.managedUploadBaseSector(ctx, sup, baseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "Unable to upload base sector for file node. ")
 	}
@@ -421,7 +432,19 @@ func (r *Renter) UpdateSkynetPortals(additions []skymodules.SkynetPortal, remova
 // managedUploadBaseSector will take the raw baseSector bytes and upload them,
 // returning the resulting merkle root, and the fileNode of the siafile that is
 // tracking the base sector.
-func (r *Renter) managedUploadBaseSector(sup skymodules.SkyfileUploadParameters, baseSector []byte, skylink skymodules.Skylink) (err error) {
+func (r *Renter) managedUploadBaseSector(ctx context.Context, sup skymodules.SkyfileUploadParameters, baseSector []byte, skylink skymodules.Skylink) (err error) {
+	// Trace the base sector upload in its own span if the given ctx already has
+	// a span attached.
+	span, ctx := opentracing.StartSpanFromContext(ctx, "managedUploadBaseSector")
+	span.SetTag("skylink", skylink.String())
+	defer func() {
+		if err != nil {
+			span.LogKV("err", err)
+		}
+		span.SetTag("success", err == nil)
+		span.Finish()
+	}()
+
 	uploadParams, err := baseSectorUploadParamsFromSUP(sup)
 	if err != nil {
 		return errors.AddContext(err, "failed to create siafile upload parameters")
@@ -431,7 +454,7 @@ func (r *Renter) managedUploadBaseSector(sup skymodules.SkyfileUploadParameters,
 	reader := bytes.NewReader(baseSector)
 
 	// Perform the actual upload.
-	fileNode, err := r.callUploadStreamFromReader(uploadParams, reader)
+	fileNode, err := r.callUploadStreamFromReader(ctx, uploadParams, reader)
 	if err != nil {
 		return errors.AddContext(err, "failed to stream upload base sector")
 	}
@@ -484,7 +507,7 @@ func (r *Renter) managedUploadSkyfile(ctx context.Context, sup skymodules.Skyfil
 		// verify if it fits in a single chunk
 		headerSize := uint64(skymodules.SkyfileLayoutSize + len(metadataBytes))
 		if uint64(numBytes)+headerSize <= modules.SectorSize {
-			return r.managedUploadSkyfileSmallFile(sup, metadataBytes, buf)
+			return r.managedUploadSkyfileSmallFile(ctx, sup, metadataBytes, buf)
 		}
 	}
 
@@ -501,7 +524,17 @@ func (r *Renter) managedUploadSkyfile(ctx context.Context, sup skymodules.Skyfil
 // managedUploadSkyfileSmallFile uploads a file that fits entirely in the
 // leading chunk of a skyfile to the Sia network and returns the skylink that
 // can be used to access the file.
-func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParameters, metadataBytes, fileBytes []byte) (skymodules.Skylink, error) {
+func (r *Renter) managedUploadSkyfileSmallFile(ctx context.Context, sup skymodules.SkyfileUploadParameters, metadataBytes, fileBytes []byte) (skylink skymodules.Skylink, err error) {
+	// Fetch the span from our context and tag it as small (large=false).
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		defer func() {
+			if err != nil {
+				span.LogKV("err", err)
+			}
+			span.SetTag("large", false)
+		}()
+	}
+
 	sl := skymodules.SkyfileLayout{
 		Version:      skymodules.SkyfileVersion,
 		Filesize:     uint64(len(fileBytes)),
@@ -516,7 +549,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	if encryptionEnabled(&sup) {
-		err := encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
+		err = encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
 		}
@@ -524,7 +557,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 
 	// Create the skylink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
-	skylink, err := skymodules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
+	skylink, err = skymodules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to build the skylink")
 	}
@@ -536,7 +569,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 
 	// Upload the base sector.
 	start := time.Now()
-	err = r.managedUploadBaseSector(sup, baseSector, skylink)
+	err = r.managedUploadBaseSector(ctx, sup, baseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
 	}
@@ -548,7 +581,17 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup skymodules.SkyfileUploadParam
 // data to a large siafile and upload it to the Sia network using
 // 'callUploadStreamFromReader'. The final skylink is created by calling
 // 'CreateSkylinkFromSiafile' on the resulting siafile.
-func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (_ skymodules.Skylink, err error) {
+func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodules.SkyfileUploadParameters, fileReader skymodules.SkyfileUploadReader) (skylink skymodules.Skylink, err error) {
+	// Fetch the span from our context and tag it as large.
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		defer func() {
+			if err != nil {
+				span.LogKV("err", err)
+			}
+			span.SetTag("large", true)
+		}()
+	}
+
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
 	siaPath, err := sup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
@@ -610,7 +653,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodul
 		err = r.managedPopulateFileNodeFromReader(fileNode, cr)
 	} else {
 		// Upload the file using a streamer.
-		_, err = r.callUploadStreamFromReaderWithFileNode(fileNode, cr, 0)
+		_, err = r.callUploadStreamFromReaderWithFileNode(ctx, fileNode, cr, 0)
 	}
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload file")
@@ -636,7 +679,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodul
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	skylink, err := r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fanout)
+	skylink, err = r.managedCreateSkylinkFromFileNode(ctx, sup, metadata, fileNode, fanout)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create skylink from filenode")
 	}
@@ -664,6 +707,14 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		defer cancel()
 	}
 
+	// Start tracing.
+	span := opentracing.StartSpan("DownloadByRoot")
+	span.SetTag("root", root)
+	defer span.Finish()
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
 	// Fetch the data
 	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
@@ -680,6 +731,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 	defer r.tg.Done()
 
+	// Create a context
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
 		var cancel context.CancelFunc
@@ -687,10 +739,25 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 		defer cancel()
 	}
 
+	// Create a new span.
+	span := opentracing.StartSpan("DownloadSkylink")
+	span.SetTag("skylink", link.String())
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
+
 	// Check if link needs to be resolved from V2 to V1.
-	link, err := r.managedTryResolveSkylinkV2(ctx, link)
-	if err != nil {
-		return nil, err
+	var err error
+	for i := 0; i < int(MaxSkylinkV2ResolvingDepth) && link.IsSkylinkV2(); i++ {
+		link, err = r.managedTryResolveSkylinkV2(ctx, link)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Check if link resolved to a v1 link.
+	if !link.IsSkylinkV1() {
+		return nil, errors.AddContext(ErrRootNotFound, "failed to fully resolve skylink - max number of recursions reached")
 	}
 
 	// Check if link is blocked
@@ -701,8 +768,11 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	// Download the data
 	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
+		span.LogKV("timeout", timeout)
+		span.SetTag("timeout", true)
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
+
 	return streamer, err
 }
 
@@ -721,6 +791,14 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
 	}
+
+	// Create a span
+	span := opentracing.StartSpan("DownloadSkylinkBaseSector")
+	span.SetTag("skylink", link.String())
+	defer span.Finish()
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Check if link needs to be resolved from V2 to V1.
 	link, err := r.managedTryResolveSkylinkV2(ctx, link)
@@ -759,13 +837,21 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 		return SkylinkStreamerFromSlice(sf.Content, sf.Metadata, rawMD, link, skymodules.SkyfileLayout{}), err
 	}
 
+	// Get the span from our context and defer cached tag update.
+	var exists bool
+	span := opentracing.SpanFromContext(ctx)
+	defer func() {
+		span.SetTag("cached", exists)
+	}()
+
 	// Check if this skylink is already in the stream buffer set. If so, we can
 	// skip the lookup procedure and use any data that other threads have
 	// cached.
 	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, streamReadTimeout)
+	var stream *stream
+	stream, exists = r.staticStreamBufferSet.callNewStreamFromID(ctx, id, 0, streamReadTimeout)
 	if exists {
-		return streamer, nil
+		return stream, nil
 	}
 
 	// Create the data source and add it to the stream buffer set.
@@ -773,7 +859,7 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, streamReadTimeout, pricePerMS)
+	stream = r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0, streamReadTimeout, pricePerMS)
 	return stream, nil
 }
 
@@ -796,12 +882,21 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 		return ErrSkylinkBlocked
 	}
 
+	// Create a context.
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
+
+	// Create a span.
+	span := opentracing.StartSpan("PinSkylink")
+	span.SetTag("skylink", skylink.String())
+	defer span.Finish()
+
+	// Attach the span to the ctx
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout, pricePerMS)
@@ -864,7 +959,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Re-upload the baseSector.
-	err = r.managedUploadBaseSector(lup, baseSector, skylink)
+	err = r.managedUploadBaseSector(ctx, lup, baseSector, skylink)
 	if err != nil {
 		return errors.AddContext(err, "unable to upload base sector")
 	}
@@ -890,10 +985,10 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	if err != nil {
 		return errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
+	stream := r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0, timeout, pricePerMS)
 
 	// Upload directly from the stream.
-	fileNode, err := r.callUploadStreamFromReader(fup, stream)
+	fileNode, err := r.callUploadStreamFromReader(ctx, fup, stream)
 	if err != nil {
 		return errors.AddContext(err, "unable to upload large skyfile")
 	}
@@ -961,7 +1056,8 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 	skyfileEstablishDefaults(&sup)
 
-	// Re-encrypt the baseSector for upload and set the Skykey fields of the sup.
+	// Re-encrypt the baseSector for upload and set the Skykey fields of the
+	// sup.
 	if encrypted {
 		err = encryptBaseSectorWithSkykey(baseSector, sl, fileSpecificSkykey)
 		if err != nil {
@@ -987,7 +1083,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 
 	// Upload the Base Sector of the skyfile
-	err = r.managedUploadBaseSector(sup, baseSector, skylink)
+	err = r.managedUploadBaseSector(r.tg.StopCtx(), sup, baseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
 	}
@@ -1030,7 +1126,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 
 	// Upload the file
-	fileNode, err := r.callUploadStreamFromReader(fup, restoreReader)
+	fileNode, err := r.callUploadStreamFromReader(r.tg.StopCtx(), fup, restoreReader)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
 	}
@@ -1101,6 +1197,18 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 		}
 	}()
 
+	// Create a span and attach it to our context
+	span := opentracing.StartSpan("UploadSkyfile")
+	ctx = opentracing.ContextWithSpan(ctx, span)
+	defer func() {
+		if err != nil {
+			span.LogKV("err", err)
+		}
+		span.SetTag("success", err == nil)
+		span.SetTag("skylink", skylink.String())
+		span.Finish()
+	}()
+
 	// Upload the skyfile
 	skylink, err = r.managedUploadSkyfile(ctx, sup, reader)
 	if err != nil {
@@ -1161,31 +1269,44 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 
 // managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
 // skylink is not a V2 skylink, the input link is returned.
-func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, error) {
+func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skylink skymodules.Skylink, err error) {
 	if sl.Version() != 2 {
 		return sl, nil
 	}
+
+	// Create a child span to capture the resolve for v2 skylinks.
+	span, ctx := opentracing.StartSpanFromContext(ctx, "managedTryResolveSkylinkV2")
+	defer func() {
+		if err != nil {
+			span.LogKV("error", err)
+		}
+		span.SetTag("success", err == nil)
+		span.SetTag("skylinkv2", skylink.String())
+		span.Finish()
+	}()
+
 	// Get link from registry entry.
-	srv, err := r.ReadRegistryRID(ctx, sl.RegistryEntryID())
+	var srv modules.SignedRegistryValue
+	srv, err = r.ReadRegistryRID(ctx, sl.RegistryEntryID())
 	if err != nil {
 		return skymodules.Skylink{}, err
 	}
 	if len(srv.Data) == 0 {
 		return skymodules.Skylink{}, errors.New("failed to resolve skylink")
 	}
-	var link skymodules.Skylink
-	err = link.LoadBytes(srv.Data)
+
+	err = skylink.LoadBytes(srv.Data)
 	if err != nil {
 		return skymodules.Skylink{}, err
 	}
 	// If the link resolves to an empty skylink, return ErrRootNotFound to cause
 	// the API to return a 404.
-	if link == (skymodules.Skylink{}) {
+	if skylink == (skymodules.Skylink{}) {
 		return skymodules.Skylink{}, ErrRootNotFound
 	}
 	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(link) {
+	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return skymodules.Skylink{}, ErrSkylinkBlocked
 	}
-	return link, nil
+	return skylink, nil
 }

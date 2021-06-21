@@ -182,7 +182,7 @@ func TestRenewContract(t *testing.T) {
 	basePrice, baseCollateral := skymodules.RenewBaseCosts(oldRevisionPreRenew, &pt, params.EndHeight)
 	allowance, startHeight, endHeight, host, funding := params.Allowance, params.StartHeight, params.EndHeight, params.Host, params.Funding
 	period := endHeight - startHeight
-	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * skymodules.EstimatedFileContractTransactionSetSize)
+	txnFee := pt.TxnFeeMaxRecommended.Mul64(3 * skymodules.EstimatedFileContractTransactionSetSize)
 	renterPayout, hostPayout, hostCollateral, err := skymodules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, allowance.ExpectedStorage/allowance.Hosts)
 	if err != nil {
 		t.Fatal(err)

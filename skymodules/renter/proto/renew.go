@@ -415,7 +415,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 
 	// RHP3 contains both the contract and final revision. So we double the
 	// estimation.
-	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * skymodules.EstimatedFileContractTransactionSetSize)
+	txnFee := pt.TxnFeeMaxRecommended.Mul64(3 * skymodules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the base cost. This includes the RPC cost.
 	basePrice, baseCollateral := skymodules.RenewBaseCosts(oldRev, pt, endHeight)

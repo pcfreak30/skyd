@@ -155,11 +155,12 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	if err != nil {
 		c.staticLog.Println("Unable to save while processing a consensus change:", err)
 	}
+	a := c.allowance
 	c.mu.Unlock()
 
 	// Add to churnLimiter budget.
 	numBlocksAdded := len(cc.AppliedBlocks) - len(cc.RevertedBlocks)
-	c.staticChurnLimiter.callBumpChurnBudget(numBlocksAdded, c.allowance.Period)
+	c.staticChurnLimiter.callBumpChurnBudget(numBlocksAdded, a.Period)
 
 	// Perform contract maintenance if our blockchain is synced. Use a separate
 	// goroutine so that the rest of the contractor is not blocked during

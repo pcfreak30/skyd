@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
@@ -37,9 +38,19 @@ const (
 	// minimumDataSections is only at play if there is not enough room for
 	// multiple cache nodes in the bytesBufferedPerStream.
 	minimumDataSections = 2
+
+	// longDownloadThreshold specifies when a download is considered to be
+	// taking long. This value might change in the future, it is based on the
+	// p99 values for downloads, which is above 3s on some of our servers in
+	// production currently.
+	longDownloadThreshold = time.Second * 3
 )
 
 var (
+	// errTimeout is returned when the context cancels before the data is
+	// available.
+	errTimeout = errors.New("could not get data from data section, context timed out")
+
 	// bytesBufferedPerStream is the total amount of data that gets allocated
 	// per stream. If the RequestSize of a stream buffer is less than three
 	// times the bytesBufferedPerStream, that much data will be allocated
@@ -155,14 +166,15 @@ type readResponse struct {
 // the dataSection has no mutex, the refCount falls under the consistency domain
 // of the object holding it, which should always be a streamBuffer.
 type dataSection struct {
-	// dataAvailable, externData, and externErr work together. The data and
-	// error are not allowed to be accessed by external threads until the data
-	// available channel has been closed. Once the dataAvailable channel has
-	// been closed, externData and externErr are to be treated like static
-	// fields.
-	dataAvailable chan struct{}
-	externData    []byte
-	externErr     error
+	// dataAvailable, externData, externDuration, and externErr work together.
+	// The data and error are not allowed to be accessed by external threads
+	// until the data available channel has been closed. Once the dataAvailable
+	// channel has been closed, externData, externDuration and externErr are to
+	// be treated like static fields.
+	dataAvailable  chan struct{}
+	externDuration time.Duration
+	externData     []byte
+	externErr      error
 
 	refCount uint64
 }
@@ -182,6 +194,7 @@ type stream struct {
 	staticStreamBuffer *streamBuffer
 
 	staticContext     context.Context
+	staticSpan        opentracing.Span
 	staticReadTimeout time.Duration
 }
 
@@ -206,6 +219,7 @@ type streamBuffer struct {
 	staticStreamID        skymodules.DataSourceID
 	staticPricePerMS      types.Currency
 	staticWallet          modules.SiacoinSenderMulti
+	staticSpan            opentracing.Span
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.
@@ -243,7 +257,7 @@ func newStreamBufferSet(statsCollector *skymodules.DistributionTracker, tg *thre
 // Each stream has a separate LRU for determining what data to buffer. Because
 // the LRU is distinct to the stream, the shared cache feature will not result
 // in one stream evicting data from another stream's LRU.
-func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency) *stream {
+func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource streamBufferDataSource, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency) *stream {
 	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
 	// the sourceID exists, create a new one.
 	sourceID := dataSource.ID()
@@ -259,6 +273,7 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 			staticPricePerMS:      pricePerMS,
 			staticStreamBufferSet: sbs,
 			staticStreamID:        sourceID,
+			staticSpan:            opentracing.SpanFromContext(ctx),
 		}
 		sbs.streams[sourceID] = streamBuf
 	} else {
@@ -268,14 +283,14 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset, timeout)
+	return streamBuf.managedPrepareNewStream(ctx, initialOffset, timeout)
 }
 
 // callNewStreamFromID will check the stream buffer set to see if a stream
 // buffer exists for the given data source id. If so, a new stream will be
 // created using the data source, and the bool will be set to 'true'. Otherwise,
 // the stream returned will be nil and the bool will be set to 'false'.
-func (sbs *streamBufferSet) callNewStreamFromID(id skymodules.DataSourceID, initialOffset uint64, timeout time.Duration) (*stream, bool) {
+func (sbs *streamBufferSet) callNewStreamFromID(ctx context.Context, id skymodules.DataSourceID, initialOffset uint64, timeout time.Duration) (*stream, bool) {
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[id]
 	if !exists {
@@ -284,18 +299,39 @@ func (sbs *streamBufferSet) callNewStreamFromID(id skymodules.DataSourceID, init
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset, timeout), true
+	return streamBuf.managedPrepareNewStream(ctx, initialOffset, timeout), true
 }
 
 // managedData will block until the data for a data section is available, and
 // then return the data. The data is not safe to modify.
-func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
+func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error) {
+	start := time.Now()
+
+	// Trace info.
+	var duration time.Duration
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		defer func() {
+			span.SetTag("success", err == nil)
+			span.SetTag("duration", duration)
+			if err != nil {
+				span.LogKV("error", err)
+				if errors.Contains(err, errTimeout) {
+					span.SetTag("timeout", true)
+				}
+			}
+		}()
+	}
+
 	select {
 	case <-ds.dataAvailable:
+		duration = time.Since(start)
 	case <-ctx.Done():
-		return nil, errors.New("could not get data from data section, context timed out")
+		return nil, errTimeout
 	}
-	return ds.externData, ds.externErr
+
+	data = ds.externData
+	err = ds.externErr
+	return
 }
 
 // Close will release all of the resources held by a stream.
@@ -310,6 +346,9 @@ func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
 // of a resource substantially improves performance in practice, in many cases
 // causing a 4x reduction in response latency.
 func (s *stream) Close() error {
+	// Finish the span
+	s.staticSpan.Finish()
+
 	s.staticStreamBuffer.staticStreamBufferSet.staticTG.Launch(func() {
 		// Convenience variables.
 		sb := s.staticStreamBuffer
@@ -360,6 +399,14 @@ func (s *stream) Read(b []byte) (int, error) {
 		ctx, cancel = context.WithTimeout(ctx, s.staticReadTimeout)
 		defer cancel()
 	}
+
+	// Create a child span.
+	spanRef := opentracing.ChildOf(s.staticSpan.Context())
+	span := opentracing.StartSpan("Read", spanRef)
+	defer span.Finish()
+
+	// Attach the span to the ctx.
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Convenience variables.
 	dataSize := s.staticStreamBuffer.staticDataSize
@@ -527,7 +574,7 @@ func (sb *streamBuffer) callRemoveDataSection(index uint64) {
 // managedPrepareNewStream creates a new stream from an existing stream buffer.
 // The ref count for the buffer needs to be incremented under the
 // streamBufferSet lock, before this method is called.
-func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout time.Duration) *stream {
+func (sb *streamBuffer) managedPrepareNewStream(ctx context.Context, initialOffset uint64, timeout time.Duration) *stream {
 	// Determine how many data sections the stream should cache.
 	dataSectionsToCache := bytesBufferedPerStream / sb.staticDataSectionSize
 	if dataSectionsToCache < minimumDataSections {
@@ -542,6 +589,7 @@ func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout ti
 		staticContext:      sb.staticTG.StopCtx(),
 		staticReadTimeout:  timeout,
 		staticStreamBuffer: sb,
+		staticSpan:         opentracing.SpanFromContext(ctx),
 	}
 	stream.prepareOffset()
 	return stream
@@ -578,6 +626,19 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	go func() {
 		defer close(ds.dataAvailable)
 
+		// Create a child span for the data section
+		spanRef := opentracing.ChildOf(sb.staticSpan.Context())
+		span := opentracing.StartSpan("newDataSection", spanRef)
+		span.LogKV("index", index)
+		defer func() {
+			if ds.externErr != nil {
+				span.LogKV("error", ds.externErr)
+			}
+			span.SetTag("success", ds.externErr == nil)
+			span.SetTag("long", ds.externDuration >= longDownloadThreshold)
+			span.Finish()
+		}()
+
 		// Ensure that the streambuffer has not closed.
 		err := sb.staticTG.Add()
 		if err != nil {
@@ -586,16 +647,20 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		}
 		defer sb.staticTG.Done()
 
+		// Create a context from our span
+		ctx := opentracing.ContextWithSpan(sb.staticTG.StopCtx(), span)
+
 		// Grab the data from the data source.
 		start := time.Now()
-		responseChan := sb.staticDataSource.ReadStream(sb.staticTG.StopCtx(), index*dataSectionSize, fetchSize, sb.staticPricePerMS)
+		responseChan := sb.staticDataSource.ReadStream(ctx, index*dataSectionSize, fetchSize, sb.staticPricePerMS)
 
 		select {
 		case response := <-responseChan:
 			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
+			ds.externDuration = time.Since(start)
 			ds.externData = response.staticData
 			if ds.externErr == nil {
-				sb.staticStreamBufferSet.staticStatsCollector.AddDataPoint(time.Since(start))
+				sb.staticStreamBufferSet.staticStatsCollector.AddDataPoint(ds.externDuration)
 			}
 		case <-sb.staticTG.StopChan():
 			ds.externErr = errors.New("failed to read response from ReadStream")

@@ -3508,8 +3508,8 @@ func testSkynetRegistryReadWrite(t *testing.T, tg *siatest.TestGroup) {
 	fastrand.Read(dataKey[:])
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
-	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
-	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 1
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -4104,9 +4104,9 @@ func TestRegistryUpdateRead(t *testing.T) {
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
 	data3 := skylink3.Bytes()
-	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
-	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
-	srv3 := modules.NewRegistryValue(dataKey, data3, 0).Sign(sk) // rev 0
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 1
+	srv3 := modules.NewRegistryValue(dataKey, data3, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -5137,6 +5137,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Download it using the v1 link.
 	downloadedDataV1, err := r.SkynetSkylinkGet(slStr)
 	if err != nil {
@@ -5149,6 +5150,37 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(downloadedDataV1, data) {
 		t.Fatal("data doesn't match")
 	}
+
+	// Create a recursive v2 link of the max depth.
+	recursiveLink := skylink
+	for i := 0; i < int(renter.MaxSkylinkV2ResolvingDepth); i++ {
+		slv2, err := r.NewSkylinkV2(recursiveLink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recursiveLink = slv2.Skylink
+	}
+
+	// Download the file using that link.
+	downloadedDataRecursive, err := r.SkynetSkylinkGet(recursiveLink.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(downloadedDataV1, downloadedDataRecursive) {
+		t.Fatal("data doesn't match")
+	}
+
+	// Add another level of recursion.
+	slv2, err := r.NewSkylinkV2(recursiveLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download the file using that link. Should fail.
+	_, err = r.SkynetSkylinkGet(slv2.String())
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
+		t.Fatal("should fail to resolve v2 skylink with more than 2 layers of recursion", err)
+	}
+
 	// Resolve using resolve endpoint.
 	resolvedSkylink, err := r.ResolveSkylinkV2(skylinkV2.String())
 	if err != nil {

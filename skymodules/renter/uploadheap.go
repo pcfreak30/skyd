@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -509,7 +510,7 @@ func (r *Renter) ResumeRepairsAndUploads() error {
 }
 
 // managedBuildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager) (*unfinishedUploadChunk, error) {
+func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager) (*unfinishedUploadChunk, error) {
 	// Copy entry
 	entryCopy := entry.Copy()
 	stuck, err := entry.StuckChunkByIndex(chunkIndex)
@@ -519,6 +520,14 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 	}
 	_, err = os.Stat(entryCopy.LocalPath())
 	onDisk := err == nil
+
+	// Create a child trace for this unfinishedUploadChunk.
+	var span opentracing.Span
+	if parent := opentracing.SpanFromContext(ctx); parent != nil {
+		spanRef := opentracing.ChildOf(parent.Context())
+		span = opentracing.StartSpan("unfinishedUploadChunk", spanRef)
+	}
+
 	uuc := &unfinishedUploadChunk{
 		fileEntry: entryCopy,
 
@@ -556,6 +565,8 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 
 		pieceUsage:  make([]bool, entry.ErasureCode().NumPieces()),
 		unusedHosts: make(map[string]struct{}, len(hosts)),
+
+		staticSpan: span,
 	}
 
 	// Every chunk can have a different set of unused hosts.
@@ -684,7 +695,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Create unfinishedUploadChunk
-		chunk, err := r.managedBuildUnfinishedChunk(entry, uint64(index), hosts, pks, memoryPriorityLow, offline, goodForRenew, mm)
+		chunk, err := r.managedBuildUnfinishedChunk(r.tg.StopCtx(), entry, uint64(index), hosts, pks, memoryPriorityLow, offline, goodForRenew, mm)
 		if err != nil {
 			r.staticLog.Debugln("Error when building an unfinished chunk:", err)
 			continue
