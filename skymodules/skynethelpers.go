@@ -25,6 +25,9 @@ var (
 	// ErrInvalidDefaultPath is returned when the specified default path is not
 	// valid, e.g. the file it points to does not exist.
 	ErrInvalidDefaultPath = errors.New("invalid default path provided")
+	// ErrInvalidDirectoryResolution is returned when the provided directory
+	// resolution settings are invalid or mutually incompatible.
+	ErrInvalidDirectoryResolution = errors.New("invalid directory resolution")
 )
 
 // AddMultipartFile is a helper function to add a file to multipart form-data.

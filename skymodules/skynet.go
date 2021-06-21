@@ -179,6 +179,19 @@ type (
 		// a Skykey will be derived from the Master Skykey found under that
 		// name/ID to be used for this specific upload.
 		FileSpecificSkykey skykey.Skykey
+
+		// Directory resolution mode can be either `standard` or `web`. This
+		// mode changes the behaviour of accessing a directory of the skyfile:
+		// `standard` means the directory will be downloaded
+		// `web` means that we'll attempt to serve `index.html` from the
+		// directory and will return a 404 if it doesn't exist.
+		DresMode string
+		// DresNotFound defines the custom 404 error page of the skapp, if any.
+		// If left empty, we'll serve DresNotFoundCode and no content.
+		DresNotFound string
+		// DresNotFoundCode defines the custom status code to be returned when
+		// a requested file is not found. Defaults to 404.
+		DresNotFoundCode int
 	}
 
 	// SkyfileMultipartUploadParameters defines the parameters specific to
@@ -234,6 +247,9 @@ type (
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
 		Monetization       *Monetization   `json:"monetization,omitempty"`
+		DresMode           string          `json:"dresmode,omitempty"`
+		DresNotFound       string          `json:"dresnotfound,omitempty"`
+		DresNotFoundCode   int             `json:"dresnotfoundcode,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.

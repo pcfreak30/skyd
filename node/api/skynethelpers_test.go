@@ -417,6 +417,58 @@ func testParseUploadRequestParameters(t *testing.T) {
 		t.Fatal("Unexpected")
 	}
 
+	// verify 'dresmode'
+	req = buildRequest(url.Values{"dresmode": []string{"standard"}}, http.Header{})
+	_, params = parseRequest(req, defaultParams)
+	if params.dresMode != "standard" {
+		t.Fatal("Unexpected")
+	}
+	req = buildRequest(url.Values{"dresmode": []string{"web"}}, http.Header{})
+	_, params = parseRequest(req, defaultParams)
+	if params.dresMode != "web" {
+		t.Fatal("Unexpected")
+	}
+	req = buildRequest(url.Values{"dresmode": []string{""}}, http.Header{})
+	_, params = parseRequest(req, defaultParams)
+	if params.dresMode != "standard" {
+		t.Fatal("Unexpected")
+	}
+	req = buildRequest(url.Values{"dresmode": []string{"anything_else"}}, http.Header{})
+	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil {
+		t.Fatal("Unexpected")
+	}
+
+	// verify 'dresnotfound'
+	req = buildRequest(url.Values{"dresmode": []string{"web"}, "dresnotfound": []string{"404.html"}}, http.Header{})
+	_, params = parseRequest(req, defaultParams)
+	// we also expect the leading slash to be auto-added:
+	if params.dresNotFound != "/404.html" {
+		t.Fatal("Unexpected")
+	}
+	req = buildRequest(url.Values{"dresnotfound": []string{""}}, http.Header{})
+	_, params = parseRequest(req, defaultParams)
+	if params.dresNotFound != "" {
+		t.Fatal("Unexpected")
+	}
+	req = buildRequest(url.Values{"dresmode": []string{"standard"}, "dresnotfound": []string{"404.html"}}, http.Header{})
+	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil {
+		t.Fatal("Unexpected")
+	}
+
+	// verify 'dresnotfoundcode'
+	req = buildRequest(url.Values{"dresmode": []string{"web"}, "dresnotfoundcode": []string{"200"}}, http.Header{})
+	_, params = parseRequest(req, defaultParams)
+	if params.dresNotFoundCode != 200 {
+		t.Fatal("Unexpected")
+	}
+	req = buildRequest(url.Values{"dresmode": []string{"standard"}, "dresnotfoundcode": []string{"200"}}, http.Header{})
+	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil {
+		t.Fatal("Unexpected")
+	}
+
 	// verify 'dryrun'
 	req = buildRequest(url.Values{"dryrun": trueStr}, http.Header{})
 	_, params = parseRequest(req, defaultParams)

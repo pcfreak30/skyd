@@ -35,6 +35,9 @@ type (
 		defaultPath         string
 		convertPath         string
 		disableDefaultPath  bool
+		dresMode            string
+		dresNotFound        string
+		dresNotFoundCode    int
 		dryRun              bool
 		filename            string
 		force               bool
@@ -60,7 +63,7 @@ type writeReader struct {
 }
 
 // Read implements the io.Reader interface but returns 0 and EOF.
-func (wr *writeReader) Read(b []byte) (int, error) {
+func (wr *writeReader) Read(_ []byte) (int, error) {
 	build.Critical("Read method of the writeReader is not intended to be used")
 	return 0, io.EOF
 }
@@ -276,6 +279,37 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		}
 	}
 
+	// parse `dresmode` query parameter
+	dresMode := strings.ToLower(queryForm.Get("dresmode"))
+	if dresMode == "" {
+		dresMode = "standard"
+	}
+	if dresMode != "standard" && dresMode != "web" {
+		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "invalid dresmode value")
+	}
+
+	// parse 'dresnotfound' query parameter
+	dresNotFound := queryForm.Get("dresnotfound")
+	if dresNotFound != "" {
+		dresNotFound = skymodules.EnsurePrefix(dresNotFound, "/")
+	}
+
+	// parse 'dresNotFoundCode' query parameter
+	dresNotFoundCode := 404
+	dresNotFoundCodeStr := queryForm.Get("dresnotfoundcode")
+	if dresNotFoundCodeStr != "" {
+		dresNotFoundCode, err = strconv.Atoi(dresNotFoundCodeStr)
+		if err != nil {
+			return nil, nil, errors.AddContext(err, "unable to parse 'dresnotfoundcode' parameter")
+		}
+	}
+
+	// verify that we're not trying to override 404 page and code in standard
+	// mode
+	if dresMode == "standard" && (dresNotFound != "" || dresNotFoundCode != 404) {
+		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "DresNotFound and DresNotFoundCode are only compatible with DresMode 'standard'")
+	}
+
 	// parse 'dryrun' query parameter
 	var dryRun bool
 	dryRunStr := queryForm.Get("dryrun")
@@ -401,6 +435,9 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		convertPath:         convertPath,
 		defaultPath:         defaultPath,
 		disableDefaultPath:  disableDefaultPath,
+		dresMode:            dresMode,
+		dresNotFound:        dresNotFound,
+		dresNotFoundCode:    dresNotFoundCode,
 		dryRun:              dryRun,
 		filename:            filename,
 		force:               force,
