@@ -343,21 +343,19 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 
-	// Zero Byte Test
-	size := 0
-	siaPath, err := skymodules.NewSiaPath(fmt.Sprintf("%v-byte-file", size))
-	if err != nil {
-		t.Fatal(err)
-	}
-	uploadStreamTest(siaPath, size)
+	// Define sizes to test
+	ss := int(modules.SectorSize)
+	rand := fastrand.Intn(2*ss) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	sizes := []int{0, 1, ss - 1, ss, ss + 1, 2*ss - 1, 2 * ss, 2*ss + 1, rand}
 
-	// Random Data Test
-	size = fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
-	siaPath, err = skymodules.NewSiaPath(fmt.Sprintf("%v-byte-file", size))
-	if err != nil {
-		t.Fatal(err)
+	// Run Tests
+	for _, size := range sizes {
+		siaPath, err := skymodules.NewSiaPath(fmt.Sprintf("%v-byte-file", size))
+		if err != nil {
+			t.Fatal(err)
+		}
+		uploadStreamTest(siaPath, size)
 	}
-	uploadStreamTest(siaPath, size)
 }
 
 // testUploadStreamingWithBadDeps uploads random data using the upload streaming
