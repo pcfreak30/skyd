@@ -213,7 +213,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	writeLimit := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataLimit)
 	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
 	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
-	if readOutstanding > readLimit || writeOutstanding > writeLimit {
+	if false && readOutstanding > readLimit || writeOutstanding > writeLimit {
 		// Worker does not need to discard jobs, it is making progress, it's
 		// just not launching any new jobs until its current jobs finish up.
 		return false
