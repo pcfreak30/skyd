@@ -303,7 +303,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 func TestIsBetterReadRegistryResponse(t *testing.T) {
 	t.Parallel()
 
-	srv := func(revision uint64, tweak crypto.Hash) *skymodules.RegistryEntry {
+	registryEntry := func(revision uint64, tweak crypto.Hash) *skymodules.RegistryEntry {
 		v := modules.SignedRegistryValue{
 			RegistryValue: modules.NewRegistryValue(tweak, nil, revision, modules.RegistryTypeWithoutPubkey),
 		}
@@ -360,46 +360,46 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 		},
 		{
 			existing: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(0, crypto.Hash{}),
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{}),
 			},
 			new: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(1, crypto.Hash{}),
+				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
 			},
 			result: true,
 		},
 		{
 			existing: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(1, crypto.Hash{}),
+				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
 			},
 			new: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(0, crypto.Hash{}),
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{}),
 			},
 			result: false,
 		},
 		{
 			existing: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(0, crypto.Hash{1, 2, 3}),
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{1, 2, 3}),
 			},
 			new: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(0, crypto.Hash{3, 2, 1}),
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{3, 2, 1}),
 			},
 			result: true,
 		},
 		{
 			existing: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(0, crypto.Hash{3, 2, 1}),
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{3, 2, 1}),
 			},
 			new: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(0, crypto.Hash{1, 2, 3}),
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{1, 2, 3}),
 			},
 			result: false,
 		},
 		{
 			existing: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(1, crypto.Hash{}),
+				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
 			},
 			new: &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv(1, crypto.Hash{}),
+				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
 			},
 			result: false,
 		},
