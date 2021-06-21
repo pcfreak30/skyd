@@ -53,7 +53,7 @@ const (
 	fetchSize10mb = 10e6 // Once over 4 MB, fetch size doesn't matter, can use exact sizes.
 
 	// The total number of files of each size that we download during testing.
-	filesPerDir = 1000
+	filesPerDir = 200
 )
 
 // dl is a command that downloads skyfiles from Skynet in various sizes, ranging
@@ -64,7 +64,7 @@ func dl() {
 
 	// Convenience variables
 	dirs := []string{dir64kb, dir1mb, dir4mb, dir10mb}
-	threadss := []string{threads1, threads4, threads16, threads64}
+	threadss := []string{threads1, threads4, threads16}
 	threadssCount := map[string]uint64{threads1: 1, threads4: 4, threads16: 16, threads64: 64}
 
 	// Establish the directories that we will be using for testing.

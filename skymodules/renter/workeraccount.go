@@ -640,7 +640,6 @@ func (w *worker) managedRefillAccount() {
 	}
 	// If the amount is zero now there is nothing to do.
 	if amount.IsZero() {
-		w.staticWake()
 		return
 	}
 	pt := w.staticPriceTable().staticPriceTable

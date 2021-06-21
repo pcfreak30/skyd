@@ -259,6 +259,9 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
+
+	// Init the IWRR. Should be done last since it requires the queues to be
+	// initialized.
 	w.initIWRR()
 
 	// Close the worker when the renter is stopped.
