@@ -9,6 +9,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -29,10 +30,6 @@ const (
 	// minReadRegistrySIDVersion is the minimum host version that supports
 	// reading registry entries by subscription id.
 	minReadRegistrySIDVersion = "1.5.6"
-
-	// foundationHardforkVersion is the version at which the foundation hardfork
-	// occurred.
-	foundationHardforkVersion = "1.5.4"
 )
 
 type (
@@ -82,7 +79,7 @@ func (j *jobReadRegistry) staticMinHostVersion() string {
 	if j.staticSiaPublicKey == nil || j.staticTweak == nil {
 		return minReadRegistrySIDVersion
 	}
-	return foundationHardforkVersion
+	return skymodules.FoundationHardforkVersion
 }
 
 // staticMaxWeight returns the max weight of the queue.

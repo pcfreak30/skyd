@@ -7,6 +7,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
@@ -24,7 +25,7 @@ type (
 // staticMinHostVersion returns the minimum host version needed to execute the
 // job.
 func (j *jobReadSector) staticMinHostVersion() string {
-	return foundationHardforkVersion
+	return skymodules.FoundationHardforkVersion
 }
 
 // callExecute executes the jobReadSector.

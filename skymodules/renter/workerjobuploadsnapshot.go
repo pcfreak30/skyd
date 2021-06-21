@@ -56,7 +56,7 @@ func (j *jobUploadSnapshot) callWeight() uint64 {
 // staticMinHostVersion returns the minimum host version needed to execute the
 // job.
 func (j *jobUploadSnapshot) staticMinHostVersion() string {
-	return foundationHardforkVersion
+	return skymodules.FoundationHardforkVersion
 }
 
 // staticMaxWeight returns the max weight of the queue.

@@ -176,21 +176,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			continue
 		}
 
-		// Verify whether the worker is doing some sort of blocking
-		// maintenance which might delay scheduling jobs.
-		if w.staticSuspectRevisionMismatch() {
-			continue
-		}
-		if w.managedNeedsToSyncAccountBalanceToHost() {
-			continue
-		}
-		if w.managedNeedsToRefillAccount() {
-			continue
-		}
-		if w.managedNeedsToUpdatePriceTable() {
-			continue
-		}
-
 		// Fetch the resolveTime, which is the time until the HS job is expected
 		// to resolve. If that time is in the past, add a penalty that assumes
 		// that there is some unusual circumstance preventing the worker from
@@ -252,21 +237,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// perform async work, or if the read queue is on a cooldown.
 			jrq := w.staticJobReadQueue
 			if !w.managedAsyncReady() || jrq.callOnCooldown() {
-				continue
-			}
-
-			// Verify whether the worker is doing some sort of blocking
-			// maintenance which might delay scheduling jobs.
-			if w.staticSuspectRevisionMismatch() {
-				continue
-			}
-			if w.managedNeedsToSyncAccountBalanceToHost() {
-				continue
-			}
-			if w.managedNeedsToRefillAccount() {
-				continue
-			}
-			if w.managedNeedsToUpdatePriceTable() {
 				continue
 			}
 

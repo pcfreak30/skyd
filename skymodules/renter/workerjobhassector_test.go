@@ -5,6 +5,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -19,7 +20,7 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 	queue := jobHasSectorQueue{
 		jobGenericQueue: newJobGenericQueue(&worker{
 			atomicCache: unsafe.Pointer(&workerCache{
-				staticHostVersion: foundationHardforkVersion,
+				staticHostVersion: skymodules.FoundationHardforkVersion,
 			}),
 		}),
 	}

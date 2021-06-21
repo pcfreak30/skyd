@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"golang.org/x/net/context"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -142,7 +143,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	w := new(worker)
 	w.staticRenter = new(Renter)
 	w.atomicCache = unsafe.Pointer(&workerCache{
-		staticHostVersion: foundationHardforkVersion,
+		staticHostVersion: skymodules.FoundationHardforkVersion,
 	})
 	jq := newJobGenericQueue(w)
 	cancelCtx, cancel := context.WithCancel(context.Background())
@@ -504,7 +505,7 @@ func TestQueueMemoryLeak(t *testing.T) {
 	w := new(worker)
 	w.staticRenter = new(Renter)
 	w.atomicCache = unsafe.Pointer(&workerCache{
-		staticHostVersion: foundationHardforkVersion,
+		staticHostVersion: skymodules.FoundationHardforkVersion,
 	})
 	jq := newJobGenericQueue(w)
 

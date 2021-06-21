@@ -535,10 +535,6 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	}
 	start := time.Now()
 
-	msg := fmt.Sprintf("%v: start sync at %v with %v read and %v hasSector jobs\n", w.staticHostPubKey.ShortString(), start, w.staticJobReadQueue.callLen(), w.staticJobHasSectorQueue.callLen())
-	w.staticRenter.staticLog.Print(msg)
-	fmt.Print(msg)
-
 	for !isIdle() {
 		if time.Since(start) > accountIdleMaxWait {
 			// The worker failed to go idle for too long. Print the loop state,
@@ -593,9 +589,6 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// TODO perform a thorough balance comparison to decide whether the drift in
 	// the account balance is warranted. If not the host needs to be penalized
 	// accordingly. Perform this check at startup and periodically.
-	msg = fmt.Sprintf("%v: finished sync after %v with %v read and %v hasSector jobs\n", w.staticHostPubKey.ShortString(), time.Since(start), w.staticJobReadQueue.callLen(), w.staticJobHasSectorQueue.callLen())
-	w.staticRenter.staticLog.Print(msg)
-	fmt.Print(msg)
 }
 
 // managedNeedsToRefillAccount will check whether the worker's account needs to
@@ -636,7 +629,6 @@ func (w *worker) managedRefillAccount() {
 	if w.staticRenter.staticDeps.Disrupt("DisableFunding") {
 		return // don't refill account
 	}
-	start := time.Now()
 
 	// The account balance dropped to below half the balance target, refill. Use
 	// the max expected balance when refilling to avoid exceeding any host
@@ -652,16 +644,6 @@ func (w *worker) managedRefillAccount() {
 		return
 	}
 	pt := w.staticPriceTable().staticPriceTable
-
-	msg := fmt.Sprintf("%v: start refill (%v) at %v with %v read and %v hasSector jobs\n", w.staticHostPubKey.ShortString(), amount.String(), start, w.staticJobReadQueue.callLen(), w.staticJobHasSectorQueue.callLen())
-	w.staticRenter.staticLog.Print(msg)
-	fmt.Print(msg)
-
-	defer func() {
-		msg = fmt.Sprintf("%v: finished refill after %v with %v read and %v hasSector jobs\n", w.staticHostPubKey.ShortString(), time.Since(start), w.staticJobReadQueue.callLen(), w.staticJobHasSectorQueue.callLen())
-		w.staticRenter.staticLog.Print(msg)
-		fmt.Print(msg)
-	}()
 
 	// If the target amount is larger than the remaining money, adjust the
 	// target. Make sure it can still cover the funding cost.

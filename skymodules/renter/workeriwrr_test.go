@@ -1,8 +1,10 @@
 package renter
 
 import (
+	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 
 	"go.sia.tech/siad/modules"
@@ -50,9 +52,33 @@ func TestIWRR(t *testing.T) {
 	t.Parallel()
 
 	t.Run("New", testNewIWRR)
+	t.Run("Init", testInitIWRRTwice)
 	t.Run("MaxWeights", testMaxWeights)
 	t.Run("Weights", testWeights)
 	t.Run("Next", testNext)
+}
+
+// testInitIWRRTwice tests initializing the iwrr twice which should fail.
+func testInitIWRRTwice(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "iwrr already initialized") {
+			t.Fatal("failed to recover right error", r)
+		}
+	}()
+	wt.worker.initIWRR()
 }
 
 // testNewIWRR tests creating a new iwrr from queues.

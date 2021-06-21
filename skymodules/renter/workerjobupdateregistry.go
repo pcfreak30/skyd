@@ -7,6 +7,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 
@@ -66,7 +67,7 @@ func (j *jobUpdateRegistry) callWeight() uint64 {
 // staticMinHostVersion returns the minimum host version needed to execute the
 // job.
 func (j *jobUpdateRegistry) staticMinHostVersion() string {
-	return foundationHardforkVersion
+	return skymodules.FoundationHardforkVersion
 }
 
 // staticMaxWeight returns the max weight of the queue.
