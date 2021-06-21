@@ -417,53 +417,53 @@ func testParseUploadRequestParameters(t *testing.T) {
 		t.Fatal("Unexpected")
 	}
 
-	// verify 'dresmode'
-	req = buildRequest(url.Values{"dresmode": []string{"standard"}}, http.Header{})
+	// verify 'dirresmode'
+	req = buildRequest(url.Values{"dirresmode": []string{"standard"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dresMode != "standard" {
+	if params.dirResMode != "standard" {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dresmode": []string{"web"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{"web"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dresMode != "web" {
+	if params.dirResMode != "web" {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dresmode": []string{""}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{""}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dresMode != "standard" {
+	if params.dirResMode != "standard" {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dresmode": []string{"anything_else"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{"anything_else"}}, http.Header{})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
 
-	// verify 'dresnotfound'
-	req = buildRequest(url.Values{"dresmode": []string{"web"}, "dresnotfound": []string{"404.html"}}, http.Header{})
+	// verify 'dirresnotfound'
+	req = buildRequest(url.Values{"dirresmode": []string{"web"}, "dirresnotfound": []string{"404.html"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	// we also expect the leading slash to be auto-added:
-	if params.dresNotFound != "/404.html" {
+	if params.dirResNotFound != "/404.html" {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dresnotfound": []string{""}}, http.Header{})
+	req = buildRequest(url.Values{"dirresnotfound": []string{""}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dresNotFound != "" {
+	if params.dirResNotFound != "" {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dresmode": []string{"standard"}, "dresnotfound": []string{"404.html"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{"standard"}, "dirresnotfound": []string{"404.html"}}, http.Header{})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
 
-	// verify 'dresnotfoundcode'
-	req = buildRequest(url.Values{"dresmode": []string{"web"}, "dresnotfoundcode": []string{"200"}}, http.Header{})
+	// verify 'dirresnotfoundcode'
+	req = buildRequest(url.Values{"dirresmode": []string{"web"}, "dirresnotfoundcode": []string{"200"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dresNotFoundCode != 200 {
+	if params.dirResNotFoundCode != 200 {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dresmode": []string{"standard"}, "dresnotfoundcode": []string{"200"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{"standard"}, "dirresnotfoundcode": []string{"200"}}, http.Header{})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")

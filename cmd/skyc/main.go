@@ -88,6 +88,9 @@ var (
 	skynetUnpinRoot                bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadDefaultPath        string // Specify the file to serve when no specific file is specified.
 	skynetUploadDisableDefaultPath bool   // This skyfile will not have a default path. The only way to use it is to download it.
+	skynetUploadDirResMode         string // Specify the directory resolution mode. "standard" will download the directory while "web" will serve the "index.html" contained within it.
+	skynetUploadDirResNotFound     string // Override the standard "not found" page in "web" mode.
+	skynetUploadDirResNotFoundCode int    // Override the standard "not found" status code in "web" mode.
 	skynetUploadDryRun             bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
 	skynetUploadRoot               bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadSeparately         bool   // When uploading all files from a directory, upload each file separately, generating individual skylinks.

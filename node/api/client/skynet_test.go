@@ -48,6 +48,9 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		Filename:            "file.txt",
 		DefaultPath:         "index.html",
 		DisableDefaultPath:  false,
+		DirResMode:          "web",
+		DirResNotFound:      "/404.html",
+		DirResNotFoundCode:  200,
 		Monetization:        monetization,
 	}
 
@@ -64,6 +67,9 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"filename",
 		"defaultpath",
 		"disabledefaultpath",
+		"dirresmode",
+		"dirresnotfound",
+		"dirresnotfoundcode",
 		"monetization",
 	}) {
 		t.Fatal("unexpected")
@@ -102,6 +108,9 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		Mode:                os.FileMode(0644),
 		DefaultPath:         "index.html",
 		DisableDefaultPath:  false,
+		DirResMode:          "web",
+		DirResNotFound:      "/404.html",
+		DirResNotFoundCode:  200,
 		Monetization:        monetization,
 		SkykeyName:          "somename",
 		SkykeyID:            skyKeyID,
@@ -122,6 +131,9 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"mode",
 		"defaultpath",
 		"disabledefaultpath",
+		"dirresmode",
+		"dirresnotfound",
+		"dirresnotfoundcode",
 		"monetization",
 		"skykeyname",
 		"skykeyid",

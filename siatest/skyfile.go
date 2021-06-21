@@ -179,7 +179,7 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 // skylink, the parameters used for the upload and potentially an error.
 // The `files` argument is a map of filepath->fileContent.
 func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool) (skylink string, sup skymodules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, force, nil, "", skykey.SkykeyID{})
+	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, "standard", "", 404, force, nil, "", skykey.SkykeyID{})
 }
 
 // UploadNewMultipartSkyfileMonetizedBlocking uploads a multipart skyfile that
@@ -188,7 +188,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 // skylink, the parameters used for the upload and potentially an error. The
 // `files` argument is a map of filepath->fileContent.
 func (tn *TestNode) UploadNewMultipartSkyfileMonetizedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool, monetization *skymodules.Monetization) (skylink string, sup skymodules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, force, monetization, "", skykey.SkykeyID{})
+	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, "standard", "", 404, force, monetization, "", skykey.SkykeyID{})
 }
 
 // UploadNewMultipartSkyfileEncryptedBlocking uploads a multipart skyfile that
@@ -196,7 +196,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileMonetizedBlocking(filename string, 
 // will verify if the file can be downloaded using its Skylink. Returns the
 // skylink, the parameters used for the upload and potentially an error.  The
 // `files` argument is a map of filepath->fileContent.
-func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool, monetization *skymodules.Monetization, skykeyName string, skykeyID skykey.SkykeyID) (skylink string, sup skymodules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, dirResMode, dirResNotFound string, dirResNotFoundCode int, force bool, monetization *skymodules.Monetization, skykeyName string, skykeyID skykey.SkykeyID) (skylink string, sup skymodules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// create the siapath
 	skyfilePath, err := skymodules.NewSiaPath(filename)
 	if err != nil {
@@ -231,6 +231,9 @@ func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, 
 		Filename:            filename,
 		DefaultPath:         defaultPath,
 		DisableDefaultPath:  disableDefaultPath,
+		DirResMode:          dirResMode,
+		DirResNotFound:      dirResNotFound,
+		DirResNotFoundCode:  dirResNotFoundCode,
 		Monetization:        monetization,
 	}
 

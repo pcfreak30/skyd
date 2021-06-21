@@ -185,13 +185,13 @@ type (
 		// `standard` means the directory will be downloaded
 		// `web` means that we'll attempt to serve `index.html` from the
 		// directory and will return a 404 if it doesn't exist.
-		DresMode string
-		// DresNotFound defines the custom 404 error page of the skapp, if any.
-		// If left empty, we'll serve DresNotFoundCode and no content.
-		DresNotFound string
-		// DresNotFoundCode defines the custom status code to be returned when
+		DirResMode string
+		// DirResNotFound defines the custom 404 error page of the skapp, if any.
+		// If left empty, we'll serve DirResNotFoundCode and no content.
+		DirResNotFound string
+		// DirResNotFoundCode defines the custom status code to be returned when
 		// a requested file is not found. Defaults to 404.
-		DresNotFoundCode int
+		DirResNotFoundCode int
 	}
 
 	// SkyfileMultipartUploadParameters defines the parameters specific to
@@ -215,6 +215,19 @@ type (
 		// DisableDefaultPath prevents the usage of DefaultPath. As a result no
 		// content will be automatically served for the skyfile.
 		DisableDefaultPath bool
+
+		// Directory resolution mode can be either `standard` or `web`. This
+		// mode changes the behaviour of accessing a directory of the skyfile:
+		// `standard` means the directory will be downloaded
+		// `web` means that we'll attempt to serve `index.html` from the
+		// directory and will return a 404 if it doesn't exist.
+		DirResMode string
+		// DirResNotFound defines the custom 404 error page of the skapp, if any.
+		// If left empty, we'll serve DirResNotFoundCode and no content.
+		DirResNotFound string
+		// DirResNotFoundCode defines the custom status code to be returned when
+		// a requested file is not found. Defaults to 404.
+		DirResNotFoundCode int
 
 		// ContentType indicates the media of the data supplied by the reader.
 		ContentType string
@@ -247,9 +260,9 @@ type (
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
 		Monetization       *Monetization   `json:"monetization,omitempty"`
-		DresMode           string          `json:"dresmode,omitempty"`
-		DresNotFound       string          `json:"dresnotfound,omitempty"`
-		DresNotFoundCode   int             `json:"dresnotfoundcode,omitempty"`
+		DirResMode         string          `json:"dirresmode,omitempty"`
+		DirResNotFound     string          `json:"dirresnotfound,omitempty"`
+		DirResNotFoundCode int             `json:"dirresnotfoundcode,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.

@@ -1053,6 +1053,11 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 		// Set the default path params
 		DefaultPath:        sm.DefaultPath,
 		DisableDefaultPath: sm.DisableDefaultPath,
+
+		// Set the directory resolution params
+		DirResMode:         sm.DirResMode,
+		DirResNotFound:     sm.DirResNotFound,
+		DirResNotFoundCode: sm.DirResNotFoundCode,
 	}
 	skyfileEstablishDefaults(&sup)
 

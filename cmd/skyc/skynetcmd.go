@@ -284,10 +284,10 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	}
 	sup = parseAndAddSkykey(sup)
 	sshp, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
-	skylink := sshp.Skylink
 	if err != nil {
 		die("could not convert siafile to skyfile:", err)
 	}
+	skylink := sshp.Skylink
 
 	// Calculate the siapath that was used for the upload.
 	var skypath skymodules.SiaPath
@@ -904,6 +904,10 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		fmt.Println("Illegal combination of parameters: --defaultpath and --disabledefaultpath are mutually exclusive.")
 		die()
 	}
+	if skynetUploadDirResMode == "standard" && (skynetUploadDirResNotFound != "" || skynetUploadDirResNotFoundCode != 404) {
+		fmt.Println("Illegal combination of parameters: --dirresnotfound and --dirresnotfoundcode require --dirresmode 'web'.")
+		die()
+	}
 	pr, pw := io.Pipe()
 	defer pr.Close()
 	writer := multipart.NewWriter(pw)
@@ -949,6 +953,9 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		Filename:            skyfilePath.Name(),
 		DefaultPath:         skynetUploadDefaultPath,
 		DisableDefaultPath:  skynetUploadDisableDefaultPath,
+		DirResMode:          skynetUploadDirResMode,
+		DirResNotFound:      skynetUploadDirResNotFound,
+		DirResNotFoundCode:  skynetUploadDirResNotFoundCode,
 		ContentType:         writer.FormDataContentType(),
 	}
 	skylink, _, err := httpClient.SkynetSkyfileMultiPartPost(sup)

@@ -35,9 +35,9 @@ type (
 		defaultPath         string
 		convertPath         string
 		disableDefaultPath  bool
-		dresMode            string
-		dresNotFound        string
-		dresNotFoundCode    int
+		dirResMode          string
+		dirResNotFound      string
+		dirResNotFoundCode  int
 		dryRun              bool
 		filename            string
 		force               bool
@@ -279,35 +279,35 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		}
 	}
 
-	// parse `dresmode` query parameter
-	dresMode := strings.ToLower(queryForm.Get("dresmode"))
-	if dresMode == "" {
-		dresMode = "standard"
+	// parse `dirresmode` query parameter
+	dirResMode := strings.ToLower(queryForm.Get("dirresmode"))
+	if dirResMode == "" {
+		dirResMode = "standard"
 	}
-	if dresMode != "standard" && dresMode != "web" {
-		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "invalid dresmode value")
-	}
-
-	// parse 'dresnotfound' query parameter
-	dresNotFound := queryForm.Get("dresnotfound")
-	if dresNotFound != "" {
-		dresNotFound = skymodules.EnsurePrefix(dresNotFound, "/")
+	if dirResMode != "standard" && dirResMode != "web" {
+		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "invalid dirresmode value")
 	}
 
-	// parse 'dresNotFoundCode' query parameter
-	dresNotFoundCode := 404
-	dresNotFoundCodeStr := queryForm.Get("dresnotfoundcode")
-	if dresNotFoundCodeStr != "" {
-		dresNotFoundCode, err = strconv.Atoi(dresNotFoundCodeStr)
+	// parse 'dirresnotfound' query parameter
+	dirResNotFound := queryForm.Get("dirresnotfound")
+	if dirResNotFound != "" {
+		dirResNotFound = skymodules.EnsurePrefix(dirResNotFound, "/")
+	}
+
+	// parse 'dirResNotFoundCode' query parameter
+	dirResNotFoundCode := 404
+	dirResNotFoundCodeStr := queryForm.Get("dirresnotfoundcode")
+	if dirResNotFoundCodeStr != "" {
+		dirResNotFoundCode, err = strconv.Atoi(dirResNotFoundCodeStr)
 		if err != nil {
-			return nil, nil, errors.AddContext(err, "unable to parse 'dresnotfoundcode' parameter")
+			return nil, nil, errors.AddContext(err, "unable to parse 'dirresnotfoundcode' parameter")
 		}
 	}
 
 	// verify that we're not trying to override 404 page and code in standard
 	// mode
-	if dresMode == "standard" && (dresNotFound != "" || dresNotFoundCode != 404) {
-		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "DresNotFound and DresNotFoundCode are only compatible with DresMode 'standard'")
+	if dirResMode == "standard" && (dirResNotFound != "" || dirResNotFoundCode != 404) {
+		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "DirResNotFound and DirResNotFoundCode are only compatible with DirResMode 'standard'")
 	}
 
 	// parse 'dryrun' query parameter
@@ -435,9 +435,9 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		convertPath:         convertPath,
 		defaultPath:         defaultPath,
 		disableDefaultPath:  disableDefaultPath,
-		dresMode:            dresMode,
-		dresNotFound:        dresNotFound,
-		dresNotFoundCode:    dresNotFoundCode,
+		dirResMode:          dirResMode,
+		dirResNotFound:      dirResNotFound,
+		dirResNotFoundCode:  dirResNotFoundCode,
 		dryRun:              dryRun,
 		filename:            filename,
 		force:               force,
