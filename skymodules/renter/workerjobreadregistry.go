@@ -285,19 +285,15 @@ func (j *jobReadRegistry) callExecute() {
 	// Check if we have a cached version of the looked up entry. If the new entry
 	// has a higher revision number we update it. If it has a lower one we know that
 	// the host should be punished for losing it or trying to cheat us.
-	// TODO: update the cache to store the hash in addition to the revision
-	// number for verifying the pow.
 	if srv != nil {
-		cachedRevision, cached := w.staticRegistryCache.Get(j.staticRegistryEntryID)
-		if cached && cachedRevision > srv.Revision {
-			sendResponse(nil, errHostLowerRevisionThanCache)
-			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-			span.LogKV("error", errHostLowerRevisionThanCache)
+		errCheating := w.managedCheckHostCheating(j.staticRegistryEntryID, srv.SignedRegistryValue, true)
+		if errCheating != nil {
+			sendResponse(nil, errCheating)
+			j.staticQueue.callReportFailure(errCheating)
+			span.LogKV("error", errCheating)
 			j.staticSpan.SetTag("success", false)
 			w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, true) // adjust the cache
 			return
-		} else if !cached || srv.Revision > cachedRevision {
-			w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, false) // adjust the cache
 		}
 	}
 

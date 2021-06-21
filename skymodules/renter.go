@@ -1264,10 +1264,10 @@ type Renter interface {
 	// used.
 	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntry, error)
 
-	// ReadRegistry starts a registry lookup on all available workers. The jobs
-	// have time to finish their jobs and return a response until the context is
-	// closed. Otherwise the response with the highest revision number will be
-	// used.
+	// ReadRegistryRID starts a registry lookup on all available workers.
+	// The jobs have time to finish their jobs and return a response until
+	// the context is closed. Otherwise the response with the highest
+	// revision number will be used.
 	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (RegistryEntry, error)
 
 	// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
