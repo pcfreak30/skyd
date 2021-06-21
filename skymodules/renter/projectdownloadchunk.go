@@ -402,23 +402,22 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	}
 	if completedPieces >= ec.MinPieces() {
 		if time.Since(pdc.launchTime) > time.Millisecond*500 {
-			l := pdc.workerState.staticRenter.staticLog
-			l.Println("******************")
-			l.Println("finished download of len:", pdc.lengthInChunk)
-			l.Println("duration", time.Since(pdc.launchTime).Milliseconds())
-			l.Println("remaining unresolved workers:", pdc.unresolvedWorkersRemaining)
-			l.Println("launched workers:", len(pdc.launchedWorkers))
-			for _, w := range pdc.launchedWorkers {
-				l.Println("host:", w.staticWorker.staticHostPubKey.ShortString())
-				l.Println("  duration:", w.jobDuration.Milliseconds())
-				l.Println("  totalDuration:", w.totalDuration.Milliseconds())
-				l.Println("  expected complete time:", w.staticExpectedCompleteTime)
-				l.Println("  expected duration:", w.staticExpectedDuration.Milliseconds())
-				l.Println("  overdrive:", w.staticIsOverdriveWorker)
-				l.Println("  timeUntilJobAdd:", w.staticJobAddTime.Sub(pdc.launchTime).Milliseconds())
-				l.Println("  timeBetweenAddAndComplete:", w.completeTime.Sub(w.staticJobAddTime).Milliseconds())
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV("finished download of len:", pdc.lengthInChunk)
+				span.LogKV("duration", time.Since(pdc.launchTime).Milliseconds())
+				span.LogKV("remaining unresolved workers:", pdc.unresolvedWorkersRemaining)
+				span.LogKV("launched workers:", len(pdc.launchedWorkers))
+				for _, w := range pdc.launchedWorkers {
+					span.LogKV("host:", w.staticWorker.staticHostPubKey.ShortString())
+					span.LogKV("duration:", w.jobDuration.Milliseconds())
+					span.LogKV("totalDuration:", w.totalDuration.Milliseconds())
+					span.LogKV("expected complete time:", w.staticExpectedCompleteTime)
+					span.LogKV("expected duration:", w.staticExpectedDuration.Milliseconds())
+					span.LogKV("overdrive:", w.staticIsOverdriveWorker)
+					span.LogKV("timeUntilJobAdd:", w.staticJobAddTime.Sub(pdc.launchTime).Milliseconds())
+					span.LogKV("timeBetweenAddAndComplete:", w.completeTime.Sub(w.staticJobAddTime).Milliseconds())
+				}
 			}
-			l.Println("******************")
 		}
 		return true, nil
 	}
