@@ -112,6 +112,7 @@ func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasS
 // is available but before sending it over the channel.
 func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, responseChan chan *jobHasSectorResponse, hook func(*jobHasSectorResponse), roots ...crypto.Hash) *jobHasSector {
 	span, _ := opentracing.StartSpanFromContext(ctx, "HasSectorJob")
+	span.SetTag("host", w.staticHostPubKeyStr)
 	return &jobHasSector{
 		staticSectors:           roots,
 		staticResponseChan:      responseChan,
