@@ -46,9 +46,16 @@ func (tw *testHTTPWriter) WriteHeader(statusCode int) {
 	tw.statusCode = statusCode
 }
 
+// newTestHTTPWriter creates a new testHTTPWriter.
+func newTestHTTPWriter() *testHTTPWriter {
+	return &testHTTPWriter{
+		header: make(http.Header),
+	}
+}
+
 // TestHandleSkynetError is a unit test for handleSkynetError.
 func TestHandleSkynetError(t *testing.T) {
-	tw := &testHTTPWriter{}
+	tw := newTestHTTPWriter()
 
 	tests := []struct {
 		err        error
@@ -545,9 +552,9 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 	}
 
 	// Attach the proof
-	header := make(http.Header)
-	w := testHTTPWriter{header: header}
-	attachRegistryEntryProof(&w, entries)
+	w := newTestHTTPWriter()
+	header := w.Header()
+	attachRegistryEntryProof(w, entries)
 
 	// Get the attached proof.
 	proof := header.Get("Proof")
