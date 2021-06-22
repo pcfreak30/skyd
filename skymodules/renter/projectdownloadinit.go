@@ -509,9 +509,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if isUnresolved {
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-			span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
-		}
+		// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		// 	span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
+		// }
 		return nil, nil
 	}
 
