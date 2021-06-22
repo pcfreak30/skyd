@@ -321,7 +321,12 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 
 	msg := "************************************\n"
 	msg += "potential workers\n"
+	var tmpHeap pdcWorkerHeap
 	for _, w := range workerHeap {
+		heap.Push(&tmpHeap, w)
+	}
+	for len(tmpHeap) > 0 {
+		w := heap.Pop(&tmpHeap).(*pdcInitialWorker)
 		if w == nil || (len(w.pieces) == 0 && !w.unresolved) {
 			continue
 		}
