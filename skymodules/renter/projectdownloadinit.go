@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -327,9 +326,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		}
 
 		potentialWorkerStr := fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v (%v from now)\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime, time.Until(w.completeTime))
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-			span.LogKV("potentialWorker", potentialWorkerStr)
-		}
+		// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		// 	span.LogKV("potentialWorker", potentialWorkerStr)
+		// }
 		msg += potentialWorkerStr
 	}
 
