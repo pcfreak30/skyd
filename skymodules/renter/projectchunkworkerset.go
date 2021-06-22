@@ -245,7 +245,10 @@ func checkPCWSGouging(pt modules.RPCPriceTable, allowance skymodules.Allowance, 
 // Typically there will be a small number of channels, often 0 and often just 1.
 func (ws *pcwsWorkerState) closeUpdateChans(updatedWorker string) {
 	for _, c := range ws.workerUpdateChans {
-		c <- updatedWorker
+		select {
+		case c <- updatedWorker:
+		default:
+		}
 		close(c)
 	}
 	ws.workerUpdateChans = nil
