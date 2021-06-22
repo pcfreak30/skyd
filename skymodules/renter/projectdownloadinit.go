@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -324,7 +325,12 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if w == nil || (len(w.pieces) == 0 && !w.unresolved) {
 			continue
 		}
-		msg += fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime)
+
+		potentialWorkerStr := fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v (%v from now)\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime, time.Until(w.completeTime))
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			span.LogKV("potentialWorker", potentialWorkerStr)
+		}
+		msg += potentialWorkerStr
 	}
 
 	// Build the best set that we can. Each iteration will attempt to improve
@@ -486,12 +492,16 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	// return the best set and everything else is nil.
 	totalPieces := 0
 	isUnresolved := false
+	var unresolvedPiece *pdcInitialWorker
 	for _, piece := range bestSet {
 		if piece == nil {
 			continue
 		}
 		totalPieces++
 		isUnresolved = isUnresolved || piece.unresolved
+		if unresolvedPiece == nil && piece.unresolved {
+			unresolvedPiece = piece
+		}
 	}
 
 	if totalPieces < ec.MinPieces() {
@@ -499,6 +509,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if isUnresolved {
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
+		}
 		return nil, nil
 	}
 
@@ -510,7 +523,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		msg += fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime)
 	}
 	msg += "************************************\n"
-	pdc.workerState.staticRenter.staticLog.Println(msg)
+	if pdc.workerState != nil {
+		pdc.workerState.staticRenter.staticLog.Println(msg)
+	}
 	return bestSet, nil
 }
 
@@ -547,13 +562,19 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		}
 
 		select {
-		case <-updateChan:
+		case worker := <-updateChan:
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV("unresolvedWorkerUpdate", worker)
+			}
 		case <-time.After(maxWaitUnresolvedWorkerUpdate):
 			// We want to limit the amount of time spent waiting for unresolved
 			// workers to become resolved. This is because we assign a penalty
 			// to unresolved workers, and on every iteration this penalty might
 			// have caused an already resolved worker to be favoured over the
 			// unresolved worker in the set.
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV("unresolvedWorkerMaxWaitTriggered")
+			}
 		case <-pdc.ctx.Done():
 			return errors.New("timed out while trying to build initial set of workers")
 		}

@@ -116,7 +116,7 @@ type pcwsWorkerState struct {
 	// channel to the set of workerUpdateChans should fail, as there will be no
 	// more updates. This is specific to this particular worker state, the
 	// pcwsWorkerSet as a whole can be reset by replacing the worker state.
-	workerUpdateChans []chan struct{}
+	workerUpdateChans []chan string
 
 	// Utilities.
 	staticRenter *Renter
@@ -243,8 +243,9 @@ func checkPCWSGouging(pt modules.RPCPriceTable, allowance skymodules.Allowance, 
 // workers to unblock.
 //
 // Typically there will be a small number of channels, often 0 and often just 1.
-func (ws *pcwsWorkerState) closeUpdateChans() {
+func (ws *pcwsWorkerState) closeUpdateChans(updatedWorker string) {
 	for _, c := range ws.workerUpdateChans {
+		c <- updatedWorker
 		close(c)
 	}
 	ws.workerUpdateChans = nil
@@ -253,7 +254,7 @@ func (ws *pcwsWorkerState) closeUpdateChans() {
 // registerForWorkerUpdate will create a channel and append it to the list of
 // update chans in the worker state. When there is more information available
 // about which worker is the best worker to select, the channel will be closed.
-func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan struct{} {
+func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan string {
 	// Return a nil channel if there are no more unresolved workers.
 	if len(ws.unresolvedWorkers) == 0 {
 		return nil
@@ -261,7 +262,7 @@ func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan struct{} {
 
 	// Create the channel that will be closed when the set of unresolved workers
 	// has been updated.
-	c := make(chan struct{})
+	c := make(chan string)
 	ws.workerUpdateChans = append(ws.workerUpdateChans, c)
 	return c
 }
@@ -279,7 +280,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 
 	// Defer closing the update chans to signal we've received and processed an
 	// HS response.
-	defer ws.closeUpdateChans()
+	defer ws.closeUpdateChans(resp.staticWorker.staticHostPubKeyStr)
 
 	// Delete the worker from the set of unresolved workers.
 	w := resp.staticWorker

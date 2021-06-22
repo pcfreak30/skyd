@@ -203,7 +203,7 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 	}
 
 	// create PDC manually - only the essentials
-	pdc := &projectDownloadChunk{workerSet: pcws}
+	pdc := &projectDownloadChunk{workerSet: pcws, launchTime: time.Now(), ctx: context.Background()}
 
 	// mock unresolved state with hope of successful download
 	pdc.availablePieces = make([][]*pieceDownload, 0)
