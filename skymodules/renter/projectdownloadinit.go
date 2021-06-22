@@ -533,6 +533,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+	start := time.Now()
+	var loopDebugStr string
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -549,6 +551,10 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
 
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			span.LogKV("launchInitialWorkersLoopInfo", loopDebugStr)
+		}
+
 		// If the function returned an actual set of workers, we are good to
 		// launch.
 		if finalWorkers != nil {
@@ -563,18 +569,14 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		select {
 		case worker := <-updateChan:
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV("unresolvedWorkerUpdate", worker)
-			}
+			loopDebugStr += fmt.Sprintf("%v | worker %v updated\n", time.Since(start), worker)
 		case <-time.After(maxWaitUnresolvedWorkerUpdate):
 			// We want to limit the amount of time spent waiting for unresolved
 			// workers to become resolved. This is because we assign a penalty
 			// to unresolved workers, and on every iteration this penalty might
 			// have caused an already resolved worker to be favoured over the
 			// unresolved worker in the set.
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV("unresolvedWorkerMaxWaitTriggered")
-			}
+			loopDebugStr += fmt.Sprintf("%v | worker max wait triggered\n", time.Since(start))
 		case <-pdc.ctx.Done():
 			return errors.New("timed out while trying to build initial set of workers")
 		}
