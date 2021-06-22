@@ -326,11 +326,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			continue
 		}
 
-		potentialWorkerStr := fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v (%v from now)\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime, time.Until(w.completeTime))
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-			span.LogKV("potentialWorker", potentialWorkerStr)
-		}
-		msg += potentialWorkerStr
+		msg += fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v (%v from now)\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime, time.Until(w.completeTime))
 	}
 
 	// Build the best set that we can. Each iteration will attempt to improve
@@ -526,6 +522,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	if pdc.workerState != nil {
 		pdc.workerState.staticRenter.staticLog.Println(msg)
 	}
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.LogKV("initialWorkerSet", msg)
+	}
 	return bestSet, nil
 }
 
@@ -551,13 +550,12 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
 
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-			span.LogKV("launchInitialWorkersLoopInfo", loopDebugStr)
-		}
-
 		// If the function returned an actual set of workers, we are good to
 		// launch.
 		if finalWorkers != nil {
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV("launchInitialWorkersLoopInfo", loopDebugStr)
+			}
 			for i, fw := range finalWorkers {
 				if fw == nil {
 					continue
