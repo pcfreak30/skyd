@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -326,9 +327,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		}
 
 		potentialWorkerStr := fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v (%v from now)\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime, time.Until(w.completeTime))
-		// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		// 	span.LogKV("potentialWorker", potentialWorkerStr)
-		// }
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			span.LogKV("potentialWorker", potentialWorkerStr)
+		}
 		msg += potentialWorkerStr
 	}
 
@@ -508,9 +509,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if isUnresolved {
-		// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		// 	span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
-		// }
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
+		}
 		return nil, nil
 	}
 
@@ -561,20 +562,19 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		}
 
 		select {
-		case <-updateChan:
-		// case worker := <-updateChan:
-		// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		// 	span.LogKV("unresolvedWorkerUpdate", worker)
-		// }
+		case worker := <-updateChan:
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV("unresolvedWorkerUpdate", worker)
+			}
 		case <-time.After(maxWaitUnresolvedWorkerUpdate):
 			// We want to limit the amount of time spent waiting for unresolved
 			// workers to become resolved. This is because we assign a penalty
 			// to unresolved workers, and on every iteration this penalty might
 			// have caused an already resolved worker to be favoured over the
 			// unresolved worker in the set.
-			// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-			// 	span.LogKV("unresolvedWorkerMaxWaitTriggered")
-			// }
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV("unresolvedWorkerMaxWaitTriggered")
+			}
 		case <-pdc.ctx.Done():
 			return errors.New("timed out while trying to build initial set of workers")
 		}
