@@ -572,9 +572,9 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			// to unresolved workers, and on every iteration this penalty might
 			// have caused an already resolved worker to be favoured over the
 			// unresolved worker in the set.
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV("unresolvedWorkerMaxWaitTriggered")
-			}
+			// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			// 	span.LogKV("unresolvedWorkerMaxWaitTriggered")
+			// }
 		case <-pdc.ctx.Done():
 			return errors.New("timed out while trying to build initial set of workers")
 		}
