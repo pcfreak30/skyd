@@ -180,6 +180,9 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// Fetch the resolveTime, which is the time until the HS job is expected
 		// to resolve.
 		resolveTime := uw.staticExpectedResolvedTime
+		if resolveTime.Before(time.Now()) {
+			resolveTime = time.Now().Add(2 * time.Since(resolveTime))
+		}
 
 		// Add the unresolved worker penalty. This penalty increases every
 		// iteration, as long as we have not launched the initial workers. By
