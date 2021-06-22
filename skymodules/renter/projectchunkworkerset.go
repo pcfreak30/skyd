@@ -265,7 +265,7 @@ func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan string {
 
 	// Create the channel that will be closed when the set of unresolved workers
 	// has been updated.
-	c := make(chan string)
+	c := make(chan string, 1)
 	ws.workerUpdateChans = append(ws.workerUpdateChans, c)
 	return c
 }
