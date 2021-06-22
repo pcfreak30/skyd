@@ -562,10 +562,11 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		}
 
 		select {
-		case worker := <-updateChan:
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV("unresolvedWorkerUpdate", worker)
-			}
+		case <-updateChan:
+		// case worker := <-updateChan:
+		// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		// 	span.LogKV("unresolvedWorkerUpdate", worker)
+		// }
 		case <-time.After(maxWaitUnresolvedWorkerUpdate):
 			// We want to limit the amount of time spent waiting for unresolved
 			// workers to become resolved. This is because we assign a penalty
