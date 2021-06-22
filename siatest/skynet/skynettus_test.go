@@ -50,6 +50,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 	t.Run("Basic", func(t *testing.T) {
 		testTUSUploaderBasic(t, tg.Renters()[0])
 	})
+	t.Run("TooLarge", func(t *testing.T) {
+		testTUSUploaderTooLarge(t, tg.Renters()[0])
+	})
 	t.Run("PruneIdle", func(t *testing.T) {
 		testTUSUploaderPruneIdle(t, tg.Renters()[0])
 	})
@@ -186,6 +189,26 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	}
 }
 
+// testTUSUploaderTooLarge tests the user specified max size of the TUS
+// endpoints.
+func testTUSUploaderTooLarge(t *testing.T, r *siatest.TestNode) {
+	// Declare the chunkSize and data.
+	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
+	data := fastrand.Bytes(int(chunkSize))
+
+	// Upload with a max size that equals the uploaded data. This should work.
+	_, err := r.SkynetTUSUploadFromBytesWithMaxSize(data, chunkSize, "success", "", int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload with a max size that is 1 byte smaller than the file's size. This should fail.
+	_, err = r.SkynetTUSUploadFromBytesWithMaxSize(data, chunkSize, "failure", "", int64(len(data))-1)
+	if err == nil {
+		t.Fatal(err)
+	}
+}
+
 // testTUSUploaderPruneIdle checks that incomplete uploads get pruned after a
 // while and have their .sia files deleted from disk.
 func testTUSUploaderPruneIdle(t *testing.T, r *siatest.TestNode) {
@@ -266,15 +289,10 @@ func testTUSUploaderUnstableConnection(t *testing.T, tg *siatest.TestGroup) {
 
 	// Get a tus client.
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
-	tc, err := r.SkynetTUSClient(chunkSize)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Upload some chunks.
 	uploadedData := fastrand.Bytes(int(chunkSize * 10))
-	src := bytes.NewReader(uploadedData)
-	upload := tus.NewUpload(src, src.Size(), tus.Metadata{}, "test")
+	tc, upload, err := r.SkynetTUSNewUploadFromBytes(uploadedData, chunkSize)
 
 	// Create uploader.
 	uploader, err := tc.CreateUpload(upload)

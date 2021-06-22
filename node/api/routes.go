@@ -9,10 +9,11 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/tus/tusd/pkg/handler"
-	"gitlab.com/NebulousLabs/log"
 	siaapi "go.sia.tech/siad/node/api"
 
+	"gitlab.com/NebulousLabs/log"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
 
 var (
@@ -166,6 +167,7 @@ func (api *API) buildHTTPRoutes() {
 
 		// Create the TUS handler and register its routes.
 		tusHandler, err := handler.NewUnroutedHandler(handler.Config{
+			PreUploadCreateCallback: renter.TUSPreUploadCreateCallback,
 			BasePath:                "/skynet/tus",
 			MaxSize:                 maxSize,
 			RespectForwardedHeaders: true,
