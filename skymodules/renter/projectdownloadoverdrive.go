@@ -151,7 +151,7 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 // TODO: Remember the edge case where all unresolved workers have not returned
 // yet and there are no other options. There is no timer in that case, only
 // blocking on workersUpdatedChan.
-func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-chan string, <-chan time.Time) {
 	// Find the best unresolved worker. The return values include an 'adjusted
 	// duration', which indicates how long the worker takes accounting for
 	// pricing, and the 'wait duration', which is the max amount of time that we
@@ -225,7 +225,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 // returned which indicates an update to the worker state, and a time.After()
 // will be returned which indicates when the worker flips over to being late and
 // therefore another worker should be selected.
-func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-chan string, <-chan time.Time) {
 	// Loop until either a launch succeeds or until the best worker is not
 	// found.
 	retry := 0
@@ -311,7 +311,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 // channels, one of which will fire when tryOverdrive should be called again. If
 // there are no more overdrive workers to try, these channels may both be 'nil'
 // and therefore will never fire.
-func (pdc *projectDownloadChunk) tryOverdrive(neededOverdriveWorkers int, latestReturn time.Time) (<-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) tryOverdrive(neededOverdriveWorkers int, latestReturn time.Time) (<-chan string, <-chan time.Time) {
 	// Launch all of the workers that are needed. If at any point a launch
 	// fails, return the status channels to try again.
 	for i := 0; i < neededOverdriveWorkers; i++ {

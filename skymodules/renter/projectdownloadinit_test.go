@@ -2,6 +2,7 @@ package renter
 
 import (
 	"container/heap"
+	"context"
 	"math"
 	"strings"
 	"testing"
@@ -283,6 +284,8 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 
 	// mock a pdc
 	pdc := new(projectDownloadChunk)
+	pdc.ctx = context.Background()
+	pdc.launchTime = time.Now()
 	pdc.workerSet = pcws
 	pdc.pricePerMS = types.SiacoinPrecision.MulFloat(1e-12) // pS
 

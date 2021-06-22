@@ -218,7 +218,7 @@ func (pd *pieceDownload) successful() bool {
 //
 // A channel will also be returned which will be closed when there are new
 // unresolved workers available.
-func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan struct{}) {
+func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan string) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
