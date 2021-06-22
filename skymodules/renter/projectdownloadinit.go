@@ -545,11 +545,11 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		// newly returned set of values.
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
 
-		numAvailWorkers := pdc.resolvedAvailWorkers()
+		// numAvailWorkers := pdc.resolvedAvailWorkers()
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
-		unresolvedWorkersPenalty := time.Since(start) * time.Duration(numAvailWorkers)
+		unresolvedWorkersPenalty := time.Since(start)
 		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkersPenalty)
 
 		// Create an initial worker set
