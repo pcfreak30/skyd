@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -323,6 +324,12 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate ti
 	}
 	j.externJobStartTime = now
 	j.externEstimatedJobDuration = estimate
+
+	wsl := jq.staticWorkerObj.staticLoopState
+	j.staticSpan.LogKV("readDataOutstanding", atomic.LoadUint64(&wsl.atomicReadDataOutstanding))
+	j.staticSpan.LogKV("writeDataOutstanding", atomic.LoadUint64(&wsl.atomicWriteDataOutstanding))
+	j.staticSpan.LogKV("queusize", jq.jobs.Len())
+
 	if !jq.add(j) {
 		return time.Time{}, errors.New("unable to add job to queue")
 	}

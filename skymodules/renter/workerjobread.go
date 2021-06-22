@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -241,6 +242,11 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
+
+	wsl := jq.staticWorkerObj.staticLoopState
+	j.staticSpan.LogKV("readDataOutstanding", atomic.LoadUint64(&wsl.atomicReadDataOutstanding))
+	j.staticSpan.LogKV("writeDataOutstanding", atomic.LoadUint64(&wsl.atomicWriteDataOutstanding))
+	j.staticSpan.LogKV("queusize", jq.jobs.Len())
 
 	estimate := jq.expectedJobTime(j.staticLength)
 	if !jq.add(j) {
