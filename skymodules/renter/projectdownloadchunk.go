@@ -211,7 +211,7 @@ func (pd *pieceDownload) successful() bool {
 	return pd.completed && pd.downloadErr == nil
 }
 
-func (pdc *projectDownloadChunk) resolvedAvailWorkers() uint64 { 
+func (pdc *projectDownloadChunk) resolvedAvailWorkers() uint64 {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -224,6 +224,7 @@ func (pdc *projectDownloadChunk) resolvedAvailWorkers() uint64 {
 	}
 	return avail
 }
+
 // unresolvedWorkers will return the set of unresolved workers from the worker
 // state of the pdc. This operation will also update the set of available pieces
 // within the pdc to reflect any previously unresolved workers that are now
@@ -432,7 +433,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 					workerMsg += fmt.Sprintln("overdrive:", w.staticIsOverdriveWorker)
 					workerMsg += fmt.Sprintln("timeUntilJobAdd:", w.staticJobAddTime.Sub(pdc.launchTime).Milliseconds())
 					workerMsg += fmt.Sprintln("timeBetweenAddAndComplete:", w.completeTime.Sub(w.staticJobAddTime).Milliseconds())
-					span.LogKV(fmt.Sprintf("worker %v", i), msg)
+					span.LogKV(fmt.Sprintf("worker %v", i), workerMsg)
 				}
 			}
 		}
