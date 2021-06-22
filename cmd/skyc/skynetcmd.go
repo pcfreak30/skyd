@@ -904,7 +904,7 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		fmt.Println("Illegal combination of parameters: --defaultpath and --disabledefaultpath are mutually exclusive.")
 		die()
 	}
-	if skynetUploadDirResMode == "standard" && (skynetUploadDirResNotFound != "" || skynetUploadDirResNotFoundCode != 404) {
+	if skynetUploadDirResMode == skymodules.DirResModeStandard && (skynetUploadDirResNotFound != "" || skynetUploadDirResNotFoundCode != 404) {
 		fmt.Println("Illegal combination of parameters: --dirresnotfound and --dirresnotfoundcode require --dirresmode 'web'.")
 		die()
 	}

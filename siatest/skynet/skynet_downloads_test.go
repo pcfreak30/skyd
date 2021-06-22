@@ -182,7 +182,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			}},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
-		DirResMode:         "standard",
+		DirResMode:         skymodules.DirResModeStandard,
 		DirResNotFound:     "",
 		DirResNotFoundCode: 404,
 	}
@@ -238,7 +238,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			}},
 		DefaultPath:        "/about.html",
 		DisableDefaultPath: false,
-		DirResMode:         "standard",
+		DirResMode:         skymodules.DirResModeStandard,
 		DirResNotFound:     "",
 		DirResNotFoundCode: 404,
 	}
@@ -285,7 +285,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 		},
 		DefaultPath:        "",
 		DisableDefaultPath: true,
-		DirResMode:         "standard",
+		DirResMode:         skymodules.DirResModeStandard,
 		DirResNotFound:     "",
 		DirResNotFoundCode: 404,
 	}
@@ -360,7 +360,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
-		DirResMode:         "standard",
+		DirResMode:         skymodules.DirResModeStandard,
 		DirResNotFound:     "",
 		DirResNotFoundCode: 404,
 	}

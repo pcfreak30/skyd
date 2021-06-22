@@ -413,12 +413,6 @@ func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) err
 		return skymodules.BackupSkylink(skylinkStr, baseSector, reader, backupDst)
 	}
 
-	// Grab the default path for the skyfile
-	defaultPath := strings.TrimPrefix(sm.DefaultPath, "/")
-	if defaultPath == "" {
-		defaultPath = api.DefaultSkynetDefaultPath
-	}
-
 	// Sort the subFiles by offset
 	subFiles := make([]skymodules.SkyfileSubfileMetadata, 0, len(sm.Subfiles))
 	for _, sfm := range sm.Subfiles {

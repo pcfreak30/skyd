@@ -418,19 +418,19 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'dirresmode'
-	req = buildRequest(url.Values{"dirresmode": []string{"standard"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeStandard}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dirResMode != "standard" {
+	if params.dirResMode != skymodules.DirResModeStandard {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dirresmode": []string{"web"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dirResMode != "web" {
+	if params.dirResMode != skymodules.DirResModeWeb {
 		t.Fatal("Unexpected")
 	}
 	req = buildRequest(url.Values{"dirresmode": []string{""}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dirResMode != "standard" {
+	if params.dirResMode != skymodules.DirResModeStandard {
 		t.Fatal("Unexpected")
 	}
 	req = buildRequest(url.Values{"dirresmode": []string{"anything_else"}}, http.Header{})
@@ -440,7 +440,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'dirresnotfound'
-	req = buildRequest(url.Values{"dirresmode": []string{"web"}, "dirresnotfound": []string{"404.html"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}, "dirresnotfound": []string{"404.html"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	// we also expect the leading slash to be auto-added:
 	if params.dirResNotFound != "/404.html" {
@@ -451,19 +451,19 @@ func testParseUploadRequestParameters(t *testing.T) {
 	if params.dirResNotFound != "" {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dirresmode": []string{"standard"}, "dirresnotfound": []string{"404.html"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeStandard}, "dirresnotfound": []string{"404.html"}}, http.Header{})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'dirresnotfoundcode'
-	req = buildRequest(url.Values{"dirresmode": []string{"web"}, "dirresnotfoundcode": []string{"200"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}, "dirresnotfoundcode": []string{"200"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if params.dirResNotFoundCode != 200 {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dirresmode": []string{"standard"}, "dirresnotfoundcode": []string{"200"}}, http.Header{})
+	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeStandard}, "dirresnotfoundcode": []string{"200"}}, http.Header{})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")

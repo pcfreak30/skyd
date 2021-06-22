@@ -48,6 +48,14 @@ const (
 
 	// LicenseMonetization is the first skynet monetization license.
 	LicenseMonetization = "CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg"
+
+	// DirResModeStandard is the name of the `standard` directory resolution
+	// mode, in which directories are downloaded.
+	DirResModeStandard = "standard"
+	// DirResModeWeb is the name of the `web` directory resolution mode, in
+	// which directories are not downloaded and instead of that we serve the
+	// index.html files found in them.
+	DirResModeWeb = "web"
 )
 
 var (

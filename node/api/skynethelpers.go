@@ -282,9 +282,9 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	// parse `dirresmode` query parameter
 	dirResMode := strings.ToLower(queryForm.Get("dirresmode"))
 	if dirResMode == "" {
-		dirResMode = "standard"
+		dirResMode = skymodules.DirResModeStandard
 	}
-	if dirResMode != "standard" && dirResMode != "web" {
+	if dirResMode != skymodules.DirResModeStandard && dirResMode != skymodules.DirResModeWeb {
 		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "invalid dirresmode value")
 	}
 
@@ -306,7 +306,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 	// verify that we're not trying to override 404 page and code in standard
 	// mode
-	if dirResMode == "standard" && (dirResNotFound != "" || dirResNotFoundCode != 404) {
+	if dirResMode == skymodules.DirResModeStandard && (dirResNotFound != "" || dirResNotFoundCode != 404) {
 		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "DirResNotFound and DirResNotFoundCode are only compatible with DirResMode 'standard'")
 	}
 
