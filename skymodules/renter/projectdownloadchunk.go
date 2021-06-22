@@ -403,19 +403,23 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	if completedPieces >= ec.MinPieces() {
 		if time.Since(pdc.launchTime) > time.Millisecond*500 {
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV("finished download of len:", pdc.lengthInChunk)
-				span.LogKV("duration", time.Since(pdc.launchTime).Milliseconds())
-				span.LogKV("remaining unresolved workers:", pdc.unresolvedWorkersRemaining)
-				span.LogKV("launched workers:", len(pdc.launchedWorkers))
-				for _, w := range pdc.launchedWorkers {
-					span.LogKV("host:", w.staticWorker.staticHostPubKey.ShortString())
-					span.LogKV("duration:", w.jobDuration.Milliseconds())
-					span.LogKV("totalDuration:", w.totalDuration.Milliseconds())
-					span.LogKV("expected complete time:", w.staticExpectedCompleteTime)
-					span.LogKV("expected duration:", w.staticExpectedDuration.Milliseconds())
-					span.LogKV("overdrive:", w.staticIsOverdriveWorker)
-					span.LogKV("timeUntilJobAdd:", w.staticJobAddTime.Sub(pdc.launchTime).Milliseconds())
-					span.LogKV("timeBetweenAddAndComplete:", w.completeTime.Sub(w.staticJobAddTime).Milliseconds())
+				var msg string
+				msg += fmt.Sprintln("length:", pdc.lengthInChunk)
+				msg += fmt.Sprintln("duration:", time.Since(pdc.launchTime).Milliseconds())
+				msg += fmt.Sprintln("remaining unresolved workers:", pdc.unresolvedWorkersRemaining)
+				msg += fmt.Sprintln("launched workers:", len(pdc.launchedWorkers))
+				span.LogKV("pdc", msg)
+				for i, w := range pdc.launchedWorkers {
+					var workerMsg string
+					workerMsg += fmt.Sprintln("host:", w.staticWorker.staticHostPubKey.ShortString())
+					workerMsg += fmt.Sprintln("duration:", w.jobDuration.Milliseconds())
+					workerMsg += fmt.Sprintln("totalDuration:", w.totalDuration.Milliseconds())
+					workerMsg += fmt.Sprintln("expected complete time:", w.staticExpectedCompleteTime)
+					workerMsg += fmt.Sprintln("expected duration:", w.staticExpectedDuration.Milliseconds())
+					workerMsg += fmt.Sprintln("overdrive:", w.staticIsOverdriveWorker)
+					workerMsg += fmt.Sprintln("timeUntilJobAdd:", w.staticJobAddTime.Sub(pdc.launchTime).Milliseconds())
+					workerMsg += fmt.Sprintln("timeBetweenAddAndComplete:", w.completeTime.Sub(w.staticJobAddTime).Milliseconds())
+					span.LogKV(fmt.Sprintf("worker %v", i), msg)
 				}
 			}
 		}
