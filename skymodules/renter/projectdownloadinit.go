@@ -2,6 +2,7 @@ package renter
 
 import (
 	"container/heap"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"time"
@@ -336,6 +337,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(span opentracing.Span, w
 
 		msg += fmt.Sprintf("%v: duration: %v unresolved: %v completeTime: %v (%v from now)\n", w.worker.staticHostPubKey.ShortString(), w.readDuration, w.unresolved, w.completeTime, time.Until(w.completeTime))
 	}
+	swaps := make(map[string]int)
 
 	// Build the best set that we can. Each iteration will attempt to improve
 	// the working set by adding a new worker. This may or may not succeed,
@@ -453,11 +455,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(span opentracing.Span, w
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSetCost = workingSetCost.Sub(workingSet[bestSpotIndex].cost)
 			heap.Push(&workerHeap, workingSet[bestSpotIndex])
-			if span != nil {
-				oldBest := workingSet[bestSpotIndex]
-				newBest := nextWorker
-				span.LogKV("swap", fmt.Sprintf("%v (%v) -> %v (%v)", oldBest.worker.staticHostPubKey.ShortString(), oldBest.completeTime, newBest.worker.staticHostPubKey.ShortString(), newBest.completeTime))
-			}
+			swaps[fmt.Sprintf("%v: %v", nextWorker.worker.staticHostPubKey.ShortString(), nextWorker.cost)] += 1
 			workingSet[bestSpotIndex] = nextWorker
 		}
 
@@ -492,6 +490,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(span opentracing.Span, w
 			heap.Push(&workerHeap, &copyWorker)
 		}
 	}
+	b, _ := json.MarshalIndent(swaps, "  ", "  ")
+	span.LogKV("swaps", string(b))
 
 	// We now have the best set. If the best set does not have enough workers to
 	// complete the download, return an error. If the best set has enough
