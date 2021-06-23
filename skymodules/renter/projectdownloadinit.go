@@ -290,7 +290,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // set. If workers are going a lot time and remaining unresolved, a penalty is
 // applied which will eventually break those workers and revert to preferring
 // the already resolved workers.
-func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
+func (pdc *projectDownloadChunk) createInitialWorkerSet(span opentracing.Span, workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
@@ -453,6 +453,11 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSetCost = workingSetCost.Sub(workingSet[bestSpotIndex].cost)
 			heap.Push(&workerHeap, workingSet[bestSpotIndex])
+			if span != nil {
+				oldBest := workingSet[bestSpotIndex]
+				newBest := nextWorker
+				span.LogKV("swap", fmt.Sprintf("%v (%v) -> %v (%v)", oldBest.worker.staticHostPubKey.ShortString(), oldBest.completeTime, newBest.worker.staticHostPubKey.ShortString(), newBest.completeTime))
+			}
 			workingSet[bestSpotIndex] = nextWorker
 		}
 
@@ -556,7 +561,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkersPenalty)
 
 		// Create an initial worker set
-		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
+		span := opentracing.SpanFromContext(pdc.ctx)
+		finalWorkers, err := pdc.createInitialWorkerSet(span, workerHeap)
 		if err != nil {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
