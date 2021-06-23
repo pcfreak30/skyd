@@ -192,14 +192,15 @@ func (j jobHasSectorBatch) callExecute() {
 	}
 
 	// Add a span for each job.
+	var span opentracing.Span
 	for _, job := range j.staticJobs {
-		span := opentracing.StartSpan("callExecute", opentracing.ChildOf(job.staticSpan.Context()))
+		span = opentracing.StartSpan("callExecute", opentracing.ChildOf(job.staticSpan.Context()))
 		defer span.Finish()
 	}
 
 	start := time.Now()
 	w := j.staticJobs[0].staticQueue.staticWorker()
-	availables, err := j.managedHasSector()
+	availables, err := j.managedHasSector(span)
 	jobTime := time.Since(start)
 
 	for i := range j.staticJobs {
@@ -273,9 +274,14 @@ func (j jobHasSectorBatch) callExpectedBandwidth() (ul, dl uint64) {
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
-func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
+func (j *jobHasSectorBatch) managedHasSector(parent opentracing.Span) (results [][]bool, err error) {
 	if len(j.staticJobs) == 0 {
 		return nil, nil
+	}
+	var span opentracing.Span
+	if parent != nil {
+		span = opentracing.StartSpan("managedHasSector", opentracing.ChildOf(parent.Context()))
+		defer span.Finish()
 	}
 
 	w := j.staticJobs[0].staticQueue.staticWorker()
@@ -298,7 +304,7 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
 	// Execute the program and parse the responses.
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	responses, _, err = w.managedExecuteProgram(nil, program, programData, types.FileContractID{}, categoryDownload, cost)
+	responses, _, err = w.managedExecuteProgram(span, program, programData, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}
