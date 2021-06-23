@@ -152,7 +152,7 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // cooldown for the read job. The worker heap optimizes for speed, not cost.
 // Cost is taken into account at a later point where the initial worker set is
 // built.
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker, unresolvedWorkersPenalty time.Duration) pdcWorkerHeap {
+func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
@@ -189,7 +189,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// iteration, as long as we have not launched the initial workers. By
 		// doing so we essentially favor resolved workers more and more as time
 		// passes, ensuring we are not blocking on an unresolved worker.
-		resolveTime = resolveTime.Add(unresolvedWorkersPenalty)
+		// resolveTime = resolveTime.Add(unresolvedWorkersPenalty)
 
 		// Determine the expected readDuration and cost for this worker. Add the
 		// readDuration to the hasSectorTime to get the full complete time for
@@ -555,9 +555,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
-		// numAvailWorkers := pdc.resolvedAvailWorkers()
-		// unresolvedWorkersPenalty := time.Since(start) * time.Duration(numAvailWorkers)
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, time.Duration(0))
+		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
 
 		// Create an initial worker set
 		span := opentracing.SpanFromContext(pdc.ctx)
