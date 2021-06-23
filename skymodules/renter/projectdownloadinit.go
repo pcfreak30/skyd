@@ -524,9 +524,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span,
 	}
 
 	if isUnresolved {
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-			span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
-		}
+		span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
 		return nil, nil
 	}
 
@@ -552,7 +550,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span,
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	start := time.Now()
-	var loopDebugStr string
 	parent := opentracing.SpanFromContext(pdc.ctx)
 	span := opentracing.StartSpan("launchInitialWorkers", opentracing.FollowsFrom(parent.Context()))
 	defer span.Finish()
@@ -584,9 +581,6 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			// If the function returned an actual set of workers, we are good to
 			// launch.
 			if finalWorkers != nil {
-				if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-					span.LogKV("launchInitialWorkersLoopInfo", loopDebugStr)
-				}
 				tmp := opentracing.StartSpan("launchWorkers", opentracing.FollowsFrom(loopSpan.Context()))
 				defer tmp.Finish()
 				for i, fw := range finalWorkers {
@@ -600,14 +594,14 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 			select {
 			case worker := <-updateChan:
-				loopDebugStr += fmt.Sprintf("%v | worker %v updated\n", time.Since(start), worker)
+				loopSpan.LogKV("updateChan", fmt.Sprintf("%v | worker %v updated\n", time.Since(start), worker))
 			case <-time.After(maxWaitUnresolvedWorkerUpdate):
 				// We want to limit the amount of time spent waiting for unresolved
 				// workers to become resolved. This is because we assign a penalty
 				// to unresolved workers, and on every iteration this penalty might
 				// have caused an already resolved worker to be favoured over the
 				// unresolved worker in the set.
-				loopDebugStr += fmt.Sprintf("%v | worker max wait triggered\n", time.Since(start))
+				loopSpan.LogKV("maxWait", fmt.Sprintf("%v | worker max wait triggered\n", time.Since(start)))
 			case <-pdc.ctx.Done():
 				return false, errors.New("timed out while trying to build initial set of workers")
 			}
