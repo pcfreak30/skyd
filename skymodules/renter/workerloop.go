@@ -337,7 +337,7 @@ func (w *worker) threadedWorkLoop() {
 	// The worker will continuously perform jobs in a loop.
 	for {
 		cont := func() bool {
-			loopSpan := opentracing.StartSpan("workerloop")
+			loopSpan := opentracing.GlobalTracer().StartSpan("workerloop")
 			loopSpan.SetTag("worker", w.staticHostPubKey.String())
 			defer loopSpan.Finish()
 			// There are certain conditions under which the worker should either
