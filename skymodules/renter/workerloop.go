@@ -4,7 +4,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -337,16 +336,11 @@ func (w *worker) threadedWorkLoop() {
 	// The worker will continuously perform jobs in a loop.
 	for {
 		cont := func() bool {
-			loopSpan := opentracing.GlobalTracer().StartSpan("workerloop")
-			loopSpan.SetTag("worker", w.staticHostPubKey.String())
-			defer loopSpan.Finish()
 			// There are certain conditions under which the worker should either
 			// block or exit. This function will block until those conditions are
 			// met, returning 'true' when the worker can proceed and 'false' if the
 			// worker should exit.
-			tmpSpan := opentracing.StartSpan("managedBlockUntilReady", opentracing.ChildOf(loopSpan.Context()))
 			ok := w.managedBlockUntilReady()
-			tmpSpan.Finish()
 			if !ok {
 				return false
 			}
@@ -355,32 +349,24 @@ func (w *worker) threadedWorkLoop() {
 			// be the case if other processes errored out with an error indicating a
 			// mismatch.
 			if w.staticSuspectRevisionMismatch() {
-				tmpSpan = opentracing.StartSpan("externTryFixRevisionMismatch", opentracing.ChildOf(loopSpan.Context()))
 				w.externTryFixRevisionMismatch()
-				tmpSpan.Finish()
 			}
 
 			// Update the worker cache object, note that we do this after trying to
 			// sync the revision as that might influence the contract, which is used
 			// to build the cache object.
-			tmpSpan = opentracing.StartSpan("staticTryUpdateCache", opentracing.ChildOf(loopSpan.Context()))
 			w.staticTryUpdateCache()
-			tmpSpan.Finish()
 
 			// If the worker needs to sync the account balance, perform a sync
 			// operation. This should be attempted before launching any jobs.
 			if w.managedNeedsToSyncAccountBalanceToHost() {
-				tmpSpan = opentracing.StartSpan("externSyncAccountBalanceToHost", opentracing.ChildOf(loopSpan.Context()))
 				w.externSyncAccountBalanceToHost()
-				tmpSpan.Finish()
 			}
 
 			// Attempt to launch a serial job. If there is already a job running,
 			// this will no-op. If no job is running, a goroutine will be spun up
 			// to run a job, this call is non-blocking.
-			tmpSpan = opentracing.StartSpan("externLaunchSerialJob", opentracing.ChildOf(loopSpan.Context()))
 			w.externTryLaunchSerialJob()
-			tmpSpan.Finish()
 
 			// Attempt to launch an async job. If the async job launches
 			// successfully, skip the blocking phase and attempt to launch another
@@ -392,9 +378,7 @@ func (w *worker) threadedWorkLoop() {
 			// large amount of bandwidth are all running simultaneously. If the
 			// jobs are tiny in terms of resource footprints, the worker will allow
 			// more of them to be running at once.
-			tmpSpan = opentracing.StartSpan("externLaunchSerialJob", opentracing.ChildOf(loopSpan.Context()))
 			ok = w.externTryLaunchAsyncJob()
-			tmpSpan.Finish()
 			if ok {
 				return true
 			}
